@@ -2657,6 +2657,87 @@ def _source_cors_policies(root: Path) -> list[str]:
     return [str(x) for x in policies] if isinstance(policies, list) else []
 
 
+_MAPPING_ANNOTATIONS = {
+    "org.springframework.web.bind.annotation.RequestMapping", "org.springframework.web.bind.annotation.GetMapping",
+    "org.springframework.web.bind.annotation.PostMapping", "org.springframework.web.bind.annotation.PutMapping",
+    "org.springframework.web.bind.annotation.DeleteMapping", "org.springframework.web.bind.annotation.PatchMapping",
+    "jakarta.ws.rs.Path", "javax.ws.rs.Path",
+}
+_MAPPING_SIMPLE = {a.rsplit(".", 1)[-1] for a in _MAPPING_ANNOTATIONS}
+
+
+def _mapping_paths(annotations: list[dict[str, Any]]) -> list[str]:
+    """The URL paths a set of annotations map (value/path attributes of a
+    Spring mapping annotation or a JAX-RS @Path), as written."""
+    out: list[str] = []
+    for a in annotations or []:
+        if not isinstance(a, dict):
+            continue
+        fqn, simple = str(a.get("fqn") or ""), str(a.get("simple") or "")
+        if fqn not in _MAPPING_ANNOTATIONS and not (not fqn and simple in _MAPPING_SIMPLE):
+            continue
+        named = a.get("named") if isinstance(a.get("named"), dict) else {}
+        vals = [str(v) for k in ("value", "path") for v in (named.get(k) or [])]
+        if not vals and not named:
+            vals = [str(v) for v in (a.get("values") or [])]
+        out.extend(vals if vals else [""])
+    return out
+
+
+def _norm_url_path(p: str) -> str:
+    p = "/" + str(p or "").strip().strip("/")
+    return p if p == "/" else p.rstrip("/")
+
+
+def _served_paths(model: dict[str, Any]) -> dict[tuple[str, str], list[str]]:
+    """{(type fqn, member signature): [URL paths]} for every handler a
+    model's types declare: the class-level mapping prefix joined with each
+    method's mapping paths (a method with no mapping maps nothing)."""
+    out: dict[tuple[str, str], list[str]] = {}
+    for t in model.get("types") or []:
+        if not isinstance(t, dict):
+            continue
+        prefixes = _mapping_paths(t.get("annotations") or []) or [""]
+        for m in t.get("declared") or []:
+            if not isinstance(m, dict):
+                continue
+            leaves = _mapping_paths(m.get("annotations") or [])
+            if not leaves:
+                continue
+            paths = sorted({_norm_url_path(pre.rstrip("/") + "/" + leaf.lstrip("/")) for pre in prefixes for leaf in leaves})
+            out[(str(t.get("fqn") or ""), str(m.get("signature") or m.get("name") or ""))] = paths
+    return out
+
+
+def navigation_handlers_added(root: Path, base_ref: str, url_paths: list[str]) -> list[dict[str, Any]]:
+    """H11 (v9 t_0527c69b): the handlers this CANDIDATE added at any of the
+    navigation's URL paths -- a method with a mapping annotation on one of
+    those paths that the accepted tree (``base_ref``) did not declare, or
+    declared without that mapping. Structural, from the compiler model of both
+    trees; the relative path variants (with and without a leading root
+    segment) are compared by their tail so a mapping written without the root
+    path is still the same address. [] when nothing was added there; raises
+    DestModelUnavailable when either model cannot be made."""
+    from planner.dest_model import dest_model, model_at_commit
+
+    wanted = {_norm_url_path(p) for p in url_paths if str(p or "").strip()}
+    if not wanted:
+        return []
+    now, base = _served_paths(dest_model(Path(root))), _served_paths(model_at_commit(Path(root), base_ref))
+    path_of = {str(t.get("fqn") or ""): str(t.get("path") or "") for t in (dest_model(Path(root)).get("types") or []) if isinstance(t, dict)}
+    hits: list[dict[str, Any]] = []
+    for key, paths in now.items():
+        before = set(base.get(key) or [])
+        for p in paths:
+            if p in before:
+                continue
+            match = next((w for w in wanted if w == p or w.endswith(p) and p != "/" or p.endswith(w) and w != "/"), "")
+            if match:
+                hits.append({"type": key[0], "member": key[1], "url_path": p, "navigation_path": match,
+                             "file": "src/main/java/" + path_of.get(key[0], "") if path_of.get(key[0]) else ""})
+    return sorted(hits, key=lambda h: (h["type"], h["member"], h["url_path"]))
+
+
 def navigation_advice(failures: list[dict[str, Any]], path: str) -> dict[str, Any]:
     """The exit conditions for a redirect the destination answers correctly and
     an address it points at that does not answer at all.
@@ -2676,31 +2757,59 @@ def navigation_advice(failures: list[dict[str, Any]], path: str) -> dict[str, An
                        for f in rows) or "no recorded navigation"
     target = next((str(f.get("target") or "") for f in rows if str(f.get("target") or "")), "")
     target_path = _url_path(target)
+    final_diff = next((str(f.get("final_differs") or "") for f in rows if f.get("final_differs")), "")
     exit_conditions = [
         ("the legacy address %s ANSWERS: it serves the replacement UI itself, or redirects to the address that does. "
          "The bounded navigation from it ends %s today." % (target or "the redirect target", quoted)),
-        ("the replacement UI is inside the PACKAGED production artifact and not only the development mode: "
-         "quarkus.swagger-ui.always-include=true."),
-        ("quarkus.swagger-ui.path addresses it at %s, written WITHOUT repeating the root path (the root-path property "
-         "already carries its slashes); where that path cannot be given to the UI, a compatibility handler that serves "
-         "or forwards to the packaged UI carries the legacy address instead."
+        # H11 (v9 t_0527c69b): the fix is CONFIGURATION, documented on the
+        # platform, never product code that serves a substitute page
+        ("THE FIX IS CONFIGURATION, in %s: `quarkus.swagger-ui.always-include=true` -- \"If this should be included every "
+         "time. By default, this is only included when the application is running in dev mode.\" (default false; a "
+         "build-time property) -- puts the platform's Swagger UI into the PACKAGED production artifact, where it is served "
+         "at ${quarkus.http.non-application-root-path}/swagger-ui (/q/swagger-ui by default) and reads the OpenAPI "
+         "document at %s (%s)." % (APP_PROPERTIES, "${quarkus.http.non-application-root-path}/openapi", DOC_UI_LINKS[0])),
+        ("`quarkus.swagger-ui.path` -- \"The path where Swagger UI is available. The value / is not allowed as it blocks the "
+         "application from serving anything else. By default, this value will be resolved as a path relative to "
+         "${quarkus.http.non-application-root-path}.\" (default swagger-ui) -- addresses it at %s when the legacy address "
+         "itself must serve it, written WITHOUT repeating the root path (the root-path property already carries its "
+         "slashes). Otherwise the legacy address redirects to /q/swagger-ui, as the source-shaped controller already does."
          % (target_path or "the path the source's own Location names")),
+        ("NEVER a handler in product code that answers the redirect target with a page of its own (an HTML stub, a "
+         "meta-refresh, a second redirect to the OpenAPI document): ADR-016 asks for the REAL UI, and advance.py REVERTS a "
+         "candidate that discharges this obligation with a handler it added at the target's path. The target must be "
+         "served by the platform's UI or by code that was already there."),
         ("the bounded navigation check reaches the real UI and a usable OpenAPI document from the packaged artifact, "
-         "within the hops it allows and without revisiting a URL."),
-        ("a property change lives in %s, outside this card's write set (%s): record it with amend-scope.py --path <file> "
-         "--reason <why> BEFORE editing it." % (APP_PROPERTIES, path or GLOBAL)),
+         "within the hops it allows and without revisiting a URL, and its final page is the kind the source's final page "
+         "is (content type and body kind are recorded and compared when the source capture recorded them)."
+         + ((" Today: %s." % final_diff) if final_diff else "")),
+        ("%s is outside this card's write set (%s): record it FIRST with amend-scope.py --root . --cluster <id> --card "
+         "$HERMES_KANBAN_TASK --path %s --reason <the property> --evidence parity:<this obligation id>; the amendment is "
+         "granted on this advice (the configuration locus), then add the property line." % (APP_PROPERTIES, path or GLOBAL, APP_PROPERTIES)),
         ("the first response is left exactly as it is: its status and its literal Location after origin mapping still "
          "come back PASS from this entry point's own parity verdict."),
     ]
     return {
         "description": ("the destination answers the redirect as the source did and the address it points at does not "
-                        "answer; the legacy address must serve the replacement UI or redirect to its effective address"),
+                        "answer; the legacy address must serve the replacement UI or redirect to its effective address -- "
+                        "by configuration (quarkus.swagger-ui.always-include / quarkus.swagger-ui.path), never by a handler "
+                        "that serves a substitute page"),
         "navigation": rows,
+        "config_locus": APP_PROPERTIES,
+        "properties": [{"name": "quarkus.swagger-ui.always-include", "value": "true", "default": "false",
+                        "description": "If this should be included every time. By default, this is only included when the application is running in dev mode.",
+                        "source": DOC_UI_LINKS[0]},
+                       {"name": "quarkus.swagger-ui.path", "value": target_path or "", "default": "swagger-ui",
+                        "description": "The path where Swagger UI is available. The value / is not allowed as it blocks the application from serving anything else. By default, this value will be resolved as a path relative to ${quarkus.http.non-application-root-path}.",
+                        "source": DOC_UI_LINKS[0]}],
+        "locus_hints": [{"path": APP_PROPERTIES, "type": "", "member": "quarkus.swagger-ui.always-include",
+                         "why": "the configuration locus: the documented property that puts the platform's Swagger UI into the packaged artifact; amend the scope to this file on this obligation's evidence"}],
         "exit": exit_conditions,
         "refused": [
             "a dead compatibility URL: an address that answers 404 or an error is not a redirect target",
             "a redirect loop, or a chain that never settles within the hops the navigation check allows",
             "restoring the documentation framework the migration retired",
+            ("a handler added in product code at the redirect target's path that serves a substitute page (an HTML stub, "
+             "a meta-refresh, a redirect to the OpenAPI document): advance.py reverts it by name"),
             ("following the redirect inside the parity comparison, or normalizing the difference away in the corpus or "
              "the comparator: the navigation check is a SEPARATE measurement beside it"),
         ],

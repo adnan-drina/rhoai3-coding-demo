@@ -830,9 +830,20 @@ def _parity_navigation_case() -> int:
                 return _fail("the brief must name the address and what became of it: %s | %s" % (it["message"][:200], it["detail"]))
             blob = json.dumps(it["advice"])
             for needed in (target, target_path, "quarkus.swagger-ui.always-include=true", "quarkus.swagger-ui.path",
-                           "PACKAGED", "amend-scope.py", APP_PROPERTIES, "OpenAPI"):
+                           "PACKAGED", "amend-scope.py", APP_PROPERTIES, "OpenAPI",
+                           # H11: the fix is configuration, cited from the platform's reference, never a handler
+                           "THE FIX IS CONFIGURATION", "If this should be included every time", "/q/swagger-ui",
+                           "https://quarkus.io/version/3.27/guides/openapi-swaggerui",
+                           "NEVER a handler in product code that answers the redirect target with a page of its own",
+                           "--evidence parity:<this obligation id>"):
                 if needed not in blob:
                     return _fail("the navigation advice must state %r: %s" % (needed, blob[:900]))
+            adv = it["advice"]
+            if (adv.get("config_locus") != APP_PROPERTIES or [h["path"] for h in adv.get("locus_hints") or []] != [APP_PROPERTIES]
+                    or [p["name"] for p in adv.get("properties") or []] != ["quarkus.swagger-ui.always-include", "quarkus.swagger-ui.path"]
+                    or adv["properties"][0].get("default") != "false" or "substitute page" not in json.dumps(adv.get("refused"))):
+                return _fail("the advice names the config locus, the documented properties with their defaults, and refuses a substitute page: %s"
+                             % {k: adv.get(k) for k in ("config_locus", "locus_hints", "properties")})
             refused = json.dumps(it["advice"]["refused"])
             if "dead compatibility URL" not in refused or "loop" not in refused or "retired" not in refused:
                 return _fail("it must refuse a dead URL, a loop and restoring the retired framework: %s" % refused)
@@ -2868,6 +2879,70 @@ def _generated_body_case() -> int:
     return 0
 
 
+def _navigation_added_handler_case() -> int:
+    """H11 (v9 t_0527c69b): a navigation obligation discharged by a handler the
+    candidate ADDED at the redirect target's path is not a discharge. The
+    check is structural: the compiler models of the accepted commit and the
+    candidate, compared at the walked URL paths (class prefix + method
+    mapping; a path written without the root segment matches by its tail).
+    A handler that was already there, or one added elsewhere, is not a hit."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    from planner.worklist import navigation_handlers_added
+
+    if not shutil.which("javac") or not shutil.which("git"):
+        print("SKIP navigation added-handler case: no javac/git")
+        return 0
+    ctl = "src/main/java/p/web/RootCtl.java"
+    before = ("package p.web;\nimport org.springframework.web.bind.annotation.GetMapping;\n"
+              "import org.springframework.web.bind.annotation.RequestMapping;\n"
+              "@RequestMapping(\"/petclinic\")\npublic class RootCtl {\n"
+              "    @GetMapping(\"/\")\n    public String root() { return \"redirect:/petclinic/swagger-ui/index.html\"; }\n}\n")
+    after = before[: before.rstrip().rfind("}")] + (
+        "    @GetMapping(\"/swagger-ui/index.html\")\n    public String legacy() { return \"redirect:/q/swagger-ui\"; }\n"
+        "    @GetMapping(value = \"/q/swagger-ui\")\n    public String stub() { return \"<html><meta http-equiv=refresh></html>\"; }\n}\n")
+    stubs = {"org/springframework/web/bind/annotation/GetMapping.java": "package org.springframework.web.bind.annotation;\nimport java.lang.annotation.*;\n@Retention(RetentionPolicy.RUNTIME) public @interface GetMapping { String[] value() default {}; String[] path() default {}; }\n",
+             "org/springframework/web/bind/annotation/RequestMapping.java": "package org.springframework.web.bind.annotation;\nimport java.lang.annotation.*;\n@Retention(RetentionPolicy.RUNTIME) public @interface RequestMapping { String[] value() default {}; String[] path() default {}; }\n"}
+    with tempfile.TemporaryDirectory(prefix="nav-added-") as td:
+        root = Path(td)
+        (root / ".hermes").mkdir()
+        (root / ".hermes/pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}')
+        stub_src, stub_cls = root / ".stub", root / ".stubcls"
+        for rel, text in stubs.items():
+            (stub_src / rel).parent.mkdir(parents=True, exist_ok=True)
+            (stub_src / rel).write_text(text)
+        stub_cls.mkdir()
+        subprocess.run(["javac", "-d", str(stub_cls), *[str(p) for p in stub_src.rglob("*.java")]], check=True, capture_output=True)
+        (root / "verification/build/.work").mkdir(parents=True)
+        (root / "verification/build/.work/classpath.txt").write_text(str(stub_cls))
+        (root / ctl).parent.mkdir(parents=True)
+        (root / ctl).write_text(before)
+        g = lambda *a: subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True, text=True)  # noqa: E731
+        g("init", "-q"); g("config", "user.email", "t@t"); g("config", "user.name", "t")
+        g("add", "-A"); g("commit", "-qm", "accepted")
+        base = g("rev-parse", "HEAD").stdout.strip()
+        walked = ["/petclinic/swagger-ui/index.html", "/q/swagger-ui"]
+        if navigation_handlers_added(root, base, walked):
+            return _fail("nothing added yet: no hit")
+        (root / ctl).write_text(after)
+        hits = navigation_handlers_added(root, base, walked)
+        got = [(h["member"], h["url_path"], h["navigation_path"]) for h in hits]
+        if got != [("legacy()", "/petclinic/swagger-ui/index.html", "/petclinic/swagger-ui/index.html"), ("stub()", "/petclinic/q/swagger-ui", "/q/swagger-ui")]:
+            return _fail("both handlers the candidate added at walked paths are named, the root-prefixed one by its tail: %s" % got)
+        if hits[0]["file"] != ctl or hits[0]["type"] != "p.web.RootCtl":
+            return _fail("a hit names its file and type: %s" % hits[0])
+        if navigation_handlers_added(root, base, ["/api/owners"]):
+            return _fail("a handler added elsewhere is not a hit")
+        # the handler was already there: not a hit even though it maps the path
+        g("add", "-A"); g("commit", "-qm", "with handlers")
+        base2 = g("rev-parse", "HEAD").stdout.strip()
+        if navigation_handlers_added(root, base2, walked):
+            return _fail("a handler the accepted tree already declared is not one the candidate added")
+    return 0
+
+
 def _partial_rerun_carry_case() -> int:
     """H8 (v9 t_3c2ed945, cluster c:9c5fb3d1b7e3): the entry point addOwner
     has 7 scenarios; the pom build card holds 2 (create-owners,
@@ -3472,7 +3547,7 @@ def _server_error_advice_case() -> int:
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

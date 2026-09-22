@@ -618,6 +618,19 @@ def main() -> int:
                 return _fail("the record must show the walk, hop by hop: %s" % rec.get("hops"))
             if rec.get("identity") != {}:
                 return _fail("a scenario that declares no effects identity navigates as nobody: %s" % rec.get("identity"))
+            # H11: the final hop's page is recorded (status, content type, body
+            # kind, digest) and compared with the source's when its capture
+            # recorded one; this corpus has none, so nothing differs
+            fin = rec.get("final") or {}
+            if (fin.get("status") != 200 or fin.get("url") != base + "/ui/index.html" or not fin.get("content_type")
+                    or not fin.get("body_kind") or not fin.get("body_sha256") or rec.get("source_final") != {} or rec.get("final_differs") != ""):
+                return _fail("the navigation record names its final page and compares it with the source's: %s" % {k: rec.get(k) for k in ("final", "source_final", "final_differs")})
+            from _oracle_common import final_page_differs  # noqa: E402
+            if (final_page_differs(fin, {"status": 200, "content_type": "text/html", "body_kind": "html"}) !=
+                    "content-type %s vs text/html; body-kind %s vs html" % (fin["content_type"], fin["body_kind"])):
+                return _fail("a source final page of another kind is named as the difference: %s" % final_page_differs(fin, {"status": 200, "content_type": "text/html", "body_kind": "html"}))
+            if final_page_differs(fin, {}) or final_page_differs(fin, dict(fin, body_sha256="other")):
+                return _fail("no source walk, or the same kind of page with another digest, is no difference")
             auth_rec = load_json(root / NAVIGATION / (scenario_slug("sc:read-root-auth") + ".json"))
             if auth_rec.get("identity") != dict(normalized_identity(NAV_IDENTITY)) or auth_rec.get("terminal") != "ok":
                 return _fail("a scenario that declares an effects identity navigates as that REFERENCE: %s" % auth_rec)

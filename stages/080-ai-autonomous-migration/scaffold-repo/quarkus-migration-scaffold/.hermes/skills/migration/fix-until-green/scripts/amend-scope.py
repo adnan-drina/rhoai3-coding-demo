@@ -51,7 +51,7 @@ ensure_hermes_lib()
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import LOOP_ISSUED, WORKLIST, is_product_path  # noqa: E402
 from planner.dest_model import DestModelUnavailable, dest_model, types_of  # noqa: E402
-from planner.worklist import UNIT_KIND, UNIT_MAX_FILES, batch_scope_digest, resolve_compile_symbol  # noqa: E402
+from planner.worklist import APP_PROPERTIES, UNIT_KIND, UNIT_MAX_FILES, batch_scope_digest, resolve_compile_symbol  # noqa: E402
 
 # How far one card may reach beyond the file it was issued for. Two is enough
 # for a repository whose queries need one collaborating entity; a third is the
@@ -287,8 +287,24 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
     advice = item.get("advice") if isinstance(item.get("advice"), dict) else {}
     body = advice.get("body_diff") if isinstance(advice.get("body_diff"), dict) else {}
     server_error = advice.get("server_error") if isinstance(advice.get("server_error"), dict) else {}
+    request_rejection = advice.get("request_rejection") if isinstance(advice.get("request_rejection"), dict) else {}
     if not (rel.startswith("src/main/") and (root / rel).is_file()):
         return "", "%s is not a main source file of this tree" % rel
+    # H11 (v9 t_0527c69b): the CONFIG locus. An obligation whose advice names
+    # src/main/resources/application.properties as where the fix lives (a
+    # navigation obligation: quarkus.swagger-ui.*; a request rejection or a
+    # config advice naming a property) is amendable to it on that evidence --
+    # the worker was told "record it with amend-scope.py BEFORE editing it",
+    # was refused, and served a substitute page from the controller instead.
+    # The build-file rule covers pom.xml (its own cluster), not the runtime
+    # properties file; the bounds are the card's as for any amendment.
+    config_named = str(advice.get("config_locus") or "") == rel or any(
+        str(h.get("path") or "") == rel
+        for a in (advice, advice.get("navigation") if isinstance(advice.get("navigation"), dict) else {}, request_rejection)
+        for h in ((a.get("locus_hints") or []) if isinstance(a, dict) else []) if isinstance(h, dict))
+    if rel == APP_PROPERTIES and config_named:
+        return ("parity: %s is the configuration locus %s's advice names (the fix is a property, never a handler that "
+                "serves a substitute page)" % (rel, evidence_ref)), ""
     for h in body.get("locus_hints") or []:
         if str(h.get("path") or "") == rel:
             return "parity: %s is the hinted producer of %s's body difference (%s)" % (rel, evidence_ref, h.get("member")), ""
@@ -296,6 +312,12 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
         if str(h.get("path") or "") == rel:
             return ("parity: %s is where %s's server error is thrown (%s.%s line %s)"
                     % (rel, evidence_ref, h.get("type"), h.get("member"), h.get("line") or "?")), ""
+    for h in request_rejection.get("locus_hints") or []:
+        if str(h.get("path") or "") == rel and rel != "pom.xml":
+            return "parity: %s is a locus %s's request-rejection advice names (%s)" % (rel, evidence_ref, str(h.get("why") or "")[:80]), ""
+    if rel == APP_PROPERTIES:
+        return "", ("%s is the configuration file, and %s's advice names no property that lives there; a parity card reaches "
+                    "it only when its obligation's advice does" % (rel, evidence_ref))
     try:
         from planner.worklist import unit_bound_imports, unit_type_refs  # noqa: PLC0415
 

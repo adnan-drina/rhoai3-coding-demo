@@ -437,9 +437,15 @@ def main(argv: list[str] | None = None) -> int:
             # redirect target is dead, loops or never settles is a FAIL, typed
             # ``navigation`` so the work list can locate it at the controller
             # that answers the redirect rather than at a response diff.
+            # H11 (v9 t_0527c69b): a walk that ends 2xx on a page that is not
+            # the kind the SOURCE's final page is (the source capture recorded
+            # its own redirect chain's final hop) is a failed navigation too --
+            # "final hop 2xx" alone let a meta-refresh stub pass for the UI
             nav_bad = [(sid, navigation[sid]) for sid in names
-                       if str((navigation.get(sid) or {}).get("terminal") or "") in NAVIGATION_FAILED]
-            nav_ok = [sid for sid in names if str((navigation.get(sid) or {}).get("terminal") or "") == "ok"]
+                       if str((navigation.get(sid) or {}).get("terminal") or "") in NAVIGATION_FAILED
+                       or (navigation.get(sid) or {}).get("final_differs")]
+            nav_ok = [sid for sid in names if str((navigation.get(sid) or {}).get("terminal") or "") == "ok"
+                      and not (navigation.get(sid) or {}).get("final_differs")]
             row = {"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
                    "coverage": {"positive": positive, "negative": negative}}
             if body_diffs:
@@ -450,15 +456,21 @@ def main(argv: list[str] | None = None) -> int:
             if verdict == "PASS" and nav_bad:
                 # the redirect IS the source's (PASS stays); reachability of its
                 # target is a separate obligation with its own row
-                fails = [{"scenario": sid, "target": str(n.get("start") or ""),
-                          "terminal": str(n.get("terminal") or ""),
-                          "final_status": n.get("final_status")} for sid, n in nav_bad]
+                fails = [dict({"scenario": sid, "target": str(n.get("start") or ""),
+                               "terminal": str(n.get("terminal") or ""),
+                               "final_status": n.get("final_status")},
+                              **({"final_differs": str(n.get("final_differs") or ""), "final": dict(n.get("final") or {}),
+                                  "source_final": dict(n.get("source_final") or {})} if n.get("final_differs") else {}))
+                         for sid, n in nav_bad]
                 row["navigation"] = "failed"
                 row["navigation_failures"] = fails
                 navigation_obligations.append({
                     "entry_point": ep, "kind": "navigation", "verdict": "FAIL", "scenarios": list(names),
-                    "reason": "; ".join("redirect target %s is %s on the destination (%s)"
-                                        % (str(n.get("start") or ""), str(n.get("terminal") or ""), n.get("final_status"))
+                    "reason": "; ".join(("redirect target %s reaches a final page that differs from the source's: %s"
+                                         % (str(n.get("start") or ""), str(n.get("final_differs") or "")))
+                                        if n.get("final_differs") and str(n.get("terminal") or "") not in NAVIGATION_FAILED else
+                                        ("redirect target %s is %s on the destination (%s)"
+                                         % (str(n.get("start") or ""), str(n.get("terminal") or ""), n.get("final_status")))
                                         for _, n in nav_bad)[:400],
                     "navigation_failures": list(fails)})
                 navigation_failures.extend(fails)

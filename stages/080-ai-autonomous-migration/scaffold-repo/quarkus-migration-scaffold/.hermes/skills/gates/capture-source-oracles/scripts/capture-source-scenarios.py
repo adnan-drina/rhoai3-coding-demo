@@ -91,7 +91,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
+from _oracle_common import ensure_hermes_lib, http_observe, navigate, retain_body  # noqa: E402
 import _source_store  # noqa: E402
 from _variant_revert import plan_gap as revert_plan_gap  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
@@ -733,6 +733,15 @@ def main(argv: list[str] | None = None) -> int:
             rec["response"] = obs
             if obs.get("status"):
                 rec["response"]["evidence"] = retain_body(bodies_dir, "response", raw, str(obs.get("body_sha256") or ""))
+            # H11: a READ whose first response is a redirect also records the
+            # source's own bounded walk to its final page (status, content
+            # type, body kind), so the destination's walk can be compared with
+            # it -- the first response stays the thing the comparison compares
+            _loc = (obs.get("headers") or {}).get("Location") if isinstance(obs.get("headers"), dict) else None
+            if str(req["method"]).upper() == "GET" and 300 <= int(obs.get("status") or 0) < 400 and _loc:
+                import urllib.parse as _up
+                rec["navigation"] = navigate(_up.urljoin(runtime.base_url.rstrip("/") + req["path"], str(_loc)),
+                                             {**req["headers"], **headers}, 3)
             if not obs.get("status"):
                 release()
                 rec["reason"] = "the source did not answer: %s" % obs.get("error")

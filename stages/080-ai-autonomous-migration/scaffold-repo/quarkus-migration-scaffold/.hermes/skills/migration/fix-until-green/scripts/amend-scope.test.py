@@ -443,6 +443,40 @@ def _parity_body_case(root: Path) -> int:
     rc, out = _run(root, "--path", "src/main/java/p/Vet.java", "--reason", reason, "--evidence", "parity:parity:body1", cluster="c:par")
     if rc == 0 or "limit 2" not in out:
         return _fail("a parity card is bounded like any card: %s" % out)
+    # H11 (v9 t_0527c69b): the CONFIG locus. A navigation obligation's advice
+    # names application.properties (quarkus.swagger-ui.*); the card reaches it
+    # on that evidence -- and only on it: the same file for an obligation whose
+    # advice names no property there is refused with the exact shape, and
+    # pom.xml stays its own cluster
+    props = "src/main/resources/application.properties"
+    (root / props).parent.mkdir(parents=True, exist_ok=True)
+    (root / props).write_text("quarkus.http.port=8080\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "props")
+    nav_item = {"id": "parity:nav1", "source": "parity", "gate": "parity", "kind": "parity", "rule_id": "PARITY",
+                "cause": "redirect-target-dead", "path": ctl, "detail": "ep: redirect target http://d/swagger-ui/index.html is dead (404)",
+                "advice": {"config_locus": props, "navigation": [], "exit": ["THE FIX IS CONFIGURATION"],
+                           "locus_hints": [{"path": props, "member": "quarkus.swagger-ui.always-include", "why": "the configuration locus"}]}}
+    wl.write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [item, nav_item]}))
+    issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:nav", "attempt": 1, "gate": "parity",
+                                  "items": ["parity:nav1"], "write_set": [ctl]}))
+    rc, out = _run(root, "--path", props, "--reason", "quarkus.swagger-ui.always-include=true puts the UI in the package",
+                   "--evidence", "parity:parity:nav1", cluster="c:nav")
+    if rc != 0 or "configuration locus" not in out or "never a handler" not in out:
+        return _fail("the config file the navigation advice names is authorized on parity evidence: %s" % out)
+    if props not in json.loads(issued.read_text())["write_set"]:
+        return _fail("the amendment lands application.properties in the write set")
+    rc, out = _run(root, "--path", "pom.xml", "--reason", "quarkus.swagger-ui.always-include=true puts the UI in the package",
+                   "--evidence", "parity:parity:nav1", cluster="c:nav")
+    if rc == 0 or "not a path a parity card may reach" not in out:
+        return _fail("the build file is not the config locus: %s" % out)
+    # the same file for an obligation whose advice names no property there: refused, with the exact shape
+    issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:par", "attempt": 1, "gate": "parity",
+                                  "items": ["parity:body1"], "write_set": [ctl]}))
+    rc, out = _run(root, "--path", props, "--reason", "a property might help somewhere", "--evidence", "parity:parity:body1", cluster="c:par")
+    if (rc == 0 or "REFUSE: SCOPE_AMENDMENT" not in out or "bears no relation to what this card measures" not in out
+            or "advice names no property that lives there" not in out):
+        return _fail("the config file is refused by name when the obligation's advice does not name it: %s" % out)
     return 0
 
 

@@ -83,7 +83,11 @@ rule to `kanban_complete`.
    <file> --reason <why> --evidence parity:<item id>` (bounded by the card's
    own bounds: two amendments, a unit's four and never past its file bound),
    then edit it — with the file tools (`patch`, `write_file`) on that path;
-   they honour the amended set (K2 reads `issued.json`). `kanban_block` kind=needs_input ONLY when amend-scope.py
+   they honour the amended set (K2 reads `issued.json`). The config file
+   `application.properties` is amended the same way when the advice names a
+   property there (navigation: `quarkus.swagger-ui.always-include=true`);
+   never serve a substitute page from a handler instead — advance reverts it.
+   `kanban_block` kind=needs_input ONLY when amend-scope.py
    REFUSES (quote its `REFUSE: SCOPE_AMENDMENT` line) or when the fix is in a
    path the loop never grants: tests, `evidence/`, `decisions.yaml`, a plugin
    or dependency the brief did not ask for. A path outside the amended write

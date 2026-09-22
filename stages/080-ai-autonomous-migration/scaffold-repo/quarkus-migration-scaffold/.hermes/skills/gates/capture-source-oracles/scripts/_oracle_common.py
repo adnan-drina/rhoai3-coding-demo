@@ -395,3 +395,99 @@ def normalize_observation(path: Path) -> tuple[str, int]:
             lines.append(s)
     uniq = sorted(set(lines))
     return sha256_bytes("\n".join(uniq).encode("utf-8")), len(uniq)
+
+
+# --- the bounded navigation walk (ADR-016), shared by the SOURCE capture and
+# the destination comparison so both record the same shape ------------------
+NAV_OK = "ok"
+NAV_DEAD = "dead"
+NAV_LOOP = "loop"
+NAV_TOO_MANY = "too-many-hops"
+
+
+def split_url(url: str) -> tuple[str, str]:
+    """(origin, path?query) -- http_observe takes a base and a path, and the
+    navigation walks whole URLs. An address with no scheme and host is not one
+    this walk can follow, and comes back with an empty origin."""
+    parts = urllib.parse.urlsplit(str(url or ""))
+    if not parts.scheme or not parts.netloc:
+        return "", ""
+    rest = parts.path or "/"
+    if parts.query:
+        rest = rest + "?" + parts.query
+    return "%s://%s" % (parts.scheme, parts.netloc), rest
+
+
+def navigate(start: str, headers: dict[str, str] | None, max_hops: int, observe: Any = None) -> dict[str, Any]:
+    """Follow at most ``max_hops`` redirects from ``start``, one hop at a time,
+    and say where it ended.
+
+    ``ok`` is a 2xx at the end; ``dead`` is a 4xx, a 5xx or a connection that
+    could not be made (and a redirect that names no target: an address nobody
+    can follow is not a redirect); ``loop`` is a URL this walk already visited;
+    ``too-many-hops`` is a chain still redirecting when the budget ran out.
+    Each hop records the URL it asked, the status it got and the Location it
+    was sent on to, so the record shows the walk rather than only its end.
+    ``final`` (H11) records the LAST hop's status, Content-Type, body kind
+    and body digest: "final hop 2xx" alone let a meta-refresh stub pass for
+    the real UI (dest v9 t_0527c69b), and only the page's kind can say what
+    answered."""
+    observe = observe or http_observe
+    hops: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    url = str(start or "")
+    terminal = ""
+    final_status = 0
+    final: dict[str, Any] = {}
+    for _ in range(max(1, int(max_hops))):
+        if url in seen:
+            terminal = NAV_LOOP
+            break
+        seen.add(url)
+        origin, rest = split_url(url)
+        if not origin:
+            hops.append({"url": url, "status": 0, "error": "not an absolute address this check can follow"})
+            terminal = NAV_DEAD
+            break
+        got = observe(origin, "GET", rest, headers=dict(headers or {}), assert_headers=("Content-Type",))
+        status = int(got.get("status") or 0)
+        hdrs = got.get("headers") if isinstance(got.get("headers"), dict) else {}
+        location = hdrs.get("Location")
+        hop: dict[str, Any] = {"url": url, "status": status}
+        if location:
+            hop["location"] = str(location)
+        if not status:
+            hop["error"] = str(got.get("error") or "")[:200]
+        hops.append(hop)
+        final_status = status
+        final = {"url": url, "status": status, "content_type": str(hdrs.get("Content-Type") or "").split(";")[0].strip().lower(),
+                 "body_kind": str(got.get("body_kind") or ""), "body_sha256": str(got.get("body_sha256") or "")}
+        if not status:
+            terminal = NAV_DEAD
+            break
+        if 300 <= status < 400:
+            if not location:
+                terminal = NAV_DEAD
+                break
+            url = urllib.parse.urljoin(url, str(location))
+            continue
+        terminal = NAV_OK if 200 <= status < 300 else NAV_DEAD
+        break
+    else:
+        terminal = NAV_TOO_MANY
+    return {"start": str(start or ""), "hops": hops, "final_status": final_status, "terminal": terminal, "final": final}
+
+
+def final_page_differs(dest_final: dict[str, Any] | None, source_final: dict[str, Any] | None) -> str:
+    """Why the destination walk's final page is not the kind the source's is:
+    the content type or the body kind differ (a digest never has to match --
+    two Swagger UIs are two different pages). "" when they agree or when the
+    source recorded no final hop (nothing to compare against)."""
+    d, s = dict(dest_final or {}), dict(source_final or {})
+    if not s or not s.get("status") or not d:
+        return ""
+    diffs = []
+    for key in ("content_type", "body_kind"):
+        if str(s.get(key) or "") and str(d.get(key) or "") != str(s.get(key) or ""):
+            diffs.append("%s %s vs %s" % (key.replace("_", "-"), d.get(key) or "none", s.get(key)))
+    return "; ".join(diffs)

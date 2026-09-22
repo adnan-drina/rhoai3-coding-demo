@@ -96,7 +96,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import carry_unmeasured, parity_discharge_scope, parity_obligation_discharged, parity_remeasured, parity_state, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
+from planner.worklist import carry_unmeasured, navigation_handlers_added, parity_discharge_scope, parity_obligation_discharged, parity_remeasured, parity_state, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -115,6 +115,11 @@ FLOW_CODES = frozenset((
     "compiler.err.missing.ret.stmt",
     "compiler.err.unreachable.stmt",
 ))
+
+
+def _url_path_of(url: str) -> str:
+    import urllib.parse
+    return urllib.parse.urlsplit(str(url or "")).path or "/"
 
 
 def _attribution_items(items: list) -> dict:
@@ -921,6 +926,40 @@ def main(argv: list[str] | None = None) -> int:
         # the measure fell and a member still breaks the family's rule (caught,
         # declared, or its operation deleted): that is not a repair
         return _reject(root, steps, args.cluster, args.card, cur, family_detail, changed, mint=not args.no_mint, hermes=args.hermes)
+    # H11 (v9 t_0527c69b): a NAVIGATION obligation is discharged by the
+    # platform's UI answering at the redirect target, never by a handler this
+    # candidate ADDED at that path to serve a substitute page. Structural: the
+    # compiler models of the accepted tree and the candidate, compared at the
+    # URL paths the bounded navigation walked.
+    nav_items = [oid for oid in (issued.get("items") or []) if str((judged_obl.get(str(oid)) or {}).get("what") or "") == "navigation"]
+    if gate == "parity" and nav_items and any(str(p).endswith(".java") for p in changed):
+        nav_paths: list[str] = []
+        ndir = root / "verification" / "parity" / "navigation"
+        for np_ in sorted(ndir.glob("*.json")) if ndir.is_dir() else []:
+            try:
+                nrec = load_json(np_)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(nrec, dict):
+                continue
+            for u in [nrec.get("start")] + [h.get("url") for h in (nrec.get("hops") or []) if isinstance(h, dict)] + \
+                     [h.get("location") for h in (nrec.get("hops") or []) if isinstance(h, dict)]:
+                if u:
+                    nav_paths.append(_url_path_of(str(u)))
+        try:
+            added = navigation_handlers_added(root, str(prev.get("commit") or "HEAD"), nav_paths) if nav_paths else []
+        except DestModelUnavailable as exc:
+            added = []
+            print("WARN: the added-handler check for the navigation obligation could not be made: %s" % exc, file=sys.stderr)
+        if added:
+            h = added[0]
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "the navigation obligation %s is discharged by a handler this candidate ADDED at %s (%s.%s in %s): "
+                           "the redirect target must be served by the platform's UI (quarkus.swagger-ui.always-include=true, "
+                           "quarkus.swagger-ui.path, in application.properties) or by code that was already there, never by a "
+                           "substitute page from product code (ADR-016)"
+                           % (",".join(nav_items[:2]), h["navigation_path"], h["type"], h["member"], h["file"] or "?"),
+                           changed, mint=not args.no_mint, hermes=args.hermes)
     clear_pending(steps, args.cluster, why="accepted")
     _phase("verdict: accepted; committing the candidate")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))

@@ -176,12 +176,12 @@ RESET_SCRIPT = CAPTURE / "reset-parity-db.sh"
 
 sys.path.insert(0, str(CAPTURE))
 sys.path.insert(0, str(HERMES / "lib"))
-from _oracle_common import ORACLES, PARITY, entry_points, http_observe, slug  # noqa: E402
+from _oracle_common import NAV_DEAD, NAV_LOOP, NAV_OK, NAV_TOO_MANY, ORACLES, PARITY, entry_points, final_page_differs, http_observe, navigate, slug  # noqa: E402
 from _scenarios import (DEFAULT_SECURITY_MODE, PARITY_ORPHANS, SECURITY_MODES, CorpusError, auth_headers, binding_of,  # noqa: E402
                         candidate_binding, corpus_digest, corpus_path, credential_conflicts, effects_identity_of,
                         load_corpus, normalize_security_mode, normalized_identity, parity_receipt_path,
                         parse_assignments, partition_parity_records, scenario_parity_dir, scenario_slug,
-                        sealed_binding)
+                        scenario_oracles_dir, sealed_binding)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import VERIFY_PACKAGE  # noqa: E402
@@ -205,10 +205,6 @@ READ_METHODS = ("GET", "HEAD")
 NAVIGATION = PARITY / "navigation"
 NAV_SCHEMA = "rhoai3.parity-navigation/v1"
 NAV_DEFAULT_HOPS = 3
-NAV_OK = "ok"
-NAV_DEAD = "dead"
-NAV_LOOP = "loop"
-NAV_TOO_MANY = "too-many-hops"
 NAV_COUNTER = {NAV_OK: "ok", NAV_DEAD: "dead", NAV_LOOP: "loop", NAV_TOO_MANY: "too_many_hops"}
 # Where a parity record that does not belong to this corpus is moved before the
 # composer reads the directory, and the index that says where each came from.
@@ -628,68 +624,9 @@ def read_oracle_gap(root: Path, ep: str) -> str:
 
 # --- the bounded navigation check -------------------------------------------
 
-def _split_url(url: str) -> tuple[str, str]:
-    """(origin, path?query) -- http_observe takes a base and a path, and the
-    navigation walks whole URLs. An address with no scheme and host is not one
-    this check can follow, and comes back with an empty origin."""
-    parts = urllib.parse.urlsplit(str(url or ""))
-    if not parts.scheme or not parts.netloc:
-        return "", ""
-    rest = parts.path or "/"
-    if parts.query:
-        rest = rest + "?" + parts.query
-    return "%s://%s" % (parts.scheme, parts.netloc), rest
-
-
-def navigate(start: str, headers: dict[str, str] | None, max_hops: int) -> dict[str, Any]:
-    """Follow at most ``max_hops`` redirects from ``start``, one hop at a time,
-    and say where it ended.
-
-    ``ok`` is a 2xx at the end; ``dead`` is a 4xx, a 5xx or a connection that
-    could not be made (and a redirect that names no target: an address nobody
-    can follow is not a redirect); ``loop`` is a URL this walk already visited;
-    ``too-many-hops`` is a chain still redirecting when the budget ran out.
-    Each hop records the URL it asked, the status it got and the Location it
-    was sent on to, so the record shows the walk rather than only its end."""
-    hops: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    url = str(start or "")
-    terminal = ""
-    final_status = 0
-    for _ in range(max(1, int(max_hops))):
-        if url in seen:
-            terminal = NAV_LOOP
-            break
-        seen.add(url)
-        origin, rest = _split_url(url)
-        if not origin:
-            hops.append({"url": url, "status": 0, "error": "not an absolute address this check can follow"})
-            terminal = NAV_DEAD
-            break
-        got = http_observe(origin, "GET", rest, headers=dict(headers or {}))
-        status = int(got.get("status") or 0)
-        location = (got.get("headers") or {}).get("Location") if isinstance(got.get("headers"), dict) else None
-        hop: dict[str, Any] = {"url": url, "status": status}
-        if location:
-            hop["location"] = str(location)
-        if not status:
-            hop["error"] = str(got.get("error") or "")[:200]
-        hops.append(hop)
-        final_status = status
-        if not status:
-            terminal = NAV_DEAD
-            break
-        if 300 <= status < 400:
-            if not location:
-                terminal = NAV_DEAD
-                break
-            url = urllib.parse.urljoin(url, str(location))
-            continue
-        terminal = NAV_OK if 200 <= status < 300 else NAV_DEAD
-        break
-    else:
-        terminal = NAV_TOO_MANY
-    return {"start": str(start or ""), "hops": hops, "final_status": final_status, "terminal": terminal}
+# _split_url / navigate live in _oracle_common (shared with the SOURCE capture,
+# so both sides record the same walk shape and the composer can compare the
+# final pages -- H11)
 
 
 def redirect_target(record: Any, dest_url: str) -> str:
@@ -715,7 +652,7 @@ def redirect_target(record: Any, dest_url: str) -> str:
 
 
 def run_navigation(root: Path, scenarios: list[dict[str, Any]], dest_url: str, max_hops: int,
-                   nav: dict[str, Any], parity_dir: Path) -> None:
+                   nav: dict[str, Any], parity_dir: Path, oracles_dir: Path | None = None) -> None:
     """One bounded navigation per scenario whose first response on the
     DESTINATION was a redirect, recorded beside the comparison it belongs to.
 
@@ -749,14 +686,27 @@ def run_navigation(root: Path, scenarios: list[dict[str, Any]], dest_url: str, m
                "entry_point": str(sc.get("entry_point") or ""), "dest_url": dest_url, "max_hops": int(max_hops),
                "identity": dict(normalized_identity(identity)) if identity is not None else {}}
         out.update(result)
+        # H11: the SOURCE's own walk, when its capture recorded one, decides
+        # whether the page the destination lands on is the kind the source's is
+        src_rec_p = root / oracles_dir / (scenario_slug(sid) + ".json")
+        try:
+            src_nav = (load_json(src_rec_p) if src_rec_p.is_file() else {}).get("navigation") or {}
+        except (OSError, ValueError):
+            src_nav = {}
+        out["source_final"] = dict(src_nav.get("final") or {}) if isinstance(src_nav, dict) else {}
+        out["final_differs"] = final_page_differs(result.get("final"), out["source_final"]) if result.get("terminal") == NAV_OK else ""
         write_canonical(root / NAVIGATION / (scenario_slug(sid) + ".json"), out)
         nav["checked"] += 1
         nav[NAV_COUNTER[result["terminal"]]] += 1
         nav["results"].append({"scenario": sid, "entry_point": str(sc.get("entry_point") or ""),
                                "start": result["start"], "terminal": result["terminal"],
-                               "final_status": result["final_status"], "hops": len(result["hops"])})
-        print("  [nav] %s %s → %s (%s, %d hop(s))" % (sid, result["start"], result["terminal"],
-                                                      result["final_status"], len(result["hops"])))
+                               "final_status": result["final_status"], "hops": len(result["hops"]),
+                               "final_differs": out["final_differs"]})
+        if out["final_differs"]:
+            nav["final_differs"] = int(nav.get("final_differs") or 0) + 1
+        print("  [nav] %s %s → %s (%s, %d hop(s)%s)" % (sid, result["start"], result["terminal"],
+                                                        result["final_status"], len(result["hops"]),
+                                                        ("; final page differs from the source: " + out["final_differs"]) if out["final_differs"] else ""))
 
 
 def prune_orphaned_records(root: Path, security_mode: str, corpus: dict[str, Any], corpus_sha: str,
@@ -1214,7 +1164,8 @@ def main(argv: list[str] | None = None) -> int:
         #     is still up -- after the comparisons and before the composer,
         #     which reads the records it leaves.
         if not args.no_navigation:
-            run_navigation(root, scenarios, dest_url, args.nav_max_hops, doc["navigation"], parity_dir)
+            run_navigation(root, scenarios, dest_url, args.nav_max_hops, doc["navigation"], parity_dir,
+                           oracles_dir=scenario_oracles_dir(security_mode))
     finally:
         if dest is not None:
             dest.stop()
