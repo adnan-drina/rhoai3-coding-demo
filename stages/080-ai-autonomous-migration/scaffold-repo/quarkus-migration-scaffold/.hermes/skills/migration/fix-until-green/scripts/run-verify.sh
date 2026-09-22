@@ -84,7 +84,24 @@ javac -d "${WORK}/classes" "${SCRIPT_DIR}/jdk-diagnostics/JdkDiagnostics.java" >
 # process wrote it while this verification ran, and that is recorded in
 # run.json (admission.resealed_during_verify) and said out loud rather than
 # discovered as a parked card three minutes later.
-ADMISSION_BEFORE="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json" 2>/dev/null | cut -c1-64)"
+# Initial M2 verification precedes admission. Absence is a snapshot, not a
+# failed read; other read errors must remain visible and stop verification.
+admission_digest() {
+  python3 - "${ROOT}/evidence/planning/admission-receipt.json" <<'PYEOF'
+import hashlib, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+try:
+    print(hashlib.sha256(p.read_bytes()).hexdigest())
+except OSError as exc:
+    if isinstance(exc, FileNotFoundError) and not p.is_symlink():
+        print("")
+    else:
+        print("FAIL: VERIFY_ADMISSION_READ %s: %s" % (p, exc), file=sys.stderr)
+        raise SystemExit(1)
+PYEOF
+}
+ADMISSION_BEFORE="$(admission_digest)"
 
 now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
 T_ALL="$(now_ms)"
@@ -521,7 +538,7 @@ if line:
     print(line)
 PYEOF
 fi
-ADMISSION_AFTER="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json" 2>/dev/null | cut -c1-64)"
+ADMISSION_AFTER="$(admission_digest)"
 export ADMISSION_BEFORE ADMISSION_AFTER
 python3 - "${ROOT}" <<'PYEOF' || true
 import json, os, sys
@@ -534,9 +551,9 @@ if p.is_file():
     except ValueError:
         doc = None
     if isinstance(doc, dict):
-        doc["admission"] = {"file_sha256_before": before, "file_sha256_after": after, "resealed_during_verify": bool(before) and before != after}
+        doc["admission"] = {"file_sha256_before": before, "file_sha256_after": after, "resealed_during_verify": before != after}
         p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-if before and before != after:
+if before != after:
     print("WARN: ADMISSION_RESEALED_DURING_VERIFY evidence/planning/admission-receipt.json changed while this verification ran "
           "(file %s -> %s). A verification never re-seals admission; another process did (a previous card's advance.py "
           "outliving its terminal timeout, an Operator step). The parity comparison binds to the receipt the issued card was "

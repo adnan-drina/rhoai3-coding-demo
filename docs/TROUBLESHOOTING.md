@@ -1267,6 +1267,27 @@ A live comment of the pin on an already-running dest is not dest-init. Next dest
 
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; Architect `221730ZA`
 
+## Fresh M2 verification exits silently before producing its work list
+
+**Affected stage:** Stage 080, first `build-worklist.sh` after bootstrap.
+
+**Cause:** The verifier previously hashed `admission-receipt.json` with an
+unguarded pipeline. First admission follows work-list creation, so the file
+does not yet exist; `set -euo pipefail` terminated the script before measurement.
+
+**Diagnose:** The official task log or shell trace ends at `ADMISSION_BEFORE`.
+The bootstrap receipt exists, but the first admission receipt does not.
+
+**Recover:** Install the tested verifier repair while the task is blocked,
+retaining the old file and recording both digests. The fixed verifier snapshots
+absence explicitly and still detects receipt creation, deletion and changes;
+other read errors produce `VERIFY_ADMISSION_READ`. Do not fabricate an admission
+receipt or suppress every hashing error. Run `run-verify.test.sh`, then unblock
+the same M2 task with the repair reference using native Kanban. Preserve prior
+attempts and the run deadline; read the official worker log after dispatch.
+
+**Related docs:** [Stage 080 operations](OPERATIONS.md#stage-080-golden).
+
 ## M3 worker `REFUSE: LOOP_NO_OPEN_CLUSTER` then rummages `verification/loop/`
 
 **Affected stage:** Stage 080 dest loop card (measured live v9 `t_cc3b6aac`, 2026-09-15, after a workspace bounce)

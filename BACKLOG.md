@@ -2,6 +2,15 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
+  before first admission aborted under `set -euo pipefail`. The verifier now
+  treats absence as a valid snapshot, records creation/change/deletion during
+  verification, and refuses other read failures with `VERIFY_ADMISSION_READ`.
+  Eight subprocess cases execute the shipped shell control flow; six failed
+  before the fix and all eight pass after it. Existing parity-routing checks
+  also pass. Live recovery is an assisted continuation on the same M2 card,
+  preserving its blocked attempt, run authorization and original deadline.
+
 - During live-isolation preparation, the ownership CLI was found to omit its
   typed reason on refusal, although the operation correctly exited nonzero.
   It now retains `RUN_RESOURCES_MISMATCH` / `RUN_RESOURCES_MISSING` in the

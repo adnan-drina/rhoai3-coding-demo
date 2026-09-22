@@ -801,6 +801,9 @@ check "app-migration stamp idFields is yamlite block form" \
 check "080 fix-until-green loop selftest passes (bootstrap → baseline → accept/revert/defer → M4)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/fix-until-green.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 verification handles first admission, detects receipt changes and preserves parity routing" \
+  "bash '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.test.sh' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 an M4 verdict is consumed: a REFUSE resumes on its parity obligations, a clean acceptance CLOSES the run (issued card cleared, release blockers rewritten from THIS verdict, what remains before ship named)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/resume-after-m4.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

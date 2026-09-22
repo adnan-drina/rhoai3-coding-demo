@@ -113,6 +113,15 @@ from this file rather than from receipt text or step order. Never overwrite a
 destination's `pins.json` with the golden's when syncing a harness repair: the
 seal lives there and nowhere else. A worker never edits this block.
 
+First M2 verification runs before admission exists. Its before/after admission
+snapshots therefore allow absence, while creation, deletion or changed bytes
+during verification remain recorded changes. An unreadable receipt is a typed
+failure, not absence. For a blocked-run verifier repair, install the tested
+files between tasks with old/new digests and a backup, preserve `pins.json`,
+board history and evidence, then unblock the original task. Record this as an
+assisted continuation without restarting its time budget. See the
+[fresh-M2 recovery](TROUBLESHOOTING.md#fresh-m2-verification-exits-silently-before-producing-its-work-list).
+
 ### Stage 080 loop: Operator actions (no human sign-off)
 
 The M3 loop is autonomous by design: every card ends on a mechanical

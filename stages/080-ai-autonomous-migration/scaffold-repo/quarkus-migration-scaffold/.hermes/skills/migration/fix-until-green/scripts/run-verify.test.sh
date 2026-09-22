@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-verify selftest: the PARITY stage's admission, statically and without Maven.
+# run-verify selftest: admission snapshots and parity routing without Maven.
 #
 # What is asked here is not "does the comparison work" (run-parity.test.py asks
 # that) but "does the acceptance path run it for the right card, and for no
@@ -31,8 +31,8 @@ grep -qF 'parity-before.json' "${SCRIPT}" || fail "the receipt the comparison st
 grep -qF -- '--scenario' "${SCRIPT}" || fail "the comparison must be scoped to the card's scenarios"
 # H10 (dest v9 t_56adcd76): a verification never re-seals admission; a change
 # of the receipt while it ran is recorded and said out loud
-grep -qF 'ADMISSION_BEFORE="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json"' "${SCRIPT}" \
-  || fail "the admission receipt digest must be taken before anything runs"
+python3 "${SCRIPT_DIR}/run-verify-admission.test.py" \
+  || fail "admission snapshots fail the fresh-M2 or receipt-change execution cases"
 grep -qF 'ADMISSION_RESEALED_DURING_VERIFY' "${SCRIPT}" || fail "a re-seal during the verification must be named"
 grep -qF '"resealed_during_verify"' "${SCRIPT}" || fail "run.json must record whether admission was re-sealed during the verification"
 # the verdicts this stage produces are of the CANDIDATE: step 4 above rebuilt
