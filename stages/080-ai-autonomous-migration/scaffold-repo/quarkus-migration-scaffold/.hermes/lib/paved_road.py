@@ -9,6 +9,9 @@ boundary (never a parent directory).
 Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails: a
 later clean invocation of the *same* needle clears an earlier red
 (SOUL self-correction). Last-wins across different needles stays refused.
+A run of a mandated step is a ``$`` line whose EXECUTABLE is the step's
+script (``run_executables``); a ``grep``/``cat``/``sed`` that names the
+script is a read, not a run, and its exit code is not the step's.
 Do not scope the audit to the last ``Query: work kanban task`` marker —
 that marker is the reviewer session. Worker-authored receipts are not
 proof; only the official kanban log and KEEP files are.
@@ -20,6 +23,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -339,9 +343,104 @@ def script_basename_boundary_re(name: str) -> re.Pattern[str]:
     return re.compile(r"(?:^|[\s/\"'`])" + re.escape(name) + r"(?:[\s\"'`;|&<>]|$)")
 
 
+# Wrappers a run may sit behind. The step's script is the EXECUTABLE of the
+# command -- its first word, or the argument of one of these -- never a path
+# some other executable was given as an argument. v9's M4 card (t_caf2ad51,
+# 2026-09-22) is why: the runner ran once and passed, and a later
+# ``grep -n "..." .hermes/.../run-m4-pre-verdict.sh`` the worker ran while
+# reading it exited 1; a substring match over the whole line counted that grep
+# as a failed run of the step and the audit refused a card that had walked
+# the road.
+INTERPRETERS = frozenset({"bash", "sh", "zsh", "dash", "python", "python3", "python3.11", "python3.12", "python3.13", "python3.14"})
+PASSTHROUGH = frozenset({"env", "nice", "nohup", "sudo", "time", "exec", "command"})
+_DURATION_RE = re.compile(r"^\d+(\.\d+)?[smhd]?$")
+_OPERATORS = frozenset({"&&", "||", ";", "|", "&", ";;"})
+_REDIRECTS = frozenset({">", ">>", "<", "2>", "2>&1", "&>", "1>", "<<", "<<<"})
+
+
+def _segments(cmd: str) -> list[list[str]]:
+    """Tokens of each simple command, quotes respected (``grep "a\\|b" f`` is one
+    command), split on the shell's list/pipe operators."""
+    lexer = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        toks = list(lexer)
+    except ValueError:
+        toks = cmd.split()
+    segs: list[list[str]] = [[]]
+    for tok in toks:
+        if tok in _OPERATORS:
+            segs.append([])
+        elif tok in _REDIRECTS or tok.startswith(("(", ")")):
+            continue
+        else:
+            segs[-1].append(tok)
+    return [seg for seg in segs if seg]
+
+
+def run_executables(cmd: str) -> list[str]:
+    """Basenames of the programs a terminal command line RUNS.
+
+    One per ``&&``/``;``/``|`` segment. Leading ``VAR=value`` assignments,
+    ``env``/``nice``/``sudo``, ``timeout [opts] DURATION`` and an interpreter
+    (``bash``, ``python3``; their ``-x``/``-u`` flags; ``-c STRING`` recursed
+    into) are looked through to the script they run. The arguments of anything
+    else (``grep``, ``cat``, ``sed``, ``ls``, ``head``) are not runs."""
+    out: list[str] = []
+    for toks in _segments(cmd):
+        i = 0
+        while i < len(toks):
+            tok = toks[i]
+            base = tok.rsplit("/", 1)[-1]
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok) or base in PASSTHROUGH:
+                i += 1
+                continue
+            if base == "timeout":
+                i += 1
+                while i < len(toks) and toks[i].startswith("-"):
+                    # -k DUR / -s SIG take a value; --foreground / -v do not
+                    i += 2 if toks[i] in ("-k", "-s", "--kill-after", "--signal") else 1
+                if i < len(toks) and _DURATION_RE.match(toks[i]):
+                    i += 1
+                continue
+            if base in INTERPRETERS:
+                i += 1
+                while i < len(toks) and toks[i].startswith("-"):
+                    if toks[i] == "-c" and i + 1 < len(toks):
+                        out.extend(run_executables(toks[i + 1]))
+                        i = len(toks)
+                        break
+                    if toks[i] == "-m":
+                        i = len(toks)  # a module, never one of the road's scripts
+                        break
+                    i += 1
+                continue
+            out.append(base)
+            break
+    return out
+
+
+def is_run_of(cmd: str, basename: str) -> bool:
+    return basename in run_executables(cmd)
+
+
 def matching_terminal_lines(text: str, basename: str) -> list[str]:
+    """The ``$`` lines that RAN this script: the executable resolves to it.
+
+    A line that merely names the script -- ``grep``/``cat``/``sed`` over its
+    path, an ``echo`` -- is not a run, and its exit code is not the step's."""
     pat = script_basename_boundary_re(basename)
-    return [ln for ln in text.splitlines() if "$" in ln and pat.search(ln)]
+    out: list[str] = []
+    for ln in text.splitlines():
+        if "$" not in ln or not pat.search(ln):
+            continue
+        cmd = ln.split("$", 1)[1]
+        m = EXIT_RE.search(cmd)
+        if m:
+            cmd = cmd[: m.start()]
+        if is_run_of(cmd, basename):
+            out.append(ln)
+    return out
 
 
 def followed_skill(text: str, name: str) -> bool:

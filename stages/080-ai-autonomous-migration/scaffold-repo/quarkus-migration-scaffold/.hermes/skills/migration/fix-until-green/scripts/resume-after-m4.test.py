@@ -214,6 +214,20 @@ def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD, receipt: str =
         "floors": [{"name": n, "rc": 1, "idle": False} for n in sorted(floors)]
                   + [{"name": "check-runnable-db-config", "rc": 0, "idle": False}],
         "coverage_account": {"retired": 0, "remaining_gaps": 0}})
+    _record_binding(root)
+
+
+def _record_binding(root: Path) -> None:
+    """What bind-m4-verdict.py records when it binds: the digest of the verdict
+    file as bound, a copy, the bindings. The resume refuses a verdict without
+    it, and one that no longer digests to it."""
+    import importlib.util
+    binder = GOLDEN / ".hermes" / "skills" / "gates" / "compose-m4-verdict" / "scripts" / "bind-m4-verdict.py"
+    spec = importlib.util.spec_from_file_location("bind_m4_verdict", binder)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    vp = root / "evidence" / "verdicts" / "m4-verdict.json"
+    mod.write_binding_record(root, vp, load_json(vp))
 
 
 def _run(root: Path, *args: str) -> tuple[int, str, str]:
@@ -341,6 +355,34 @@ def case_wrong_card() -> int:
             return _fail("a refused resume must write nothing")
         if load_json(root / WORKLIST)["measure"]["parity_mismatches"] is not None:
             return _fail("a refused resume must not rebuild the work list")
+        return 0
+
+
+def case_edited_after_binding() -> int:
+    """(c3) v9 t_caf2ad51: a bound verdict revised by hand after binding.
+
+    The composer's output is the verdict. bind-m4-verdict.py records the
+    digest of the file it bound; a verdict that no longer digests to it was
+    edited afterwards and is not consumed -- the refusal names the fields."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-edited-") as td:
+        root, eps = _at_m4(Path(td))
+        _parity(root, eps, fails=True, unauthorized=True)
+        _verdict(root, DECISION_FLOORS + ["compose-parity-receipt"])
+        vp = root / "evidence" / "verdicts" / "m4-verdict.json"
+        doc = load_json(vp)
+        doc["failed_floors"] = sorted(DECISION_FLOORS)  # the parity floor dropped by hand
+        write_canonical(vp, doc)
+        rc, out, err = _run(root)
+        if rc != 1 or "REFUSE: LOOP_RESUME" not in err or "edited after binding" not in err or "failed_floors" not in err:
+            return _fail("a verdict edited after binding must be refused naming the field: rc=%d %s" % (rc, (out + err)[-500:]))
+        if (root / BLOCKERS).is_file():
+            return _fail("a refused resume must write nothing")
+        # and with no record at all: bound by hand is not bound
+        _verdict(root, DECISION_FLOORS + ["compose-parity-receipt"])
+        (root / "evidence" / "verdicts" / "m4-verdict.bound.json").unlink()
+        rc, out, err = _run(root)
+        if rc != 1 or "no binding record" not in err:
+            return _fail("a verdict with no binding record must be refused: rc=%d %s" % (rc, (out + err)[-500:]))
         return 0
 
 
@@ -808,7 +850,7 @@ def case_reverted_baseline_renamed_specimen() -> int:
 
 
 def main() -> int:
-    for case in (case_both, case_decisions_only, case_wrong_card, case_wrong_receipt_bindings,
+    for case in (case_both, case_decisions_only, case_wrong_card, case_wrong_receipt_bindings, case_edited_after_binding,
                  case_renamed_specimen, case_contract_reseal, case_product_change_refuses,
                  case_worklist_rebuilt_refuses, case_v9_receipt_shape,
                  case_v9_without_the_repairable_row, case_v9_head_is_a_decision,
@@ -821,7 +863,7 @@ def main() -> int:
           "floors it cannot repair: ADR-015 product tests / surefire and ADR-014 unauthorized read-backs; decision "
           "floors alone are exit 2 with nothing minted and the close card still issued; a verdict for another card is "
           "refused and writes nothing, as is one bound to another admission receipt or to a parity receipt this tree "
-          "no longer holds; a second resume refuses on the recorded close; a renamed specimen decides the "
+          "no longer holds, or one edited after it was bound (the bound verdict is the verdict); a second resume refuses on the recorded close; a renamed specimen decides the "
           "same; a sealed contract a harness install moved is re-sealed with the two receipts recorded, while a "
           "product change or a rebuilt work list still refuses and re-seals nothing; and on v9's own shape -- a "
           "verdict naming check-empty-security and check-product-tests and NOT the parity floor, over a FAIL receipt "

@@ -16,3 +16,4 @@ Each fixture is an official kanban log plus the KEEP artifacts the audit reads.
 - `runner-red-no-rerun` — the runner exited 1 and was not re-run → REFUSE.
 - `missing-verdict` — every step ran but `evidence/verdicts/m4-verdict.json` is absent
   → REFUSE (missing KEEP): a phase that produced no verdict did not verify anything.
+- `read-after-runner` — PASS: the v9 t_caf2ad51 shape (2026-09-22). The runner ran once and passed; a later `grep … run-m4-pre-verdict.sh` the worker ran while reading it exited 1. A read that names a mandated script is not a run of it, so its exit code is not the step's.

@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 OBSERVATION_KEYS = frozenset({"observations", "observed_at", "hostname", "pid"})
 SHA256_HEX = 64
@@ -76,6 +76,37 @@ def write_canonical(path: Path, obj: Any) -> str:
 
 def load_json(path: Path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def product_tree_sha256(root: Path, exclude: Iterable[str] = ()) -> str:
+    """Identity of the product tree as it is on disk (working tree, not the index).
+
+    The one digest every consumer of "which tree" shares: the loop records it
+    on each accepted step (``candidate_sha256``), the destination rescan
+    records the tree it scanned (``execution_evidence.tree_sha256``), and the
+    M4 rescan floor compares the two. Harness state, evidence, verification
+    records and the git object store are not product (``is_product_path``).
+
+    ``exclude`` asks the narrower question "what would this digest be WITHOUT
+    these paths" -- the only honest way to establish that a tree which no
+    longer matches its verification differs by nothing but scratch. Nothing is
+    excluded by default, and a caller that excludes a path has to have shown
+    first that the path is not part of the candidate."""
+    from planner.paths import is_product_path  # local: paths imports nothing, canonical stays leaf-like
+
+    skip = {str(x).replace("\\", "/").lstrip("/") for x in exclude}
+    h = hashlib.sha256()
+    for p in sorted(Path(root).rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root).as_posix()
+        if not is_product_path(rel) or rel in skip:
+            continue
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
 
 
 def is_sha256(value: Any) -> bool:

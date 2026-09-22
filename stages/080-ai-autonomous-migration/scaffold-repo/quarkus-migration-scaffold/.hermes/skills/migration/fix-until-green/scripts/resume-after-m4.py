@@ -108,6 +108,9 @@ from planner.paths import EVIDENCE_BUNDLE, LOOP_DIR, LOOP_ISSUED, PARITY_DIR  # 
 from planner.worklist import build_worklist, head_cluster, parity_items  # noqa: E402
 
 M4_VERDICT = Path("evidence") / "verdicts" / "m4-verdict.json"
+# bind-m4-verdict.py's record of the verdict AS BOUND (digest + copy + bindings)
+M4_VERDICT_BINDING = Path("evidence") / "verdicts" / "m4-verdict.bound.json"
+M4_VERDICT_BINDING_SCHEMA = "rhoai3.m4-verdict-binding/v1"
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 RELEASE_BLOCKERS = LOOP_DIR / "release-blockers.json"
 BLOCKERS_SCHEMA = "rhoai3.release-blockers/v1"
@@ -426,6 +429,31 @@ def main(argv: list[str] | None = None) -> int:
         return _refuse("the verdict judged parity receipt %s; %s now digests to %s — the parity phase ran again "
                        "after this verdict was composed, so it answers for evidence this tree no longer holds"
                        % (verdict_parity[:12], PARITY_RECEIPT, parity_on_disk[:12]))
+
+    # --- the verdict is byte-for-byte what was bound --------------------------
+    # The composer's output is the verdict. bind-m4-verdict.py records the
+    # digest of the file it bound with a copy of it; a verdict that no longer
+    # digests to that record was edited after binding (v9's t_caf2ad51 revised
+    # a bound verdict into a REFUSE with card_id "" by hand), and a verdict
+    # with no record was bound by hand, which is not a binding.
+    rp = root / M4_VERDICT_BINDING
+    if not rp.is_file():
+        return _refuse("no binding record %s; bind-m4-verdict.py writes it when it binds a verdict, so a verdict "
+                       "without one was bound by hand -- a hand binding is not a binding" % M4_VERDICT_BINDING)
+    try:
+        record = load_json(rp)
+    except (OSError, ValueError) as exc:
+        return _refuse("%s is not readable JSON: %s" % (M4_VERDICT_BINDING, exc))
+    if not isinstance(record, dict) or str(record.get("schema") or "") != M4_VERDICT_BINDING_SCHEMA:
+        return _refuse("%s is not a %s record" % (M4_VERDICT_BINDING, M4_VERDICT_BINDING_SCHEMA))
+    bound_sha = str(record.get("verdict_sha256") or "")
+    on_disk_sha = sha256_file(vp)
+    if on_disk_sha != bound_sha:
+        copy = record.get("verdict") if isinstance(record.get("verdict"), dict) else {}
+        drift = sorted(k for k in set(copy) | set(verdict) if copy.get(k) != verdict.get(k))
+        return _refuse("the verdict was edited after binding: bound %s at %s, on disk %s; fields that differ: %s -- "
+                       "the bound verdict is the verdict, and a revision is composed anew and bound, never edited in"
+                       % (bound_sha[:12], record.get("bound_at") or "?", on_disk_sha[:12], ", ".join(drift) or "(byte-level only)"))
 
     # --- no live worker holds the tree ---------------------------------------
     # Asked BEFORE the seal is examined, because the contract re-seal below

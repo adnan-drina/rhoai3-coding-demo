@@ -33,6 +33,14 @@ Optional: `reason` (must not call a failed floor idle).
 
 ## The three bindings
 
+The binder records the verdict as bound in `evidence/verdicts/m4-verdict.bound.json`
+(`rhoai3.m4-verdict-binding/v1`: `verdict_sha256` of the file as written, a
+`verdict` copy, the three bindings, `bound_at`, and `superseded` — every earlier
+binding of this card, with its verdict copy). The lint and `resume-after-m4.py`
+refuse a verdict with no record, or one whose digest differs from it (edited
+after binding); the binder refuses to re-bind such a verdict. A new
+composition is a verdict without bindings; binding it supersedes the record.
+
 A verdict is the answer of one card, measured over one tree, judging one
 parity receipt. Those three facts are read from artifacts, so a tool writes
 them:

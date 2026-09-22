@@ -147,11 +147,25 @@ python3 -c 'import json;print(json.load(open("verification/loop/issued.json"))["
 python3 -c 'import hashlib;print(hashlib.sha256(open("verification/parity/receipt.json","rb").read()).hexdigest())'
 ```
 
+   The binder also RECORDS the verdict as bound —
+   `evidence/verdicts/m4-verdict.bound.json`: the digest of the verdict file,
+   a copy of it, the three bindings. From then on the bound verdict is the
+   verdict. Do not revise it in place: a bound verdict whose digest no longer
+   matches the record was edited after binding (v9's t_caf2ad51 revised a
+   bound `PROVISIONAL_ACCEPT` into a `REFUSE` with `card_id ""` by hand), and
+   the binder, the lint and `resume-after-m4.py` each refuse it naming the
+   fields that differ. A new measurement is a NEW verdict without bindings —
+   compose it, bind it; the superseded binding stays on the record with its
+   verdict copy, so the audit reads every verdict this card bound, in order.
+   Typing the three values by hand leaves no record, and a verdict without
+   the record is refused as bound by hand.
+
    `assert-m4-verdict-schema.py` (step 4) is the gate: it refuses
    `M4_VERDICT_BINDING` when one of the three is missing, names another card,
-   names an admission receipt the card was not minted under, or names a parity
-   receipt digest this tree does not hold. `resume-after-m4.py` binds on the
-   same three.
+   names an admission receipt the card was not minted under, names a parity
+   receipt digest this tree does not hold, has no binding record, or no
+   longer digests to it. `resume-after-m4.py` binds on the same three and
+   the same record.
 
 3b. Compose the coverage account. What the accepted ADRs retired must be
    accounted for here, per file, or M4 reports on a destination whose missing

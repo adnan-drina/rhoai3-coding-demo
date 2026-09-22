@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,9 +17,12 @@ CANARY = HERE / "assert-mta-canary.py"
 INTACT = HERE / "assert-frozen-input-intact.py"
 ANALYZE = HERE / "mta-analyze-legacy.sh"
 RESCAN = HERE / "mta-rescan-destination.sh"
+FLOOR = HERE / "assert-mta-rescan.py"
+NORMALIZE = HERE / "normalize-findings.py"
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
 from planner import specimens  # noqa: E402
-from planner.canonical import load_json  # noqa: E402
+from planner.canonical import load_json, product_tree_sha256  # noqa: E402
+from planner.paths import LOOP_STEPS, MTA_FINDINGS, MTA_RESCAN_FINDINGS  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -30,7 +34,144 @@ def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, text=True, capture_output=True)
 
 
+def _git(root: Path, *args: str, date: str = "") -> str:
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@local", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@local")
+    if date:
+        env["GIT_AUTHOR_DATE"] = date
+        env["GIT_COMMITTER_DATE"] = date
+    p = subprocess.run(["git", "-C", str(root), *args], text=True, capture_output=True, env=env)
+    if p.returncode != 0:
+        raise RuntimeError("git %s: %s" % (" ".join(args), p.stderr))
+    return p.stdout.strip()
+
+
+def _floor(root: Path, *args: str) -> tuple[int, str]:
+    p = _run([sys.executable, str(FLOOR), str(root), *args])
+    return p.returncode, p.stdout + p.stderr
+
+
+def rescan_floor() -> int:
+    """WC-5 over the destination rescan record (v9 t_caf2ad51, 2026-09-22).
+
+    The floor digested evidence/mta-findings.json -- the legacy M1 scan -- by
+    default, compared it with the M1 snapshot of that same file, and refused
+    every run whose rescans lived under verification/mta-rescan/. What it
+    judges now is the destination rescan record: analyzer_ran, the digest of
+    the tree it scanned against the tree on disk, its stamp against the last
+    M3 completion (the last recorded loop commit, dated by git)."""
+    m1_at = "2026-09-14T07:42:37Z"
+    m3_at = "2026-09-22T07:40:00Z"
+    rescan_at = "2026-09-22T07:53:57Z"
+    with tempfile.TemporaryDirectory(prefix="mta-floor-") as tmp:
+        root = Path(tmp).resolve() / "dest"
+        (root / "src" / "main" / "java").mkdir(parents=True)
+        (root / "src" / "main" / "java" / "A.java").write_text("class A {}\n", encoding="utf-8")
+        (root / "pom.xml").write_text("<project/>\n", encoding="utf-8")
+        _git(root, "init", "-q")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "fix-until-green: t_last accepted", date=m3_at)
+        sha = _git(root, "rev-parse", "HEAD")
+        # the legacy M1 scan and its snapshot (what the floor used to digest)
+        legacy = root / MTA_FINDINGS
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(json.dumps({"schema": "rhoai3.mta-findings/v1-provisional", "normalized_at": m1_at,
+                                      "execution_evidence": {"analyzer_ran": True, "cli": "/opt/mta-cli/mta-cli", "rule_set": ["quarkus"],
+                                                             "input_digest": "frozen:" + "a" * 64},
+                                      "violations": {}}), encoding="utf-8")
+        rc, blob = _floor(root, "--snapshot-m1", "--findings", str(legacy))
+        if rc != 0 or not (root / "evidence" / "derived" / "m1-findings-digest.json").is_file():
+            return _fail("--snapshot-m1 must write the M1 snapshot: %s" % blob)
+        # the loop record: the last step carries the commit git dates at m3_at
+        steps = root / LOOP_STEPS
+        steps.parent.mkdir(parents=True, exist_ok=True)
+        steps.write_text(json.dumps({"schema": "rhoai3.loop-steps/v1", "attempts": {}, "rewinds": [], "rejected": [],
+                                     "steps": [{"card": "", "cluster": "bootstrap", "verdict": "baseline", "commit": sha},
+                                               {"card": "t_last", "cluster": "c:1", "attempt": 1, "verdict": "accepted", "commit": sha}]}),
+                         encoding="utf-8")
+        rescan = root / MTA_RESCAN_FINDINGS
+        rescan.parent.mkdir(parents=True, exist_ok=True)
+
+        def write_rescan(**over) -> None:
+            ev = {"analyzer_ran": True, "cli": "/opt/mta-cli/mta-cli", "rule_set": ["quarkus"],
+                  "input_digest": "destination:" + sha, "tree_sha256": product_tree_sha256(root), "git_head": sha}
+            doc = {"schema": "rhoai3.mta-findings/v1-provisional", "normalized_at": rescan_at, "execution_evidence": ev, "violations": {}}
+            for k, v in over.items():
+                if k in ev:
+                    ev[k] = v
+                else:
+                    doc[k] = v
+            rescan.write_text(json.dumps(doc), encoding="utf-8")
+
+        # (a) the v9 shape: a rescan of this tree, after the last step -> PASS
+        write_rescan()
+        rc, blob = _floor(root)
+        if rc != 0 or "PASS" not in blob or sha[:12] not in blob or rescan_at not in blob or m3_at not in blob:
+            return _fail("a rescan of this tree newer than the last M3 step must PASS naming the facts: %s" % blob)
+        # (b) older than the last step -> FAIL naming both times
+        write_rescan(normalized_at="2026-09-22T07:39:00Z")
+        rc, blob = _floor(root)
+        if rc != 1 or "2026-09-22T07:39:00Z" not in blob or m3_at not in blob or "not newer than the last M3 completion" not in blob or "t_last" not in blob:
+            return _fail("a rescan older than the last M3 step must FAIL naming both times and the step: %s" % blob)
+        # (c) the digest of another tree -> FAIL
+        write_rescan(tree_sha256="0" * 64)
+        rc, blob = _floor(root)
+        if rc != 1 or "rescan is of another tree" not in blob or "000000000000" not in blob:
+            return _fail("a rescan of another tree must FAIL: %s" % blob)
+        # (c2) this tree edited after the rescan -> the same refusal
+        write_rescan()
+        (root / "src" / "main" / "java" / "B.java").write_text("class B {}\n", encoding="utf-8")
+        rc, blob = _floor(root)
+        if rc != 1 or "rescan is of another tree" not in blob:
+            return _fail("a tree edited after the rescan must FAIL: %s" % blob)
+        (root / "src" / "main" / "java" / "B.java").unlink()
+        # (c3) a record that does not say which tree it scanned -> FAIL
+        write_rescan(tree_sha256="")
+        rc, blob = _floor(root)
+        if rc != 1 or "carries no execution_evidence.tree_sha256" not in blob:
+            return _fail("a rescan without a tree digest must FAIL: %s" % blob)
+        # (d) no rescan record -> FAIL naming the writer
+        rescan.unlink()
+        rc, blob = _floor(root)
+        if rc != 1 or "no destination rescan record" not in blob or "mta-rescan-destination.sh" not in blob:
+            return _fail("no rescan record must FAIL naming the writer: %s" % blob)
+        # (e) the legacy path given explicitly, a copy of M1 -> the WC-5 refusal
+        rc, blob = _floor(root, "--findings", "evidence/mta-findings.json")
+        if rc != 1 or "input_digest equals M1 snapshot" not in blob or "a copy of M1 without a new analyzer run is not a rescan (WC-5)" not in blob:
+            return _fail("the legacy path must be refused as a copy of M1: %s" % blob)
+        # (e2) a copy of M1 placed at the rescan path -> the same refusal
+        rescan.write_bytes(legacy.read_bytes())
+        rc, blob = _floor(root)
+        if rc != 1 or "a copy of M1 without a new analyzer run is not a rescan (WC-5)" not in blob:
+            return _fail("a copy of M1 at the rescan path must be refused: %s" % blob)
+        # (f) analyzer_ran false -> FAIL
+        write_rescan(analyzer_ran=False)
+        rc, blob = _floor(root)
+        if rc != 1 or "analyzer_ran is not true" not in blob:
+            return _fail("analyzer_ran false must FAIL: %s" % blob)
+        # (g) the writer records the tree: normalize-findings carries tree_sha256 + git_head when given
+        raw = root / "verification" / "mta-rescan" / "raw.json"
+        raw.write_text(json.dumps([{"name": "rs", "violations": {}, "unmatched": [], "skipped": [], "errors": {}}]), encoding="utf-8")
+        p = _run([sys.executable, str(NORMALIZE), str(raw), "/opt/mta-cli/mta-cli", "quarkus", "destination:" + sha,
+                  str(raw.with_name("raw-coverage.json")), "", "f" * 64, sha])
+        doc = load_json(raw)
+        if p.returncode != 0 or doc["execution_evidence"].get("tree_sha256") != "f" * 64 or doc["execution_evidence"].get("git_head") != sha:
+            return _fail("normalize-findings must record tree_sha256 and git_head: %s %s" % (p.stderr, doc.get("execution_evidence")))
+        sh = RESCAN.read_text(encoding="utf-8")
+        if "product_tree_sha256" not in sh or '"${TREE_SHA256}" "${DEST_DIGEST}"' not in sh:
+            return _fail("mta-rescan-destination.sh must record the digest of the tree it scans")
+        # (h) the loop record names a commit git cannot date -> a defect, not a pass
+        write_rescan()
+        steps.write_text(json.dumps({"schema": "rhoai3.loop-steps/v1", "attempts": {}, "rewinds": [], "rejected": [],
+                                     "steps": [{"card": "t_x", "verdict": "accepted", "commit": "0" * 40}]}), encoding="utf-8")
+        rc, blob = _floor(root)
+        if rc != 1 or "git cannot date" not in blob:
+            return _fail("an undatable loop commit must FAIL as a defect: %s" % blob)
+    return 0
+
+
 def main() -> int:
+    if rescan_floor() != 0:
+        return 1
     sh = ANALYZE.read_text(encoding="utf-8")
     for needle in ("assert-frozen-input-intact.py", "emit-mta-receipt.py", "assert-mta-canary.py", "--rules", "analysis_copy", "NEVER pass --source"):
         if needle not in sh:
@@ -172,7 +313,7 @@ def main() -> int:
         p = _run([sys.executable, str(INTACT), str(dest2)])
         if p.returncode != 1 or "FROZEN_INPUT" not in p.stderr:
             return _fail("transformed copy must refuse before analysis: %s" % p.stderr)
-    print("OK: scan-with-mta (kantra provisional; 8.2-line pin admits a measured 8.2 binary; 8.1/unmeasured/frozen-digest-mismatch refused; --source refused; canary missing refuses; transformed input refuses)")
+    print("OK: scan-with-mta (rescan floor judges verification/mta-rescan/findings.json: tree digest + stamp after the last M3 commit, a copy of M1 refused; kantra provisional; 8.2-line pin admits a measured 8.2 binary; 8.1/unmeasured/frozen-digest-mismatch refused; --source refused; canary missing refuses; transformed input refuses)")
     return 0
 
 

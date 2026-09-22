@@ -124,6 +124,11 @@ def main() -> int:
     rc, blob = _run("green-m4")
     if rc != 0:
         return _fail("green-m4 must PASS: %s" % blob)
+    # v9 t_caf2ad51: the runner ran once and passed; a grep over its path that
+    # exited 1 while the worker read the script is not a run of the step.
+    rc, blob = _run("read-after-runner")
+    if rc != 0:
+        return _fail("read-after-runner must PASS (a grep naming the runner is not a run of it): %s" % blob)
     for name, needle in (("verdict-before-runner", "run-m4-pre-verdict.sh"),
                          ("no-oracles", "capture-source-oracles"),
                          ("runner-red-no-rerun", "unmatched [exit 1]"),
@@ -135,7 +140,7 @@ def main() -> int:
         return _fail("coverage lint failed")
     print("OK: paved-road-m4 selftest (sync; oracles first; the generated suite is generated then committed before any "
           "gate reads the tree; runner before the producer; compose-m4-verdict the only producer; lint last; green PASS; "
-          "no runner / no oracles / red runner / missing verdict REFUSE; coverage)")
+          "a read naming the runner is not a run of it; no runner / no oracles / red runner / missing verdict REFUSE; coverage)")
     return 0
 
 

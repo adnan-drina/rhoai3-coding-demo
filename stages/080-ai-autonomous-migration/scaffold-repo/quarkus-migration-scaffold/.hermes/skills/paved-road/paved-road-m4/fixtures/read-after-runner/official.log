@@ -1,0 +1,23 @@
+Query: work kanban task t_m4
+Initializing agent...
+  ┊ 📚 skill  capture-source-oracles
+  ┊ 💻 $         python3 .hermes/skills/gates/capture-source-oracles/scripts/capture-source-oracles.py --root /projects/modernized  2.1s
+  ┊ 💻 $         python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root /projects/modernized  212.7s
+OK: PARITY_RUN 6/6 scenario(s) run (6 PASS, 0 FAIL, 0 INCONCLUSIVE); 28/34 entry point(s) compared (6 not compared); receipt PASS → /projects/modernized/verification/parity/_run.json
+  ┊ 📚 skill  generate-product-tests
+  ┊ 💻 $         python3 .hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root /projects/modernized  6.3s
+OK: GENERATE_TESTS 6 case(s) in 2 class(es), 0 gap(s), security-mode disabled (corpus 4f2a1c9d0b77) → evidence/tests/generated-manifest.json
+POM: pom.xml profile 'm4-parity' already current (replaced), test source src/parity-test/java, test resources src/parity-test/resources, org.codehaus.mojo:build-helper-maven-plugin:3.6.0, block 1b9f3c5e77a2 — harness-owned, not committed here
+  ┊ 💻 $         python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root /projects/modernized  0.9s
+OK: COMMIT_TESTS 9 path(s) committed as 7c41ab90d2e8 (generate-product-tests <generate-product-tests@local>) — m4: generated product tests (corpus 4f2a1c9d0b77, generator 1.1.0)
+  ┊ 📚 skill  check-domain-parity
+  ┊ 💻 $         bash .hermes/skills/gates/check-domain-parity/scripts/run-admission.sh /projects/modernized  12.4s
+  ┊ 💻 $         bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized  64.0s
+OK: run-m4-pre-verdict (snapshot+surefire+card-body + assert-retrievable-tree + pinned feeding gates + assert-pinned-gates-ran)
+  ┊ 💻 $         grep -n "m4-floor\|FLOOR\|receipts" .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh  0.1s [exit 1]
+  ┊ 💻 $         sed -n 1,40p .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh  0.1s
+  ┊ 📚 skill  compose-m4-verdict
+  ┊ 💻 $         python3 .hermes/skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py /projects/modernized/evidence/verdicts/m4-verdict.json  0.2s
+  ┊ 📚 skill  check-release-readiness
+  ┊ 💻 $         python3 .hermes/skills/gates/check-release-readiness/scripts/check-m4-floor-receipts.py /projects/modernized  0.4s
+  ┊ 📋 preparing kanban_request_review…

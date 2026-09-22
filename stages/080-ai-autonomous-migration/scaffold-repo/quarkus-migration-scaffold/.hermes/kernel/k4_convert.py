@@ -94,7 +94,11 @@ TERMINATOR_M4 = (
     "python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root . (the road commits "
     "the generated suite as the harness-owned files it is: assert-retrievable-tree still requires a committed src/ and "
     "pom.xml, and an untracked generated file is dirt to it), "
-    "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ., "
+    "bash .hermes/skills/analysis/scan-with-mta/scripts/mta-rescan-destination.sh . (the analyzer over the tree as "
+    "just committed; it writes verification/mta-rescan/findings.json with the digest of the tree it scanned), "
+    "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py . (the completion floor over that "
+    "record and nothing else: analyzer_ran, a tree digest equal to this tree's, a stamp newer than the last M3 "
+    "completion -- a copy of M1 or a rescan of an older tree is refused by name), "
     "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized, then "
     "compose-m4-verdict to author evidence/verdicts/m4-verdict.json from the measured exits and nothing else "
     "(assert-m4-verdict-schema.py lints it). Expected runtime values come only from verification/source-oracles. "
@@ -129,6 +133,13 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
         # requires to be committed, so the road commits them -- here, before
         # any gate reads the tree. The gate is not weakened for the harness.
         exits.append({"check": "commit_tests", "cmd": "python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root ."})
+        # The rescan floor judges the destination rescan record, and the tree
+        # it judges changed at commit_tests: the analyzer runs here, over the
+        # tree as committed, so the record the floor reads is of THIS tree.
+        # (v9 t_caf2ad51, 2026-09-22: the floor read the legacy M1 scan by
+        # default and refused a run whose rescans all lived under
+        # verification/mta-rescan/.)
+        exits.append({"check": "rescan", "cmd": "bash .hermes/skills/analysis/scan-with-mta/scripts/mta-rescan-destination.sh ."})
         exits.append({"check": "mta_rescan", "cmd": "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ."})
         exits.append({"check": "pre_verdict", "cmd": "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized"})
         if (_KERNEL.parent / VERDICT_SCHEMA_SCRIPT).is_file():

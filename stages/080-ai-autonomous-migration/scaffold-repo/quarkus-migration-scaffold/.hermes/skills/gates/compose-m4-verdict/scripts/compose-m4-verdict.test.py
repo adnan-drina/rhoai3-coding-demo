@@ -29,6 +29,22 @@ DEST8 = (
 )
 
 
+def _binder_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bind_m4_verdict", BINDER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def record(root: Path, vp: Path) -> dict:
+    """What bind-m4-verdict.py records for a verdict it bound: the digest of
+    the file, a copy, the bindings. A case that writes a bound verdict by hand
+    records it this way, so what it measures is the binding, not the record."""
+    doc = json.loads(vp.read_text(encoding="utf-8"))
+    return _binder_module().write_binding_record(root, vp, doc)
+
+
 def run(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(script), *args],
@@ -93,7 +109,14 @@ def bindings() -> int:
         root = Path(tmp)
         parity = tree(root)
 
-        proc = run(SCHEMA, str(verdict_path(root, MEASURED, bind=parity)))
+        vp0 = verdict_path(root, MEASURED, bind=parity)
+        proc = run(SCHEMA, str(vp0))
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "no binding record" not in blob:
+            print("FAIL: bindings typed by hand with no record must REFUSE naming the record: %s" % blob, file=sys.stderr)
+            return 1
+        record(root, vp0)
+        proc = run(SCHEMA, str(vp0))
         if proc.returncode != 0:
             print("FAIL: a bound verdict must PASS: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
             return 1
@@ -136,6 +159,9 @@ def bindings() -> int:
         # (5) the binder writes what a worker must not: it fills the three from
         # issued.json and the receipt, and the lint then agrees
         vp = verdict_path(root, MEASURED, bind=None)
+        # case (1) recorded a hand binding in this root; a fresh record is what
+        # this case measures, so that one is removed rather than superseded
+        (root / "evidence" / "verdicts" / "m4-verdict.bound.json").unlink()
         proc = run(BINDER, "--root", str(root))
         if proc.returncode != 0:
             print("FAIL: bind-m4-verdict must bind an unbound verdict: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
@@ -150,6 +176,67 @@ def bindings() -> int:
         proc = run(SCHEMA, str(vp))
         if proc.returncode != 0:
             print("FAIL: the lint must accept what the binder bound: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
+            return 1
+        rec_p = root / "evidence" / "verdicts" / "m4-verdict.bound.json"
+        rec = json.loads(rec_p.read_text(encoding="utf-8"))
+        if rec.get("schema") != "rhoai3.m4-verdict-binding/v1" or rec.get("verdict_sha256") != hashlib.sha256(vp.read_bytes()).hexdigest() \
+                or rec.get("card_id") != CARD or rec.get("verdict", {}).get("failed_floors") != MEASURED["failed_floors"] or rec.get("superseded") != []:
+            print("FAIL: the binder must record the verdict as bound (digest, copy, bindings): %s" % rec, file=sys.stderr)
+            return 1
+        proc = run(BINDER, "--root", str(root))
+        if proc.returncode != 0 or "already bound" not in proc.stdout:
+            print("FAIL: re-binding an unchanged bound verdict is a no-op: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
+            return 1
+
+        # (5b) v9 t_caf2ad51: the bound verdict revised by hand -- failed_floors
+        # changed, card_id blanked. The binder, the lint and the resume all
+        # refuse it naming the fields that differ; it is never re-bound.
+        revised = dict(bound, failed_floors=["check-empty-security", "check-product-tests", "assert-mta-rescan"],
+                       verdict="REFUSE", card_id="")
+        revised["floors"] = list(MEASURED["floors"]) + [{"name": "assert-mta-rescan", "rc": 1, "idle": False}]
+        vp.write_text(json.dumps(revised) + "\n", encoding="utf-8")
+        proc = run(SCHEMA, str(vp))
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "card_id" not in blob:
+            print("FAIL: the revised verdict must REFUSE on its blanked binding: %s" % blob, file=sys.stderr)
+            return 1
+        proc = run(BINDER, "--root", str(root))
+        if proc.returncode != 0:
+            # a verdict without bindings is a composition: binding it supersedes the record
+            print("FAIL: an unbound composition binds, superseding the record: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
+            return 1
+        rec = json.loads(rec_p.read_text(encoding="utf-8"))
+        if len(rec.get("superseded") or []) != 1 or rec["superseded"][0].get("verdict", {}).get("failed_floors") != MEASURED["failed_floors"] \
+                or "superseding" not in proc.stdout:
+            print("FAIL: the superseded binding must stay on the record with its verdict copy: %s" % rec, file=sys.stderr)
+            return 1
+        # Now edit the BOUND verdict in place, keeping its bindings and a
+        # SHAPE the lint accepts -- a floor dropped from both lists, which is
+        # what a hand revision looks like. Only the binding record can catch
+        # this one, and it must.
+        bound2 = json.loads(vp.read_text(encoding="utf-8"))
+        edited = dict(bound2,
+                      failed_floors=[f for f in bound2["failed_floors"] if f != "assert-mta-rescan"],
+                      floors=[f for f in bound2["floors"] if f.get("name") != "assert-mta-rescan"])
+        vp.write_text(json.dumps(edited) + "\n", encoding="utf-8")
+        proc = run(SCHEMA, str(vp))
+        if "M4_VERDICT_SCHEMA" in (proc.stdout + proc.stderr):
+            print("FAIL: the edited verdict must be shape-valid, so the record is what catches it: %s%s"
+                  % (proc.stdout, proc.stderr), file=sys.stderr)
+            return 1
+        proc = run(BINDER, "--root", str(root))
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "edited after binding" not in blob or "failed_floors" not in blob or "floors" not in blob:
+            print("FAIL: the binder must refuse a bound verdict edited after binding, naming the fields: %s" % blob, file=sys.stderr)
+            return 1
+        proc = run(SCHEMA, str(vp))
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "edited after binding" not in blob or "failed_floors" not in blob:
+            print("FAIL: the lint must refuse a bound verdict edited after binding: %s" % blob, file=sys.stderr)
+            return 1
+        rec2 = json.loads(rec_p.read_text(encoding="utf-8"))
+        if rec2 != rec:
+            print("FAIL: a refused re-bind must not touch the record", file=sys.stderr)
             return 1
 
     # (6) no issued card at all: nothing to bind to, and the lint says so
@@ -183,7 +270,7 @@ def main() -> int:
         return 1
     # The binding is the tool's job, and the SKILL is where the worker is told
     # so -- both the binder and the values a hand-authored verdict must copy.
-    for needle in ("bind-m4-verdict.py", "card_id", "receipt_sha256", "parity_receipt_sha256",
+    for needle in ("bind-m4-verdict.py", "card_id", "receipt_sha256", "parity_receipt_sha256", "m4-verdict.bound.json",
                    "verification/loop/issued.json"):
         if needle not in skill_md:
             print("FAIL: SKILL.md must name %s in the authoring step" % needle, file=sys.stderr)
@@ -242,7 +329,9 @@ def main() -> int:
             "reason": ("AR-2.8 no executed product test covers ANY declared "
                        "capability: 2 uncovered (sc-001, sc-002)"),
         }
-        proc = run(SCHEMA, str(verdict_path(root, honest, bind=parity)))
+        vp_honest = verdict_path(root, honest, bind=parity)
+        record(root, vp_honest)
+        proc = run(SCHEMA, str(vp_honest))
         if proc.returncode != 0:
             print(
                 "FAIL: honest REFUSE + failed_floors + bindings must PASS: %s%s"
@@ -298,7 +387,9 @@ def main() -> int:
             ],
             "reason": "AR-2.1 completion floor idle (no DB intent)",
         }
-        proc = run(SCHEMA, str(verdict_path(root, genuine, bind=parity)))
+        vp_genuine = verdict_path(root, genuine, bind=parity)
+        record(root, vp_genuine)
+        proc = run(SCHEMA, str(vp_genuine))
         if proc.returncode != 0:
             print(
                 "FAIL: genuine idle + rc 0 must PASS: %s%s"

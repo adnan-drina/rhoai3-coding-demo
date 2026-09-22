@@ -111,6 +111,8 @@ def _close_prose(body: dict[str, Any]) -> str:
             lines.append("    skill_view generate-product-tests   # ADR-015: the harness writes the product acceptance tests; you never author or weaken one")
         if str(e.get("check")) == "commit_tests":
             lines.append("    # assert-retrievable-tree refuses the generated files while they are untracked; this commits them, and only them")
+        if str(e.get("check")) == "rescan":
+            lines.append("    # the analyzer over the tree as just committed; the floor on the next line judges its record (verification/mta-rescan/findings.json), never evidence/mta-findings.json")
         if str(e.get("check")) == "verdict_schema":
             lines.append("    skill_view compose-m4-verdict   # author evidence/verdicts/m4-verdict.json from the exits above")
         lines.append("    %s" % e["cmd"])

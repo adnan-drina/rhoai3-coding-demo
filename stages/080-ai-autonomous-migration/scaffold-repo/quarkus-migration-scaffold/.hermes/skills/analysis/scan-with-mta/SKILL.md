@@ -120,8 +120,20 @@ bash "${HERMES_SKILL_DIR}/scripts/mta-rescan-destination.sh" /projects/modernize
 ```
 
 Writes `verification/mta-rescan/findings.json` (append-only execution
-evidence). `assert-obligations-closed.py` and `assert-mta-rescan.py`
-consume it; the sealed planning artifacts are never touched (the work list is rebuilt from the rescan by `build-worklist` / `advance.py`).
+evidence) with `execution_evidence.tree_sha256` — the digest of the product
+tree it scanned, `planner.canonical.product_tree_sha256`, the same function
+the loop records as an accepted step's `candidate_sha256` — and `git_head`.
+`assert-obligations-closed.py` and `assert-mta-rescan.py` consume it; the
+sealed planning artifacts are never touched (the work list is rebuilt from
+the rescan by `build-worklist` / `advance.py`).
+
+`assert-mta-rescan.py ROOT` is the M4 completion floor over that record (its
+default `--findings`): `analyzer_ran`, `tree_sha256` equal to the tree on
+disk, `normalized_at` newer than the last M3 completion (the last loop
+commit in `verification/loop/steps.json`, dated by git), and an
+`input_digest` that is not the M1 snapshot's. It prints every fact it
+compared. Pointed at `evidence/mta-findings.json` it refuses: that is the
+legacy scan of the frozen source, a copy of M1, never a rescan.
 
 ## Pitfalls
 
@@ -156,7 +168,7 @@ consume it; the sealed planning artifacts are never touched (the work list is re
 - `scripts/normalize-findings.py`, `scripts/validate-findings-schema.py` — envelope
 - `scripts/emit-mta-receipt.py` — full-provenance producer receipt
 - `scripts/assert-mta-canary.py` — canary fired
-- `scripts/assert-mta-rescan.py` — WC-5 rescan proof (M1 snapshot / M4)
+- `scripts/assert-mta-rescan.py` — WC-5 rescan proof: M1 snapshot at M1; at M4 the completion floor over `verification/mta-rescan/findings.json` (tree digest, stamp after the last M3 commit, not a copy of M1)
 - `scripts/emit-findings-handoff.py`, `scripts/check-findings-handoff.py` — M1→M2 handoff
 - `scripts/emit-required-extensions.py` — T-3 extension set from findings + legacy pom
 - `scripts/mta-rescan-destination.sh` — destination rescan for obligation closure

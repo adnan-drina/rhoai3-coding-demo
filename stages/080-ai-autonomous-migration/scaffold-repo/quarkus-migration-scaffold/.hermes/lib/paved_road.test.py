@@ -23,6 +23,7 @@ from paved_road import (
     load_steps,
     matching_terminal_lines,
     resolve_log,
+    run_executables,
     sync_audit,
     validate_steps_doc,
 )
@@ -270,6 +271,79 @@ class TestAuditLogMustBeOfficial(unittest.TestCase):
 
     def test_random_tmp_log_refused(self):
         self.assertFalse(is_allowed_audit_log(Path("/tmp/worker.log")))
+
+
+M4 = HERMES_DIR / "skills" / "paved-road" / "paved-road-m4"
+RUNNER_REL = ".hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh"
+RUNNER_LINE = "  ┊ 💻 $         bash %s /projects/modernized  44.8s\n" % RUNNER_REL
+GREP_LINE = "  ┊ 💻 $         grep -n \"m4-floor\\|receipts\" %s  0.1s [exit 1]\n" % RUNNER_REL
+
+
+class TestRunDetection(unittest.TestCase):
+    """A mandated-step run is a command whose EXECUTABLE is the step's script.
+
+    v9 t_caf2ad51 (2026-09-22): the pre-verdict runner ran once (64 s, passed)
+    and a later ``grep … run-m4-pre-verdict.sh`` the worker ran while reading
+    the script exited 1; a substring match over the whole line counted the
+    grep as a failed run and refused a card that had walked the road."""
+
+    def setUp(self):
+        self.doc = load_steps(M4 / "steps.json")
+        self.root = M4 / "fixtures" / "green-m4"
+        self.green = (self.root / "official.log").read_text(encoding="utf-8")
+        self.assertIn(RUNNER_LINE, self.green)
+
+    def test_v9_shape_read_after_runner_passes(self):
+        text = self.green.replace(RUNNER_LINE, RUNNER_LINE + GREP_LINE)
+        rc, blob = _eval_msg(text, self.doc, self.root)
+        self.assertEqual(rc, 0, blob)
+
+    def test_runner_exit1_still_refuses(self):
+        text = self.green.replace(RUNNER_LINE, RUNNER_LINE.replace("  44.8s\n", "  44.8s [exit 1]\n"))
+        rc, blob = _eval_msg(text, self.doc, self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("unmatched [exit 1] on mandated needle 'run-m4-pre-verdict.sh'", blob)
+
+    def test_reads_alone_are_not_a_run(self):
+        reads = ("  ┊ 💻 $         cat %s  0.1s\n" % RUNNER_REL
+                 + "  ┊ 💻 $         sed -n 1,40p %s  0.1s\n" % RUNNER_REL
+                 + GREP_LINE.replace(" [exit 1]", ""))
+        text = self.green.replace(RUNNER_LINE, reads)
+        rc, blob = _eval_msg(text, self.doc, self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("silence: step pre-verdict needle 'run-m4-pre-verdict.sh' has no terminal argv", blob)
+
+    def test_run_forms_count(self):
+        for cmd in ("bash %s /projects/modernized" % RUNNER_REL,
+                    "python3 %s /projects/modernized" % RUNNER_REL,
+                    "timeout 600 python3 %s /projects/modernized" % RUNNER_REL,
+                    "timeout -k 5 600s bash -x %s ." % RUNNER_REL,
+                    "cd /projects/modernized && bash %s . 2>&1 | tee /tmp/runner.log" % RUNNER_REL,
+                    "HERMES_KANBAN_TASK=t_x bash %s ." % RUNNER_REL,
+                    "%s /projects/modernized" % RUNNER_REL):
+            line = "  ┊ 💻 $         %s  64.0s [exit 1]\n" % cmd
+            self.assertEqual(len(matching_terminal_lines(line, "run-m4-pre-verdict.sh")), 1, cmd)
+            self.assertIn("run-m4-pre-verdict.sh", run_executables(cmd))
+
+    def test_mentions_do_not_count(self):
+        for cmd in ("grep -n \"m4-floor\\|receipts\" %s" % RUNNER_REL,
+                    "cat %s" % RUNNER_REL,
+                    "sed -n 60,120p %s" % RUNNER_REL,
+                    "head -40 %s" % RUNNER_REL,
+                    "ls -la %s" % RUNNER_REL,
+                    "python3 -m py_compile %s" % RUNNER_REL,
+                    "echo skipping %s" % RUNNER_REL):
+            line = "  ┊ 💻 $         %s  0.1s [exit 1]\n" % cmd
+            self.assertEqual(matching_terminal_lines(line, "run-m4-pre-verdict.sh"), [], cmd)
+            self.assertNotIn("run-m4-pre-verdict.sh", run_executables(cmd))
+
+    def test_quoted_operator_does_not_split_a_read(self):
+        # the ``\|`` inside the grep pattern is not a pipe: one command, not a run
+        self.assertEqual(run_executables("grep -n \"a\\|b\" %s" % RUNNER_REL), ["grep"])
+
+    def test_bash_c_is_looked_through(self):
+        self.assertIn("run-m4-pre-verdict.sh", run_executables("bash -c 'cd /projects/modernized && bash %s .'" % RUNNER_REL))
+        self.assertNotIn("run-m4-pre-verdict.sh", run_executables("bash -c 'grep -c x %s'" % RUNNER_REL))
 
 
 class TestM1Green(unittest.TestCase):

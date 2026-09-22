@@ -167,6 +167,36 @@ def binding_issues(doc: dict[str, Any], root: Path) -> list[str]:
     return issues
 
 
+BINDING_RECORD = Path("evidence") / "verdicts" / "m4-verdict.bound.json"
+RECORD_SCHEMA = "rhoai3.m4-verdict-binding/v1"
+
+
+def record_issues(verdict_path: Path, doc: dict[str, Any], root: Path) -> list[str]:
+    """The bound verdict is the verdict: it must digest to what bind-m4-verdict.py
+    recorded. No record means the bindings were typed by hand (not a binding);
+    a different digest means the verdict was edited after it was bound (v9's
+    t_caf2ad51 revised a bound verdict into a REFUSE with card_id "")."""
+    rp = root / BINDING_RECORD
+    if not rp.is_file():
+        return ["%s no binding record %s; bind-m4-verdict.py writes it when it binds -- bindings typed by hand are "
+                "not a binding" % (BINDING, BINDING_RECORD.as_posix())]
+    try:
+        record = json.loads(rp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return ["%s unreadable binding record %s: %s" % (BINDING, BINDING_RECORD.as_posix(), exc)]
+    if not isinstance(record, dict) or str(record.get("schema") or "") != RECORD_SCHEMA:
+        return ["%s %s is not a %s record" % (BINDING, BINDING_RECORD.as_posix(), RECORD_SCHEMA)]
+    bound = str(record.get("verdict_sha256") or "")
+    on_disk = sha256_file(verdict_path)
+    if on_disk != bound:
+        copy = record.get("verdict") if isinstance(record.get("verdict"), dict) else {}
+        drift = sorted(k for k in set(copy) | set(doc) if copy.get(k) != doc.get(k))
+        return ["%s the verdict was edited after binding: bound %s at %s, on disk %s; fields that differ: %s -- a "
+                "bound verdict is not revised; a new measurement is composed as a new verdict without bindings and "
+                "bound" % (BINDING, bound[:12], record.get("bound_at") or "?", on_disk[:12], ", ".join(drift) or "(byte-level only)")]
+    return []
+
+
 def check(doc: dict[str, Any], root: Path) -> list[str]:
     issues: list[str] = []
     for key in REQUIRED_FIELDS:
@@ -277,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return _fail("unreadable verdict: " + str(exc))
     issues = check(doc, root)
+    if not issues:
+        issues = record_issues(path.resolve(), doc, root)
     if issues:
         for issue in issues:
             print("FAIL: " + issue, file=sys.stderr)

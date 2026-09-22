@@ -124,8 +124,14 @@ def main() -> int:
         # ADR-015: the generator runs after the parity runner and before the
         # pre-verdict runner, because the runner's m4-parity rebuild is what
         # executes the generated cases.
-        if order[:7] != ["skills", "terminator", "parity", "generate_tests", "commit_tests", "mta_rescan", "pre_verdict"]:
+        # The rescan RUN precedes the rescan FLOOR: the floor judges the record
+        # the run writes, and the tree changed at commit_tests.
+        if order[:8] != ["skills", "terminator", "parity", "generate_tests", "commit_tests", "rescan", "mta_rescan", "pre_verdict"]:
             return _fail("the M4 exits are the phase's order: %s" % order)
+        if "mta-rescan-destination.sh ." not in exits["rescan"]["cmd"]:
+            return _fail("the rescan exit must run the destination analyzer: %s" % exits.get("rescan"))
+        if "assert-mta-rescan.py ." not in exits["mta_rescan"]["cmd"] or "mta-rescan-destination" in exits["mta_rescan"]["cmd"]:
+            return _fail("the rescan floor exit is the floor alone (it judges, it does not produce): %s" % exits.get("mta_rescan"))
         if "generate-product-tests.py --root ." not in exits["generate_tests"]["cmd"]:
             return _fail("the generate exit must be the producer itself: %s" % exits.get("generate_tests"))
         # The tree the verdict is composed over has to be retrievable, and the
@@ -147,7 +153,7 @@ def main() -> int:
                              % (needle, binding_assert[:160]))
         for needle in ("run-parity.py", "generate-product-tests", "commit-generated-tests.py", "src/parity-test/java",
                        "m4-parity", "assert-retrievable-tree",
-                       "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",
+                       "mta-rescan-destination.sh", "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",
                        "kanban_request_review reviewer=reviewer", "REFUSE", "Never kanban_complete"):
             if needle not in TERMINATOR_M4:
                 return _fail("TERMINATOR_M4 must name %r" % needle)
@@ -157,7 +163,7 @@ def main() -> int:
         for needle in ("skill_view paved-road-m4", "run-parity.py", "skill_view generate-product-tests",
                        "generate-product-tests.py --root .", "commit-generated-tests.py --root .",
                        "src/parity-test/java", "-Pm4-parity", "assert-retrievable-tree",
-                       "assert-mta-rescan.py", "run-m4-pre-verdict.sh",
+                       "mta-rescan-destination.sh", "assert-mta-rescan.py", "run-m4-pre-verdict.sh",
                        "skill_view compose-m4-verdict", "evidence/verdicts/m4-verdict.json",
                        "kanban_request_review", "reviewer=reviewer", "REFUSE", "Never dest-dispatch M5"):
             if needle not in prose:

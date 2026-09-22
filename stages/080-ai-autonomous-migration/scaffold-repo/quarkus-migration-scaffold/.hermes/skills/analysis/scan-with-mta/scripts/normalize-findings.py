@@ -206,6 +206,13 @@ def main() -> int:
     input_digest = sys.argv[4] if len(sys.argv) > 4 else ""
     coverage_arg = sys.argv[5] if len(sys.argv) > 5 and sys.argv[5] else ""
     static_arg = sys.argv[6] if len(sys.argv) > 6 and sys.argv[6] else ""
+    # Which tree was scanned, as the loop identifies trees
+    # (planner.canonical.product_tree_sha256) plus the git HEAD at scan time.
+    # The destination rescan passes both; the M4 rescan floor compares the
+    # tree digest with the tree it is judging. The legacy scan passes neither
+    # (its input is the frozen copy, identified by input_digest).
+    tree_sha256 = sys.argv[7] if len(sys.argv) > 7 else ""
+    git_head = sys.argv[8] if len(sys.argv) > 8 else ""
 
     if not path.is_file():
         print(f"normalize-mta-findings: missing {path}", file=sys.stderr)
@@ -246,6 +253,8 @@ def main() -> int:
             "cli": meta_cli,
             "rule_set": rule_set,
             "input_digest": input_digest,
+            "tree_sha256": tree_sha256,
+            "git_head": git_head,
         },
         "violations": violations,
         "insights": insights,

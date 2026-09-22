@@ -156,6 +156,19 @@ python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . \
    any other change to `src/` or `pom.xml` — a worker's edit is committed by
    whoever made it, never swept into a harness commit. With nothing to commit
    it says so and exits 0.
+
+   The tree changed here, so the analyzer runs over it again before anything
+   judges it: `bash .hermes/skills/analysis/scan-with-mta/scripts/mta-rescan-destination.sh .`
+   writes `verification/mta-rescan/findings.json` with the digest of the tree
+   it scanned, and the completion floor
+   `python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py .`
+   judges that record and nothing else: `analyzer_ran`, a tree digest equal
+   to this tree's, a stamp newer than the last M3 completion (the last loop
+   commit, dated by git). It never reads `evidence/mta-findings.json`, the
+   legacy scan M1 took of the frozen source — v9's t_caf2ad51 (2026-09-22)
+   refused on that file compared with its own M1 snapshot, a floor that could
+   not pass on any run. A rescan of an older tree, or a copy of M1 at the
+   rescan path, is refused by name.
 5. `skill_view check-domain-parity` → run its evaluators. G-1 to G-4
    measured against the referent, each writing its own verdict. A REFUSE
    is a real outcome; the next step is to report it, not to soften it.
@@ -191,9 +204,14 @@ python3 .hermes/skills/gates/compose-m4-verdict/scripts/bind-m4-verdict.py --roo
    It writes `card_id` (this card, from `verification/loop/issued.json`),
    `receipt_sha256` (the admission receipt it was minted under) and
    `parity_receipt_sha256` (the digest of the parity receipt of step 2), and
-   changes nothing a floor measured. The lint of step 8 refuses
-   `M4_VERDICT_BINDING` without them, and `resume-after-m4.py` binds on the
-   same three. v9's second M4 card is why: it composed an honest `REFUSE` and
+   changes nothing a floor measured. It also records the verdict AS BOUND
+   (`evidence/verdicts/m4-verdict.bound.json`: the file's digest, a copy, the
+   three bindings). From then on the bound verdict is the verdict: the lint
+   of step 8 refuses `M4_VERDICT_BINDING` without the bindings or the record,
+   and both it and `resume-after-m4.py` refuse a verdict that no longer
+   digests to the record, naming the fields that differ. Do not revise a
+   bound verdict in place; a new measurement is a new verdict without
+   bindings, bound again (the superseded binding stays on the record). v9's second M4 card is why: it composed an honest `REFUSE` and
    wrote no `card_id`, the card completed, and the resume had a measurement it
    could not attribute to any run.
 8. `skill_view check-release-readiness` → lint what you just wrote: the

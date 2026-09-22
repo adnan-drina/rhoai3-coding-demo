@@ -21,7 +21,7 @@ def ensure_hermes_lib() -> None:
 
 
 ensure_hermes_lib()
-from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
+from planner.canonical import digest, load_json, product_tree_sha256, sha256_file, write_canonical  # noqa: E402
 from planner.paths import DECISIONS, MIGRATION, PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
@@ -322,24 +322,11 @@ def tree_changes(root: Path) -> tuple[list[str], list[str]]:
 def candidate_sha256(root: Path, exclude: Iterable[str] = ()) -> str:
     """Identity of the product tree as it is on disk (working tree, not the index).
 
-    ``exclude`` asks the narrower question "what would this digest be WITHOUT
-    these paths" -- the only honest way to establish that a tree which no
-    longer matches its verification differs by nothing but scratch. Nothing is
-    excluded by default, and a caller that excludes a path has to have shown
-    first that the path is not part of the candidate (tree_changes)."""
-    skip = {str(x).replace("\\", "/").lstrip("/") for x in exclude}
-    h = hashlib.sha256()
-    for p in sorted(Path(root).rglob("*")):
-        if not p.is_file():
-            continue
-        rel = p.relative_to(root).as_posix()
-        if not is_product_path(rel) or rel in skip:
-            continue
-        h.update(rel.encode("utf-8"))
-        h.update(b"\0")
-        h.update(p.read_bytes())
-        h.update(b"\0")
-    return h.hexdigest()
+    One implementation, shared: ``planner.canonical.product_tree_sha256`` is
+    what the destination rescan records as the tree it scanned and what the
+    M4 rescan floor compares against, so the loop's accepted-step digest and
+    the rescan's are the same function over the same paths."""
+    return product_tree_sha256(root, exclude)
 
 
 def _props(text: str) -> dict[str, str]:
