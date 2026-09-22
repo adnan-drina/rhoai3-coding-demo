@@ -11,6 +11,9 @@
 - Versioned launch/preflight and isolation procedures replace the stale tmp
   packet. The demonstration checks B's data and credentials after A operations
   and never prints encoded secret values.
+- The first live signed scaffolding event created one provisioning run, but
+  the CLI step was OOMKilled at its 256Mi limit before a receipt. The provisioner
+  now requests 256Mi and is limited to 1Gi; database sizing is unchanged.
 - Live isolation qualification, publication/sync of this generation and the
   official v10 launch remain outstanding. Closed v9 stays provisional; coverage
   gaps and prior assistance remain in the comparison. No new signature gate.

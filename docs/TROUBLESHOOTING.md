@@ -2018,3 +2018,12 @@ bindings omitted `kind`. The dispatcher now declares `kind: TriggerBinding`
 explicitly on each namespaced reference. After the controllers recover, inspect
 reconciliation errors as well as pod readiness; an old status is not proof that
 the current trigger definition was admitted.
+
+### Migration provisioning exits 137 before its receipt
+
+Inspect the provisioning TaskRun's terminated reason. The first isolation run
+was `OOMKilled` with a 256Mi step limit during CLI startup/discovery. The Task
+now requests 256Mi and has a 1Gi limit; this is separate from database sizing.
+Preserve the failed TaskRun. If its per-run lock exists, prove the holder TaskRun
+and pod are stopped before releasing it. A failed task is not a provisioning
+receipt and must not be bypassed with manually created database resources.

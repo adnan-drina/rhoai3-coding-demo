@@ -463,9 +463,12 @@ spec:
       # tekton.dev/v1 renamed the step field: a block called `resources` here is
       # accepted, dropped in silence, and the step then runs with no requests at
       # all. Argo CD reported it as permanent drift, which is how it was found.
+      # The first live run was OOMKilled at 256Mi before issuing its receipt.
+      # oc discovery plus concurrent create/apply commands need more headroom;
+      # this is the provisioner's bound, not the database's ADR-022 sizing.
       computeResources:
         requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
+          cpu: 100m
           memory: 256Mi
+        limits:
+          memory: 1Gi
