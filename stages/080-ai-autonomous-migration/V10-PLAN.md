@@ -40,7 +40,8 @@ operator-provided DEVWORKSPACE_NAME, not merely the devfile's intended name.
    board export, official worker logs, close row, outstanding items and retained
    stores needed to reproduce measurements. Stop dispatch and all remaining v9
    clients before retiring its shared database. Closure alone does not stop a pod.
-2. Run the focused regression checks and Stage 080 validation. Publish the
+2. Resolve the source-protection prerequisite described below before selecting
+   the release pins. Run the focused regression checks and Stage 080 validation. Publish the
    corrected successor golden, recording source and published tree equivalence.
    Merge/sync the intended Stage 050 revision through the normal GitOps path;
    retire old shared resources and remove old global credential mounts through
@@ -99,8 +100,23 @@ Record tokens where measured; missing token telemetry remains unknown.
 
 ## Readiness and rollback
 
+Implementation commit `3102e892` was validated on 2026-09-22: Stage 080 reported
+**358 passed, 0 failed, 2 warnings** (exit 2 means warnings in validate-lib.sh).
+The warnings were Stage 050 OutOfSync and the existing MTA ConsoleLink
+placeholder. Both changed Kustomize directories rendered, and the live API
+accepted the provisioning Task with server-side dry run. The lifecycle tests
+execute its actual shell with overlapping events; the bootstrap integration
+test exercises separate profile files and repeated application. These results
+do not substitute for the live two-workspace demonstration or v10 preflight,
+neither of which has run. No successor golden was published by this change.
+
 Local regression success is not live isolation qualification. The live
 isolation receipt, Stage 050 sync and v10 preflight remain mandatory evidence.
+The current devfile still clones the legacy onto the writable project volume;
+this change does not implement a read-only source mount. The pre-existing source
+protection prerequisite therefore remains open before dispatch. Qualify that
+protection separately; changing permissions as the same owning workspace user
+does not establish containment.
 Do not install this generation onto closed v9 to qualify v10. If qualification
 fails, preserve disposable-run evidence, stop their clients, and use the platform
 retirement Pipeline; preserve tombstones. Roll back platform code through GitOps

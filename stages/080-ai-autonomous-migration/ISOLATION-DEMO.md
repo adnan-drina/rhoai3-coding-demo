@@ -241,8 +241,9 @@ oc get pod "$B_POD" -n "$WS" \
   -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,START:.status.startTime
 ```
 
-Seed a distinctive marker in **B's database** after its initial verified
-reset. Use the assigned database pod from B's provisioning receipt; these
+Seed a distinctive marker in **B's reset-owned public schema** after its initial
+verified reset. An accidental reset of B must remove this marker, so placing it
+in a separate schema would invalidate the test. Use the assigned database pod from B's provisioning receipt; these
 commands are for disposable isolation runs only.
 
 ```bash
@@ -251,9 +252,8 @@ oc exec -i -n "$WS" "$B_DB_POD" -- bash -c '
   export PGPASSWORD="$POSTGRESQL_PASSWORD"
   psql -h 127.0.0.1 -U "$POSTGRESQL_USER" -d "$POSTGRESQL_DATABASE" -v ON_ERROR_STOP=1
 ' <<'SQL'
-CREATE SCHEMA isolation_probe;
-CREATE TABLE isolation_probe.marker (value text NOT NULL);
-INSERT INTO isolation_probe.marker VALUES ('B-must-survive-A');
+CREATE TABLE public.isolation_probe_marker (value text NOT NULL);
+INSERT INTO public.isolation_probe_marker VALUES ('B-must-survive-A');
 SQL
 # Include rows and sequence state; strip only pg_dump's random restore-session
 # guard, if present. Those two directives are not database content.

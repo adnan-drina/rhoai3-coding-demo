@@ -14,6 +14,12 @@
 - Live isolation qualification, publication/sync of this generation and the
   official v10 launch remain outstanding. Closed v9 stays provisional; coverage
   gaps and prior assistance remain in the comparison. No new signature gate.
+- The existing read-only legacy-checkout launch prerequisite remains open on
+  the current writable project-volume layout. The new preflight refuses that
+  layout; this resource-isolation change does not implement a source mount.
+- Validation on 2026-09-22: 358 passed, 0 failed, 2 warnings (Stage 050 OutOfSync
+  and the existing MTA ConsoleLink placeholder). The changed Task passed live
+  server-side dry run; this does not qualify live isolation or launch v10.
 
 ## RHOAI 3.4 upgrade watch items
 
