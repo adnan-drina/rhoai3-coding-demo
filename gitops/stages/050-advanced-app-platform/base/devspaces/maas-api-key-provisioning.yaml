@@ -1373,6 +1373,16 @@ data:
                 "model": "",
             },
         },
+        # Context compression (top-level key; official defaults threshold
+        # 0.50, target_ratio 0.20). At 0.50 of the declared context a loop
+        # worker crossed the threshold a third of the way into every long card
+        # (~77K tokens), the summary model timed out, and the worker ran
+        # degraded or never terminated (v9 t_d280284d, t_0527c69b, 2026-09-21/22).
+        "compression": {
+            "enabled": True,
+            "threshold": 0.80,
+            "target_ratio": 0.20,
+        },
         # Streaming pin (Operator E-20260813T204927Z / E-210050Z): assert
         # display.streaming=true — official key (hermes_cli/config_defaults.py
         # display.streaming; tips.py). API path already prefers stream=True;
