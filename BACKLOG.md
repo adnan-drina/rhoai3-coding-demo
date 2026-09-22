@@ -25,6 +25,12 @@
   evidence never passes. Real-JDK controls include wildcard imports, qualified
   references, nested references, lookalike namespaces and unrelated errors.
   This changes only assessment of retirement, not the write set or other vetoes.
+- Luna observed a later compile retry spending over 12 minutes investigating
+  adjacent runtime behavior without a patch or verification, with no gate
+  forcing that investigation. The repair skill now directs a known replacement
+  into a candidate/checkpoint, distinguishes the file boundary from an obligation
+  to fix every behavior, and retains responsibility for introduced regressions.
+  This is workflow guidance; reduced time/token use has not been measured.
 
 - v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
   before first admission aborted under `set -euo pipefail`. The verifier now

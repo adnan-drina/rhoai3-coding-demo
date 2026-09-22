@@ -44,6 +44,15 @@ Restoration does not restore candidate verification; current reports describe
 the accepted tree. A premature `LOOP_CANDIDATE_CHANGED` on this pending card
 means reverify, not reimplement or mint another attempt.
 
+Once the brief and reference establish the failing API and its replacement,
+make a coherent candidate and verify it. Re-read unchanged inputs only to
+answer a specific unresolved question needed for that edit. Files are the
+hard write boundary; supporting edits within them are allowed, but this does
+not require repairing every behavior in the file. An unchanged runtime concern
+that is not a prerequisite belongs in the handoff for its later gate, not an
+open-ended investigation before this checkpoint. Fix regressions introduced by
+your candidate; do not defer those as unrelated work.
+
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
 #   … patch the write set one item at a time (the brief lists each item with its advice and,
