@@ -1,0 +1,52 @@
+# The one platform-owned identity that a migration run's own manifests use.
+#
+# Stage 080 gives every run its own parity database and its own credentials
+# (RHDH app-migration skeleton `k8s-run/`, rendered into this namespace by the
+# dispatcher's migration-run bootstrap trigger). Those manifests carry a Job
+# that generates a password and writes two secrets — and a self-service
+# repository must not be able to mint the RBAC that lets it do so. The
+# identity, and the exact verbs it has, are declared here instead, once, by
+# the platform: create/get/patch/update on Secrets in this namespace and
+# nothing else. The Argo CD AppProject that renders `k8s-run/`
+# (appproject-migration-run.yaml) whitelists no RBAC kinds, so a run cannot
+# widen this.
+#
+# This supersedes migration-parity-db-provisioner in
+# migration-parity-database.yaml, which is scoped to the single shared
+# petclinic instance and retires with it.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: migration-run-provisioner
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: migration-run-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: migration-run-provisioner-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: migration-run-secret-manager
+subjects:
+  - kind: ServiceAccount
+    name: migration-run-provisioner
+    namespace: wksp-ai-developer

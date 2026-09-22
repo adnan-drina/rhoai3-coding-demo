@@ -20,6 +20,12 @@ against the decision, at M2, before any worker reaches runtime verification:
     decision never selected has no reason to be in the build, and the
     bootstrap is what must not leave it behind;
   * credentials must be environment references, never literals in the tree;
+  * the isolated instance must be THIS RUN's. Every run gets its own parity
+    database, created from the destination repository's `k8s-run/` when the
+    workspace is initiated, and stamp-run-resources.py writes its name here
+    from migration.yaml. An UNSTAMPED instance means that never happened, and
+    a run that plans against nobody's database would capture its oracles
+    against whatever the namespace happens to hold;
   * when the decision says the source assets own schema and seed, those files
     must exist in the destination.
 
@@ -173,6 +179,13 @@ def check(root: Path) -> list[str]:
     if conflicting:
         out.append("another profile would configure a different database: %s; the decision selects %r, so remove what this run does not use or record the other profile as a decision"
                    % (", ".join(sorted(conflicting)[:4]), profile))
+    instance = str(ds.get("instance") or "")
+    if instance in ("", "UNSTAMPED"):
+        out.append("datasource.instance is %r: this run's own parity database was never stamped into the "
+                   "decision. Run .hermes/skills/migration/bootstrap-destination/scripts/stamp-run-resources.py "
+                   "--root . (dest-init does this at workspace start from migration.yaml "
+                   "resources.parity_database); a destination that names no instance would capture its oracles "
+                   "against whatever database the namespace happens to hold" % instance)
     if str(ds.get("schema_owner")) == "source-assets":
         for field in ("schema_sql", "seed_sql"):
             rel = str(ds.get(field) or "")

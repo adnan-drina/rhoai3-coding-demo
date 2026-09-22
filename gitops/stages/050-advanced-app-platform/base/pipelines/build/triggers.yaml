@@ -17,6 +17,12 @@
 #   routes to an app-push PipelineRun in `<repo>-dev` (the first push's run
 #   fails namespace resolution while Argo is still creating the stack —
 #   harmless; developer pushes build from then on).
+# - Stage 080 migration destinations additionally carry `rhoai3-migration-run`.
+#   Their first push ALSO hits the migration-run trigger below, which creates
+#   a second Argo CD Application rendering the repo's own `k8s-run/` into the
+#   Dev Spaces namespace: that run's dedicated parity database and fixture
+#   credentials, created before the workspace is ever opened. Pinned to the
+#   scaffolding commit — see migration-run-resources-template.
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
@@ -154,6 +160,65 @@ spec:
               rhoai3.redhat.com/pipeline-project: "true"
               app.kubernetes.io/part-of: $(tt.params.repo-name)
 ---
+# Stage 080 migration runs: the run's OWN resources.
+#
+# A migration run must be completely independent — its parity database, its
+# credentials, everything — and nothing may be created by hand. The scaffolder
+# cannot apply Kubernetes objects (fetch/publish/register actions only), and
+# the project pipeline's deploy-app applies `k8s/` into `<repo>-dev` after a
+# green build, which is both the wrong namespace (a workspace can only read a
+# Secret beside it) and far too late (M1 captures source oracles before the
+# destination compiles). So the run's manifests travel in the destination
+# repository as `k8s-run/`, and THIS template renders them on the template's
+# first push, minutes before the Operator opens the workspace.
+#
+# targetRevision is PINNED to that first commit. The migration agents write to
+# the same branch all run long; a tracking Application would let a committed
+# manifest edit reach the Dev Spaces namespace. Pinned, the cluster objects are
+# the ones the template stamped, and stay that way.
+#
+# The finalizer is the retirement path: deleting this Application deletes the
+# run's database, its secrets and its provisioner Job together.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: migration-run-resources-template
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  params:
+    - name: repo-url
+    - name: repo-name
+    - name: revision
+  resourcetemplates:
+    - apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: run-$(tt.params.repo-name)-resources
+        namespace: openshift-gitops
+        labels:
+          rhoai3.redhat.com/migration-run: "$(tt.params.repo-name)"
+        finalizers:
+          - resources-finalizer.argocd.argoproj.io
+      spec:
+        # Scoped AppProject: this repo's k8s-run only, the Dev Spaces
+        # namespace only, four resource kinds only.
+        project: migration-run-resources
+        source:
+          repoURL: $(tt.params.repo-url)
+          targetRevision: $(tt.params.revision)
+          path: k8s-run
+          directory:
+            recurse: false
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: wksp-ai-developer
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
@@ -221,6 +286,33 @@ spec:
               value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-scaffolded' in body.repository.topics)"
       template:
         ref: scaffolded-project-bootstrap-template
+    - name: migration-run-resources-bootstrap
+      bindings:
+        - ref: app-platform-push-binding
+      interceptors:
+        - ref:
+            name: github
+            kind: ClusterInterceptor
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value:
+                - "push"
+        - ref:
+            name: cel
+            kind: ClusterInterceptor
+          params:
+            - name: filter
+              # Stage 080 migration destinations only (topic set by
+              # publish:github in the app-migration template). Stage 070
+              # repos carry rhoai3-scaffolded but no k8s-run/ directory, so
+              # they must not reach this template.
+              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-migration-run' in body.repository.topics)"
+      template:
+        ref: migration-run-resources-template
     - name: scaffolded-project-push
       bindings:
         - ref: app-platform-push-binding

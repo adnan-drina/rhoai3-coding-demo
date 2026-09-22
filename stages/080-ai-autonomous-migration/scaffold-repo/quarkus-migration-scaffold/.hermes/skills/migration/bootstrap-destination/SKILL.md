@@ -23,8 +23,8 @@ metadata:
     category: migration
     kind: guidance
     paths:
-      reads: ["/projects/modernized/.derived/frozen-input", "/projects/modernized/decisions.yaml", "/projects/modernized/decided-repairs", "/projects/modernized/operator-patches", "/projects/modernized/.hermes/planning", "/projects/modernized/.hermes/pins.json", "/projects/modernized/evidence/planning/evidence-bundle.json"]
-      writes: ["/projects/modernized/pom.xml", "/projects/modernized/src", "/projects/modernized/evidence/producers/bootstrap.json", "/projects/modernized/evidence/producers/decided-repairs.json"]
+      reads: ["/projects/modernized/.derived/frozen-input", "/projects/modernized/decisions.yaml", "/projects/modernized/migration.yaml", "/projects/modernized/decided-repairs", "/projects/modernized/operator-patches", "/projects/modernized/.hermes/planning", "/projects/modernized/.hermes/pins.json", "/projects/modernized/evidence/planning/evidence-bundle.json"]
+      writes: ["/projects/modernized/decisions.yaml", "/projects/modernized/pom.xml", "/projects/modernized/src", "/projects/modernized/evidence/producers/bootstrap.json", "/projects/modernized/evidence/producers/decided-repairs.json"]
 ---
 # Bootstrap the destination (step 0 of fix-until-green)
 
@@ -35,6 +35,7 @@ and the MTA rescan produce the real plan: the work list.
 ## Procedure
 
 ```bash
+python3 "${HERMES_SKILL_DIR}/scripts/stamp-run-resources.py" --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/probe-bom-managed.py" --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/bootstrap-destination.py" --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-datasource-decision.py" /projects/modernized
@@ -42,6 +43,19 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-datasource-decision.py" /projects/mod
 
 The probe measures, with Maven's own `help:effective-pom`, which artifacts
 the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
+
+0a. **run resources** — every run owns its parity database, its credentials
+   secret and its fixture identities; they are created from the destination
+   repository's own `k8s-run/` when the workspace is initiated, never by hand
+   and never shared. The golden therefore names no database:
+   `stamp-run-resources.py` writes `decisions.yaml` `datasource.instance` from
+   `migration.yaml` `resources.parity_database`, the same value those manifests
+   were stamped with. It is idempotent, it rewrites exactly that one line, and
+   it compares rather than rewrites the credential variable NAMES (a
+   disagreement between the run's resources and the decision refuses). A
+   destination with no `resources` block predates per-run resources and is left
+   alone. dest-init already ran this at workspace start with `--verify`; it is
+   repeated here because M2 plans against the decision.
 
 0. **settings** — refuses `MAVEN_SETTINGS_MISSING` unless `.mvn/maven.config`
    wires `-s .mvn/settings.xml` and that file declares the catalog's

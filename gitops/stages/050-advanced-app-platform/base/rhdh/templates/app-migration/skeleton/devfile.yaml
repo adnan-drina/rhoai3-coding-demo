@@ -104,6 +104,25 @@ components:
         # Architect 195231ZA: default on. Off is inspect-before-agents.
         - name: AUTO_START_MIGRATION
           value: "${{ values.autoStartMigration }}"
+        # THIS RUN'S OWN resources, named here so the workspace depends on
+        # nothing namespace-wide. k8s-run/ in this repository creates them at
+        # initiation; the two secrets carry
+        # controller.devfile.io/mount-to-devworkspace-include set to this
+        # workspace's name, so DevWorkspace Operator 0.41 injects them into
+        # this workspace and no other (Dev Spaces 3.28 targeted automount).
+        #
+        # The devfile cannot express secretKeyRef or envFrom itself: devfile
+        # 2.2.2 container env is name/value only, and DWO's container-overrides
+        # does not accept env. Naming the secrets here and VERIFYING the
+        # injection in postStart (stamp-run-resources.py --verify) is the
+        # explicit reference: a workspace that received another run's values,
+        # or none, says so instead of migrating against the wrong database.
+        - name: MIGRATION_RUN_NAME
+          value: "${{ values.name }}"
+        - name: PARITY_DB_SECRET
+          value: "${{ values.name }}-parity-db"
+        - name: PARITY_CREDENTIALS_SECRET
+          value: "${{ values.name }}-parity-credentials"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:
@@ -282,6 +301,19 @@ commands:
         if [ -f "${STAMP_REV}" ]; then
           python3 "${STAMP_REV}" --root "${PROJECT_DIR}" \
             || echo "WARN: HARNESS_REV stamp failed"
+        fi
+        # Per-run resources: write decisions.yaml datasource.instance from
+        # migration.yaml resources.parity_database (the golden names no
+        # database), then verify this workspace received ITS OWN secrets.
+        # Must run BEFORE autostart-migration: M2 plans against the decision,
+        # and a run that never stamped it refuses admission rather than
+        # planning against somebody else's instance.
+        STAMP_RUN="${PROJECT_DIR}/.hermes/skills/migration/bootstrap-destination/scripts/stamp-run-resources.py"
+        if [ -f "${STAMP_RUN}" ]; then
+          python3 "${STAMP_RUN}" --root "${PROJECT_DIR}" --verify \
+            || echo "WARN: per-run resource stamp/verify exited nonzero (see ${PROJECT_DIR}/.hermes/RUN-RESOURCES-STATUS)"
+        else
+          echo "WARN: missing ${STAMP_RUN} — decisions.yaml datasource.instance not stamped for this run"
         fi
         # dest-init consumer: mint M1 ANALYZE; M2 PLAN (child of M1) only
         # when .hermes/pins.json pins.planner.activation is "activated".

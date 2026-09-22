@@ -900,6 +900,62 @@ check "080 a replay restores the declared initial state and proves the destinati
 check "080 the datasource checker reads the selected profile's overrides, and another profile pointing elsewhere is reported" \
   "grep -q -F 'under the %s profile' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' && grep -q -F 'another profile would configure a different database' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' && echo 1 || echo 0" \
   "1"
+
+# ---------------------------------------------------------------------------
+# Per-run migration resources (Operator 2026-09-22): every run's parity
+# database, credentials and fixture identities are dedicated to that run and
+# created from its OWN destination repository when the workspace is initiated.
+# The invariants below are the ones that, if they slipped, would put two runs
+# back on one database without anyone noticing.
+# ---------------------------------------------------------------------------
+APP_MIGRATION_TMPL="$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration"
+check "080 the golden decisions.yaml names no shared parity database" \
+  "grep -c 'petclinic-parity-postgres' '${SCAFFOLD_080}/decisions.yaml' || echo 0" \
+  "0"
+check "080 the golden datasource.instance stays UNSTAMPED until the run stamps its own" \
+  "grep -c '^  instance: UNSTAMPED$' '${SCAFFOLD_080}/decisions.yaml' || echo 0" \
+  "1"
+check "080 the M2 datasource checker refuses a decision that names nobody's database" \
+  "grep -q -F 'UNSTAMPED' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' && grep -q -F 'whatever database the namespace happens to hold' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' && echo 1 || echo 0" \
+  "1"
+check "080 stamp-run-resources selftest passes (stamps one line, keeps the env-var contract, refuses another run's database)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/stamp-run-resources.py' --help >/dev/null && python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/stamp-run-resources.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 the RHDH skeleton stamps this run's own parity database and fixture credentials (k8s-run/)" \
+  "test -f '${APP_MIGRATION_TMPL}/skeleton/k8s-run/parity-database.yaml' && test -f '${APP_MIGRATION_TMPL}/skeleton/k8s-run/parity-credentials.yaml' && echo 1 || echo 0" \
+  "1"
+check "080 every object the run's manifests create is named from the run, never a shared instance" \
+  "python3 -c \"import glob,pathlib; print(sum(pathlib.Path(f).read_text().count('petclinic-parity') for f in glob.glob('${APP_MIGRATION_TMPL}/skeleton/k8s-run/*.yaml')))\"" \
+  "0"
+check "080 the run's automounted secrets reach THIS workspace only (DWO 0.41 targeted automount)" \
+  "grep -l 'controller.devfile.io/mount-to-devworkspace-include' ${APP_MIGRATION_TMPL}/skeleton/k8s-run/*.yaml | wc -l | tr -d ' '" \
+  "2"
+# Comments in these files EXPLAIN why the watch label is absent, so the count
+# is taken after the comments are stripped (the mention-vs-declaration trap).
+check "080 the run's secrets are never watched (a watched secret restarts a migration in progress)" \
+  "python3 -c \"import re,glob,pathlib; print(sum(re.sub(r'(?m)^\s*#.*\$','',pathlib.Path(f).read_text()).count('controller.devfile.io/watch-secret') for f in glob.glob('${APP_MIGRATION_TMPL}/skeleton/k8s-run/*.yaml')))\"" \
+  "0"
+check "080 the run's provisioner Job uses the platform-owned identity, and the run mints no RBAC" \
+  "grep -q -F 'serviceAccountName: migration-run-provisioner' '${APP_MIGRATION_TMPL}/skeleton/k8s-run/parity-database.yaml' && test -f '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/migration-run-resources-rbac.yaml' && ! grep -qE '^kind: (Role|ClusterRole|RoleBinding|ServiceAccount)' ${APP_MIGRATION_TMPL}/skeleton/k8s-run/*.yaml && echo 1 || echo 0" \
+  "1"
+check "080 the run's AppProject allows no cluster-scoped kind and no RBAC kind" \
+  "python3 -c \"import re,pathlib; t=pathlib.Path('$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/pipelines/build/appproject-migration-run.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*$','',t); print('ok' if 'clusterResourceWhitelist: []' in t and 'rbac.authorization.k8s.io' not in t and 'namespace: wksp-ai-developer' in t else 'open')\"" \
+  "ok"
+check "080 the dispatcher creates the run's resources at initiation, pinned to the scaffolding commit" \
+  "python3 -c \"import re,pathlib; t=pathlib.Path('$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/pipelines/build/triggers.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*$','',t); n=sum(1 for p in ['migration-run-resources-template','path: k8s-run','targetRevision: \$(tt.params.revision)','project: migration-run-resources','rhoai3-migration-run'] if p in t); print(n)\"" \
+  "5"
+check "080 the app-migration template marks its repos for the migration-run dispatcher" \
+  "python3 -c \"import re,pathlib; t=pathlib.Path('${APP_MIGRATION_TMPL}/template.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*$','',t); print(t.count('rhoai3-migration-run'))\"" \
+  "1"
+check "080 the skeleton devfile names this run's own secrets and verifies the injection at start" \
+  "python3 -c \"import re,pathlib; t=pathlib.Path('${APP_MIGRATION_TMPL}/skeleton/devfile.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*$','',t); n=sum(1 for p in ['PARITY_DB_SECRET','PARITY_CREDENTIALS_SECRET','stamp-run-resources.py'] if p in t); print(n)\"" \
+  "3"
+check "080 the skeleton migration.yaml is the one producer of the run's resource names" \
+  "python3 -c \"import re,pathlib; t=pathlib.Path('${APP_MIGRATION_TMPL}/skeleton/migration.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*$','',t); n=sum(1 for p in ['parity_database:','fixture_credentials:','workspace_secret:','jdbc_url_env:'] if p in t); print(n)\"" \
+  "4"
+check "080 the shared namespace-wide parity stack is marked retiring, not extended" \
+  "grep -l 'RETIRING — DO NOT EXTEND' '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/migration-parity-database.yaml' '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/petclinic-parity-credentials.yaml' | wc -l | tr -d ' '" \
+  "2"
 check "080 an authenticated replay keeps its password reference through the request digest" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys,tempfile; sys.path.insert(0,'.hermes/skills/gates/capture-source-oracles/scripts'); from pathlib import Path; from _scenarios import request_of; r=request_of(Path(tempfile.mkdtemp()), {'id':'x','entry_point':'e','method':'GET','path':'/a','body_absent':True,'identity':{'kind':'basic','user_env':'U','password_env':'P'}}); print('ok' if r['identity'].get('password_env')=='P' else 'dropped')\"" \
   "ok"

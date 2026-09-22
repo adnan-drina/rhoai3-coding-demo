@@ -139,7 +139,14 @@ datasource:
   db_version: "16"
   jdbc_extension: io.quarkus:quarkus-jdbc-postgresql
   profile: prod
-  instance: petclinic-parity-postgres.wksp-ai-developer
+  # Stamped PER RUN at dest-init and again at M2 by
+  # .hermes/skills/migration/bootstrap-destination/scripts/stamp-run-resources.py,
+  # from migration.yaml resources.parity_database -- the same value the run's
+  # own k8s-run/ manifests were stamped with. The golden names no database on
+  # purpose: a hardcoded instance is the one object two runs would share, and
+  # the first thing a second run's reset would destroy. UNSTAMPED is refused by
+  # check-datasource-decision.py, so nothing plans against nobody's database.
+  instance: UNSTAMPED
   jdbc_url_env: PETCLINIC_DB_URL
   username_env: PETCLINIC_DB_USER
   password_env: PETCLINIC_DB_PASSWORD

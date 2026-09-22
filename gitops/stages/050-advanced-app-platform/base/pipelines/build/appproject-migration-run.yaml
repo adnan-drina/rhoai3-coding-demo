@@ -1,0 +1,42 @@
+# Governance boundary for a migration RUN's own resources (stage 080).
+#
+# A Stage 080 run needs a parity database and fixture credentials that are
+# dedicated to it, created before its workspace starts, and named from the
+# run. The manifests live in the run's destination repository (the RHDH
+# app-migration skeleton stamps `k8s-run/`), so the source here is the
+# scaffolded repository itself rather than the platform repo — the one place
+# in this platform where that is true. Three things keep it bounded:
+#
+#   * the destination is the Dev Spaces namespace and nothing else, because a
+#     workspace can only read a Secret that sits beside it;
+#   * the whitelist is four kinds — Secret, Service, Deployment, Job. No RBAC,
+#     no NetworkPolicy, no cluster-scoped kind. The identity the run's Job
+#     uses is platform-owned (devspaces/migration-run-resources-rbac.yaml);
+#   * the Application the dispatcher creates pins `targetRevision` to the
+#     scaffolding commit, so the manifests this AppProject renders are the
+#     ones the template stamped and never anything the migration agents
+#     later commit to the same branch.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: migration-run-resources
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  description: Per-run Stage 080 migration resources (parity database, fixture credentials)
+  sourceRepos:
+    - https://github.com/adnan-drina/*
+  destinations:
+    - namespace: wksp-ai-developer
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: apps
+      kind: Deployment
+    - group: batch
+      kind: Job

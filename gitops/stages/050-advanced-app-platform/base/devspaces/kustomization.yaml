@@ -21,6 +21,10 @@ resources:
   - workspace-api-egress-adminnetworkpolicy.yaml
   - workspace-git-credentials.yaml
   - workspace-sonar-credentials.yaml
+  - migration-run-resources-rbac.yaml
+  # Retire both with the shared instance once the v9 run closes (see
+  # tmp/080-operator/PER-RUN-RESOURCES.md); per-run resources come from
+  # the RHDH app-migration skeleton's k8s-run/ directory.
   - migration-parity-database.yaml
   - petclinic-parity-credentials.yaml
   - vscode-editor-configurations.yaml

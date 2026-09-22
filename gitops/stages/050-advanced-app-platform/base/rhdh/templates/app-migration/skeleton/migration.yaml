@@ -88,6 +88,36 @@ acceptance:
   path: ""
 {%- endif %}
 
+# The resources THIS RUN owns. Every one of them is created at workspace
+# initiation from k8s-run/ in this same repository (Argo CD Application
+# run-<name>-resources, pinned to the scaffolding commit), never by hand and
+# never shared with another run. Specimen-layering applies here too: the
+# environment variable NAMES below are the contract decisions.yaml references
+# (ADR-009 datasource, ADR-014 fixture identities), and no value is ever
+# written here or into the evidence.
+#
+# bootstrap-destination's stamp-run-resources.py reads this block and writes
+# decisions.yaml datasource.instance, which is why the golden names no
+# database at all. A destination without this block keeps whatever its
+# decisions.yaml already says (the shared pre-per-run instances).
+resources:
+  run: ${{ values.name }}
+  namespace: wksp-ai-developer
+  manifests: k8s-run
+  parity_database:
+    instance: ${{ values.name }}-parity-postgres.wksp-ai-developer
+    database: parity
+    server_secret: ${{ values.name }}-parity-postgres
+    workspace_secret: ${{ values.name }}-parity-db
+    jdbc_url_env: PETCLINIC_DB_URL
+    username_env: PETCLINIC_DB_USER
+    password_env: PETCLINIC_DB_PASSWORD
+  fixture_credentials:
+    secret: ${{ values.name }}-parity-credentials
+    env:
+      - PETCLINIC_ADMIN_CREDENTIAL
+      - PETCLINIC_INVALID_CREDENTIAL
+
 analysis:
   # AD-003A: --target only, never --source. openjdk21 kept (O-OPENJDK21TARGET).
   mode: source-only
