@@ -47,8 +47,10 @@ operator-provided DEVWORKSPACE_NAME, not merely the devfile's intended name.
    retire old shared resources and remove old global credential mounts through
    their owning platform lifecycle. Never hand-create a v10 credential Secret.
 3. Run [the isolation demonstration](ISOLATION-DEMO.md) on two disposable runs.
-   All required checks must PASS on the exact platform/golden/image pins before
-   the official v10 workspace is created. Save its evidence-bound receipt.
+   The 12 operational checks must PASS on the exact platform/golden/image pins.
+   The Operator deferred the measured `workspace_identity: FAIL` on 2026-09-22
+   for this controlled v10 experiment only. Preserve it in the evidence-bound
+   receipt and report; permission confinement is outside this run's launch scope.
 4. Confirm the served Qwen 3.8 service and governed inference route are healthy.
    Keep declared context below the actual served window and retain the provider
    configuration without credential values. A model readiness failure blocks
@@ -108,8 +110,18 @@ placeholder. Both changed Kustomize directories rendered, and the live API
 accepted the provisioning Task with server-side dry run. The lifecycle tests
 execute its actual shell with overlapping events; the bootstrap integration
 test exercises separate profile files and repeated application. These results
-do not substitute for the live two-workspace demonstration or v10 preflight,
-neither of which has run. No successor golden was published by this change.
+do not substitute for the live two-workspace demonstration or v10 preflight.
+
+The subsequent live demonstration on platform `af7c389c` and published golden
+`eab9efd9` completed with 12 checks passing and `workspace_identity` failing.
+Both worker identities could read the other run's database Secret through the
+Dev Spaces default role. Both disposable runs were retired and their workspaces
+removed. Official v10 is uncreated and its preflight has not run. See
+[the result and scope decision](ISOLATION-RESULT-2026-09-22.md). The Operator
+accepted proceeding with operational independence proven and permission
+hardening deferred. The failure remains FAIL; the v10 launch check reports it
+as a warning. Freeze the deployed platform and golden: only the local launch
+policy changes. No new infrastructure qualification cycle precedes this run.
 
 Local regression success is not live isolation qualification. The live
 isolation receipt, Stage 050 sync and v10 preflight remain mandatory evidence.

@@ -47,6 +47,15 @@ not the historical session-local files under tmp/080-operator. The read-only
 v10 preflight consumes a retained isolation receipt bound to the exact platform,
 golden and image pins. It does not bootstrap, reset a database or dispatch work.
 
+The 2026-09-22 qualification failed `workspace_identity`: actual migration
+workers could read another run's database Secret through the Dev Spaces default
+role. The other 12 checks passed. The Operator deferred permission hardening
+for this controlled v10 experiment on 2026-09-22. The launch check preserves
+the measured FAIL as a warning for this run only; it still requires all 12
+operational checks, evidence hashes and release pins. See the
+[live result](../stages/080-ai-autonomous-migration/ISOLATION-RESULT-2026-09-22.md).
+No platform or golden republish is needed for this local launch-policy change.
+
 The migration template's pre-start initializer clones source onto a separate
 volume and writes `.git/rhoai3-source.json`. The worker mounts it read-only;
 the destination stays writable. Restarts verify that source commit and refuse

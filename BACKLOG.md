@@ -20,9 +20,19 @@
 - The first live signed scaffolding event created one provisioning run, but
   the CLI step was OOMKilled at its 256Mi limit before a receipt. The provisioner
   now requests 256Mi and is limited to 1Gi; database sizing is unchanged.
-- Live isolation qualification, publication/sync of this generation and the
-  official v10 launch remain outstanding. Closed v9 stays provisional; coverage
-  gaps and prior assistance remain in the comparison. No new signature gate.
+- Published golden `eab9efd9406ed6226724e1bd9f928548ca1f1b52`; Stage 050 is
+  Synced/Healthy at `af7c389c7a333476e3481c4b150c3439c9ec9551`. The live
+  demonstration completed with **12 checks passing and `workspace_identity`
+  failing**: both actual workspace service accounts can read the other run's
+  database Secret through `devworkspace-default-role`. Reset/restart, concurrent
+  replay, interrupted retirement, tombstones and cleanup passed. Both disposable
+  runs are retired and removed; official v10 remains uncreated. See
+  [the measured result](stages/080-ai-autonomous-migration/ISOLATION-RESULT-2026-09-22.md).
+  **Operator scope decision, 2026-09-22:** defer permission hardening for the
+  controlled v10 experiment. Keep the measured identity FAIL, require the other
+  12 checks, and freeze the platform/harness for migration execution. Targeted
+  mounts do not restrict API access; no security-confinement claim is made.
+  Closed v9 stays provisional, with coverage gaps and prior assistance retained.
 - The template now uses a dedicated source initializer and a read-only worker
   mount. Initial live testing exposed Git's PVC ownership check; the initializer
   now trusts only the exact clone path. The launch preflight also rejects
@@ -43,7 +53,8 @@
 - `pipelines/build/tekton-triggers-core-config.yaml` supplies the exact upstream
   empty enterprise-host allowlist through GitOps. No feature flag or certificate
   verification is disabled. The v10 preflight checks actual TektonConfig and
-  listener deployment readiness. Live recovery is being qualified.
+  listener deployment readiness. Live recovery passed two actual template
+  creation deliveries and concurrent signed test replays on 2026-09-22.
 - Remove this workaround after a fixed operator includes and owns the map,
   all three components become ready, and a signed GitHub scaffolding event
   automatically provisions its run. Do not infer recovery from Argo health alone.

@@ -1987,6 +1987,26 @@ and its pod are stopped before platform cleanup. A `retiring` receipt permits
 only retirement recovery; a `retired` identity is never provisioned again.
 See the versioned Stage 080 isolation demonstration for the live qualification.
 
+### Correct Secret mounts but failed workspace identity isolation
+
+The 2026-09-22 live demonstration found that both actual workspace service
+accounts could read the other run's database Secret. `devworkspace-default-role`
+grants namespace-wide Secret access, ConfigMap writes, pod execution and
+DevWorkspace updates. Targeted automount only selects what enters a workspace;
+it does not remove these API permissions. Inspect the actual worker identity
+and its bindings, not the namespace's `default` service account. Use name-only
+output for read probes; never print Secret data or tokens.
+
+Keep `workspace_identity: FAIL`. The Operator deferred this hardening for the
+controlled v10 experiment on 2026-09-22; its launch preflight warns on that
+measured failure while retaining the other checks. This exception makes no
+claim of worker security confinement. A future repair must restrict the worker
+identity, including indirect access through pod execution and workspace edits,
+without breaking workspace startup or MaaS initialization. Do not hand-edit an
+operator-reconciled role or broaden another identity to make startup pass.
+Repeat the live two-workspace checks when the platform-owned repair is pursued;
+it is not a prerequisite for this v10 experiment.
+
 ### Migration source initializer refuses its PVC
 
 `SOURCE_INPUT_REFUSED` means the retained checkout is changed, incomplete, or

@@ -29,6 +29,19 @@ def need(condition, message):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def check_isolation(proof, workspace):
+    required = {'secret_binding','wrong_targets','assignment_removal','receipt_fields','delayed_resources',
+                'data_independence','credential_independence','workspace_independence','repository_non_authority',
+                'duplicate_delivery','overlapping_retirement','retirement'}
+    need(all(proof.get('checks',{}).get(k) == 'PASS' for k in required), 'operational isolation demonstration incomplete')
+    identity = proof.get('checks',{}).get('workspace_identity')
+    # Operator accepted this limited experiment scope on 2026-09-22. Preserve
+    # the measured FAIL; this is not permission confinement or a general bypass.
+    if identity == 'FAIL' and workspace == 'spring-petclinic-rest-legacy-v10':
+        print('WARN: workspace_identity remains FAIL; permission hardening deferred for the controlled v10 migration experiment')
+    else:
+        need(identity == 'PASS', 'workspace identity missing, unmeasured, or outside the v10 deferral')
+
 def source_mount_ok(pod, container_name):
     spec = pod['spec']
     containers = spec['containers']
@@ -58,12 +71,9 @@ need(bool(re.fullmatch('[0-9a-f]{40}', sha)) and bool(re.fullmatch('[0-9a-f]{40}
 need(cmd('git','-C',str(golden),'rev-parse','HEAD').strip() == sha, 'golden checkout is not the pin')
 need(not cmd('git','-C',str(golden),'status','--porcelain').strip(), 'golden checkout is dirty')
 proof = json.loads(Path(os.environ['ISOLATION_RECEIPT']).read_text())
-required = {'secret_binding','wrong_targets','assignment_removal','receipt_fields','delayed_resources',
-            'data_independence','credential_independence','workspace_independence','repository_non_authority',
-            'duplicate_delivery','overlapping_retirement','retirement','workspace_identity'}
 need(proof.get('schema') == 'rhoai3.run-isolation/v1' and proof.get('platform_commit') == platform
      and proof.get('golden_commit') == sha, 'isolation receipt does not bind the selected revisions')
-need(all(proof.get('checks',{}).get(k) == 'PASS' for k in required), 'isolation demonstration incomplete')
+check_isolation(proof, workspace)
 files = proof.get('evidence',[])
 need(bool(files), 'isolation receipt has no retained evidence')
 for row in files:
