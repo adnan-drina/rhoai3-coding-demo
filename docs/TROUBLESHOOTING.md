@@ -2012,3 +2012,9 @@ After sync, require TektonConfig Ready, ready deployment replicas, populated
 interceptor CA bundles and a real signed scaffolding delivery. A template's
 successful repository creation does not prove its webhook was delivered. Never
 replace the event test with a manually created migration provisioning run.
+
+The same upgrade rejects status updates for old EventListeners whose referenced
+bindings omitted `kind`. The dispatcher now declares `kind: TriggerBinding`
+explicitly on each namespaced reference. After the controllers recover, inspect
+reconciliation errors as well as pod readiness; an old status is not proof that
+the current trigger definition was admitted.

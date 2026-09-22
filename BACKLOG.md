@@ -28,7 +28,9 @@
   but omitted its required `config-triggers-core-interceptors` ConfigMap from
   the static installer set. Controller, webhook and interceptors crash; empty
   interceptor CA bundles then prevent the EventListener starting. Its old Ready
-  condition remained stale while its deployment was down.
+  condition remained stale while its deployment was down. Recovery also exposed
+  five old binding references without `kind`; they now explicitly declare
+  `TriggerBinding` so the upgraded admission webhook can validate status updates.
 - `pipelines/build/tekton-triggers-core-config.yaml` supplies the exact upstream
   empty enterprise-host allowlist through GitOps. No feature flag or certificate
   verification is disabled. The v10 preflight checks actual TektonConfig and

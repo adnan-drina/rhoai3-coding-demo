@@ -244,6 +244,7 @@ spec:
     - name: coolstore-inventory-service-push
       bindings:
         - ref: app-platform-push-binding
+          kind: TriggerBinding
         - name: target-namespace
           value: coolstore-dev
       interceptors:
@@ -276,6 +277,7 @@ spec:
     - name: scaffolded-project-bootstrap
       bindings:
         - ref: app-platform-push-binding
+          kind: TriggerBinding
       interceptors:
         - ref:
             name: github
@@ -301,6 +303,7 @@ spec:
     - name: migration-run-resources-bootstrap
       bindings:
         - ref: app-platform-push-binding
+          kind: TriggerBinding
       interceptors:
         - ref:
             name: github
@@ -339,7 +342,9 @@ spec:
     - name: scaffolded-project-push
       bindings:
         - ref: app-platform-push-binding
+          kind: TriggerBinding
         - ref: scaffolded-target-binding
+          kind: TriggerBinding
       interceptors:
         - ref:
             name: github
