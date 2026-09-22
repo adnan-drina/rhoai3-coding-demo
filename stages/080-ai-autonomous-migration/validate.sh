@@ -995,7 +995,7 @@ check "080 the shared namespace-wide parity stack is retired, and nothing reintr
   "find '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces' -maxdepth 1 \\( -name 'migration-parity-database.yaml' -o -name 'petclinic-parity-credentials.yaml' \\) 2>/dev/null | wc -l | tr -d ' '" \
   "0"
 check "080 a run credential is never mounted namespace-wide: only the run's own provisioner publishes one" \
-  "for f in \$(grep -rl -E 'PETCLINIC_(DB|ADMIN|INVALID)' '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/' 2>/dev/null); do sed 's/#.*//' \"\$f\" | grep -q 'mount-to-devworkspace' && echo \"\$f\"; done | wc -l | tr -d ' '" \
+  "for f in \$(grep -rl -E 'PETCLINIC_(DB|ADMIN|INVALID)' '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/' 2>/dev/null); do sed 's/#.*//' \"\$f\" | grep -q 'mount-to-devworkspace' && echo \"\$f\" || :; done | wc -l | tr -d ' '" \
   "0"
 check "080 an authenticated replay keeps its password reference through the request digest" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys,tempfile; sys.path.insert(0,'.hermes/skills/gates/capture-source-oracles/scripts'); from pathlib import Path; from _scenarios import request_of; r=request_of(Path(tempfile.mkdtemp()), {'id':'x','entry_point':'e','method':'GET','path':'/a','body_absent':True,'identity':{'kind':'basic','user_env':'U','password_env':'P'}}); print('ok' if r['identity'].get('password_env')=='P' else 'dropped')\"" \
