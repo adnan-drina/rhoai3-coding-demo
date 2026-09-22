@@ -100,8 +100,9 @@ Record tokens where measured; missing token telemetry remains unknown.
 
 ## Readiness and rollback
 
-Implementation commit `3102e892` was validated on 2026-09-22: Stage 080 reported
-**358 passed, 0 failed, 2 warnings** (exit 2 means warnings in validate-lib.sh).
+The combined implementation, including source protection, was validated on
+2026-09-22 and merged as `19f742aa`: Stage 080 reported
+**359 passed, 0 failed, 2 warnings** (exit 2 means warnings in validate-lib.sh).
 The warnings were Stage 050 OutOfSync and the existing MTA ConsoleLink
 placeholder. Both changed Kustomize directories rendered, and the live API
 accepted the provisioning Task with server-side dry run. The lifecycle tests

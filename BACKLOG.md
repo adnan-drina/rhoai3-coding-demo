@@ -18,7 +18,7 @@
   mount. Initial live testing exposed Git's PVC ownership check; the initializer
   now trusts only the exact clone path. The launch preflight also rejects
   writable runtime aliases. Full template/isolation qualification remains open.
-- Validation on 2026-09-22: 358 passed, 0 failed, 2 warnings (Stage 050 OutOfSync
+- Validation after source protection on 2026-09-22: 359 passed, 0 failed, 2 warnings (Stage 050 OutOfSync
   and the existing MTA ConsoleLink placeholder). The changed Task passed live
   server-side dry run; this does not qualify live isolation or launch v10.
 
