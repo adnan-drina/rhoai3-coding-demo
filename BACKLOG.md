@@ -2,6 +2,14 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- v10 reached compile `[0,0,0]`, then its first package repair could not mint:
+  seven fragment parents owe 16 methods (14 files / 23 sites), beyond ADR-018's
+  eight-symbol limit. The fixture had only one method per parent. ADR-024
+  permits 16 sealed members for this complete, model-derived fragment set;
+  other units keep eight and the file/site limits stay 20/160. Every member
+  and the package gate remain mandatory. This is a recorded architecture
+  amendment during assisted continuation, not a false-count correction or a
+  claim that compilation completes migration.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks

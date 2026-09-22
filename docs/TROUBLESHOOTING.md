@@ -2069,6 +2069,17 @@ Preserve the failed TaskRun. If its per-run lock exists, prove the holder TaskRu
 and pod are stopped before releasing it. A failed task is not a provisioning
 receipt and must not be bypassed with manually created database resources.
 
+### Stage 080: accepted compile repair leaves no successor
+
+An ACCEPTED step can be followed by a nonzero `advance.py` exit if its replan
+cannot admit the next unit. On v10, `UNIT_OVERSIZE` described seven repository
+fragments owing 16 methods, beyond the old eight-symbol limit; the board was
+idle after the accepted compile-zero commit. Preserve that commit and receipt.
+ADR-024 amends only the complete fragment-set symbol limit to 16. Install the
+tested amendment with its decision record, rebuild/admit and use K4 to mint
+the successor. Do not bypass admission, discard inventory rows or call the
+migration complete. Sets beyond 16 symbols or 20 files/160 sites still refuse.
+
 ### Stage 080: a diagnostic-family repair is pending despite lower compile errors
 
 **Symptom:** `VERIFICATION_PENDING cause=unassessable-scope` says a sealed file

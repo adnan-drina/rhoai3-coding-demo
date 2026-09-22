@@ -2004,6 +2004,55 @@ def _dm_is_leaf(typ: dict, n: dict) -> bool:
     return ("%s.%s." % (n["base"], n["leaf_pkg"])) in str(typ.get("fqn") or "")
 
 
+def _real_fragment_bound_case() -> int:
+    """Seven multi-method parents, rather than seven single-method stubs.
+
+    The real compiler model must keep all 16 obligations. A renamed specimen
+    behaves identically; 17 symbols, excessive files/sites and ordinary
+    declaration closures still refuse under their respective bounds.
+    """
+    import copy
+    import tempfile
+    from planner.worklist import _bound_unit
+
+    for package, stem in (("org.acme.inventory", "Inventory"), ("com.example.shipping", "Shipment")):
+        files = {}
+        for index, count in enumerate((3, 3, 2, 2, 1, 3, 2)):
+            name = "%s%d" % (stem, index)
+            prefix = "src/main/java/" + package.replace(".", "/") + "/"
+            methods = " ".join("void persist%d(String value);" % n for n in range(count))
+            files[prefix + name + ".java"] = "package %s; public interface %s { %s }" % (package, name, methods)
+            files[prefix + name + "Store.java"] = "package %s; public interface %sStore extends %s {}" % (package, name, name)
+        with tempfile.TemporaryDirectory(prefix="wl-fragment-bound-") as d:
+            model = dest_model(_jdk_root(d, files))
+            item = dict(_set_wide_item(), gate="package")
+            units, claimed = form_units([item], {}, set(), model=model, root=GOLDEN)
+            if len(units) != 1 or item["id"] not in claimed:
+                return _fail("multi-method fragment set must remain one conserved unit")
+            unit = units[0]
+            seal = unit["_unit_seal"]
+            if unit["status"] != "open" or unit["unit"]["size"] != {"files": 14, "sites": 23, "symbols": 16}:
+                return _fail("16-symbol real fragment set must mint without dropping members: %s" % unit["unit"]["size"])
+            if len(seal["symbols"]) != 16 or sum(len(r["members"]) for r in seal["implementation"]) != 16:
+                return _fail("each method stays sealed and owed, not just each parent")
+            if seal["bounds"].get("max_symbols") != 16 or seal["bounds"].get("adr") != "ADR-024" or unit.get("gate") != "package":
+                return _fail("the amended bound is recorded; full packaging remains the gate")
+            # Explicitly reproduce the previous bound on these real rows.
+            for label, changed in (("ordinary-closure", {"implementation": []}),
+                                   ("other-runtime-set", {"items": [dict(item, set_wide="other")]}),
+                                   ("17-symbols", {"symbols": seal["symbols"] + [dict(seal["symbols"][0], signature="extra()")]}),
+                                   ("21-files", {"files": ["src/main/java/P%d.java" % i for i in range(21)]}),
+                                   ("161-sites", {"members": [dict(seal["members"][0], occurrence=i) for i in range(161)]})):
+                candidate = copy.deepcopy(seal)
+                candidate.update(changed)
+                _bound_unit(candidate)
+                if "UNIT_OVERSIZE" not in candidate.get("block", ""):
+                    return _fail("%s must still refuse" % label)
+                if label in ("ordinary-closure", "other-runtime-set") and candidate["bounds"]["max_symbols"] != 8:
+                    return _fail("non-fragment bounds must remain eight")
+    return 0
+
+
 def _real_fragment_case() -> int:
     """The fragment unit, end to end on the real model: formed, sealed with the
     implementation it owes, assessed before and after the adapter is written,
@@ -3667,7 +3716,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_case() or _real_explained_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case():
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)

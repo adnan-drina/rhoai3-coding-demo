@@ -3645,6 +3645,8 @@ UNIT_RULES = (RULE_PACKAGE_LEAF, RULE_DECLARATION_CLOSURE, RULE_DIAGNOSTIC_FAMIL
 UNIT_MAX_FILES = 20
 UNIT_MAX_SITES = 160
 UNIT_MAX_SYMBOLS = 8
+# ADR-024: retain every method row when a fragment parent owes several methods.
+UNIT_MAX_FRAGMENT_SYMBOLS = 16
 
 UNIT_FORMATION_V1 = "v1"
 UNIT_FORMATION_OFF = "off"
@@ -4243,8 +4245,8 @@ def _unit_size(unit: dict[str, Any]) -> dict[str, int]:
             "symbols": len(unit.get("symbols") or [])}
 
 
-def _within(size: dict[str, int]) -> bool:
-    return size["files"] <= UNIT_MAX_FILES and size["sites"] <= UNIT_MAX_SITES and size["symbols"] <= UNIT_MAX_SYMBOLS
+def _within(size: dict[str, int], max_symbols: int = UNIT_MAX_SYMBOLS) -> bool:
+    return size["files"] <= UNIT_MAX_FILES and size["sites"] <= UNIT_MAX_SITES and size["symbols"] <= max_symbols
 
 
 def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
@@ -4270,6 +4272,12 @@ def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
     exactly what makes a coordinated `throws` repair unrepresentable, because
     neither half compiles."""
     before = _unit_size(unit)
+    # Ordinary declaration closures and symbol unions remain at eight.
+    fragment_set = (unit["rule"] == RULE_DECLARATION_CLOSURE
+                    and bool(unit.get("implementation"))
+                    and bool(unit.get("items"))
+                    and all(i.get("set_wide") == FRAGMENT_SET for i in unit["items"]))
+    max_symbols = UNIT_MAX_FRAGMENT_SYMBOLS if fragment_set else UNIT_MAX_SYMBOLS
     excluded: list[dict[str, Any]] = []
     if not _within(before) and unit["rule"] in (RULE_PACKAGE_LEAF, RULE_DIAGNOSTIC_FAMILY):
         groups = sorted(unit.get("groups") or [], key=lambda g: (len(g["members"]), g["key"]))
@@ -4291,16 +4299,18 @@ def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
         unit["files"] = sort_unique(list(unit["files"]) + missing)
         unit["evidence"].append({"kind": "javac", "ref": "%d file(s) kept in the write set because the unit still measures an obligation in them (%s)" % (len(missing), ", ".join(missing[:2]))})
     after = _unit_size(unit)
-    unit["bounds"] = dict(after, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=UNIT_MAX_SYMBOLS)
+    unit["bounds"] = dict(after, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=max_symbols)
+    if fragment_set:
+        unit["bounds"]["adr"] = "ADR-024"
     if after != before:
         unit["bounds"]["narrowed"] = {"from": before, "to": after, "reason": "UNIT_NARROWED"}
     if excluded:
         unit["bounds"]["excluded"] = excluded
-    if not _within(after):
+    if not _within(after, max_symbols):
         unit["block"] = ("UNIT_OVERSIZE: %s over %s reaches %d file(s)/%d site(s)/%d symbol(s) (max %d/%d/%d); "
                          "a repair this wide is a planning answer"
                          % (unit["rule"], unit["family_key"], after["files"], after["sites"], after["symbols"],
-                            UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS))
+                            UNIT_MAX_FILES, UNIT_MAX_SITES, max_symbols))
         if unit["rule"] == RULE_DECLARATION_CLOSURE:
             unit["block"] += ("; its callers are bound to the declaration it changes and dropping them would leave a "
                               "unit that cannot compile")

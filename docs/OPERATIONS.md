@@ -41,6 +41,15 @@ Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 
 ### Continuing M1 and recovering a pending unit
 
+If a card is ACCEPTED but post-verdict admission refuses, keep that accepted
+step and inspect the next work-list blocker before minting. Do not rerun the
+accepted card or reset its attempts. ADR-024 permits up to 16 sealed method
+symbols for a complete repository-fragment repair (other units: eight), with
+the existing 20-file/160-site limits. Install its tested harness and decision
+amendment at an idle boundary with digests/backups, rebuild the work list,
+admit and mint through K4 with the accepted card as parent. Package/startup and
+parity remain separate required evidence; `[0,0,0]` is not completion.
+
 `AUTO_START_MIGRATION=false` suppresses workspace startup. Once M1 has been
 started, its final step uses `autostart-migration.sh --root /projects/modernized
 --after-m1 "$HERMES_KANBAN_TASK"` to continue that native task. The script verifies

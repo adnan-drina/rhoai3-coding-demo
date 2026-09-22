@@ -4,6 +4,14 @@
 
 This is the solution architecture for Stage 080, not for the whole workshop and not an execution file for a destination workspace. The [stage README](README.md) owns the demo journey. This document owns the migration design, authority boundaries, invariants, and proof gates. Runtime procedures remain in [operations](../../docs/OPERATIONS.md); destination code and skills remain in `scaffold-repo/`.
 
+ADR-024 (2026-09-22, assisted v10 continuation) amends ADR-018's symbol bound
+only for the complete, model-derived repository-fragment set: 16 sealed
+member rows, versus eight for other units. The first real package failure
+owes 16 methods across seven parents; the old fixture represented seven
+single-method parents. Every method remains inventoried; 20-file/160-site
+bounds, scope seals, retry budgets and package/startup/parity gates remain.
+Excess still produces `UNIT_OVERSIZE`; no specimen-name branch is introduced.
+
 | Evidence label | Meaning |
 |---|---|
 | **Implemented** | Present in the repository, executable, with a selftest that includes the negative case |

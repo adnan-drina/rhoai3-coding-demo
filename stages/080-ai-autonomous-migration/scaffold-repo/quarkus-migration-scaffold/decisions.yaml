@@ -74,6 +74,10 @@ adrs:
     status: accepted
     title: Per-run fixture identities (amends ADR-014; architect ruling 2026-09-22) - the PetClinic fixture identities keep their names and values and remain specimen-specific inputs, and move from a namespace-wide Secret into an EXACTLY BOUND per-run Secret; exits - each workspace receives only its assigned fixture Secret, a missing or mismatched binding blocks the relevant captures, and changing or retiring one run does not affect another; refused - overlapping wildcard targeting, namespace-wide fallback, and credential values in the evidence (spring-petclinic-rest, decided 2026-09-22)
 
+  - id: ADR-024
+    status: accepted
+    title: Complete repository-fragment repair bound (amends only ADR-018's symbol limit; architect ruling under the authorized v10 assisted continuation, 2026-09-22) - a model-derived spring-data-fragment-implementations declaration unit may seal at most 16 member symbols, while other units remain limited to 8; the 20-file and 160-site limits remain. v10's first package gate enumerated seven required fragment parents with 16 unimplemented methods, not the seven methods represented by the original test fixture. Keep every method, inheritance relation and owed implementation in the sealed inventory and require the full package gate; do not split a set-wide failure into cards that cannot pass their checkpoint, hide methods from the count, alter retry budgets or waive verification. Excess still refuses as UNIT_OVERSIZE. The rule contains no specimen names. Record its installation and changed decision digest as assisted continuation; this does not establish runtime parity or intervention-free repeatability.
+
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
   adr: ADR-001
