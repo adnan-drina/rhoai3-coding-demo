@@ -86,6 +86,14 @@ candidate with `restore-pending.py`, unblock the same native card, and re-run re
 verification and `advance.py`. This spends no new attempt and does not approve the
 candidate. Keep the original run deadline and append the intervention record.
 
+When a retained package candidate exposes an unrelated failure outside its
+scope, a changed first error is not a package PASS. The Operator may repair
+the measured prerequisite on the accepted tree using `operator-step.py
+--no-mint` beside the pending card. First require that the candidate is stored
+away and no worker is active; commit only the prerequisite paths. Then restore
+the candidate and unblock the same card for verification. Neither its scope
+seal nor attempt history changes.
+
 ### Stage 080 run isolation and v10 qualification
 
 Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and

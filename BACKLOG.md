@@ -15,9 +15,17 @@
   out-of-scope path. This was an architect intervention error, not a worker
   repair failure. Rejection also restored the decision file; retry
   `t_d240a3ca` began from a clean decision file. The installation manifest
-  retains the amendment and digests, but its Operator baseline record remains
-  due at an idle boundary. Recovery instructions now require that record and
-  a clean product tree before minting. The rejected attempt remains spent.
+  retains the amendment and digests. Operator step `ac03d997` subsequently
+  recorded it beside the retained retry, with known measure `[0,0,0]` and the
+  issued seal unchanged. Recovery instructions now require that record and a
+  clean product tree before minting. The rejected attempt remains spent.
+- Packaging retry `t_d240a3ca` retained seven fragment adapters when the next
+  package failure named an unrelated root-controller SpEL expression. The
+  same Operator step `ac03d997` replaced that expression with the documented
+  root-path property and a slash-safe redirect join on the accepted tree;
+  it did not accept the adapters. Shared DI guidance now covers this mapping
+  and permits the decided Spring compatibility extension. Combined packaging,
+  startup and redirect parity still require the resumed card's verification.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks

@@ -4,6 +4,10 @@
 
 - Living map: quarkusio/skills `migrate-spring-to-quarkus` (prefer on overlap)
 - Pedagogical locus: Deandrea et al., 2021, Ch 2 (scopes / config) — cite only
+- [Quarkus 3.27 Spring DI](https://quarkus.io/version/3.27/guides/spring-di/)
+  (`@Value` property placeholders and defaults) and
+  [HTTP reference](https://quarkus.io/version/3.27/guides/http-reference/)
+  (`quarkus.http.root-path`).
 
 ## Cards
 
@@ -14,13 +18,23 @@
 | di-inject | `@Autowired` field | constructor injection | STRENGTHEN | Field injection refuse where cheap |
 | di-singleton | `@Service` singleton intent | `@ApplicationScoped` preferred over `@Singleton` | STRENGTHEN | `@Singleton` not client-proxyable / harder to mock |
 | cfg-value | `@Value("${k}")` | `@ConfigProperty(name="k")` | ADOPT | |
+| cfg-context-path | `@Value("#{servletContext.contextPath}")` | Inject `quarkus.http.root-path`, for example `@Value("${quarkus.http.root-path:/}")` in the decided Spring compatibility mode | ADOPT | When joining a slash-prefixed path, remove the root's trailing slash; `/` then contributes an empty prefix, as a servlet root context does. Preserve the suffix and compare the actual first-response Location against the source. No blanket rewrite of other SpEL expressions. |
 | cfg-mapping | `@ConfigurationProperties` | `@ConfigMapping` | ADOPT | |
 | cfg-profile | `spring.profiles.active` / `application-dev.properties` | `%dev.key` in `application.properties` or `QUARKUS_PROFILE` | ADOPT | Quarkus also loads `application-<profile>.properties` when that profile is active |
 | di-profile | Spring `@Profile("x")` on beans | `@IfBuildProfile("x")` (`io.quarkus.arc.profile`) | ADOPT | **FORBIDDEN:** `io.quarkus.arc.Profile` / `@IfProfileActive` — not on Quarkus 3.27 classpath (Phase-3 Class B) |
 | di-mapstruct | Spring `@Mapper` / `@Autowired` mapper | **doctrine pending R-SKILL-F** | MEASURED | v19: `componentModel = "cdi"` produced ten Unsatisfied beans. Do not mandate that shape. |
 
-**REJECT:** `quarkus-spring-di` / Spring Boot autoconfig on destination.  
+The decided Spring compatibility mode may retain `quarkus-spring-di`;
+it does not run Spring Boot autoconfiguration or a Spring application context.
 **REJECT:** `import io.quarkus.arc.Profile` or `IfProfileActive` — use `IfBuildProfile` / `UnlessBuildProfile`.
+
+For `unsupported-spel` on `org.springframework.beans.factory.annotation.Value`,
+inspect the exact expression and its consumer. The context-path row covers only
+that expression: a configuration placeholder is not a general SpEL evaluator.
+Do not substitute `@Value("")`, which names an empty configuration property,
+or remove the context prefix to make packaging pass. If the named file lies
+outside the issued scope, preserve the candidate and report the prerequisite;
+the gate has not passed merely because its first error changed.
 
 ## MapStruct / CDI (B-3 — measured, doctrine pending R-SKILL-F)
 
