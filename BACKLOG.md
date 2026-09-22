@@ -43,6 +43,12 @@
   for both DAO and ORM units. Compile acceptance does not establish correct
   HTTP behavior; the broad-catch finding remains open until the affected code
   is corrected and the relevant runtime behavior is measured.
+- The transaction unit's first attempt changed imports but left Spring-only
+  `readOnly` attributes; the retry consulted the facade reference and accepted
+  38 → 7 compiler errors. The package lookup previously returned no reference.
+  That reference now names the package, directs imports and attributes to be
+  repaired together, and removes advice to change transaction type to simulate
+  read-only behavior. This guidance does not establish runtime parity.
 
 - v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
   before first admission aborted under `set -euo pipefail`. The verifier now
