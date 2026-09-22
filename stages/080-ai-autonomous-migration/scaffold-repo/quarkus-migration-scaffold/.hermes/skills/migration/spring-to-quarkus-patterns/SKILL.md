@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.1"
+  version: "1.5.2"
   hermes:
     tags:
     - migration
@@ -54,7 +54,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | File | Use when |
 |------|----------|
 | `references/rest-annotations.md` | Bean Validation / `BindingResult` / `Errors` (`@Valid` versus manual validation, procedure §2); JAX-RS / RESTEasy → `quarkus-rest` annotation map; Location via a request-aware `@Context UriInfo` builder; `PARITY_CORS` / `cors-response` repairs install the harness CORS adapter through `restore-source-response-shape` (ADR-019), never restored `@CrossOrigin` |
-| `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
+| `references/exception-mapping.md` | Local/global exception handlers; legacy error-body shape; Spring DAO/ORM exception retirement and narrow missing-result handling |
 | `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
 | `references/persistence.md` | Entity / tx / schema cards; this specimen's default is Spring Data JPA (ADR-004) |
 | `references/spring-data-jpa.md` | Supported subset, unsupported methods, one-repository batching; official Quarkus Spring Data JPA guide |
@@ -90,6 +90,9 @@ This skill's write contract is consult-then-write. W6 bootstrap is a
    Use their exact filenames; do not invent a construct-named reference.
    For `BindingResult`, `Errors` or validation handlers, read
    `references/rest-annotations.md` and `references/exception-mapping.md`.
+   For Spring DAO/ORM exception retirement, read `references/exception-mapping.md`
+   before choosing a replacement: unchecked declarations and not-found catches
+   have different contracts.
    Overlays are additive and Hermes does not merge them: for `repository/jdbc/**`
    read the base skill **and** `references/jdbc-anti-essay.md`; for
    `security/**` read `references/security-config.md` **and**

@@ -34,6 +34,15 @@
   into a candidate/checkpoint, distinguishes the file boundary from an obligation
   to fix every behavior, and retains responsibility for introduced regressions.
   This is workflow guidance; reduced time/token use has not been measured.
+- v10's accepted DAO unit reduced compiler errors 148 → 50 but broadened six
+  not-found catches to `PersistenceException`. The following ORM unit selected
+  `OptimisticLockException` for absence and was reverted for new diagnostics.
+  Exception guidance now distinguishes unchecked declarations, missing results
+  and unrelated persistence failures, with shipped-API constructor checks.
+  Its package-qualified names make the existing brief reference lookup find it
+  for both DAO and ORM units. Compile acceptance does not establish correct
+  HTTP behavior; the broad-catch finding remains open until the affected code
+  is corrected and the relevant runtime behavior is measured.
 
 - v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
   before first admission aborted under `set -euo pipefail`. The verifier now
