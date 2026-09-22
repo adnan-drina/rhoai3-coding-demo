@@ -73,6 +73,11 @@ app = json.loads(oc('get','application','050-advanced-app-platform','-n','opensh
 need(app.get('status',{}).get('sync',{}).get('revision') == platform
      and app['status']['sync'].get('status') == 'Synced'
      and app['status'].get('health',{}).get('status') == 'Healthy', 'Stage 050 is not healthy at the qualified revision')
+tekton = json.loads(oc('get','tektonconfig','config','-o','json'))
+need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in tekton.get('status',{}).get('conditions',[])), 'TektonConfig is not Ready')
+listener = json.loads(oc('get','deployment','el-app-platform-listener','-n','app-platform-build','-o','json'))
+need(listener.get('status',{}).get('readyReplicas',0) >= 1
+     and listener['status'].get('observedGeneration',0) >= listener['metadata']['generation'], 'webhook dispatcher is not ready')
 p = json.loads(oc('get','pod',pod,'-n',ns,'-o','json'))
 need(source_mount_ok(p, os.environ['CONTAINER']), 'source mount is writable or has a writable runtime alias')
 need(p['metadata'].get('labels',{}).get('controller.devfile.io/devworkspace_name') == workspace, 'actual workspace name mismatch')

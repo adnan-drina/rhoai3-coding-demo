@@ -30,6 +30,9 @@ log_step "Pipeline dispatcher + per-project pipelines"
 check "Webhook dispatcher EventListener exists" \
   "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.metadata.name}'" \
   "app-platform-listener"
+check "Webhook dispatcher deployment has a ready replica" \
+  "oc get deployment el-app-platform-listener -n app-platform-build -o jsonpath='{.status.readyReplicas}'" \
+  "1"
 check "project-provisioner CronJob exists" \
   "oc get cronjob project-provisioner -n app-platform-build -o jsonpath='{.metadata.name}'" \
   "project-provisioner"

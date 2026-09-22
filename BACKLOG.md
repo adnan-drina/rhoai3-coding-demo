@@ -22,6 +22,21 @@
   and the existing MTA ConsoleLink placeholder). The changed Task passed live
   server-side dry run; this does not qualify live isolation or launch v10.
 
+## Pipelines 1.22.6 missing interceptor configuration — 2026-09-22
+
+- The live update shipped Triggers revision `72ad4eda38d96540182c6bf98fa12565ab5bab46`
+  but omitted its required `config-triggers-core-interceptors` ConfigMap from
+  the static installer set. Controller, webhook and interceptors crash; empty
+  interceptor CA bundles then prevent the EventListener starting. Its old Ready
+  condition remained stale while its deployment was down.
+- `pipelines/build/tekton-triggers-core-config.yaml` supplies the exact upstream
+  empty enterprise-host allowlist through GitOps. No feature flag or certificate
+  verification is disabled. The v10 preflight checks actual TektonConfig and
+  listener deployment readiness. Live recovery is being qualified.
+- Remove this workaround after a fixed operator includes and owns the map,
+  all three components become ready, and a signed GitHub scaffolding event
+  automatically provisions its run. Do not infer recovery from Argo health alone.
+
 ## RHOAI 3.4 upgrade watch items
 
 As of 2026-05-18, the public Red Hat OpenShift AI 3.4 documentation describes the target MaaS model as subscription-based governance with API keys, group assignment, token limits, authorization policy, and usage tracking. The same release documentation still marks several MaaS-related surfaces as Technology Preview or Developer Preview. Do not remove demo workarounds automatically, because adjacent pieces still have narrower support scope or live-demo gaps: AI Available Assets with MaaS is Developer Preview, vLLM MaaS and MaaS observability are Technology Preview, external provider routing must keep its provider trust boundary explicit, and the current demo still carries compatibility glue for dashboard user-token handling and cluster-specific gateway setup.

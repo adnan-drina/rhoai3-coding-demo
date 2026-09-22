@@ -1,0 +1,38 @@
+# Copyright 2026 The Tekton Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Workaround: Pipelines 1.22.6's Triggers binaries require this ConfigMap,
+# but trigger-main-static's installer set omitted it (2026-09-22).
+# Exact shipped source 72ad4eda38d96540182c6bf98fa12565ab5bab46:
+# https://github.com/openshift-pipelines/tektoncd-triggers/blob/72ad4eda38d96540182c6bf98fa12565ab5bab46/config/interceptors/config-core-interceptors.yaml
+# Keep the upstream default; do not disable its enterprise-host protection.
+# Remove GitOps ownership only after a fixed operator supplies this map and
+# all Triggers components plus a real signed webhook have been verified.
+# See BACKLOG.md, "Pipelines 1.22.6 missing interceptor configuration".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-triggers-core-interceptors
+  namespace: openshift-pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+  labels:
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-triggers
+data:
+  # Comma-separated list of allowed GitHub Enterprise hostnames.
+  # When the feature flag interceptors.github.use-enterprise-host-allowlist is
+  # enabled in feature-flags-triggers, requests with an X-GitHub-Enterprise-Host
+  # header not matching an entry here are rejected.
+  github.enterprise-host-allowlist: ""

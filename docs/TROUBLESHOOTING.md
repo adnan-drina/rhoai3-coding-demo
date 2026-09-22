@@ -1997,3 +1997,18 @@ the template's exact-path trust setting, not a wildcard `safe.directory`.
 `/projects/legacy` volumeMount and all runtime aliases. Do not substitute chmod
 for the read-only mount. A failed disposable probe can be replaced by a fresh
 run after retaining its evidence; never erase an official run to hide the failure.
+
+### Pipelines 1.22.6: template publishes but provisioning never starts
+
+Inspect the Triggers controller, webhook and core-interceptors deployments in
+`openshift-pipelines`, plus `el-app-platform-listener` in `app-platform-build`.
+The 2026-09-22 update omitted `config-triggers-core-interceptors`, which every
+new binary requires. The resulting crashes leave ClusterInterceptor CA bundles
+empty and may leave the EventListener's old Ready condition stale.
+
+The Stage 050 GitOps workaround supplies the default from the exact shipped
+[Triggers revision](https://github.com/openshift-pipelines/tektoncd-triggers/blob/72ad4eda38d96540182c6bf98fa12565ab5bab46/config/interceptors/config-core-interceptors.yaml).
+After sync, require TektonConfig Ready, ready deployment replicas, populated
+interceptor CA bundles and a real signed scaffolding delivery. A template's
+successful repository creation does not prove its webhook was delivered. Never
+replace the event test with a manually created migration provisioning run.
