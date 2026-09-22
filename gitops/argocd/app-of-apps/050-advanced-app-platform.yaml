@@ -71,12 +71,22 @@ spec:
     # (http://mta-ui.openshift-mta.svc.cluster.local:8080) in the Stage 080
     # factory destfile, so no PostSync patching or ignoreDifferences for
     # HUB_URL is needed.
+    # The Dev Spaces operator also stamps three attributes onto every workspace it
+    # admits: the devworkspace-config it resolved (name and namespace) and the SCC
+    # it will run under. They are controller-owned — git cannot declare them without
+    # claiming authority over the operator's own resolution — so every workspace sat
+    # permanently OutOfSync on them. That mattered: an application that is always
+    # OutOfSync cannot report real drift, and on 2026-09-22 a stale Tekton Task hid
+    # behind exactly this noise for half an hour. Ignore the three by name, so any
+    # OTHER attribute appearing in a workspace still shows up as drift.
     - group: workspace.devfile.io
       kind: DevWorkspace
       jsonPointers:
         - /spec/started
       jqPathExpressions:
         - '.spec.template.components[]?.container?.env[]? | select(.name == "HOST_USERS")'
+        - '.spec.template.attributes."controller.devfile.io/devworkspace-config"'
+        - '.spec.template.attributes."controller.devfile.io/scc"'
     # The patch-coolstore-image PostSync hook rewrites this deployment's image to
     # the deployer's ${IMAGE_REGISTRY}. Ignore the field so Argo keeps the hook's
     # value instead of reverting to the git default (portable installs).
