@@ -1,8 +1,8 @@
 # Golden-path template for Stage 080 (AI-Autonomous Migration).
 # Takes the Git URL of a legacy application and provisions the migration
 # working set: a per-run Quarkus destination repository (catalog-registered,
-# CI/CD-wired) whose Dev Spaces workspace clones the legacy code SIDE BY
-# SIDE as a workspace-only project. The legacy application is intentionally
+# CI/CD-wired) whose pre-start initializer clones the legacy onto a separate
+# volume mounted read-only beside the destination. The legacy application is intentionally
 # never registered in the catalog and never published to the platform org —
 # it exists only inside the workspace as read-only migration input;
 # migration.yaml in the destination repo records the provenance.

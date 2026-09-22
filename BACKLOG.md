@@ -14,9 +14,10 @@
 - Live isolation qualification, publication/sync of this generation and the
   official v10 launch remain outstanding. Closed v9 stays provisional; coverage
   gaps and prior assistance remain in the comparison. No new signature gate.
-- The existing read-only legacy-checkout launch prerequisite remains open on
-  the current writable project-volume layout. The new preflight refuses that
-  layout; this resource-isolation change does not implement a source mount.
+- The template now uses a dedicated source initializer and a read-only worker
+  mount. Initial live testing exposed Git's PVC ownership check; the initializer
+  now trusts only the exact clone path. The launch preflight also rejects
+  writable runtime aliases. Full template/isolation qualification remains open.
 - Validation on 2026-09-22: 358 passed, 0 failed, 2 warnings (Stage 050 OutOfSync
   and the existing MTA ConsoleLink placeholder). The changed Task passed live
   server-side dry run; this does not qualify live isolation or launch v10.

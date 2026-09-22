@@ -46,8 +46,10 @@ oc get secret,deploy,svc,cm -n "$WS" -l rhoai3.io/purpose=stage-080-parity
 oc get cm -n "$WS" -o name | grep '^configmap/migration-run-' || echo "no receipts"
 ```
 
-**PASS** nothing from a previous run is listed, and no `migration-run-*`
-receipt exists for `A` or `B`. **FAIL** anything is left: retire it (§Step 9)
+**PASS** no previous run resources are listed, and no `migration-run-*`
+receipt exists for `A` or `B`. The platform-owned `migration-fixture-credentials`
+source Secret is expected: it has no workspace automount labels and is copied
+by the provisioner into each run's targeted Secret. **FAIL** anything is left: retire it (§Step 9)
 before starting, then choose new run names. A retired identity is not reused.
 
 ---

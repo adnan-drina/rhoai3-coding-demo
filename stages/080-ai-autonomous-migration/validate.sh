@@ -947,6 +947,9 @@ check "080 provisioning lifecycle serializes overlapping events and refuses API 
 check "080 run-report compares emitted pins and preserves missing-evidence distinctions" \
   "python3 '${SCAFFOLD_SKILLS}/evaluation/run-report/scripts/run-report.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 source initializer pins the first clone and refuses changed or unrecorded volumes" \
+  "python3 '${SCRIPT_DIR}/source-volume.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 versioned launch preflight refuses unready or changed inputs" \
   "bash -n '${SCRIPT_DIR}/v10-preflight.sh' && python3 '${SCRIPT_DIR}/v10-preflight.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

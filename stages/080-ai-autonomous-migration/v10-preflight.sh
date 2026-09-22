@@ -29,6 +29,28 @@ def need(condition, message):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def source_mount_ok(pod, container_name):
+    spec = pod['spec']
+    containers = spec['containers']
+    worker = next(c for c in containers if c['name'] == container_name)
+    mounts = [m for m in worker.get('volumeMounts', []) if m['mountPath'] == '/projects/legacy']
+    if len(mounts) != 1 or not mounts[0].get('readOnly'):
+        return False
+    source = mounts[0]
+    claims = {v['name']: v.get('persistentVolumeClaim', {}).get('claimName') for v in spec['volumes']}
+    claim = claims.get(source['name'])
+    source_path = source.get('subPath', '').strip('/')
+    if not claim or not source_path or source.get('subPathExpr'):
+        return False
+    for c in containers:
+        for m in c.get('volumeMounts', []):
+            if claims.get(m['name']) != claim or m.get('readOnly'):
+                continue
+            parent = m.get('subPath', '').strip('/')
+            if m.get('subPathExpr') or not parent or source_path == parent or source_path.startswith(parent + '/'):
+                return False
+    return True
+
 ns, pod, workspace = (os.environ[k] for k in ('NS','POD','WORKSPACE'))
 golden = Path(os.environ['GOLDEN_CHECKOUT'])
 sha = os.environ['GOLDEN_SHA']; platform = os.environ['PLATFORM_SHA']
@@ -52,6 +74,7 @@ need(app.get('status',{}).get('sync',{}).get('revision') == platform
      and app['status']['sync'].get('status') == 'Synced'
      and app['status'].get('health',{}).get('status') == 'Healthy', 'Stage 050 is not healthy at the qualified revision')
 p = json.loads(oc('get','pod',pod,'-n',ns,'-o','json'))
+need(source_mount_ok(p, os.environ['CONTAINER']), 'source mount is writable or has a writable runtime alias')
 need(p['metadata'].get('labels',{}).get('controller.devfile.io/devworkspace_name') == workspace, 'actual workspace name mismatch')
 receipt = json.loads(oc('get','configmap','migration-run-'+workspace,'-n',ns,'-o','json'))['data']
 need(receipt.get('phase') == 'provisioned' and receipt.get('workspace') == workspace
@@ -143,7 +166,12 @@ windows = list(leaves(c))
 require(windows and all((0 < v < WINDOW for v in windows)), 'context limit must be below served window')
 require(c.get('terminal', {}).get('timeout', 0) >= 600, 'terminal timeout')
 require(c.get('compression', {}).get('threshold', 0) >= 0.8, 'compression threshold')
-require(not os.access('/projects/legacy', os.W_OK), 'legacy checkout is writable; satisfy the source protection prerequisite')
+source = Path('/projects/legacy')
+require(bool(os.statvfs(source).f_flag & os.ST_RDONLY), 'legacy checkout is writable; require a read-only mount')
+source_receipt = source / '.git/rhoai3-source.json'
+require(source_receipt.is_file(), 'source clone receipt missing')
+origin = json.loads(source_receipt.read_text())
+require(origin.get('schema') == 'rhoai3.source-volume/v1' and origin.get('commit') == subprocess.check_output(['git', '-c', 'safe.directory=' + str(source), '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip(), 'source clone receipt mismatch')
 budget = json.loads((root / 'run-budget.json').read_text())
 import datetime
 first = int(subprocess.check_output(['git', '-C', str(root), 'log', '--reverse', '--format=%ct'], text=True).splitlines()[0])

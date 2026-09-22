@@ -112,11 +112,26 @@ neither of which has run. No successor golden was published by this change.
 
 Local regression success is not live isolation qualification. The live
 isolation receipt, Stage 050 sync and v10 preflight remain mandatory evidence.
-The current devfile still clones the legacy onto the writable project volume;
-this change does not implement a read-only source mount. The pre-existing source
-protection prerequisite therefore remains open before dispatch. Qualify that
-protection separately; changing permissions as the same owning workspace user
-does not establish containment.
+The template initializes a separate `legacy-input` volume once, records its
+source URL and commit inside `.git`, and mounts it read-only at `/projects/legacy`
+in the worker. Restarts verify the retained checkout without updating it.
+The preflight checks both the filesystem's read-only flag and the admitted
+Pod for writable aliases of that source volume, including other runtime
+containers. Permissions alone are insufficient. The initializer trusts only
+its exact PVC clone path because the storage provisioner owns the mount root.
+This prevents ordinary in-container source edits; it does not make a user with
+permission to change the Pod or DevWorkspace an unprivileged sandbox tenant.
+
+The 2026-09-22 disposable source probe on DWO 0.43.0 passed source-write and
+chmod refusal (EROFS), destination writes, runtime alias inspection and restart
+commit stability. This is mount qualification, not full template/isolation
+qualification. The initial failure and corrected results are retained locally
+under `tmp/v10-readiness-20260922/`.
+
+The narrow `container-overrides` patch sets only `readOnly` on the declared
+legacy mount. DWO 0.43 supplies its volume name and subPath; no generated
+credential or metadata mounts are replaced. A live admitted-Pod test is required
+for any operator change. See the [DWO 0.43 override contract](https://github.com/devfile/devworkspace-operator/blob/v0.43.0/docs/additional-configuration.adoc).
 Do not install this generation onto closed v9 to qualify v10. If qualification
 fails, preserve disposable-run evidence, stop their clients, and use the platform
 retirement Pipeline; preserve tombstones. Roll back platform code through GitOps

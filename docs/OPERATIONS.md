@@ -47,6 +47,14 @@ not the historical session-local files under tmp/080-operator. The read-only
 v10 preflight consumes a retained isolation receipt bound to the exact platform,
 golden and image pins. It does not bootstrap, reset a database or dispatch work.
 
+The migration template's pre-start initializer clones source onto a separate
+volume and writes `.git/rhoai3-source.json`. The worker mounts it read-only;
+the destination stays writable. Restarts verify that source commit and refuse
+a changed or unrecorded volume. The launch preflight also checks every runtime
+container for writable aliases. Do not repair this by chmod, widening Git's
+safe-directory setting, or deleting the receipt. Preserve a failed initializer's
+logs and volume, then diagnose or create a fresh disposable run.
+
 Provisioning and retirement serialize on a per-run, atomically created ConfigMap
 lock. Retirement records `retiring` before deletion and retains the tombstone.
 Locks do not expire while an old writer could still operate. If a killed task

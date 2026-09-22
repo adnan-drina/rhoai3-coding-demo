@@ -1986,3 +1986,14 @@ Wait for the owner to finish. A killed task may leave the lock: prove the holder
 and its pod are stopped before platform cleanup. A `retiring` receipt permits
 only retirement recovery; a `retired` identity is never provisioned again.
 See the versioned Stage 080 isolation demonstration for the live qualification.
+
+### Migration source initializer refuses its PVC
+
+`SOURCE_INPUT_REFUSED` means the retained checkout is changed, incomplete, or
+missing its `.git/rhoai3-source.json` receipt. Preserve the initializer log and
+volume. A successful clone followed by Git's `dubious ownership` error requires
+the template's exact-path trust setting, not a wildcard `safe.directory`.
+`SOURCE_INPUT_NOT_READONLY` is a mount failure: inspect the admitted worker's
+`/projects/legacy` volumeMount and all runtime aliases. Do not substitute chmod
+for the read-only mount. A failed disposable probe can be replaced by a fresh
+run after retaining its evidence; never erase an official run to hide the failure.

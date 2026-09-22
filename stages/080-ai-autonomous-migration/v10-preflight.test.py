@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -30,6 +31,8 @@ class Preflight(unittest.TestCase):
         (self.root / 'manifest.json').write_text('{}')
         (self.root / 'code.py').write_text('reviewed')
         (self.root / 'config.yaml').touch()
+        (self.root / 'legacy/.git').mkdir(parents=True)
+        (self.root / 'legacy/.git/rhoai3-source.json').write_text(json.dumps({'schema':'rhoai3.source-volume/v1','commit':'a'*40}))
         (self.root / 'run-budget.json').write_text(json.dumps({'max_wall_hours':24,'declared_at':'1970-01-01T00:00:01Z'}))
         self.config = {'model':{'default':'qwen3-8-27b-int4'},'provider':{'context_length':110000},
                        'terminal':{'timeout':900},'compression':{'threshold':0.8}}
@@ -38,7 +41,7 @@ class Preflight(unittest.TestCase):
         expected = {'code.py':hashlib.sha256(b'reviewed').hexdigest()}
         self.code = REMOTE.replace("'/projects/modernized'",repr(str(self.root))).replace(
             "'/etc/hermes/config.yaml'",repr(str(self.root/'config.yaml'))).replace(
-            'EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr('qwen3-8-27b-int4')).replace('WINDOW','131072')
+            "'/projects/legacy'",repr(str(self.root/'legacy'))).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr('qwen3-8-27b-int4')).replace('WINDOW','131072')
 
     def execute(self, *, writable=False, ownership=True, gaps=()):
         verdict = run_identity.Verdict(run_identity.OK if ownership else run_identity.RECEIPT_MISMATCH,
@@ -47,8 +50,8 @@ class Preflight(unittest.TestCase):
              patch.object(run_identity,'fixture_gaps',return_value=list(gaps)), \
              patch.object(yamlite,'load_yaml',side_effect=lambda p:self.config if p.name=='config.yaml' else self.decisions), \
              patch('socket.create_connection',return_value=MagicMock()) as connect, \
-             patch('os.access',return_value=writable), \
-             patch('subprocess.check_output',return_value='100\n'), contextlib.redirect_stdout(io.StringIO()):
+             patch('os.statvfs',return_value=types.SimpleNamespace(f_flag=0 if writable else os.ST_RDONLY)), \
+             patch('subprocess.check_output',side_effect=lambda args, **kw: 'a'*40+'\n' if 'rev-parse' in args else '100\n'), contextlib.redirect_stdout(io.StringIO()):
             try:
                 exec(compile(self.code,'preflight-remote','exec'),{})
             finally:
@@ -86,6 +89,26 @@ class Preflight(unittest.TestCase):
     def test_changed_harness_refuses(self):
         (self.root/'code.py').write_text('changed')
         with self.assertRaisesRegex(AssertionError,'harness'): self.execute()
+
+    def test_runtime_source_aliases_refuse(self):
+        ns = {}
+        node = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == 'source_mount_ok')
+        exec(compile(ast.Module(body=[node], type_ignores=[]), 'source-mount', 'exec'), ns)
+        check = ns['source_mount_ok']
+        source = {'name':'data','mountPath':'/projects/legacy','subPath':'legacy-input','readOnly':True}
+        pod = {'spec':{'containers':[{'name':'worker','volumeMounts':[source,{'name':'data','mountPath':'/projects','subPath':'projects'}]}],
+                       'volumes':[{'name':'data','persistentVolumeClaim':{'claimName':'claim'}}]}}
+        self.assertTrue(check(pod, 'worker'))
+        pod['spec']['containers'].append({'name':'sidecar','volumeMounts':[{'name':'alias','mountPath':'/raw'}]})
+        pod['spec']['volumes'].append({'name':'alias','persistentVolumeClaim':{'claimName':'claim'}})
+        self.assertFalse(check(pod, 'worker'))
+        pod['spec']['containers'].pop()
+        source['readOnly'] = False
+        self.assertFalse(check(pod, 'worker'))
+
+    def test_missing_source_receipt_refuses(self):
+        (self.root / 'legacy/.git/rhoai3-source.json').unlink()
+        with self.assertRaisesRegex(AssertionError, 'source clone receipt'): self.execute()
 
 
 if __name__ == '__main__':

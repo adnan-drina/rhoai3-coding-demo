@@ -47,7 +47,7 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 
 Before any agent writes a line, the supported product establishes the facts.
 
-1. Open the workspace from the component page's **Dev Spaces** link. Both projects clone automatically: `legacy/` (the application you're migrating, read-only) next to `modernized/` (your destination repository). The MTA extension pack installs on first start (1–2 minutes).
+1. Open the workspace from the component page's **Dev Spaces** link. The pre-start initializer clones `legacy/` onto a separate volume mounted read-only beside `modernized/` (your writable destination repository). Restarts verify the recorded source commit without updating it. The MTA extension pack installs on first start (1–2 minutes).
 2. Click the **MTA icon** in the left Activity Bar (the Konveyor logo), then **Open Analysis Panel**. Give the panel a moment on first open: the Java language server initializes in the background (the workspace pre-configures Standard mode so the analysis provider registers without opening a `.java` file first).
 3. Click **Start** (top right of the Analysis View). **Server Status** flips from `Stopped` to `Running`, which boots the analyzer engine inside the workspace. Leave **Agent Mode** off; the platform runs MTA analysis-only.
 4. Click **Manage Profiles**. The legacy repository ships its own analysis profiles in `.konveyor/profiles/`; select `quarkus-profile` (Quarkus migration targets).
