@@ -34,6 +34,31 @@ bare `@Query` to silence derivation.
 Fragments: extra methods live on a fragment interface + `*Impl` class, as
 in the guide's "repository fragments" section.
 
+### Fragment delegates and CDI ambiguity
+
+If application code injects the fragment's base interface, both the generated
+Spring Data repository and its `*Impl` delegate can satisfy that injection.
+`jakarta.enterprise.inject.AmbiguousResolutionException` then names the
+consumer, but the repair may be entirely in the new delegate's bean types.
+Keep its Java `implements` relation and every method. Restrict the delegate's
+CDI types with `@jakarta.enterprise.inject.Typed(ExampleFragmentImpl.class)`
+using its own concrete class, so the generated repository remains the bean
+for the shared interface. Preserve its scope and injection dependencies.
+Do not retarget application injections or remove repository inheritance to
+silence this error. Removing `@ApplicationScoped` alone is insufficient:
+the extension also registers fragment implementations as beans.
+
+Grounding: Quarkus 3.27's
+[processor](https://github.com/quarkusio/quarkus/blob/3.27.0/extensions/spring-data-jpa/deployment/src/main/java/io/quarkus/spring/data/deployment/SpringDataJPAProcessor.java)
+registers the delegates; its
+[repository generator](https://github.com/quarkusio/quarkus/blob/3.27.0/extensions/spring-data-jpa/deployment/src/main/java/io/quarkus/spring/data/deployment/generate/SpringDataRepositoryCreator.java)
+injects them by concrete implementation type.
+[CDI 4.1](https://jakarta.ee/specifications/cdi/4.1/jakarta-cdi-spec-4.1#restricting_bean_types)
+defines `@Typed` as a bean-type restriction, not a change to Java inheritance.
+Require the packaged build to prove both unambiguous application injection and
+successful delegate injection on the shipped platform. Runtime persistence
+behavior still needs its source-derived scenarios.
+
 ## Unsupported (do not keep, do not fake)
 
 From the same guide, currently unsupported:

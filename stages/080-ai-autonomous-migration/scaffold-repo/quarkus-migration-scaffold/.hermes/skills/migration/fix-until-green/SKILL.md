@@ -78,6 +78,17 @@ If it persists, block with that evidence. Do not add a separate Maven run,
 background verification, or try shell/path variants without a diagnosed
 cause. Normal compiler errors are measurements, not verifier failures.
 
+For `REFUSE: PACKAGE` or `REFUSE: BOOT`, read the corresponding
+`verification/build/package.json` or `boot.json` and the file its `log` field
+names (`verification/build/package.log` / `boot.log`). Inspect the first failing
+build step and its exception chain; the console summary is not the full error.
+These paths are readable evidence under this skill. If access is actually
+refused, report the attempted read and refusal. Do not start another Maven
+build just to rediscover an error already retained in that log. A new failure
+caused by classes inside your write set remains your repair, even if the
+platform names their external injection point. Fix that candidate before the
+next verification; a changed first error alone does not justify a scope block.
+
 For dependency inspection, reuse `verification/build/.work/classpath.txt`
 when `verification/build/run.json` records a successful classpath phase and
 the POM, Maven configuration and build profiles are unchanged. Filter that
