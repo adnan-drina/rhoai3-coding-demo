@@ -1675,8 +1675,41 @@ def compare(rep: Dict[str, Any], others: List[Tuple[str, Dict[str, Any]]]) -> Di
                               "INCONCLUSIVE": counts.get("INCONCLUSIVE", 0), "absent": len(common) - len(sub)}
         parity[l] = per_mode
     out["parity_on_common_entry_points"] = parity
+    out["differing_pins"] = differing_pins(runs)
     out["headline"] = {l: headline(r) for l, r in runs}
     return out
+
+
+# ADR-019 §4 refuses attributing a difference to one change when others moved
+# too. A comparison therefore names every pinned input that is NOT the same
+# across the runs it compares: the reader owes any headline delta to all of
+# them together. It reports what the reports say -- a pin a report could not
+# read is "unknown", which is neither "same" nor "differs".
+PIN_FIELDS = (("pinned_environment", ("model_provider", "inference", "concurrency", "toolchain", "database", "corpus", "comparators")),
+              ("pinned_inputs", ("golden", "decisions_digest", "unit_formation", "runtime_feedback", "frozen_source_digest",
+                                 "bootstrap_repairs", "created_from_golden")))
+
+
+def differing_pins(runs: List[Tuple[str, Dict[str, Any]]]) -> Dict[str, Any]:
+    differs: Dict[str, Any] = {}
+    unknown: Dict[str, List[str]] = {}
+    for section, fields in PIN_FIELDS:
+        for field in fields:
+            seen: Dict[str, Any] = {}
+            blind: List[str] = []
+            for label, rep in runs:
+                entry = as_dict(as_dict(rep.get(section)).get(field))
+                if not entry:
+                    continue
+                if entry.get("value") is None:
+                    blind.append(label)
+                else:
+                    seen[label] = entry["value"]
+            if blind:
+                unknown.setdefault(field, []).extend(blind)
+            if len(seen) > 1 and len({json.dumps(v, sort_keys=True) for v in seen.values()}) > 1:
+                differs[field] = seen
+    return {"differs": differs, "unknown": {k: sorted(set(v)) for k, v in unknown.items()}}
 
 
 def val(e: Any) -> str:
@@ -1921,6 +1954,17 @@ def render(rep: Dict[str, Any]) -> str:
             else:
                 L.append("- %s: %d common unchanged, %d common changed; extra %s" % (kind, len(e["value"]["common_unchanged"]), len(e["value"]["common_changed"]),
                                                                                     {k: len(v) for k, v in e["value"]["extra"].items()}))
+        dp = as_dict(cmp_.get("differing_pins"))
+        if dp.get("differs"):
+            L.append("- pinned inputs that DIFFER across these runs: %s" % ", ".join(sorted(dp["differs"])))
+            for field, per in sorted(dp["differs"].items()):
+                L.append("  - %s: %s" % (field, json.dumps(per, sort_keys=True)))
+            L.append("  - a difference below is owed to ALL of these together, not to any one of them")
+        elif dp:
+            L.append("- pinned inputs: none of the compared fields differ across these runs")
+        if dp.get("unknown"):
+            L.append("- pinned inputs neither same nor different (a run could not read them): %s"
+                     % ", ".join("%s (%s)" % (k, ", ".join(v)) for k, v in sorted(dp["unknown"].items())))
         for l, hl in cmp_["headline"].items():
             L.append("- %s: %s" % (l, json.dumps(hl, sort_keys=True)))
             L.append("  - parity on the common subset: %s" % json.dumps(cmp_["parity_on_common_entry_points"].get(l), sort_keys=True))

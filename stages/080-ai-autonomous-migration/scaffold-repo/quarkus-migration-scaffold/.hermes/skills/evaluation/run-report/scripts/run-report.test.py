@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import datetime
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -39,6 +40,12 @@ sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
 
 from planner import specimens  # noqa: E402
 from planner.canonical import load_json  # noqa: E402
+
+# Most cases drive the script as a subprocess over a built tree. compare() is a
+# pure function over two finished reports, so it is exercised directly.
+_spec = importlib.util.spec_from_file_location("run_report_module", SCRIPT)
+rr = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(rr)
 
 T0 = 1_800_000_000  # the bootstrap baseline commit time in the fixture history
 START = T0 - 1000   # the destination's first commit: the clock start
@@ -471,6 +478,36 @@ class RunReportTest(unittest.TestCase):
         self.assertEqual(cl["prior_assistance"]["value"], 2)
         self.assertTrue(any(r.startswith("rewind by operator:x") for r in cl["reasons"]))
         self.assertTrue(any(r.startswith("prior assistance: 2 decided bootstrap repair") for r in cl["reasons"]))
+
+    def test_a_comparison_names_the_pinned_inputs_that_differ(self):
+        """ADR-019 section 4: a headline difference is owed to every pinned input
+        that moved. The Operator ran v10 on a different worker model than v9, so
+        the comparison must say so and must not let the delta read as a harness
+        result."""
+        def rep(model, golden, run_id):
+            return {"pinned_inputs": {"pilot_run_id": rr.V(run_id, "x"), "golden": rr.V(golden, "x"),
+                                      "unit_formation": rr.V("v1", "x"), "bootstrap_repairs": rr.U("no receipt")},
+                    "pinned_environment": {"model_provider": rr.V({"cfg#model.default": model}, "x"),
+                                           "toolchain": rr.V({"jdk": "21"}, "x")},
+                    "contract": {"entry_points": rr.V({"ep:a": "d1", "ep:b": "d2"}, "x"),
+                                 "scenarios": rr.V({"sc:1": "s1"}, "x")},
+                    "final_state": {"parity": {"disabled": {"verdicts": {"ep:a": "PASS", "ep:b": "FAIL"}}}},
+                    "classification": {"value": "assisted", "reasons": []},
+                    "timeline": {}, "cost": {}, "loop_work": {"cards": {}, "retries": {}}}
+        out = rr.compare(rep("qwen3-6-27b", "g1", "v9"), [("v10", rep("qwen3-8-27b-int4", "g2", "v10"))])
+        d = out["differing_pins"]
+        self.assertIn("model_provider", d["differs"])
+        self.assertEqual(d["differs"]["model_provider"]["v9"], {"cfg#model.default": "qwen3-6-27b"})
+        self.assertEqual(d["differs"]["model_provider"]["v10"], {"cfg#model.default": "qwen3-8-27b-int4"})
+        self.assertIn("golden", d["differs"])
+        # a pin that is the SAME is not reported as differing, or the caveat means nothing
+        self.assertNotIn("toolchain", d["differs"])
+        self.assertNotIn("unit_formation", d["differs"])
+        # a pin no run could read is neither same nor different
+        self.assertEqual(d["unknown"].get("bootstrap_repairs"), ["v10", "v9"])
+        # and two runs on identical pins produce no caveat at all
+        same = rr.compare(rep("qwen3-6-27b", "g1", "v9"), [("v10", rep("qwen3-6-27b", "g1", "v10"))])
+        self.assertEqual(same["differing_pins"]["differs"], {})
 
     def test_classifications(self):
         ids = Ids("b")
