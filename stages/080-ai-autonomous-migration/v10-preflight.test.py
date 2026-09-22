@@ -102,6 +102,8 @@ class Preflight(unittest.TestCase):
         pod['spec']['containers'].append({'name':'sidecar','volumeMounts':[{'name':'alias','mountPath':'/raw'}]})
         pod['spec']['volumes'].append({'name':'alias','persistentVolumeClaim':{'claimName':'claim'}})
         self.assertFalse(check(pod, 'worker'))
+        pod['spec']['containers'][-1]['volumeMounts'][0]['subPath'] = 'legacy-input/src'
+        self.assertFalse(check(pod, 'worker'))
         pod['spec']['containers'].pop()
         source['readOnly'] = False
         self.assertFalse(check(pod, 'worker'))

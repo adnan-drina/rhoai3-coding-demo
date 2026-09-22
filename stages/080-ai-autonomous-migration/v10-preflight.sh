@@ -47,7 +47,7 @@ def source_mount_ok(pod, container_name):
             if claims.get(m['name']) != claim or m.get('readOnly'):
                 continue
             parent = m.get('subPath', '').strip('/')
-            if m.get('subPathExpr') or not parent or source_path == parent or source_path.startswith(parent + '/'):
+            if m.get('subPathExpr') or not parent or source_path == parent or source_path.startswith(parent + '/') or parent.startswith(source_path + '/'):
                 return False
     return True
 
