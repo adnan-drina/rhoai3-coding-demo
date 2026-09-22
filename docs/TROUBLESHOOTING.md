@@ -2076,9 +2076,21 @@ cannot admit the next unit. On v10, `UNIT_OVERSIZE` described seven repository
 fragments owing 16 methods, beyond the old eight-symbol limit; the board was
 idle after the accepted compile-zero commit. Preserve that commit and receipt.
 ADR-024 amends only the complete fragment-set symbol limit to 16. Install the
-tested amendment with its decision record, rebuild/admit and use K4 to mint
-the successor. Do not bypass admission, discard inventory rows or call the
-migration complete. Sets beyond 16 symbols or 20 files/160 sites still refuse.
+tested harness at an idle boundary, then record the decision amendment through
+`operator-step.py --no-mint` with the operator, ADR and reason. Require its
+commit, known remeasurement, ADMITTED result and a clean product tree before
+K4 mints the successor. Do not bypass admission, discard inventory rows or
+call the migration complete. Sets beyond 16 symbols or 20 files/160 sites
+still refuse.
+
+If a worker is rejected for an out-of-scope `decisions.yaml`, check whether an
+Operator left an uncommitted amendment before dispatch. That happened on v10
+packaging attempt `t_42192320`: the installation manifest recorded ADR-024,
+but the accepted product baseline did not. The scope guard correctly reverted
+the amendment with the candidate. Preserve the rejection and inspect the
+current tree before intervening; a clean retry must not be interrupted on the
+assumption that the dirty amendment remains. Record the amendment at the next
+idle boundary, without committing a worker's candidate or resetting attempts.
 
 ### Stage 080: a diagnostic-family repair is pending despite lower compile errors
 

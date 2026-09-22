@@ -10,6 +10,14 @@
   and the package gate remain mandatory. This is a recorded architecture
   amendment during assisted continuation, not a false-count correction or a
   claim that compilation completes migration.
+- The ADR-024 installation left `decisions.yaml` uncommitted before dispatch.
+  Packaging attempt `t_42192320` was therefore correctly REVERTED for an
+  out-of-scope path. This was an architect intervention error, not a worker
+  repair failure. Rejection also restored the decision file; retry
+  `t_d240a3ca` began from a clean decision file. The installation manifest
+  retains the amendment and digests, but its Operator baseline record remains
+  due at an idle boundary. Recovery instructions now require that record and
+  a clean product tree before minting. The rejected attempt remains spent.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks
