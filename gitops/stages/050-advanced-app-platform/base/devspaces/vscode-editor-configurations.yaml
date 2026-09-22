@@ -15,8 +15,8 @@
 # settings are consulted. product.json configurationDefaults are merged
 # into the editor product before server-main.js starts (Dev Spaces 3.28
 # Administration Guide, Configure Visual Studio Code - Open Source).
-# kilo-code.new.model.* must match init-ai-tools.sh (qwen27b / qwen3-6-27b),
-# not Kilo Gateway defaults.
+# kilo-code.new.model.* must match init-ai-tools.sh (qwen38 / qwen3-8-27b-int4),
+# not Kilo Gateway defaults. qwen27b / qwen3-6-27b stays in the picker.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -51,8 +51,8 @@ data:
       },
       "terminal.integrated.inheritEnv": true,
       "security.workspace.trust.enabled": false,
-      "kilo-code.new.model.providerID": "qwen27b",
-      "kilo-code.new.model.modelID": "qwen3-6-27b"
+      "kilo-code.new.model.providerID": "qwen38",
+      "kilo-code.new.model.modelID": "qwen3-8-27b-int4"
     }
   product.json: |
     {
@@ -94,8 +94,8 @@ data:
       },
       "terminal.integrated.inheritEnv": true,
       "security.workspace.trust.enabled": false,
-      "kilo-code.new.model.providerID": "qwen27b",
-      "kilo-code.new.model.modelID": "qwen3-6-27b"
+      "kilo-code.new.model.providerID": "qwen38",
+      "kilo-code.new.model.modelID": "qwen3-8-27b-int4"
     }
   product.json: |
     {
@@ -137,8 +137,8 @@ data:
       },
       "terminal.integrated.inheritEnv": true,
       "security.workspace.trust.enabled": false,
-      "kilo-code.new.model.providerID": "qwen27b",
-      "kilo-code.new.model.modelID": "qwen3-6-27b"
+      "kilo-code.new.model.providerID": "qwen38",
+      "kilo-code.new.model.modelID": "qwen3-8-27b-int4"
     }
   product.json: |
     {

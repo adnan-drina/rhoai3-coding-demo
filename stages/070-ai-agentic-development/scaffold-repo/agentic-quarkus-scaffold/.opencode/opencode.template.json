@@ -1,14 +1,31 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": true,
-  "enabled_providers": ["qwen27b"],
+  "enabled_providers": ["qwen38", "qwen27b"],
   "provider": {
+    "qwen38": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MaaS Qwen3.8 27B INT4 (keys pending — restart workspace once the platform Secret is ready)",
+      "models": {
+        "qwen3-8-27b-int4": {
+          "name": "Qwen3.8 27B INT4 (Local GPU)",
+          "temperature": true,
+          "limit": { "context": 262144, "output": 16384 }
+        }
+      },
+      "options": {
+        "apiKey": "MAAS-SECRET-NOT-READY",
+        "baseURL": "https://maas-gateway-not-configured.invalid/v1",
+        "timeout": 1200000,
+        "chunkTimeout": 120000
+      }
+    },
     "qwen27b": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "MaaS Qwen3.6 27B (keys pending — restart workspace once the platform Secret is ready)",
+      "name": "MaaS Qwen3.6 27B FP8",
       "models": {
         "qwen3-6-27b": {
-          "name": "Qwen3.6 27B (Local GPU)",
+          "name": "Qwen3.6 27B FP8 (Local GPU)",
           "temperature": true,
           "limit": { "context": 131072, "output": 16384 }
         }
@@ -21,8 +38,8 @@
       }
     }
   },
-  "model": "qwen27b/qwen3-6-27b",
-  "small_model": "qwen27b/qwen3-6-27b",
+  "model": "qwen38/qwen3-8-27b-int4",
+  "small_model": "qwen38/qwen3-8-27b-int4",
   "mcp": {
     "quarkus-agent": {
       "type": "local",

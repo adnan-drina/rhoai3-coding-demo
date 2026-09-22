@@ -11,11 +11,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Caller exports win over .env. The file still pins the historical Nemotron
+# name, and a plain source would discard an explicit model or rate override.
+_guidellm_preserve=()
 if [[ -f "$ROOT_DIR/.env" ]]; then
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    [[ "$_line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$_line" =~ ^[[:space:]]*$ ]] && continue
+    _line="${_line#export }"
+    _key="${_line%%=*}"
+    [[ -z "$_key" || "$_key" == *[!A-Za-z0-9_]* ]] && continue
+    if [[ -n "${!_key+x}" ]]; then
+      _guidellm_preserve+=("$_key=${!_key}")
+    fi
+  done < "$ROOT_DIR/.env"
   set -a
   # shellcheck source=/dev/null
   source "$ROOT_DIR/.env"
   set +a
+  if ((${#_guidellm_preserve[@]} > 0)); then
+    for _preserved in "${_guidellm_preserve[@]}"; do
+      export "$_preserved"
+    done
+  fi
 fi
 
 MODEL_NS="${RHOAI_MAAS_NAMESPACE:-models-as-a-service}"

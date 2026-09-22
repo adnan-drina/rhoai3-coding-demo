@@ -32,6 +32,13 @@ spec:
       tokenRateLimits:
         - limit: 20000000
           window: 1h
+    # Same explicit budget as qwen3-6-27b. Limits are per model, so adding
+    # this ref does not reduce the existing Qwen 3.6 quota.
+    - name: qwen3-8-27b-int4
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 20000000
+          window: 1h
   priority: 100
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -59,6 +66,8 @@ spec:
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
   modelRefs:
     - name: qwen3-6-27b
+      namespace: models-as-a-service
+    - name: qwen3-8-27b-int4
       namespace: models-as-a-service
   meteringMetadata:
     organizationId: rhoai3-coding-demo

@@ -4,7 +4,7 @@ Target application: `coolstore-inventory-service` (the stage 060 catalog entry p
 
 ## Module 1: Generate code with intentional smells
 
-**Prompt (Act mode in Kilo Code — stay on the platform default `qwen3-6-27b`):**
+**Prompt (Act mode in Kilo Code — stay on the platform default `qwen3-8-27b-int4`, or switch to `qwen3-6-27b`):**
 
 > Create a new REST endpoint /api/inventory/stats in this Quarkus service that
 > returns inventory statistics as JSON: total item count, a count per location,
@@ -21,7 +21,7 @@ Target application: `coolstore-inventory-service` (the stage 060 catalog entry p
 
 **If the generated code somehow avoids the smells:** the instructions were softened by the model — tighten them ("you MUST print with System.out.println") and regenerate; the spec drives the smells, so no pre-prepared file is needed.
 
-**Model picker beat:** before running the prompt, show the picker: only `qwen3-6-27b` (private MaaS). Kilo Gateway, z.ai, and other built-in catalogs are disabled in this workspace.
+**Model picker beat:** before running the prompt, show the picker: `qwen3-8-27b-int4` is the default and `qwen3-6-27b` is the alternate. Both are private MaaS models. Kilo Gateway, z.ai, and other built-in catalogs are disabled in this workspace.
 
 Verify with hot reload: `curl localhost:8080/api/inventory/stats` answers immediately — Quarkus dev mode picks the new class up without a restart.
 

@@ -510,6 +510,11 @@ wait_for_jsonpath "Stage 040 Application sync" \
   "applications.argoproj.io/040-governed-models-as-a-service" "openshift-gitops" \
   "{.status.sync.status}" "Synced" 90
 
+# Cards are registered before the sync. The services exist only after it,
+# and the registry assigns the ids the Deployments tab matches on.
+echo "── Linking model cards to the inference services ──"
+"$SCRIPT_DIR/register-model-cards.sh"
+
 wait_for_jsonpath "DataScienceCluster readiness" \
   "datasciencecluster/default-dsc" "" "{.status.phase}" "Ready" 90
 

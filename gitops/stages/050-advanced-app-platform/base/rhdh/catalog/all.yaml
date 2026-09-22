@@ -151,10 +151,10 @@ apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
   name: maas-private-code-model-qwen27b
-  title: Qwen3.6 27B Orchestrator Model
+  title: Qwen3.6 27B FP8
   description: |
-    Private MaaS model path selected for source-code work in the governed
-    developer workflow (default model for Kilo Code assisted development).
+    Private MaaS alternate for source-code work. Kilo Code, OpenCode, and
+    Hermes default to Qwen3.8 27B INT4 and keep this model selectable.
   annotations:
     rhoai3.redhat.com/model-id: qwen3-6-27b
     rhoai3.redhat.com/model-path: private-maas
@@ -175,13 +175,13 @@ apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
   name: maas-private-code-model-qwen
-  title: Qwen3.6 Private Code Model
+  title: Qwen3.8 27B INT4
   description: |
-    Private MaaS model path used alongside Qwen3.6 27B for source-code work,
-    enabling side-by-side model comparison in the governed developer workflow
-    (default model for OpenCode agentic development).
+    Private MaaS default for Kilo Code, OpenCode, and Hermes. Qwen3.6 27B
+    FP8 remains in the same picker for a switch. Context is the deployed
+    262144-token window.
   annotations:
-    rhoai3.redhat.com/model-id: qwen3-6-35b-a3b
+    rhoai3.redhat.com/model-id: qwen3-8-27b-int4
     rhoai3.redhat.com/model-path: private-maas
     rhoai3.redhat.com/data-classification: source-code-context
   links:

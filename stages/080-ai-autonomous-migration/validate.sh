@@ -120,11 +120,11 @@ check "live init ConfigMap uses overlay-baked Hermes CLI" \
 check "live init ConfigMap does not curl-install Hermes" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
   "0"
-check "init script pins Hermes main model to qwen3-6-27b" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"default\": \"qwen3-6-27b\"' || echo 0" \
+check "init script pins Hermes main model to qwen3-8-27b-int4" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"default\": \"qwen3-8-27b-int4\"' || echo 0" \
   "1"
-check "init script names the Hermes Qwen provider qwen27b" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen27b\"' || echo 0" \
+check "init script names the Hermes Qwen provider qwen38" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen38\"' || echo 0" \
   "2"
 check "init script sets Hermes api_mode chat_completions" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"api_mode\": \"chat_completions\"' || echo 0" \
@@ -215,7 +215,7 @@ check "live dest-init does not invoke golden assert-agent-pin.py" \
   "0"
 check "live workspace-maas-model-endpoint is the MaaS gateway path (not KServe)" \
   "oc get cm workspace-maas-model-endpoint -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_PATH}'" \
-  "/models-as-a-service/qwen3-6-27b/v1"
+  "/models-as-a-service/qwen3-8-27b-int4/v1"
 check "live workspace-maas-credentials Secret exists" \
   "oc get secret workspace-maas-credentials -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "workspace-maas-credentials"
@@ -327,10 +327,10 @@ check "080 GitOps SOUL smoke uses overlay /opt/hermes-agent (no dest fallback)" 
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'hermes_agent_root=\"/opt/hermes-agent\"' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 GitOps dest-init prefers env MAAS_API_BASE_URL then gateway MAAS_BASE_URL" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-8-27b-int4/v1' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps ConfigMap is the MaaS gateway path (not KServe host)" \
-  "grep -qF 'MAAS_API_PATH: /models-as-a-service/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
+  "grep -qF 'MAAS_API_PATH: /models-as-a-service/qwen3-8-27b-int4/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /models-as-a-service/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMap URL" \
   "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \
@@ -1062,6 +1062,9 @@ check "080 warm-ups run the measured Maven goals online once (go-offline alone l
   "1"
 check "080 run-verify.sh warms the destination up online once, then measures offline, and records the warm-up outcome" \
   "grep -c -E 'dependency:go-offline|\"warmup\": \{\"ran\"' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
+  "1"
+check "080 skipped destination MTA rescan is never treated as a known incident slot" \
+  "! grep -q 'destination-rescan-reused' '${SCAFFOLD_LIB}/planner/worklist.py' && echo 1 || echo 0" \
   "1"
 check "080 work list marks source obligations unknown unless the MTA producer status is ok (an absent scan is not zero incidents)" \
   "grep -c 'incidents_known = mta_status == \"ok\"' '${SCAFFOLD_LIB}/planner/worklist.py' || echo 0" \

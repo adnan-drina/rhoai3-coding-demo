@@ -1025,6 +1025,59 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 060 validation.
 
+## Stage 080 dest postStart fails on dest-profile Portal `auth.json`
+
+**Affected stage:** Stage 080 factory workspace (`app-migration` destfile, `development-tooling`)
+
+**Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with `ERROR: auth.json under dest profile implementer; refuse Portal leftover.` (or `reviewer`).
+
+**Likely cause:** Hermes `profile create` writes `auth.json` into each dest profile home. dest-init used to fail-close on that file after a successful first seat, so a later restart (cluster resume, Dev Spaces Restart) never became Ready. Secrets stay in Managed Scope; the file is Portal onboarding residue, not a dest credential.
+
+**Diagnose:**
+
+```bash
+NS=wksp-ai-developer
+oc get dw spring-petclinic-rest-legacy-v8 -n "$NS" -o jsonpath='{.status.phase}{"\n"}{.status.message}{"\n"}'
+# After the pod is gone, the per-workspace PVC still holds the log:
+# storage-workspace<devworkspace-id> → /projects/.platform/poststart.log
+```
+
+**Recover:**
+
+- Confirm live `devspace-ai-tools-init` **removes** dest-profile `auth.json` / `auth.lock` instead of `return 1`. Sync Stage 050 if the ConfigMap still prints `refuse Portal leftover`.
+- Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
+
+## Stage 080 dest postStart fails on MaaS Secret poll or dest-init mvn SSL
+
+**Affected stage:** Stage 080 factory workspace (`app-migration` destfile, `development-tooling`)
+
+**Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with one of:
+
+- `ERROR: MaaS API key Secret is not ready; dest-init fail-closed.` after `curl: (28)` to `172.30.0.1:443`
+- `ERROR: dest-init mvn test rc=1` with `java.security.NoSuchAlgorithmException` / `SSLContextImpl$DefaultSSLContext` while transferring from Maven Central
+
+**Likely cause:** Two first-start races, not a missing MaaS key.
+
+- `workspace-maas-credentials` already injects `MAAS_API_KEY` and `MAAS_API_BASE_URL`. dest-init still used to poll `maas-devspace-api-keys` through the kube API, and workspace pods often cannot reach it (BACKLOG AdminNetworkPolicy). An empty `MAAS_BASE_URL` then fail-closed.
+- dest-init W1 mvn smoke uses a **fresh** tree under `/tmp/dest-init-mvn-smoke-*`, so a new PVC must download from Maven Central. A PEM `javax.net.ssl.trustStore` (OpenShift service-ca) or `update-ca-trust` rewriting `/etc/pki/java/cacerts` during the first seconds makes SunJSSE fail to construct `DefaultSSLContext`. A later start on the same PVC can succeed once the JKS is stable and `~/.m2` is populated.
+
+**Diagnose:**
+
+```bash
+NS=wksp-ai-developer
+DW=spring-petclinic-rest-legacy-v9
+oc get dw "$DW" -n "$NS" -o jsonpath='{.status.phase}{"\n"}{.status.message}{"\n"}'
+# After the pod is gone, the per-workspace PVC still holds the log:
+# storage-workspace<devworkspaceId> → /projects/.platform/poststart.log
+```
+
+**Recover:**
+
+- Confirm live `devspace-ai-tools-init` derives `MAAS_BASE_URL` from `MAAS_API_BASE_URL` when the kube API poll is empty, points the mvn smoke JVM at the UBI JKS, and treats a python `SystemExit` from that smoke as `ensure_hermes` failure. Do not patch the MaaS hostAlias while postStart is running (DWO treats `FailedPostStartHook` as unrecoverable).
+- Delete any RWO debug pod on `storage-workspace<id>` before starting the workspace.
+- Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
+- Keep Argo CD `050-advanced-app-platform` paused until this ConfigMap is committed and pushed; restoring auto-sync while GitHub still has the refuse/`secret_value`-only copy puts the failing script back.
+
 ## Stage 080 dest postStart fails EX-3 write-set hook missing
 
 **Affected stage:** Stage 080 measurement dest on `harness-v2`
@@ -1213,6 +1266,30 @@ A live comment of the pin on an already-running dest is not dest-init. Next dest
 **Recover:** Durable path is dest-init in `maas-api-key-provisioning.yaml` (providers dict, pairing gate on the **resolved** `model_base`, `.rhoai3-w1-five-pins` receipt). Do not dest-edit Managed Scope on a live seat unless the operator names it. Do not dest-read dest `.env` values.
 
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; Architect `221730ZA`
+
+## M3 worker `REFUSE: LOOP_NO_OPEN_CLUSTER` then rummages `verification/loop/`
+
+**Affected stage:** Stage 080 dest loop card (measured live v9 `t_cc3b6aac`, 2026-09-15, after a workspace bounce)
+
+**Likely cause:** `brief.py` used the work-list **head**. After a bounce the head can be empty (or a different cluster) while `verification/loop/issued.json` still names this card. The worker treated that as "go find the plan" and read issued/steps instead of blocking.
+
+**Diagnose:** Official log (`hermes kanban log <id>` / `$HERMES_HOME/kanban/logs/<id>.log`) contains `REFUSE: LOOP_NO_OPEN_CLUSTER`. `hermes kanban show` still lists the issued cluster id in the card body.
+
+**Recover:** Do **not** dest-complete the card. Golden `brief.py` now binds to `--cluster` (stamped on the card) or to `issued.json` when `$HERMES_KANBAN_TASK` matches, and `LOOP_CLUSTER_NOT_OPEN` / `LOOP_WRONG_CARD` name `kanban_block`. K2 treats `brief.py` `[exit 1]` as a bound gate: re-run brief or `kanban_block`; rummaging `verification/loop/` is refused even though run-verify and advance did not run. Until that golden is installed on dest, the Operator blocks the card. Do not patch a different cluster's write set from this card.
+
+**Related docs:** `paved-road-m3` SKILL; `fix-until-green/scripts/brief.py`
+
+## M1/M2 reviewer audit `[exit 1]` on `--log /projects/modernized/kanban/logs/`
+
+**Affected stage:** Stage 080 dest paved-road reviewer (measured live v9 M1 `t_e84503a8`, M2 `t_77e1fdac`)
+
+**Likely cause:** The SKILL said `--log <official>` and the reviewer passed a workshop path that is not `$HERMES_HOME/kanban/logs/<id>.log`. The audit needs the official file; a missing `--log` is not a reason to invent a path.
+
+**Diagnose:** Official log shows `assert-paved-road-audit.py --log /projects/modernized/kanban/logs/t_….log` with `[exit 1]`, then a later invocation with the task id only and `[exit 0]`.
+
+**Recover:** Reviewer command is `python3 .hermes/skills/paved-road/paved-road-m<n>/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`. Do not pass `--log` unless that file exists. Golden `resolve_log` falls back to `$HERMES_HOME/kanban/logs` when `--log` is missing.
+
+**Related docs:** `paved-road-m1` / `paved-road-m2` SKILL; `.hermes/lib/paved_road.py` `resolve_log`
 
 ## Dest worker "Transient APIConnectionError … one last primary attempt" after minutes of silence (`harness-v3`)
 
@@ -1451,6 +1528,26 @@ oc annotate application 060-mcp-context-integrations -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ./stages/060-mcp-context-integrations/validate.sh
 ```
+
+## Kuadrant operator controller restarts until probes time out
+
+**Affected stage:** Stage 040. New `AuthPolicy` and `TokenRateLimitPolicy` objects are not enforced while `kuadrant-operator-controller-manager` is down. Existing gateway policy that was programmed before the crash stays in place.
+
+**Symptom:** `kuadrant-operator-controller-manager-*` in `openshift-operators` has a high restart count. `oc describe` shows liveness and readiness failures against `http://<pod>:8081/healthz` and `/readyz` with `context deadline exceeded`, not an application panic. The pod's `livenessProbe.timeoutSeconds` is `1`.
+
+**Likely cause:** `rhcl-operator.v1.3.5` ships the manager at `200m` CPU and `300Mi` memory. On this cluster the same process uses about `700m` CPU and `460Mi` while it builds its cluster-scoped cache. The CPU limit throttles the process below what the 1-second probe allows, and the memory limit is below the working set. Red Hat Connectivity Link 1.3 troubleshooting says a high restart count on a Running pod can be a memory constraint, and that AuthPolicy changes are not applied while this controller is down. OpenShift 4.20 documents the supported override as `Subscription` `spec.config.resources`. This demo cannot leave that Subscription installed, because a standing kuadrant Subscription keeps a RHCL 1.4 InstallPlan pending. The Stage 040 provision job writes the same resource override onto the installed CSV instead.
+
+**Recover:**
+
+```bash
+oc patch csv rhcl-operator.v1.3.5 -n openshift-operators --type=json \
+  -p '[{"op":"replace","path":"/spec/install/spec/deployments/0/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"500m","memory":"512Mi"},"limits":{"cpu":"1","memory":"1Gi"}}}]'
+oc rollout status deployment/kuadrant-operator-controller-manager -n openshift-operators
+oc get authpolicy -n models-as-a-service \
+  -o custom-columns=NAME:.metadata.name,ENFORCED:.status.conditions[?(@.type==\"Enforced\")].status
+```
+
+Confirm the new pod stays `1/1` and that an unauthenticated model request returns 401. Do not raise the operator to RHCL 1.4 to get past this.
 
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 

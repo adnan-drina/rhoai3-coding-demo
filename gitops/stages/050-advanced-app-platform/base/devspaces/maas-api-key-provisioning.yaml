@@ -456,14 +456,30 @@ data:
       cat > "${HOME}/.config/kilo/kilo.jsonc" <<KILOEOF
     {
       "\$schema": "https://app.kilo.ai/config.json",
-      "model": "qwen27b/qwen3-6-27b",
-      "enabled_providers": ["qwen27b"],
+      "model": "qwen38/qwen3-8-27b-int4",
+      "enabled_providers": ["qwen38", "qwen27b"],
       "disabled_providers": ["kilo", "zai", "openai", "anthropic", "google", "openrouter", "groq"],
       "hide_prompt_training_models": true,
       "provider": {
+        "qwen38": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "Qwen3.8 27B INT4 (private MaaS)",
+          "options": {
+            "apiKey": "${MAAS_API_KEY_QWEN27B}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-8-27b-int4/v1",
+            "timeout": 1200000,
+            "chunkTimeout": 120000
+          },
+          "models": {
+            "qwen3-8-27b-int4": {
+              "name": "Qwen3.8 27B INT4",
+              "limit": { "context": 262144, "output": 16384 }
+            }
+          }
+        },
         "qwen27b": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "Qwen3.6 27B (private MaaS)",
+          "name": "Qwen3.6 27B FP8 (private MaaS)",
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN27B}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-27b/v1",
@@ -472,7 +488,7 @@ data:
           },
           "models": {
             "qwen3-6-27b": {
-              "name": "Qwen3.6 27B",
+              "name": "Qwen3.6 27B FP8",
               "limit": { "context": 131072, "output": 16384 }
             }
           }
@@ -488,14 +504,30 @@ data:
     }
     KILOEOF
       cp "${HOME}/.config/kilo/kilo.jsonc" "${HOME}/.config/kilo/kilo.json"
-      echo "Wrote Kilo Code config (qwen3-6-27b via MaaS only; built-in providers disabled)."
+      echo "Wrote Kilo Code config (default qwen3-8-27b-int4; qwen3-6-27b remains selectable; built-in providers disabled)."
     }
 
     cleanup_stale_assistants
     if [ "${AI_TOOL}" = "kilo" ]; then write_kilo_rules; fi
 
-    MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
-    MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
+    # DWO envFrom workspace-maas-credentials injects MAAS_API_KEY and
+    # MAAS_API_BASE_URL. Workspace pods often cannot reach the kube API
+    # (BACKLOG AdminNetworkPolicy), so secret_value curl times out even
+    # when those values are already in the environment. Prefer env; derive
+    # the gateway origin from MAAS_API_BASE_URL; only then poll the Secret.
+    if [ -z "${MAAS_BASE_URL:-}" ] && [ -n "${MAAS_API_BASE_URL:-}" ]; then
+      MAAS_BASE_URL="$(printf '%s\n' "${MAAS_API_BASE_URL}" | sed -E 's#(https?://[^/]+).*#\1#')"
+    fi
+    if [ -z "${MAAS_BASE_URL:-}" ]; then
+      MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
+    fi
+    MAAS_API_KEY_QWEN27B="${MAAS_API_KEY_QWEN27B:-}"
+    if [ -z "${MAAS_API_KEY_QWEN27B}" ]; then
+      MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
+    fi
+    if [ -z "${MAAS_API_KEY_QWEN27B}" ] && [ -n "${MAAS_API_KEY:-}" ]; then
+      MAAS_API_KEY_QWEN27B="${MAAS_API_KEY}"
+    fi
     # DWO mount-as env (workspace-maas-credentials) uses Hermes names.
     # Worker base is the MaaS gateway (MAAS_BASE_URL + ConfigMap path).
     if [ -z "${MAAS_API_KEY:-}" ]; then
@@ -511,7 +543,7 @@ data:
     REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
     # AD-008 — Qwen primary; MiniMax (redhat) only via explicit escalation
     # override. Secrets alone must NOT ambiently enable MiniMax (quota control).
-    OPENCODE_ENABLED='["qwen27b"]'
+    OPENCODE_ENABLED='["qwen38", "qwen27b"]'
     OPENCODE_REDHAT_PROVIDER=""
     OPENCODE_ESCALATION_FILE="${PROJECT_DIR}/.rhoai3-model-escalation.json"
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ] \
@@ -537,7 +569,7 @@ data:
           sys.exit(0)
     ESCV
       then
-        OPENCODE_ENABLED='["qwen27b", "redhat"]'
+        OPENCODE_ENABLED='["qwen38", "qwen27b", "redhat"]'
         OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
     ,
         "redhat": {
@@ -878,9 +910,15 @@ data:
           echo "ERROR: ${envf} has assignments; secrets stay Managed Scope." >&2
           return 1
         fi
-        if [ -e "${hermes_home}/profiles/${name}/auth.json" ]; then
-          echo "ERROR: auth.json under dest profile ${name}; refuse Portal leftover." >&2
-          return 1
+        # Hermes profile create writes auth.json into the profile home.
+        # Same Portal residue as HERMES_HOME/auth.json — wipe, do not
+        # refuse: hard-refuse stuck v8 on restart after a successful first
+        # seat (auth.json dated from profile create).
+        if [ -e "${hermes_home}/profiles/${name}/auth.json" ] \
+          || [ -e "${hermes_home}/profiles/${name}/auth.lock" ]; then
+          echo "WARN: removing dest profile ${name} auth.json/auth.lock — Portal leftover incompatible with Managed Scope."
+          rm -f "${hermes_home}/profiles/${name}/auth.json" \
+            "${hermes_home}/profiles/${name}/auth.lock"
         fi
         # A profile is its own Hermes home —
         # <base>/profiles/<name>/SOUL.md is that home's SOUL.md.
@@ -1058,7 +1096,7 @@ data:
       # (no symlink loop). Secrets stay in managed .env — never under
       # HERMES_HOME. Model wiring follows official configuring-models:
       # named providers: dict (not legacy custom_providers), 4-key model:
-      # mapping with api_mode, discover_models: false. Primary: qwen3-6-27b
+      # mapping with api_mode, discover_models: false. Primary: qwen3-8-27b-int4
       # (131072). MiniMax is AD-008 exception-only, never fallback_providers.
       # Overlay venv writes Managed Scope YAML. Do not fall back to a
       # curl-install tree (Architect 185531ZA).
@@ -1093,10 +1131,13 @@ data:
       # auth.json = Portal onboarding path; incompatible with Managed Scope.
       # Lead:pin-model-binding-managed-scope — wipe residue so Managed Scope
       # can enforce; hard-refuse left workspaces stuck on Portal leftover.
-      for _auth in "${hermes_home}/auth.json" "${HOME}/.hermes/auth.json"; do
+      for _auth in \
+        "${hermes_home}/auth.json" \
+        "${HOME}/.hermes/auth.json" \
+        "${hermes_home}/profiles/"*/auth.json; do
         if [ -e "${_auth}" ]; then
           echo "WARN: removing ${_auth} — Portal onboarding incompatible with Managed Scope (AD-H §7)."
-          rm -f "${_auth}"
+          rm -f "${_auth}" "${_auth%.json}.lock" 2>/dev/null || true
         fi
       done
 
@@ -1136,8 +1177,8 @@ data:
       # (asserted — Operator E-20260813T210050Z / hermes-configuration display.streaming).
       # Dashboard: public 0.0.0.0:9119 bind + che-gateway secure endpoint
       # (Operator 2026-08-21). Auth is Managed Scope dashboard.basic_auth.
-      "${venv_py}" - <<'HERMESEOF'
-    import os, shutil, subprocess, tempfile, yaml
+      if ! "${venv_py}" - <<'HERMESEOF'
+    import os, re, shutil, subprocess, tempfile, time, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
@@ -1145,7 +1186,7 @@ data:
     # (DWO workspace-maas-credentials) is source of truth when set;
     # otherwise MAAS_BASE_URL + the ConfigMap path (Architect 161809ZA).
     _gw = (os.environ.get("MAAS_BASE_URL") or "").strip().rstrip("/")
-    _path = "/models-as-a-service/qwen3-6-27b/v1"
+    _path = "/models-as-a-service/qwen3-8-27b-int4/v1"
     model_base = (
         (os.environ.get("MAAS_API_BASE_URL") or "").strip()
         or ((_gw + _path) if _gw else "")
@@ -1167,25 +1208,30 @@ data:
     cfg = {
         # Official 4-key model: mapping (configuring-models). Secrets are
         # NOT on this block — they live in managed .env and providers.*.api_key
-        # via ${env:NAME} SecretRef. base_url stays empty; providers.qwen27b.api
+        # via ${env:NAME} SecretRef. base_url stays empty; providers.qwen38.api
         # is the endpoint (dashboard clears model.base_url on named providers).
         "model": {
-            "provider": "qwen27b",
-            "default": "qwen3-6-27b",
+            "provider": "qwen38",
+            "default": "qwen3-8-27b-int4",
             "base_url": "",
             "api_mode": "chat_completions",
-            # Declared BELOW the served window (vLLM --max-model-len 131072):
-            # Hermes budgets the prompt as context_length - max_tokens with an
-            # input estimate that undercounts the server tokenizer, so a
-            # declared 131072 let a worker send 122881 + 8192 > 131072 and the
-            # call failed as a silent 900s stall x3 (v9 t_a755c0a1,
-            # 2026-09-17). 110000 keeps prompt + output inside the window
-            # with ~11% estimator error. Hermes unset max_tokens defaults to
-            # half the context (Deputy E-20260809T180800Z), hence max_tokens.
-            "context_length": 110000,
+            # Declared BELOW the served window. Hermes budgets the prompt as
+            # context_length - max_tokens and its input estimate undercounts
+            # the server tokenizer (v9 t_a755c0a1: 122881 + 8192 > 131072).
+            # Qwen 3.8 is served at 262144; 220000 keeps the same reserve as
+            # the old 110000/131072 budget. This top-level value overrides the
+            # per-model setting, so switching the main slot to qwen3-6-27b
+            # also requires context_length 110000. qwen27b stays configured
+            # for that switch. Hermes unset max_tokens defaults to half the
+            # context (Deputy E-20260809T180800Z), hence max_tokens.
+            "context_length": 220000,
             "max_tokens": 8192,
         },
         "model_aliases": {
+            "qwen38": {
+                "model": "qwen3-8-27b-int4",
+                "provider": "qwen38",
+            },
             "qwen27b": {
                 "model": "qwen3-6-27b",
                 "provider": "qwen27b",
@@ -1324,7 +1370,7 @@ data:
             # Envoy flag DC downstream_remote_disconnect; a 343s silent
             # non-streaming request through the same gateway completed).
             "custom": {"request_timeout_seconds": 900, "stale_timeout_seconds": 900},
-            "qwen27b": {
+            "qwen38": {
                 # v7 item 7 (measured 2026-09-10 on pilot v6): the served Qwen3
                 # honours the chat template's enable_thinking switch. With
                 # thinking on, a one-line question cost 600 reasoning tokens /
@@ -1338,9 +1384,9 @@ data:
                 "api_key": "${env:MAAS_API_KEY}",
                 "discover_models": False,
                 "models": {
-                    "qwen3-6-27b": {
-                        # below the served 131072; see model.context_length
-                        "context_length": 110000,
+                    "qwen3-8-27b-int4": {
+                        # below the served 262144; see model.context_length
+                        "context_length": 220000,
                         "stale_timeout_seconds": 900,
                         # Request + stream-read timeout for this model. Hermes
                         # defaults the stream read timeout to 120s for non-local
@@ -1349,6 +1395,21 @@ data:
                         # tool call sends no bytes for ~4K tokens at ~18 tok/s
                         # (> 120s) and Hermes raises APITimeoutError and retries
                         # (measured live 2026-09-09, pilot v5 M3 t_3efca989).
+                        "timeout_seconds": 900,
+                        "max_tokens": 8192,
+                    },
+                },
+            },
+            "qwen27b": {
+                "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+                "api": "${env:MAAS_API_BASE_URL_QWEN36}",
+                "api_key": "${env:MAAS_API_KEY}",
+                "discover_models": False,
+                "models": {
+                    "qwen3-6-27b": {
+                        # below the served 131072
+                        "context_length": 110000,
+                        "stale_timeout_seconds": 900,
                         "timeout_seconds": 900,
                         "max_tokens": 8192,
                     },
@@ -1608,16 +1669,80 @@ data:
             )
         mvn_argv = ["mvn", "-q", "-f", pom, "test"]
         print("dest-init mvn test argv: " + " ".join(mvn_argv))
-        mvn_run = subprocess.run(
-            mvn_argv,
-            cwd=mvn_root,
-            capture_output=True,
-            text=True,
-            timeout=180,
+        mvn_env = os.environ.copy()
+
+        def _strip_truststore(val):
+            return re.sub(
+                r"(?:^|\s)-Djavax\.net\.ssl\.trustStore(?:Type|Password)?=\S+",
+                "",
+                val or "",
+            ).strip()
+
+        # OpenShift/UDI may inject JAVA_TOOL_OPTIONS with
+        # -Djavax.net.ssl.trustStore=.../service-ca.crt (PEM). SunJSSE
+        # DefaultSSLContext cannot load PEM as a trustStore, so a fresh
+        # ~/.m2 download from Maven Central dies with
+        # NoSuchAlgorithmException. Also: update-ca-trust can rewrite
+        # /etc/pki/java/cacerts during the first seconds of the container.
+        mvn_env["JAVA_TOOL_OPTIONS"] = _strip_truststore(
+            mvn_env.get("JAVA_TOOL_OPTIONS", "")
         )
-        print("dest-init mvn test rc=%s" % mvn_run.returncode)
-        if mvn_run.returncode != 0:
+        mvn_env["MAVEN_OPTS"] = _strip_truststore(mvn_env.get("MAVEN_OPTS", ""))
+        trust_store = ""
+        java_home = (os.environ.get("JAVA_HOME") or "").strip()
+        candidates = []
+        if java_home:
+            candidates.append(os.path.join(java_home, "lib/security/cacerts"))
+        candidates.extend(
+            (
+                "/etc/pki/java/cacerts",
+                "/etc/pki/ca-trust/extracted/java/cacerts",
+            )
+        )
+        for cand in candidates:
+            if cand and os.path.isfile(cand) and os.path.getsize(cand) > 0:
+                trust_store = cand
+                break
+        if trust_store:
+            jks = (
+                "-Djavax.net.ssl.trustStore="
+                + trust_store
+                + " -Djavax.net.ssl.trustStoreType=JKS"
+            )
+            mvn_env["JAVA_TOOL_OPTIONS"] = (
+                (mvn_env.get("JAVA_TOOL_OPTIONS", "") + " " + jks).strip()
+            )
+            mvn_env["MAVEN_OPTS"] = (
+                (mvn_env.get("MAVEN_OPTS", "") + " " + jks).strip()
+            )
+        mvn_run = None
+        blob = ""
+        for attempt in range(1, 4):
+            mvn_run = subprocess.run(
+                mvn_argv,
+                cwd=mvn_root,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                env=mvn_env,
+            )
+            print(
+                "dest-init mvn test rc=%s attempt=%s"
+                % (mvn_run.returncode, attempt)
+            )
+            if mvn_run.returncode == 0:
+                break
             blob = (mvn_run.stdout or "") + (mvn_run.stderr or "")
+            if (
+                "NoSuchAlgorithmException" in blob
+                or "DefaultSSLContext" in blob
+            ) and attempt < 3:
+                print(
+                    "WARN: dest-init mvn SSL flake attempt %s; retry"
+                    % attempt
+                )
+                time.sleep(3)
+                continue
             raise SystemExit(
                 "ERROR: dest-init mvn test rc=%s: %s"
                 % (mvn_run.returncode, blob[-800:])
@@ -1629,12 +1754,12 @@ data:
     # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
     pin = yaml.safe_load(open(cfg_path))
     m = pin.get("model") or {}
-    if m.get("default") != "qwen3-6-27b":
+    if m.get("default") != "qwen3-8-27b-int4":
         raise SystemExit(
             f"ERROR: model pin failed after Managed Scope write "
             f"(default={m.get('default')!r})"
         )
-    if m.get("provider") != "qwen27b":
+    if m.get("provider") != "qwen38":
         raise SystemExit(
             f"ERROR: model.provider pin failed (provider={m.get('provider')!r})"
         )
@@ -1646,7 +1771,12 @@ data:
         raise SystemExit(
             "ERROR: AD-008 forbids fallback_providers (silent MiniMax/OpenRouter)"
         )
-    prov = (pin.get("providers") or {}).get("qwen27b") or {}
+    prov = (pin.get("providers") or {}).get("qwen38") or {}
+    alt = (pin.get("providers") or {}).get("qwen27b") or {}
+    if "qwen3-6-27b" not in (alt.get("models") or {}):
+        raise SystemExit("ERROR: providers.qwen27b must keep qwen3-6-27b selectable")
+    if alt.get("discover_models") is not False:
+        raise SystemExit("ERROR: providers.qwen27b.discover_models must be false")
     # URL and CA are a matched pair. OCP service serving certs are valid only
     # for <service>.<ns>.svc and internal communications, so the service CA can
     # only verify a .svc endpoint; the .apps ingress route is signed by a public
@@ -1662,7 +1792,7 @@ data:
     _svc_endpoint = _host.split(":")[0].endswith(".svc")
     if _svc_endpoint and prov.get("ssl_ca_cert") != service_ca:
         raise SystemExit(
-            "ERROR: .svc endpoint requires providers.qwen27b.ssl_ca_cert=service-CA"
+            "ERROR: .svc endpoint requires providers.qwen38.ssl_ca_cert=service-CA"
         )
     if not _svc_endpoint and prov.get("ssl_ca_cert"):
         raise SystemExit(
@@ -1671,7 +1801,7 @@ data:
             "platform-merged CA bundle. Never ssl_verify: false."
         )
     if prov.get("discover_models") is not False:
-        raise SystemExit("ERROR: providers.qwen27b.discover_models must be false")
+        raise SystemExit("ERROR: providers.qwen38.discover_models must be false")
     minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
     has_minimax = "minimax" in (pin.get("providers") or {})
     if minimax_on and not has_minimax:
@@ -1710,15 +1840,16 @@ data:
             "ERROR: security.tirith_enabled must be false (Operator 122315ZO)"
         )
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
-        fh.write("default=qwen3-6-27b\n")
-        fh.write("provider=qwen27b\n")
+        fh.write("default=qwen3-8-27b-int4\n")
+        fh.write("provider=qwen38\n")
+        fh.write("alternate=qwen3-6-27b\n")
         fh.write("api_mode=chat_completions\n")
-        fh.write("base=maas-gateway-qwen27b\n")
+        fh.write("base=maas-gateway-qwen38\n")
         fh.write("ad=AD-008\n")
         fh.write(
             "minimax=escalation-override\n" if minimax_on else "minimax=disabled\n"
         )
-    pin_ca = ((pin.get("providers") or {}).get("qwen27b") or {}).get(
+    pin_ca = ((pin.get("providers") or {}).get("qwen38") or {}).get(
         "ssl_ca_cert"
     ) or "<unset: platform-merged bundle>"
     with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
@@ -1736,10 +1867,14 @@ data:
         )
     print(
         "Hermes Managed Scope: wrote "
-        f"{cfg_path} + .env (W1 five pins + AD-008 qwen3-6-27b, "
+        f"{cfg_path} + .env (W1 five pins + AD-008 qwen3-8-27b-int4, "
         f"minimax={'on' if minimax_on else 'off'})."
     )
     HERMESEOF
+      then
+        echo "ERROR: dest-init Managed Scope write or mvn smoke failed." >&2
+        return 1
+      fi
 
       # v24 spawn hydrate: managed wrapper first on PATH so dispatcher
       # `hermes` snapshots write-set cache into env. Not a trust boundary.
@@ -1839,7 +1974,7 @@ data:
       if ! ensure_dest_worker_profiles \
         "${hermes_bin}" "${venv_py}" "${hermes_home}" "${managed_dir}" "${PROJECT_DIR}"; then
         echo "ERROR: dest worker profile seating failed (231808Z)." >&2
-        return
+        return 1
       fi
       # Runtime workers are hermes -p <name> with HERMES_HOME at the base.
       # profile show Path: is the mechanism; load_soul_md at that path is
@@ -1925,7 +2060,7 @@ data:
       fi
       if [ -e "${HOME}/.hermes/config.yaml" ] || [ -e "${hermes_home}/config.yaml" ]; then
         echo "ERROR: PVC Hermes config overlay still present after pin wipe — refuse drift path." >&2
-        return
+        return 1
       fi
       # W2: hermes hooks doctor after seed (official: script edits trusted by
       # command string — doctor catches mtime/allowlist drift). Overlay bake
@@ -1933,7 +2068,7 @@ data:
       HERMES_HOME="${hermes_home}" HERMES_MANAGED_DIR="${managed_dir}" \
         HERMES_ACCEPT_HOOKS=1 "${hermes_bin}" hooks doctor >/dev/null 2>&1 \
         || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
-      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
+      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-8-27b-int4; PVC overlays absent."
 
       # Dashboard UI: dest-init does not npm-build. Overlay bake owns
       # HERMES_WEB_DIST (/usr/local/share/hermes/web_dist). Launcher is
@@ -2116,12 +2251,28 @@ data:
       "autoupdate": true,
       "enabled_providers": ${OPENCODE_ENABLED},
       "provider": {
+        "qwen38": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MaaS Qwen3.8 27B INT4",
+          "models": {
+            "qwen3-8-27b-int4": {
+              "name": "Qwen3.8 27B INT4 (Local GPU)",
+              "limit": { "context": 262144, "output": 16384 }
+            }
+          },
+          "options": {
+            "apiKey": "${MAAS_API_KEY_QWEN27B}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-8-27b-int4/v1",
+            "timeout": 1200000,
+            "chunkTimeout": 120000
+          }
+        },
         "qwen27b": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS Qwen3.6 27B",
+          "name": "MaaS Qwen3.6 27B FP8",
           "models": {
             "qwen3-6-27b": {
-              "name": "Qwen3.6 27B (Local GPU)",
+              "name": "Qwen3.6 27B FP8 (Local GPU)",
               "limit": { "context": 131072, "output": 16384 }
             }
           },
@@ -2133,8 +2284,8 @@ data:
           }
         }${OPENCODE_REDHAT_PROVIDER}
       },
-      "model": "qwen27b/qwen3-6-27b",
-      "small_model": "qwen27b/qwen3-6-27b",
+      "model": "qwen38/qwen3-8-27b-int4",
+      "small_model": "qwen38/qwen3-8-27b-int4",
       "mcp": {
         "openshift": {
           "type": "remote",
@@ -2180,10 +2331,10 @@ data:
               sys.exit(1)
           model = str(d.get("model") or "")
           enabled = d.get("enabled_providers") or []
-          if model != "qwen27b/qwen3-6-27b":
+          if model != "qwen38/qwen3-8-27b-int4":
               print(f"ERROR: AD-008/CS-1 OpenCode pin failed (model={model!r})", file=sys.stderr)
               sys.exit(1)
-          if "qwen27b" not in enabled:
+          if "qwen38" not in enabled or "qwen27b" not in enabled:
               print(f"ERROR: AD-008/CS-1 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
               sys.exit(1)
           stamp_dir = os.environ["PROJECT_DIR"]
@@ -2199,7 +2350,7 @@ data:
           else:
               os.makedirs(os.path.dirname(legacy_stamp), exist_ok=True)
               with open(legacy_stamp, "w") as fh:
-                  fh.write("model=qwen27b/qwen3-6-27b\n")
+                  fh.write("model=qwen38/qwen3-8-27b-int4\n")
                   fh.write(f"enabled_providers={json.dumps(enabled)}\n")
                   fh.write("ad=AD-008\n")
                   fh.write("cs1=legacy-fallback-no-etc-mount\n")
@@ -2395,7 +2546,7 @@ spec:
               write_model_key() {
                 local suffix="$1"
                 local model="$2"
-                local name="devspace-ai-developer-${model}"
+                local name="${3:-devspace-ai-developer-${model}}"
                 local key id expires_at current_key current_id current_subscription
 
                 current_key="$(secret_value "MAAS_API_KEY_${suffix}")"
@@ -2468,6 +2619,9 @@ spec:
               } > "${SECRET_FILE}"
 
               write_model_key "QWEN27B" "qwen3-6-27b"
+              # One key for both Qwen models. Access comes from the
+              # devspaces-coding-models subscription, not from the key name.
+              write_model_key "DEVSPACE" "both Qwen models" "devspace-ai-developer"
 
               oc create secret generic "${SECRET_NAME}" \
                 -n "${SECRET_NAMESPACE}" \
@@ -2480,13 +2634,17 @@ spec:
               # Server-side apply avoids last-applied-configuration embedding
               # the key. Do not bounce Running DevWorkspace pods.
               MAAS_API_PATH="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_PATH}' 2>/dev/null || true)"
+              MAAS_API_PATH_QWEN36="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_PATH_QWEN36}' 2>/dev/null || true)"
               if [ -z "${MAAS_API_PATH}" ]; then
-                MAAS_API_PATH="/models-as-a-service/qwen3-6-27b/v1"
+                MAAS_API_PATH="/models-as-a-service/qwen3-8-27b-int4/v1"
               fi
-              python3 - "${SECRET_FILE}" "${MAAS_BASE_URL}" "${MAAS_API_PATH}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
+              if [ -z "${MAAS_API_PATH_QWEN36}" ]; then
+                MAAS_API_PATH_QWEN36="/models-as-a-service/qwen3-6-27b/v1"
+              fi
+              python3 - "${SECRET_FILE}" "${MAAS_BASE_URL}" "${MAAS_API_PATH}" "${MAAS_API_PATH_QWEN36}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
               import json
               import sys
-              path, base, api_path, ns = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+              path, base, api_path, alt_path, ns = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
               key = ""
               with open(path, encoding="utf-8") as fh:
                   for line in fh:
@@ -2497,8 +2655,9 @@ spec:
                   raise SystemExit("ERROR: MAAS_API_KEY_QWEN27B missing; cannot derive workspace-maas-credentials")
               if not (base or "").strip():
                   raise SystemExit("ERROR: MAAS_BASE_URL missing; cannot derive workspace-maas-credentials")
-              rel = api_path if api_path.startswith("/") else "/" + api_path
-              url = base.rstrip("/") + rel
-              json.dump({"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "workspace-maas-credentials", "namespace": ns, "labels": {"controller.devfile.io/mount-to-devworkspace": "true", "controller.devfile.io/watch-secret": "true", "app.kubernetes.io/part-of": "maas", "app.kubernetes.io/name": "workspace-maas-credentials", "app.kubernetes.io/component": "credentials", "demo.rhoai.io/stage": "050"}, "annotations": {"controller.devfile.io/mount-as": "env"}}, "type": "Opaque", "stringData": {"MAAS_API_KEY": key, "MAAS_API_BASE_URL": url}}, sys.stdout)
+              def join_url(suffix):
+                  rel = suffix if suffix.startswith("/") else "/" + suffix
+                  return base.rstrip("/") + rel
+              json.dump({"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "workspace-maas-credentials", "namespace": ns, "labels": {"controller.devfile.io/mount-to-devworkspace": "true", "controller.devfile.io/watch-secret": "true", "app.kubernetes.io/part-of": "maas", "app.kubernetes.io/name": "workspace-maas-credentials", "app.kubernetes.io/component": "credentials", "demo.rhoai.io/stage": "050"}, "annotations": {"controller.devfile.io/mount-as": "env"}}, "type": "Opaque", "stringData": {"MAAS_API_KEY": key, "MAAS_API_BASE_URL": join_url(api_path), "MAAS_API_BASE_URL_QWEN36": join_url(alt_path), "MAAS_MODEL_NAME": "qwen3-8-27b-int4"}}, sys.stdout)
               DERIVEEOF
               echo "workspace-maas-credentials derived (MaaS gateway base from MAAS_BASE_URL)"

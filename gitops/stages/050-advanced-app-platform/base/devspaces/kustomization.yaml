@@ -28,8 +28,6 @@ resources:
   # Retire both with the shared instance once the v9 run closes (see
   # tmp/080-operator/PER-RUN-RESOURCES.md); per-run resources are rendered by
   # pipelines/build/task-provision-migration-run.yaml.
-  - migration-parity-database.yaml
-  - petclinic-parity-credentials.yaml
   - vscode-editor-configurations.yaml
   - workspaces.yaml
   - agentic-workspace.yaml

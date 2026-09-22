@@ -30,6 +30,8 @@ OPENAI_MODEL_RESOURCE="${RHOAI_OPENAI_MODEL_RESOURCE:-gpt-4o-mini}"
 OPENAI_PROVIDER_SECRET="${RHOAI_OPENAI_PROVIDER_SECRET:-openai-provider-api-key}"
 OPENAI_ACCESS_RESOURCE="${RHOAI_OPENAI_ACCESS_RESOURCE:-personal-kube-admin}"
 QWEN27B_MODEL_RESOURCE="${RHOAI_MAAS_QWEN27B_MODEL_NAME:-qwen3-6-27b}"
+QWEN38_MODEL_RESOURCE="${RHOAI_MAAS_QWEN38_MODEL_NAME:-qwen3-8-27b-int4}"
+QWEN38_MODEL_REVISION="7fb3aaca2d21c0db4716572945208db40cef9966"
 DIRECT_QWEN27B_NAME="${RHOAI_QWEN27B_DEPLOYMENT_NAME:-qwen3-6-27b-fp8}"
 PROJECT_NS="${RHOAI_DEMO_PROJECT_NAMESPACE:-demo-sandbox}"
 PLAYGROUND_LSD_NAME="${RHOAI_PLAYGROUND_LSD_NAME:-lsd-genai-playground}"
@@ -927,6 +929,44 @@ else
 fi
 check "MaaSModelRef points to the local Qwen27B LLMInferenceService" "$R"
 
+if resource_exists "llminferenceservices.serving.kserve.io/${QWEN38_MODEL_RESOURCE}" "$MAAS_NS"; then
+  QWEN38_URI=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${QWEN38_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.model.uri}")
+  QWEN38_READY=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${QWEN38_MODEL_RESOURCE}" "$MAAS_NS" "{.status.conditions[?(@.type==\"Ready\")].status}")
+  if [[ "$QWEN38_URI" == "hf://RedHatAI/Qwen3.8-27B-INT4:${QWEN38_MODEL_REVISION}" &&
+    "$QWEN38_READY" == "True" ]]; then
+    R="pass"
+  else
+    R="uri=${QWEN38_URI:-missing},ready=${QWEN38_READY:-missing}"
+  fi
+else
+  R="missing"
+fi
+check "local Qwen3.8 INT4 LLMInferenceService is ready in MaaS namespace" "$R"
+
+QWEN38_MODELREF_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${QWEN38_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.kind}")
+QWEN38_MODELREF_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${QWEN38_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.name}")
+if [[ "$QWEN38_MODELREF_KIND" == "LLMInferenceService" && "$QWEN38_MODELREF_NAME" == "$QWEN38_MODEL_RESOURCE" ]]; then
+  R="pass"
+else
+  R="kind=${QWEN38_MODELREF_KIND:-missing},name=${QWEN38_MODELREF_NAME:-missing}"
+fi
+check "MaaSModelRef points to the local Qwen3.8 INT4 LLMInferenceService" "$R"
+
+registry_deployment_link() {
+  local name="$1"
+  local reg mid ver
+  reg=$(jsonpath "llminferenceservices.serving.kserve.io/${name}" "$MAAS_NS" '{.metadata.labels.modelregistry\.opendatahub\.io/name}')
+  mid=$(jsonpath "llminferenceservices.serving.kserve.io/${name}" "$MAAS_NS" '{.metadata.labels.modelregistry\.opendatahub\.io/registered-model-id}')
+  ver=$(jsonpath "llminferenceservices.serving.kserve.io/${name}" "$MAAS_NS" '{.metadata.labels.modelregistry\.opendatahub\.io/model-version-id}')
+  if [[ "$reg" == "demo-registry" && -n "$mid" && -n "$ver" ]]; then
+    printf 'pass'
+  else
+    printf 'registry=%s,model=%s,version=%s' "${reg:-missing}" "${mid:-missing}" "${ver:-missing}"
+  fi
+}
+check "Qwen27B service is linked to its model-registry card" "$(registry_deployment_link "$QWEN27B_MODEL_RESOURCE")"
+check "Qwen3.8 INT4 service is linked to its model-registry card" "$(registry_deployment_link "$QWEN38_MODEL_RESOURCE")"
+
 for ext_model in gpt-4o-mini:api.openai.com:openai-provider-api-key; do
   IFS=: read -r EXT_NAME EXT_ENDPOINT EXT_SECRET <<< "$ext_model"
   EXT_PROVIDER=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.provider}")
@@ -961,6 +1001,15 @@ else
   R="models=${DS_MODELS:-missing},qwen27b=${DS_QWEN27B_LIMIT:-missing}"
 fi
 check "devspaces-coding-models subscription has the local coding model @20M/1h (qwen3-6-27b, no gpt-4o-mini)" "$R"
+
+DS_QWEN38_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"${QWEN38_MODEL_RESOURCE}\")].tokenRateLimits[0].limit}")
+if contains_word "$DS_MODELS" "$QWEN38_MODEL_RESOURCE" &&
+  [[ "$DS_QWEN38_LIMIT" == "20000000" ]]; then
+  R="pass"
+else
+  R="devspaces=${DS_QWEN38_LIMIT:-missing}"
+fi
+check "Qwen3.8 INT4 has an explicit devspaces quota of 20M/1h" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")

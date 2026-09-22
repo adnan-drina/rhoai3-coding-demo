@@ -21,6 +21,14 @@
 # pending, OLM generates a clean pipelines/rhtas InstallPlan and Stage 050
 # proceeds. Idempotent: re-running finds the CSVs Succeeded and just re-asserts
 # the unsubscribed state.
+#
+# The rhcl-operator.v1.3.5 CSV ships the controller at 200m CPU and 300Mi.
+# That is below the working set measured on this demo (about 700m CPU and
+# 460Mi while reconciling cluster-scoped caches). The liveness probe timeout
+# is 1s, so the throttled process misses /healthz and kubelet restarts it.
+# OpenShift documents the override as Subscription spec.config.resources.
+# This job cannot leave that Subscription in place, so it writes the same
+# override onto the installed CSV after the pin is established.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -53,7 +61,7 @@ rules:
     verbs: ["get", "list", "patch", "delete"]
   - apiGroups: ["operators.coreos.com"]
     resources: ["clusterserviceversions"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -194,3 +202,10 @@ spec:
               done
 
               echo "Kuadrant family pinned and unsubscribed; shared InstallPlan resolution is clean."
+
+              # 5. Raise the RHCL controller above the catalog 200m/300Mi budget.
+              #    OpenShift applies this through Subscription spec.config.resources;
+              #    that Subscription is removed above, so the installed CSV is the
+              #    object OLM reconciles into the Deployment.
+              oc patch csv rhcl-operator.v1.3.5 -n "$NS" --type=json -p '[{"op":"replace","path":"/spec/install/spec/deployments/0/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"500m","memory":"512Mi"},"limits":{"cpu":"1","memory":"1Gi"}}}]'
+              echo "rhcl-operator.v1.3.5 controller resources set to 500m/512Mi requests, 1 CPU/1Gi limits."

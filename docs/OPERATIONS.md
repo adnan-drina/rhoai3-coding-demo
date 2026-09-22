@@ -1105,6 +1105,29 @@ gh api -X PATCH "repos/adnan-drina/coolstore-inventory-service/git/refs/heads/go
 
 Or: `git push origin main:golden --force`.
 
+## Qwen 3.8 INT4 alongside Qwen 3.6
+
+`qwen3-8-27b-int4` is a second governed local model. It is not a Red Hat validated model. The validated-model matrix reviewed on 2026-09-22 has no `RedHatAI/Qwen3.8-27B-INT4` entry and no modelcar. The service runs on the installed RHOAI 3.4 operator vLLM through `hf://RedHatAI/Qwen3.8-27B-INT4:7fb3aaca2d21c0db4716572945208db40cef9966`. Recorded runtime image: `registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:dd65c7ed88a9369b962f1299ed19c6c8819ff0a64595c10e32f1e82ab0750e27` (running image ID `sha256:d2ed07d307845135c089bc7644b64734b9349d517abf746c9aa0aa23ed263da5`, vLLM `0.18.0+rhaiv.14`). The retained context is `--max-model-len=262144`. A 246077-token needle recall passed with a 512-token output reserve. A 128-token cap failed that shape at 222077 tokens. Stage 040's README has the comparison with Qwen 3.6.
+
+The Stage 020 provisioner creates a GPU MachineSet at 2 replicas only when none exists. This cluster's MachineSet `cluster-grnl8-ng7jk-gpu-us-east-2b` already existed at 1 replica, so it was scaled to 2 with `oc scale`. Instance type, disk, labels, and taints were left as they were.
+
+Rollback:
+
+1. Delete `LLMInferenceService/qwen3-8-27b-int4` and `MaaSModelRef/qwen3-8-27b-int4` in `models-as-a-service`.
+2. Remove only the `qwen3-8-27b-int4` entries from the developer `MaaSSubscription` and `MaaSAuthPolicy` objects. Do not change `qwen3-6-27b` quotas. Stages 050-080 client defaults point at `qwen3-8-27b-int4`; revert those defaults in the same rollback.
+3. Before scaling the GPU MachineSet down, list Machines and match `status.nodeRef` to nodes:
+
+```bash
+oc get machine -n openshift-machine-api -l machine.openshift.io/cluster-api-machineset=cluster-grnl8-ng7jk-gpu-us-east-2b \
+  -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeRef.name,TYPE:.spec.providerSpec.value.instanceType
+oc get pod -n models-as-a-service -l app.kubernetes.io/name=qwen3-6-27b,kserve.io/component=workload \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName
+```
+
+Scale to 1 only after the Machine that is not hosting `qwen3-6-27b` is identified. Machine API deletes one Machine to meet the lower replica count; name that Machine in the change record before scaling.
+
+An update of either single-replica model uses RollingUpdate `maxSurge: 25%`, which schedules a second pod first. With both GPUs occupied that pod stays pending. Delete the previous workload pod for the model being updated so its GPU is released. Do not add a third GPU node for a rollout.
+
 ## Cleanup Guidance
 
 The Argo CD Applications intentionally do not include finalizers. Deleting an Application by itself orphans the resources that it created.
@@ -1152,8 +1175,8 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
-| Hermes main / Kanban workers | `qwen3-6-27b` via named provider `qwen27b` (`api_mode: chat_completions`) | AD-008 primary. MaaS gateway; 131K window; output cap 8,192 so prompt+completion fit vLLM `--max-model-len` | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (text-only); gateway path `/models-as-a-service/qwen3-6-27b/v1` derived from `maas-devspace-api-keys.MAAS_BASE_URL`. Managed Scope `providers.qwen27b` with `discover_models: false`. Secrets in managed `.env` as `${env:MAAS_API_KEY}` |
-| OpenCode coding worker | `qwen27b/qwen3-6-27b` | Same Qwen primary; every code edit stays on the governed local model | Same MaaS/KServe path as Hermes main |
+| Hermes main / Kanban workers | `qwen3-8-27b-int4` via named provider `qwen38` (`api_mode: chat_completions`) | AD-008 primary. MaaS gateway; declared context 220,000 under the served 262,144 window; output cap 8,192. Alias `qwen27b` switches to `qwen3-6-27b` and then needs `model.context_length` 110000 | Gateway path `/models-as-a-service/qwen3-8-27b-int4/v1` in `MAAS_API_BASE_URL`. `MAAS_API_BASE_URL_QWEN36` keeps `/models-as-a-service/qwen3-6-27b/v1`. Managed Scope `providers.qwen38` with `discover_models: false` |
+| OpenCode coding worker | `qwen38/qwen3-8-27b-int4` | Same default; `qwen27b/qwen3-6-27b` stays in the picker | Separate MaaS base URL per model, same API key |
 | MiniMax M2 (exception) | Hermes `providers.minimax` / OpenCode `redhat/minimax-m2` | AD-008 exception only — typed escalation file required; **not** the default; **not** in `fallback_providers` | Direct Red Hat LiteMaaS until RHOAI 3.5 restores external-model streaming through the gateway. 196K window |
 
 **How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main. Exception models follow the MiniMax gate. Full recipe: `stages/080-ai-autonomous-migration/README.md` (Applied Hermes model configuration) and AD-008 §11 in `harness-refactoring/architecture/SOLUTION-ARCHITECTURE.md`. Official schema: [Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models).

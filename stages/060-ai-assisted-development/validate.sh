@@ -50,10 +50,10 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration sets Kilo Code default model: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen27b' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen38' && echo present || echo missing" \
         "present"
-    check "Che Code editor configuration defaults Kilo to qwen3-6-27b: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.modelID.: .qwen3-6-27b' && echo present || echo missing" \
+    check "Che Code editor configuration defaults Kilo to qwen3-8-27b-int4: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.modelID.: .qwen3-8-27b-int4' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration disables Workspace Trust so Kilo activates: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
@@ -141,11 +141,14 @@ check "DevWorkspace MaaS key provisioner Job completed" \
 check "DevWorkspace AI tools init ConfigMap exists" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "devspace-ai-tools-init"
-check "Init script defaults Kilo to qwen3-6-27b" \
+check "Init script defaults Kilo to qwen3-8-27b-int4" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen38/qwen3-8-27b-int4' && echo present || echo missing" \
+    "present"
+check "Init script keeps qwen3-6-27b selectable in Kilo" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen27b/qwen3-6-27b' && echo present || echo missing" \
     "present"
-check "Init script allow-lists only the MaaS Qwen provider for Kilo" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'enabled_providers.: \\[\"qwen27b\"\\]' && echo present || echo missing" \
+check "Init script allow-lists the MaaS Qwen providers for Kilo" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'enabled_providers.: \\[\"qwen38\", \"qwen27b\"\\]' && echo present || echo missing" \
     "present"
 check "Init script writes kilo.jsonc (Kilo 7.4 primary config)" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'kilo.jsonc' && echo present || echo missing" \

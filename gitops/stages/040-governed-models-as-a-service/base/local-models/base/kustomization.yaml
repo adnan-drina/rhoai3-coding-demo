@@ -5,5 +5,7 @@ resources:
   - local-queue.yaml
   - qwen27b-llminferenceservice.yaml
   - qwen27b-maas-modelref.yaml
+  - qwen38-27b-int4-llminferenceservice.yaml
+  - qwen38-27b-int4-maas-modelref.yaml
   # The 35B coding worker moved to ../optional/qwen35b-workshop (multi-user
   # workshop capacity overlay); default posture is single-model on one GPU.

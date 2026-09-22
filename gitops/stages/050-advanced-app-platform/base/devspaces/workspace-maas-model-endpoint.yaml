@@ -17,4 +17,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 data:
-  MAAS_API_PATH: /models-as-a-service/qwen3-6-27b/v1
+  # Default local model. Qwen 3.6 stays available as MAAS_API_PATH_QWEN36.
+  MAAS_API_PATH: /models-as-a-service/qwen3-8-27b-int4/v1
+  MAAS_API_PATH_QWEN36: /models-as-a-service/qwen3-6-27b/v1

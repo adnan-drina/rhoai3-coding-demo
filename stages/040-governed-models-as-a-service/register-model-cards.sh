@@ -25,67 +25,56 @@ mr_post() { curl -sk -X POST -H "Authorization: Bearer ${MR_TOKEN}" -H "Content-
 
 prop() { printf '"%s":{"metadataType":"MetadataStringValue","string_value":"%s"}' "$1" "$2"; }
 
-register_qwen() {
-  local name="Qwen3.6-35B-A3B-FP8-dynamic"
-  local existing
-  existing=$(mr_get "/registered_models" | jq -r --arg n "$name" '.items[]? | select(.name == $n) | .id' | head -1)
-  if [[ -n "$existing" ]]; then
-    log_success "Registered model already present: ${name} (id=${existing})"
+# The model registry Deployments tab matches an LLMInferenceService by these
+# labels. Ids are assigned when the card is created, so a fresh registry
+# restamps the service after registration. Argo CD ignores drift on them.
+link_registry_deployment() {
+  local rm_id="$1"
+  local mv_id="$2"
+  local llmis_name="$3"
+  local llmis_ns="${4:-models-as-a-service}"
+  [[ -n "$rm_id" && -n "$mv_id" ]] || { log_error "Cannot link ${llmis_name}: missing registry id"; exit 1; }
+  if ! oc get llminferenceservice "$llmis_name" -n "$llmis_ns" >/dev/null 2>&1; then
+    log_info "LLMInferenceService ${llmis_ns}/${llmis_name} is not present yet; labels will be applied when it exists"
     return 0
   fi
+  oc label llminferenceservice "$llmis_name" -n "$llmis_ns" \
+    "modelregistry.opendatahub.io/name=${REGISTRY_NAME}" \
+    "modelregistry.opendatahub.io/registered-model-id=${rm_id}" \
+    "modelregistry.opendatahub.io/model-version-id=${mv_id}" \
+    --overwrite >/dev/null
+  log_success "Linked ${llmis_name} to ${REGISTRY_NAME} model ${rm_id} version ${mv_id}"
+}
 
-  # Registry schema alignment (matches the Stage 030 Nemotron pattern):
-  # first-class fields for owner/provider/license/tasks; empty-value
-  # customProperties render as dashboard labels; key=value properties carry
-  # the extended model card.
-  local props
-  props=$(printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' \
-    "$(prop qwen '')" \
-    "$(prop code-generation '')" \
-    "$(prop text-generation '')" \
-    "$(prop tool-calling '')" \
-    "$(prop validated '')" \
-    "$(prop validated_by RedHatAI)" \
-    "$(prop source_repo https://huggingface.co/RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic)" \
-    "$(prop architecture MoE-35B-A3B)" \
-    "$(prop quantization FP8-dynamic)" \
-    "$(prop context_window_deployed 32768)" \
-    "$(prop primary_use coding-assistant)" \
-    "$(prop capabilities 'code,reasoning,tool-calling,vision')")
+latest_live_version_id() {
+  local rm_id="$1"
+  local prefer="${2:-}"
+  local id=""
+  if [[ -n "$prefer" ]]; then
+    id=$(mr_get "/registered_models/${rm_id}/versions" | jq -r --arg n "$prefer" '.items[]? | select(.name == $n and (.state // "LIVE") != "ARCHIVED") | .id' | head -1)
+  fi
+  if [[ -z "$id" ]]; then
+    id=$(mr_get "/registered_models/${rm_id}/versions" | jq -r '[.items[]? | select((.state // "LIVE") != "ARCHIVED")] | sort_by(.createTimeSinceEpoch) | last | .id // empty')
+  fi
+  printf '%s' "$id"
+}
 
-  local rm_id
-  rm_id=$(mr_post "/registered_models" '{
-    "name": "'"$name"'",
-    "description": "Qwen3.6 35B A3B (FP8-dynamic) - Red Hat AI validated mixture-of-experts model (35B total, 3B active) for coding, reasoning, and multimodal tasks. Quantized with llm-compressor for single-GPU serving on NVIDIA L40S; deployed with a 32K context window through the private vLLM runtime and published via MaaS as qwen3-6-35b-a3b.",
-    "owner": "rhoai3-coding-demo",
-    "provider": "Alibaba Cloud (Red Hat AI validated)",
-    "license": "apache-2.0",
-    "licenseLink": "https://huggingface.co/RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic/blob/main/LICENSE",
-    "tasks": ["text-generation", "code-generation"],
-    "customProperties": {'"$props"'}
-  }' | jq -r '.id // empty')
-  [[ -n "$rm_id" ]] || { log_error "Failed to create registered model ${name}"; exit 1; }
-  log_success "Created RegisteredModel ${name} (id=${rm_id})"
-
-  local mv_id
-  mv_id=$(mr_post "/model_versions" '{
-    "name": "v3.0",
-    "description": "Deployed as LLMInferenceService qwen3-6-35b-a3b in models-as-a-service",
-    "author": "ai-admin",
-    "registeredModelId": "'"$rm_id"'",
-    "customProperties": {'"$(prop serving_runtime vLLM)"','"$(prop deployed_on 'RHOAI 3.4')"'}
-  }' | jq -r '.id // empty')
-  [[ -n "$mv_id" ]] || { log_error "Failed to create model version"; exit 1; }
-
-  mr_post "/model_versions/${mv_id}/artifacts" '{
-    "name": "v3.0",
-    "description": "OCI modelcar image",
-    "uri": "oci://registry.redhat.io/rhai/modelcar-redhatai-qwen3-6-35b-a3b-fp8-dynamic:3.0",
-    "artifactType": "model-artifact",
-    "modelFormatName": "vLLM",
-    "modelFormatVersion": "1"
-  }' >/dev/null
-  log_success "Qwen3.6 model card registered (version + OCI artifact)"
+archive_qwen35b() {
+  # The 35B coder card is no longer part of the demo registry. The model
+  # registry removes a card from the active catalog by archiving it.
+  local name="Qwen3.6-35B-A3B-FP8-dynamic"
+  local id state
+  id=$(mr_get "/registered_models" | jq -r --arg n "$name" '.items[]? | select(.name == $n) | .id' | head -1)
+  [[ -z "$id" ]] && { log_info "No ${name} card to archive"; return 0; }
+  state=$(mr_get "/registered_models/${id}" | jq -r '.state // empty')
+  [[ "$state" == "ARCHIVED" ]] && { log_success "${name} already archived (id=${id})"; return 0; }
+  local code
+  code=$(curl -sk -o /tmp/qwen35b-archive.json -w '%{http_code}' -X PATCH \
+    -H "Authorization: Bearer ${MR_TOKEN}" -H "Content-Type: application/json" \
+    -d '{"state":"ARCHIVED","description":"Removed from the demo registry on 2026-09-22. The active private models are Qwen3.6-27B-FP8 and Qwen3.8-27B-INT4."}' \
+    "${MR_BASE_URL}/registered_models/${id}")
+  [[ "$code" == "200" ]] || { log_error "Failed to archive ${name} (HTTP ${code})"; cat /tmp/qwen35b-archive.json >&2; exit 1; }
+  log_success "${name} archived (id=${id})"
 }
 
 register_qwen27b() {
@@ -94,6 +83,7 @@ register_qwen27b() {
   existing=$(mr_get "/registered_models" | jq -r --arg n "$name" '.items[]? | select(.name == $n) | .id' | head -1)
   if [[ -n "$existing" ]]; then
     log_success "Registered model already present: ${name} (id=${existing})"
+    link_registry_deployment "$existing" "$(latest_live_version_id "$existing")" qwen3-6-27b
     return 0
   fi
 
@@ -145,6 +135,7 @@ register_qwen27b() {
     "modelFormatVersion": "1"
   }' >/dev/null
   log_success "Qwen3.6 27B model card registered (version + OCI artifact)"
+  link_registry_deployment "$rm_id" "$mv_id" qwen3-6-27b
 }
 
 archive_granite() {
@@ -197,11 +188,93 @@ archive_nemotron() {
   log_success "Nemotron card archived (id=${id})"
 }
 
+ensure_qwen38_version() {
+  local rm_id="$1"
+  local version_name="v1.0"
+  local mv_id code
+  mv_id=$(mr_get "/registered_models/${rm_id}/versions" | jq -r --arg n "$version_name" '.items[]? | select(.name == $n and (.state // "LIVE") != "ARCHIVED") | .id' | head -1)
+  if [[ -z "$mv_id" ]]; then
+    mv_id=$(mr_post "/model_versions" '{
+      "name": "'"$version_name"'",
+      "description": "Deployed as LLMInferenceService qwen3-8-27b-int4 in models-as-a-service. Source: hf://RedHatAI/Qwen3.8-27B-INT4 revision 7fb3aaca2d21c0db4716572945208db40cef9966. No official modelcar is listed in the validated-model matrix.",
+      "author": "ai-admin",
+      "registeredModelId": "'"$rm_id"'",
+      "customProperties": {'"$(prop serving_runtime vLLM)"','"$(prop deployed_on 'RHOAI 3.4')"'}
+    }' | jq -r '.id // empty')
+    [[ -n "$mv_id" ]] || { log_error "Failed to create Qwen 3.8 model version"; exit 1; }
+    mr_post "/model_versions/${mv_id}/artifacts" '{
+      "name": "v1.0",
+      "description": "Hugging Face source pinned to revision 7fb3aaca2d21c0db4716572945208db40cef9966",
+      "uri": "hf://RedHatAI/Qwen3.8-27B-INT4:7fb3aaca2d21c0db4716572945208db40cef9966",
+      "artifactType": "model-artifact",
+      "modelFormatName": "vLLM",
+      "modelFormatVersion": "1"
+    }' >/dev/null
+    log_success "Qwen 3.8 version v1.0 registered (id=${mv_id})"
+  else
+    log_success "Qwen 3.8 version v1.0 already present (id=${mv_id})"
+  fi
+
+  # Version names cannot be edited. Archive the earlier hash-named version
+  # so the catalog's latest version is v1.0.
+  local old_id
+  old_id=$(mr_get "/registered_models/${rm_id}/versions" | jq -r '.items[]? | select(.name == "7fb3aaca2d21" and (.state // "LIVE") != "ARCHIVED") | .id' | head -1)
+  if [[ -n "$old_id" ]]; then
+    code=$(curl -sk -o /tmp/qwen38-archive-version.json -w '%{http_code}' -X PATCH \
+      -H "Authorization: Bearer ${MR_TOKEN}" -H "Content-Type: application/json" \
+      -d '{"state":"ARCHIVED"}' \
+      "${MR_BASE_URL}/model_versions/${old_id}")
+    [[ "$code" == "200" ]] || { log_error "Failed to archive Qwen 3.8 hash version (HTTP ${code})"; cat /tmp/qwen38-archive-version.json >&2; exit 1; }
+    log_success "Archived Qwen 3.8 version 7fb3aaca2d21 (id=${old_id})"
+  fi
+  link_registry_deployment "$rm_id" "$mv_id" qwen3-8-27b-int4
+}
+
+register_qwen38() {
+  local name="Qwen3.8-27B-INT4"
+  local existing
+  existing=$(mr_get "/registered_models" | jq -r --arg n "$name" '.items[]? | select(.name == $n and (.state // "LIVE") != "ARCHIVED") | .id' | head -1)
+  if [[ -n "$existing" ]]; then
+    ensure_qwen38_version "$existing"
+    return 0
+  fi
+
+  local props
+  props=$(printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' \
+    "$(prop qwen '')" \
+    "$(prop tool-calling '')" \
+    "$(prop text-generation '')" \
+    "$(prop code-generation '')" \
+    "$(prop source_repo https://huggingface.co/RedHatAI/Qwen3.8-27B-INT4)" \
+    "$(prop revision 7fb3aaca2d21c0db4716572945208db40cef9966)" \
+    "$(prop architecture Qwen3_5-dense-hybrid-27B)" \
+    "$(prop quantization compressed-tensors-INT4)" \
+    "$(prop context_window_deployed 262144)" \
+    "$(prop primary_use coding-assistant)" \
+    "$(prop support_classification locally-demonstrated)")
+
+  local rm_id
+  rm_id=$(mr_post "/registered_models" '{
+    "name": "'"$name"'",
+    "description": "Qwen3.8 27B (INT4, compressed-tensors) served text-only on one NVIDIA L40S and published via MaaS as qwen3-8-27b-int4. Pinned revision 7fb3aaca2d21c0db4716572945208db40cef9966. This card records locally demonstrated compatibility with the installed RHOAI 3.4 vLLM runtime. It is not a Red Hat validated-model-matrix entry.",
+    "owner": "rhoai3-coding-demo",
+    "provider": "Alibaba Cloud (Red Hat AI quantized)",
+    "license": "apache-2.0",
+    "licenseLink": "https://huggingface.co/RedHatAI/Qwen3.8-27B-INT4/blob/main/LICENSE",
+    "tasks": ["text-generation", "code-generation"],
+    "customProperties": {'"$props"'}
+  }' | jq -r '.id // empty')
+  [[ -n "$rm_id" ]] || { log_error "Failed to create registered model ${name}"; exit 1; }
+  log_success "Created RegisteredModel ${name} (id=${rm_id})"
+  ensure_qwen38_version "$rm_id"
+}
+
 log_step "Registering private-model cards in ${REGISTRY_NAME}"
-register_qwen
+archive_qwen35b
 register_qwen27b
+register_qwen38
 archive_granite
 archive_gemma
 archive_nemotron
 log_info "Registry contents:"
-mr_get "/registered_models" | jq -r '.items[].name'
+mr_get "/registered_models" | jq -r '.items[] | "\(.state // "LIVE") \(.name)"'

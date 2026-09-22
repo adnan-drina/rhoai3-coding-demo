@@ -29,6 +29,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # Models tab title. The model id and endpoint stay metadata.name.
+    openshift.io/display-name: GPT-4o mini
 spec:
   modelRef:
     kind: ExternalModel

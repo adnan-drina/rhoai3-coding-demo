@@ -56,3 +56,15 @@ spec:
       namespace: models-as-a-service
       jsonPointers:
         - /spec/replicas
+        - /metadata/labels/modelregistry.opendatahub.io~1name
+        - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
+        - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
+    - group: serving.kserve.io
+      kind: LLMInferenceService
+      name: qwen3-8-27b-int4
+      namespace: models-as-a-service
+      jsonPointers:
+        - /spec/replicas
+        - /metadata/labels/modelregistry.opendatahub.io~1name
+        - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
+        - /metadata/labels/modelregistry.opendatahub.io~1model-version-id

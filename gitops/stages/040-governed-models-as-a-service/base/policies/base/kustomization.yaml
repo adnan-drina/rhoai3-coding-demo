@@ -4,6 +4,3 @@ kind: Kustomization
 resources:
   - devspaces-coding-models-access.yaml
   - personal-users-access.yaml
-  - developer-hub-models-access.yaml
-  - ai-safety-guardrails-access.yaml
-  - model-evaluation-access.yaml
