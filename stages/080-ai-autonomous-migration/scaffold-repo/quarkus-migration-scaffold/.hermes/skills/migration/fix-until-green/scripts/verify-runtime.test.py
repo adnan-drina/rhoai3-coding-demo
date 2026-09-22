@@ -78,7 +78,7 @@ def _assign(root: Path) -> None:
     global FX_RECEIPT
     sha = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
     FX_RECEIPT = FX_RECEIPT.rsplit('scaffold=', 1)[0] + 'scaffold=' + sha
-    os.environ.update({'DEVWORKSPACE_NAME': 'fx-run', 'MIGRATION_RUN_NAME': 'fx-run', 'PARITY_RUN_RECEIPT': FX_RECEIPT})
+    os.environ.update({'DEVWORKSPACE_NAMESPACE': 'fx-ns', 'DEVWORKSPACE_NAME': 'fx-run', 'MIGRATION_RUN_NAME': 'fx-run', 'PARITY_RUN_RECEIPT': FX_RECEIPT})
 
 
 def _fail(msg: str) -> int:

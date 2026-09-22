@@ -52,9 +52,9 @@ operator-provided DEVWORKSPACE_NAME, not merely the devfile's intended name.
    Keep declared context below the actual served window and retain the provider
    configuration without credential values. A model readiness failure blocks
    launch even if unrelated harness tests pass.
-5. Put the dated `run-budget.json` declaration in the qualified scaffold input
-   before the destination repository is created, so the declaration predates its
-   first commit. Then scaffold `spring-petclinic-rest-legacy-v10` with the Application migration
+5. Verify the dated `run-budget.json` shipped in the qualified scaffold before
+   creating the destination, so the declaration predates its first commit.
+   Then scaffold `spring-petclinic-rest-legacy-v10` with the Application migration
    template and **Auto-start migration disabled**. Provisioning remains automatic.
    Do not manually run bootstrap before M1. The new database/fixture Secrets
    must be present before the workspace consumes them; if it started early,

@@ -210,6 +210,7 @@ def assignment(root: Path, environ: dict | None = None) -> dict:
     if (workspace and legacy and legacy.get("instance") == instance
             and legacy.get("database") and legacy.get("port")
             and legacy.get("engine") == ds.get("db_kind")
+            and env.get("DEVWORKSPACE_NAMESPACE") == _split_instance(instance)[1]
             and not env.get(RECEIPT_ENV) and not env.get(RUN_NAME_ENV)):
         service, namespace = _split_instance(instance)
         return {
@@ -379,9 +380,10 @@ def check(root: Path, environ: dict | None = None) -> Verdict:
                            "migration.yaml assigns (%s). One of the two is another run's; nothing "
                            "connects until they agree" % "; ".join(disagreements), want, parts)
         run_name = env.get(RUN_NAME_ENV, "")
-        if run_name != want["run"] or env.get(WORKSPACE_ENV) != want["run"]:
+        if (run_name != want["run"] or env.get(WORKSPACE_ENV) != want["run"]
+                or env.get("DEVWORKSPACE_NAMESPACE") != want["namespace"]):
             return Verdict(RECEIPT_MISMATCH,
-                           "MIGRATION_RUN_NAME and DEVWORKSPACE_NAME must both name the assigned run",
+                           "workspace name, namespace and MIGRATION_RUN_NAME must match the assignment",
                            want, parts)
 
     same_namespace = bool(receipt.get("namespace")) and receipt.get("namespace") == want["service_namespace"]

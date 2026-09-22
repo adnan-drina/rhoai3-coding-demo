@@ -19,7 +19,7 @@ from planner import run_identity, yamlite
 LOCAL = (HERE / 'v10-preflight.sh').read_text().split("python3 - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
 TREE = ast.parse(LOCAL)
 REMOTE = next(n.value for n in ast.walk(TREE) if isinstance(n, ast.Constant) and isinstance(n.value, str)
-              and n.value.startswith('import hashlib,json,os,sys,subprocess'))
+              and n.value.startswith('def require(condition, message):'))
 
 
 class Preflight(unittest.TestCase):

@@ -99,43 +99,56 @@ for directory in ('.hermes/kernel','.hermes/lib','.hermes/skills','.hermes/plann
         if f.is_file() and '__pycache__' not in f.parts and not f.name.startswith('._'):
             expected[f.relative_to(golden).as_posix()] = digest(f)
 # The remote script prints assertions only, never environment/config values.
-remote = '''import hashlib,json,os,sys,subprocess
+remote = '''def require(condition, message):
+    if not condition:
+        raise AssertionError(message)
+import hashlib, json, os, sys, subprocess
 from pathlib import Path
-root=Path('/projects/modernized'); sys.path.insert(0,str(root/'.hermes/lib'))
+root = Path('/projects/modernized')
+sys.path.insert(0, str(root / '.hermes/lib'))
 from planner import run_identity
 from planner.yamlite import load_yaml
-expected=json.loads(EXPECTED)
-assert all((root/k).is_file() and hashlib.sha256((root/k).read_bytes()).hexdigest()==v for k,v in expected.items()), 'installed harness differs from golden'
-v=run_identity.check(root); assert v.code == run_identity.OK, str(v)
-assert not run_identity.fixture_gaps(root), 'fixture variables missing'
+expected = json.loads(EXPECTED)
+require(all(((root / k).is_file() and hashlib.sha256((root / k).read_bytes()).hexdigest() == v for k, v in expected.items())), 'installed harness differs from golden')
+v = run_identity.check(root)
+require(v.code == run_identity.OK, str(v))
+require(not run_identity.fixture_gaps(root), 'fixture variables missing')
 import socket
-with socket.create_connection((v.observed['host'],v.observed['port']),timeout=5): pass
-issued=root/'verification/loop/issued.json'
-assert not issued.exists() or not json.loads(issued.read_text()).get('task_id'), 'card already issued'
-assert not (root/'evidence/producers/bootstrap.json').exists(), 'preflight requires a fresh destination before bootstrap'
-assert not (root/'src/main/java').exists(), 'product sources present before bootstrap'
-d=load_yaml(root/'decisions.yaml')
-assert d.get('loop',{}).get('unit_formation')=='v1' and d.get('loop',{}).get('runtime_feedback')=='v1', 'loop flags'
-r=d['decided_repairs']; assert hashlib.sha256((root/r['manifest']).read_bytes()).hexdigest()==r['manifest_sha256'], 'repair manifest mismatch'
-config=next((p for p in (Path('/etc/hermes/config.yaml'),Path('/projects/.platform/hermes/config.yaml')) if p.is_file()),None)
-assert config, 'managed Hermes config missing'
-c=load_yaml(config); assert c.get('model',{}).get('default')==MODEL, 'worker model mismatch'
+with socket.create_connection((v.observed['host'], v.observed['port']), timeout=5):
+    pass
+issued = root / 'verification/loop/issued.json'
+require(not issued.exists() or not json.loads(issued.read_text()).get('task_id'), 'card already issued')
+require(not (root / 'evidence/producers/bootstrap.json').exists(), 'preflight requires a fresh destination before bootstrap')
+require(not (root / 'src/main/java').exists(), 'product sources present before bootstrap')
+d = load_yaml(root / 'decisions.yaml')
+require(d.get('loop', {}).get('unit_formation') == 'v1' and d.get('loop', {}).get('runtime_feedback') == 'v1', 'loop flags')
+r = d['decided_repairs']
+require(hashlib.sha256((root / r['manifest']).read_bytes()).hexdigest() == r['manifest_sha256'], 'repair manifest mismatch')
+config = next((p for p in (Path('/etc/hermes/config.yaml'), Path('/projects/.platform/hermes/config.yaml')) if p.is_file()), None)
+require(config, 'managed Hermes config missing')
+c = load_yaml(config)
+require(c.get('model', {}).get('default') == MODEL, 'worker model mismatch')
+
 def leaves(x):
- if isinstance(x,dict):
-  for k,v in x.items():
-   if k=='context_length': yield int(v)
-   elif isinstance(v,(dict,list)): yield from leaves(v)
- elif isinstance(x,list):
-  for v in x: yield from leaves(v)
-windows=list(leaves(c)); assert windows and all(0 < v < WINDOW for v in windows), 'context limit must be below served window'
-assert c.get('terminal',{}).get('timeout',0)>=600, 'terminal timeout'
-assert c.get('compression',{}).get('threshold',0)>=0.8, 'compression threshold'
-assert not os.access('/projects/legacy',os.W_OK), 'legacy checkout is writable; satisfy the source protection prerequisite'
-budget=json.loads((root/'run-budget.json').read_text())
+    if isinstance(x, dict):
+        for k, v in x.items():
+            if k == 'context_length':
+                yield int(v)
+            elif isinstance(v, (dict, list)):
+                yield from leaves(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from leaves(v)
+windows = list(leaves(c))
+require(windows and all((0 < v < WINDOW for v in windows)), 'context limit must be below served window')
+require(c.get('terminal', {}).get('timeout', 0) >= 600, 'terminal timeout')
+require(c.get('compression', {}).get('threshold', 0) >= 0.8, 'compression threshold')
+require(not os.access('/projects/legacy', os.W_OK), 'legacy checkout is writable; satisfy the source protection prerequisite')
+budget = json.loads((root / 'run-budget.json').read_text())
 import datetime
-first=int(subprocess.check_output(['git','-C',str(root),'log','--reverse','--format=%ct'],text=True).splitlines()[0])
-declared=datetime.datetime.fromisoformat(budget['declared_at'].replace('Z','+00:00')).timestamp()
-assert budget.get('max_wall_hours')==24 and declared < first, 'budget must be declared before destination creation'
+first = int(subprocess.check_output(['git', '-C', str(root), 'log', '--reverse', '--format=%ct'], text=True).splitlines()[0])
+declared = datetime.datetime.fromisoformat(budget['declared_at'].replace('Z', '+00:00')).timestamp()
+require(budget.get('max_wall_hours') == 24 and declared < first, 'budget must be declared before destination creation')
 print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
 '''.replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0]))
 subprocess.run(['oc','--request-timeout=60s','exec','-i','-n',ns,pod,'-c',os.environ['CONTAINER'],'--','python3','-'],input=remote,text=True,check=True,timeout=75)

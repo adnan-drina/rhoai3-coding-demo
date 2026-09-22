@@ -18,7 +18,7 @@ A = iso-demo-v10
 B = iso-demo-v10-retry
 ```
 
-Both are legal RHDH template names, and `B` starts with `A`. Use the same approved frozen legacy URL as v10, with autoStartMigration=false. Neither run is migrated; the reset assets come from the decided specimen contract, not an invented fixture.
+Both are legal RHDH template names, and `B` starts with `A`. Use the same approved frozen legacy URL as v10, with autoStartMigration=false. No M3 migration workers run. Before the reset tests, materialize the decided schema/seed through the normal frozen-input bootstrap producers in both disposable workspaces and retain their receipts. Missing reset assets make the reset test INCONCLUSIVE; a printed reset plan is never a substitute.
 
 From the repository root, establish the guard before any live command:
 
@@ -33,9 +33,9 @@ BLD=app-platform-build
 
 Use the full qualified platform/golden commits throughout.
 
-**Recording.** Keep the output of every numbered step. No step prints a
-credential value, and none should be made to: `-o jsonpath` on `.data` keys is
-used only to read NAMES and lengths, never decoded values.
+**Recording.** Keep the output of every numbered step. Print credential key
+names only; encoded Secret values are credentials too. Credential comparisons
+hash the values in-process and emit only the digest.
 
 ---
 
@@ -115,9 +115,9 @@ oc get secret -n "$WS" -l controller.devfile.io/mount-to-devworkspace=true \
   -o custom-columns=NAME:.metadata.name,INCLUDE:'.metadata.annotations.controller\.devfile\.io/mount-to-devworkspace-include'
 ```
 
-**PASS** every automounted secret in the namespace has a non-empty include.
-**FAIL** any has none: it mounts into every workspace, which is the shape the
-whole design replaces.
+**PASS** every parity database or fixture Secret has a non-empty, exact include.
+**FAIL** any such Secret has none: it mounts into every workspace. Other shared
+platform Secrets must be accounted for separately; they are not run credentials.
 
 ---
 
@@ -149,7 +149,7 @@ url = os.environ.get("PETCLINIC_DB_URL", "")
 # host only: never print the whole URL, and never the password
 print("host:", url.split("//",1)[-1].split("/",1)[0].split(":")[0] if url else "(absent)")
 print("receipt run:", dict(p.split("=",1) for p in os.environ.get("PARITY_RUN_RECEIPT","").split(";") if "=" in p).get("run","(absent)"))
-print("workspace:", os.environ.get("MIGRATION_RUN_NAME","(absent)"))
+print("workspace:", os.environ.get("DEVWORKSPACE_NAME","(absent)"))
 PY
 cat /projects/modernized/.hermes/RUN-RESOURCES-STATUS
 ```
@@ -180,9 +180,11 @@ destructive mode:
 cd /projects/modernized
 A_URL="jdbc:postgresql://iso-demo-v10-parity-postgres.wksp-ai-developer.svc:5432/parity"
 for mode in "" "--variant identity-disabled" "--revert-variant identity-disabled"; do
+  rc=0
   PETCLINIC_DB_URL="$A_URL" \
-    bash .hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . $mode
-  echo "rc=$?"
+    bash .hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . $mode || rc=$?
+  echo "rc=$rc"
+  test "$rc" -ne 0
 done
 ```
 
@@ -216,8 +218,11 @@ import re, pathlib
 p = pathlib.Path("migration.yaml"); t = p.read_text()
 p.write_text(re.sub(r"(?ms)^resources:\n(?:[ \t].*\n|\n)*", "", t))
 PY
-bash .hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . ; echo "rc=$?"
+rc=0
+bash .hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . || rc=$?
 cp /tmp/migration.yaml.bak migration.yaml
+echo "rc=$rc"
+test "$rc" -ne 0
 ```
 
 **PASS** non-zero, `RUN_RESOURCES_UNASSIGNED`, including after the destination has already been stamped. **FAIL** it resets anything.
@@ -226,10 +231,13 @@ cp /tmp/migration.yaml.bak migration.yaml
 
 ## Step 5 — resetting, restarting and retiring A leaves B untouched
 
-Record B's state first (row counts and pod identity, no values):
+Set `A_POD` and `B_POD` to the tooling pods identified by the actual workspace
+labels. Record B's database and workspace identity before touching A:
 
 ```bash
 oc get pod -n "$WS" -l app=iso-demo-v10-retry-parity-postgres \
+  -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,START:.status.startTime
+oc get pod "$B_POD" -n "$WS" \
   -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,START:.status.startTime
 ```
 
@@ -247,13 +255,14 @@ CREATE SCHEMA isolation_probe;
 CREATE TABLE isolation_probe.marker (value text NOT NULL);
 INSERT INTO isolation_probe.marker VALUES ('B-must-survive-A');
 SQL
-# pg_dump includes rows AND sequence state; only its digest reaches the log.
+# Include rows and sequence state; strip only pg_dump's random restore-session
+# guard, if present. Those two directives are not database content.
 b_data_digest() {
   oc exec -n "$WS" "$B_DB_POD" -- bash -c '
     export PGPASSWORD="$POSTGRESQL_PASSWORD"
     pg_dump -h 127.0.0.1 -U "$POSTGRESQL_USER" -d "$POSTGRESQL_DATABASE" \
       --no-owner --no-privileges --data-only
-  ' | shasum -a 256 | awk '{print $1}'
+  ' | sed '/^\\restrict /d; /^\\unrestrict /d' | shasum -a 256 | awk '{print $1}'
 }
 B_BEFORE=$(b_data_digest)
 # Hash in-process; do not emit .data or encoded values.
@@ -277,6 +286,8 @@ Re-check B:
 
 ```bash
 oc get pod -n "$WS" -l app=iso-demo-v10-retry-parity-postgres \
+  -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,START:.status.startTime
+oc get pod "$B_POD" -n "$WS" \
   -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,START:.status.startTime
 # Read B without resetting it. Repeat after A's retirement in step 8.
 test "$(b_data_digest)" = "$B_BEFORE"
@@ -455,7 +466,7 @@ do not work around it in the cluster.
   is no timed lock expiry that admits two simultaneous writers. A `retiring`
   receipt is durable intent and refuses provisioning even after lock recovery.
 - Repeat B's data/credential/pod comparison **after A's retirement**, without
-  resetting B. A unchanged plan is insufficient. Retain the marker result and
+  resetting B. An unchanged plan is insufficient. Retain the marker result and
   logical dump digest, not database rows or credential bytes.
 - Change receipt port, workspace, engine and scaffold independently in an
   isolated workspace process. Each must refuse before connecting. Clear
@@ -468,8 +479,8 @@ do not work around it in the cluster.
 - Resolve image references from the Task and compare the receipt and running
   pods. Floating tags fail qualification. The exact workspace name must equal
   its assignment and the operator-provided DEVWORKSPACE_NAME.
-- Preserve tombstones. Do not reuse retired run identities. The cleanup step
-  below must never delete receipt ConfigMaps to make re-delivery succeed.
+- Preserve tombstones. Do not reuse retired run identities. Cleanup must never
+  delete receipt ConfigMaps to make re-delivery succeed.
 
 ## Evidence packet consumed by v10-preflight.sh
 

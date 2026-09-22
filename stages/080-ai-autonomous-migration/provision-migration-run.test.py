@@ -8,6 +8,7 @@ qualification. The fake implements atomic create, and logs all mutations.
 import base64
 import fcntl
 import json
+import itertools
 import os
 from pathlib import Path
 import subprocess
@@ -133,7 +134,10 @@ class Lifecycle(unittest.TestCase):
         oc = self.home / 'oc'
         oc.write_text('#!/bin/sh\nexec ' + sys.executable + ' ' + str(Path(__file__).resolve()) + ' fake "$@"\n')
         oc.chmod(0o755)
-        script = textwrap.dedent(TASK.read_text().split('      script: |\n', 1)[1].split('\n      resources:', 1)[0])
+        script = textwrap.dedent('\n'.join(itertools.takewhile(
+            lambda line: not line.strip() or line.startswith('        '),
+            TASK.read_text().split('      script: |\n', 1)[1].splitlines())))
+        self.assertIn('$(results.receipt.path)', script)
         for key in ('outcome','receipt'):
             script = script.replace('$(results.' + key + '.path)', str(self.home / key))
         self.script = self.home / 'task.sh'

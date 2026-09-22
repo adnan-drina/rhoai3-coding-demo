@@ -480,8 +480,7 @@ class RunReportTest(unittest.TestCase):
         self.assertTrue(any(r.startswith("prior assistance: 2 decided bootstrap repair") for r in cl["reasons"]))
 
     def test_a_comparison_names_the_pinned_inputs_that_differ(self):
-        """ADR-019 section 4: a headline difference is owed to every pinned input
-        that moved. The Operator ran v10 on a different worker model than v9, so
+        """ADR-019 section 4: name changed inputs without inferring their causal effects. The Operator ran v10 on a different worker model than v9, so
         the comparison must say so and must not let the delta read as a harness
         result."""
         def rep(model, golden, run_id):

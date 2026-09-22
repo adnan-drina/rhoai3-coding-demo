@@ -8,9 +8,8 @@ Exits proven here:
   - the ADR-009 contract survives: jdbc_url_env / username_env / password_env
     are compared, not rewritten, and a disagreement between the run's
     resources and the decision REFUSES and writes nothing
-  - a destination that predates per-run resources (no resources block, an
-    instance already named) is left alone and says so -- the backward
-    compatibility the running v9 depends on
+  - a destination without resources cannot gain a legacy exemption merely
+    because its decisions already name an instance
   - a destination with neither a resources block nor a named instance refuses
     rather than planning against nothing
   - --check-only never writes
@@ -108,6 +107,7 @@ def _run(root: Path, *args: str, env: dict | None = None) -> subprocess.Complete
         e.pop(k, None)
     e.update(env or {})
     e['DEVWORKSPACE_NAME'] = e['MIGRATION_RUN_NAME'] = 'demo-run-v2'
+    e['DEVWORKSPACE_NAMESPACE'] = 'wksp-ai-developer'
     if e.get('PARITY_RUN_RECEIPT') == RECEIPT:
         sha = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
         e['PARITY_RUN_RECEIPT'] = RECEIPT.replace('scaffold=abc123', 'scaffold=' + sha)

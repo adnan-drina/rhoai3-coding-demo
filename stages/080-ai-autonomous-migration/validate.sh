@@ -131,7 +131,7 @@ check "init script sets Hermes api_mode chat_completions" \
   "1"
 check "init script disables Hermes /models discovery on named providers" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"discover_models\": False' || echo 0" \
-  "2"
+  "3"
 check "GitOps init script does not use legacy custom:maas-m2 default" \
   "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
   "NONE"

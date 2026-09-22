@@ -106,7 +106,7 @@ def _tree(tmp: Path, migration: str, instance: str) -> Path:
 
 def _env(url: str, receipt: str | None = None, **extra: str) -> dict:
     receipt = RECEIPT if receipt is None else receipt
-    env = {"DEVWORKSPACE_NAME": RUN, "MIGRATION_RUN_NAME": RUN, "PETCLINIC_DB_URL": url, "PETCLINIC_DB_USER": "parity",
+    env = {"DEVWORKSPACE_NAMESPACE": NS, "DEVWORKSPACE_NAME": RUN, "MIGRATION_RUN_NAME": RUN, "PETCLINIC_DB_URL": url, "PETCLINIC_DB_USER": "parity",
            "PETCLINIC_DB_PASSWORD": SECRET}
     if receipt:
         env["PARITY_RUN_RECEIPT"] = receipt
@@ -210,12 +210,12 @@ def main() -> int:
         ri.LEGACY_ASSIGNMENTS.write_text(json.dumps({'existing-v9': {
             'instance': 'shared-parity-postgres.' + NS, 'database': 'petclinic',
             'port': 5432, 'engine': 'postgresql'}}))
-        v = ri.check(legacy, {"DEVWORKSPACE_NAME": "existing-v9", "PETCLINIC_DB_URL": "jdbc:postgresql://shared-parity-postgres.%s.svc:5432/petclinic" % NS,
+        v = ri.check(legacy, {"DEVWORKSPACE_NAMESPACE": NS, "DEVWORKSPACE_NAME": "existing-v9", "PETCLINIC_DB_URL": "jdbc:postgresql://shared-parity-postgres.%s.svc:5432/petclinic" % NS,
                               "PETCLINIC_DB_USER": "u", "PETCLINIC_DB_PASSWORD": SECRET})
         ok(v.code == ri.LEGACY, "a pre-per-run destination was refused (%s %s)" % (v.code, v.detail))
         ok(not v.blocking_for("reset"), "the legacy exception blocked the run it exists for")
         # and it is still an ownership check, not a bypass
-        v = ri.check(legacy, {"DEVWORKSPACE_NAME": "existing-v9", "PETCLINIC_DB_URL": "jdbc:postgresql://somebody-else.%s.svc:5432/petclinic" % NS,
+        v = ri.check(legacy, {"DEVWORKSPACE_NAMESPACE": NS, "DEVWORKSPACE_NAME": "existing-v9", "PETCLINIC_DB_URL": "jdbc:postgresql://somebody-else.%s.svc:5432/petclinic" % NS,
                               "PETCLINIC_DB_USER": "u", "PETCLINIC_DB_PASSWORD": SECRET})
         ok(v.code == ri.MISMATCH, "the legacy exception accepted another instance (%s)" % v.code)
         # a FRESH destination cannot reach it: the golden ships UNSTAMPED
@@ -238,6 +238,8 @@ def main() -> int:
                'invalid receipt binding accepted')
         ok(ri.check(root, _env(GOOD_URL, DEVWORKSPACE_NAME='other')).code == ri.RECEIPT_MISMATCH,
            'actual workspace mismatch accepted')
+        ok(ri.check(root, _env(GOOD_URL, DEVWORKSPACE_NAMESPACE='other')).code == ri.RECEIPT_MISMATCH,
+           'actual workspace namespace mismatch accepted')
         (root / 'migration.yaml').write_text((root / 'migration.yaml').read_text().replace('server_secret:', 'unassigned_secret:'))
         ok(ri.check(root, _env(GOOD_URL)).code == ri.RECEIPT_MISMATCH,
            'assignment changed since scaffolding accepted')

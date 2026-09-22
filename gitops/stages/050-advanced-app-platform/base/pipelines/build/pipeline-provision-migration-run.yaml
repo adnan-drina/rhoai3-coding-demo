@@ -7,7 +7,7 @@
 # generated object carries rhoai3.io/migration-run=<run>, and retirement
 # deletes by that label and then proves nothing is left.
 #
-# Retire a run with (see tmp/080-operator/ISOLATION-DEMO.md for the full
+# Retire a run with (see stages/080-ai-autonomous-migration/ISOLATION-DEMO.md for the full
 # procedure, including archiving the evidence first):
 #
 #   oc create -n app-platform-build -f - <<'EOF'
