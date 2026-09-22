@@ -35,7 +35,7 @@ DS = {"db_kind": "postgresql", "db_version": "16", "jdbc_extension": "io.quarkus
 # assignment must agree with.
 FX_URL = "jdbc:postgresql://fx-parity-postgres.fx-ns.svc:5432/parity"
 FX_RECEIPT = ("run=fx-run;namespace=fx-ns;workspace=fx-run;host=fx-parity-postgres;"
-              "port=5432;database=parity;scaffold=fx")
+              "port=5432;database=parity;engine=postgresql;scaffold=fx")
 DECISIONS_YAML = """adrs:
   - id: ADR-009
     status: accepted
@@ -72,6 +72,13 @@ resources:
 def _assign(root: Path) -> None:
     (root / "decisions.yaml").write_text(DECISIONS_YAML, encoding="utf-8")
     (root / "migration.yaml").write_text(MIGRATION_YAML, encoding="utf-8")
+    subprocess.run(['git', 'init', '-q', str(root)], check=True)
+    subprocess.run(['git', '-C', str(root), 'add', 'migration.yaml'], check=True)
+    subprocess.run(['git', '-C', str(root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'scaffold'], check=True)
+    global FX_RECEIPT
+    sha = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+    FX_RECEIPT = FX_RECEIPT.rsplit('scaffold=', 1)[0] + 'scaffold=' + sha
+    os.environ.update({'DEVWORKSPACE_NAMESPACE': 'fx-ns', 'DEVWORKSPACE_NAME': 'fx-run', 'MIGRATION_RUN_NAME': 'fx-run', 'PARITY_RUN_RECEIPT': FX_RECEIPT})
 
 
 def _fail(msg: str) -> int:

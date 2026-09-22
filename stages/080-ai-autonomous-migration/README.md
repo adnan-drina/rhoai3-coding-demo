@@ -47,7 +47,7 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 
 Before any agent writes a line, the supported product establishes the facts.
 
-1. Open the workspace from the component page's **Dev Spaces** link. Both projects clone automatically: `legacy/` (the application you're migrating, read-only) next to `modernized/` (your destination repository). The MTA extension pack installs on first start (1–2 minutes).
+1. Open the workspace from the component page's **Dev Spaces** link. The pre-start initializer clones `legacy/` onto a separate volume mounted read-only beside `modernized/` (your writable destination repository). Restarts verify the recorded source commit without updating it. The MTA extension pack installs on first start (1–2 minutes).
 2. Click the **MTA icon** in the left Activity Bar (the Konveyor logo), then **Open Analysis Panel**. Give the panel a moment on first open: the Java language server initializes in the background (the workspace pre-configures Standard mode so the analysis provider registers without opening a `.java` file first).
 3. Click **Start** (top right of the Analysis View). **Server Status** flips from `Stopped` to `Running`, which boots the analyzer engine inside the workspace. Leave **Agent Mode** off; the platform runs MTA analysis-only.
 4. Click **Manage Profiles**. The legacy repository ships its own analysis profiles in `.konveyor/profiles/`; select `quarkus-profile` (Quarkus migration targets).
@@ -271,3 +271,13 @@ actually shipped.
 | MTA 8.2 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/) |
 | OpenRewrite documentation                     | [https://docs.openrewrite.org/](https://docs.openrewrite.org/)                                                                                                       |
 | MaaS code assistant quickstart                | [https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)                     |
+
+
+## v10 validation preparation
+
+The [versioned execution plan](V10-PLAN.md), [isolation demonstration](ISOLATION-DEMO.md)
+and read-only `v10-preflight.sh` define the launch sequence. A local green suite
+does not qualify live isolation. Resource ownership now requires the platform
+receipt, actual workspace and original scaffolding assignment; provision/retire
+operations serialize per run. v9-to-v10 comparisons describe all changed pins
+and preserve unknowns, coverage gaps and prior authored repairs.

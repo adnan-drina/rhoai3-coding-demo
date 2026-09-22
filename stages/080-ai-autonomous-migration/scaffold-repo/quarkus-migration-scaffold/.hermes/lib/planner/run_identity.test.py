@@ -29,6 +29,8 @@ and the surrounding obligations:
 from __future__ import annotations
 
 import sys
+import subprocess
+import json
 import tempfile
 from pathlib import Path
 
@@ -44,7 +46,7 @@ OTHER = "demo-v10-retry"
 HOST = "%s-parity-postgres" % RUN
 INSTANCE = "%s.%s" % (HOST, NS)
 GOOD_URL = "jdbc:postgresql://%s.%s.svc:5432/parity" % (HOST, NS)
-RECEIPT = ("run=%s;namespace=%s;workspace=%s;host=%s;port=5432;database=parity;scaffold=abc123"
+RECEIPT = ("run=%s;namespace=%s;workspace=%s;host=%s;port=5432;database=parity;engine=postgresql;scaffold=abc123"
            % (RUN, NS, RUN, HOST))
 SECRET = "never-printed-password"
 
@@ -93,11 +95,18 @@ def _tree(tmp: Path, migration: str, instance: str) -> Path:
     root = Path(tempfile.mkdtemp(dir=tmp))
     (root / "decisions.yaml").write_text(DECISIONS % instance, encoding="utf-8")
     (root / "migration.yaml").write_text(migration, encoding="utf-8")
+    subprocess.run(['git', 'init', '-q', str(root)], check=True)
+    subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'scaffold'], check=True)
+    global RECEIPT
+    sha = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+    RECEIPT = RECEIPT.rsplit('scaffold=', 1)[0] + 'scaffold=' + sha
     return root
 
 
-def _env(url: str, receipt: str = RECEIPT, **extra: str) -> dict:
-    env = {"PETCLINIC_DB_URL": url, "PETCLINIC_DB_USER": "parity",
+def _env(url: str, receipt: str | None = None, **extra: str) -> dict:
+    receipt = RECEIPT if receipt is None else receipt
+    env = {"DEVWORKSPACE_NAMESPACE": NS, "DEVWORKSPACE_NAME": RUN, "MIGRATION_RUN_NAME": RUN, "PETCLINIC_DB_URL": url, "PETCLINIC_DB_USER": "parity",
            "PETCLINIC_DB_PASSWORD": SECRET}
     if receipt:
         env["PARITY_RUN_RECEIPT"] = receipt
@@ -197,18 +206,43 @@ def main() -> int:
 
         # --- the legacy exception, bounded --------------------------------
         legacy = _tree(tmp, MIGRATION_NO_RESOURCES, "shared-parity-postgres.%s" % NS)
-        v = ri.check(legacy, {"PETCLINIC_DB_URL": "jdbc:postgresql://shared-parity-postgres.%s.svc:5432/petclinic" % NS,
+        ri.LEGACY_ASSIGNMENTS = tmp / 'platform-legacy.json'
+        ri.LEGACY_ASSIGNMENTS.write_text(json.dumps({'existing-v9': {
+            'instance': 'shared-parity-postgres.' + NS, 'database': 'petclinic',
+            'port': 5432, 'engine': 'postgresql'}}))
+        v = ri.check(legacy, {"DEVWORKSPACE_NAMESPACE": NS, "DEVWORKSPACE_NAME": "existing-v9", "PETCLINIC_DB_URL": "jdbc:postgresql://shared-parity-postgres.%s.svc:5432/petclinic" % NS,
                               "PETCLINIC_DB_USER": "u", "PETCLINIC_DB_PASSWORD": SECRET})
         ok(v.code == ri.LEGACY, "a pre-per-run destination was refused (%s %s)" % (v.code, v.detail))
         ok(not v.blocking_for("reset"), "the legacy exception blocked the run it exists for")
         # and it is still an ownership check, not a bypass
-        v = ri.check(legacy, {"PETCLINIC_DB_URL": "jdbc:postgresql://somebody-else.%s.svc:5432/petclinic" % NS,
+        v = ri.check(legacy, {"DEVWORKSPACE_NAMESPACE": NS, "DEVWORKSPACE_NAME": "existing-v9", "PETCLINIC_DB_URL": "jdbc:postgresql://somebody-else.%s.svc:5432/petclinic" % NS,
                               "PETCLINIC_DB_USER": "u", "PETCLINIC_DB_PASSWORD": SECRET})
         ok(v.code == ri.MISMATCH, "the legacy exception accepted another instance (%s)" % v.code)
         # a FRESH destination cannot reach it: the golden ships UNSTAMPED
         fresh = _tree(tmp, MIGRATION_NO_RESOURCES, "UNSTAMPED")
         ok(ri.check(fresh, _env(GOOD_URL)).code == ri.UNASSIGNED,
            "a fresh destination reached the legacy exception")
+
+        # A stamped NEW run must not downgrade by deleting its assignment.
+        stamped = _tree(tmp, MIGRATION % (RUN, NS, INSTANCE, RUN, RUN, RUN), INSTANCE)
+        (stamped / 'migration.yaml').write_text(MIGRATION_NO_RESOURCES)
+        v = ri.check(stamped, _env(GOOD_URL.replace('/parity', '/another_database'), receipt=''))
+        ok(v.code == ri.UNASSIGNED and v.blocking_for('reset'), 'stamped run downgraded to legacy')
+        root = _tree(tmp, MIGRATION % (RUN, NS, INSTANCE, RUN, RUN, RUN), INSTANCE)
+        for receipt in (RECEIPT.replace('port=5432', 'port=5544'),
+                        RECEIPT.replace('workspace=' + RUN, 'workspace=other'),
+                        RECEIPT.replace('engine=postgresql', 'engine=mysql'),
+                        RECEIPT.split(';scaffold=')[0],
+                        RECEIPT.rsplit('scaffold=', 1)[0] + 'scaffold=' + 'f' * 40):
+            ok(ri.check(root, _env(GOOD_URL, receipt)).code == ri.RECEIPT_MISMATCH,
+               'invalid receipt binding accepted')
+        ok(ri.check(root, _env(GOOD_URL, DEVWORKSPACE_NAME='other')).code == ri.RECEIPT_MISMATCH,
+           'actual workspace mismatch accepted')
+        ok(ri.check(root, _env(GOOD_URL, DEVWORKSPACE_NAMESPACE='other')).code == ri.RECEIPT_MISMATCH,
+           'actual workspace namespace mismatch accepted')
+        (root / 'migration.yaml').write_text((root / 'migration.yaml').read_text().replace('server_secret:', 'unassigned_secret:'))
+        ok(ri.check(root, _env(GOOD_URL)).code == ri.RECEIPT_MISMATCH,
+           'assignment changed since scaffolding accepted')
 
         # --- require() raises with the typed code -------------------------
         try:
@@ -218,6 +252,7 @@ def main() -> int:
             ok(ri.MISMATCH in str(exc), "require() raised without the typed code: %s" % exc)
             ok(SECRET not in str(exc), "require() printed a credential value")
 
+        (root / "migration.yaml").write_text(MIGRATION % (RUN, NS, INSTANCE, RUN, RUN, RUN))
         # --- the good case ------------------------------------------------
         v = ri.check(root, _env(GOOD_URL, MIGRATION_RUN_NAME=RUN))
         ok(v.code == ri.OK, "this run's own database was refused: %s" % v.detail)

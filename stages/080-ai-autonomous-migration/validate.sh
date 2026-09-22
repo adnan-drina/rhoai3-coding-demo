@@ -131,7 +131,7 @@ check "init script sets Hermes api_mode chat_completions" \
   "1"
 check "init script disables Hermes /models discovery on named providers" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"discover_models\": False' || echo 0" \
-  "2"
+  "3"
 check "GitOps init script does not use legacy custom:maas-m2 default" \
   "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
   "NONE"
@@ -940,6 +940,18 @@ check "080 run_identity selftest passes (the four wrong-target counterexamples a
   "1"
 check "080 stamp-run-resources selftest passes (verification precedes stamping; a refusal writes nothing)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/stamp-run-resources.py' --help >/dev/null && python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/stamp-run-resources.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 provisioning lifecycle serializes overlapping events and refuses API failures" \
+  "python3 '${SCRIPT_DIR}/provision-migration-run.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 run-report compares emitted pins and preserves missing-evidence distinctions" \
+  "python3 '${SCAFFOLD_SKILLS}/evaluation/run-report/scripts/run-report.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 source initializer pins the first clone and refuses changed or unrecorded volumes" \
+  "python3 '${SCRIPT_DIR}/source-volume.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 versioned launch preflight refuses unready or changed inputs" \
+  "bash -n '${SCRIPT_DIR}/v10-preflight.sh' && python3 '${SCRIPT_DIR}/v10-preflight.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 per-run isolation invariants hold over the platform manifests (watch label, exact targeting, no repo-as-source, retirement)" \
   "python3 '${SCRIPT_DIR}/assert-run-isolation.py' >/dev/null 2>&1 && echo 1 || echo 0" \

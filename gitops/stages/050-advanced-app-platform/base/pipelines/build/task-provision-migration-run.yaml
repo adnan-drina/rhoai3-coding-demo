@@ -93,11 +93,11 @@ spec:
         carries no specimen literal; the values are data in one platform file.
     - name: database-image
       type: string
-      default: registry.redhat.io/rhel9/postgresql-16:latest
+      default: registry.redhat.io/rhel9/postgresql-16@sha256:188e892c58c56037c8ff93051f3e3b76ec56773de5ba89791cd4a686f97b0cef
       description: ADR-009's engine. Recorded in the receipt as provisioned.
     - name: cli-image
       type: string
-      default: registry.redhat.io/openshift4/ose-cli:latest
+      default: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
       description: >-
         The image this task runs. It is a parameter so the Operator can pin a
         digest; the receipt records whatever was used, so a run's provisioning
@@ -113,6 +113,8 @@ spec:
     - name: provision
       image: $(params.cli-image)
       env:
+        - name: TASKRUN
+          value: $(context.taskRun.name)
         - name: RUN
           value: $(params.run-name)
         - name: SCAFFOLD
@@ -130,6 +132,8 @@ spec:
       script: |
         #!/bin/bash
         set -euo pipefail
+        # Every API failure is bounded and must propagate through the gate.
+        oc() { command oc --request-timeout=20s "$@"; }
 
         # A run name becomes object names, a DNS label and a receipt key. Anything
         # that is not an RFC 1123 label is rejected here rather than producing a
@@ -148,13 +152,54 @@ spec:
         HOST="${RUN}-parity-postgres.${WSNS}.svc"
         PORT="5432"
 
-        phase="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" -o jsonpath='{.data.phase}' 2>/dev/null || true)"
-        recorded="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" -o jsonpath='{.data.scaffoldCommit}' 2>/dev/null || true)"
+        case "${MODE}" in provision|retire) ;; *) echo "REFUSED: invalid lifecycle mode" >&2; exit 1 ;; esac
+        # Atomic create is the per-run mutex. It never expires while a writer
+        # could still be running. A killed task leaves a typed busy condition;
+        # platform recovery must establish its TaskRun has stopped before removal.
+        LOCK_CM="migration-run-${RUN}-lock"
+        LOCK_ERROR="$(mktemp)"
+        acquired=false
+        for attempt in {1..30}; do
+          if oc create configmap "${LOCK_CM}" -n "${WSNS}" \
+              --from-literal=holder="${TASKRUN}" --from-literal=mode="${MODE}" \
+              --from-literal=run="${RUN}" >/dev/null 2>"${LOCK_ERROR}"; then
+            acquired=true
+            break
+          fi
+          # --ignore-not-found ignores ONLY NotFound, never Forbidden/timeouts.
+          holder="$(oc get configmap "${LOCK_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.holder}')"
+          if [ -z "${holder}" ]; then
+            cat "${LOCK_ERROR}" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        rm -f "${LOCK_ERROR}"
+        if [ "${acquired}" != true ]; then
+          echo "RUN_RESOURCES_BUSY: ${RUN} lifecycle owned by TaskRun ${holder}; no resources changed" >&2
+          exit 1
+        fi
+        release_lock() {
+          local rc=$?
+          trap - EXIT
+          oc delete configmap "${LOCK_CM}" -n "${WSNS}" --wait=true >/dev/null || rc=1
+          exit "${rc}"
+        }
+        trap release_lock EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        phase="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.phase}')"
+        recorded="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.scaffoldCommit}')"
 
         if [ "${MODE}" = "retire" ]; then
           # Every generated object carries the run label, so retirement
           # enumerates rather than remembers. The receipt ConfigMap deliberately
           # does NOT carry it: it survives as the tombstone.
+          # Durable intent precedes deletion. If interrupted, provisioning must
+          # still refuse; another retirement may finish the operation.
+          oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
+            --from-literal=run="${RUN}" --from-literal=phase=retiring \
+            --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" | oc apply -f -
           for kind in deployment service secret; do
             oc delete "${kind}" -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" --ignore-not-found --wait=true
           done
@@ -182,7 +227,7 @@ spec:
         # later event; a run whose receipt names a different scaffolding commit is
         # a different push claiming this run's identity. Neither is an error to
         # retry -- both are refusals with a reason.
-        if [ "${phase}" = "retired" ]; then
+        if [ "${phase}" = "retired" ] || [ "${phase}" = "retiring" ]; then
           echo "REFUSED: ${RUN} was retired (${RECEIPT_CM} is its tombstone); a later push does not bring a run back" >&2
           exit 1
         fi
@@ -190,16 +235,31 @@ spec:
           echo "REFUSED: ${RUN} was provisioned from ${recorded} and this event carries ${SCAFFOLD}; one of them is not the scaffolding push" >&2
           exit 1
         fi
+        for image in "${DB_IMAGE}" "${CLI_IMAGE}"; do
+          if ! printf '%s' "${image}" | grep -qE '^.+@sha256:[0-9a-f]{64}$'; then
+            echo "REFUSED: provisioning requires database and CLI image digests" >&2
+            exit 1
+          fi
+        done
+        if ! printf '%s' "${SCAFFOLD}" | grep -qE '^([0-9a-f]{40}|[0-9a-f]{64})$'; then
+          echo "REFUSED: provisioning requires the full scaffolding commit" >&2
+          exit 1
+        fi
         OUTCOME="provisioned"
         [ -z "${recorded}" ] || OUTCOME="reprovisioned"
 
         # Keep an existing password: regenerating it would orphan the data the run
         # is in the middle of comparing against. Re-running is therefore a no-op.
-        PASSWORD="$(oc get secret "${SERVER_SECRET}" -n "${WSNS}" -o jsonpath='{.data.database-password}' 2>/dev/null | base64 -d || true)"
+        PASSWORD="$(oc get secret "${SERVER_SECRET}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.database-password}' | base64 -d)"
         if [ -z "${PASSWORD}" ]; then
+          existing="$(oc get secret "${SERVER_SECRET}" -n "${WSNS}" --ignore-not-found -o name)"
+          if [ -n "${existing}" ]; then
+            echo "REFUSED: existing server Secret has no usable password; no credentials rotated" >&2
+            exit 1
+          fi
           PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
         fi
-        RECEIPT="run=${RUN};namespace=${WSNS};workspace=${RUN};host=${RUN}-parity-postgres;port=${PORT};database=${DB_NAME};scaffold=${SCAFFOLD}"
+        RECEIPT="run=${RUN};namespace=${WSNS};workspace=${RUN};host=${RUN}-parity-postgres;port=${PORT};database=${DB_NAME};engine=postgresql;scaffold=${SCAFFOLD}"
 
         # The server's own credentials. Never automounted: no workspace has any
         # use for the superuser-side names, and a secret nothing mounts is a
@@ -254,7 +314,7 @@ spec:
         # platform-owned source. This task names no fixture value: which keys
         # exist is the specimen's business and lives in one platform file.
         FIXTURE_KEYS="$(oc get secret "${FIXTURE_SRC}" -n "${WSNS}" \
-                          -o go-template='{{range $k,$v := .data}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null || true)"
+                          -o go-template='{{range $k,$v := .data}}{{$k}}{{"\n"}}{{end}}')"
         if [ -z "${FIXTURE_KEYS}" ]; then
           echo "REFUSED: the fixture source secret ${FIXTURE_SRC} in ${WSNS} has no keys; a run cannot be given fixture identities that do not exist" >&2
           exit 1

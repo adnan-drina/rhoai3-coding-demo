@@ -1,5 +1,27 @@
 # Backlog
 
+## Stage 080 v10 readiness — 2026-09-22
+
+- Implemented the second isolation review fixes: explicit legacy authorization,
+  complete receipt/workspace/scaffold binding, serialized provisioning and
+  retirement, durable retiring state, refusal on API errors, and image digests.
+- The report compares its actual nested pins, names missing evidence, and makes
+  no causal attribution. Explicit `declared: false` bootstrap receipts are
+  distinguished from missing repair evidence.
+- Versioned launch/preflight and isolation procedures replace the stale tmp
+  packet. The demonstration checks B's data and credentials after A operations
+  and never prints encoded secret values.
+- Live isolation qualification, publication/sync of this generation and the
+  official v10 launch remain outstanding. Closed v9 stays provisional; coverage
+  gaps and prior assistance remain in the comparison. No new signature gate.
+- The template now uses a dedicated source initializer and a read-only worker
+  mount. Initial live testing exposed Git's PVC ownership check; the initializer
+  now trusts only the exact clone path. The launch preflight also rejects
+  writable runtime aliases. Full template/isolation qualification remains open.
+- Validation on 2026-09-22: 358 passed, 0 failed, 2 warnings (Stage 050 OutOfSync
+  and the existing MTA ConsoleLink placeholder). The changed Task passed live
+  server-side dry run; this does not qualify live isolation or launch v10.
+
 ## RHOAI 3.4 upgrade watch items
 
 As of 2026-05-18, the public Red Hat OpenShift AI 3.4 documentation describes the target MaaS model as subscription-based governance with API keys, group assignment, token limits, authorization policy, and usage tracking. The same release documentation still marks several MaaS-related surfaces as Technology Preview or Developer Preview. Do not remove demo workarounds automatically, because adjacent pieces still have narrower support scope or live-demo gaps: AI Available Assets with MaaS is Developer Preview, vLLM MaaS and MaaS observability are Technology Preview, external provider routing must keep its provider trust boundary explicit, and the current demo still carries compatibility glue for dashboard user-token handling and cluster-specific gateway setup.

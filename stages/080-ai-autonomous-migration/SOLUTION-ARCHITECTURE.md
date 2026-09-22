@@ -286,3 +286,16 @@ Architects bind design here. Implementers change the kernel and skills against a
 - [JDK compiler API (`jdk.compiler` module)](https://docs.oracle.com/en/java/javase/21/docs/api/jdk.compiler/module-summary.html)
 - [Quarkus: migrating from Spring](https://quarkus.io/spring/migrate/), [Spring DI](https://quarkus.io/guides/spring-di), [Spring Web](https://quarkus.io/guides/spring-web), [Spring Data JPA](https://quarkus.io/guides/spring-data-jpa), [Spring Boot properties](https://quarkus.io/guides/spring-boot-properties)
 - [Migrating Code At Scale With LLMs At Google (FSE 2025)](https://arxiv.org/abs/2504.09691) — the change-location + LLM + verification loop this design follows
+
+
+### Per-run resource lifecycle qualification (2026-09-22)
+
+The platform serializes each run's provision/retire operations with an atomic,
+non-expiring lock and writes retirement intent before deleting generated
+resources. A dead holder needs proven termination before recovery, not elapsed
+time alone. A missing assignment never grants a fresh run legacy access.
+Receipts bind the full endpoint, actual workspace and scaffolding ancestor;
+the original resource declaration must still agree. This is consistency checking
+at harness entry points, not an OS or tenant security boundary. The platform
+images and the live two-workspace qualification are pinned before v10 starts.
+See V10-PLAN.md and ISOLATION-DEMO.md for the measured release conditions.

@@ -24,19 +24,10 @@ attributes:
   # deployment was rejected outright (v7 first start, 2026-09-10). The Operator
   # applies it after creation with the script above, which reads the host and IP
   # from the cluster and validates both before patching.
-# Migration workspace layout — two projects, fixed order:
-#   /projects/legacy      the application being migrated (workspace-only
-#                         clone of the legacy repository; never registered
-#                         in the catalog, no write credentials)
-#   /projects/modernized  this repository — the Quarkus destination that is
-#                         catalog-registered and CI/CD-wired
-# `legacy` is FIRST on purpose: the MTA VS Code extension analyzes the
-# first workspace folder in multi-root mode.
+# The source initializer is the only writer of the separate legacy-input
+# volume. The worker receives that volume read-only; the IDE folder list is
+# reordered after injection so legacy remains the MTA exploration target.
 projects:
-  - name: legacy
-    git:
-      remotes:
-        origin: ${{ values.legacyRepoUrl }}
   - name: modernized
     git:
       remotes:
@@ -45,6 +36,14 @@ projects:
         revision: main
 components:
   - name: development-tooling
+    attributes:
+      # DWO 0.43 strategic merge: change ONLY this declared mount's flag,
+      # preserving generated PVC/subPath and all credentials/metadata mounts.
+      # Verify against the admitted Pod; see V10-PLAN.md source protection.
+      container-overrides:
+        volumeMounts:
+          - mountPath: /projects/legacy
+            readOnly: true
     container:
       # Digest-pinned overlay (ws-080). Repos are private: cluster pull
       # needs the Quay pull secret on the workspace ServiceAccount before
@@ -52,7 +51,7 @@ components:
       image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f
       mountSources: true
       memoryRequest: 2Gi
-      memoryLimit: 6Gi
+      memoryLimit: 12Gi
       cpuRequest: 500m
       cpuLimit: 2500m
       env:
@@ -128,9 +127,9 @@ components:
           value: "${{ values.name }}-parity-db"
         - name: PARITY_CREDENTIALS_SECRET
           value: "${{ values.name }}-parity-credentials"
-      memoryLimit: 12Gi
-      cpuLimit: 2500m
       volumeMounts:
+        - name: legacy-input
+          path: /projects/legacy
         - name: m2
           path: /home/user/.m2
       endpoints:
@@ -155,10 +154,54 @@ components:
           exposure: none
           secure: false
           protocol: tcp
+  - name: initialize-legacy
+    container:
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f
+      mountSources: false
+      memoryRequest: 128Mi
+      memoryLimit: 512Mi
+      cpuRequest: 100m
+      cpuLimit: 500m
+      env:
+        - name: LEGACY_REPO_URL
+          value: ${{ values.legacyRepoUrl | dump }}
+      volumeMounts:
+        - name: legacy-input
+          path: /source
+      command: [python3, -c]
+      args:
+        - |
+          import json, os, pathlib, subprocess, urllib.parse
+          root = pathlib.Path('/source')
+          url = os.environ['LEGACY_REPO_URL']
+          u = urllib.parse.urlsplit(url)
+          if u.scheme != 'https' or not u.hostname or u.username or u.password or u.query or u.fragment or any(c.isspace() for c in url):
+              raise SystemExit('SOURCE_INPUT_REFUSED: use a credential-free HTTPS Git URL')
+          env = dict(os.environ, GIT_TERMINAL_PROMPT='0', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null', GIT_OPTIONAL_LOCKS='0')
+          def git(*args):
+              return subprocess.check_output(['git', '-c', 'credential.helper=', '-c', 'safe.directory=' + str(root), *args], env=env, text=True, timeout=240).strip()
+          receipt = root / '.git/rhoai3-source.json'
+          if receipt.exists():
+              recorded = json.loads(receipt.read_text())
+              if recorded['url'] != url or recorded['commit'] != git('-C', str(root), 'rev-parse', 'HEAD') or git('-C', str(root), 'status', '--porcelain'):
+                  raise SystemExit('SOURCE_INPUT_REFUSED: retained source differs from its initial clone')
+          else:
+              if any(root.iterdir()):
+                  raise SystemExit('SOURCE_INPUT_REFUSED: partial or unrecorded source volume; preserve it for diagnosis')
+              git('clone', '--', url, str(root))
+              recorded = {'schema': 'rhoai3.source-volume/v1', 'url': url, 'commit': git('-C', str(root), 'rev-parse', 'HEAD')}
+              receipt.write_text(json.dumps(recorded, sort_keys=True) + '\n')
+          print('SOURCE_INPUT_READY commit=' + recorded['commit'])
+  - name: legacy-input
+    volume:
+      size: 1G
   - name: m2
     volume:
       size: 1G
 commands:
+  - id: initialize-legacy
+    apply:
+      component: initialize-legacy
   - id: init-migration-tools
     exec:
       component: development-tooling
@@ -167,6 +210,12 @@ commands:
         # the modernized project (Hermes Kanban dest).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
+        python3 -c "import os,sys; from pathlib import Path; p=Path('/projects/legacy'); sys.exit(0 if (p/'.git/rhoai3-source.json').is_file() and os.statvfs(p).f_flag & os.ST_RDONLY else 'SOURCE_INPUT_NOT_READONLY')" \
+          || { echo "ERROR: source mount is not read-only"; exit 1; }
+        # PVC subdirectory ownership belongs to the storage provisioner. Trust
+        # this exact read-only checkout, never every repository on the volume.
+        git config --global --get-all safe.directory | grep -Fxq /projects/legacy \
+          || git config --global --add safe.directory /projects/legacy
         mkdir -p /projects/.platform
         # The UDI base image documents JAVA_HOME_<version> variables as the
         # supported way to select a JDK; its sdkman default (plain
@@ -224,7 +273,7 @@ commands:
         # JDT.LS Standard mode so mta-java registers its analysis provider
         # without requiring a .java file to be opened first (PVC-backed).
         if [ -f /projects/.code-workspace ]; then
-          python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
+          python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); ws['folders']=[{'path':'/projects/legacy'}]+[x for x in ws.get('folders',[]) if x.get('path') not in ('/projects/legacy','legacy')]; s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
         fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
         # DWO mounts ConfigMap devspace-ai-tools-init at the product default
@@ -372,5 +421,7 @@ commands:
         kind: run
         isDefault: true
 events:
+  preStart:
+    - initialize-legacy
   postStart:
     - init-migration-tools

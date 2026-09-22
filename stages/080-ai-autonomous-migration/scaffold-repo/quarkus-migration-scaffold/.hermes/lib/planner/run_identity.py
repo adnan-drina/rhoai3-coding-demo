@@ -31,8 +31,8 @@ THREE STATEMENTS MUST AGREE, and they come from three different places:
   2. the RECEIPT -- `PARITY_RUN_RECEIPT`, written into the run's workspace
      secret by the trusted platform provisioner and delivered by DevWorkspace
      Operator targeted automount. It says which database the platform
-     actually created, for which run, from which scaffolding commit. A
-     repository cannot author it;
+     actually created, for which run, from which scaffolding commit. Delivery
+     is a platform trust assumption, not an environment-variable sandbox;
   3. the ENDPOINT -- the URL the workspace is holding right now, under the
      variable name the decision records.
 
@@ -44,14 +44,10 @@ the agreement of all three.
 TYPED OUTCOMES. Each is a distinct finding and they are not interchangeable:
 
   OK                              this run's own resources, proceed
-  RUN_RESOURCES_LEGACY            a pre-per-run destination (v9 and earlier):
-                                  no assignment, a concrete instance already
-                                  decided. Reduced check (engine/host/
-                                  namespace), allowed, always named. It cannot
-                                  apply to a fresh run, because a fresh golden
-                                  ships instance: UNSTAMPED and the only
-                                  writer of that field requires an assignment
-  RUN_RESOURCES_UNASSIGNED        no assignment and no decided instance:
+  RUN_RESOURCES_LEGACY            an existing workspace explicitly listed in
+                                  the platform-owned legacy assignments file;
+                                  full endpoint checks still apply
+  RUN_RESOURCES_UNASSIGNED        no current or authorized legacy assignment:
                                   this run was never given a database
   RUN_RESOURCES_MISSING           assigned, but the workspace holds none of
                                   the variables. The resources may not exist
@@ -72,8 +68,10 @@ connects.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +82,10 @@ from planner.yamlite import load_yaml
 UNSTAMPED = "UNSTAMPED"
 RECEIPT_ENV = "PARITY_RUN_RECEIPT"
 RUN_NAME_ENV = "MIGRATION_RUN_NAME"
+WORKSPACE_ENV = "DEVWORKSPACE_NAME"
+# Platform-owned compatibility data, never a file from the destination tree.
+# Empty/absent by default: a concrete datasource is not legacy authorization.
+LEGACY_ASSIGNMENTS = Path("/etc/hermes/migration-legacy-assignments.json")
 DEFAULT_PORTS = {"postgresql": 5432, "mysql": 3306, "mariadb": 3306, "mssql": 1433, "h2": 0}
 
 OK = "OK"
@@ -165,13 +167,12 @@ def _split_instance(instance: str) -> tuple[str, str]:
     return text, ""
 
 
-def assignment(root: Path) -> dict:
+def assignment(root: Path, environ: dict | None = None) -> dict:
     """What the platform assigned this run, or {} when nothing was assigned.
 
-    `legacy` marks the compatibility shape the architect bounded to runs that
-    already exist: no `resources` block, but a decided concrete instance. A
-    fresh destination cannot reach it -- the golden ships UNSTAMPED, and
-    stamp-run-resources.py refuses to write the field without an assignment.
+    Legacy compatibility requires an explicit platform assignment keyed by the
+    actual workspace. Neither a missing resources block nor a stamped instance
+    can create that authorization.
     """
     root = Path(root)
     doc = load_yaml(root / MIGRATION) if (root / MIGRATION).is_file() else {}
@@ -199,19 +200,29 @@ def assignment(root: Path) -> dict:
             "user_env": str(db.get("username_env") or ds.get("username_env") or ""),
             "password_env": str(db.get("password_env") or ds.get("password_env") or ""),
         }
+    env = _env(environ)
+    workspace = env.get(WORKSPACE_ENV, "")
+    try:
+        legacy = _dict(_dict(json.loads(LEGACY_ASSIGNMENTS.read_text())).get(workspace))
+    except (OSError, ValueError):
+        legacy = {}
     instance = str(ds.get("instance") or "")
-    if instance and instance != UNSTAMPED:
+    if (workspace and legacy and legacy.get("instance") == instance
+            and legacy.get("database") and legacy.get("port")
+            and legacy.get("engine") == ds.get("db_kind")
+            and env.get("DEVWORKSPACE_NAMESPACE") == _split_instance(instance)[1]
+            and not env.get(RECEIPT_ENV) and not env.get(RUN_NAME_ENV)):
         service, namespace = _split_instance(instance)
         return {
             "legacy": True,
-            "run": "",
+            "run": workspace,
             "namespace": namespace,
             "engine": str(ds.get("db_kind") or "postgresql"),
             "instance": instance,
             "service": service,
             "service_namespace": namespace,
-            "port": int(DEFAULT_PORTS.get(str(ds.get("db_kind") or "postgresql"), 0) or 5432),
-            "database": "",
+            "port": int(legacy["port"]),
+            "database": str(legacy["database"]),
             "server_secret": "",
             "workspace_secret": "",
             "fixture_secret": "",
@@ -311,11 +322,11 @@ def _env(environ: dict | None) -> dict:
 def check(root: Path, environ: dict | None = None) -> Verdict:
     """The one ownership decision. Every destructive entry point calls this."""
     env = _env(environ)
-    want = assignment(root)
+    want = assignment(root, env)
     if not want:
         return Verdict(UNASSIGNED,
                        "this destination names no parity database: migration.yaml declares no "
-                       "resources.parity_database and decisions.yaml datasource.instance is unstamped. "
+                       "resources.parity_database and has no platform-authorized legacy assignment. "
                        "Re-create the destination from the app-migration template; nothing may connect "
                        "to a database this run was never assigned")
 
@@ -357,7 +368,9 @@ def check(root: Path, environ: dict | None = None) -> Verdict:
                            want, parts)
         disagreements = []
         for key, expected in (("run", want["run"]), ("namespace", want["namespace"]),
-                              ("host", want["service"]), ("database", want["database"])):
+                              ("host", want["service"]), ("database", want["database"]),
+                              ("port", str(want["port"])), ("workspace", want["run"]),
+                              ("engine", want["engine"])):
             got = receipt.get(key, "")
             if expected and got != expected:
                 disagreements.append("%s %r, assigned %r" % (key, got, expected))
@@ -367,10 +380,11 @@ def check(root: Path, environ: dict | None = None) -> Verdict:
                            "migration.yaml assigns (%s). One of the two is another run's; nothing "
                            "connects until they agree" % "; ".join(disagreements), want, parts)
         run_name = env.get(RUN_NAME_ENV, "")
-        if run_name and want["run"] and run_name != want["run"]:
+        if (run_name != want["run"] or env.get(WORKSPACE_ENV) != want["run"]
+                or env.get("DEVWORKSPACE_NAMESPACE") != want["namespace"]):
             return Verdict(RECEIPT_MISMATCH,
-                           "this workspace identifies itself as %r and the assignment is for run %r"
-                           % (run_name, want["run"]), want, parts)
+                           "workspace name, namespace and MIGRATION_RUN_NAME must match the assignment",
+                           want, parts)
 
     same_namespace = bool(receipt.get("namespace")) and receipt.get("namespace") == want["service_namespace"]
     if want["legacy"]:
@@ -394,10 +408,27 @@ def check(root: Path, environ: dict | None = None) -> Verdict:
 
     if want["legacy"]:
         return Verdict(LEGACY,
-                       "pre-per-run destination: %s names the instance decisions.yaml decided (%s), "
-                       "checked on engine, host and namespace only because this tree carries no "
-                       "resource assignment. A destination scaffolded today cannot take this path"
+                       "platform-authorized legacy workspace: %s names the assigned instance (%s); "
+                       "engine, host, namespace, port and database match its explicit assignment"
                        % (url_env, want["instance"]), want, parts)
+    # The scaffolding push is an existing ancestor, and its resource declaration
+    # must still be the one the workspace presents. No abbreviated/fabricated SHA.
+    scaffold = receipt.get("scaffold", "")
+    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", scaffold):
+        return Verdict(RECEIPT_MISMATCH, "receipt has no full scaffolding commit", want, parts)
+    try:
+        subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", scaffold, "HEAD"],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        original = subprocess.run(["git", "-C", str(root), "show", scaffold + ":" + str(MIGRATION)],
+                                  check=True, capture_output=True, text=True, timeout=10).stdout
+        try:
+            from yaml import safe_load as yaml_loads
+        except ImportError:
+            from planner.yamlite import loads as yaml_loads
+        if _dict(yaml_loads(original)).get("resources") != _dict(load_yaml(root / MIGRATION)).get("resources"):
+            return Verdict(RECEIPT_MISMATCH, "resource assignment differs from the scaffolding commit", want, parts)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return Verdict(RECEIPT_MISMATCH, "scaffolding commit/assignment cannot be verified in this repository", want, parts)
     return Verdict(OK,
                    "%s names this run's own database: %s port %d database %r, agreed by the "
                    "assignment in migration.yaml and the platform receipt for run %s"

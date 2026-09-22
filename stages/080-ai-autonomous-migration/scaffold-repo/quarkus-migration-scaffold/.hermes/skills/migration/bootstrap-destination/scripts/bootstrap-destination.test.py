@@ -24,6 +24,33 @@ def _fail(msg: str) -> int:
     return 1
 
 
+def _assign_datasource(root: Path) -> Path:
+    """Static bootstrap fixtures have an assignment, but no live database.
+
+    The admission checker may plan with RUN_RESOURCES_MISSING; this is not a
+    legacy exemption or proof that a reset/startup can run.
+    """
+    migration = root / "migration.yaml"
+    migration.write_text(migration.read_text() + """resources:
+  run: fixture-run
+  namespace: fixture
+  receipt_env: PARITY_RUN_RECEIPT
+  parity_database:
+    instance: fixture-isolated-postgres.fixture
+    database: parity
+    port: 5432
+    server_secret: fixture-run-postgres
+    workspace_secret: fixture-run-parity-db
+    jdbc_url_env: FIXTURE_DB_URL
+    username_env: FIXTURE_DB_USER
+    password_env: FIXTURE_DB_PASSWORD
+""")
+    decision = root / "decisions.yaml"
+    decision.write_text(decision.read_text().replace(
+        "instance: fixture-isolated-postgres\n", "instance: fixture-isolated-postgres.fixture\n"))
+    return root
+
+
 def tree_hash(root: Path) -> str:
     h = hashlib.sha256()
     for p in sorted(root.rglob("*")):
@@ -314,7 +341,7 @@ def _datasource_case() -> int:
         return root
 
     with tempfile.TemporaryDirectory(prefix="ds-") as td:
-        root = _with_db_assets(specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=specimens.admitted_decisions()))
+        root = _assign_datasource(_with_db_assets(specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=specimens.admitted_decisions())))
         pipeline.assemble_bundle(root)
         p0 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
         if p0.returncode != 0:
@@ -653,7 +680,7 @@ def _datasource_checker_layout(layout: str) -> int:
     with tempfile.TemporaryDirectory(prefix="ds-integ-") as td:
         decided = specimens.admitted_decisions()
         decided["build_profiles"] = {"adr": "ADR-001", "active": ["prod", "spring-data-jpa"]}
-        root = specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=decided)
+        root = _assign_datasource(specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=decided))
         frozen = root / ".derived" / "frozen-input"
 
         # the legacy's mix, where the legacy actually keeps it

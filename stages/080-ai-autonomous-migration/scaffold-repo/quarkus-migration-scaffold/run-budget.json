@@ -1,0 +1,13 @@
+{
+  "schema": "rhoai3.run-budget/v1",
+  "declared_at": "2026-09-22T15:20:04Z",
+  "max_wall_hours": 24,
+  "clock": "earlier of destination first commit and M1 dispatch; includes bootstrap",
+  "stopping_conditions": [
+    "terminal M4 outcome in both modes; full and provisional outcomes reported separately",
+    "wall budget exhausted",
+    "blocking harness defect requiring installation",
+    "sealed unit or family retry budget exhausted"
+  ],
+  "continuation": "live repair, rewind or harness replacement is an assisted continuation; preserve the initial deadline and record"
+}

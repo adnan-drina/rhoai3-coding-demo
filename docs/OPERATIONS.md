@@ -39,6 +39,40 @@ Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
 
+### Stage 080 run isolation and v10 qualification
+
+Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and
+[ISOLATION-DEMO.md](../stages/080-ai-autonomous-migration/ISOLATION-DEMO.md),
+not the historical session-local files under tmp/080-operator. The read-only
+v10 preflight consumes a retained isolation receipt bound to the exact platform,
+golden and image pins. It does not bootstrap, reset a database or dispatch work.
+
+The migration template's pre-start initializer clones source onto a separate
+volume and writes `.git/rhoai3-source.json`. The worker mounts it read-only;
+the destination stays writable. Restarts verify that source commit and refuse
+a changed or unrecorded volume. The launch preflight also checks every runtime
+container for writable aliases. Do not repair this by chmod, widening Git's
+safe-directory setting, or deleting the receipt. Preserve a failed initializer's
+logs and volume, then diagnose or create a fresh disposable run.
+
+Provisioning and retirement serialize on a per-run, atomically created ConfigMap
+lock. Retirement records `retiring` before deletion and retains the tombstone.
+Locks do not expire while an old writer could still operate. If a killed task
+leaves a lock, establish its holder TaskRun and pod are stopped before platform
+recovery removes it; never unlock a running writer. API errors refuse instead
+of being interpreted as missing state. PostgreSQL and CLI images are digest pinned.
+
+Missing resources refuse even after stamping. Legacy compatibility is disabled
+by default; an existing workspace needs a platform-owned entry in
+`/etc/hermes/migration-legacy-assignments.json`, keyed by DEVWORKSPACE_NAME with
+`instance`, `engine`, `port` and `database`. Never place this file in a destination
+repository or enable it for a fresh run. No such exception is installed by these
+changes. The normal receipt checks engine, host, namespace, port, database,
+workspace and scaffolding commit, with the original resource declaration still
+present in that ancestor commit. These checks detect inconsistent bindings;
+they are not a sandbox against a worker that can alter its environment or invoke
+a database client outside the harness.
+
 ### Stage 080: after creating a migration workspace
 
 Run `scripts/patch-workspace-maas-route.sh <workspace-name>` once. It points the
