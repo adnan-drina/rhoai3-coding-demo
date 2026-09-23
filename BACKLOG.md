@@ -11,9 +11,14 @@
   The parent blocked its handoff and stopped its task-bound processes, preserving
   the bound verdict and all attempts. Local repair adds a measured mode-parity
   floor, binds both receipts, and refuses accepting or closing over either mode's
-  FAIL. Enabled-only failures remain owned by runtime parity repair until the
-  loop can issue mode-aware repairs; they cannot be dismissed as coverage.
-  Installation and corrected M4 continuation remain pending. No release claimed.
+  FAIL. That floor is published (source `ee5f50a3`, golden `c13e482c`) and is not
+  yet installed on v10. Enabled-mode FAILs now mint a mode-stamped repair
+  obligation from `scenarios-enabled/`; a disabled PASS cannot discharge it.
+  The CORS producer renders `preflight-authenticated-when` from the decided
+  switch when the structure model's `configure()` graph recorded no
+  `authenticated()` call. Installation of these producer and handoff bytes,
+  anonymous-preflight repair against the packaged artifact, and corrected M4
+  continuation remain pending. No release claimed.
 
 - M4's work-log resolver used the profile `HERMES_HOME`; native Kanban logs
   live under the shared home. A read-only walk with the shared home resolved

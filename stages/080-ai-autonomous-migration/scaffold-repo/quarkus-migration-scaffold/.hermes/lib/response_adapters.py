@@ -316,14 +316,47 @@ def _mappings_of(t: dict[str, Any]) -> list[tuple[dict[str, Any], list[str], lis
     return out
 
 
-def _security(types: list[dict[str, Any]]) -> dict[str, Any]:
+def _decided_enabled_switch(root: Path | None) -> tuple[str, str]:
+    """(key, enabled_value) from the decided security switch, or empty.
+
+    Used only when the structure model's configure() graph recorded no
+    ``authenticated()`` call. That is a WebSecurityConfigurerAdapter whose
+    JDK model has an empty ``configure`` body, so ``rejects_anonymous`` is
+    false even though the decided switch puts that adapter on. The
+    call-graph path stays the first source of truth. This is not a guessed
+    property name: the key and enabled_value are the ones already decided,
+    and they must match a ``!cors`` config condition already in the model."""
+    if root is None:
+        return "", ""
+    p = Path(root) / "decisions.yaml"
+    if not p.is_file():
+        return "", ""
+    try:
+        from planner.yamlite import load_yaml  # noqa: PLC0415
+
+        doc = load_yaml(p)
+    except Exception:
+        return "", ""
+    if not isinstance(doc, dict):
+        return "", ""
+    sec = doc.get("security") if isinstance(doc.get("security"), dict) else {}
+    switch = sec.get("switch") if isinstance(sec.get("switch"), dict) else {}
+    return str(switch.get("key") or "").strip(), str(switch.get("enabled_value") or "").strip()
+
+
+def _security(types: list[dict[str, Any]], root: Path | None = None) -> dict[str, Any]:
     """What the source's security configuration says about CORS ordering.
 
     A Spring Security configuration that does not call ``cors()`` runs BEFORE
     Spring MVC's CORS processing: its 401 carries no CORS header, and a
     preflight is authenticated like any request. When the configuration that
     rejects anonymous requests is conditional on a property, a preflight is
-    authenticated only while that property has that value."""
+    authenticated only while that property has that value.
+
+    When the model recorded no ``authenticated()`` call, a ``!cors`` config
+    that is already conditional on the decided enabled switch still
+    authenticates preflight while that switch is on. Without a matching
+    decided switch that omission is unrenderable, not a silent skip."""
     configs = []
     for t in types:
         sup = [str(s) for s in (t.get("supertypes") or [])]
@@ -343,6 +376,21 @@ def _security(types: list[dict[str, Any]]) -> dict[str, Any]:
                         "condition": ("%s=%s" % (key, value or "true")) if key else ""})
     precedes = any(not c["cors"] for c in configs)
     gating = sorted({c["condition"] or "always" for c in configs if c["rejects_anonymous"] and not c["cors"]})
+    silent = [c for c in configs if not c["cors"] and c["condition"] and not c["rejects_anonymous"]]
+    if not gating and silent:
+        key, enabled = _decided_enabled_switch(root)
+        if key and enabled:
+            want = "%s=%s" % (key, enabled)
+            gating = sorted({c["condition"] for c in silent if c["condition"] == want})
+            if not gating:
+                raise Refuse("CORS_POLICY_UNRENDERABLE",
+                             "security precedes CORS but no config condition matches the decided switch %s=%s"
+                             % (key, enabled))
+        else:
+            raise Refuse("CORS_POLICY_UNRENDERABLE",
+                         "security precedes CORS and the structure model's configure() graph recorded no "
+                         "authenticated() call; the decided security switch is required to render "
+                         "preflight-authenticated-when")
     if len(gating) > 1 and "always" in gating:
         gating = ["always"]
     return {"configs": sorted(configs, key=lambda c: c["type"]), "precedes_cors": precedes,
@@ -398,7 +446,7 @@ def cors_policy(root: Path) -> dict[str, Any]:
                 g["mappings"].add(("|".join(verbs) if verbs else "*", pat))
     if not groups:
         raise Refuse("CORS_POLICY_EMPTY", "the structural model carries no @CrossOrigin that covers a request mapping")
-    sec = _security(types)
+    sec = _security(types, root)
     if len(sec["preflight_authenticated_when"]) > 1:
         raise Refuse("CORS_POLICY_UNRENDERABLE", "anonymous access is refused under more than one condition (%s)"
                      % ", ".join(sec["preflight_authenticated_when"]))

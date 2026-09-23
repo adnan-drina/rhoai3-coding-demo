@@ -939,6 +939,11 @@ def _split_diffs(reason: str) -> list[str]:
 
 
 SCENARIO_CORPUS = Path("verification") / "scenarios" / "corpus.json"
+SCENARIO_CORPORA = (
+    Path("verification") / "scenarios" / "corpus.json",
+    Path("verification") / "scenarios-enabled" / "corpus.json",
+)
+PARITY_SCENARIO_SUBDIRS = ("scenarios", "scenarios-enabled")
 # the corpus's scenario_type vocabulary (capture-source-oracles/_scenarios.py)
 SCENARIO_BROWSER_PREFLIGHT = "browser-preflight"
 SCENARIO_DIAGNOSTIC_PROBE = "diagnostic-probe"
@@ -953,48 +958,80 @@ _CORS_PROBE_RE = re.compile(r"^(?:sc:)?cors-(?:[a-z0-9]+-)*probe-")
 _CORS_SAME_ORIGIN_RE = re.compile(r"^(?:sc:)?cors-[a-z0-9-]*same-origin")
 
 
+def _iter_corpus_docs(root: Path | None):
+    """Each scenario corpus this tree holds: the default mode, then enabled.
+
+    ADR-014 stores the two modes in separate corpora. A work list that reads
+    only ``verification/scenarios/corpus.json`` never sees an enabled-mode
+    FAIL and cannot mint the repair that FAIL owes."""
+    if root is None:
+        return
+    for rel in SCENARIO_CORPORA:
+        p = Path(root) / rel
+        if not p.is_file():
+            continue
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict):
+            yield doc
+
+
+def _parity_scenario_paths(pdir: Path) -> list[Path]:
+    """Verdict files under both mode scenario directories, default first."""
+    out: list[Path] = []
+    for name in PARITY_SCENARIO_SUBDIRS:
+        d = pdir / name
+        if d.is_dir():
+            out.extend(sorted(d.glob("*.json")))
+    return out
+
+
+def _security_mode_of(path: Path, doc: dict[str, Any]) -> str:
+    """The security mode a verdict belongs to: the document's own field, else
+    the directory the comparison wrote it under."""
+    mode = str(doc.get("security_mode") or "").strip().lower()
+    if mode in ("disabled", "enabled"):
+        return mode
+    posix = path.as_posix().replace("\\", "/")
+    return "enabled" if "/scenarios-enabled/" in posix or posix.endswith("/scenarios-enabled") else "disabled"
+
+
 def cors_scenarios(root: Path | None) -> dict[str, dict[str, Any]]:
     """{scenario id: {method, preflight}} for the corpus's cross-origin scenarios
-    (a scenario naming a ``cors_policy``). {} when there is no corpus."""
-    p = Path(root) / SCENARIO_CORPUS if root is not None else None
-    if p is None or not p.is_file():
-        return {}
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return {}
+    (a scenario naming a ``cors_policy``). {} when there is no corpus.
+
+    Both security-mode corpora are read. Enabled ids are distinct from
+    disabled ids (``cors-enabled-preflight-*`` vs ``cors-preflight-*``), so a
+    disabled PASS cannot discharge an enabled FAIL."""
     out: dict[str, dict[str, Any]] = {}
-    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
-        if not isinstance(sc, dict) or not sc.get("cors_policy") or not sc.get("id"):
-            continue
-        hdrs = {str(k).lower() for k in (sc.get("headers") or {})}
-        method = str(sc.get("method") or "").upper()
-        stype = str(sc.get("scenario_type") or "")
-        out[str(sc["id"])] = {"method": method, "type": stype,
-                              "probe": stype == SCENARIO_DIAGNOSTIC_PROBE,
-                              "preflight": stype == SCENARIO_BROWSER_PREFLIGHT or (
-                                  not stype and method == "OPTIONS" and "access-control-request-method" in hdrs),
-                              "same_origin": bool(sc.get("same_origin")) or str(sc.get("origin_kind") or "") == "same",
-                              "has_body": bool(sc.get("body_file"))}
+    for doc in _iter_corpus_docs(root):
+        for sc in doc.get("scenarios") or []:
+            if not isinstance(sc, dict) or not sc.get("cors_policy") or not sc.get("id"):
+                continue
+            hdrs = {str(k).lower() for k in (sc.get("headers") or {})}
+            method = str(sc.get("method") or "").upper()
+            stype = str(sc.get("scenario_type") or "")
+            out[str(sc["id"])] = {"method": method, "type": stype,
+                                  "probe": stype == SCENARIO_DIAGNOSTIC_PROBE,
+                                  "preflight": stype == SCENARIO_BROWSER_PREFLIGHT or (
+                                      not stype and method == "OPTIONS" and "access-control-request-method" in hdrs),
+                                  "same_origin": bool(sc.get("same_origin")) or str(sc.get("origin_kind") or "") == "same",
+                                  "has_body": bool(sc.get("body_file"))}
     return out
 
 
 def corpus_requests(root: Path | None) -> dict[str, dict[str, Any]]:
     """{scenario id: {method, has_body, cross_origin}} for EVERY corpus scenario
     (the cross-origin ones and the controls alike). {} without a corpus."""
-    p = Path(root) / SCENARIO_CORPUS if root is not None else None
-    if p is None or not p.is_file():
-        return {}
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return {}
     out: dict[str, dict[str, Any]] = {}
-    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
-        if not isinstance(sc, dict) or not sc.get("id"):
-            continue
-        out[_sid(str(sc["id"]))] = {"method": str(sc.get("method") or "").upper(), "has_body": bool(sc.get("body_file")),
-                                    "cross_origin": bool(sc.get("cors_policy"))}
+    for doc in _iter_corpus_docs(root):
+        for sc in doc.get("scenarios") or []:
+            if not isinstance(sc, dict) or not sc.get("id"):
+                continue
+            out[_sid(str(sc["id"]))] = {"method": str(sc.get("method") or "").upper(), "has_body": bool(sc.get("body_file")),
+                                        "cross_origin": bool(sc.get("cors_policy"))}
     return out
 
 
@@ -1670,9 +1707,10 @@ class ParitySplitter:
         self.root = Path(root) if root is not None else None
         self.cross_origin = cors_scenarios(root)
         self.requests = corpus_requests(root)
-        cors = (receipt or {}).get("cors") if isinstance(receipt, dict) else None
-        outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
-        self.cors_outcomes = outcomes if isinstance(outcomes, dict) else {}
+        self.cors_outcomes = _cors_outcomes_of(self.root, receipt) if self.root is not None else (
+            (((receipt or {}).get("cors") or {}) if isinstance(receipt, dict) else {}).get("outcomes") or {})
+        if not isinstance(self.cors_outcomes, dict):
+            self.cors_outcomes = {}
         self._controls: dict[tuple[str, str], set[str]] | None = None
         if docs is not None:
             self._controls = self._index(docs)
@@ -1700,7 +1738,7 @@ class ParitySplitter:
             docs: list[dict[str, Any]] = []
             pdir = self.root / PARITY_DIR if self.root is not None else None
             if pdir is not None and pdir.is_dir():
-                for p in sorted(pdir.glob("*.json")) + sorted((pdir / "scenarios").glob("*.json")):
+                for p in sorted(pdir.glob("*.json")) + _parity_scenario_paths(pdir):
                     try:
                         docs.append(load_json(p))
                     except (OSError, ValueError):
@@ -1759,12 +1797,13 @@ class ParitySplitter:
 
 
 def scenario_record(base: Path, scenario: str) -> dict[str, Any]:
-    """The one scenario verdict under ``base``/scenarios for ``scenario``, or {}."""
-    d = Path(base) / "scenarios"
-    if not d.is_dir():
-        return {}
+    """The one scenario verdict under ``base`` for ``scenario``, or {}.
+
+    Looks in both mode directories. Enabled and disabled scenario ids differ,
+    so a disabled PASS cannot be read as the enabled FAIL's record. Two files
+    for the same id is not a measurement and returns {}."""
     hits = []
-    for p in sorted(d.glob("*.json")):
+    for p in _parity_scenario_paths(Path(base)):
         try:
             doc = load_json(p)
         except (OSError, ValueError):
@@ -2051,29 +2090,23 @@ def corpus_body_keys(root: Path | None, scenario: str) -> dict[str, Any]:
     JSON object, and {} when the corpus does not name a body for it."""
     if root is None or not scenario:
         return {}
-    p = Path(root) / SCENARIO_CORPUS
-    if not p.is_file():
-        return {}
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return {}
-    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
-        if not isinstance(sc, dict) or _sid(str(sc.get("id") or "")) != _sid(scenario):
-            continue
-        bf = str(sc.get("body_file") or "")
-        if not bf:
-            return {}
-        bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
-        if not bp.is_file():
-            return {"file": bf, "keys": None, "reason": "the corpus names a body file this tree does not hold"}
-        try:
-            body = json.loads(bp.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {"file": bf, "keys": None, "reason": "the recorded body is not JSON"}
-        if not isinstance(body, dict):
-            return {"file": bf, "keys": None, "reason": "the recorded body is not a JSON object"}
-        return {"file": bf, "keys": sorted(str(k) for k in body)}
+    for doc in _iter_corpus_docs(root):
+        for sc in doc.get("scenarios") or []:
+            if not isinstance(sc, dict) or _sid(str(sc.get("id") or "")) != _sid(scenario):
+                continue
+            bf = str(sc.get("body_file") or "")
+            if not bf:
+                return {}
+            bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
+            if not bp.is_file():
+                return {"file": bf, "keys": None, "reason": "the corpus names a body file this tree does not hold"}
+            try:
+                body = json.loads(bp.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return {"file": bf, "keys": None, "reason": "the recorded body is not JSON"}
+            if not isinstance(body, dict):
+                return {"file": bf, "keys": None, "reason": "the recorded body is not a JSON object"}
+            return {"file": bf, "keys": sorted(str(k) for k in body)}
     return {}
 
 
@@ -2652,20 +2685,50 @@ def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenar
     return []
 
 
+def _cors_outcomes_of(root: Path | None, receipt: dict[str, Any] | None) -> dict[str, Any]:
+    """browser_access rows from both mode receipts, live receipt last."""
+    out: dict[str, Any] = {}
+    if root is not None:
+        for name in ("receipt.json", "receipt-enabled.json"):
+            p = Path(root) / PARITY_DIR / name
+            if not p.is_file():
+                continue
+            try:
+                doc = load_json(p)
+            except (OSError, ValueError):
+                continue
+            cors = doc.get("cors") if isinstance(doc, dict) else None
+            outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
+            if isinstance(outcomes, dict):
+                out.update(outcomes)
+    cors = (receipt or {}).get("cors") if isinstance(receipt, dict) else None
+    outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
+    if isinstance(outcomes, dict):
+        out.update(outcomes)
+    return out
+
+
 def _source_cors_policies(root: Path) -> list[str]:
-    """The CORS policies the FROZEN source declares, as the parity receipt
+    """The CORS policies the FROZEN source declares, as the parity receipts
     recorded them. A missing or unreadable receipt is an empty list: the
     advice then quotes only the diffs, which are always present."""
-    p = Path(root) / PARITY_DIR / "receipt.json"
-    if not p.is_file():
-        return []
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return []
-    cors = doc.get("cors") if isinstance(doc, dict) else None
-    policies = (cors or {}).get("source_policies") if isinstance(cors, dict) else None
-    return [str(x) for x in policies] if isinstance(policies, list) else []
+    seen: list[str] = []
+    for name in ("receipt.json", "receipt-enabled.json"):
+        p = Path(root) / PARITY_DIR / name
+        if not p.is_file():
+            continue
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        cors = doc.get("cors") if isinstance(doc, dict) else None
+        policies = (cors or {}).get("source_policies") if isinstance(cors, dict) else None
+        if isinstance(policies, list):
+            for x in policies:
+                s = str(x)
+                if s not in seen:
+                    seen.append(s)
+    return seen
 
 
 _MAPPING_ANNOTATIONS = {
@@ -2868,9 +2931,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     receipt = judged_parity_receipt(root)[0] if receipt is None else receipt
     notes = [] if notes is None else notes
     docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
-    sdir = pdir / "scenarios"
-    if sdir.is_dir():
-        docs += [(p, load_json(p)) for p in sorted(sdir.glob("*.json"))]
+    docs += [(p, load_json(p)) for p in _parity_scenario_paths(pdir)]
     splitter = ParitySplitter(root, receipt, [d for _p, d in docs])
     ep_rows = {str(e.get("id") or ""): e for e in (bundle.get("entry_points") or []) if isinstance(e, dict)}
     for p, doc in docs:
@@ -2897,6 +2958,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
         # acceptance path can scope the comparison to this card.
         base = {"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
                 "entry_point": ep, "scenario": scenario, "verdict_file": p.relative_to(root).as_posix(),
+                "security_mode": _security_mode_of(p, doc),
                 "scenarios": parity_scenarios_of(receipt, ep, scenario),
                 "message_sha256": sha256_bytes(reason.encode("utf-8"))}
         if other:
@@ -5524,7 +5586,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     parity_notes: list[dict[str, Any]] = []
     judged_receipt, parity_carried = judged_parity_receipt(root, run)
     par = parity_items(root, bundle, parity_notes, receipt=judged_receipt)
-    parity_known = (root / PARITY_DIR).is_dir() and (any((root / PARITY_DIR).glob("*.json")) or any((root / PARITY_DIR / "scenarios").glob("*.json")))
+    parity_known = (root / PARITY_DIR).is_dir() and (any((root / PARITY_DIR).glob("*.json")) or any(_parity_scenario_paths(root / PARITY_DIR)))
     unmeasured_parity = parity_unmeasured(load_parity_receipt(root))
     if unmeasured_parity:
         parity_known = False

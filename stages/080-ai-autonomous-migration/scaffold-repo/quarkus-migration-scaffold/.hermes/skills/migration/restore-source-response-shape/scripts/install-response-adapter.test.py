@@ -83,6 +83,32 @@ def main() -> int:
         sec = policy["security"]
         check(sec["precedes_cors"] and sec["preflight_authenticated_when"] == ["fixture.security.enable=true"],
               "security without cors() precedes CORS; anonymous refused only while the switch is on", sec)
+        # Empty configure() calls: the JDK model recorded the adapter but not
+        # its authenticated() call. The decided switch still names the gating
+        # row; omitting it is unrenderable, not a silent skip.
+        pet = copy.deepcopy(base)
+        for t in pet["types"]:
+            if str(t.get("fqn") or "").endswith("EnabledSecurity"):
+                for m in t.get("methods") or []:
+                    m["calls"] = []
+        (root / "evidence/structure/structure.json").write_text(json.dumps(pet))
+        try:
+            ra.cors_policy(root)
+            check(False, "empty configure() without a decided switch must not omit the gating row")
+        except ra.Refuse as exc:
+            check(exc.code == "CORS_POLICY_UNRENDERABLE",
+                  "empty configure() without a decided switch is unrenderable", exc)
+        (root / "decisions.yaml").write_text(
+            "security:\n  switch:\n    key: fixture.security.enable\n"
+            "    enabled_value: \"true\"\n    disabled_value: \"false\"\n", encoding="utf-8")
+        gated = ra.cors_policy(root)
+        check(gated["security"]["preflight_authenticated_when"] == ["fixture.security.enable=true"],
+              "empty configure() calls still gate preflight on the decided enabled switch", gated["security"])
+        check(dict(ra.cors_properties(gated)).get("rhoai3.source-cors.preflight-authenticated-when")
+              == "fixture.security.enable=true",
+              "the adapter row is rendered from that decided switch")
+        (root / "decisions.yaml").unlink()
+        (root / "evidence/structure/structure.json").write_text(json.dumps(base))
         props = dict(ra.cors_properties(policy))
         check(props["quarkus.http.cors.origins"] == "*" and props["quarkus.http.cors.methods"] == "GET,POST,PUT",
               "platform rows are the union of what the source grants", props)

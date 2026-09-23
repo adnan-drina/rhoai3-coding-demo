@@ -778,6 +778,8 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         return {}
     scenarios = sorted({str(s) for i in rows for s in (i.get("scenarios") or []) if str(s)})
     entry_points = sorted({str(i.get("entry_point") or "") for i in rows if i.get("entry_point")})
+    modes = sorted({str(i.get("security_mode") or "disabled").strip().lower() or "disabled" for i in rows})
+    mode_clause = ", --security-mode enabled" if modes == ["enabled"] else ""
     rejections, handlers = group_request_rejections(rows)
     return {
         "gate": "parity",
@@ -808,10 +810,11 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         "evidence": EVIDENCE_RULE,
         "stop": STOP_RULE,
         "measured_by": (
-            "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s, "
+            "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s%s, "
             "and the read oracle of %s) after the packaging and startup gates, and re-composes "
             "verification/parity/receipt.json. You run the same command you always run; nothing extra."
             % (", ".join(scenarios) if scenarios else "this card's entry points, read oracles included",
+               mode_clause,
                ", ".join(entry_points) if entry_points else "its entry point(s)")),
         "discharged_when": (
             "the re-composed receipt records %s as PASS. Disappearing from the work list is not enough: a scenario that "

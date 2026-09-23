@@ -423,8 +423,10 @@ def parity_records(base: Path) -> list[Path]:
     d = Path(base)
     if not d.is_dir():
         return out
-    out += [p.relative_to(base) for p in sorted(d.glob("*.json")) if p.name != "_run.json"]
+    out += [p.relative_to(base) for p in sorted(d.glob("*.json"))
+            if p.name != "_run.json" and not p.name.startswith("_run-")]
     out += [p.relative_to(base) for p in sorted((d / "scenarios").glob("*.json"))]
+    out += [p.relative_to(base) for p in sorted((d / "scenarios-enabled").glob("*.json"))]
     return out
 
 

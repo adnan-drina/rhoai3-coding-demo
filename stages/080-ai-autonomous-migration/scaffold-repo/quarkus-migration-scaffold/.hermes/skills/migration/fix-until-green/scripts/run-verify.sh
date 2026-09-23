@@ -395,16 +395,28 @@ eps = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("ent
 print("run:" + ",".join(sids))
 for ep in (eps if sids else []):
     print("oracle:" + ep)
+# ADR-014: an enabled-mode obligation is replayed against the enabled corpus.
+# Mixed modes on one card cannot share a single runner invocation.
+modes = sorted({str(it.get("security_mode") or "disabled").strip().lower() or "disabled" for it in rows})
+if modes == ["enabled"]:
+    print("mode:enabled")
+elif len(modes) > 1:
+    print("mode:mixed")
 PYEOF
 )" || PARITY_PLAN="skip:the issued card could not be read"
   # the plan's head is its first line; the lines after it name the read
   # oracles a scoped run re-runs for the card (oracle:<entry point>)
   PLAN_HEAD="${PARITY_PLAN%%$'\n'*}"
   PLAN_ORACLES=()
+  PARITY_MODE=""
   while IFS= read -r plan_line; do
     [[ "${plan_line}" == oracle:* ]] && PLAN_ORACLES+=("${plan_line#oracle:}")
+    [[ "${plan_line}" == mode:* ]] && PARITY_MODE="${plan_line#mode:}"
   done <<< "${PARITY_PLAN}"
   PARITY_PLAN="${PLAN_HEAD}"
+  if [[ "${PARITY_MODE}" == "mixed" && "${PARITY_PLAN}" == run:* ]]; then
+    PARITY_PLAN="skip:the issued card mixes security modes"
+  fi
   if [[ "${PARITY_PLAN}" == skip:* ]]; then
     echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
   fi
@@ -444,6 +456,10 @@ PYEOF
       # the sealed road is the right one.
       echo "parity: no issued card; the comparison is bound to the seal, not to a candidate"
     fi
+    if [[ "${PARITY_MODE}" == "enabled" ]]; then
+      PARITY_ARGS+=(--security-mode enabled)
+      echo "parity: this card's obligations were measured in the enabled security mode; replaying that mode"
+    fi
     if [[ -n "${SIDS}" ]]; then
       IFS=',' read -r -a SID_ARR <<< "${SIDS}"
       for s in "${SID_ARR[@]}"; do
@@ -473,12 +489,14 @@ PYEOF
     set -e
     PARITY_MS="$(( $(now_ms) - T0 ))"
     tail -20 "${WORK}/parity.log" || true
-    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER
+    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE
     python3 - "${RUN}" "${ROOT}" <<'PYEOF'
 import json, os, sys
 from pathlib import Path
 run_p, root = sys.argv[1], Path(sys.argv[2])
-receipt = root / "verification" / "parity" / "receipt.json"
+mode = os.environ.get("PARITY_MODE") or "disabled"
+suffix = "" if mode in ("", "disabled") else "-%s" % mode
+receipt = root / "verification" / "parity" / ("receipt%s.json" % suffix)
 verdict = ""
 if receipt.is_file():
     try:
@@ -489,7 +507,8 @@ ms = int(os.environ.get("PARITY_MS") or 0)
 # which read oracles the runner's own record says it RE-RAN for the card (a
 # verdict recorded): read from _run.json rather than from what was asked, so
 # run.json says what was measured, never what was requested
-rec_p = root / "verification" / "parity" / "_run.json"
+# default mode: verification/parity/_run.json; enabled: _run-enabled.json
+rec_p = root / "verification" / "parity" / ("_run.json" if mode in ("", "disabled") else "_run-%s.json" % mode)
 reruns = []
 if rec_p.is_file():
     try:

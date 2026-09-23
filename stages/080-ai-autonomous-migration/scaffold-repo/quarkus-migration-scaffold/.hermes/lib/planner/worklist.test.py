@@ -3242,6 +3242,78 @@ def _receipt_v2_case() -> int:
     return 0
 
 
+def _enabled_mode_handoff_case() -> int:
+    """Enabled-mode FAIL under scenarios-enabled/ is a repair obligation.
+    A disabled-mode PASS of a different id cannot mint it or discharge it."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+    from planner.worklist import cors_scenarios, parity_items, parity_obligation_discharged, scenario_record
+
+    ep = "ep:org.springframework.samples.petclinic.rest.controller.OwnerRestController#addOwner():http"
+    ctl = "src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRestController.java"
+    enabled_sid = "sc:cors-enabled-preflight-7b1a3d9234cd"
+    disabled_sid = "sc:cors-preflight-7b1a3d9234cd"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}]}
+    reason = ("status 200 vs 401; header WWW-Authenticate None vs Basic realm=\"Realm\"; "
+              "header Access-Control-Allow-Origin * vs None")
+    with tempfile.TemporaryDirectory(prefix="enabled-handoff-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        (pdir / "scenarios-enabled").mkdir(parents=True)
+        for rel, scenarios in (
+            ("verification/scenarios/corpus.json", [
+                {"id": disabled_sid, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+                 "scenario_type": "browser-preflight"}]),
+            ("verification/scenarios-enabled/corpus.json", [
+                {"id": enabled_sid, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+                 "scenario_type": "browser-preflight"}]),
+        ):
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"scenarios": scenarios}))
+        (pdir / "receipt.json").write_text(json.dumps({
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+            "entry_points": [{"entry_point": ep, "verdict": "PASS", "scenarios": [disabled_sid]}]}))
+        (pdir / "receipt-enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "enabled", "verdict": "FAIL",
+            "entry_points": [{"entry_point": ep, "verdict": "FAIL", "reason": reason, "scenarios": [enabled_sid]}],
+            "cors": {"outcomes": {enabled_sid: {"browser_access": "prevents", "type": "browser-preflight"}}}}))
+        (pdir / "scenarios" / "disabled.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "disabled",
+            "entry_point": ep, "scenario": disabled_sid, "verdict": "PASS", "reason": ""}))
+        (pdir / "scenarios-enabled" / "enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep, "scenario": enabled_sid, "verdict": "FAIL", "reason": reason}))
+        co = cors_scenarios(root)
+        if disabled_sid not in co or enabled_sid not in co:
+            return _fail("both mode corpora contribute cross-origin scenarios: %s" % sorted(co))
+        items = parity_items(root, bundle)
+        cors = [i for i in items if i.get("rule_id") == "PARITY_CORS"]
+        if (len(cors) != 1 or cors[0].get("scenario") != enabled_sid
+                or cors[0].get("security_mode") != "enabled"):
+            return _fail("the enabled preflight FAIL is the CORS obligation, stamped with its mode: %s"
+                         % [{k: i.get(k) for k in ("scenario", "rule_id", "security_mode")} for i in items])
+        if any(i.get("scenario") == disabled_sid for i in items):
+            return _fail("a disabled PASS must not mint and must not discharge the enabled FAIL: %s" % items)
+        rec = scenario_record(pdir, enabled_sid)
+        if rec.get("verdict") != "FAIL" or rec.get("security_mode") != "enabled":
+            return _fail("scenario_record finds the enabled verdict, not the disabled PASS: %s" % rec)
+        row = dict(cors[0], what="cors")
+        ok, why = parity_obligation_discharged(root, row, {"cors-preflight-7b1a3d9234cd"})
+        if ok:
+            return _fail("remeasuring the disabled preflight cannot discharge the enabled one: %s" % why)
+        (pdir / "scenarios-enabled" / "enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep, "scenario": enabled_sid, "verdict": "PASS", "reason": ""}))
+        ok, why = parity_obligation_discharged(root, row, {"cors-enabled-preflight-7b1a3d9234cd"})
+        if not ok or "PASS" not in why:
+            return _fail("the enabled record coming back PASS discharges its own obligation: %s" % why)
+    return 0
+
+
 def _split_discharge_case() -> int:
     """G1 (v9 t_55220d84) and G2: a scenario whose diffs F3 split across
     obligations discharges each obligation by its OWN diffs; a mid-card
@@ -3714,7 +3786,7 @@ def _partial_package_scope_case():
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

@@ -131,8 +131,22 @@ RO="${TMP}/ro"; mkroot "${RO}"; boot_ok "${RO}"; worklist_eps "${RO}"; issued "$
   || fail "the plan names the card's entry points, one per oracle line, and nobody else's: $(plan "${RO}")"
 grep -qF -- 'PARITY_ARGS+=(--read-oracle "${ep}")' "${SCRIPT}" || fail "the scoped comparison must pass the card's read oracles to the runner"
 grep -qF '"read_oracles_rerun": sorted(reruns)' "${SCRIPT}" || fail "run.json must carry the read oracles the runner re-ran"
-grep -qF 'rec_p = root / "verification" / "parity" / "_run.json"' "${SCRIPT}" \
+grep -qF '_run.json' "${SCRIPT}" \
   || fail "what was re-run is read from the runner's own record, never from what was asked"
+grep -qF -- '--security-mode' "${SCRIPT}" \
+  || fail "an enabled-mode card must tell the runner which security mode to replay"
+
+# ADR-014: an enabled-mode obligation is scoped to its scenarios AND that mode
+worklist_enabled() {
+  cat >"$1/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:en","source":"parity","gate":"parity","security_mode":"enabled","scenarios":["sc:cors-enabled-preflight-x"]}],
+ "clusters":[]}
+JSON
+}
+EN="${TMP}/en"; mkroot "${EN}"; boot_ok "${EN}"; worklist_enabled "${EN}"; issued "${EN}" "parity" '["parity:en"]'
+[[ "$(plan "${EN}")" == $'run:sc:cors-enabled-preflight-x\nmode:enabled' ]] \
+  || fail "an enabled-mode card must name its mode so the runner replays that corpus: $(plan "${EN}")"
 
 # the startup gate did not pass in this verification: there is no started
 # destination to compare, and a stage that cannot measure says so rather than
