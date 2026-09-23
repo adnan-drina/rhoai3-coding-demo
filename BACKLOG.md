@@ -9,7 +9,8 @@
   Duplicate start reuses `m5:<stage>:<close_card>:<candidate16>`. Proof is
   candidate SHA → app-push PipelineRun → image digest → ready Deployment →
   HTTPS Route → live checks. A green PipelineRun is not enough (`deploy-app`
-  can exit 0 with no Deployment). A reachable app does not erase outstanding
+  can exit 0 with no Deployment). Image identity is the build TaskRun
+  `IMAGE_DIGEST`, not a commit tag. A reachable app does not erase outstanding
   qualifications and is not a full M5 `ACCEPT`. Application values live in
   `delivery.yaml`. Preserve the closed v10 migration record; do not reopen it
   for harness-only copies.

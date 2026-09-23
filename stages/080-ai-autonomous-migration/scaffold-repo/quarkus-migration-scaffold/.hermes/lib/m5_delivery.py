@@ -317,7 +317,12 @@ def argv_for_card(plan: dict[str, Any], body: str, *, hermes: str, parent_id: st
             "--body", body, "--assignee", plan["assignee"],
             "--idempotency-key", plan["idempotency_key"],
             "--max-runtime", plan["max_runtime"], "--max-retries", str(plan["max_retries"]),
-            "--workspace", workspace, "--initial-status", plan["initial_status"]]
+            "--workspace", workspace]
+    # Hermes 0.20.5 --initial-status accepts only blocked|running. Omit todo
+    # so the board default (todo) applies; passing todo fails the mint.
+    status = str(plan.get("initial_status") or "")
+    if status in {"blocked", "running"}:
+        argv.extend(["--initial-status", status])
     if parent_id:
         argv.extend(["--parent", parent_id])
     for skill in plan["skills"]:
@@ -343,11 +348,24 @@ def start_delivery(root: Path, *, runner: Runner, hermes: str = "hermes",
     code, out, err = runner([hermes, "kanban", "list", "--json"])
     cards = []
     if code == 0:
+        text = out or ""
+        start, obj = text.find("["), text.find("{")
+        blob: Any = None
         try:
-            blob = json.loads(out)
-            cards = blob if isinstance(blob, list) else list((blob or {}).get("tasks") or (blob or {}).get("cards") or [])
+            if start >= 0 and (obj < 0 or start < obj):
+                blob = json.loads(text[start:])
+            elif obj >= 0:
+                blob = json.loads(text[obj:])
+            else:
+                blob = json.loads(text)
         except json.JSONDecodeError:
-            cards = []
+            blob = None
+        if isinstance(blob, list):
+            cards = blob
+        elif isinstance(blob, dict):
+            cards = list(blob.get("tasks") or blob.get("cards") or blob.get("items") or [])
+    prior = load_json(root / DELIVERY_START) if (root / DELIVERY_START).is_file() else {}
+    prior_map = dict(prior.get("by_logical_id") or {}) if isinstance(prior, dict) else {}
     by_key = existing_by_key(cards)
     type_sha = sha256_file(root / TYPE_INVENTORY) if (root / TYPE_INVENTORY).is_file() else ""
     created: list[dict[str, Any]] = []
@@ -380,7 +398,10 @@ def start_delivery(root: Path, *, runner: Runner, hermes: str = "hermes",
             return {"ok": False, "blocked": True, "eligibility": eligibility, "created": created, "reused": reused,
                     "reason": "mint produced no t_* for %s" % plan["logical_id"], "failed_stage": "M5-A"}
         mapping[plan["logical_id"]] = tid
-        created.append({"logical_id": plan["logical_id"], "task_id": tid, "idempotency_key": plan["idempotency_key"]})
+        if prior_map.get(plan["logical_id"]) == tid:
+            reused.append({"logical_id": plan["logical_id"], "task_id": tid, "idempotency_key": plan["idempotency_key"]})
+        else:
+            created.append({"logical_id": plan["logical_id"], "task_id": tid, "idempotency_key": plan["idempotency_key"]})
     result = {"ok": True, "blocked": False, "eligibility": eligibility, "created": created, "reused": reused,
               "by_logical_id": mapping, "commands": commands, "execute": execute}
     write_canonical(root / DELIVERY_START, {"schema": SCHEMA_START, **{k: v for k, v in result.items() if k != "commands"}})
@@ -433,6 +454,16 @@ def prepare_candidate(root: Path, *, runner: Runner | None = None, changes: list
                "eligibility": eligibility, "reason": "failed prerequisite"}
         write_canonical(root / DELIVERY_CANDIDATE, doc)
         return doc
+    prev = load_json(root / DELIVERY_CANDIDATE) if (root / DELIVERY_CANDIDATE).is_file() else {}
+    prev_sha = str(prev.get("candidate_sha") or "")
+    current_sha = str(eligibility.get("candidate_sha") or "")
+    if prev_sha and current_sha and prev_sha != current_sha:
+        archive = root / DELIVERY_DIR / "attempts" / prev_sha[:16]
+        archive.mkdir(parents=True, exist_ok=True)
+        for rel in (DELIVERY_CANDIDATE, DELIVERY_PIPELINE, DELIVERY_DEPLOYMENT, DELIVERY_LIVE):
+            src = root / rel
+            if src.is_file():
+                (archive / src.name).write_bytes(src.read_bytes())
     contract = load_delivery_contract(root)
     m4_evidence = {
         "verdict": str(M4_VERDICT),
@@ -453,6 +484,7 @@ def prepare_candidate(root: Path, *, runner: Runner | None = None, changes: list
         "release_eligible": eligibility["release_eligible"],
         "worklist_empty": eligibility["worklist_empty"],
         "changes_since_m4": list(changes or []),
+        "prior_candidate_archived": prev_sha if prev_sha and prev_sha != current_sha else "",
         "contract": {
             "namespace": contract.get("namespace") or "",
             "repo": contract.get("repo") or git_remote_name(root, runner),
@@ -506,7 +538,18 @@ def pipeline_running(run: dict[str, Any]) -> bool:
 
 def pipeline_digest(run: dict[str, Any]) -> str:
     status = run.get("status") if isinstance(run.get("status"), dict) else {}
-    for bucket in (status.get("pipelineResults"), status.get("taskResults"), run.get("results")):
+    buckets = [
+        status.get("pipelineResults"),
+        status.get("taskResults"),
+        status.get("results"),
+        run.get("results"),
+        run.get("task_results"),
+    ]
+    for child in (status.get("childReferences") or []):
+        if isinstance(child, dict):
+            nested = child.get("status") if isinstance(child.get("status"), dict) else {}
+            buckets.extend([nested.get("results"), nested.get("taskResults")])
+    for bucket in buckets:
         if not isinstance(bucket, list):
             continue
         for row in bucket:
@@ -627,7 +670,7 @@ def deployment_issues(deployment: dict[str, Any], service: dict[str, Any],
     else:
         rspec = route.get("spec") if isinstance(route.get("spec"), dict) else {}
         tls = rspec.get("tls") if isinstance(rspec.get("tls"), dict) else {}
-        host = str(rspec.get("host") or "")
+        host = route_host(route)
         if not host:
             issues.append("route-host-missing")
         if not tls:
@@ -639,14 +682,64 @@ def deployment_issues(deployment: dict[str, Any], service: dict[str, Any],
     return issues
 
 
-def route_url(route: dict[str, Any]) -> str:
+def route_host(route: dict[str, Any]) -> str:
     spec = route.get("spec") if isinstance(route.get("spec"), dict) else {}
-    host = str(spec.get("host") or "")
+    host = str(spec.get("host") or "").strip()
+    if host:
+        return host
+    status = route.get("status") if isinstance(route.get("status"), dict) else {}
+    for ing in (status.get("ingress") or []):
+        if isinstance(ing, dict) and str(ing.get("host") or "").strip():
+            return str(ing.get("host")).strip()
+    return ""
+
+
+def route_url(route: dict[str, Any]) -> str:
+    host = route_host(route)
     if not host:
         return ""
+    spec = route.get("spec") if isinstance(route.get("spec"), dict) else {}
     tls = spec.get("tls") if isinstance(spec.get("tls"), dict) else {}
     scheme = "https" if tls else "http"
     return "%s://%s" % (scheme, host)
+
+
+def deployment_from_app_pods(pods: list[dict[str, Any]], name: str) -> dict[str, Any]:
+    """Build a Deployment-shaped view from app pods when Deployment GET is fenced."""
+    app: list[dict[str, Any]] = []
+    for pod in pods:
+        if not isinstance(pod, dict):
+            continue
+        status = pod.get("status") if isinstance(pod.get("status"), dict) else {}
+        containers = status.get("containerStatuses") or []
+        names = [str(c.get("name") or "") for c in containers if isinstance(c, dict)]
+        if name and name in names:
+            app.append(pod)
+    if not app:
+        return {}
+    ready = 0
+    image_ids: list[str] = []
+    images: list[str] = []
+    for pod in app:
+        status = pod.get("status") if isinstance(pod.get("status"), dict) else {}
+        for cs in (status.get("containerStatuses") or []):
+            if not isinstance(cs, dict):
+                continue
+            if str(cs.get("name") or "") != name:
+                continue
+            if cs.get("ready"):
+                ready += 1
+            if cs.get("imageID"):
+                image_ids.append(str(cs["imageID"]))
+            if cs.get("image"):
+                images.append(str(cs["image"]))
+    image = images[0] if images else ""
+    return {
+        "spec": {"replicas": max(1, len(app)), "template": {"spec": {"containers": [{"name": name, "image": image}]}}},
+        "status": {"readyReplicas": ready, "containerStatuses": [
+            {"name": name, "image": image, "imageID": image_ids[0] if image_ids else image, "ready": ready > 0}
+        ]},
+    }
 
 
 def assert_deployed(root: Path, *, deployment: dict[str, Any], service: dict[str, Any],
@@ -850,9 +943,9 @@ def walkthrough(verdict: dict[str, Any], contract: dict[str, Any]) -> list[str]:
         if isinstance(row, dict) and row.get("path"):
             lines.append("GET %s%s (expect 200)." % (url, row["path"]))
     cred = contract.get("credential_ref") or contract.get("auth") or {}
-    if isinstance(cred, dict) and cred.get("header_from_env"):
-        lines.append("Authenticate with the header named by environment variable %s (do not paste the secret)." % cred["header_from_env"])
-    elif str((contract.get("auth") or {}).get("mode") or "") == "disabled":
+    if str((contract.get("auth") or {}).get("mode") or "") == "disabled":
         lines.append("This deployment is in the application's configured unauthenticated mode; do not change auth to make a test pass.")
+    if isinstance(cred, dict) and cred.get("header_from_env"):
+        lines.append("Credential reference: environment variable %s (do not paste the secret)." % cred["header_from_env"])
     lines.append("Limitations: %s" % ("; ".join(verdict.get("limitations") or ["none recorded"])))
     return lines

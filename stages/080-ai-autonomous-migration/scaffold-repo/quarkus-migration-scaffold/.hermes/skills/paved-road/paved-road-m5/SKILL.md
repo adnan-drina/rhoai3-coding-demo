@@ -67,10 +67,18 @@ python3 .hermes/skills/paved-road/paved-road-m5/scripts/assert-deployed-app.py -
 ```
 
 Record candidate → PipelineRun → image **digest** → deployed image → Route.
-Reuse a matching successful run only when its revision and digest still apply.
-Do not `tkn pipeline start` when that run exists. A green PipelineRun is not
-enough: `deploy-app` can exit 0 with no Deployment. Refuse wrong revision,
-missing digest, image mismatch, missing Service endpoints, or a non-HTTPS Route.
+The digest is `IMAGE_DIGEST` on the build TaskRun (`status.results`); a
+PipelineRun may succeed with empty `pipelineResults`. `assert-deployed-app.py`
+reads the Deployment when allowed, otherwise ready app pods plus Route (the
+implementer seat may be fenced from `deployments.apps`). Reuse a matching
+successful run only when its revision and digest still apply. Do not `tkn
+pipeline start` when that run exists. A green PipelineRun is not enough:
+`deploy-app` can exit 0 with no Deployment. Refuse wrong revision, missing
+digest, image mismatch, missing Service endpoints, or a non-HTTPS Route. OpenShift may leave
+`spec.host` empty when `spec.subdomain` is set; use `status.ingress[].host`.
+Hermes 0.20.5 `--initial-status` accepts only `blocked|running`; mint omits
+`todo` so the board default applies. Edge Routes may return an `http://`
+Location; rewrite it to `https://` before CRUD read/delete.
 
 **M5-C.** Test the deployed Route, not workspace localhost:
 

@@ -86,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
                     location = _join(url, str(crud["create"].get("path") or "").rstrip("/") + "/" + str(parsed["id"]))
             except json.JSONDecodeError:
                 location = ""
+        if location.startswith("http://") and url.startswith("https://"):
+            location = "https://" + location[len("http://"):]
         if location:
             checks["crud:read"] = _http(location if location.startswith("http") else _join(url, location), opener=opener)
             checks["crud:delete"] = _http(location if location.startswith("http") else _join(url, location),

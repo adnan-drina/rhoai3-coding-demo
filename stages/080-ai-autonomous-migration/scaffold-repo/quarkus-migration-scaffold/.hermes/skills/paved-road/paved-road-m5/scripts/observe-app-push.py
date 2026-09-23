@@ -43,6 +43,23 @@ def main(argv: list[str] | None = None) -> int:
     if not runs:
         items = _oc_json(["oc", "-n", ns, "get", "pipelinerun", "-o", "json"])
         runs = [r for r in (items.get("items") or []) if str(((r.get("metadata") or {}).get("labels") or {}).get("tekton.dev/pipeline") or r.get("pipeline") or "") in {"app-push", ""} or True]
+    for run in runs:
+        name = str(((run.get("metadata") or {}).get("name") or ""))
+        if not name:
+            continue
+        try:
+            trs = _oc_json(["oc", "-n", ns, "get", "taskrun", "-l", "tekton.dev/pipelineRun=%s" % name, "-o", "json"])
+        except SystemExit:
+            continue
+        merged: list = []
+        for tr in (trs.get("items") or []):
+            st = tr.get("status") if isinstance(tr.get("status"), dict) else {}
+            for row in (st.get("results") or st.get("taskResults") or []):
+                if isinstance(row, dict):
+                    merged.append(row)
+        if merged:
+            st = run.setdefault("status", {})
+            st["pipelineResults"] = list(st.get("pipelineResults") or []) + merged
     doc = observe_pipeline(root, runs, start_requested=args.start)
     dump(doc)
     if not doc.get("ok"):

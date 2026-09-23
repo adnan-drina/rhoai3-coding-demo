@@ -13,9 +13,11 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from m5_delivery import (
+    argv_for_card,
     assert_deployed,
     assess_eligibility,
     compose_verdict,
+    deployment_from_app_pods,
     evaluate_live,
     idempotency_key,
     observe_pipeline,
@@ -142,6 +144,10 @@ class DuplicateStart(unittest.TestCase):
         self.assertEqual(planned[0]["idempotency_key"], idempotency_key("prepare", "t_m4close01", sha))
         control = json.loads((root / LOOP_CARDS).read_text())["control"]
         self.assertEqual(set(control), {"m5_prepare", "m5_push", "m5_accept"})
+        argv = argv_for_card(planned[0], "body", hermes="hermes", parent_id="t_m4close01",
+                             workspace="dir:/projects/modernized")
+        self.assertNotIn("--initial-status", argv)
+        self.assertEqual(argv[argv.index("--assignee") + 1], "implementer")
 
 
 class PipelineAndDeploy(unittest.TestCase):
@@ -219,6 +225,19 @@ class PipelineAndDeploy(unittest.TestCase):
         self.assertFalse(doc["ok"])
         self.assertEqual(doc["reason"], "missing-image-digest")
 
+    def test_taskrun_results_digest_is_accepted(self):
+        root, tmp = _root()
+        self.addCleanup(tmp.cleanup)
+        sha = "bb" * 20
+        self._candidate(root, sha)
+        digest = "sha256:" + "3" * 64
+        run = {"metadata": {"name": "app-push-1"}, "spec": {"params": [{"name": "revision", "value": sha}]},
+               "status": {"conditions": [{"type": "Succeeded", "status": "True"}],
+                          "results": [{"name": "IMAGE_DIGEST", "value": digest}]}}
+        doc = observe_pipeline(root, [run])
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["image_digest"], digest)
+
 
 class LiveAndVerdict(unittest.TestCase):
     def test_failed_live_acceptance(self):
@@ -289,6 +308,30 @@ class LiveAndVerdict(unittest.TestCase):
         self.assertEqual(verdict["failed_stage"], "M5-B")
         self.assertTrue(verdict["stale_evidence"])
         self.assertTrue((root / M5_VERDICT).is_file())
+
+
+class PodFallback(unittest.TestCase):
+    def test_ready_app_pod_is_a_deployment_view(self):
+        name = "app"
+        pods = [{"status": {
+            "podIP": "10.0.0.9",
+            "containerStatuses": [{
+                "name": name, "ready": True,
+                "image": "registry/app:abc",
+                "imageID": "registry/app@sha256:" + "4" * 64,
+            }],
+        }}]
+        dep = deployment_from_app_pods(pods, name)
+        self.assertEqual(dep["status"]["readyReplicas"], 1)
+        self.assertIn("sha256:" + "4" * 64, dep["status"]["containerStatuses"][0]["imageID"])
+
+    def test_route_url_uses_ingress_host(self):
+        from m5_delivery import route_url
+        url = route_url({
+            "spec": {"subdomain": "petclinic-v10", "tls": {"termination": "edge"}},
+            "status": {"ingress": [{"host": "petclinic-v10.apps.example.com"}]},
+        })
+        self.assertEqual(url, "https://petclinic-v10.apps.example.com")
 
 
 if __name__ == "__main__":

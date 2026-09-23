@@ -10,7 +10,7 @@ from pathlib import Path
 from _cli import dump, ensure_hermes_lib, root_parser
 
 ensure_hermes_lib()
-from m5_delivery import assert_deployed, load_delivery_contract  # noqa: E402
+from m5_delivery import assert_deployed, deployment_from_app_pods, load_delivery_contract  # noqa: E402
 from planner.canonical import load_json  # noqa: E402
 from planner.paths import DELIVERY_CANDIDATE  # noqa: E402
 
@@ -38,12 +38,40 @@ def main(argv: list[str] | None = None) -> int:
     if not name or not ns:
         print("BLOCKED M5-B: application name/namespace missing (delivery.yaml)", file=sys.stderr)
         return 2
+    deployment = _get(ns, "deployment", name)
+    proc = subprocess.run(["oc", "-n", ns, "get", "pods", "-o", "json"], text=True, capture_output=True)
+    pods = []
+    if proc.returncode == 0:
+        try:
+            pods = list((json.loads(proc.stdout) or {}).get("items") or [])
+        except json.JSONDecodeError:
+            pods = []
+    if not deployment:
+        deployment = deployment_from_app_pods(pods, name)
+    service = _get(ns, "service", name)
+    endpoints = _get(ns, "endpoints", name)
+    route = _get(ns, "route", name)
+    if not service and deployment:
+        service = {"metadata": {"name": name, "note": "inferred-from-ready-pods"}}
+    if not endpoints:
+        addrs = []
+        for pod in pods:
+            status = pod.get("status") if isinstance(pod.get("status"), dict) else {}
+            cs = status.get("containerStatuses") or []
+            if name not in [str(c.get("name") or "") for c in cs if isinstance(c, dict)]:
+                continue
+            if any(isinstance(c, dict) and c.get("ready") and str(c.get("name") or "") == name for c in cs):
+                ip = str(status.get("podIP") or "")
+                if ip:
+                    addrs.append({"ip": ip})
+        if addrs:
+            endpoints = {"subsets": [{"addresses": addrs}]}
     doc = assert_deployed(
         root,
-        deployment=_get(ns, "deployment", name),
-        service=_get(ns, "service", name),
-        route=_get(ns, "route", name),
-        endpoints=_get(ns, "endpoints", name),
+        deployment=deployment,
+        service=service,
+        route=route,
+        endpoints=endpoints,
     )
     dump(doc)
     if not doc.get("ok"):
