@@ -9,6 +9,7 @@ invalidates the receipt.
 | `schemas/evidence-bundle.schema.json` | M1 evidence bundle (source manifest, structure, entry points, MTA obligations, producer receipts) |
 | `schemas/worklist.schema.json` | the only plan: tool-computed items, file clusters, fixed order, measure |
 | `schemas/admission-receipt.schema.json` | receipt v2: seals (bundle, work list, bootstrap, decisions, contracts, pins), blocks, activation, measure |
+| `schemas/serial-roadmap.schema.json` | derived serial view after M2 (`evidence/planning/serial-roadmap.json`); not sealed; planned M4/M5 must not claim a candidate or receipt |
 | `schemas/decisions.schema.json` | `decisions.yaml` v2: destination platform, attempt threshold, ADR-retired items |
 | `schemas/decided-repairs-manifest.schema.json` | ADR-019 specimen manifest of decided repairs (the transformations, their applicability and the independent review records), named and pinned by `decisions.yaml` `decided_repairs` |
 | `schemas/decided-repairs-receipt.schema.json` | `evidence/producers/decided-repairs.json`: one row per transformation (applied / already-applied / refused + type), the repair inventory, review reuse, retired thresholds, effective-pom check |

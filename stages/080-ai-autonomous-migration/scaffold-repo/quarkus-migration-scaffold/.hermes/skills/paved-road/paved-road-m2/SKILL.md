@@ -57,6 +57,11 @@ that step runs again in order; it is not asking you to run step 4 first.
 Step 5 needs no `--exempt` flags: the dest-init cards (M1, this M2) are
 registered from `.hermes/AUTOSTART-STATUS` and K3 exempts them itself.
 
+After admission, `skill_view compose-serial-roadmap` may write
+`evidence/planning/serial-roadmap.json`: one executable next card and
+planned M4 VERIFY / M5 PREFLIGHT / DEPLOY / VALIDATE without a candidate
+or receipt. It is not a KEEP file, not an audit needle, and not a mint.
+
 From here the loop propagates itself: each M3 card's `advance.py` mints
 the next card after the tools accept its step.
 

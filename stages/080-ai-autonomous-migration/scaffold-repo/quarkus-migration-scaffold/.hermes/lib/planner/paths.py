@@ -23,11 +23,12 @@ MTA_FINDINGS = Path("evidence") / "mta-findings.json"
 FINDINGS_HANDOFF = Path("evidence") / "findings-handoff.json"
 REQUIRED_EXTENSIONS = Path("evidence") / "required-extensions.json"
 
-# planning artifacts (three, in chain order)
+# planning artifacts (three sealed, in chain order, plus a derived serial view)
 PLANNING_OUT = Path("evidence") / "planning"
 EVIDENCE_BUNDLE = PLANNING_OUT / "evidence-bundle.json"
 WORKLIST = PLANNING_OUT / "worklist.json"
 ADMISSION_RECEIPT = PLANNING_OUT / "admission-receipt.json"
+SERIAL_ROADMAP = PLANNING_OUT / "serial-roadmap.json"
 BOOTSTRAP_RECEIPT = PRODUCERS_DIR / "bootstrap.json"
 # decided repairs applied by the bootstrap (ADR-019): one row per transformation
 DECIDED_REPAIRS_RECEIPT = PRODUCERS_DIR / "decided-repairs.json"

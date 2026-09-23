@@ -186,6 +186,9 @@ retains the candidate (`VERIFICATION_PENDING`, no attempt counted);
 otherwise it discards the candidate (index and working tree) and re-issues the cluster; at the ADR
 threshold it defers to a human and the loop stops. Three sealed artifacts under
 `evidence/planning/` (evidence-bundle → worklist → admission-receipt).
+`compose-serial-roadmap` may write a derived `serial-roadmap.json` after M2
+so M4 VERIFY and M5 PREFLIGHT / DEPLOY / VALIDATE are visible as planned
+milestones; it is not a fourth sealed plan and does not mint.
 Ordering, verification, acceptance and termination are mechanical; a
 worker may run the tools, edit inside its write set, report, and request
 review — never author the list, the measure, or a decision. A missing
@@ -234,6 +237,7 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | M2 deterministic compat-path baseline (pom, properties, main class) | `bootstrap-destination` |
 | M2 the plan: tool-computed work list + baseline step | `build-worklist` |
 | M2 admission receipt + activation gate | `admit-migration-plan` |
+| M2 derived serial roadmap (planned M4/M5; not KEEP) | `compose-serial-roadmap` |
 | M2 live board equals the loop's expected cards (K3) | `verify-live-kanban-loop` |
 | M3 loop procedure (brief → edit → verify → accept/revert/defer) | `fix-until-green` (pinned via `paved-road-m3`) |
 | M4 VERIFY road (oracles → parity → pre-verdict → verdict → lint) | `paved-road-m4` |
