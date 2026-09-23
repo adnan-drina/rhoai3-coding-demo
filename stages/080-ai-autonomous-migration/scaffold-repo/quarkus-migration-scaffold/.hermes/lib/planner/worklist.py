@@ -1438,19 +1438,118 @@ def parity_before_file(security_mode: Any = None) -> Path:
 
 
 def security_mode_of_run(run: dict[str, Any] | None, issued: dict[str, Any] | None = None) -> str:
-    """The security mode THIS verification compared, or the issued card's.
+    """The security mode the issued card must be judged in.
 
-    runtime.parity.security_mode is the record. The issued card carries the
-    same field so acceptance still knows the mode when a receipt is missing.
-    ``mixed`` is residual and refused: one repair card compares one mode."""
+    The issued card's sealed ``security_mode`` owns the comparison. A runner
+    record that disagrees is not adopted: a silent disabled replay must not
+    make acceptance read ``receipt.json``. ``mixed`` is residual and refused:
+    one repair card compares one mode. When the seal omitted the field, the
+    runner record is the fallback, then the default -- callers that must not
+    invent a mode (verify plan, acceptance) consult ``issued_parity_plan``."""
+    issued_mode = str((issued or {}).get("security_mode") or "").strip().lower()
+    if issued_mode in SECURITY_MODES or issued_mode == "mixed":
+        return issued_mode
     par = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
     recorded = str(par.get("security_mode") or "").strip().lower()
     if recorded in SECURITY_MODES or recorded == "mixed":
         return recorded
-    issued_mode = str((issued or {}).get("security_mode") or "").strip().lower()
-    if issued_mode in SECURITY_MODES or issued_mode == "mixed":
-        return issued_mode
     return DEFAULT_SECURITY_MODE
+
+
+ISSUANCE_SCOPE_PENDING = "issuance-scope-missing"
+_MIXED_MODE_SKIP = "the issued card mixes security modes; partition into one mode per repair card"
+_SCOPE_PENDING = "the issued card does not record a security mode or scenario scope"
+_SCOPE_INCONSISTENT = "the issued card's sealed security mode is inconsistent with its issuance item_scope"
+
+
+def _item_security_mode(it: dict[str, Any]) -> str:
+    mode = str(it.get("security_mode") or "disabled").strip().lower() or "disabled"
+    return mode if mode in SECURITY_MODES or mode == "mixed" else "disabled"
+
+
+def _item_scenario_ids(it: dict[str, Any]) -> list[str]:
+    sids = [str(s) for s in (it.get("scenarios") or []) if str(s)]
+    if not sids and str(it.get("scenario") or ""):
+        sids = [str(it.get("scenario"))]
+    return sids
+
+
+def _scope_from_item_scope(item_scope: Any) -> tuple[str, list[str], list[str]]:
+    """Mode, scenarios and entry points from the mint-time item snapshot.
+
+    Missing modes are left empty rather than invented as ``disabled``: an
+    incomplete snapshot is pending at verify time, not a silent default."""
+    rows = [r for r in (item_scope or []) if isinstance(r, dict)]
+    if not rows:
+        return "", [], []
+    recorded = [str(it.get("security_mode") or "").strip().lower() for it in rows]
+    named = [m for m in recorded if m]
+    if not named or any(not m for m in recorded):
+        mode = ""
+    elif any(m not in SECURITY_MODES and m != "mixed" for m in named):
+        mode = next(m for m in named if m not in SECURITY_MODES and m != "mixed")
+    elif len(set(named)) > 1:
+        mode = "mixed"
+    else:
+        mode = named[0]
+    scenarios = sorted({s for it in rows for s in _item_scenario_ids(it)})
+    entry_points = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("entry_point") or "")})
+    return mode, scenarios, entry_points
+
+
+def seal_issued_parity_scope(worklist: dict[str, Any] | None, issued_ids: Any) -> dict[str, Any]:
+    """Mode, scenario ids, entry points and per-item snapshot sealed at mint.
+
+    Taken from the work-list rows that exist when the card is issued. An empty
+    row set does not invent ``disabled`` or the whole corpus: the verify plan
+    then pending rather than silently falling back. Verification recovers
+    this snapshot, never the mutable rebuilt work list."""
+    wanted = {str(i) for i in (issued_ids or []) if str(i)}
+    rows = [it for it in ((worklist or {}).get("items") or []) if isinstance(it, dict) and str(it.get("id") or "") in wanted]
+    item_scope = [{"id": str(it.get("id") or ""), "security_mode": _item_security_mode(it),
+                   "scenarios": _item_scenario_ids(it),
+                   "entry_point": str(it.get("entry_point") or "")} for it in rows]
+    mode, scenarios, entry_points = _scope_from_item_scope(item_scope)
+    return {"security_mode": mode, "scenarios": scenarios, "entry_points": entry_points, "item_scope": item_scope}
+
+
+def issued_parity_plan(issued: dict[str, Any] | None, worklist: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What the parity stage compares for this issued card.
+
+    Only issuance-bound evidence is used: ``security_mode``, ``scenarios``,
+    ``entry_points`` and the mint-time ``item_scope`` snapshot. The live
+    work list is ignored -- remaining rows may show what is left, but they
+    must not shrink a two-item seal to the one row still reported. A sealed
+    mode plus named read-oracle entry points is a valid comparison with an
+    empty scenario list. Missing, invalid, inconsistent or incomplete
+    evidence is ``pending``, never ``run:``.
+
+    ``worklist`` is accepted for call-site compatibility and is not read.
+
+    Returns ``kind`` in ``run`` / ``skip`` / ``pending``, plus ``mode``,
+    ``scenarios``, ``entry_points`` and ``reason``."""
+    issued = issued if isinstance(issued, dict) else {}
+    _ = worklist
+    sealed_mode = str(issued.get("security_mode") or "").strip().lower()
+    sealed_sids = [str(s) for s in (issued.get("scenarios") or []) if str(s)]
+    sealed_eps = [str(e) for e in (issued.get("entry_points") or []) if str(e)]
+    derived_mode, derived_sids, derived_eps = _scope_from_item_scope(issued.get("item_scope"))
+    if not sealed_mode:
+        sealed_mode = derived_mode
+    if not sealed_sids:
+        sealed_sids = derived_sids
+    if not sealed_eps:
+        sealed_eps = derived_eps
+    if sealed_mode == "mixed":
+        return {"kind": "skip", "mode": "mixed", "scenarios": [], "entry_points": [], "reason": _MIXED_MODE_SKIP}
+    if derived_mode and sealed_mode != derived_mode:
+        return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
+    if sealed_mode not in SECURITY_MODES:
+        return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_PENDING}
+    if not sealed_sids and not sealed_eps:
+        return {"kind": "pending", "mode": sealed_mode, "scenarios": [], "entry_points": [], "reason": _SCOPE_PENDING}
+    return {"kind": "run", "mode": sealed_mode, "scenarios": sorted(set(sealed_sids)),
+            "entry_points": sealed_eps, "reason": ""}
 
 
 # every kind of parity obligation parity_items mints, so a later receipt can be
@@ -1777,7 +1876,16 @@ def judged_parity_receipt(root: Path, run: dict[str, Any] | None = None) -> tupl
     root = Path(root)
     if run is None:
         run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
-    mode = security_mode_of_run(run if isinstance(run, dict) else {})
+    issued: dict[str, Any] = {}
+    issued_path = root / LOOP_ISSUED
+    if issued_path.is_file():
+        try:
+            doc = load_json(issued_path)
+        except (OSError, ValueError):
+            doc = {}
+        if isinstance(doc, dict):
+            issued = doc
+    mode = security_mode_of_run(run if isinstance(run, dict) else {}, issued)
     if mode == "mixed":
         return {}, []
     live = load_parity_receipt(root, mode)

@@ -3,13 +3,33 @@
 ## Stage 080 v10 readiness — 2026-09-22
 
 - v10 dest is an **assisted overlay** beyond published golden `61ac38db`.
-  CORS card `t_ddd325d5` attempt 4 was accepted; navigation `t_fd744fef`
-  attempt 7 reached a native checkpoint. Two reusable harness defects remain
-  in that overlay and are corrected in authoring: a scoped receipt must not
-  keep an older full-mode runner as its measurement (`check-mode-parity`
-  refuses that pairing), and disabled/enabled navigation obligations stay
-  independently mintable with the correct receipt path. Install the successor
-  golden only at an idle boundary. No release claimed.
+  Provenance/navigation recovery and CORS bare-gating are installed. On
+  packaged artifact `c66b1e9d…` both ADR-014 modes measure 0 FAIL: enabled
+  CORS actual-anonymous and preflight are 401 + Basic challenge with no
+  CORS grants, and enabled documentation navigation is 302 then 200 at
+  `/petclinic/swagger-ui/index.html` while `/` and `/api` stay authenticated.
+  PetType `sc:auth-allowed-delete-referenced-pettypes-1` stays a
+  qualification INCONCLUSIVE (`after_effect_status` 404 vs 200), not a
+  destination FAIL. M4 `t_bf98503f` bound `PROVISIONAL_ACCEPT` and
+  `resume-after-m4.py` CLOSED the run (not shipped; coverage gaps remain).
+  Completed M4 still does not automatically run `resume-after-m4.py`
+  (repeatability defect; the protocol nudge also re-claimed the close card
+  from review — consume through that path, do not redesign dispatch).
+  Historical nav card `t_977f2281` remains blocked (attempt 7 of 6); do
+  not dest-complete. No release claimed. Silent security-mode fallback
+  (empty work-list rows printing `run:` with no `mode:`, bash defaulting
+  disabled and comparing the whole corpus) is corrected in authoring:
+  issued.json seals mode, scenario ids, entry points and a per-item
+  `item_scope` snapshot at mint. Verification recovers that snapshot only;
+  the live work list is remaining-work and is not consulted. Missing,
+  invalid, inconsistent, or incomplete issuance evidence is
+  `VERIFICATION_PENDING` without an attempt. A two-item issued scope is
+  not reduced to the one remaining work-list row. A sealed mode plus
+  named read-oracle entry points is a valid empty-scenario comparison
+  (execute those oracles only; invent no scenario ids). A wrong-mode PASS
+  cannot discharge the card. Not installed on the closed v10 dest; do not
+  reopen that run merely to copy it. CI/CD delivery is independent unless
+  it invokes this verification path.
 
 - Visit attempt 3 (`t_c707fd48`, commit `86bb017c4925`) repaired deletion in
   the actual repository fragment. M4's fresh replay passes **18/18 disabled

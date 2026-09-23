@@ -319,7 +319,8 @@ from pathlib import Path
 root = Path(sys.argv[1])
 force = sys.argv[2] == "true"
 sys.path.insert(0, str(root / ".hermes" / "lib"))
-from planner.paths import LOOP_ISSUED, PARITY_DIR, VERIFY_BOOT, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.paths import LOOP_ISSUED, PARITY_DIR, VERIFY_BOOT, VERIFY_RUN  # noqa: E402
+from planner.worklist import issued_parity_plan  # noqa: E402
 
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 
@@ -381,39 +382,40 @@ if not booted:
     # cannot start one measures nothing
     print("skip:the startup gate did not pass in this verification")
     raise SystemExit(0)
-wanted = {str(i) for i in (issued.get("items") or [])}
-rows = [it for it in (doc(WORKLIST).get("items") or []) if str(it.get("id")) in wanted]
+# --parity on a non-parity card (or an Operator re-measure) still compares
+# the whole phase. A parity card never takes that path: its issued seal owns
+# mode and scenario ids even when the rebuilt work list dropped the item.
+if force and str(issued.get("gate") or "") != "parity":
+    print("run:")
+    raise SystemExit(0)
 # ADR-014: one repair card compares one security mode. Mixed items cannot
 # share a runner invocation and must be partitioned before comparison.
-if rows:
-    modes = sorted({str(it.get("security_mode") or "disabled").strip().lower() or "disabled" for it in rows}) or ["disabled"]
-    if len(modes) > 1:
-        print("skip:the issued card mixes security modes; partition into one mode per repair card")
-        raise SystemExit(0)
-sids = sorted({str(s) for it in rows for s in (it.get("scenarios") or []) if str(s)})
+# The issued card and the scope sealed at mint own that mode and the
+# scenario ids. The live work list is remaining-work only and is not
+# consulted here: a missing live row must not shrink a two-item seal,
+# print run: (whole corpus), or omit mode: (bash default disabled).
+# A sealed mode plus named read-oracle entry points is a valid comparison
+# with an empty scenario list.
+plan = issued_parity_plan(issued)
+if plan["kind"] in ("skip", "pending"):
+    print("%s:%s" % (plan["kind"], plan["reason"]))
+    raise SystemExit(0)
+sids = list(plan.get("scenarios") or [])
+eps = list(plan.get("entry_points") or [])
+mode = str(plan.get("mode") or "")
+print("run:" + ",".join(sids))
 # H3: the entry points the obligations of this card belong to. A scoped run
 # re-runs their READ ORACLES beside the scenarios, because a read-oracle
 # obligation (no scenario) is re-measured by nothing else (dest v9 t_4d75569c:
 # the scoped run left the entry point FAIL record as the baseline had it, and
 # the card could discharge its scenario obligation and never its read-oracle
 # one). One per line after the head: an entry point id may hold any character
-# but a newline. (No apostrophes in this block: see above.)
-eps = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("entry_point") or "")})
-print("run:" + ",".join(sids))
-for ep in (eps if sids else []):
+# but a newline. Printed even when the scenario list is empty: that is a
+# read-oracle-only card, not an unscoped corpus. (No apostrophes: see above.)
+for ep in eps:
     print("oracle:" + ep)
-# ADR-014: an enabled-mode obligation is replayed against the enabled corpus
-# of that mode. An unscoped force or a card with no items names no mode.
-if rows:
-    if modes == ["enabled"]:
-        print("mode:enabled")
-    else:
-        print("mode:disabled")
-    for m in modes:
-        msids = sorted({str(s) for it in rows
-                        if (str(it.get("security_mode") or "disabled").strip().lower() or "disabled") == m
-                        for s in (it.get("scenarios") or []) if str(s)})
-        print("run-mode:%s:%s" % (m, ",".join(msids)))
+print("mode:" + mode)
+print("run-mode:%s:%s" % (mode, ",".join(sids)))
 PYEOF
 )" || PARITY_PLAN="skip:the issued card could not be read"
   # the plan's head is its first line; the lines after it name the read
@@ -431,6 +433,38 @@ PYEOF
   if [[ "${PARITY_PLAN}" == skip:* ]]; then
     echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
   fi
+  record_parity_pending() {
+    local reason="$1"
+    echo "VERIFICATION_PENDING issuance-scope-missing: ${reason} (no comparison, no attempt)" >&2
+    python3 - "${RUN}" "${ROOT}" "${reason}" <<'PYEOF'
+import json, sys
+from pathlib import Path
+reason = sys.argv[3]
+payload = {
+    "ran": False,
+    "pending": reason,
+    "cause": "issuance-scope-missing",
+    "scoped": False,
+    "scenarios": [],
+    "trigger": "issued-card",
+}
+for p in (Path(sys.argv[1]), Path(sys.argv[2]) / "verification" / "build" / "run.json"):
+    doc = {}
+    if p.is_file():
+        try:
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            loaded = {}
+        if isinstance(loaded, dict):
+            doc = loaded
+    doc.setdefault("runtime", {})["parity"] = payload
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PYEOF
+  }
+  if [[ "${PARITY_PLAN}" == pending:* ]]; then
+    record_parity_pending "${PARITY_PLAN#pending:}"
+  fi
   if [[ "${PARITY_PLAN}" == done:* ]]; then
     # not a failure and not this card's obligation: the cost guard. Said out
     # loud so the audit does not read a silent absence as a run.
@@ -440,6 +474,7 @@ PYEOF
     # A card's own comparison is SCOPED to its scenarios; the runtime-feedback
     # sweep is the whole phase, because it is not answering one obligation --
     # it is asking what this candidate did to behaviour at all.
+    PARITY_PENDING_SCOPE=0
     if [[ "${PARITY_PLAN}" == sweep:* ]]; then
       SIDS=""
       PARITY_TRIGGER="runtime-feedback"
@@ -450,8 +485,17 @@ PYEOF
     else
       SIDS="${PARITY_PLAN#run:}"
       PARITY_TRIGGER="issued-card"
-      if [[ ${#PARITY_MODE_RUNS[@]} -eq 0 ]]; then
-        PARITY_MODE_RUNS+=("${PARITY_MODE:-disabled}:${SIDS}")
+      if [[ -z "${SIDS}" && -z "${PARITY_MODE}" ]]; then
+        # --parity force / Operator unscoped re-measure: no issued mode to replay
+        PARITY_MODE="disabled"
+      elif [[ -z "${PARITY_MODE}" ]]; then
+        record_parity_pending "the issued card does not record a security mode or scenario scope"
+        PARITY_PENDING_SCOPE=1
+      elif [[ -z "${SIDS}" && ${#PLAN_ORACLES[@]} -eq 0 ]]; then
+        record_parity_pending "the issued card does not record a security mode or scenario scope"
+        PARITY_PENDING_SCOPE=1
+      elif [[ ${#PARITY_MODE_RUNS[@]} -eq 0 ]]; then
+        PARITY_MODE_RUNS+=("${PARITY_MODE}:${SIDS}")
       fi
     fi
     PARITY_ISSUED="${ROOT}/verification/loop/issued.json"
@@ -499,8 +543,14 @@ PYEOF
           [[ -n "${ep}" ]] && args+=(--read-oracle "${ep}")
         done
         [[ ${#PLAN_ORACLES[@]} -gt 0 ]] && echo "parity: re-running the read oracle(s) of ${#PLAN_ORACLES[@]} entry point(s) of this card beside its scenarios"
-      elif [[ "${PARITY_TRIGGER}" == "issued-card" ]]; then
-        echo "parity: the issued obligations name no scenario; comparing the whole phase (read oracles included)"
+      elif [[ "${PARITY_TRIGGER}" == "issued-card" && ${#PLAN_ORACLES[@]} -gt 0 ]]; then
+        local ep
+        for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
+          [[ -n "${ep}" ]] && args+=(--read-oracle "${ep}")
+        done
+        echo "parity: read-oracle-only comparison of ${#PLAN_ORACLES[@]} entry point(s); no scenario ids named and none invented"
+      elif [[ "${PARITY_TRIGGER}" == "runtime-feedback" || -z "${PARITY_ISSUED}" || ! -f "${PARITY_ISSUED}" ]]; then
+        echo "parity: unscoped comparison (no scenario filter)"
       fi
       # the receipt as it stood BEFORE this candidate's comparison: acceptance
       # asks of it what was already PASSing, so that a repair that breaks another
@@ -517,7 +567,9 @@ PYEOF
       PARITY_MS="$(( PARITY_MS + $(now_ms) - t0 ))"
       tail -20 "${WORK}/parity.log" || true
     }
-    if [[ ${#PARITY_MODE_RUNS[@]} -gt 0 && "${PARITY_TRIGGER}" == "issued-card" ]]; then
+    if [[ "${PARITY_PENDING_SCOPE}" -eq 1 ]]; then
+      :
+    elif [[ ${#PARITY_MODE_RUNS[@]} -gt 0 && "${PARITY_TRIGGER}" == "issued-card" ]]; then
       for spec in "${PARITY_MODE_RUNS[@]}"; do
         run_one_parity "${spec%%:*}" "${spec#*:}"
       done
@@ -525,7 +577,13 @@ PYEOF
     else
       run_one_parity "${PARITY_MODE:-disabled}" "${SIDS}"
     fi
+    if [[ "${PARITY_PENDING_SCOPE}" -ne 1 ]]; then
     export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE
+    PARITY_ORACLES=""
+    if [[ ${#PLAN_ORACLES[@]} -gt 0 ]]; then
+      PARITY_ORACLES="$(IFS=,; printf '%s' "${PLAN_ORACLES[*]}")"
+    fi
+    export PARITY_ORACLES
     python3 - "${RUN}" "${ROOT}" <<'PYEOF'
 import json, os, sys
 from pathlib import Path
@@ -555,6 +613,8 @@ if rec_p.is_file():
         reruns = [str(e) for e in ((json.loads(rec_p.read_text(encoding="utf-8")) or {}).get("read_oracles") or {}).get("rerun") or []]
     except ValueError:
         reruns = []
+sids = [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s]
+oracles = [e for e in (os.environ.get("PARITY_ORACLES") or "").split(",") if e]
 doc = json.load(open(run_p))
 doc.setdefault("runtime", {})["parity"] = {
     "ran": True,
@@ -563,8 +623,8 @@ doc.setdefault("runtime", {})["parity"] = {
     # sweep. Both are of the candidate and both bind to the issued card; only
     # the first is scoped, and only the first discharges an obligation.
     "trigger": os.environ.get("PARITY_TRIGGER") or "issued-card",
-    "scoped": bool([s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s]),
-    "scenarios": [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s],
+    "scoped": bool(sids or oracles),
+    "scenarios": sids,
     # H3: the entry points whose read oracle the scoped run re-ran for this
     # card; the work list and acceptance count them as re-measured
     "read_oracles_rerun": sorted(reruns),
@@ -580,6 +640,7 @@ PYEOF
     # the obligations it still reports are the ones this candidate left
     python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
     VERIFY_RC=$?
+    fi
   fi
 fi
 # The verify count for the issued card and the obligations the rebuilt work

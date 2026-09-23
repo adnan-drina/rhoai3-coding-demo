@@ -34,7 +34,7 @@ from planner.cards import idempotency_key, next_card, parse_body, pending_cluste
 from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
 from planner.pins import activation_gaps, load_pins, pin_gaps  # noqa: E402
-from planner.worklist import gate_items  # noqa: E402
+from planner.worklist import gate_items, seal_issued_parity_scope  # noqa: E402
 from planner.budget import budget as loop_budget  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 
@@ -312,14 +312,13 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
         issued_path = root / LOOP_ISSUED
         prev = load_json(issued_path) if issued_path.is_file() else {}
         issued_ids = set(card.get("items") or [])
-        issued_modes = sorted({str(i.get("security_mode") or "disabled").strip().lower() or "disabled"
-                               for i in (worklist.get("items") or []) if str(i.get("id")) in issued_ids})
-        if not issued_modes:
-            issued_mode = "disabled"
-        elif len(issued_modes) == 1:
-            issued_mode = issued_modes[0]
-        else:
-            issued_mode = "mixed"
+        scope = seal_issued_parity_scope(worklist, issued_ids)
+        issued_mode = str(scope.get("security_mode") or "")
+        if not issued_mode:
+            # a non-parity card has no mode of its own; a parity card whose
+            # items were already gone at mint must not invent disabled --
+            # verification pending rather than a silent fallback
+            issued_mode = "" if str(card.get("gate") or "") == "parity" else "disabled"
         write_canonical(issued_path, {
             "schema": "rhoai3.loop-issued/v1",
             "cluster": card["id"],
@@ -351,6 +350,13 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
                                 if str(i.get("id")) in issued_ids and i.get("identity")},
             "security_mode": issued_mode,
+            # sealed at mint so a later work-list rebuild that dropped the
+            # item cannot change what this card verifies. item_scope is the
+            # per-item snapshot verification recovers; the live work list is
+            # remaining-work only and is not consulted at verify time.
+            "scenarios": list(scope.get("scenarios") or []),
+            "entry_points": list(scope.get("entry_points") or []),
+            "item_scope": list(scope.get("item_scope") or []),
             "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
         })
     return result, []

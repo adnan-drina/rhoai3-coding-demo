@@ -3995,13 +3995,82 @@ def _partial_package_scope_case():
     return 0
 
 
+def _issued_parity_plan_case() -> int:
+    """Issued card + sealed scope own mode and scenarios. The live work list
+    is not a recovery source: a missing or remaining row must not default
+    disabled, shrink a two-item seal, or broaden to the corpus."""
+    from planner.worklist import issued_parity_plan, parity_discharge_scope, parity_remeasured, seal_issued_parity_scope
+
+    item = {"id": "parity:en", "security_mode": "enabled",
+            "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"], "entry_point": "ep:x"}
+    seal = seal_issued_parity_scope({"items": [item]}, ["parity:en"])
+    want_scope = [{"id": "parity:en", "security_mode": "enabled",
+                   "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"], "entry_point": "ep:x"}]
+    if seal != {"security_mode": "enabled", "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"],
+                "entry_points": ["ep:x"], "item_scope": want_scope}:
+        return _fail("mint seals the issued mode, scenario ids and item_scope: %s" % seal)
+    empty = seal_issued_parity_scope({"items": []}, ["parity:en"])
+    if empty.get("security_mode") or empty.get("scenarios") or empty.get("item_scope"):
+        return _fail("a missing live row at mint must not invent disabled or a corpus: %s" % empty)
+
+    issued = {"gate": "parity", "items": ["parity:en"], "security_mode": "enabled",
+              "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"], "item_scope": want_scope}
+    live = {"items": [item]}
+    plan = issued_parity_plan(issued, {"items": []})
+    if plan.get("kind") != "run" or plan.get("mode") != "enabled" or plan.get("scenarios") != ["sc:en-a", "sc:en-b", "sc:en-c"]:
+        return _fail("enabled card, item gone from the work list, still replays the three issued scenarios: %s" % plan)
+    if issued_parity_plan(issued, live) != plan:
+        return _fail("live work-list rows must not change a sealed plan")
+    missing = issued_parity_plan({"gate": "parity", "items": ["parity:en"]}, live)
+    if missing.get("kind") != "pending" or missing.get("scenarios"):
+        return _fail("missing issuance scope must pending without replay even with live rows: %s" % missing)
+    invalid = issued_parity_plan({"gate": "parity", "items": ["parity:en"], "security_mode": "bogus",
+                                 "scenarios": ["sc:en-a"]}, live)
+    if invalid.get("kind") != "pending" or invalid.get("scenarios"):
+        return _fail("invalid sealed mode must pending without replay even with live rows: %s" % invalid)
+    disabled = {"gate": "parity", "items": ["parity:a"], "security_mode": "disabled",
+                "scenarios": ["sc:a-first", "sc:b-second"]}
+    dplan = issued_parity_plan(disabled, {"items": []})
+    if dplan.get("kind") != "run" or dplan.get("mode") != "disabled" or dplan.get("scenarios") != ["sc:a-first", "sc:b-second"]:
+        return _fail("a disabled card still replays its sealed scenarios: %s" % dplan)
+
+    two = [{"id": "parity:a", "security_mode": "disabled", "scenarios": ["sc:a-first"], "entry_point": "ep:a"},
+           {"id": "parity:b", "security_mode": "disabled", "scenarios": ["sc:b-second"], "entry_point": "ep:b"}]
+    partial_issued = {"gate": "parity", "items": ["parity:a", "parity:b"], "security_mode": "disabled",
+                      "item_scope": two}
+    leftover = {"items": [two[0]]}
+    partial = issued_parity_plan(partial_issued, leftover)
+    if (partial.get("kind") != "run" or partial.get("mode") != "disabled"
+            or partial.get("scenarios") != ["sc:a-first", "sc:b-second"]):
+        return _fail("a two-item sealed scope must not shrink to the one remaining work-list row: %s" % partial)
+
+    oracle_item = {"id": "parity:ro", "security_mode": "disabled", "scenarios": [], "entry_point": "ep:x.Vet#list():http"}
+    oracle_issued = {"gate": "parity", "items": ["parity:ro"], "security_mode": "disabled",
+                     "scenarios": [], "entry_points": ["ep:x.Vet#list():http"], "item_scope": [oracle_item]}
+    o_present = issued_parity_plan(oracle_issued, {"items": [oracle_item]})
+    o_absent = issued_parity_plan(oracle_issued, {"items": []})
+    for label, oplan in (("present", o_present), ("absent", o_absent)):
+        if (oplan.get("kind") != "run" or oplan.get("mode") != "disabled"
+                or oplan.get("scenarios") or oplan.get("entry_points") != ["ep:x.Vet#list():http"]):
+            return _fail("read-oracle-only card (%s) must run named oracles with an empty scenario list: %s" % (label, oplan))
+
+    scoped_run = {"runtime": {"parity": {"ran": True, "scoped": True, "scenarios": [],
+                                         "read_oracles_rerun": ["ep:x.Vet#list():http"]}}}
+    if parity_remeasured(scoped_run) != {"ep:x.Vet#list():http"}:
+        return _fail("acceptance must treat a read-oracle-only run as scoped: %s" % parity_remeasured(scoped_run))
+    if parity_discharge_scope(scoped_run) != {"ep:x.Vet#list():http"}:
+        return _fail("acceptance must not broaden a read-oracle-only run to the whole phase: %s"
+                     % parity_discharge_scope(scoped_run))
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
             or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
-            or _unit_budget_case()):
+            or _unit_budget_case() or _issued_parity_plan_case()):
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):

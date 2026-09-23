@@ -716,10 +716,20 @@ def main() -> int:
                                     extra=("--read-oracle", "ep:org.acme.Nobody#none():http"))
             if rc8 != 1 or not any("read-oracle filter" in f and "Nobody" in f for f in doc8.get("failures") or []):
                 return _fail("an unadmitted --read-oracle refuses by name: rc=%s %s" % (rc8, doc8.get("failures")))
-            # without a scenario filter the whole phase runs and the option adds nothing
+            # named --read-oracle without --scenario is a read-oracle-only
+            # scoped run: no scenario ids invented, only those oracles, not the
+            # whole corpus
+            others9 = {e: (root / PARITY / (slug(e) + ".json")).read_bytes() for e in READ_EPS if e != vet_ep}
             rc9, blob9, doc9 = _run(root, base, reset, extra=("--read-oracle", vet_ep))
-            if rc9 != 0 or not doc9["read_oracles"]["ran"] or doc9["read_oracles"].get("rerun") != [] or doc9["entry_points"]["compared"] != 3:
-                return _fail("an unfiltered run compares every read oracle; --read-oracle is then redundant and recorded as requested only: %s" % doc9.get("read_oracles"))
+            reads9 = doc9.get("read_oracles") or {}
+            sc9 = doc9.get("scenarios") or {}
+            if (rc9 != 0 or reads9.get("ran") or sc9.get("selected") != 0 or sc9.get("run") != 0
+                    or reads9.get("rerun") != [vet_ep] or reads9.get("requested") != [vet_ep]
+                    or (doc9.get("entry_points") or {}).get("compared") != 1):
+                return _fail("a read-oracle-only run executes only the named oracles and invents no scenario ids: %s %s %s"
+                             % (rc9, reads9, sc9))
+            if any((root / PARITY / (slug(e) + ".json")).read_bytes() != b for e, b in others9.items()):
+                return _fail("a read-oracle-only run must not rewrite other entry-point records")
 
             # --- the records a scoped run did not write, and the ones that
             #     belong to nothing --------------------------------------
@@ -1175,7 +1185,7 @@ def main() -> int:
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
           "--read-oracle (H3) re-runs exactly the named entry points' read oracles inside a scoped run, records them "
           "under read_oracles.rerun, names every other entry point as not compared and rewrites none of their records, "
-          "refuses an unadmitted entry point, and is redundant without a scenario filter; "
+          "refuses an unadmitted entry point, and without --scenario is a read-oracle-only scoped run that invents no scenario ids; "
           "a record that belongs to no scenario of this corpus -- the v9 cors-<digest>.json names from an earlier "
           "naming scheme, and a declared scenario under a name that is not its slug -- is MOVED ASIDE before the "
           "composer reads the directory, never deleted, with an index naming where each came from and why, and the "

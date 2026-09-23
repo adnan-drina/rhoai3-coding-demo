@@ -640,7 +640,7 @@ def _enabled_mode_acceptance_case() -> int:
     that candidate's enabled receipt -- never the sealed disabled one.
 
     Missing, stale, wrong-mode or wrong-candidate evidence refuses."""
-    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, PARITY_DIR, VERIFY_DIR  # noqa: E402
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, PARITY_DIR, VERIFY_DIR, VERIFY_RUN  # noqa: E402
     from planner.worklist import parity_receipt_file  # noqa: E402
     from _loop_common import snapshot_parity  # noqa: E402
 
@@ -711,8 +711,60 @@ def _enabled_mode_acceptance_case() -> int:
 
         install_adapter()
 
-        # 1. missing enabled receipt: the sealed disabled PASS is not "now"
+        attempts_before = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+
+        # 0. silent fallback: runner recorded disabled, disabled PASS, enabled missing
         live_en = root / PARITY_DIR / "receipt-enabled.json"
+        live_en.unlink(missing_ok=True)
+        keep_disabled_sealed()
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="disabled")
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob:
+            return _fail("disabled PASS beside missing enabled evidence must refuse acceptance: %s" % blob[-600:])
+        if "wrong-security-mode" not in blob and "issuance-scope-missing" not in blob:
+            return _fail("wrong-mode PASS must be a typed pending result: %s" % blob[-600:])
+        if dict(load_json(root / LOOP_STEPS).get("attempts") or {}) != attempts_before:
+            return _fail("wrong-mode PASS must not consume a repair attempt: %s" % load_json(root / LOOP_STEPS).get("attempts"))
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after wrong-mode disabled PASS: %s%s" % (rp.stdout, rp.stderr))
+
+        # 0b. missing issuance scope: no replay, typed pending, no attempt
+        keep_disabled_sealed()
+        live_en.unlink(missing_ok=True)
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")
+        issued_doc = load_json(root / LOOP_ISSUED)
+        saved_mode, saved_sids = issued_doc.get("security_mode"), list(issued_doc.get("scenarios") or [])
+        saved_eps, saved_scope = list(issued_doc.get("entry_points") or []), list(issued_doc.get("item_scope") or [])
+        issued_doc.pop("security_mode", None)
+        issued_doc["scenarios"] = []
+        issued_doc["entry_points"] = []
+        issued_doc["item_scope"] = []
+        write_canonical(root / LOOP_ISSUED, issued_doc)
+        run_doc = load_json(root / VERIFY_RUN)
+        run_doc.setdefault("runtime", {})["parity"] = {
+            "ran": False, "pending": "the issued card does not record a security mode or scenario scope",
+            "cause": "issuance-scope-missing", "scoped": False, "scenarios": []}
+        write_canonical(root / VERIFY_RUN, run_doc)
+        attempts_before = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob or "issuance-scope-missing" not in blob:
+            return _fail("missing issuance scope must pending without replay: %s" % blob[-600:])
+        if dict(load_json(root / LOOP_STEPS).get("attempts") or {}) != attempts_before:
+            return _fail("missing issuance scope must not consume a repair attempt")
+        issued_doc["security_mode"] = saved_mode
+        issued_doc["scenarios"] = saved_sids
+        issued_doc["entry_points"] = saved_eps
+        issued_doc["item_scope"] = saved_scope
+        write_canonical(root / LOOP_ISSUED, issued_doc)
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after missing issuance scope: %s%s" % (rp.stdout, rp.stderr))
+
+        # 1. missing enabled receipt: the sealed disabled PASS is not "now"
         live_en.unlink(missing_ok=True)
         keep_disabled_sealed()
         _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")

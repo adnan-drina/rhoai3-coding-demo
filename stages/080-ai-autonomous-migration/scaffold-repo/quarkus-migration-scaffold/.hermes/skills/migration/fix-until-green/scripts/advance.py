@@ -96,7 +96,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import carry_unmeasured, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
+from planner.worklist import carry_unmeasured, issued_parity_plan, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, SECURITY_MODES, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -888,7 +888,38 @@ def main(argv: list[str] | None = None) -> int:
                    if scope_ref and family else
                    (unit_continue_scope(scope_doc, cur.get("items") or []) if scope_ref and unit else None))
     run_doc = run if isinstance(run, dict) else {}
-    parity_mode = security_mode_of_run(run_doc, issued)
+    run_parity = (run_doc.get("runtime") or {}).get("parity") if isinstance((run_doc.get("runtime") or {}).get("parity"), dict) else {}
+    pending_why = str(run_parity.get("pending") or "")
+    if pending_why:
+        return _pending(root, steps, args.cluster, args.card, cur, pending_why, changed, on_disk,
+                        cause=str(run_parity.get("cause") or "issuance-scope-missing"))
+    issued_mode = str(issued.get("security_mode") or "").strip().lower()
+    if gate == "parity":
+        plan = issued_parity_plan(issued)
+        issued_mode = str(plan.get("mode") or "").strip().lower()
+        if plan["kind"] == "skip" or issued_mode == "mixed":
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "LOOP_MIXED_SECURITY_MODE the issued card spans both security modes; "
+                           "partition into one mode per repair card",
+                           changed, mint=not args.no_mint, hermes=args.hermes,
+                           legal_next="mint one repair card per security mode; do not compare both modes on one card")
+        if plan["kind"] == "pending" or issued_mode not in SECURITY_MODES:
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            str(plan.get("reason") or "the issued card does not record a security mode or scenario scope"),
+                            changed, on_disk, cause="issuance-scope-missing")
+        recorded = str(run_parity.get("security_mode") or "").strip().lower()
+        ran = bool(run_parity.get("ran"))
+        if ran and recorded and recorded != issued_mode:
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "this verification compared the %s security mode and the issued card requires %s; "
+                            "a %s PASS cannot discharge it" % (recorded, issued_mode, recorded),
+                            changed, on_disk, cause="wrong-security-mode")
+        if ran and not recorded:
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "this verification did not record a security mode and the issued card requires %s; "
+                            "a wrong-mode PASS cannot discharge it" % issued_mode,
+                            changed, on_disk, cause="wrong-security-mode")
+    parity_mode = issued_mode if (gate == "parity" and issued_mode in SECURITY_MODES) else security_mode_of_run(run_doc, issued)
     remeasured = parity_remeasured(run_doc)
     if parity_mode == "mixed":
         return _reject(root, steps, args.cluster, args.card, cur,
