@@ -267,6 +267,10 @@ record naming the card.
 - `scripts/jdk-dest-model/DestModel.java` — the DESTINATION's own structure from the JDK compiler API: resolved member signatures, what a type actually inherits and what its supertypes declare, and every annotation with its exact character range and its imports. Read through `planner.dest_model`, which caches it against the content of the sources AND the classpath it was compiled with, and raises rather than guessing. A regular expression answered these questions wrongly in both directions (a fully qualified annotation read as absent; a redeclared `findAll()` as underivable; a deleted member as inherited), so nothing here is read from text
 - `scripts/_java_runtime.py` — which `java` starts the packaged artifact (`$JAVA_HOME_21` → `$JAVA_HOME` → PATH, as `run-verify.sh` exports it), its `java -version`, and the class-file version the artifact needs; used by `verify-runtime.py` and by the parity runner
 - `scripts/_loop_common.py` — shared helpers
+- Parity scope amendments accept one complete issued item ID, for example
+  `--evidence parity:9b6add2ce842582a`. The older
+  `parity:parity:9b6add2ce842582a` form remains valid. Do not combine IDs;
+  either form still requires a measured relationship to the requested file.
 - `scripts/run-verify.test.sh`, `scripts/fix-until-green.test.py`, `scripts/amend-scope.test.py`, `scripts/brief.test.py`, `scripts/diagnose.test.py`, `scripts/resume-after-m4.test.py` — selftests
 
 ## Pitfalls

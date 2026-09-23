@@ -461,11 +461,22 @@ def _parity_body_case(root: Path) -> int:
     issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:nav", "attempt": 1, "gate": "parity",
                                   "items": ["parity:nav1"], "write_set": [ctl]}))
     rc, out = _run(root, "--path", props, "--reason", "quarkus.swagger-ui.always-include=true puts the UI in the package",
-                   "--evidence", "parity:parity:nav1", cluster="c:nav")
+                   "--evidence", "parity:nav1", cluster="c:nav")
     if rc != 0 or "configuration locus" not in out or "never a handler" not in out:
         return _fail("the config file the navigation advice names is authorized on parity evidence: %s" % out)
     if props not in json.loads(issued.read_text())["write_set"]:
         return _fail("the amendment lands application.properties in the write set")
+    if json.loads(issued.read_text())["amendments"][-1]["evidence"]["ref"] != "parity:nav1":
+        return _fail("the short argument must record the complete parity identity")
+    # Both spellings authorize the same measured relationship; a foreign or
+    # comma-joined identity still cannot widen the card.
+    for evidence in ("parity:parity:nav1", "parity:body1", "parity:nav1,parity:body1"):
+        issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:nav", "attempt": 1,
+                                      "gate": "parity", "items": ["parity:nav1"], "write_set": [ctl]}))
+        rc, out = _run(root, "--path", props, "--reason", "navigation requires its named configuration",
+                       "--evidence", evidence, cluster="c:nav")
+        if (rc == 0) != (evidence == "parity:parity:nav1"):
+            return _fail("parity argument compatibility must preserve issued-item ownership: %s" % out)
     rc, out = _run(root, "--path", "pom.xml", "--reason", "quarkus.swagger-ui.always-include=true puts the UI in the package",
                    "--evidence", "parity:parity:nav1", cluster="c:nav")
     if rc == 0 or "not a path a parity card may reach" not in out:

@@ -2,6 +2,13 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Root attempt 2 was REVERTED with 303/302 and dead-navigation differences.
+  Its scope requests used a full parity ID, but the parser required a redundant
+  `parity:parity:` prefix and refused before checking the file relationship.
+  The local correction accepts both spellings, while refusing foreign and
+  combined IDs and preserving all relationship checks. A native comment on
+  attempt 3 gives the currently installed syntax; attempts remain spent and
+  no scope was widened by the architect. Installation is pending.
 - Parity steps `4877892e` (CORS), `1ad2532d` (Owner) and `abb778b9` (Pet)
   were accepted after package and boot recovery. The Pet step records two
   parity mismatches remaining and known tuple `[0,0,0]`; the root-controller

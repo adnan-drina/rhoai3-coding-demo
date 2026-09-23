@@ -66,6 +66,16 @@ UNIT_AMENDMENT_LIMIT = 4
 EVIDENCE_KINDS = ("javac", "model", "runtime", "parity")
 
 
+def _parse_evidence(raw: str) -> tuple[str, str]:
+    kind, _, ref = str(raw or "").partition(":")
+    kind, ref = kind.strip(), ref.strip()
+    # Parity IDs already carry their evidence kind. Accept the verbatim ID
+    # as well as the older parity:parity:<id> form; ownership checks stay below.
+    if kind == "parity" and ref and not ref.startswith("parity:"):
+        ref = "parity:" + ref
+    return kind, ref
+
+
 def _refuse(msg: str) -> int:
     print("REFUSE: SCOPE_AMENDMENT %s" % msg, file=sys.stderr)
     return 1
@@ -102,8 +112,7 @@ def _evidence(root: Path, scope: dict, raw: str) -> tuple[dict, str]:
     the current work list carries. A stale identity is refused by name -- an
     amendment justified by a diagnostic nobody reports any more is justified by
     nothing."""
-    kind, _, ref = str(raw or "").partition(":")
-    kind, ref = kind.strip(), ref.strip()
+    kind, ref = _parse_evidence(raw)
     if kind not in EVIDENCE_KINDS or not ref:
         return {}, ("--evidence must be <kind>:<ref> with kind one of %s; %r is not"
                     % ("|".join(EVIDENCE_KINDS), raw))
@@ -280,7 +289,7 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
     500 was thrown in the repository implementation behind the service
     interface). A request alone never does."""
     if evidence_ref not in {str(i) for i in (issued.get("items") or [])}:
-        return "", "parity:%s is not an obligation this card was issued" % evidence_ref
+        return "", "%s is not an obligation this card was issued; pass one complete issued item ID" % evidence_ref
     item = next((i for i in _worklist_items(root) if str(i.get("id") or "") == evidence_ref), None)
     if item is None:
         return "", "no parity obligation %r is in the current work list" % evidence_ref
@@ -424,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     if issued.get("task_id") and args.card and args.card != issued["task_id"]:
         return _refuse("--card %r is not the minted card %s" % (args.card, issued["task_id"]))
     scope_ref = issued.get("batch_scope") or {}
-    evidence_kind, _, evidence_ref = str(args.evidence or "").partition(":")
+    evidence_kind, evidence_ref = _parse_evidence(args.evidence)
     if not scope_ref and str(issued.get("gate") or "") == "parity" and evidence_kind == "parity":
         return _parity_amend(root, issued, args, evidence_ref.strip())
     if not scope_ref:
