@@ -27,9 +27,11 @@ metadata:
 ---
 # Compose the serial roadmap after M2
 
-The work list remains the only plan. This skill writes a derived view so
-M4 VERIFY and M5 PREFLIGHT / DEPLOY / VALIDATE are visible after M2
-without minting them or inventing a delivery candidate.
+The work list remains the only plan. Admission writes this derived view
+after the receipt so M4 VERIFY and M5 PREFLIGHT / DEPLOY / VALIDATE are
+visible after M2 without minting them or inventing a delivery candidate.
+Re-run this skill only to refresh the same file. It is not a second plan,
+an M2 KEEP/audit step, a K4 mint, or an M5 eligibility gate.
 
 | Class | Meaning |
 |---|---|

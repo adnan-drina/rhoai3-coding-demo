@@ -962,6 +962,9 @@ check "080 source initializer pins the first clone and refuses changed or unreco
 check "080 versioned launch preflight refuses unready or changed inputs" \
   "bash -n '${SCRIPT_DIR}/v10-preflight.sh' && python3 '${SCRIPT_DIR}/v10-preflight.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 v11 launch preflight requires measured identity PASS and does not inherit the v10 deferral" \
+  "bash -n '${SCRIPT_DIR}/v11-preflight.sh' && python3 '${SCRIPT_DIR}/v11-preflight.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 per-run isolation invariants hold over the platform manifests (watch label, exact targeting, no repo-as-source, retirement)" \
   "python3 '${SCRIPT_DIR}/assert-run-isolation.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"

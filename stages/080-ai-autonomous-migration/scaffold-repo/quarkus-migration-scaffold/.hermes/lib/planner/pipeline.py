@@ -13,6 +13,7 @@ from planner.canonical import digest, write_canonical
 from planner.decisions import load_decisions
 from planner.evidence import assemble
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE
+from planner.roadmap import compose_serial_roadmap
 from planner.worklist import build_worklist
 
 
@@ -42,4 +43,10 @@ def admit(root: Path, *, write: bool = True) -> dict[str, Any]:
     receipt = compose_receipt(root)
     if write:
         write_canonical(root / ADMISSION_RECEIPT, receipt)
+        # Derived serial view only. Not sealed, not a KEEP, not a mint, not a
+        # release gate. A compose failure must not change the admission verdict.
+        try:
+            compose_serial_roadmap(root)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
     return receipt

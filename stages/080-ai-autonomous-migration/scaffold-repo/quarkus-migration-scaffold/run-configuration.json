@@ -1,0 +1,29 @@
+{
+  "schema": "rhoai3.run-configuration/v1",
+  "run_id": "v11",
+  "recorded_at": "2026-09-23T17:10:00Z",
+  "model": {
+    "id": "qwen3-8-27b-int4",
+    "provider": "qwen38",
+    "namespace": "models-as-a-service",
+    "maas_api_path": "/models-as-a-service/qwen3-8-27b-int4/v1",
+    "ready": true,
+    "served_max_model_len": 262144,
+    "declared_context_length": 220000
+  },
+  "hermes": {
+    "version": "v0.20.5",
+    "build": "2026.8.19"
+  },
+  "workspace_overlay": {
+    "digest": "sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f"
+  },
+  "images": {
+    "databaseImage": "registry.redhat.io/rhel9/postgresql-16@sha256:188e892c58c56037c8ff93051f3e3b76ec56773de5ba89791cd4a686f97b0cef",
+    "provisionerImage": "registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9"
+  },
+  "concurrency": "serial",
+  "parallel_m3": "deferred",
+  "activation": "not-activated",
+  "note": "Recorded before freezing the publication tree. Golden stays not-activated; destination pilot seal is applied after M1. Do not copy credentials."
+}

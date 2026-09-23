@@ -286,7 +286,9 @@ Evidence: [BACKLOG v10 readiness](../../BACKLOG.md), [V10-PLAN.md](V10-PLAN.md),
 closed v10 dest; do not reopen it for harness-only copies.
 
 The [versioned execution plan](V10-PLAN.md), [isolation demonstration](ISOLATION-DEMO.md)
-and read-only `v10-preflight.sh` define the launch sequence. A local green suite
+and read-only `v10-preflight.sh` define the closed v10 launch sequence. v11
+preparation is [V11-PLAN.md](V11-PLAN.md) and `v11-preflight.sh`; do not create
+or launch that workspace from this document. A local green suite
 does not qualify live isolation. Resource ownership now requires the platform
 receipt, actual workspace and original scaffolding assignment; provision/retire
 operations serialize per run. v9-to-v10 comparisons describe all changed pins

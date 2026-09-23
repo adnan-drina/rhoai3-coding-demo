@@ -23,7 +23,7 @@ def _ensure_hermes_lib() -> None:
 
 _ensure_hermes_lib()
 from planner.admission import ADMITTED, COMPAT_FAIL, INCONCLUSIVE  # noqa: E402
-from planner.paths import ADMISSION_RECEIPT  # noqa: E402
+from planner.paths import ADMISSION_RECEIPT, SERIAL_ROADMAP  # noqa: E402
 from planner.pipeline import admit  # noqa: E402
 
 
@@ -42,7 +42,10 @@ def main(argv: list[str] | None = None) -> int:
     line = "admission %s receipt=%s head=%s open_clusters=%d deferred=%d measure=%s open_blocks=%d loop_complete=%s → %s" % (
         status, receipt["receipt_digest"][:16], receipt.get("head") or "-", c["open_clusters"], c["deferred"], (receipt.get("measure") or {}).get("tuple"), c["open_blocks"], receipt.get("loop_complete"), ADMISSION_RECEIPT)
     if status == ADMITTED:
-        print("OK: " + line)
+        extra = ""
+        if (root / SERIAL_ROADMAP).is_file():
+            extra = "; serial-roadmap (informational) → %s" % SERIAL_ROADMAP
+        print("OK: " + line + extra)
         return 0
     for r in receipt["reasons"]:
         print("  - " + r, file=sys.stderr)
