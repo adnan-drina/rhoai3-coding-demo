@@ -36,7 +36,11 @@
   generator and CDI contract. Guidance `4da42ff3` is installed and the same
   card resumed as native run 28 after status-only triage resolution; its
   specification, issued seal, recurrence count and loop budget are preserved.
-  Live acceptance of that repair remains pending.
+  Run 29 subsequently applied all seven restrictions and was ACCEPTED as
+  `2c87dac062bd`: package and boot passed on the same artifact (`dfb404a8…`).
+  The known compile/test tuple remains `[0,0,0]`; 16 parity mismatches remain.
+  K4 minted CORS/config parity card `t_70e899f4`, and native run 30 started
+  its required brief. Packaging and startup are proven; migration is not complete.
 - Native run 28 crashed before its first tool action after six MaaS timeouts.
   The gateway pod was unready while Qwen 3.8 remained healthy; replacing the
   gateway restored internal access, but the public path still timed out.
