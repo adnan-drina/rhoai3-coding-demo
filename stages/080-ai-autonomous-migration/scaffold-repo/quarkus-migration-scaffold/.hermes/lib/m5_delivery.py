@@ -45,10 +45,15 @@ SCHEMA_VERDICT = "rhoai3.m5-verdict/v1"
 SCHEMA_BUDGET = "rhoai3.m5-budget/v1"
 
 STAGES = ("prepare", "push", "accept")
+STAGE_LABELS = {
+    "prepare": "M5 PREFLIGHT",
+    "push": "M5 DEPLOY",
+    "accept": "M5 VALIDATE",
+}
 STAGE_TITLES = {
-    "prepare": "M5-A prepare release candidate",
-    "push": "M5-B execute CI/CD and verify deployment",
-    "accept": "M5-C live acceptance and handover",
+    "prepare": "M5 PREFLIGHT — release candidate",
+    "push": "M5 DEPLOY — CI/CD and deployment",
+    "accept": "M5 VALIDATE — live acceptance and handover",
 }
 STAGE_RUNTIME = {"prepare": "1h", "push": "3h", "accept": "1h"}
 STAGE_WRITES = {
@@ -343,7 +348,7 @@ def start_delivery(root: Path, *, runner: Runner, hermes: str = "hermes",
     if not eligibility["pipeline_eligible"]:
         return {"ok": False, "blocked": True, "eligibility": eligibility,
                 "created": [], "reused": [], "reason": "failed prerequisite",
-                "failed_stage": "M5-A"}
+                "failed_stage": STAGE_LABELS["prepare"]}
     planned = plan_cards(eligibility)
     code, out, err = runner([hermes, "kanban", "list", "--json"])
     cards = []
@@ -392,11 +397,11 @@ def start_delivery(root: Path, *, runner: Runner, hermes: str = "hermes",
         if code != 0:
             return {"ok": False, "blocked": True, "eligibility": eligibility, "created": created, "reused": reused,
                     "reason": "mint failed for %s: %s" % (plan["logical_id"], (err or out)[:300]),
-                    "failed_stage": "M5-A"}
+                    "failed_stage": STAGE_LABELS["prepare"]}
         tid = parse_created_id(out)
         if not tid:
             return {"ok": False, "blocked": True, "eligibility": eligibility, "created": created, "reused": reused,
-                    "reason": "mint produced no t_* for %s" % plan["logical_id"], "failed_stage": "M5-A"}
+                    "reason": "mint produced no t_* for %s" % plan["logical_id"], "failed_stage": STAGE_LABELS["prepare"]}
         mapping[plan["logical_id"]] = tid
         if prior_map.get(plan["logical_id"]) == tid:
             reused.append({"logical_id": plan["logical_id"], "task_id": tid, "idempotency_key": plan["idempotency_key"]})
@@ -450,7 +455,7 @@ def prepare_candidate(root: Path, *, runner: Runner | None = None, changes: list
     eligibility = assess_eligibility(root, runner=runner)
     record_eligibility(root, eligibility)
     if not eligibility["pipeline_eligible"]:
-        doc = {"schema": SCHEMA_CANDIDATE, "ok": False, "failed_stage": "M5-A",
+        doc = {"schema": SCHEMA_CANDIDATE, "ok": False, "failed_stage": STAGE_LABELS["prepare"],
                "eligibility": eligibility, "reason": "failed prerequisite"}
         write_canonical(root / DELIVERY_CANDIDATE, doc)
         return doc
@@ -570,10 +575,10 @@ def select_pipeline_run(runs: list[dict[str, Any]], candidate: str) -> dict[str,
     others = [r for r in runs if pipeline_revision(r) and pipeline_revision(r) != candidate]
     if not matching:
         if others:
-            return {"ok": False, "failed_stage": "M5-B", "reason": "wrong-revision",
+            return {"ok": False, "failed_stage": STAGE_LABELS["push"], "reason": "wrong-revision",
                     "detail": "PipelineRun revision %s is not candidate %s" % (pipeline_revision(others[0]), candidate),
                     "run": others[0]}
-        return {"ok": False, "failed_stage": "M5-B", "reason": "no-pipeline-run",
+        return {"ok": False, "failed_stage": STAGE_LABELS["push"], "reason": "no-pipeline-run",
                 "detail": "no app-push PipelineRun for candidate %s" % candidate, "run": {}}
     running = [r for r in matching if pipeline_running(r)]
     succeeded = [r for r in matching if pipeline_succeeded(r)]
@@ -584,7 +589,7 @@ def select_pipeline_run(runs: list[dict[str, Any]], candidate: str) -> dict[str,
         digest = pipeline_digest(run)
         return {"ok": True, "reuse": True, "running": False, "run": run, "candidate_sha": candidate,
                 "image_digest": digest, "pipeline_ok": True}
-    return {"ok": False, "failed_stage": "M5-B", "reason": "pipeline-unsuccessful",
+    return {"ok": False, "failed_stage": STAGE_LABELS["push"], "reason": "pipeline-unsuccessful",
             "detail": "matching PipelineRun did not succeed", "run": matching[-1], "candidate_sha": candidate}
 
 
@@ -598,7 +603,7 @@ def observe_pipeline(root: Path, runs: list[dict[str, Any]], *, start_requested:
         selected["ok"] = False
         selected["reason"] = "duplicate-pipeline"
         selected["detail"] = "a matching PipelineRun already exists; do not start another"
-        selected["failed_stage"] = "M5-B"
+        selected["failed_stage"] = STAGE_LABELS["push"]
     name = ""
     run = selected.get("run") if isinstance(selected.get("run"), dict) else {}
     meta = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
@@ -609,11 +614,11 @@ def observe_pipeline(root: Path, runs: list[dict[str, Any]], *, start_requested:
         selected["ok"] = False
         selected["reason"] = "missing-image-digest"
         selected["detail"] = "a commit-named image tag is not immutable image identity"
-        selected["failed_stage"] = "M5-B"
+        selected["failed_stage"] = STAGE_LABELS["push"]
     doc = {
         "schema": SCHEMA_PIPELINE,
         "ok": bool(selected.get("ok") and not selected.get("running")),
-        "failed_stage": selected.get("failed_stage") or ("M5-B" if not selected.get("ok") else ""),
+        "failed_stage": selected.get("failed_stage") or (STAGE_LABELS["push"] if not selected.get("ok") else ""),
         "reason": selected.get("reason") or "",
         "detail": selected.get("detail") or "",
         "candidate_sha": candidate,
@@ -767,7 +772,7 @@ def assert_deployed(root: Path, *, deployment: dict[str, Any], service: dict[str
     doc = {
         "schema": SCHEMA_DEPLOYMENT,
         "ok": not issues,
-        "failed_stage": "" if not issues else "M5-B",
+        "failed_stage": "" if not issues else STAGE_LABELS["push"],
         "issues": issues,
         "candidate_sha": candidate,
         "pipeline_run": pipe.get("pipeline_run") or "",
@@ -850,7 +855,7 @@ def evaluate_live(checks: dict[str, dict[str, Any]], contract: dict[str, Any],
     return {
         "schema": SCHEMA_LIVE,
         "ok": not issues,
-        "failed_stage": "" if not issues else "M5-C",
+        "failed_stage": "" if not issues else STAGE_LABELS["accept"],
         "issues": issues,
         "deployed_image": deployed_image,
         "auth_mode": expected_auth,
@@ -877,11 +882,11 @@ def compose_verdict(root: Path) -> dict[str, Any]:
     release_eligible = bool(elig.get("release_eligible") or cand.get("release_eligible"))
     failed_stage = ""
     if not cand.get("ok", True) or not elig.get("pipeline_eligible", True):
-        failed_stage = "M5-A"
+        failed_stage = STAGE_LABELS["prepare"]
     elif not pipe.get("ok") or not deploy_ok or stale:
-        failed_stage = "M5-B"
+        failed_stage = STAGE_LABELS["push"]
     elif not live_ok:
-        failed_stage = "M5-C"
+        failed_stage = STAGE_LABELS["accept"]
     if stale:
         verdict_token = "REFUSE"
         routing = "blocked"

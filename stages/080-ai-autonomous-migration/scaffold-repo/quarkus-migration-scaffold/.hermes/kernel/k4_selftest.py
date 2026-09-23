@@ -67,7 +67,7 @@ def main() -> int:
         wl = load_json(root / WORKLIST)
         head_cluster = next(c for c in wl["clusters"] if c["id"] == wl["head"])
         from planner.cards import card_title  # noqa: E402
-        if p["logical_id"] != wl["head"] or p["title"] != card_title(head_cluster, 1) or not p["title"].startswith("M3 build pom.xml (") or p["kind"] != "build" or p["phase"] != "M3":
+        if p["logical_id"] != wl["head"] or p["title"] != card_title(head_cluster, 1) or not p["title"].startswith("M3 BUILD \u2014 pom.xml (") or p["kind"] != "build" or p["phase"] != "M3":
             return _fail("head payload %s" % {k: p[k] for k in ("logical_id", "title", "kind", "phase")})
         if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != 1 or p["assignee"] != "implementer":
             return _fail("key/retries/assignee %s" % p["idempotency_key"])

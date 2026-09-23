@@ -1,14 +1,14 @@
 ---
 name: paved-road-m5
 description: >
-  Pin on M5-A/B/C delivery cards after a closed M4 result. Index for
+  Pin on M5 PREFLIGHT, M5 DEPLOY, and M5 VALIDATE delivery cards after a closed M4 result. Index for
   bounded delivery: eligibility-checked start, release-candidate prepare,
   app-push observation, deployed-app assertion, live Route acceptance,
   composed M5 verdict. Use for the assisted continuation that publishes
   through the existing pipeline. Never for M1–M4, never to dest-dispatch
   from the M4 worker, never to invent release gates or waive coverage.
 license: Apache-2.0
-compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+; oc/tkn for M5-B
+compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+; oc/tkn for M5 DEPLOY
 metadata:
   author: rhoai3-harness-team
   version: "1.0.0"
@@ -19,7 +19,7 @@ metadata:
     category: paved-road
     kind: guidance
 ---
-# Paved road: M5 delivery (prepare → pipeline → live)
+# Paved road: M5 delivery (PREFLIGHT → DEPLOY → VALIDATE)
 
 `steps.json` is the contract; `audit.json` is generated from it. Application
 values (namespace, Route probes, CRUD body) live in the project's
@@ -40,15 +40,15 @@ and does not mint a second DAG or start a second PipelineRun.
 
 | Card | Assignee | Parent | Runtime | Writes |
 |------|----------|--------|---------|--------|
-| M5-A prepare release candidate | implementer | closed M4 card | 1h / 1 retry | `verification/delivery/`, `k8s/` |
-| M5-B execute CI/CD and verify deployment | implementer | M5-A | 3h / 1 retry | `verification/delivery/` |
-| M5-C live acceptance and handover | implementer | M5-B | 1h / 1 retry | `verification/delivery/`, `evidence/verdicts/m5-verdict.json` |
+| M5 PREFLIGHT — release candidate | implementer | closed M4 card | 1h / 1 retry | `verification/delivery/`, `k8s/` |
+| M5 DEPLOY — CI/CD and deployment | implementer | M5 PREFLIGHT | 3h / 1 retry | `verification/delivery/` |
+| M5 VALIDATE — live acceptance and handover | implementer | M5 DEPLOY | 1h / 1 retry | `verification/delivery/`, `evidence/verdicts/m5-verdict.json` |
 
-Native reviewer checks A and C. Implementer terminator is `kanban_request_review reviewer=reviewer`.
+Native reviewer checks PREFLIGHT and VALIDATE. Implementer terminator is `kanban_request_review reviewer=reviewer`.
 
 ## Procedure by card
 
-**M5-A.** `python3 .hermes/skills/paved-road/paved-road-m5/scripts/prepare-release-candidate.py --root .`
+**M5 PREFLIGHT.** `python3 .hermes/skills/paved-road/paved-road-m5/scripts/prepare-release-candidate.py --root .`
 
 Inspect current `git rev-parse HEAD` before reusing a reported identity. Bind
 the closed M4 card, retained verdict, and original parity evidence (do not
@@ -58,7 +58,7 @@ release eligibility. Do not silently waive gaps or add new gates. Prepare only
 necessary build/deploy config (database and credential **references**). KEEP
 `verification/delivery/candidate.json`.
 
-**M5-B.** Publish through the repository workflow that already triggers
+**M5 DEPLOY.** Publish through the repository workflow that already triggers
 `app-push`. Then:
 
 ```bash
@@ -80,7 +80,7 @@ Hermes 0.20.5 `--initial-status` accepts only `blocked|running`; mint omits
 `todo` so the board default applies. Edge Routes may return an `http://`
 Location; rewrite it to `https://` before CRUD read/delete.
 
-**M5-C.** Test the deployed Route, not workspace localhost:
+**M5 VALIDATE.** Test the deployed Route, not workspace localhost:
 
 ```bash
 python3 .hermes/skills/paved-road/paved-road-m5/scripts/live-acceptance.py --root .
@@ -100,7 +100,7 @@ Reviewer: `python3 .../assert-paved-road-audit.py --root . --steps steps-prepare
 
 ## Failures
 
-Name the failed stage (M5-A / M5-B / M5-C), the exact condition, evidence,
+Name the failed stage (M5 PREFLIGHT / M5 DEPLOY / M5 VALIDATE), the exact condition, evidence,
 owner, and the smallest bounded repair. Preserve failed attempts. After a
 candidate SHA changes, revalidate pipeline, deployment, and live evidence;
 do not reuse another revision's records. No identical retry, no new

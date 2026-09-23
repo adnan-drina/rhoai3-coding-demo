@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M5-C: live HTTP against the deployed Route. Localhost is not acceptance."""
+"""M5 VALIDATE: live HTTP against the deployed Route. Localhost is not acceptance."""
 from __future__ import annotations
 
 import json
@@ -53,10 +53,10 @@ def main(argv: list[str] | None = None) -> int:
     dep = load_json(root / DELIVERY_DEPLOYMENT) if (root / DELIVERY_DEPLOYMENT).is_file() else {}
     url = str(dep.get("route_url") or "")
     if not url:
-        print("BLOCKED M5-C: no deployed Route URL (run assert-deployed-app.py)", file=sys.stderr)
+        print("BLOCKED M5 VALIDATE: no deployed Route URL (run assert-deployed-app.py)", file=sys.stderr)
         return 2
     if "localhost" in url or "127.0.0.1" in url:
-        print("BLOCKED M5-C: localhost is not deployed acceptance", file=sys.stderr)
+        print("BLOCKED M5 VALIDATE: localhost is not deployed acceptance", file=sys.stderr)
         return 2
     contract = load_delivery_contract(root)
     opener = _insecure_open
@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     write_canonical(root / DELIVERY_LIVE, live)
     dump(live)
     if not live.get("ok"):
-        print("BLOCKED M5-C: %s" % ", ".join(live.get("issues") or []), file=sys.stderr)
+        print("BLOCKED M5 VALIDATE: %s" % ", ".join(live.get("issues") or []), file=sys.stderr)
         return 2
     print("OK: live acceptance against %s image %s" % (url, live.get("deployed_image")))
     return 0

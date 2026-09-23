@@ -7,7 +7,7 @@
       "backing": "native",
       "native": "start-m5-delivery.py",
       "keep": ["verification/delivery/start.json", "verification/delivery/eligibility.json"],
-      "note": "Assisted continuation after M4 close. Eligibility-checked mint of M5-A/B/C with receipt-bound idempotency keys. Repeated invocation reuses existing cards. The M4 worker never dest-dispatches this."
+      "note": "Assisted continuation after M4 close. Eligibility-checked mint of M5 PREFLIGHT, M5 DEPLOY, and M5 VALIDATE with receipt-bound idempotency keys. Repeated invocation reuses existing cards. The M4 worker never dest-dispatches this."
     },
     {
       "id": "prepare-release-candidate",

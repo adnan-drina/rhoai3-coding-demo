@@ -83,6 +83,22 @@ def main() -> int:
         argv = argv_for_payload(head, {}, hermes="/bin/hermes", receipt_digest=result["receipt_sha256"])
         if argv[:4] != ["/bin/hermes", "kanban", "create", head["title"]] or "--max-retries" not in argv or "--idempotency-key" not in argv or "--workspace" not in argv:
             return _fail("argv %s" % argv[:8])
+        stale = dict(head)
+        stale["title"] = "M3 build pom.xml (1 item, attempt 1)"
+        try:
+            argv_for_payload(stale, {}, hermes="/bin/hermes", receipt_digest=result["receipt_sha256"])
+            return _fail("old M3 <kind> titles must refuse")
+        except ValueError as exc:
+            if "not a loop-card title" not in str(exc):
+                return _fail("old title refuse: %s" % exc)
+        mismatch = dict(head)
+        mismatch["title"] = "M3 REPAIR \u2014 pom.xml (1 item, attempt 1)"
+        try:
+            argv_for_payload(mismatch, {}, hermes="/bin/hermes", receipt_digest=result["receipt_sha256"])
+            return _fail("an action that does not match kind must refuse")
+        except ValueError as exc:
+            if "not a loop-card title" not in str(exc):
+                return _fail("kind/action refuse: %s" % exc)
         board = FakeBoard()
         minted = mint_payloads(result, runner=board, hermes="/bin/hermes")
         if minted["created_cards"] != ["t_mint0001"] or minted["created"][0]["idempotency_key"] != head["idempotency_key"]:

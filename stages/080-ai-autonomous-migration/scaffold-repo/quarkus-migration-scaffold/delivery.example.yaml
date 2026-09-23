@@ -10,7 +10,7 @@ delivery:
   swagger_path: /q/swagger-ui
   openapi_path: /q/openapi
   reads: []              # [{id, method, path}, ...]
-  crud: {}               # {create: {method, path, body}, ...}; required for M5-C
+  crud: {}               # {create: {method, path, body}, ...}; required for M5 VALIDATE
   auth:
     mode: ""             # disabled | enabled; must match decisions.yaml
     header_from_env: ""  # name of the env var that holds the credential reference

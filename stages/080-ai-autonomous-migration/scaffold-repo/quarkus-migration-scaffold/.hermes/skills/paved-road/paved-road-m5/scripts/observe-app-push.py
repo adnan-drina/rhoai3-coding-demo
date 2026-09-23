@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M5-B: observe the app-push PipelineRun for the candidate revision.
+"""M5 DEPLOY: observe the app-push PipelineRun for the candidate revision.
 
 Does not start a run unless --start is passed, and --start is refused when a
 matching run already exists.
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     cand = load_json(root / DELIVERY_CANDIDATE) if (root / DELIVERY_CANDIDATE).is_file() else {}
     ns = args.namespace or contract.get("namespace") or "%s-dev" % (contract.get("repo") or cand.get("contract", {}).get("repo") or "")
     if not ns or ns == "-dev":
-        print("BLOCKED M5-B: pipeline namespace missing (set delivery.yaml namespace)", file=sys.stderr)
+        print("BLOCKED M5 DEPLOY: pipeline namespace missing (set delivery.yaml namespace)", file=sys.stderr)
         return 2
     items = _oc_json(["oc", "-n", ns, "get", "pipelinerun", "-l", "tekton.dev/pipeline=app-push", "-o", "json"])
     runs = list(items.get("items") or [])
@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     doc = observe_pipeline(root, runs, start_requested=args.start)
     dump(doc)
     if not doc.get("ok"):
-        print("BLOCKED M5-B: %s %s" % (doc.get("reason"), doc.get("detail")), file=sys.stderr)
+        print("BLOCKED M5 DEPLOY: %s %s" % (doc.get("reason"), doc.get("detail")), file=sys.stderr)
         return 2
     print("OK: PipelineRun %s revision %s digest %s" % (doc.get("pipeline_run"), doc.get("revision"), doc.get("image_digest")))
     return 0

@@ -4236,7 +4236,7 @@ def main() -> int:
     caps = [c for c in cluster_items(many, {}, set()) if c.get("label")]
     if [c["label"] for c in caps] != ["Profile#1", "Profile#2"] or len(caps[0]["write_set"]) != 8 or len(caps[1]["write_set"]) != 2:
         return _fail("a symbol across more than 8 files splits into capped clusters: %s" % [(c["label"], len(c["write_set"])) for c in caps])
-    if card_title(sym[0], 1) != "M3 compile DataAccessException (3 items, 2 files, attempt 1)":
+    if card_title(sym[0], 1) != "M3 COMPILE \u2014 DataAccessException (3 items, 2 files, attempt 1)":
         return _fail("symbol clusters get a readable title: %s" % card_title(sym[0], 1))
     # a profile file's cluster writes the profile file AND the sibling application.properties (the documented merge)
     prof = cluster_items([{"id": "inc:p", "source": "mta", "kind": "config", "category": "mandatory", "path": "src/main/resources/application-hsqldb.properties", "line": 0, "rule_id": "springboot-properties-to-quarkus-00001"}], {}, set())

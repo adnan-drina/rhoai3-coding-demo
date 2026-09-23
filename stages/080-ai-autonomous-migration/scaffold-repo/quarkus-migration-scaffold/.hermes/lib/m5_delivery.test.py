@@ -13,6 +13,8 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from m5_delivery import (
+    STAGE_LABELS,
+    STAGE_TITLES,
     argv_for_card,
     assert_deployed,
     assess_eligibility,
@@ -102,7 +104,7 @@ class Eligibility(unittest.TestCase):
         result = start_delivery(root, runner=_git(), execute=True)
         self.assertFalse(result["ok"])
         self.assertTrue(result["blocked"])
-        self.assertEqual(result["failed_stage"], "M5-A")
+        self.assertEqual(result["failed_stage"], STAGE_LABELS["prepare"])
         self.assertFalse(result["created"])
         self.assertTrue(any(r["condition"] == "m4-closed" for r in result["eligibility"]["reasons"]))
 
@@ -141,6 +143,16 @@ class DuplicateStart(unittest.TestCase):
         self.assertFalse(second["created"])
         self.assertEqual(len(second["reused"]), 3)
         planned = plan_cards(first["eligibility"])
+        self.assertEqual([p["stage"] for p in planned], ["prepare", "push", "accept"])
+        self.assertEqual([p["title"] for p in planned], [
+            STAGE_TITLES["prepare"], STAGE_TITLES["push"], STAGE_TITLES["accept"],
+        ])
+        self.assertEqual(planned[1]["parent"], "M5_PREPARE")
+        self.assertEqual(planned[2]["parent"], "M5_PUSH")
+        minted_titles = [cmd[3] for cmd in first["commands"]]
+        self.assertEqual(minted_titles, [
+            STAGE_TITLES["prepare"], STAGE_TITLES["push"], STAGE_TITLES["accept"],
+        ])
         self.assertEqual(planned[0]["idempotency_key"], idempotency_key("prepare", "t_m4close01", sha))
         control = json.loads((root / LOOP_CARDS).read_text())["control"]
         self.assertEqual(set(control), {"m5_prepare", "m5_push", "m5_accept"})
@@ -166,7 +178,7 @@ class PipelineAndDeploy(unittest.TestCase):
         self.assertEqual(selected["reason"], "wrong-revision")
         doc = observe_pipeline(root, [run])
         self.assertFalse(doc["ok"])
-        self.assertEqual(doc["failed_stage"], "M5-B")
+        self.assertEqual(doc["failed_stage"], STAGE_LABELS["push"])
 
     def test_duplicate_pipeline_start_refused(self):
         root, tmp = _root()
@@ -247,7 +259,7 @@ class LiveAndVerdict(unittest.TestCase):
             {"reads": [{"id": "owners", "path": "/api/owners"}], "crud": {"create": {}}},
             "sha256:" + "1" * 64, "disabled")
         self.assertFalse(result["ok"])
-        self.assertEqual(result["failed_stage"], "M5-C")
+        self.assertEqual(result["failed_stage"], STAGE_LABELS["accept"])
         self.assertIn("swagger-unusable", result["issues"])
 
     def test_localhost_rejected(self):
@@ -305,7 +317,7 @@ class LiveAndVerdict(unittest.TestCase):
         write_canonical(root / DELIVERY_LIVE, {"ok": True, "candidate_sha": "ee" * 20})
         verdict = compose_verdict(root)
         self.assertEqual(verdict["verdict"], "REFUSE")
-        self.assertEqual(verdict["failed_stage"], "M5-B")
+        self.assertEqual(verdict["failed_stage"], STAGE_LABELS["push"])
         self.assertTrue(verdict["stale_evidence"])
         self.assertTrue((root / M5_VERDICT).is_file())
 

@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
                             execute=args.execute, workspace=args.workspace if args.workspace.startswith("dir:") else "dir:" + args.workspace)
     dump({k: v for k, v in result.items() if k != "commands"})
     if not result.get("ok"):
-        print("BLOCKED M5-A: %s" % result.get("reason"), file=sys.stderr)
+        print("BLOCKED %s: %s" % (result.get("failed_stage") or "M5 PREFLIGHT", result.get("reason")), file=sys.stderr)
         for row in (result.get("eligibility") or {}).get("reasons") or []:
             print("  condition=%s evidence=%s owner=%s resolution=%s"
                   % (row.get("condition"), row.get("evidence"), row.get("owner"), row.get("resolution")),

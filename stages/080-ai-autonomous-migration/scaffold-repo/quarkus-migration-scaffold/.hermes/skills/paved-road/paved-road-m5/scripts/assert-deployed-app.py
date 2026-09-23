@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M5-B: require a ready Deployment, Service endpoints, and HTTPS Route."""
+"""M5 DEPLOY: require a ready Deployment, Service endpoints, and HTTPS Route."""
 from __future__ import annotations
 
 import json
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     name = args.name or contract.get("name") or contract.get("repo") or (cand.get("contract") or {}).get("repo") or ""
     ns = args.namespace or contract.get("namespace") or ("%s-dev" % name if name else "")
     if not name or not ns:
-        print("BLOCKED M5-B: application name/namespace missing (delivery.yaml)", file=sys.stderr)
+        print("BLOCKED M5 DEPLOY: application name/namespace missing (delivery.yaml)", file=sys.stderr)
         return 2
     deployment = _get(ns, "deployment", name)
     proc = subprocess.run(["oc", "-n", ns, "get", "pods", "-o", "json"], text=True, capture_output=True)
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     dump(doc)
     if not doc.get("ok"):
-        print("BLOCKED M5-B: %s" % ", ".join(doc.get("issues") or []), file=sys.stderr)
+        print("BLOCKED M5 DEPLOY: %s" % ", ".join(doc.get("issues") or []), file=sys.stderr)
         return 2
     print("OK: deployed %s at %s" % (doc.get("deployed_image"), doc.get("route_url")))
     return 0

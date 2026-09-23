@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M5-A: bind the closed M4 result, record qualifications, write the candidate."""
+"""M5 PREFLIGHT: bind the closed M4 result, record qualifications, write the candidate."""
 from __future__ import annotations
 
 import sys
@@ -16,7 +16,7 @@ def main(argv: list[str] | None = None) -> int:
     doc = prepare_candidate(args.root.resolve())
     dump(doc)
     if not doc.get("ok"):
-        print("BLOCKED M5-A: %s" % doc.get("reason"), file=sys.stderr)
+        print("BLOCKED M5 PREFLIGHT: %s" % doc.get("reason"), file=sys.stderr)
         return 2
     print("OK: candidate %s pipeline_eligible=%s release_eligible=%s outstanding=%d"
           % (doc.get("candidate_sha"), doc.get("pipeline_eligible"), doc.get("release_eligible"),

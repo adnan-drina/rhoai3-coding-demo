@@ -1,10 +1,13 @@
 """Cards from the work list (SAD v3 §8): the single home for kind → skill pins
 and for deriving the next card. K4 converts exactly one card at a time:
 the head cluster, or M4 VERIFY when the list is empty and nothing is
-deferred. Titles are "M3 <cluster id>" and "M4 VERIFY"."""
+deferred. Display titles are ``M3 <ACTION> — <subject> (<count>, attempt k)``
+from ``card_title`` (kinds stay build/config/compile/incident/test/parity)
+and ``M4 VERIFY``. Cluster ids live in the body and the idempotency key."""
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from planner.budget import attempts_spent  # noqa: E402
@@ -55,16 +58,75 @@ REFERENCE_SKILLS: dict[str, str] = {
     "parity": "spring-to-quarkus-patterns",
 }
 
+# Display mapping only. Internal kind strings, cluster ids, keys, skills,
+# and ordering stay CLUSTER_KINDS. Historical board titles are not rewritten.
+TITLE_ACTIONS: dict[str, str] = {
+    "build": "BUILD",
+    "config": "CONFIGURE",
+    "compile": "COMPILE",
+    "incident": "MIGRATE",
+    "test": "TEST",
+    "parity": "REPAIR",
+}
+TITLE_DASH = "\u2014"
+_TITLE_SUFFIX_RE = re.compile(
+    r"^(?:\d+ items?, \d+ files?, attempt \d+|\d+ items?, attempt \d+)$"
+)
+
+
+def card_action(kind: str) -> str:
+    return TITLE_ACTIONS.get(str(kind or ""), "")
+
 
 def card_title(head: dict[str, Any], attempt: int) -> str:
-    """Readable card name: kind, file, item count, attempt. The cluster id
-    stays in the body and the idempotency key."""
+    """Readable card name from existing cluster metadata.
+
+    Format: ``M3 <ACTION> — <subject> (<existing count and attempt suffix>)``.
+    Subject is the cluster label when present (including a ``:enabled``
+    family key), otherwise the path basename. Kind stays off the board
+    string except through TITLE_ACTIONS. Cluster id stays in the body
+    and the idempotency key.
+    """
+    action = card_action(str(head.get("kind") or ""))
+    if not action:
+        raise ValueError("no M3 display title for kind %r" % (head.get("kind"),))
     n = len(head.get("items") or [])
     if head.get("label"):
         files = len(head.get("write_set") or [])
-        return "M3 %s %s (%d item%s, %d file%s, attempt %d)" % (head.get("kind"), head["label"], n, "" if n == 1 else "s", files, "" if files == 1 else "s", attempt)
+        suffix = "%d item%s, %d file%s, attempt %d" % (
+            n, "" if n == 1 else "s", files, "" if files == 1 else "s", attempt)
+        return "M3 %s %s %s (%s)" % (action, TITLE_DASH, head["label"], suffix)
     name = str(head.get("path") or "").rsplit("/", 1)[-1] or str(head.get("path") or head.get("id"))
-    return "M3 %s %s (%d item%s, attempt %d)" % (head.get("kind"), name, n, "" if n == 1 else "s", attempt)
+    suffix = "%d item%s, attempt %d" % (n, "" if n == 1 else "s", attempt)
+    return "M3 %s %s %s (%s)" % (action, TITLE_DASH, name, suffix)
+
+
+def loop_title_ok(title: str, kind: str) -> bool:
+    """True when ``title`` is the canonical display title for ``kind``.
+
+    Old ``M3 <kind> <file> (...)`` strings, a missing em dash, an action
+    that does not match the kind, or a missing attempt suffix are refused.
+    Close cards are exactly ``M4 VERIFY``.
+    """
+    kind = str(kind or "")
+    title = str(title or "")
+    if kind == "close":
+        return title == "M4 VERIFY"
+    action = card_action(kind)
+    if not action:
+        return False
+    prefix = "M3 %s %s " % (action, TITLE_DASH)
+    if not title.startswith(prefix) or not title.endswith(")"):
+        return False
+    inner = title[len(prefix):-1]
+    sep = inner.rfind(" (")
+    if sep < 0:
+        return False
+    subject = inner[:sep]
+    suffix = inner[sep + 2:]
+    if not subject.strip():
+        return False
+    return _TITLE_SUFFIX_RE.fullmatch(suffix) is not None
 
 
 def _machine_body(body: dict[str, Any]) -> list[str]:

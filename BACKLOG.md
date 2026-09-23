@@ -12,7 +12,9 @@
   can exit 0 with no Deployment). Image identity is the build TaskRun
   `IMAGE_DIGEST`, not a commit tag. A reachable app does not erase outstanding
   qualifications and is not a full M5 `ACCEPT`. Application values live in
-  `delivery.yaml`. Preserve the closed v10 migration record; do not reopen it
+  `delivery.yaml`. Future M5 mints use titles M5 PREFLIGHT / M5 DEPLOY /
+  M5 VALIDATE; closed v10 card titles, logs, and receipts stay as written.
+  Preserve the closed v10 migration record; do not reopen it
   for harness-only copies.
 
 - v10 dest is an **assisted overlay** beyond published golden `61ac38db`.

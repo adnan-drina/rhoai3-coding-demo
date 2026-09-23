@@ -38,7 +38,7 @@ REMEDY = {
     "K4_ASSIGNEE": "M3/M4 assignee=implementer.",
     "K4_PARENT": "The parent is the previous accepted step's card (from verification/loop/steps.json) plus the M2 card; never invented.",
     "K4_MINT_CREATE": "Mint argv is hermes kanban create with inline --body. No create_task, swarm, decompose, link, daemon --force.",
-    "K4_MINT_TITLE": "Titles are 'M3 <kind> <file> (<n> items, attempt <k>)' for cluster cards (planner.cards.card_title) and 'M4 VERIFY' for the close card.",
+    "K4_MINT_TITLE": "Titles are 'M3 <ACTION> — <subject> (<n> items, attempt <k>)' for cluster cards (planner.cards.card_title: BUILD, CONFIGURE, COMPILE, MIGRATE, TEST, REPAIR) and 'M4 VERIFY' for the close card. Kind stays in the payload; the old 'M3 <kind> <file>' form is not a loop-card title.",
     "K4_MINT_RETRIES": "Every create passes --max-retries 1 (CLI).",
     "K4_MINT_PARENT": "Resolve parents from minted t_* ids; do not invent parents.",
     "K4_MINT_ID": "Parse create --json for task_id or id (t_*). Serialize creates; created_cards is the real t_* list.",
