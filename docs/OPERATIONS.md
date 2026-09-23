@@ -166,6 +166,15 @@ timeout. The pod restarts once and dest-init re-runs; verify with
 
 ### Stage 080: authorizing a run (the pilot seal)
 
+Parity resets resolve the JDBC driver from
+`verification/build/.work/classpath.txt`, with the OS-account Maven cache as
+fallback. Hermes workers have a profile `HOME`; changing it is not the repair
+for a missing driver. A missing jar produces an explicit refusal and supports
+`--driver <jar>`. Diagnose with that refusal or `--print-plan`, without dumping
+environment values or enabling shell tracing. The reset suppresses inherited
+tracing and passes credential environment-variable names to Java, which resolves
+them internally. The database ownership check still runs before any connection.
+
 The golden ships `pins.planner.activation: not-activated` on purpose, and a
 destination that inherits it mints **M1 only** — admission never ADMITs and K4
 emits nothing. A run is authorized by sealing the destination's own

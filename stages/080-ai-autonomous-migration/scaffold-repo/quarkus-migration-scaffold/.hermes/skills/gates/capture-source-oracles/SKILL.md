@@ -1041,7 +1041,11 @@ to.
 - `scripts/reset-parity-db.sh [--variant NAME]` — restore the decided
   instance to the declared baseline and verify it; with `--variant`, apply
   that fixture's declared statements after the verified baseline (restoring is
-  the same script with no `--variant`)
+  the same script with no `--variant`). Driver discovery uses the verifier's
+  recorded Maven classpath, then the OS-account cache; a worker's `HOME` is
+  its profile home, so do not override it to repair discovery. Diagnose a
+  refused reset from its named failure or `--print-plan`, never by dumping
+  the environment or tracing credentials. The runner receives env-var names.
 - `scripts/compare-runtime-parity.py` — destination comparison for reads
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects;
   `--issued` binds the verdict to the candidate and the issued card

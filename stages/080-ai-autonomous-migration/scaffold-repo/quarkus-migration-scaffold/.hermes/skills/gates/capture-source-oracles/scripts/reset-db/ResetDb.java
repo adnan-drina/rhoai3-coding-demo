@@ -14,11 +14,11 @@ import java.util.Properties;
  * JDBC rather than a command-line client, because the workspace that runs the
  * parity comparison has a JDK and the destination's own driver on disk but no
  * psql, and a reset that cannot run turns every reset_before scenario
- * INCONCLUSIVE. Credentials arrive as arguments from environment variables the
- * decision references by name; nothing is printed but counts.
+ * INCONCLUSIVE. Arguments name environment variables; credential values stay
+ * out of the process command line.
  *
- *   java -cp <driver.jar>:. ResetDb <jdbc-url> <user> <password> <sql-file>...
- *   java -cp <driver.jar>:. ResetDb <jdbc-url> <user> <password> --keep-schema <sql-file>...
+ *   java -cp <driver.jar>:. ResetDb <url-env> <user-env> <password-env> <sql-file>...
+ *   java -cp <driver.jar>:. ResetDb <url-env> <user-env> <password-env> --keep-schema <sql-file>...
  *
  * --keep-schema applies the files to the database as it is: a fixture
  * variant's revert changes only the rows it proves it found, and a dropped
@@ -26,16 +26,25 @@ import java.util.Properties;
  */
 public final class ResetDb {
 
+    private static String requiredEnv(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isEmpty()) {
+            throw new IllegalArgumentException("required reset environment variable is not set: " + name);
+        }
+        return value;
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
-            System.err.println("usage: ResetDb <jdbc-url> <user> <password> [sql-file...]");
+            System.err.println("usage: ResetDb <url-env> <user-env> <password-env> [sql-file...]");
             System.exit(2);
         }
         Properties props = new Properties();
-        props.setProperty("user", args[1]);
-        props.setProperty("password", args[2]);
+        String url = requiredEnv(args[0]);
+        props.setProperty("user", requiredEnv(args[1]));
+        props.setProperty("password", requiredEnv(args[2]));
         boolean keep = args.length > 3 && "--keep-schema".equals(args[3]);
-        try (Connection conn = DriverManager.getConnection(args[0], props)) {
+        try (Connection conn = DriverManager.getConnection(url, props)) {
             if (!keep) {
                 try (Statement st = conn.createStatement()) {
                     st.execute("DROP SCHEMA IF EXISTS public CASCADE");

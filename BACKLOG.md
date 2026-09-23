@@ -2,6 +2,22 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Parity steps `4877892e` (CORS), `1ad2532d` (Owner) and `abb778b9` (Pet)
+  were accepted after package and boot recovery. The Pet step records two
+  parity mismatches remaining and known tuple `[0,0,0]`; the root-controller
+  card is next. This is progress, not full migration acceptance.
+- Worker reset diagnostics exposed a reusable tooling defect: driver discovery
+  searched the Hermes profile's empty Maven cache instead of the cache Maven
+  used, and `find` with `pipefail` could exit silently. The local correction
+  uses the verifier classpath and OS-account fallback, emits a named missing
+  driver refusal, suppresses tracing and passes credential references to Java.
+  Tests exercise an empty profile cache, a custom Maven cache, shell tracing,
+  missing jars and the real Java runner with a nonconnecting fixture driver;
+  ownership checks remain mandatory. Installation waits for an idle boundary.
+- A proposed containment of Owner run 31 stopped at its PID check because the
+  worker had already exited. No task was blocked, no process was stopped, and
+  no database reset was performed by that intervention; its accepted step and
+  successor were subsequently confirmed from receipts.
 - v10 reached compile `[0,0,0]`, then its first package repair could not mint:
   seven fragment parents owe 16 methods (14 files / 23 sites), beyond ADR-018's
   eight-symbol limit. The fixture had only one method per parent. ADR-024

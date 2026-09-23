@@ -62,6 +62,8 @@
 # decisions.yaml declares.
 #
 # Exit 0 reset (and verified, when there is a derived baseline), 1 refused, 2 usage.
+# This credential-consuming entry point must remain safe under `bash -x` too.
+set +x
 set -euo pipefail
 ROOT=""
 DRIVER=""
@@ -260,10 +262,7 @@ if [[ "${PRINT_PLAN}" == "yes" ]]; then
 fi
 fi  # not a revert
 
-URL="${!URL_ENV:-}"
-DB_USER="${!USER_ENV:-}"
-DB_PASSWORD="${!PASS_ENV:-}"
-[[ -n "${URL}" && -n "${DB_USER}" && -n "${DB_PASSWORD}" ]] || { echo "FAIL: RESET ${URL_ENV}, ${USER_ENV} and ${PASS_ENV} must be set (the decision references them by name)" >&2; exit 1; }
+[[ -n "${!URL_ENV:-}" && -n "${!USER_ENV:-}" && -n "${!PASS_ENV:-}" ]] || { echo "FAIL: RESET ${URL_ENV}, ${USER_ENV} and ${PASS_ENV} must be set (the decision references them by name)" >&2; exit 1; }
 
 # The driver, found under its OWN group directory. A bare artifact glob is not
 # a driver: ~/.m2 also holds org.testcontainers:postgresql, which matched
@@ -277,9 +276,32 @@ if [[ -z "${DRIVER}" ]]; then
     h2) GROUP_DIR="com/h2database/h2" ;;
     *) echo "FAIL: RESET no driver coordinate for db_kind ${DB_KIND}; pass --driver" >&2; exit 1 ;;
   esac
-  DRIVER="$(find "${HOME}/.m2/repository/${GROUP_DIR}" -name "*.jar" ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | sort -V | tail -1)"
+  # The verifier records Maven's actual classpath, including custom caches.
+  # Worker HOME belongs to Hermes; the fallback is the OS account's cache.
+  DRIVER="$(python3 - "${ROOT}" "${GROUP_DIR}" <<'PYEOF'
+import os
+import re
+import sys
+from pathlib import Path
+root, group = Path(sys.argv[1]), sys.argv[2]
+sys.path.insert(0, str(root / ".hermes/lib"))
+from human_home import human_home
+
+def usable(p):
+    return p.is_file() and p.suffix == ".jar" and not any(s in p.name for s in ("sources", "javadoc"))
+
+classpath = root / "verification/build/.work/classpath.txt"
+entries = classpath.read_text().strip().split(os.pathsep) if classpath.is_file() else []
+matches = [Path(p) for p in entries if "/" + group + "/" in p and usable(Path(p))]
+if not matches:
+    matches = [p for p in (human_home() / ".m2/repository" / group).glob("**/*.jar") if usable(p)]
+    matches.sort(key=lambda p: [(1, int(s)) if s.isdigit() else (0, s)
+                                for s in re.split(r"(\d+)", str(p))])
+print(str(matches[-1]) if matches else "")
+PYEOF
+)"
 fi
-[[ -n "${DRIVER}" && -f "${DRIVER}" ]] || { echo "FAIL: RESET no ${DB_KIND} JDBC driver found under ~/.m2; pass --driver <jar>" >&2; exit 1; }
+[[ -n "${DRIVER}" && -f "${DRIVER}" ]] || { echo "FAIL: RESET no ${DB_KIND} JDBC driver found in the verifier classpath or OS-account Maven cache; pass --driver <jar>" >&2; exit 1; }
 
 javac -d "${WORK}" "${HERE}/reset-db/ResetDb.java" >"${WORK}/javac.log" 2>&1 || { echo "FAIL: RESET could not compile the reset runner: $(tail -3 "${WORK}/javac.log")" >&2; exit 1; }
 # read the jar directly: `unzip -l | grep -q` closes the pipe on the first
@@ -291,7 +313,7 @@ if [[ "${REGISTERS}" != "yes" ]]; then
   exit 1
 fi
 if [[ -n "${REVERT}" ]]; then
-  java -cp "${DRIVER}:${WORK}" ResetDb "${URL}" "${DB_USER}" "${DB_PASSWORD}" --keep-schema "${WORK}/revert.sql" \
+  java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --keep-schema "${WORK}/revert.sql" \
     || { echo "FAIL: RESET REVERT_UNEXPECTED_STATE the ${REVERT} revert did not find the variant state it reverts; nothing was changed" >&2; exit 1; }
   echo "OK: reverted the ${REVERT} fixture (${REVERT_ROWS} row revert(s)), found in the variant state and verified at the baseline values, using $(basename "${DRIVER}")"
   exit 0
@@ -299,7 +321,7 @@ fi
 # A verification statement that does not hold RAISEs, the runner propagates the
 # SQLException, and this script exits non-zero: an unverified baseline is never
 # reported as a reset.
-java -cp "${DRIVER}:${WORK}" ResetDb "${URL}" "${DB_USER}" "${DB_PASSWORD}" ${SQL_FILES[@]+"${SQL_FILES[@]}"}
+java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" ${SQL_FILES[@]+"${SQL_FILES[@]}"}
 VARIANT_NOTE=""
 if [[ -n "${VARIANT}" ]]; then
   VARIANT_NOTE=", then the ${VARIANT} fixture's ${VARIANT_COUNT} statement(s)"
