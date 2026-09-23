@@ -222,6 +222,11 @@ def main(argv: list[str] | None = None) -> int:
     verdict["card_id"] = card_id
     verdict["receipt_sha256"] = receipt_sha
     verdict["parity_receipt_sha256"] = parity_sha
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+    from m4_parity import measure
+    mode_bindings = measure(root)["receipt_sha256_by_mode"]
+    if "enabled" in mode_bindings:
+        verdict["parity_receipt_sha256_by_mode"] = mode_bindings
     _write_canonical(vp, verdict)
     written = write_binding_record(root, vp, verdict, previous=record)
 

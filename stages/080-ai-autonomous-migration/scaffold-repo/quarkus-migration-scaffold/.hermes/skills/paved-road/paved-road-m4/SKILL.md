@@ -98,6 +98,12 @@ python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . \
    digest, which is how "one artifact, restarted with the switch changed" is
    shown rather than asserted. KEEP both receipts and both run records.
 
+   The pre-verdict runner measures both modes with `check-mode-parity`.
+   A FAIL in either mode must appear as a failed floor and a REFUSE, even when
+   the other mode passes. It is not a remaining coverage gap. The verdict
+   binder binds both receipt digests; the lint and continuation refuse an
+   accepting verdict over a failed mode. INCONCLUSIVE coverage remains separate.
+
    Two things the enabled run does **not** do, and says so: it does not
    re-compare the read oracles (those captures are not mode-scoped and were
    taken with the switch off — every entry point is named with that reason),

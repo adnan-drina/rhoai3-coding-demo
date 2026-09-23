@@ -100,6 +100,15 @@ python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py 
    and cannot be read; record that as a failed floor, never as idle. A named
    capability GAP is not a pass either: copy it into the verdict.
 
+   The pre-verdict runner also records `check-mode-parity`, measured by
+   `python3 .hermes/lib/m4_parity.py --root /projects/modernized`.
+   A FAIL in either recorded security mode is a product mismatch: carry its
+   non-zero exit into the floors and `failed_floors`, and compose REFUSE.
+   An INCONCLUSIVE coverage gap stays explicit but cannot hide a separate FAIL.
+   The binder records `parity_receipt_sha256_by_mode` when enabled captures
+   exist; both modes must run fully on the same packaged artifact. Use the
+   structured `expected` and `observed` headers when describing a mismatch.
+
 3. Author `evidence/verdicts/m4-verdict.json` from those rcs. Required
    field **`failed_floors`**: the list of floor names whose `rc != 0`
    (`[]` if none). Do not omit it. Do not put a failed name in a reason

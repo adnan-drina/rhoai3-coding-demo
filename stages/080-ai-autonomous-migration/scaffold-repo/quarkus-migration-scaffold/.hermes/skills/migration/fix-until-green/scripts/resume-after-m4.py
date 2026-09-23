@@ -183,6 +183,7 @@ _UNAUTHORIZED = re.compile(r"status 40[13] vs")
 # that owns each and the seat that discharges it. Specimen-agnostic: these are
 # harness floor names and ADR ids, never a specimen's files or symbols.
 DECISION_FLOORS = {
+    "check-mode-parity": ("ADR-014", "runtime parity repair", "a recorded security mode has an unresolved parity failure or unusable measurement; repair the measured difference and remeasure both modes on one artifact before closing; coverage gaps cannot discharge this floor"),
     "check-empty-security": (SECURITY_ADR, SECURITY_OWNER, "method security is declared with no identity provider behind it, so every guarded request answers 401/403; ADR-014 owns the conditional authorization adapter and the Basic/JPA identity mapping in ONE bounded Operator step, and refuses deleting an authorization semantic, permitting all, or manufacturing a privileged identity"),
     "check-product-tests": ("ADR-015", "harness capability", "the product acceptance tests are generated deterministically from qualified source scenarios; a worker card gets no authority to author or weaken them"),
     "assert-surefire-results": ("ADR-015", "harness capability", "the surefire floor needs its own evidence-based diagnosis; a fresh report with zero skips is a harness output, not a patch"),
@@ -635,6 +636,11 @@ def main(argv: list[str] | None = None) -> int:
                        % (bound_sha[:12], record.get("bound_at") or "?", on_disk_sha[:12], ", ".join(drift) or "(byte-level only)"))
 
     # --- no live worker holds the tree ---------------------------------------
+    from m4_parity import verdict_issues
+    mode_issues = verdict_issues(verdict, root)
+    if mode_issues:
+        return _refuse("; ".join(mode_issues))
+
     # Asked BEFORE the seal is examined, because the contract re-seal below
     # writes to the tree: nothing is re-sealed while a candidate is retained or
     # while the product tree carries a change nobody measured.

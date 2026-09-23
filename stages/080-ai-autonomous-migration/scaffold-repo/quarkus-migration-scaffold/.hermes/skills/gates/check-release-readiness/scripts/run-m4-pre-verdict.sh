@@ -151,6 +151,7 @@ run_feed_gate admit-migration-plan python3 "${ADMIT}" --root "${PRODUCT_ROOT}"
 run_feed_gate generate-product-tests python3 "${GENTESTS}" --root "${PRODUCT_ROOT}" --check
 run_feed_gate check-domain-parity python3 "${DOMAIN}" "${PRODUCT_ROOT}" --write-receipt
 run_feed_gate check-release-readiness python3 "${TOOLCHAIN}" "${PRODUCT_ROOT}" --write-receipt
+run_feed_gate check-mode-parity python3 "${SCRIPT_DIR}/../../../../lib/m4_parity.py" --root "${PRODUCT_ROOT}"
 python3 "${PINNED}" "${PRODUCT_ROOT}" --skills "${SKILLS}"
 python3 "${G4}" "${PRODUCT_ROOT}"
 

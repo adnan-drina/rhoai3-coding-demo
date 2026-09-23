@@ -70,7 +70,7 @@ def tree(root: Path) -> str:
     receipt.parent.mkdir(parents=True, exist_ok=True)
     receipt.write_text(
         json.dumps({"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": RECEIPT,
-                    "entry_points": [], "verdict": "FAIL"}) + "\n",
+                    "entry_points": [], "verdict": "PASS"}) + "\n",
         encoding="utf-8",
     )
     return hashlib.sha256(receipt.read_bytes()).hexdigest()
@@ -396,6 +396,40 @@ def main() -> int:
                 % (proc.stdout, proc.stderr),
                 file=sys.stderr,
             )
+            return 1
+
+    # v10: the disabled receipt was green, but enabled preflight differed.
+    # The binder must bind both receipts, and the actual lint must reject the
+    # accepting verdict even when every worker-authored floor claims rc 0.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        tree(root)
+        pdir = root / "verification/parity"
+        (pdir / "receipt-enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "enabled", "verdict": "FAIL"}))
+        for mode, suffix in (("disabled", ""), ("enabled", "-enabled")):
+            (pdir / ("_run%s.json" % suffix)).write_text(json.dumps({
+                "security_mode": mode, "ok": True, "scenario_filter": [],
+                "receipt": {"composed_by_this_run": True}, "artifact": {"sha256": "same-artifact"}}))
+        doc = {"gate": "M4_VERDICT", "phase": "M4", "ran": True, "verdict": "PROVISIONAL_ACCEPT",
+               "ship": False, "coverage_account": {"retired": 0, "remaining_gaps": 1},
+               "failed_floors": [], "floors": [{"name": "check-product-tests", "rc": 0, "idle": False}]}
+        vp = verdict_path(root, doc, bind=None)
+        bound = run(BINDER, "--root", str(root))
+        checked = run(SCHEMA, str(vp))
+        if bound.returncode or checked.returncode != 1 or "ACCEPT_WITH_PARITY_FAILURE" not in checked.stderr:
+            print("FAIL: enabled-only FAIL must reject bound provisional acceptance: " + bound.stderr + checked.stderr)
+            return 1
+        if set(json.loads(vp.read_text()).get("parity_receipt_sha256_by_mode", {})) != {"disabled", "enabled"}:
+            print("FAIL: binder did not bind both mode receipts")
+            return 1
+        doc.update(verdict="REFUSE", failed_floors=["check-mode-parity"],
+                   floors=[{"name": "check-mode-parity", "rc": 1, "idle": False}])
+        verdict_path(root, doc, bind=None)
+        rebound = run(BINDER, "--root", str(root))
+        checked = run(SCHEMA, str(vp))
+        if rebound.returncode or checked.returncode:
+            print("FAIL: fresh measured REFUSE must supersede bad verdict without losing history: " + checked.stderr)
             return 1
 
     # a verdict with no coverage account refuses: what an ADR retired must be

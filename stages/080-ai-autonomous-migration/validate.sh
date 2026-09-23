@@ -1114,6 +1114,9 @@ check "080 capture-source-oracles selftest passes" \
 check "080 K4 producer-skill bar selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_producers.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 mode-aware M4 parity selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/lib/m4_parity.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 compose-m4-verdict selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/gates/compose-m4-verdict/scripts/compose-m4-verdict.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

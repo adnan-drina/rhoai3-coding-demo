@@ -2,6 +2,27 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Visit attempt 3 (`t_c707fd48`, commit `86bb017c4925`) repaired deletion in
+  the actual repository fragment. M4's fresh replay passes **18/18 disabled
+  scenarios**. Enabled mode measures **65 PASS, 1 INCONCLUSIVE, 1 FAIL**:
+  anonymous preflight gets destination 200 with CORS permission headers, while
+  the source returns 401 with its Basic challenge and no CORS headers. M4
+  incorrectly bound a provisional acceptance treating that FAIL as coverage.
+  The parent blocked its handoff and stopped its task-bound processes, preserving
+  the bound verdict and all attempts. Local repair adds a measured mode-parity
+  floor, binds both receipts, and refuses accepting or closing over either mode's
+  FAIL. Enabled-only failures remain owned by runtime parity repair until the
+  loop can issue mode-aware repairs; they cannot be dismissed as coverage.
+  Installation and corrected M4 continuation remain pending. No release claimed.
+
+- M4's work-log resolver used the profile `HERMES_HOME`; native Kanban logs
+  live under the shared home. A read-only walk with the shared home resolved
+  all 25 ancestor logs. The local fix reuses the existing base-home resolver
+  and honors `HERMES_KANBAN_HOME`. Seven tests and the pre-verdict regression
+  pass, including self-log exclusion and refusal on genuinely missing logs.
+  The live worker recovered by rerunning the gate; the reusable fix is not yet
+  installed. The fence-evasion check remains required.
+
 - Visit task `t_73d4942e` read the effect diff `status 200 vs 404` backwards
   in its opening reasoning. The generated brief preserved the comparator's
   correct order but did not label the two sides. Native guidance corrected
