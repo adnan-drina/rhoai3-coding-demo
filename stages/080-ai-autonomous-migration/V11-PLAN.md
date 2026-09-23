@@ -6,16 +6,15 @@ not dest-install or dest-dispatch from this file. Closed v10 stays frozen
 
 ## Publication mapping
 
-Fill `GOLDEN_SHA` from the actual `scripts/bootstrap-scaffold-repos.sh`
-push. Do not reuse `8c8cc195` or currently published `87251b73`.
+Do not reuse `8c8cc195` or previously published `87251b73`.
 
 | Identity | Value |
 |---|---|
-| Source commit | *recorded in BACKLOG after freeze* |
-| Scaffold git tree | *recorded in BACKLOG after freeze* |
-| Scaffold tree sha256 | *recorded in BACKLOG after freeze* |
+| Source commit | `1082d51e230e378c1f71032d6e834b00e641a997` |
+| Scaffold git tree | `5fed3d349297887d76ea8a004647f3e0d519425a` |
+| Scaffold tree sha256 | `d2d6166104f5a69b31a9b1a276190ef8e8b077af4ca5d044267f4a9d2d5411f7` (613 files; dest omit `.hermes/_park`) |
 | Golden repository | `github.com/adnan-drina/quarkus-migration-scaffold-v2` |
-| Golden commit | *actual published SHA* |
+| Golden commit | `80b47c6ca5cf605a25145df18d39cb13fb6ad49a` |
 
 Equivalence: the published golden tree (dest omit `.hermes/_park`) must
 match the recorded scaffold tree sha256.

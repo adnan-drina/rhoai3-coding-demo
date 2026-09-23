@@ -27,21 +27,21 @@
   validated M3/M5 display titles (PREFLIGHT / DEPLOY / VALIDATE and BUILD /
   CONFIGURE / COMPILE / MIGRATE / TEST / REPAIR) in this golden; internal
   kinds, idempotency keys, and historical v10 card titles stay as written.
-  v11 publication mapping (authoring complete; golden not force-pushed; v11
-  not launched). This supersedes the stale recorded selection
+  v11 publication mapping (golden force-pushed; v11 not launched). This
+  supersedes the stale recorded selection
   `8c8cc1952271cfc232659a58bc781a27012c12f4` (a platform commit, not a golden
-  SHA):
-  - source commit: `d93c848241f1385c6b86db670ac410780fd2e1a5` (naming
+  SHA) and the pending `d93c8482` mapping:
+  - source commit: `1082d51e230e378c1f71032d6e834b00e641a997` (naming
     `264bcf95` + release-evidence `8c8cc195` + G-1 required bindings
-    `1a22ba10` + serial roadmap)
-  - scaffold git tree: `fc7e5c3048414b7e620266f14dd7ea8dcae6b7b7`
+    `1a22ba10` + serial roadmap + post-admission roadmap write + v11
+    budget/runtime freeze)
+  - scaffold git tree: `5fed3d349297887d76ea8a004647f3e0d519425a`
     (`git rev-parse SOURCE:stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold`)
-  - scaffold tree sha256: `1a14b3065452bc09ab4f42c840ad4b06fa1852a0c5910bff412de5091a4296f6`
-    (612 files; dest omit `.hermes/_park`)
+  - scaffold tree sha256: `d2d6166104f5a69b31a9b1a276190ef8e8b077af4ca5d044267f4a9d2d5411f7`
+    (613 files; dest omit `.hermes/_park`; matches published golden tree)
   - golden repository: `github.com/adnan-drina/quarkus-migration-scaffold-v2`
-  - golden commit: pending `scripts/bootstrap-scaffold-repos.sh` of that
-    source tree. Currently published
-    `87251b733e7d7d35af670c74aaef5488e8356b7e` is not this source.
+  - golden commit: `80b47c6ca5cf605a25145df18d39cb13fb6ad49a`
+    (`scripts/bootstrap-scaffold-repos.sh` of that source tree)
   Record the source,
   runtime/model configuration, finite budgets, and v11 deadline before
   launch. Use a fresh workspace and the supported entrypoint; preserve v10.
