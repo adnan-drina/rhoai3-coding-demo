@@ -2,13 +2,17 @@
 
 ## Stage 080 v11 repeatability — planned 2026-09-23
 
-- [ ] **Expose the serial migration roadmap after M2.** Derive known work,
+- [x] **Expose the serial migration roadmap after M2.** Derive known work,
   dependencies, acceptance checks, and unresolved questions from existing
   M1/M2 evidence and the work list. Show M4 VERIFY and M5 PREFLIGHT / DEPLOY /
   VALIDATE as planned milestones. Keep planned scope distinct from executable
   admission: future milestones must not claim a candidate or receipt before
   one exists. Retain one active M3 implementation task for v11; reconcile
   discovered repairs and obligations resolved by earlier work against the plan.
+  Producer `compose-serial-roadmap` writes derived
+  `evidence/planning/serial-roadmap.json`. The work list remains the only plan;
+  this view is not sealed, not an M2 KEEP/audit step, and not an M5 gate.
+  Parallel M3 execution stays deferred.
 
 - [ ] **Demonstrate a clean v11 migration through delivery.** First finish
   the confirmed reusable acceptance and delivery fixes, validate them, and
@@ -23,8 +27,21 @@
   validated M3/M5 display titles (PREFLIGHT / DEPLOY / VALIDATE and BUILD /
   CONFIGURE / COMPILE / MIGRATE / TEST / REPAIR) in this golden; internal
   kinds, idempotency keys, and historical v10 card titles stay as written.
-  Recorded v11 golden: `8c8cc1952271cfc232659a58bc781a27012c12f4`
-  (naming `264bcf95` plus this release-evidence, planning, and cleanup).
+  v11 publication mapping (authoring complete; golden not force-pushed; v11
+  not launched). This supersedes the stale recorded selection
+  `8c8cc1952271cfc232659a58bc781a27012c12f4` (a platform commit, not a golden
+  SHA):
+  - source commit: `d93c848241f1385c6b86db670ac410780fd2e1a5` (naming
+    `264bcf95` + release-evidence `8c8cc195` + G-1 required bindings
+    `1a22ba10` + serial roadmap)
+  - scaffold git tree: `fc7e5c3048414b7e620266f14dd7ea8dcae6b7b7`
+    (`git rev-parse SOURCE:stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold`)
+  - scaffold tree sha256: `1a14b3065452bc09ab4f42c840ad4b06fa1852a0c5910bff412de5091a4296f6`
+    (612 files; dest omit `.hermes/_park`)
+  - golden repository: `github.com/adnan-drina/quarkus-migration-scaffold-v2`
+  - golden commit: pending `scripts/bootstrap-scaffold-repos.sh` of that
+    source tree. Currently published
+    `87251b733e7d7d35af670c74aaef5488e8356b7e` is not this source.
   Record the source,
   runtime/model configuration, finite budgets, and v11 deadline before
   launch. Use a fresh workspace and the supported entrypoint; preserve v10.
