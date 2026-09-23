@@ -19,6 +19,7 @@
 # Usage: scripts/patch-workspace-maas-route.sh <devworkspace-name> [namespace]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
 load_env
 check_oc_logged_in

@@ -14,9 +14,12 @@ class RoutePatch(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        shutil.copy(Path(__file__).with_name('patch-workspace-maas-route.sh'), self.root)
-        (self.root / 'lib.sh').write_text(
-            'load_env() { export GUARD_LOADED=yes; }\n'
+        self.scripts = self.root / 'scripts'
+        self.scripts.mkdir()
+        (self.root / '.env').write_text('# fixture; no credentials\n')
+        shutil.copy(Path(__file__).with_name('patch-workspace-maas-route.sh'), self.scripts)
+        (self.scripts / 'lib.sh').write_text(
+            'load_env() { test -f "${REPO_ROOT}/.env"; export GUARD_LOADED=yes; }\n'
             'check_oc_logged_in() { test "${GUARD_OK:-yes}" = yes; }\n')
         oc = self.root / 'oc'
         oc.write_text('''#!/usr/bin/env python3
@@ -39,9 +42,10 @@ elif 'pod-overrides' in a[-1]:
         oc.chmod(0o755)
         self.env = {**os.environ, 'PATH': str(self.root) + os.pathsep + os.environ['PATH'],
                     'CALLS': str(self.root / 'calls'), 'STARTED': 'false'}
+        self.env.pop('REPO_ROOT', None)
 
     def run_patch(self, **env):
-        result = subprocess.run(['bash', str(self.root / 'patch-workspace-maas-route.sh'),
+        result = subprocess.run(['bash', str(self.scripts / 'patch-workspace-maas-route.sh'),
                                  'fixture', 'test'], env={**self.env, **env},
                                 text=True, capture_output=True)
         calls = self.root / 'calls'
