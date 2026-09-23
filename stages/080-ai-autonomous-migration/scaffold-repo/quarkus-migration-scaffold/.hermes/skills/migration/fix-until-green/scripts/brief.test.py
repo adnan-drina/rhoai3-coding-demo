@@ -138,6 +138,21 @@ def _issued_cluster_case() -> int:
         hit, code, _ = select_cluster(wl, root, "", "t_abc12345")
         if hit is None or hit["id"] != "c:issued" or code:
             return _fail("issued cluster must win over an empty head: %s %s" % (hit, code))
+        # A rebuild measures the candidate but does not revoke an amendment.
+        # v10's brief hid both legally amended repository files after verify.
+        amended = ["src/main/java/A.java", "src/main/java/RepositoryImpl.java"]
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:issued",
+                                            "task_id": "t_abc12345", "write_set": amended})
+        for explicit in ("", "c:issued"):
+            hit, code, _ = select_cluster(wl, root, explicit, "t_abc12345")
+            if code or hit.get("write_set") != amended:
+                return _fail("the issued card's amended scope survives a work-list rebuild: %s" % hit)
+        if cluster["write_set"] != ["src/main/java/A.java"]:
+            return _fail("rendering issued scope must not mutate the measured work list")
+        other = dict(cluster, id="c:other", write_set=["src/main/java/Other.java"])
+        hit, code, _ = select_cluster(dict(wl, clusters=[cluster, other]), root, "c:other", "")
+        if code or hit.get("write_set") != other["write_set"]:
+            return _fail("issued amendments must not leak into another cluster's brief")
         hit, code, detail = select_cluster(wl, root, "", "t_other000")
         if hit is not None or code != "LOOP_WRONG_CARD":
             return _fail("a different HERMES_KANBAN_TASK is LOOP_WRONG_CARD: %s %s" % (code, detail))
@@ -413,7 +428,9 @@ def _verify_runs_brief_case() -> int:
     for must in ("Evidence rule:", "mvn quarkus:dev", "NOT evidence", "run-verify.sh --mode acceptance", "verification/parity",
                  "Stop rule:", "After two acceptance runs with the same obligations still reported", "typed diagnosis",
                  "kanban_block kind=needs_input", "Do not run a third verify without a new edit", "Never start a server to explore",
-                 "Read a product file at most once per edit cycle", "Do not read receipt.json, _run.json or verdict files"):
+                 "Read a product file at most once per edit cycle", "verification/parity/_run.json",
+                 "card/candidate binding", "receipt.composed_by_this_run", "scenarios.results[].reason",
+                 "verify_runs.acceptance_count", "verify_runs.stop_rule_applies"):
         if must not in mod.PROCEDURE:
             return _fail("the procedure must state %r once: %s" % (must, mod.PROCEDURE[:200]))
     with tempfile.TemporaryDirectory(prefix="verify-runs-") as td:

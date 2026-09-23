@@ -2,6 +2,14 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Specialty run 47 exposed a brief defect: after re-measurement the brief
+  showed only the controller although `issued.json` still granted both
+  repository amendments. The brief now retains the matching issued card's
+  scope. Its generated procedure also contradicted the installed skill by
+  forbidding `_run.json` reads; it now names the bound comparison and the
+  acceptance-only counter fields. The regression reproduces the scope loss
+  before the fix. No scope grant, verification limit or acceptance rule changes.
+
 - Specialty task `t_19857de6` stopped twice on provider HTTP 429 (native
   runs 45 and 46); run 46 performed no application repair. The governed Qwen
   route recorded six throttled calls under the Dev Spaces subscription,

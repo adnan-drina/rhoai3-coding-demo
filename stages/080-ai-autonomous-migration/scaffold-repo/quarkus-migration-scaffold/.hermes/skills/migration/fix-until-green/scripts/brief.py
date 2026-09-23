@@ -33,6 +33,7 @@ from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, ass
 # to the wrong file and then to a block.
 SCOPE_RULE = (
     "Scope rule, for every parity item and for any runtime obligation whose producing file is outside the write set: "
+    "this card's write_set includes amendments already granted to THIS card; a file already listed needs no new amendment. "
     "find the producing file (the item's locus_hints -- a body_diff's producer, a server_error's first product frame -- "
     "name it), record it BEFORE editing it with amend-scope.py --root . --cluster <id> --card $HERMES_KANBAN_TASK "
     "--path <file> --reason <why> --evidence parity:<item id> (bounded by the card's own bounds: two amendments, a "
@@ -62,16 +63,20 @@ EVIDENCE_RULE = (
 )
 
 STOP_RULE = (
-    "Stop rule: verify_runs counts the run-verify.sh runs on THIS card and lists the obligations still reported after "
-    "each. After two acceptance runs with the same obligations still reported, stop exploring: write a typed diagnosis "
+    "Stop rule: use verify_runs.acceptance_count and verify_runs.stop_rule_applies on THIS card; count and row n include "
+    "diagnostic runs, which do not spend acceptance runs. After two acceptance runs with the same obligations still reported, "
+    "stop exploring: write a typed diagnosis "
     "-- what you changed, what each verify measured, the one hypothesis you could not test and the evidence that would "
     "test it -- and kanban_block kind=needs_input carrying it. Do not run a third verify without a new edit. Never "
     "start a server to explore."
 )
 
 READS_RULE = (
-    "Reads: this brief carries every diff, the advice, the loci and the catalog rows. Read a product file at most once "
-    "per edit cycle. Do not read receipt.json, _run.json or verdict files: the brief is their digest."
+    "Reads: this brief carries work-list advice, loci and catalog rows. Read a product file at most once per edit cycle. "
+    "For the current parity result, read verification/parity/_run.json: require its card/candidate binding and "
+    "receipt.composed_by_this_run, then inspect selected scenarios.results[].reason for status, headers, body, effects "
+    "and navigation. The brief does not replace these current comparison details. Older records in another mode or "
+    "directory are not this candidate's evidence."
 )
 
 # H9b (v9 t_2da2458b): the terminal tool's default timeout (180 s) killed a
@@ -894,6 +899,14 @@ def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tu
     issued_cid = str(issued.get("cluster") or "")
     issued_tid = str(issued.get("task_id") or "")
     task = (task_env or "").strip()
+    def issued_scope(hit: dict) -> dict:
+        # Re-measurement reconstructs clusters from failures, not amendments.
+        # Only the matching issued card owns its recorded scope; keep the
+        # measured items and leave other clusters and the work list untouched.
+        if hit.get("id") == issued_cid and issued_tid and isinstance(issued.get("write_set"), list):
+            return dict(hit, write_set=list(issued["write_set"]))
+        return hit
+
     terminator = ("Terminator: kanban_block kind=needs_input naming the cluster. "
                   "Do not rummage verification/loop/. Do not patch a different cluster's write set.")
 
@@ -910,7 +923,7 @@ def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tu
         if hit is None:
             return None, "LOOP_CLUSTER_NOT_OPEN", (
                 "cluster %s is not on the open work list; %s" % (cluster_arg, terminator))
-        return hit, "", ""
+        return issued_scope(hit), "", ""
 
     if task and issued_tid:
         if issued_tid != task:
@@ -921,7 +934,7 @@ def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tu
             hit = clusters.get(issued_cid)
             if hit is None:
                 return _issued_not_open(issued, doc), "", ""
-            return hit, "", ""
+            return issued_scope(hit), "", ""
 
     head = head_cluster(doc)
     if head is not None:
