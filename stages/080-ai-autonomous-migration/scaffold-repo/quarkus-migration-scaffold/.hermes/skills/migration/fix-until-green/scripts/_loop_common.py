@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -416,9 +417,10 @@ def revert_paths(root: Path, paths: list[str]) -> None:
 
 def parity_records(base: Path) -> list[Path]:
     """The parity documents under one tree, relative to it: the composed
-    receipt and every verdict record (per entry point, per scenario). The run
-    record and the destination log are not evidence of a verdict and are left
-    where they are."""
+    receipt and every verdict record (per entry point, per scenario). Runner
+    records (``_run.json`` / ``_run-*.json``) are not verdicts; they travel
+    with the snapshot through ``parity_runner_records`` so a discarded
+    candidate's scoped run cannot sit beside the restored receipts."""
     out: list[Path] = []
     d = Path(base)
     if not d.is_dir():
@@ -428,6 +430,112 @@ def parity_records(base: Path) -> list[Path]:
     out += [p.relative_to(base) for p in sorted((d / "scenarios").glob("*.json"))]
     out += [p.relative_to(base) for p in sorted((d / "scenarios-enabled").glob("*.json"))]
     return out
+
+
+def parity_runner_records(base: Path) -> list[Path]:
+    """The runner's own records under one tree: ``_run.json`` and ``_run-*.json``.
+
+    These say whether the comparison was a full-mode compose or a scoped
+    card run. Leaving them live across ``restore_reports`` presented a
+    discarded enabled candidate's scoped record as the accepted tree's
+    comparison (v10 CORS t_27cea939)."""
+    d = Path(base)
+    if not d.is_dir():
+        return []
+    return [p.relative_to(base) for p in sorted(d.glob("_run*.json")) if p.is_file()]
+
+
+def _runner_is_full_mode(doc: dict[str, Any] | None) -> bool:
+    """A runner record of an unscoped compose of this tree, not a card-scoped run."""
+    if not isinstance(doc, dict):
+        return False
+    if list(doc.get("scenario_filter") or []):
+        return False
+    return bool((doc.get("receipt") or {}).get("composed_by_this_run"))
+
+
+LOOP_DISCARDED = LOOP_ACCEPTED.parent / "discarded"
+
+
+def _discarded_attempt_dir(root: Path) -> Path:
+    issued: dict[str, Any] = {}
+    if (root / LOOP_ISSUED).is_file():
+        try:
+            issued = load_json(root / LOOP_ISSUED) or {}
+        except (OSError, ValueError):
+            issued = {}
+        if not isinstance(issued, dict):
+            issued = {}
+    card = str(issued.get("task_id") or issued.get("card") or "unissued")
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    dest = root / LOOP_DISCARDED / ("%s-%s" % (card, stamp))
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = root / LOOP_DISCARDED / ("%s-%s-%d" % (card, stamp, n))
+    return dest
+
+
+def _preserve_discarded_parity(root: Path, snap: Path) -> Path | None:
+    """Copy the live comparison a reject is about to throw away.
+
+    Only when a live runner record would be deleted or overwritten: that is
+    the discarded attempt's evidence, including a scoped enabled run that
+    must not become the restored baseline's runner record."""
+    live = root / PARITY_DIR
+    extras: list[Path] = []
+    snap_docs: dict[str, bytes] = {}
+    for rel in parity_runner_records(snap):
+        sp = snap / rel
+        if sp.is_file():
+            snap_docs[str(rel)] = sp.read_bytes()
+    for rel in parity_runner_records(live):
+        lp = live / rel
+        if not lp.is_file():
+            continue
+        key = str(rel)
+        if key not in snap_docs or lp.read_bytes() != snap_docs[key]:
+            extras.append(rel)
+    if not extras:
+        return None
+    dest = _discarded_attempt_dir(root)
+    rels = list(dict.fromkeys(list(parity_records(live)) + extras))
+    for rel in rels:
+        src = live / rel
+        if not src.is_file():
+            continue
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target)
+    return dest
+
+
+def _apply_parity_snapshot(root: Path, snap: Path, *, unmeasured: bool = False) -> None:
+    """Make the snapshot's receipts AND runner records the live comparison.
+
+    Live runner records that the snapshot does not hold are removed, so a
+    discarded scoped ``_run-enabled.json`` cannot be read as a full-mode
+    comparison of the restored tree."""
+    live = root / PARITY_DIR
+    kept = parity_records(snap)
+    snap_runners = parity_runner_records(snap)
+    if unmeasured:
+        _set_parity_aside(root)
+    live.mkdir(parents=True, exist_ok=True)
+    for rel in list(parity_records(live)):
+        if rel not in kept and (live / rel).is_file():
+            (live / rel).unlink()
+    for rel in list(parity_runner_records(live)):
+        if rel not in snap_runners and (live / rel).is_file():
+            (live / rel).unlink()
+    for rel in kept:
+        target = live / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snap / rel, target)
+    for rel in snap_runners:
+        target = live / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snap / rel, target)
 
 
 def snapshot_parity(root: Path, source: dict[str, Any] | None = None) -> list[Path]:
@@ -443,19 +551,52 @@ def snapshot_parity(root: Path, source: dict[str, Any] | None = None) -> list[Pa
     its own card had been issued from. The obligation the loop was working on
     disappeared: no open cluster, no card, nothing minted.
 
+    Full-mode runner records travel with the receipts. A scoped card run is
+    never snapshotted as the baseline's comparison: the prior full-mode
+    runner of that mode stays, so restore cannot present the discarded
+    candidate's scoped ``_run-enabled.json`` as a full-mode compose.
+
     ``source`` records whose comparison this baseline is (mode and card); it is
     written beside the snapshot, never inside it. Returns the records kept."""
     dest = root / LOOP_ACCEPTED
     live = root / PARITY_DIR
+    snap = dest / PARITY_SNAPSHOT
     records = parity_records(live)
     if not records:
         return []
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(dest / PARITY_SNAPSHOT, ignore_errors=True)
+    prior_full: dict[str, bytes] = {}
+    if snap.is_dir():
+        for rel in parity_runner_records(snap):
+            try:
+                doc = load_json(snap / rel)
+            except (OSError, ValueError):
+                continue
+            if _runner_is_full_mode(doc):
+                prior_full[str(rel)] = (snap / rel).read_bytes()
+    live_full: dict[str, Path] = {}
+    for rel in parity_runner_records(live):
+        try:
+            doc = load_json(live / rel)
+        except (OSError, ValueError):
+            continue
+        if _runner_is_full_mode(doc):
+            live_full[str(rel)] = rel
+    shutil.rmtree(snap, ignore_errors=True)
     for rel in records:
-        target = dest / PARITY_SNAPSHOT / rel
+        target = snap / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(live / rel, target)
+    for key, rel in live_full.items():
+        target = snap / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(live / rel, target)
+    for key, data in prior_full.items():
+        if key in live_full:
+            continue
+        target = snap / Path(key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
     if source is not None:
         write_canonical(dest / PARITY_SNAPSHOT_SOURCE, dict(source))
     return records
@@ -534,21 +675,21 @@ def install_parity_baseline(root: Path, src: Path, source: dict[str, Any] | None
         shutil.copytree(staged, dest / PARITY_SNAPSHOT)
         if source is not None:
             write_canonical(dest / PARITY_SNAPSHOT_SOURCE, dict(source))
+        _preserve_discarded_parity(root, dest / PARITY_SNAPSHOT)
         _set_parity_aside(root)
-        live = root / PARITY_DIR
-        for rel in records:
-            target = live / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(staged / rel, target)
+        _apply_parity_snapshot(root, dest / PARITY_SNAPSHOT)
     return records
 
 
 def _set_parity_aside(root: Path) -> None:
     live = root / PARITY_DIR
-    for rel in parity_records(live):
+    for rel in list(parity_records(live)) + list(parity_runner_records(live)):
+        src = live / rel
+        if not src.is_file():
+            continue
         target = root / PARITY_SET_ASIDE / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(live / rel), str(target))
+        shutil.move(str(src), str(target))
 
 
 def parity_not_of_this_tree(root: Path, *, direct: bool = False) -> str:
@@ -612,22 +753,12 @@ def restore_reports(root: Path) -> None:
     kept = parity_records(snap)
     if not kept:
         return  # no accepted comparison to restore: see PARITY_SNAPSHOT
-    live = root / PARITY_DIR
     try:
         unmeasured = str((load_json(snap / "receipt.json") or {}).get("verdict") or "") == PARITY_UNMEASURED
     except (OSError, ValueError):
         unmeasured = False
-    if unmeasured:
-        # the accepted tree was never compared: no record of any other tree
-        # may stand in for it (they are set aside, never deleted)
-        _set_parity_aside(root)
-    for rel in parity_records(live):
-        if rel not in kept:
-            (live / rel).unlink()
-    for rel in kept:
-        target = live / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(snap / rel, target)
+    _preserve_discarded_parity(root, snap)
+    _apply_parity_snapshot(root, snap, unmeasured=unmeasured)
 
 
 def classify_inconclusive(measure: dict[str, Any] | None, run: dict[str, Any] | None = None) -> str:

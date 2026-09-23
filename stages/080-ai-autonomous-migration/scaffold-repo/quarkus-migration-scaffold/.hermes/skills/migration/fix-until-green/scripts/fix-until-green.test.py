@@ -1310,6 +1310,86 @@ def _harness_owned_root_case() -> int:
     return 0
 
 
+def _restore_runner_records_case() -> int:
+    """v10 t_27cea939: rejecting a scoped enabled candidate restores the
+    accepted receipts and cannot leave that candidate's ``_run-enabled.json``
+    to be read as a full-mode comparison. Discarded runner evidence is kept
+    aside. Snapshotting a later scoped card keeps the prior full-mode runner."""
+    from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED, PARITY_DIR
+    from _loop_common import LOOP_DISCARDED, restore_reports, snapshot_parity
+    from m4_parity import measure
+
+    artifact = "a" * 64
+
+    def receipt(mode, verdict="FAIL"):
+        return {"schema": "rhoai3.parity-receipt/v1", "security_mode": mode, "verdict": verdict,
+                "entry_points": [{"entry_point": "ep:x#y():http", "verdict": verdict, "scenarios": ["sc:one"]}]}
+
+    def full_run(mode):
+        return {"schema": "rhoai3.parity-run/v1", "ok": True, "security_mode": mode,
+                "scenario_filter": [], "artifact": {"sha256": artifact},
+                "receipt": {"composed_by_this_run": True}}
+
+    def scoped_run(mode):
+        return {"schema": "rhoai3.parity-run/v1", "ok": True, "security_mode": mode,
+                "scenario_filter": ["sc:cors-enabled-preflight-7b1a3d9234cd"],
+                "artifact": {"sha256": "b" * 64}, "receipt": {"composed_by_this_run": True},
+                "binding": {"mode": "candidate", "card": "t_27cea939"}}
+
+    with tempfile.TemporaryDirectory(prefix="restore-run-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        pdir.mkdir(parents=True)
+        (root / LOOP_ISSUED).parent.mkdir(parents=True, exist_ok=True)
+        write_canonical(root / LOOP_ISSUED, {"task_id": "t_27cea939", "cluster": "c:cors"})
+        write_canonical(pdir / "receipt.json", receipt("disabled", "INCONCLUSIVE"))
+        write_canonical(pdir / "receipt-enabled.json", receipt("enabled", "FAIL"))
+        write_canonical(pdir / "_run.json", full_run("disabled"))
+        write_canonical(pdir / "_run-enabled.json", full_run("enabled"))
+        snapshot_parity(root)
+        snap_enabled = (root / LOOP_ACCEPTED / "parity" / "_run-enabled.json").read_bytes()
+        if b"scenario_filter" in snap_enabled and b"cors-enabled-preflight" in snap_enabled:
+            return _fail("a full-mode snapshot must not store a scoped filter as the baseline runner")
+        # discard a scoped enabled candidate: leftover runner beside restored receipts
+        write_canonical(pdir / "receipt-enabled.json", dict(receipt("enabled", "INCONCLUSIVE"),
+                                                            binding={"mode": "candidate", "card": "t_27cea939"}))
+        write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
+        live_scoped = (pdir / "_run-enabled.json").read_bytes()
+        restore_reports(root)
+        restored = load_json(pdir / "_run-enabled.json")
+        if list(restored.get("scenario_filter") or []) or restored.get("binding", {}).get("card") == "t_27cea939":
+            return _fail("restore must not present the discarded scoped runner: %s" % restored)
+        if (pdir / "_run-enabled.json").read_bytes() != snap_enabled:
+            return _fail("restore puts the accepted full-mode runner back")
+        if load_json(pdir / "receipt-enabled.json").get("verdict") != "FAIL":
+            return _fail("restore puts the accepted enabled receipt back")
+        discarded = list((root / LOOP_DISCARDED).rglob("_run-enabled.json"))
+        if len(discarded) != 1 or discarded[0].read_bytes() != live_scoped:
+            return _fail("the discarded scoped runner is preserved separately: %s" % discarded)
+        measured = measure(root)
+        if any("did not compose a full-mode comparison" in e for e in measured.get("errors") or []):
+            return _fail("m4_parity must not read a scoped leftover as the restored comparison: %s" % measured)
+        if measured.get("rc") not in (0, 1):
+            return _fail("the restored baseline is a coherent full-mode comparison: %s" % measured)
+        # a later scoped snapshot must keep the prior full-mode runner
+        write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
+        snapshot_parity(root)
+        kept = load_json(root / LOOP_ACCEPTED / "parity" / "_run-enabled.json")
+        if list(kept.get("scenario_filter") or []):
+            return _fail("snapshot_parity must not replace a full-mode runner with a scoped card run: %s" % kept)
+        # legacy snapshot with no runner: leftover scoped file is removed, not read as full-mode
+        (root / LOOP_ACCEPTED / "parity" / "_run-enabled.json").unlink()
+        (root / LOOP_ACCEPTED / "parity" / "_run.json").unlink(missing_ok=True)
+        write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
+        restore_reports(root)
+        if (pdir / "_run-enabled.json").is_file():
+            return _fail("a snapshot without a runner cannot keep the discarded scoped record live")
+        measured = measure(root)
+        if any("did not compose a full-mode comparison" in e for e in measured.get("errors") or []):
+            return _fail("absence is not a scoped leftover presented as full-mode: %s" % measured)
+    return 0
+
+
 def _parity_baseline_refresh_case() -> int:
     """F2 (v9 step 2410082): an Operator step that CHANGES the product may not
     freeze the parity receipt of the tree before it. The accepted baseline is
@@ -1551,7 +1631,7 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1

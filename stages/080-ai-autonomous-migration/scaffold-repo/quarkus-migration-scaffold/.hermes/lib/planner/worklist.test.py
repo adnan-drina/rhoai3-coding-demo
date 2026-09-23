@@ -3325,6 +3325,131 @@ def _enabled_mode_handoff_case() -> int:
     return 0
 
 
+def _enabled_navigation_issuance_baseline_case() -> int:
+    """v10 CORS t_27cea939 / parity:a79db752: an enabled-mode navigation FAIL
+    lives on receipt-enabled.json, not as a scenario file. Issuance that
+    judged the disabled receipt still records it in gate_items. A CORS
+    candidate that does not re-measure that redirect is not a regression; a
+    genuine new FAIL still refuses. progress() itself is unchanged: the dest
+    shape (nav absent from the issuance baseline) still vetoes."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR, VERIFY_RUN
+    from planner.worklist import judged_parity_receipt, parity_obligation_id
+
+    ep_nav = "ep:org.springframework.samples.petclinic.rest.RootRestController#redirectToSwagger(HttpServletResponse):http"
+    ep_cors = "ep:org.springframework.samples.petclinic.rest.controller.OwnerRestController#addOwner():http"
+    ep_other = "ep:org.springframework.samples.petclinic.rest.controller.PetRestController#addPet():http"
+    nav_path = "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java"
+    cors_path = "src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRestController.java"
+    other_path = "src/main/java/org/springframework/samples/petclinic/rest/controller/PetRestController.java"
+    enabled_sid = "sc:cors-enabled-preflight-7b1a3d9234cd"
+    other_sid = "sc:add-pet-1"
+    cors_reason = ("status 200 vs 401; header WWW-Authenticate None vs Basic realm=\"Realm\"; "
+                   "header Access-Control-Allow-Origin * vs None")
+    nav_reason = "redirect target http://127.0.0.1:8081/petclinic/swagger-ui/index.html is dead on the destination (401)"
+    bundle = {"entry_points": [
+        {"id": ep_nav, "path": nav_path},
+        {"id": ep_cors, "path": cors_path},
+        {"id": ep_other, "path": other_path},
+    ]}
+    cors_id = parity_obligation_id(ep_cors, enabled_sid, "cors")
+    nav_id = parity_obligation_id(ep_nav, "", "navigation")
+    other_id = parity_obligation_id(ep_other, other_sid, "response")
+    with tempfile.TemporaryDirectory(prefix="nav-issuance-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        (pdir / "scenarios-enabled").mkdir(parents=True)
+        (root / "verification/scenarios-enabled").mkdir(parents=True)
+        (root / VERIFY_RUN).parent.mkdir(parents=True)
+        (root / "verification/scenarios-enabled/corpus.json").write_text(json.dumps({"scenarios": [
+            {"id": enabled_sid, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+             "scenario_type": "browser-preflight"}]}))
+        disabled = {"schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+                    "receipt_sha256": "disabled",
+                    "entry_points": [{"entry_point": ep_nav, "verdict": "PASS", "navigation": "ok",
+                                      "scenarios": ["sc:read-root"]}]}
+        enabled_fail = {
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "enabled", "verdict": "FAIL",
+            "receipt_sha256": "enabled-fail",
+            "entry_points": [
+                {"entry_point": ep_nav, "verdict": "PASS", "navigation": "failed",
+                 "scenarios": ["sc:auth-allowed-read-root"],
+                 "navigation_failures": [{"scenario": "sc:auth-allowed-read-root",
+                                          "target": "http://127.0.0.1:8081/petclinic/swagger-ui/index.html",
+                                          "terminal": "dead", "final_status": 401}]},
+                {"entry_point": ep_cors, "verdict": "FAIL", "reason": cors_reason, "scenarios": [enabled_sid]},
+            ],
+            "navigation_obligations": [{"entry_point": ep_nav, "kind": "navigation", "verdict": "FAIL",
+                                        "scenarios": ["sc:auth-allowed-read-root"], "reason": nav_reason,
+                                        "navigation_failures": [{"scenario": "sc:auth-allowed-read-root",
+                                                                 "target": "http://127.0.0.1:8081/petclinic/swagger-ui/index.html",
+                                                                 "terminal": "dead", "final_status": 401}]}],
+        }
+        (pdir / "receipt.json").write_text(json.dumps(disabled))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(enabled_fail))
+        (pdir / "scenarios-enabled" / "cors.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep_cors, "scenario": enabled_sid, "verdict": "FAIL", "reason": cors_reason}))
+        # issuance shape: last verification judged the disabled receipt
+        (root / VERIFY_RUN).write_text(json.dumps({"runtime": {"parity": {"ran": True, "security_mode": "disabled"}}}))
+        judged, _ = judged_parity_receipt(root)
+        if judged.get("security_mode") != "disabled":
+            return _fail("issuance judges the disabled receipt: %s" % judged.get("security_mode"))
+        items = parity_items(root, bundle, receipt=judged)
+        ids = {i["id"] for i in items}
+        if cors_id not in ids:
+            return _fail("the enabled CORS FAIL is still an obligation: %s" % sorted(ids))
+        if nav_id not in ids:
+            return _fail("the enabled navigation FAIL is in the issuance baseline even when judged is disabled: %s"
+                         % sorted(ids))
+        nav = next(i for i in items if i["id"] == nav_id)
+        if nav.get("security_mode") != "enabled" or nav.get("cause") != "redirect-target-dead":
+            return _fail("the omitted obligation is the enabled dead redirect: %s" % nav)
+        # dest rejection reproduced: that id outside the (wrong) issuance set still vetoes
+        m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 1}
+        common = dict(gate="parity", issued_items=[cors_id], prev_runtime={}, cur_runtime={},
+                      prev_parity=enabled_fail, cur_parity=enabled_fail)
+        ok, why = progress(m, m, set(), set(), prev_gate_items={cors_id}, cur_gate_items={nav_id}, **common)
+        if ok is not False or nav_id not in why or "gate did not hold" not in why:
+            return _fail("progress still refuses a nav FAIL that was not in the issuance baseline: %s %s" % (ok, why))
+        # after the accounting fix: same nav FAIL is in prev_gate; CORS PASS accepts
+        enabled_pass = dict(enabled_fail, verdict="FAIL", receipt_sha256="enabled-pass",
+                            entry_points=[
+                                dict(enabled_fail["entry_points"][0]),
+                                {"entry_point": ep_cors, "verdict": "PASS", "reason": "", "scenarios": [enabled_sid]},
+                            ])
+        (pdir / "scenarios-enabled" / "cors.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep_cors, "scenario": enabled_sid, "verdict": "PASS", "reason": ""}))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(enabled_pass))
+        (root / VERIFY_RUN).write_text(json.dumps({"runtime": {"parity": {
+            "ran": True, "scoped": True, "security_mode": "enabled", "scenarios": [enabled_sid]}}}))
+        judged_on, _ = judged_parity_receipt(root)
+        cur = {i["id"] for i in parity_items(root, bundle, receipt=judged_on)}
+        discharged = {cors_id: (True, "PASS")}
+        ok, why = progress(m, m, set(), set(), gate="parity", issued_items=[cors_id], prev_gate_items={cors_id, nav_id},
+                           cur_gate_items=cur, prev_runtime={}, cur_runtime={}, prev_parity=enabled_fail,
+                           cur_parity=enabled_pass, parity_remeasured={"cors-enabled-preflight-7b1a3d9234cd"},
+                           parity_discharged=discharged)
+        if ok is not True or cors_id in cur or nav_id not in cur:
+            return _fail("a CORS repair that leaves the pre-existing nav FAIL is accepted: %s %s %s" % (ok, why, sorted(cur)))
+        # genuine unrelated regression still refuses
+        (pdir / "scenarios-enabled" / "other.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep_other, "scenario": other_sid, "verdict": "FAIL", "reason": "status 500 vs 200"}))
+        cur_reg = {i["id"] for i in parity_items(root, bundle, receipt=judged_on)}
+        ok, why = progress(m, m, set(), set(), gate="parity", issued_items=[cors_id], prev_gate_items={cors_id, nav_id},
+                           cur_gate_items=cur_reg, prev_runtime={}, cur_runtime={}, prev_parity=enabled_fail,
+                           cur_parity=enabled_pass, parity_remeasured={"cors-enabled-preflight-7b1a3d9234cd"},
+                           parity_discharged=discharged)
+        if ok is not False or other_id not in why or "gate did not hold" not in why:
+            return _fail("a genuine new FAIL still refuses: %s %s %s" % (ok, why, sorted(cur_reg)))
+    return 0
+
+
 def _split_discharge_case() -> int:
     """G1 (v9 t_55220d84) and G2: a scenario whose diffs F3 split across
     obligations discharges each obligation by its OWN diffs; a mid-card
@@ -3797,7 +3922,7 @@ def _partial_package_scope_case():
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

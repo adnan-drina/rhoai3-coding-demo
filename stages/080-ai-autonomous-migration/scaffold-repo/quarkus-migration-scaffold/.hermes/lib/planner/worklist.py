@@ -2941,6 +2941,29 @@ def navigation_advice(failures: list[dict[str, Any]], path: str) -> dict[str, An
     }
 
 
+def _navigation_receipts_for_items(root: Path, judged: dict[str, Any] | None) -> list[tuple[str, dict[str, Any]]]:
+    """Receipts whose ``navigation_obligations`` mint work-list items.
+
+    Navigation FAILs live on the composed receipt, not as scenario files.
+    Scenario FAIL files are already read from both mode directories; walking
+    only the judged receipt omitted an enabled-only dead redirect from the
+    issuance baseline whenever the last verification judged the disabled
+    receipt (v10 CORS card t_27cea939, parity:a79db752)."""
+    out: list[tuple[str, dict[str, Any]]] = []
+    for mode in SECURITY_MODES:
+        rec = load_parity_receipt(root, mode)
+        if rec:
+            out.append((mode, rec))
+    if judged:
+        mode = str(judged.get("security_mode") or "")
+        if mode not in SECURITY_MODES:
+            bound = judged.get("binding") if isinstance(judged.get("binding"), dict) else {}
+            mode = str(bound.get("security_mode") or "")
+        mode = mode if mode in SECURITY_MODES else DEFAULT_SECURITY_MODE
+        out.append((mode, judged))
+    return out
+
+
 def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]] | None = None,
                  receipt: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Obligations from M4's parity verdicts: the read-oracle verdicts in
@@ -2971,7 +2994,11 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     PASSed, and what failed is the separate bounded navigation the composer
     judged. It is reported on the receipt's own entry-point row (verdict FAIL,
     kind ``navigation``), so it is read there and lands at the controller that
-    answers the redirect, with ADR-016's exit conditions for a dead target."""
+    answers the redirect, with ADR-016's exit conditions for a dead target.
+    Those rows are collected from both mode receipts plus the judged
+    (possibly carried) receipt: an enabled-only dead redirect must be in the
+    issuance baseline even when the last verification judged the disabled
+    receipt (v10 CORS card t_27cea939, parity:a79db752)."""
     out: list[dict[str, Any]] = []
     ep_path = {str(e["id"]): str(e.get("path") or "") for e in (bundle.get("entry_points") or [])}
     pdir = root / PARITY_DIR
@@ -3100,30 +3127,38 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     # The receipt's own navigation verdicts: a comparison that PASSed and a
     # redirect target that is dead, loops, or never settles within the bounded
     # walk (ADR-016). There is no FAILing verdict file for these -- the
-    # comparison passed, by design -- so the row is the evidence.
-    for row in navigation_rows(receipt):
-        if str(row.get("verdict") or "") != "FAIL":
-            continue
-        ep = str(row.get("entry_point") or "")
-        if not ep:
-            continue
-        reason = str(row.get("reason") or "")
-        fails = [f for f in (row.get("navigation_failures") or []) if isinstance(f, dict)]
-        locus = ep_path.get(ep) or GLOBAL
-        out.append({"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
-                    "entry_point": ep, "scenario": "", "verdict_file": PARITY_RECEIPT.as_posix(),
-                    "scenarios": sorted({str(x) for x in (row.get("scenarios") or []) if str(x)}) or parity_scenarios_of(receipt, ep, ""),
-                    "message_sha256": sha256_bytes(reason.encode("utf-8")),
-                    "id": parity_obligation_id(ep, "", "navigation"), "path": locus,
-                    "rule_id": "PARITY", "cause": "redirect-target-dead",
-                    "detail": ("%s: redirect target %s" % (ep, reason))[:200],
-                    "message": ("%s answers the redirect the source answers, and the address it points at does not: %s. "
-                                "ADR-016 asks for more than the status and the literal Location -- that legacy address "
-                                "must serve the replacement UI or redirect to its effective address, and a bounded "
-                                "navigation must reach the real UI and a usable OpenAPI document in the PACKAGED "
-                                "production artifact without a redirect loop. Do not change the first response: it is "
-                                "already the source's." % (ep, reason))[:1200],
-                    "advice": navigation_advice(fails, locus)})
+    # comparison passed, by design -- so the row is the evidence. Walk every
+    # mode receipt plus the judged one; an obligation id is minted once.
+    seen_nav: set[str] = set()
+    for mode, rec in _navigation_receipts_for_items(root, receipt):
+        for row in navigation_rows(rec):
+            if str(row.get("verdict") or "") != "FAIL":
+                continue
+            ep = str(row.get("entry_point") or "")
+            if not ep:
+                continue
+            oid = parity_obligation_id(ep, "", "navigation")
+            if oid in seen_nav:
+                continue
+            seen_nav.add(oid)
+            reason = str(row.get("reason") or "")
+            fails = [f for f in (row.get("navigation_failures") or []) if isinstance(f, dict)]
+            locus = ep_path.get(ep) or GLOBAL
+            out.append({"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
+                        "entry_point": ep, "scenario": "", "verdict_file": PARITY_RECEIPT.as_posix(),
+                        "security_mode": mode,
+                        "scenarios": sorted({str(x) for x in (row.get("scenarios") or []) if str(x)}) or parity_scenarios_of(rec, ep, ""),
+                        "message_sha256": sha256_bytes(reason.encode("utf-8")),
+                        "id": oid, "path": locus,
+                        "rule_id": "PARITY", "cause": "redirect-target-dead",
+                        "detail": ("%s: redirect target %s" % (ep, reason))[:200],
+                        "message": ("%s answers the redirect the source answers, and the address it points at does not: %s. "
+                                    "ADR-016 asks for more than the status and the literal Location -- that legacy address "
+                                    "must serve the replacement UI or redirect to its effective address, and a bounded "
+                                    "navigation must reach the real UI and a usable OpenAPI document in the PACKAGED "
+                                    "production artifact without a redirect loop. Do not change the first response: it is "
+                                    "already the source's." % (ep, reason))[:1200],
+                        "advice": navigation_advice(fails, locus)})
     return out
 
 
