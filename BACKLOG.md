@@ -22,8 +22,10 @@
   validated M3/M5 display titles (PREFLIGHT / DEPLOY / VALIDATE and BUILD /
   CONFIGURE / COMPILE / MIGRATE / TEST / REPAIR) in this golden; internal
   kinds, idempotency keys, and historical v10 card titles stay as written.
+  Recorded v11 golden: `8c8cc1952271cfc232659a58bc781a27012c12f4`
+  (naming `264bcf95` plus this release-evidence, planning, and cleanup).
   Record the source,
-  golden, runtime/model configuration, finite budgets, and v11 deadline before
+  runtime/model configuration, finite budgets, and v11 deadline before
   launch. Use a fresh workspace and the supported entrypoint; preserve v10.
   Verify automatic phase handoffs, both-mode parity on the same packaged
   artifact, and the candidate-to-pipeline-to-running-image-to-live-check chain.
