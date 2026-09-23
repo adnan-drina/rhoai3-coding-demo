@@ -311,6 +311,15 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
         # the issued card: advance.py promotes a candidate only for this cluster/attempt/key
         issued_path = root / LOOP_ISSUED
         prev = load_json(issued_path) if issued_path.is_file() else {}
+        issued_ids = set(card.get("items") or [])
+        issued_modes = sorted({str(i.get("security_mode") or "disabled").strip().lower() or "disabled"
+                               for i in (worklist.get("items") or []) if str(i.get("id")) in issued_ids})
+        if not issued_modes:
+            issued_mode = "disabled"
+        elif len(issued_modes) == 1:
+            issued_mode = issued_modes[0]
+        else:
+            issued_mode = "mixed"
         write_canonical(issued_path, {
             "schema": "rhoai3.loop-issued/v1",
             "cluster": card["id"],
@@ -340,7 +349,8 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             # each issued compile failure's identity WITHOUT its line: acceptance
             # asks whether THIS is still reported, not whether its err: id is
             "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
-                                if str(i.get("id")) in set(card.get("items") or []) and i.get("identity")},
+                                if str(i.get("id")) in issued_ids and i.get("identity")},
+            "security_mode": issued_mode,
             "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
         })
     return result, []

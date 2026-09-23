@@ -111,7 +111,8 @@ C="${TMP}/c"; mkroot "${C}"; boot_ok "${C}"; worklist "${C}"
 # a parity card: the comparison runs, scoped to the scenarios ITS OWN
 # obligations are made of -- deduplicated, ordered, and nobody else's
 D="${TMP}/d"; mkroot "${D}"; boot_ok "${D}"; worklist "${D}"; issued "${D}" "parity" '["parity:aaaa","parity:bbbb"]'
-[[ "$(plan "${D}")" == "run:sc:a-first,sc:b-second" ]] || fail "the comparison must be scoped to this card's scenarios: $(plan "${D}")"
+[[ "$(plan "${D}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "the comparison must be scoped to this card's scenarios: $(plan "${D}")"
 
 # H3: the read oracles of the card's own entry points are re-run beside its
 # scenarios (dest v9 t_4d75569c: a read-oracle obligation names no scenario and
@@ -127,9 +128,9 @@ worklist_eps() {
 JSON
 }
 RO="${TMP}/ro"; mkroot "${RO}"; boot_ok "${RO}"; worklist_eps "${RO}"; issued "${RO}" "parity" '["parity:aaaa","parity:bbbb"]'
-[[ "$(plan "${RO}")" == $'run:sc:a-first\noracle:ep:x.Owner#list():http' ]] \
+[[ "$(plan "${RO}")" == $'run:sc:a-first\noracle:ep:x.Owner#list():http\nmode:disabled\nrun-mode:disabled:sc:a-first' ]] \
   || fail "the plan names the card's entry points, one per oracle line, and nobody else's: $(plan "${RO}")"
-grep -qF -- 'PARITY_ARGS+=(--read-oracle "${ep}")' "${SCRIPT}" || fail "the scoped comparison must pass the card's read oracles to the runner"
+grep -qF -- 'args+=(--read-oracle "${ep}")' "${SCRIPT}" || fail "the scoped comparison must pass the card's read oracles to the runner"
 grep -qF '"read_oracles_rerun": sorted(reruns)' "${SCRIPT}" || fail "run.json must carry the read oracles the runner re-ran"
 grep -qF '_run.json' "${SCRIPT}" \
   || fail "what was re-run is read from the runner's own record, never from what was asked"
@@ -145,8 +146,26 @@ worklist_enabled() {
 JSON
 }
 EN="${TMP}/en"; mkroot "${EN}"; boot_ok "${EN}"; worklist_enabled "${EN}"; issued "${EN}" "parity" '["parity:en"]'
-[[ "$(plan "${EN}")" == $'run:sc:cors-enabled-preflight-x\nmode:enabled' ]] \
+[[ "$(plan "${EN}")" == $'run:sc:cors-enabled-preflight-x\nmode:enabled\nrun-mode:enabled:sc:cors-enabled-preflight-x' ]] \
   || fail "an enabled-mode card must name its mode so the runner replays that corpus: $(plan "${EN}")"
+
+worklist_mixed() {
+  cat >"$1/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:dis","source":"parity","gate":"parity","security_mode":"disabled","scenarios":["sc:cors-preflight-x"]},
+ {"id":"parity:en","source":"parity","gate":"parity","security_mode":"enabled","scenarios":["sc:cors-enabled-preflight-x"]}],
+ "clusters":[]}
+JSON
+}
+MX="${TMP}/mx"; mkroot "${MX}"; boot_ok "${MX}"; worklist_mixed "${MX}"; issued "${MX}" "parity" '["parity:dis","parity:en"]'
+[[ "$(plan "${MX}")" == skip:*mixes* ]] \
+  || fail "a mixed-mode card must refuse until partitioned: $(plan "${MX}")"
+grep -q 'skip:the issued card mixes security modes; partition into one mode per repair card' "${SCRIPT}" \
+  || fail "mixed-mode obligations must skip by name requiring partition, never execute both modes"
+grep -qF '"security_mode": mode if mode in ("disabled", "enabled") else "disabled"' "${SCRIPT}" \
+  || fail "run.json runtime.parity must persist the security_mode that was compared"
+grep -qF 'parity-before-enabled.json' "${SCRIPT}" \
+  || fail "an enabled replay must keep the enabled receipt as it stood before the comparison"
 
 # the startup gate did not pass in this verification: there is no started
 # destination to compare, and a stage that cannot measure says so rather than
@@ -195,7 +214,8 @@ bound "${J}" sealed c0ffee
 
 # and a parity CARD is unaffected by the mode: its own comparison stays scoped
 K="${TMP}/k"; mkroot "${K}"; boot_ok "${K}"; worklist "${K}"; issued "${K}" "parity" '["parity:aaaa","parity:bbbb"]'; feedback "${K}" v1
-[[ "$(plan "${K}")" == "run:sc:a-first,sc:b-second" ]] || fail "a parity card keeps its own scoped comparison: $(plan "${K}")"
+[[ "$(plan "${K}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "a parity card keeps its own scoped comparison: $(plan "${K}")"
 
 # what the two triggers are recorded as, and that the sweep is never scoped
 grep -qF 'PARITY_TRIGGER="runtime-feedback"' "${SCRIPT}" || fail "the sweep must record why it ran"

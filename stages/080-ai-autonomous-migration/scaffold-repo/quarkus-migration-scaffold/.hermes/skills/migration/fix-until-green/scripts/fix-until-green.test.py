@@ -327,30 +327,47 @@ def _checked_family_advance_case() -> int:
 
 _PARITY_EP = "ep:org.acme.OwnerRestController#getOwners():http"
 _PARITY_SID = "sc:cors-actual-owners"
+_PARITY_ENABLED_SID = "sc:cors-enabled-preflight-7b1a3d9234cd"
 _PARITY_REASON = "header Access-Control-Allow-Origin None vs *; header Access-Control-Expose-Headers None vs errors"
 
 
-def _parity_records(root: Path, verdict: str, binding: dict | None = None) -> None:
+def _parity_records(root: Path, verdict: str, binding: dict | None = None, *,
+                    security_mode: str = "disabled", scenario: str | None = None) -> None:
     """What the M4 comparison leaves on disk: one scenario verdict and the
     receipt composed from it (compose-parity-receipt.py's shape).
 
     ``binding`` is what the records say they are OF. The M4 road leaves none
     (it is the accepted tree under the live seal); the acceptance path leaves
-    the candidate binding compose-parity-receipt.py --issued writes."""
+    the candidate binding compose-parity-receipt.py --issued writes.
+    ``security_mode`` selects receipt.json vs receipt-enabled.json."""
     from planner.paths import PARITY_DIR
+    from planner.worklist import parity_receipt_file
 
+    mode = security_mode if security_mode in ("disabled", "enabled") else "disabled"
+    sid = scenario or (_PARITY_ENABLED_SID if mode == "enabled" else _PARITY_SID)
     pdir = root / PARITY_DIR
-    (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+    sub = "scenarios-enabled" if mode == "enabled" else "scenarios"
+    (pdir / sub).mkdir(parents=True, exist_ok=True)
     extra = {"binding": dict(binding)} if binding else {}
-    write_canonical(pdir / "scenarios" / "sc_cors.json",
-                    dict(extra, schema="rhoai3.scenario-parity/v1", entry_point=_PARITY_EP, scenario=_PARITY_SID,
+    extra["security_mode"] = mode
+    write_canonical(pdir / sub / ("sc_cors_enabled.json" if mode == "enabled" else "sc_cors.json"),
+                    dict(extra, schema="rhoai3.scenario-parity/v1", entry_point=_PARITY_EP, scenario=sid,
                          verdict=verdict, reason=_PARITY_REASON if verdict != "PASS" else ""))
-    write_canonical(pdir / "receipt.json",
+    write_canonical(root / parity_receipt_file(mode),
                     dict(extra, schema="rhoai3.parity-receipt/v1", verdict=verdict, total=1,
                          not_passed=0 if verdict == "PASS" else 1,
                          entry_points=[{"entry_point": _PARITY_EP, "verdict": verdict,
                                         "reason": "" if verdict == "PASS" else _PARITY_REASON,
-                                        "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]))
+                                        "scenarios": [sid], "coverage": {"positive": [sid], "negative": []}}]))
+
+
+def _write_cors_corpus(root: Path, security_mode: str, scenario: str) -> None:
+    rel = ("verification/scenarios-enabled/corpus.json" if security_mode == "enabled"
+           else "verification/scenarios/corpus.json")
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    write_canonical(p, {"scenarios": [{"id": scenario, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+                                       "scenario_type": "browser-preflight"}]})
 
 
 def _candidate_binding(root: Path, card: str) -> dict:
@@ -365,39 +382,47 @@ def _candidate_binding(root: Path, card: str) -> dict:
             "card": card}
 
 
-def _parity_run_record(root: Path, binding: dict | None) -> None:
+def _parity_run_record(root: Path, binding: dict | None, *, security_mode: str = "disabled") -> None:
     """The runner's own record of the comparison this verification made
     (run-parity.py's _run.json): what it was told to measure. run-verify.sh
     hands it the issued card whenever there is one, so on the acceptance path
     the run is candidate-bound and a receipt it composed would say so."""
-    from planner.paths import PARITY_DIR
+    from planner.worklist import parity_run_file
 
-    write_canonical(root / PARITY_DIR / "_run.json",
+    mode = security_mode if security_mode in ("disabled", "enabled") else "disabled"
+    write_canonical(root / parity_run_file(mode),
                     {"schema": "rhoai3.parity-run/v1", "producer": "run-parity.py",
+                     "security_mode": mode,
                      "issued": str(root / "verification" / "loop" / "issued.json") if binding else "",
                      "binding": dict(binding) if binding else {"mode": "sealed"},
                      "receipt": {"composed_by_this_run": True, "reason": ""}})
 
 
 def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: str = "",
-                     run_binding: dict | None = None) -> None:
+                     run_binding: dict | None = None, security_mode: str = "disabled",
+                     scenario: str | None = None) -> None:
     """The acceptance pass for a parity card: run-verify.sh copies the receipt
     it started from, runs the comparison, records runtime.parity in run.json and
     re-measures. Here the comparison is simulated; everything else is real."""
     from planner.paths import VERIFY_RUN
 
+    mode = security_mode if security_mode in ("disabled", "enabled") else "disabled"
+    sid = scenario or (_PARITY_ENABLED_SID if mode == "enabled" else _PARITY_SID)
     # the acceptance path reaches parity through the packaging and startup
     # gates, and runs them on this candidate (a rejection discarded the last
     # candidate's receipts, so they are not inherited)
     specimens.runtime(root, package_rc=0, boot_ready=True)
     specimens.verify(root, errors=[], failures=[], findings=findings)
     doc = load_json(root / VERIFY_RUN)
-    doc.setdefault("runtime", {})["parity"] = {
-        "ran": ran, "rc": 0, "scenarios": [_PARITY_SID] if ran else [],
-        "receipt_verdict": verdict, "ms": 1}
+    par = {
+        "ran": ran, "rc": 0, "scenarios": [sid] if ran else [],
+        "receipt_verdict": verdict, "security_mode": mode, "ms": 1}
+    if mode == "enabled":
+        par["scoped"] = bool(ran)
+    doc.setdefault("runtime", {})["parity"] = par
     write_canonical(root / VERIFY_RUN, doc)
     if ran:
-        _parity_run_record(root, run_binding)
+        _parity_run_record(root, run_binding, security_mode=mode)
 
 
 def _parity_card_case() -> int:
@@ -607,6 +632,271 @@ def _parity_card_case() -> int:
         p = _advance(root, cluster["id"], "t_par2")
         if p.returncode != 0 or "ACCEPTED already" not in p.stdout:
             return _fail("and again: %s" % (p.stdout[-200:] + p.stderr[-200:]))
+    return 0
+
+
+def _enabled_mode_acceptance_case() -> int:
+    """Disabled PASS + enabled FAIL, then an enabled replay must advance on
+    that candidate's enabled receipt -- never the sealed disabled one.
+
+    Missing, stale, wrong-mode or wrong-candidate evidence refuses."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, PARITY_DIR, VERIFY_DIR  # noqa: E402
+    from planner.worklist import parity_receipt_file  # noqa: E402
+    from _loop_common import snapshot_parity  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="parity-en-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        from planner.paths import STRUCTURE  # noqa: E402
+        import response_adapters as ra  # noqa: E402
+
+        structure = load_json(root / STRUCTURE)
+        for t in structure["types"]:
+            if t["fqn"].endswith(".OwnerController"):
+                t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                         "values": {"exposedHeaders": ["errors"]}})
+        write_canonical(root / STRUCTURE, structure)
+        specimens.prepare_loop(root)
+        findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+        findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items()
+                                  if v.get("category") != "mandatory"}
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        _write_cors_corpus(root, "disabled", _PARITY_SID)
+        _write_cors_corpus(root, "enabled", _PARITY_ENABLED_SID)
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_records(root, "FAIL", security_mode="enabled")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        snapshot_parity(root)
+        from planner.worklist import item_ids, obligation_keys  # noqa: E402
+
+        cur = load_json(root / WORKLIST)
+        steps = load_json(root / LOOP_STEPS)
+        steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                  obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                  candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
+        write_canonical(root / LOOP_STEPS, steps)
+        wl = load_json(root / WORKLIST)
+        cors = [i for i in wl["items"] if i.get("rule_id") == "PARITY_CORS"]
+        if (len(cors) != 1 or cors[0].get("security_mode") != "enabled"
+                or cors[0].get("scenario") != _PARITY_ENABLED_SID):
+            return _fail("the enabled FAIL is the only CORS obligation: %s"
+                         % [{k: i.get(k) for k in ("scenario", "rule_id", "security_mode")} for i in cors])
+        cl = [c for c in wl["clusters"] if c["status"] == "open"]
+        adapter = ra.adapter_path(ra.CORS)
+        if (len(cl) != 1 or cl[0].get("gate") != "parity"
+                or (cl[0].get("unit") or {}).get("family_key") != "source-cors-response-adapter/v1:enabled"):
+            return _fail("the enabled CORS obligation is its own unit, not mixed with disabled: %s" % cl)
+        cluster = cl[0]
+        card = specimens.issue(root)
+        issued = load_json(root / LOOP_ISSUED)
+        if issued.get("security_mode") != "enabled" or card.get("logical_id") != cluster["id"]:
+            return _fail("the issued card carries enabled mode: %s" % {k: issued.get(k) for k in ("security_mode", "cluster")})
+        installer = HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"
+
+        def install_adapter() -> None:
+            ip = _run([sys.executable, str(installer), "--root", str(root), "--adapter", "cors"])
+            if ip.returncode != 0:
+                raise AssertionError("the capability must install on the issued card: %s%s" % (ip.stdout, ip.stderr))
+
+        def keep_disabled_sealed() -> None:
+            _parity_records(root, "PASS", security_mode="disabled")
+
+        def before_enabled() -> None:
+            src = root / parity_receipt_file("enabled")
+            dst = root / VERIFY_DIR / "parity-before-enabled.json"
+            if src.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
+
+        install_adapter()
+
+        # 1. missing enabled receipt: the sealed disabled PASS is not "now"
+        live_en = root / PARITY_DIR / "receipt-enabled.json"
+        live_en.unlink(missing_ok=True)
+        keep_disabled_sealed()
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob:
+            return _fail("missing enabled receipt must refuse acceptance: %s" % blob[-600:])
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after missing enabled receipt: %s%s" % (rp.stdout, rp.stderr))
+
+        # 2. stale enabled FAIL, candidate-bound
+        keep_disabled_sealed()
+        _parity_records(root, "FAIL", security_mode="enabled")
+        before_enabled()
+        _parity_verified(root, findings, verdict="FAIL", security_mode="enabled")
+        binding = _candidate_binding(root, "t_en0")
+        _parity_records(root, "FAIL", binding=binding, security_mode="enabled")
+        _parity_run_record(root, binding, security_mode="enabled")
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "still reported" not in blob:
+            return _fail("a stale enabled FAIL must refuse acceptance: %s" % blob[-600:])
+
+        # REVERT restored the accepted reports, including any mandatory MTA
+        # findings the baseline still carried; re-measure with the same
+        # filtered findings the card was issued under so the enabled CORS
+        # unit is the head again.
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_records(root, "FAIL", security_mode="enabled")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        retry = specimens.issue(root)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == retry.get("logical_id"))
+        if cluster.get("gate") != "parity":
+            return _fail("the reverted enabled card must re-issue a parity cluster: %s" % cluster)
+        install_adapter()
+
+        # 3. wrong-mode: disabled receipt candidate-bound PASS, enabled still FAIL
+        keep_disabled_sealed()
+        _parity_records(root, "FAIL", security_mode="enabled")
+        before_enabled()
+        _parity_verified(root, findings, verdict="FAIL", security_mode="enabled")
+        wrong_disabled = _candidate_binding(root, "t_en1")
+        _parity_records(root, "PASS", binding=wrong_disabled, security_mode="disabled")
+        _parity_run_record(root, wrong_disabled, security_mode="enabled")
+        p = _advance(root, cluster["id"], "t_en1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout:
+            return _fail("wrong-mode evidence (disabled PASS, enabled FAIL) must refuse: %s" % blob[-600:])
+
+        if "REVERTED" in blob:
+            _parity_records(root, "PASS", security_mode="disabled")
+            _parity_records(root, "FAIL", security_mode="enabled")
+            specimens.verify(root, errors=[], failures=[], findings=findings)
+            pipeline.admit(root)
+            retry = specimens.issue(root)
+            cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == retry.get("logical_id"))
+            if cluster.get("gate") != "parity":
+                return _fail("re-issue after wrong-mode revert: %s" % cluster)
+            install_adapter()
+        else:
+            rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+            if rp.returncode != 0 or "restored" not in rp.stdout:
+                return _fail("restore-pending after wrong-mode: %s%s" % (rp.stdout, rp.stderr))
+
+        # 4. wrong-candidate binding on the enabled receipt
+        keep_disabled_sealed()
+        _parity_records(root, "PASS", security_mode="enabled")
+        _parity_verified(root, findings, verdict="PASS", security_mode="enabled")
+        _parity_records(root, "PASS", binding=_candidate_binding(root, "t_somebodyelse"), security_mode="enabled")
+        before_enabled()
+        p = _advance(root, cluster["id"], "t_en1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob:
+            return _fail("wrong-candidate enabled receipt must refuse: %s" % blob[-600:])
+        if "t_somebodyelse" not in blob:
+            return _fail("the refusal names the card the enabled receipt was composed for: %s" % blob[-600:])
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after wrong-candidate: %s%s" % (rp.stdout, rp.stderr))
+
+        # 5. correctly bound enabled PASS; sealed disabled PASS still on disk
+        keep_disabled_sealed()
+        _parity_records(root, "PASS", security_mode="enabled")
+        _parity_verified(root, findings, verdict="PASS", security_mode="enabled")
+        binding = _candidate_binding(root, "t_en1")
+        _parity_records(root, "PASS", binding=binding, security_mode="enabled")
+        before_enabled()
+        _parity_run_record(root, binding, security_mode="enabled")
+        if load_json(root / parity_receipt_file("disabled")).get("verdict") != "PASS":
+            return _fail("the trap needs the sealed disabled receipt still PASSing")
+        if (load_json(root / parity_receipt_file("disabled")).get("binding") or {}).get("mode") == "candidate":
+            return _fail("the disabled receipt must stay sealed: %s" % load_json(root / parity_receipt_file("disabled")).get("binding"))
+        p = _advance(root, cluster["id"], "t_en1")
+        blob = p.stdout + p.stderr
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout:
+            return _fail("an enabled replay must advance on the enabled receipt: %s" % blob[-800:])
+        step = load_json(root / LOOP_STEPS)["steps"][-1]
+        if (step.get("parity") or {}).get("binding") != binding:
+            return _fail("acceptance recorded the enabled candidate binding, not the disabled seal: %s" % step.get("parity"))
+        snap = root / LOOP_ACCEPTED / "parity" / "receipt-enabled.json"
+        if not snap.is_file() or load_json(snap).get("verdict") != "PASS":
+            return _fail("the accepted snapshot is the enabled receipt: %s" % (load_json(snap) if snap.is_file() else snap))
+        disabled_snap = root / LOOP_ACCEPTED / "parity" / "receipt.json"
+        if disabled_snap.is_file() and (load_json(disabled_snap).get("binding") or {}).get("mode") == "candidate":
+            return _fail("acceptance must not overwrite the disabled snapshot with the enabled candidate")
+    return 0
+
+
+def _mixed_mode_card_refusal_case() -> int:
+    """A residual mixed-mode card is refused and must not write the enabled
+    receipt into the disabled baseline snapshot."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, VERIFY_DIR  # noqa: E402
+    from planner.worklist import parity_receipt_file  # noqa: E402
+    from _loop_common import snapshot_parity  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="parity-mx-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        from planner.paths import STRUCTURE  # noqa: E402
+
+        structure = load_json(root / STRUCTURE)
+        for t in structure["types"]:
+            if t["fqn"].endswith(".OwnerController"):
+                t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                         "values": {"exposedHeaders": ["errors"]}})
+        write_canonical(root / STRUCTURE, structure)
+        specimens.prepare_loop(root)
+        findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+        findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items()
+                                  if v.get("category") != "mandatory"}
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        _write_cors_corpus(root, "disabled", _PARITY_SID)
+        _write_cors_corpus(root, "enabled", _PARITY_ENABLED_SID)
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_records(root, "FAIL", security_mode="enabled")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        snapshot_parity(root)
+        from planner.worklist import item_ids, obligation_keys  # noqa: E402
+
+        cur = load_json(root / WORKLIST)
+        steps = load_json(root / LOOP_STEPS)
+        steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                  obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                  candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
+        write_canonical(root / LOOP_STEPS, steps)
+        pipeline.admit(root)
+        card = specimens.issue(root)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == card.get("logical_id"))
+        disabled_snap = root / LOOP_ACCEPTED / "parity" / "receipt.json"
+        before = disabled_snap.read_bytes() if disabled_snap.is_file() else b""
+        issued = load_json(root / LOOP_ISSUED)
+        issued["security_mode"] = "mixed"
+        write_canonical(root / LOOP_ISSUED, issued)
+        installer = HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"
+        ip = _run([sys.executable, str(installer), "--root", str(root), "--adapter", "cors"])
+        if ip.returncode != 0:
+            return _fail("the capability must install on the issued card: %s%s" % (ip.stdout, ip.stderr))
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")
+        run_doc = load_json(root / VERIFY_RUN)
+        (run_doc.setdefault("runtime", {}).setdefault("parity", {}))["security_mode"] = "mixed"
+        write_canonical(root / VERIFY_RUN, run_doc)
+        binding = _candidate_binding(root, "t_mx")
+        _parity_records(root, "PASS", binding=binding, security_mode="enabled")
+        src = root / parity_receipt_file("enabled")
+        dst = root / VERIFY_DIR / "parity-before-enabled.json"
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        p = _advance(root, cluster["id"], "t_mx")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout:
+            return _fail("a mixed-mode card must refuse acceptance: %s" % blob[-800:])
+        if "LOOP_MIXED_SECURITY_MODE" not in blob or "partition" not in blob:
+            return _fail("the mixed-card refusal must name partitioning: %s" % blob[-800:])
+        if disabled_snap.is_file() and disabled_snap.read_bytes() != before:
+            return _fail("mixed acceptance must not overwrite the disabled baseline snapshot")
+        if disabled_snap.is_file() and (load_json(disabled_snap).get("binding") or {}).get("mode") == "candidate":
+            return _fail("mixed acceptance must not write the enabled candidate into receipt.json")
     return 0
 
 
@@ -1261,7 +1551,7 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _parity_card_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1

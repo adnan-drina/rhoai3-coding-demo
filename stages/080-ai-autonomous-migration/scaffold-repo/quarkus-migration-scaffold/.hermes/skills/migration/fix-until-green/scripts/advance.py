@@ -96,7 +96,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import carry_unmeasured, navigation_handlers_added, parity_discharge_scope, parity_obligation_discharged, parity_remeasured, parity_state, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
+from planner.worklist import carry_unmeasured, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -155,7 +155,7 @@ def _card_names(issued: dict, card: str) -> set[str]:
 PARITY_RUN_RECORD = PARITY_RECEIPT.parent / "_run.json"
 
 
-def _issued_bound_comparison(root: Path, run: dict) -> bool:
+def _issued_bound_comparison(root: Path, run: dict, security_mode: str | None = None) -> bool:
     """Did the comparison in THIS verification run bound to an issued card?
 
     run-verify.sh hands run-parity.py the issued card whenever there is one, so
@@ -165,10 +165,16 @@ def _issued_bound_comparison(root: Path, run: dict) -> bool:
     verification. When the run was issued-bound, a receipt that is NOT
     candidate-bound cannot be its output: the composer would have written the
     binding it was given, so a sealed or unbound receipt on disk is one an
-    earlier run left -- exactly what a refusing composer leaves behind."""
+    earlier run left -- exactly what a refusing composer leaves behind.
+
+    The runner record is the one of this verification's security mode. An
+    enabled replay writes ``_run-enabled.json``; reading the default
+    ``_run.json`` would treat a sealed disabled run as this measurement."""
     if not bool(((run.get("runtime") or {}).get("parity") or {}).get("ran")):
         return False
     parity = (run.get("runtime") or {}).get("parity") or {}
+    recorded = str(parity.get("security_mode") or "").strip().lower()
+    mode = security_mode if security_mode is not None else (recorded or None)
     # what the verification itself recorded, when it records it
     if str(parity.get("issued") or ""):
         return True
@@ -176,7 +182,7 @@ def _issued_bound_comparison(root: Path, run: dict) -> bool:
     if b:
         return str(b.get("mode") or "sealed") == "candidate"
     # otherwise the runner's own record of the run that just happened
-    p = root / PARITY_RUN_RECORD
+    p = root / parity_run_file(mode)
     if not p.is_file():
         return False
     try:
@@ -186,6 +192,10 @@ def _issued_bound_comparison(root: Path, run: dict) -> bool:
     if not isinstance(rec, dict):
         return False
     rb = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+    rec_mode = str(rec.get("security_mode") or "disabled").strip().lower() or "disabled"
+    want_mode = str(mode or "disabled").strip().lower() or "disabled"
+    if rec_mode != want_mode:
+        return False
     return bool(str(rec.get("issued") or "")) or str(rb.get("mode") or "sealed") == "candidate"
 
 
@@ -213,7 +223,8 @@ def _candidate_binding_gap(receipt: dict, run: dict, issued: dict, card: str) ->
     return ""
 
 
-def _parity_receipts(root: Path, run: dict, issued: dict | None = None, card: str = "") -> tuple[dict, dict]:
+def _parity_receipts(root: Path, run: dict, issued: dict | None = None, card: str = "",
+                     security_mode: str | None = None) -> tuple[dict, dict]:
     """(what parity said BEFORE this candidate, what it says now).
 
     "Now" counts only when the comparison RAN in this verification
@@ -233,29 +244,44 @@ def _parity_receipts(root: Path, run: dict, issued: dict | None = None, card: st
     accepted step when there is one, and otherwise the copy run-verify.sh took
     of the receipt as it stood before this candidate's comparison. Either may
     be sealed (the M4 road's) or the binding the last accepted step recorded;
-    both describe the accepted tree, which is what "before" means."""
+    both describe the accepted tree, which is what "before" means.
+
+    Receipt, runner record and baseline snapshot are the ones of this
+    verification's security mode. Scenario naming is not a substitute: a
+    sealed disabled ``receipt.json`` is never "now" for an enabled replay."""
+    mode = security_mode if security_mode is not None else security_mode_of_run(run, issued)
+    if str(mode or "") == "mixed":
+        return {}, {}
+    receipt_rel = parity_receipt_file(mode)
     ran = bool(((run.get("runtime") or {}).get("parity") or {}).get("ran"))
-    cur = load_json(root / PARITY_RECEIPT) if (ran and (root / PARITY_RECEIPT).is_file()) else {}
+    cur = load_json(root / receipt_rel) if (ran and (root / receipt_rel).is_file()) else {}
     if cur:
-        gap = _candidate_binding_gap(cur, run, issued or {}, card)
-        if not gap and _issued_bound_comparison(root, run):
+        got_mode = str(cur.get("security_mode") or "disabled").strip().lower() or "disabled"
+        want_mode = str(mode or "disabled").strip().lower() or "disabled"
+        gap = ""
+        if want_mode in ("disabled", "enabled") and got_mode != want_mode:
+            gap = ("this verification compared the %s security mode and %s records %s"
+                   % (want_mode, receipt_rel.as_posix(), got_mode))
+        if not gap:
+            gap = _candidate_binding_gap(cur, run, issued or {}, card)
+        if not gap and _issued_bound_comparison(root, run, want_mode):
             # The comparison ran bound to the issued card, so what it composed
             # is candidate-bound. A receipt that is not is the one the last run
             # left on disk when this run's composer REFUSED to compose -- the
             # false green this rule exists for: it still says PASS, and it is
             # not a measurement of this candidate.
-            mode = str((cur.get("binding") or {}).get("mode") or "") if isinstance(cur.get("binding"), dict) else ""
-            if mode != "candidate":
+            bind = str((cur.get("binding") or {}).get("mode") or "") if isinstance(cur.get("binding"), dict) else ""
+            if bind != "candidate":
                 gap = ("this verification's comparison was bound to the issued card and a receipt it composed would say "
-                       "so; this one is %s and was left by an earlier run" % (mode + "-bound" if mode else "bound to nothing"))
+                       "so; this one is %s and was left by an earlier run" % (bind + "-bound" if bind else "bound to nothing"))
         if gap:
             print("WARN: %s is not this card's measurement: %s; parity is UNMEASURED here"
-                  % (PARITY_RECEIPT.as_posix(), gap), file=sys.stderr)
+                  % (receipt_rel.as_posix(), gap), file=sys.stderr)
             cur = {}
-    snap = root / LOOP_ACCEPTED / PARITY_SNAPSHOT / PARITY_RECEIPT.name
+    snap = root / LOOP_ACCEPTED / PARITY_SNAPSHOT / receipt_rel.name
     if snap.is_file():
         return load_json(snap), cur
-    before = root / PARITY_BEFORE
+    before = root / parity_before_file(mode)
     return (load_json(before) if before.is_file() else {}), cur
 
 
@@ -861,17 +887,20 @@ def main(argv: list[str] | None = None) -> int:
     family_keys = ({"chk:" + str(m.get("member") or "") for m in (scope_doc.get("members") or [])}
                    if scope_ref and family else
                    (unit_continue_scope(scope_doc, cur.get("items") or []) if scope_ref and unit else None))
-    prev_parity, cur_parity = _parity_receipts(root, run if isinstance(run, dict) else {}, issued, args.card)
+    run_doc = run if isinstance(run, dict) else {}
+    parity_mode = security_mode_of_run(run_doc, issued)
+    remeasured = parity_remeasured(run_doc)
+    if parity_mode == "mixed":
+        return _reject(root, steps, args.cluster, args.card, cur,
+                       "LOOP_MIXED_SECURITY_MODE the issued card spans both security modes; "
+                       "partition into one mode per repair card",
+                       changed, mint=not args.no_mint, hermes=args.hermes,
+                       legal_next="mint one repair card per security mode; do not compare both modes on one card")
+    prev_parity, cur_parity = _parity_receipts(root, run_doc, issued, args.card, parity_mode)
     # F1: a SCOPED comparison re-ran only this card's scenarios; every other
     # entry point is carried from the accepted baseline, never read as a
     # regression (and never as a pass it did not earn)
-    remeasured = parity_remeasured(run if isinstance(run, dict) else {})
     judged_parity, carried_rows = carry_unmeasured(prev_parity, cur_parity, remeasured, root)
-    # G1: an obligation F3 split out of a scenario is discharged by its OWN
-    # differences leaving the re-run scenario, not by the whole scenario passing.
-    # H8: asked of EVERY issued parity obligation that has its own record,
-    # whatever the entry-point row says (a partly re-run row is INCONCLUSIVE
-    # while the card's own scenarios passed: v9 t_3c2ed945)
     judged_obl = parity_state(judged_parity)["obligations"] if judged_parity else {}
     parity_discharged = {}
     discharge_scope = parity_discharge_scope(run if isinstance(run, dict) else {})
@@ -969,8 +998,10 @@ def main(argv: list[str] | None = None) -> int:
     snapshot_reports(root)
     if carried_rows:
         # the accepted baseline is what acceptance JUDGED: the scoped receipt
-        # with its un-re-run rows carried, each marked carried_from
-        write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / PARITY_RECEIPT.name, judged_parity)
+        # with its un-re-run rows carried, each marked carried_from -- of the
+        # mode this card compared, never the other mode's sealed receipt
+        snap_name = parity_receipt_file(parity_mode).name
+        write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / snap_name, judged_parity)
     steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),

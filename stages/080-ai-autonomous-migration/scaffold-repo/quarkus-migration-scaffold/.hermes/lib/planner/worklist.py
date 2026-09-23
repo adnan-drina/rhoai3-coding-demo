@@ -1408,6 +1408,49 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
 
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
+PARITY_RUN_RECORD = PARITY_DIR / "_run.json"
+DEFAULT_SECURITY_MODE = "disabled"
+SECURITY_MODES = ("disabled", "enabled")
+
+
+def normalize_loop_security_mode(security_mode: Any) -> str:
+    """disabled / enabled; anything else (including missing) is the default.
+
+    Mixed is not a receipt identity -- callers that need to distinguish it
+    read ``security_mode_of_run`` before asking for a path."""
+    mode = str(security_mode or "").strip().lower()
+    return mode if mode in SECURITY_MODES else DEFAULT_SECURITY_MODE
+
+
+def parity_receipt_file(security_mode: Any = None) -> Path:
+    mode = normalize_loop_security_mode(security_mode)
+    return PARITY_DIR / ("receipt.json" if mode == DEFAULT_SECURITY_MODE else "receipt-%s.json" % mode)
+
+
+def parity_run_file(security_mode: Any = None) -> Path:
+    mode = normalize_loop_security_mode(security_mode)
+    return PARITY_DIR / ("_run.json" if mode == DEFAULT_SECURITY_MODE else "_run-%s.json" % mode)
+
+
+def parity_before_file(security_mode: Any = None) -> Path:
+    mode = normalize_loop_security_mode(security_mode)
+    return VERIFY_DIR / ("parity-before.json" if mode == DEFAULT_SECURITY_MODE else "parity-before-%s.json" % mode)
+
+
+def security_mode_of_run(run: dict[str, Any] | None, issued: dict[str, Any] | None = None) -> str:
+    """The security mode THIS verification compared, or the issued card's.
+
+    runtime.parity.security_mode is the record. The issued card carries the
+    same field so acceptance still knows the mode when a receipt is missing.
+    ``mixed`` is residual and refused: one repair card compares one mode."""
+    par = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
+    recorded = str(par.get("security_mode") or "").strip().lower()
+    if recorded in SECURITY_MODES or recorded == "mixed":
+        return recorded
+    issued_mode = str((issued or {}).get("security_mode") or "").strip().lower()
+    if issued_mode in SECURITY_MODES or issued_mode == "mixed":
+        return issued_mode
+    return DEFAULT_SECURITY_MODE
 
 
 # every kind of parity obligation parity_items mints, so a later receipt can be
@@ -1423,8 +1466,8 @@ def parity_obligation_id(entry_point: str, scenario: str, what: str) -> str:
     return "parity:%s" % sha256_bytes(canonical_bytes({"ep": entry_point, "scenario": scenario, "what": what}))[:16]
 
 
-def load_parity_receipt(root: Path) -> dict[str, Any]:
-    p = Path(root) / PARITY_RECEIPT
+def load_parity_receipt(root: Path, security_mode: Any = None) -> dict[str, Any]:
+    p = Path(root) / parity_receipt_file(security_mode)
     if not p.is_file():
         return {}
     try:
@@ -1677,16 +1720,23 @@ def judged_parity_receipt(root: Path, run: dict[str, Any] | None = None) -> tupl
     answer for the work-list build and for acceptance (G2). After a SCOPED
     comparison the live receipt says INCONCLUSIVE for every entry point it did
     not re-run; the accepted baseline supplies those (carry_unmeasured), so a
-    mid-card rebuild keeps the obligations nobody re-measured."""
+    mid-card rebuild keeps the obligations nobody re-measured.
+
+    The receipt is the one of this verification's security mode. A mixed-mode
+    card is refused before rebuild; it does not borrow another mode's receipt."""
     root = Path(root)
-    live = load_parity_receipt(root)
     if run is None:
         run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    mode = security_mode_of_run(run if isinstance(run, dict) else {})
+    if mode == "mixed":
+        return {}, []
+    live = load_parity_receipt(root, mode)
     remeasured = parity_remeasured(run)
     if remeasured is None or not live:
         return live, []
+    receipt_name = parity_receipt_file(mode).name
     before = {}
-    for p in (root / LOOP_ACCEPTED / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json"):
+    for p in (root / LOOP_ACCEPTED / "parity" / receipt_name, root / parity_before_file(mode)):
         if p.is_file():
             try:
                 before = load_json(p)
@@ -4620,15 +4670,18 @@ def owed_adapter_units(items: list[dict[str, Any]], root: Path | None, depths: d
     capability renders from the evidence, and assess_unit checks all of them
     after the files exist. A rendering the evidence cannot support is a typed
     blocker on the unit, never a guess."""
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for it in items:
         owed = it.get("owed") if isinstance(it.get("owed"), dict) else None
         if owed and str(owed.get("contract") or "") and str(owed.get("kind") or "") in _adapters.KINDS:
-            groups[str(owed["kind"])].append(it)
+            mode = str(it.get("security_mode") or DEFAULT_SECURITY_MODE).strip().lower() or DEFAULT_SECURITY_MODE
+            if mode not in SECURITY_MODES:
+                mode = DEFAULT_SECURITY_MODE
+            groups[(str(owed["kind"]), mode)].append(it)
     units: list[dict[str, Any]] = []
     claimed: set[str] = set()
-    for kind in sorted(groups):
-        rows = sorted(groups[kind], key=lambda i: str(i.get("id")))
+    for kind, mode in sorted(groups):
+        rows = sorted(groups[(kind, mode)], key=lambda i: str(i.get("id")))
         c = _adapters.contract(kind)
         block = ""
         props: list[tuple[str, str]] = []
@@ -4658,7 +4711,8 @@ def owed_adapter_units(items: list[dict[str, Any]], root: Path | None, depths: d
                     for i in rows]
         evidence.append({"kind": "catalog", "ref": "%s: %s at %s (template sha256 %s; %s)"
                                                    % (c["contract"], c["type"], c["path"], c["template_sha256"][:12], c["source"])})
-        unit = {"rule": RULE_OWED_ADAPTER, "family_key": c["contract"], "kind": "config", "items": rows,
+        family_key = c["contract"] if mode == DEFAULT_SECURITY_MODE else "%s:%s" % (c["contract"], mode)
+        unit = {"rule": RULE_OWED_ADAPTER, "family_key": family_key, "kind": "config", "items": rows,
                 "files": sort_unique([c["path"], c["config"]]),
                 "members": [_unit_member(c["config"], state="declares-property")],
                 "symbols": [{"kind": "property", "fqn": _adapters.CONTRACTS[kind]["prefix"].rstrip("."), "path": c["config"]}],

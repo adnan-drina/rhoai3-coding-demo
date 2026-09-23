@@ -383,6 +383,13 @@ if not booted:
     raise SystemExit(0)
 wanted = {str(i) for i in (issued.get("items") or [])}
 rows = [it for it in (doc(WORKLIST).get("items") or []) if str(it.get("id")) in wanted]
+# ADR-014: one repair card compares one security mode. Mixed items cannot
+# share a runner invocation and must be partitioned before comparison.
+if rows:
+    modes = sorted({str(it.get("security_mode") or "disabled").strip().lower() or "disabled" for it in rows}) or ["disabled"]
+    if len(modes) > 1:
+        print("skip:the issued card mixes security modes; partition into one mode per repair card")
+        raise SystemExit(0)
 sids = sorted({str(s) for it in rows for s in (it.get("scenarios") or []) if str(s)})
 # H3: the entry points the obligations of this card belong to. A scoped run
 # re-runs their READ ORACLES beside the scenarios, because a read-oracle
@@ -395,13 +402,18 @@ eps = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("ent
 print("run:" + ",".join(sids))
 for ep in (eps if sids else []):
     print("oracle:" + ep)
-# ADR-014: an enabled-mode obligation is replayed against the enabled corpus.
-# Mixed modes on one card cannot share a single runner invocation.
-modes = sorted({str(it.get("security_mode") or "disabled").strip().lower() or "disabled" for it in rows})
-if modes == ["enabled"]:
-    print("mode:enabled")
-elif len(modes) > 1:
-    print("mode:mixed")
+# ADR-014: an enabled-mode obligation is replayed against the enabled corpus
+# of that mode. An unscoped force or a card with no items names no mode.
+if rows:
+    if modes == ["enabled"]:
+        print("mode:enabled")
+    else:
+        print("mode:disabled")
+    for m in modes:
+        msids = sorted({str(s) for it in rows
+                        if (str(it.get("security_mode") or "disabled").strip().lower() or "disabled") == m
+                        for s in (it.get("scenarios") or []) if str(s)})
+        print("run-mode:%s:%s" % (m, ",".join(msids)))
 PYEOF
 )" || PARITY_PLAN="skip:the issued card could not be read"
   # the plan's head is its first line; the lines after it name the read
@@ -409,14 +421,13 @@ PYEOF
   PLAN_HEAD="${PARITY_PLAN%%$'\n'*}"
   PLAN_ORACLES=()
   PARITY_MODE=""
+  PARITY_MODE_RUNS=()
   while IFS= read -r plan_line; do
     [[ "${plan_line}" == oracle:* ]] && PLAN_ORACLES+=("${plan_line#oracle:}")
     [[ "${plan_line}" == mode:* ]] && PARITY_MODE="${plan_line#mode:}"
+    [[ "${plan_line}" == run-mode:* ]] && PARITY_MODE_RUNS+=("${plan_line#run-mode:}")
   done <<< "${PARITY_PLAN}"
   PARITY_PLAN="${PLAN_HEAD}"
-  if [[ "${PARITY_MODE}" == "mixed" && "${PARITY_PLAN}" == run:* ]]; then
-    PARITY_PLAN="skip:the issued card mixes security modes"
-  fi
   if [[ "${PARITY_PLAN}" == skip:* ]]; then
     echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
   fi
@@ -433,69 +444,97 @@ PYEOF
       SIDS=""
       PARITY_TRIGGER="runtime-feedback"
       echo "parity: runtime-feedback sweep (decisions.loop.runtime_feedback v1) -- the startup gate passed, comparing the whole phase on this candidate"
+      # a sweep has no issued-mode partition: one unscoped comparison of the default mode
+      PARITY_MODE_RUNS=()
+      PARITY_MODE="${PARITY_MODE:-disabled}"
     else
       SIDS="${PARITY_PLAN#run:}"
       PARITY_TRIGGER="issued-card"
+      if [[ ${#PARITY_MODE_RUNS[@]} -eq 0 ]]; then
+        PARITY_MODE_RUNS+=("${PARITY_MODE:-disabled}:${SIDS}")
+      fi
     fi
-    PARITY_ARGS=()
-    # The verdicts this comparison produces are of the CANDIDATE, not of the
-    # accepted tree: verify.py above rebuilt the work list on it, so the live
-    # seal's worklist digest is the accepted tree's and can never match. The
-    # issued card is what the verdicts bind to instead (the candidate digest in
-    # run.json, the receipt the card was minted under, the card). Without this,
-    # measured on destination v9 card t_222c582a, every scenario came back
-    # "receipt not authoritative: worklist digest ... != sealed ...", the
-    # composer refused, the stale FAIL stayed on disk and the card was REVERTED
-    # -- and so was every parity card.
     PARITY_ISSUED="${ROOT}/verification/loop/issued.json"
-    if [[ -f "${PARITY_ISSUED}" ]]; then
-      PARITY_ARGS+=(--issued "${PARITY_ISSUED}")
+    PARITY_MS=0
+    PARITY_RC=0
+    ALL_SIDS="${SIDS}"
+    run_one_parity() {
+      local mode="$1"
+      local mode_sids="$2"
+      local args=()
+      local receipt before
+      # The verdicts this comparison produces are of the CANDIDATE, not of the
+      # accepted tree: verify.py above rebuilt the work list on it, so the live
+      # seal's worklist digest is the accepted tree's and can never match. The
+      # issued card is what the verdicts bind to instead (the candidate digest in
+      # run.json, the receipt the card was minted under, the card). Without this,
+      # measured on destination v9 card t_222c582a, every scenario came back
+      # "receipt not authoritative: worklist digest ... != sealed ...", the
+      # composer refused, the stale FAIL stayed on disk and the card was REVERTED
+      # -- and so was every parity card.
+      if [[ -f "${PARITY_ISSUED}" ]]; then
+        args+=(--issued "${PARITY_ISSUED}")
+      else
+        echo "parity: no issued card; the comparison is bound to the seal, not to a candidate"
+      fi
+      if [[ "${mode}" == "enabled" ]]; then
+        args+=(--security-mode enabled)
+        echo "parity: this card's obligations were measured in the enabled security mode; replaying that mode"
+        receipt="${ROOT}/verification/parity/receipt-enabled.json"
+        before="${ROOT}/verification/build/parity-before-enabled.json"
+      else
+        receipt="${PARITY_RECEIPT}"
+        before="${PARITY_BEFORE}"
+      fi
+      if [[ -n "${mode_sids}" ]]; then
+        local IFS=','
+        local -a sid_arr
+        read -r -a sid_arr <<< "${mode_sids}"
+        local s
+        for s in "${sid_arr[@]}"; do
+          [[ -n "${s}" ]] && args+=(--scenario "${s}")
+        done
+        local ep
+        for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
+          [[ -n "${ep}" ]] && args+=(--read-oracle "${ep}")
+        done
+        [[ ${#PLAN_ORACLES[@]} -gt 0 ]] && echo "parity: re-running the read oracle(s) of ${#PLAN_ORACLES[@]} entry point(s) of this card beside its scenarios"
+      elif [[ "${PARITY_TRIGGER}" == "issued-card" ]]; then
+        echo "parity: the issued obligations name no scenario; comparing the whole phase (read oracles included)"
+      fi
+      # the receipt as it stood BEFORE this candidate's comparison: acceptance
+      # asks of it what was already PASSing, so that a repair that breaks another
+      # scenario is not accepted. It is the accepted tree's receipt, because the
+      # accepted tree's records are what a rejection restored.
+      rm -f "${before}"
+      [[ -f "${receipt}" ]] && cp "${receipt}" "${before}"
+      local t0
+      t0="$(now_ms)"
+      set +e
+      python3 "${PARITY_RUN_PY}" --root "${ROOT}" ${args[@]+"${args[@]}"} >"${WORK}/parity.log" 2>&1
+      PARITY_RC=$?
+      set -e
+      PARITY_MS="$(( PARITY_MS + $(now_ms) - t0 ))"
+      tail -20 "${WORK}/parity.log" || true
+    }
+    if [[ ${#PARITY_MODE_RUNS[@]} -gt 0 && "${PARITY_TRIGGER}" == "issued-card" ]]; then
+      for spec in "${PARITY_MODE_RUNS[@]}"; do
+        run_one_parity "${spec%%:*}" "${spec#*:}"
+      done
+      SIDS="${ALL_SIDS}"
     else
-      # --parity with no issued card: an Operator re-measuring the phase on a
-      # tree nobody minted a card for. There is no candidate to bind to, and
-      # the sealed road is the right one.
-      echo "parity: no issued card; the comparison is bound to the seal, not to a candidate"
+      run_one_parity "${PARITY_MODE:-disabled}" "${SIDS}"
     fi
-    if [[ "${PARITY_MODE}" == "enabled" ]]; then
-      PARITY_ARGS+=(--security-mode enabled)
-      echo "parity: this card's obligations were measured in the enabled security mode; replaying that mode"
-    fi
-    if [[ -n "${SIDS}" ]]; then
-      IFS=',' read -r -a SID_ARR <<< "${SIDS}"
-      for s in "${SID_ARR[@]}"; do
-        [[ -n "${s}" ]] && PARITY_ARGS+=(--scenario "${s}")
-      done
-      # ... and the read oracles of the card's own entry points, re-run beside
-      # them so a read-oracle obligation is re-measured too (H3)
-      for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
-        [[ -n "${ep}" ]] && PARITY_ARGS+=(--read-oracle "${ep}")
-      done
-      [[ ${#PLAN_ORACLES[@]} -gt 0 ]] && echo "parity: re-running the read oracle(s) of ${#PLAN_ORACLES[@]} entry point(s) of this card beside its scenarios"
-    elif [[ "${PARITY_TRIGGER}" == "issued-card" ]]; then
-      # a parity obligation whose entry point declares no scenario is a read
-      # oracle: it is re-measured by the unscoped run, which compares those
-      echo "parity: the issued obligations name no scenario; comparing the whole phase (read oracles included)"
-    fi
-    # the receipt as it stood BEFORE this candidate's comparison: acceptance
-    # asks of it what was already PASSing, so that a repair that breaks another
-    # scenario is not accepted. It is the accepted tree's receipt, because the
-    # accepted tree's records are what a rejection restored.
-    rm -f "${PARITY_BEFORE}"
-    [[ -f "${PARITY_RECEIPT}" ]] && cp "${PARITY_RECEIPT}" "${PARITY_BEFORE}"
-    T0="$(now_ms)"
-    set +e
-    python3 "${PARITY_RUN_PY}" --root "${ROOT}" ${PARITY_ARGS[@]+"${PARITY_ARGS[@]}"} >"${WORK}/parity.log" 2>&1
-    PARITY_RC=$?
-    set -e
-    PARITY_MS="$(( $(now_ms) - T0 ))"
-    tail -20 "${WORK}/parity.log" || true
     export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE
     python3 - "${RUN}" "${ROOT}" <<'PYEOF'
 import json, os, sys
 from pathlib import Path
 run_p, root = sys.argv[1], Path(sys.argv[2])
 mode = os.environ.get("PARITY_MODE") or "disabled"
-suffix = "" if mode in ("", "disabled") else "-%s" % mode
+if mode in ("", "disabled"):
+    suffix = ""
+else:
+    suffix = "-%s" % mode
 receipt = root / "verification" / "parity" / ("receipt%s.json" % suffix)
 verdict = ""
 if receipt.is_file():
@@ -508,7 +547,8 @@ ms = int(os.environ.get("PARITY_MS") or 0)
 # verdict recorded): read from _run.json rather than from what was asked, so
 # run.json says what was measured, never what was requested
 # default mode: verification/parity/_run.json; enabled: _run-enabled.json
-rec_p = root / "verification" / "parity" / ("_run.json" if mode in ("", "disabled") else "_run-%s.json" % mode)
+rec_name = "_run.json" if mode in ("", "disabled") else "_run-%s.json" % mode
+rec_p = root / "verification" / "parity" / rec_name
 reruns = []
 if rec_p.is_file():
     try:
@@ -529,6 +569,7 @@ doc.setdefault("runtime", {})["parity"] = {
     # card; the work list and acceptance count them as re-measured
     "read_oracles_rerun": sorted(reruns),
     "receipt_verdict": verdict,
+    "security_mode": mode if mode in ("disabled", "enabled") else "disabled",
     "ms": ms,
 }
 doc.setdefault("stages_ms", {})["parity"] = ms

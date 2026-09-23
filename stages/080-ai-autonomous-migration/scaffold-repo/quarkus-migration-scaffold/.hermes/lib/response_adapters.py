@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -184,6 +185,12 @@ _WEB_SECURITY = ("org.springframework.security.config.annotation.web.configurati
 _HTTP_SECURITY = "org.springframework.security.config.annotation.web.builders.HttpSecurity"
 _REJECTS_ANONYMOUS = ("authenticated", "fullyAuthenticated", "hasRole", "hasAnyRole", "hasAuthority",
                       "hasAnyAuthority", "denyAll", "hasIpAddress", "access")
+_PERMITS_ANONYMOUS = ("permitAll", "anonymous")
+_CORS_GRANT_HEADERS = ("access-control-allow-origin", "access-control-allow-methods",
+                       "access-control-allow-headers", "access-control-expose-headers",
+                       "access-control-allow-credentials")
+_SOURCE_ENABLED_ORACLES = Path("verification") / "source-oracles" / "scenarios-enabled"
+_REQUEST_POLICY_AUTHENTICATED = "authenticated"
 _CONDITIONAL = "org.springframework.boot.autoconfigure.condition.ConditionalOnProperty"
 # @CrossOrigin's documented defaults (Spring Framework 5.3): any origin, any
 # header, the handler's own methods, 1800 seconds, and no credentials header.
@@ -316,32 +323,185 @@ def _mappings_of(t: dict[str, Any]) -> list[tuple[dict[str, Any], list[str], lis
     return out
 
 
-def _decided_enabled_switch(root: Path | None) -> tuple[str, str]:
-    """(key, enabled_value) from the decided security switch, or empty.
+def _decided_security(root: Path | None) -> dict[str, str]:
+    """The decided switch and request_policy as written, or empty strings.
 
-    Used only when the structure model's configure() graph recorded no
-    ``authenticated()`` call. That is a WebSecurityConfigurerAdapter whose
-    JDK model has an empty ``configure`` body, so ``rejects_anonymous`` is
-    false even though the decided switch puts that adapter on. The
-    call-graph path stays the first source of truth. This is not a guessed
-    property name: the key and enabled_value are the ones already decided,
-    and they must match a ``!cors`` config condition already in the model."""
+    ``request_policy`` is what the enabled configuration requires of a
+    request; the switch only says WHEN that configuration is selected. A
+    missing or empty policy does not establish authentication."""
+    empty = {"key": "", "enabled_value": "", "request_policy": ""}
     if root is None:
-        return "", ""
+        return empty
     p = Path(root) / "decisions.yaml"
     if not p.is_file():
-        return "", ""
+        return empty
     try:
         from planner.yamlite import load_yaml  # noqa: PLC0415
 
         doc = load_yaml(p)
     except Exception:
-        return "", ""
+        return empty
     if not isinstance(doc, dict):
-        return "", ""
+        return empty
     sec = doc.get("security") if isinstance(doc.get("security"), dict) else {}
     switch = sec.get("switch") if isinstance(sec.get("switch"), dict) else {}
-    return str(switch.get("key") or "").strip(), str(switch.get("enabled_value") or "").strip()
+    return {"key": str(switch.get("key") or "").strip(),
+            "enabled_value": str(switch.get("enabled_value") or "").strip(),
+            "request_policy": str(sec.get("request_policy") or "").strip()}
+
+
+def _cors_grant(headers: Any) -> bool:
+    """True when a header map grants a CORS permission (a non-empty Allow-*)."""
+    if not isinstance(headers, dict):
+        return False
+    for k, v in headers.items():
+        if str(k).lower() not in _CORS_GRANT_HEADERS:
+            continue
+        if str(v or "").strip() and str(v).strip().lower() not in ("none", "null"):
+            return True
+    return False
+
+
+def _capture_scripts():
+    """The capture qualification/binding helpers (same checks the comparator uses)."""
+    scripts = HERE.parent / "skills" / "gates" / "capture-source-oracles" / "scripts"
+    path = str(scripts)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    import _scenarios as sc  # noqa: PLC0415
+    return sc
+
+
+def _anonymous_caller(doc: dict[str, Any], req: dict[str, Any]) -> bool:
+    """True when the recorded caller is anonymous (no Authorization)."""
+    for ident in (doc.get("identity"), req.get("identity")):
+        if isinstance(ident, dict):
+            kind = str(ident.get("kind") or "none").strip().lower()
+            if kind not in ("", "none", "anonymous", "unauthenticated"):
+                return False
+        elif str(ident or "").strip().lower() not in ("", "anonymous", "none", "unauthenticated"):
+            return False
+    return True
+
+
+def _header(headers: dict[str, Any], name: str) -> str:
+    want = name.lower()
+    for k, v in headers.items():
+        if str(k).lower() == want:
+            return str(v or "").strip()
+    return ""
+
+
+def _qualified_enabled_source_capture(root: Path, path: Path, doc: dict[str, Any]) -> bool:
+    """True when this file is a qualified, bound enabled-mode SOURCE capture.
+
+    Reuses the capture receipt's recorded mode, the qualification document's
+    PASS bound to this file's digest, and sealed-vs-candidate binding. A
+    missing qualification, a stale digest, a candidate-bound dest comparison,
+    or a capture taken in another mode is unknown, not evidence."""
+    sc = _capture_scripts()
+    recorded, _why = sc.capture_security_mode(root, "enabled")
+    if recorded != "enabled":
+        return False
+    try:
+        cap = json.loads((Path(root) / sc.capture_receipt_path("enabled")).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if isinstance(cap, dict) and str(cap.get("status") or "").lower() == "idle":
+        return False
+    if str(doc.get("security_mode") or "enabled") != "enabled":
+        return False
+    if str(doc.get("status") or "CAPTURED") != "CAPTURED":
+        return False
+    if str(sc.binding_of(doc).get("mode") or sc.BINDING_SEALED) == sc.BINDING_CANDIDATE:
+        return False
+    sid = str(doc.get("scenario") or "")
+    if not sid:
+        return False
+    qp = Path(root) / sc.qualification_path("enabled")
+    if not qp.is_file():
+        return False
+    try:
+        qdoc = json.loads(qp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(qdoc, dict) or str(qdoc.get("schema") or "") != sc.QUALIFICATION_SCHEMA:
+        return False
+    if str(qdoc.get("security_mode") or "") != "enabled":
+        return False
+    row = (qdoc.get("scenarios") or {}).get(sid) if isinstance(qdoc.get("scenarios"), dict) else None
+    if not isinstance(row, dict) or str(row.get("capability") or "") != "PASS":
+        return False
+    bound = str(row.get("capture_sha256") or "")
+    on_disk = hashlib.sha256(path.read_bytes()).hexdigest()
+    if bound and bound != on_disk:
+        return False
+    if not bound:
+        return False
+    return True
+
+
+def _source_preflight_security_precedes_cors(root: Path | None) -> bool:
+    """True when a qualified enabled-mode SOURCE capture of an anonymous
+    preflight is an authentication rejection with no CORS grant.
+
+    That is evidence the source authenticates before CORS. An empty
+    ``configure()`` graph does not prove the same thing: it proves neither
+    ``authenticated()`` nor the absence of ``cors()``. A 403 with missing
+    response headers, and a CORS-typed 403, leave ordering unknown. Missing
+    captures are unknown, not a grant of authentication."""
+    if root is None:
+        return False
+    d = Path(root) / _SOURCE_ENABLED_ORACLES
+    if not d.is_dir():
+        return False
+    sc = _capture_scripts()
+    for p in sorted(d.glob("*.json")):
+        if p.name.startswith("_"):
+            continue
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        if not _qualified_enabled_source_capture(root, p, doc):
+            continue
+        req = doc.get("request") if isinstance(doc.get("request"), dict) else {}
+        if not _anonymous_caller(doc, req):
+            continue
+        hdrs = req.get("headers") if isinstance(req.get("headers"), dict) else {}
+        req_l = {str(k).lower(): str(v or "") for k, v in hdrs.items()}
+        if req_l.get("authorization"):
+            continue
+        method = str(req.get("method") or "").upper()
+        stype = str(doc.get("scenario_type") or "")
+        preflight = stype == "browser-preflight" or (
+            method == "OPTIONS" and "origin" in req_l and "access-control-request-method" in req_l)
+        if not preflight:
+            continue
+        resp = doc.get("response") if isinstance(doc.get("response"), dict) else {}
+        if not resp:
+            resp = doc.get("expected") if isinstance(doc.get("expected"), dict) else {}
+        headers = resp.get("headers")
+        # Missing headers cannot establish "no CORS grant"; ordering is unknown.
+        if not isinstance(headers, dict):
+            continue
+        try:
+            status = int(resp.get("status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        body = str(resp.get("body") or resp.get("body_sample") or "")
+        if cors_rejection(status, body):
+            continue
+        # Authentication rejection: 401 with the source's challenge header.
+        # A 403 is not this evidence, even when it is not a CORS-typed body.
+        if status != 401 or not _header(headers, sc.CHALLENGE_HEADER):
+            continue
+        if _cors_grant(headers):
+            continue
+        return True
+    return False
 
 
 def _security(types: list[dict[str, Any]], root: Path | None = None) -> dict[str, Any]:
@@ -353,10 +513,13 @@ def _security(types: list[dict[str, Any]], root: Path | None = None) -> dict[str
     rejects anonymous requests is conditional on a property, a preflight is
     authenticated only while that property has that value.
 
-    When the model recorded no ``authenticated()`` call, a ``!cors`` config
-    that is already conditional on the decided enabled switch still
-    authenticates preflight while that switch is on. Without a matching
-    decided switch that omission is unrenderable, not a silent skip."""
+    The call graph is the first source of truth. An empty graph is unknown:
+    it does not prove ``authenticated()`` and it does not prove the absence
+    of ``cors()``. A decided switch only identifies when security is enabled;
+    ``request_policy: authenticated`` plus a qualified enabled anonymous
+    preflight that is an authentication rejection (401 with a challenge and
+    no CORS grant) are what establish the requirement. Explicit
+    ``permitAll()`` is never overridden."""
     configs = []
     for t in types:
         sup = [str(s) for s in (t.get("supertypes") or [])]
@@ -371,26 +534,29 @@ def _security(types: list[dict[str, Any]], root: Path | None = None) -> dict[str
         if key and prefix:
             key = prefix.rstrip(".") + "." + key
         value = (_strings(cond, "havingValue") or [""])[0]
-        configs.append({"type": str(t.get("fqn") or ""), "cors": "cors" in {str(c.get("name")) for c in http},
+        known = bool(names)
+        configs.append({"type": str(t.get("fqn") or ""),
+                        "known": known,
+                        "cors": True if "cors" in names else (False if known else None),
                         "rejects_anonymous": bool(names & set(_REJECTS_ANONYMOUS)),
+                        "permits_anonymous": bool(names & set(_PERMITS_ANONYMOUS)) and not bool(names & set(_REJECTS_ANONYMOUS)),
                         "condition": ("%s=%s" % (key, value or "true")) if key else ""})
-    precedes = any(not c["cors"] for c in configs)
-    gating = sorted({c["condition"] or "always" for c in configs if c["rejects_anonymous"] and not c["cors"]})
-    silent = [c for c in configs if not c["cors"] and c["condition"] and not c["rejects_anonymous"]]
-    if not gating and silent:
-        key, enabled = _decided_enabled_switch(root)
-        if key and enabled:
-            want = "%s=%s" % (key, enabled)
-            gating = sorted({c["condition"] for c in silent if c["condition"] == want})
-            if not gating:
-                raise Refuse("CORS_POLICY_UNRENDERABLE",
-                             "security precedes CORS but no config condition matches the decided switch %s=%s"
-                             % (key, enabled))
+    precedes = any(c["cors"] is False for c in configs)
+    gating = sorted({c["condition"] or "always" for c in configs if c["rejects_anonymous"] and c["cors"] is False})
+    if not gating:
+        decided = _decided_security(root)
+        want = ("%s=%s" % (decided["key"], decided["enabled_value"])) if decided["key"] and decided["enabled_value"] else ""
+        matching = [c for c in configs if want and c["condition"] == want]
+        if any(c["permits_anonymous"] for c in matching):
+            pass  # explicit permitAll on the enabled configuration: never authenticate preflight
+        elif decided["request_policy"] != _REQUEST_POLICY_AUTHENTICATED:
+            pass  # a missing policy does not establish what security requires
+        elif not _source_preflight_security_precedes_cors(root):
+            pass  # no captured security-before-CORS preflight: ordering is unknown
         else:
-            raise Refuse("CORS_POLICY_UNRENDERABLE",
-                         "security precedes CORS and the structure model's configure() graph recorded no "
-                         "authenticated() call; the decided security switch is required to render "
-                         "preflight-authenticated-when")
+            unknown = [c for c in matching if not c["known"]]
+            if unknown:
+                gating = [want]
     if len(gating) > 1 and "always" in gating:
         gating = ["always"]
     return {"configs": sorted(configs, key=lambda c: c["type"]), "precedes_cors": precedes,

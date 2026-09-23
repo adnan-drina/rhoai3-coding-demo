@@ -8,6 +8,7 @@ proves on the real HTTP layer.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import shutil
@@ -83,31 +84,121 @@ def main() -> int:
         sec = policy["security"]
         check(sec["precedes_cors"] and sec["preflight_authenticated_when"] == ["fixture.security.enable=true"],
               "security without cors() precedes CORS; anonymous refused only while the switch is on", sec)
-        # Empty configure() calls: the JDK model recorded the adapter but not
-        # its authenticated() call. The decided switch still names the gating
-        # row; omitting it is unrenderable, not a silent skip.
-        pet = copy.deepcopy(base)
-        for t in pet["types"]:
-            if str(t.get("fqn") or "").endswith("EnabledSecurity"):
-                for m in t.get("methods") or []:
-                    m["calls"] = []
-        (root / "evidence/structure/structure.json").write_text(json.dumps(pet))
-        try:
-            ra.cors_policy(root)
-            check(False, "empty configure() without a decided switch must not omit the gating row")
-        except ra.Refuse as exc:
-            check(exc.code == "CORS_POLICY_UNRENDERABLE",
-                  "empty configure() without a decided switch is unrenderable", exc)
-        (root / "decisions.yaml").write_text(
-            "security:\n  switch:\n    key: fixture.security.enable\n"
-            "    enabled_value: \"true\"\n    disabled_value: \"false\"\n", encoding="utf-8")
-        gated = ra.cors_policy(root)
-        check(gated["security"]["preflight_authenticated_when"] == ["fixture.security.enable=true"],
-              "empty configure() calls still gate preflight on the decided enabled switch", gated["security"])
-        check(dict(ra.cors_properties(gated)).get("rhoai3.source-cors.preflight-authenticated-when")
-              == "fixture.security.enable=true",
-              "the adapter row is rendered from that decided switch")
+
+        def empty_enabled(doc):
+            out = copy.deepcopy(doc)
+            for t in out["types"]:
+                if str(t.get("fqn") or "").endswith("EnabledSecurity"):
+                    for m in t.get("methods") or []:
+                        m["calls"] = []
+            return out
+
+        def permit_all_enabled(doc):
+            out = copy.deepcopy(doc)
+            disabled = next(t for t in out["types"] if str(t.get("fqn") or "").endswith("DisabledSecurity"))
+            for t in out["types"]:
+                if str(t.get("fqn") or "").endswith("EnabledSecurity"):
+                    for m in t.get("methods") or []:
+                        m["calls"] = copy.deepcopy((disabled.get("methods") or [{}])[0].get("calls") or [])
+            return out
+
+        def write_switch(path, request_policy=None):
+            body = ("security:\n  switch:\n    key: fixture.security.enable\n"
+                    "    enabled_value: \"true\"\n    disabled_value: \"false\"\n")
+            if request_policy:
+                body = "security:\n  request_policy: %s\n  switch:\n    key: fixture.security.enable\n    enabled_value: \"true\"\n    disabled_value: \"false\"\n" % request_policy
+            path.write_text(body, encoding="utf-8")
+
+        def write_oracle(path, *, status=401, grant="", headers="present", body="", scenario="sc:preflight-anonymous"):
+            d = path / "verification" / "source-oracles" / "scenarios-enabled"
+            d.mkdir(parents=True, exist_ok=True)
+            resp = {"status": status}
+            if headers == "present":
+                resp["headers"] = {"WWW-Authenticate": "Basic realm=\"x\"",
+                                   "Access-Control-Allow-Origin": grant}
+            elif headers == "missing":
+                pass
+            else:
+                resp["headers"] = headers
+            if body:
+                resp["body"] = body
+            capture = {
+                "schema": "rhoai3.source-scenario/v1",
+                "scenario": scenario,
+                "identity": "anonymous",
+                "scenario_type": "browser-preflight",
+                "status": "CAPTURED",
+                "security_mode": "enabled",
+                "request": {"method": "OPTIONS",
+                            "identity": {"kind": "none"},
+                            "headers": {"Origin": "http://client.example",
+                                        "Access-Control-Request-Method": "GET"}},
+                "response": resp,
+            }
+            cap_p = d / "preflight.json"
+            cap_p.write_text(json.dumps(capture), encoding="utf-8")
+            sha = hashlib.sha256(cap_p.read_bytes()).hexdigest()
+            (d / "_capture.json").write_text(json.dumps({
+                "schema": "rhoai3.source-capture/v1",
+                "security_mode": "enabled",
+                "status": "ok",
+                "captured": 1,
+            }), encoding="utf-8")
+            (d / "_qualification.json").write_text(json.dumps({
+                "schema": "rhoai3.scenario-qualification/v1",
+                "security_mode": "enabled",
+                "corpus_sha256": "fixture",
+                "scenarios": {scenario: {"capability": "PASS", "intent": "positive",
+                                         "capture_sha256": sha}},
+                "verdict": "PASS",
+            }), encoding="utf-8")
+
+        def gated_when(policy):
+            return dict(ra.cors_properties(policy)).get("rhoai3.source-cors.preflight-authenticated-when")
+
+        # A switch match does not establish authentication. Explicit permitAll
+        # plus a missing request_policy must never emit preflight authentication.
+        (root / "evidence/structure/structure.json").write_text(json.dumps(permit_all_enabled(base)))
+        write_switch(root / "decisions.yaml")
+        check(gated_when(ra.cors_policy(root)) is None,
+              "explicit permitAll with a null request_policy does not authenticate preflight")
+
+        # Empty configure() + 401 oracle without request_policy: unknown, not authenticated.
+        (root / "evidence/structure/structure.json").write_text(json.dumps(empty_enabled(base)))
+        write_oracle(root)
+        check(gated_when(ra.cors_policy(root)) is None,
+              "a missing request_policy does not authenticate preflight even with a 401 oracle")
+
+        # Empty configure() + authenticated policy without captured CORS order: unknown.
+        write_switch(root / "decisions.yaml", "authenticated")
+        shutil.rmtree(root / "verification", ignore_errors=True)
+        check(gated_when(ra.cors_policy(root)) is None,
+              "unknown CORS ordering (no captured preflight) does not authenticate preflight")
+
+        # Positive: empty graph + decided authenticated policy + captured 401 with no CORS grant.
+        write_oracle(root)
+        pos = ra.cors_policy(root)
+        check(pos["security"]["preflight_authenticated_when"] == ["fixture.security.enable=true"],
+              "empty configure() with authenticated policy and a bare 401 preflight gates on the decided switch",
+              pos["security"])
+        check(gated_when(pos) == "fixture.security.enable=true",
+              "the adapter row is rendered from that decided switch plus captured security-before-CORS")
+
+        # 403 with missing response headers is unknown, not security-before-CORS.
+        shutil.rmtree(root / "verification", ignore_errors=True)
+        write_oracle(root, status=403, headers="missing")
+        check(gated_when(ra.cors_policy(root)) is None,
+              "a 403 with missing response headers does not authenticate preflight")
+
+        # CORS-typed 403 is a CORS refusal, not an authentication rejection.
+        shutil.rmtree(root / "verification", ignore_errors=True)
+        write_oracle(root, status=403, headers={"Access-Control-Allow-Origin": ""},
+                     body="Invalid CORS request")
+        check(gated_when(ra.cors_policy(root)) is None,
+              "a CORS-rejection 403 does not authenticate preflight")
+
         (root / "decisions.yaml").unlink()
+        shutil.rmtree(root / "verification", ignore_errors=True)
         (root / "evidence/structure/structure.json").write_text(json.dumps(base))
         props = dict(ra.cors_properties(policy))
         check(props["quarkus.http.cors.origins"] == "*" and props["quarkus.http.cors.methods"] == "GET,POST,PUT",
@@ -249,7 +340,6 @@ def main() -> int:
               and (root / ra.adapter_path(ra.CORS)).read_text().startswith("package io.rhoai3.migration.response;\nclass"),
               "conflicting adapter content refuses and is left alone", out)
         # the harness's OWN earlier release is upgraded in place, on the record
-        import hashlib
         old_bytes = b"package io.rhoai3.migration.response;\n// an earlier harness release\n"
         ra.PRIOR_TEMPLATES[ra.CORS][hashlib.sha256(old_bytes).hexdigest()] = "test release"
         (root / ra.adapter_path(ra.CORS)).write_bytes(old_bytes)

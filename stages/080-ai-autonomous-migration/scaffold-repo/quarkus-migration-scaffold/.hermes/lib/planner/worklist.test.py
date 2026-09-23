@@ -2336,6 +2336,17 @@ def _owed_adapter_case() -> int:
         if any(k.startswith("rhoai3.source-cors.rule.") and v == "*" and ".0." in k for k, v in props.items()):
             return _fail("no wildcard enters a policy whose source names its values: %s" % props)
 
+        split_items = [dict(cors_item, id=str(cors_item["id"]) + "-disabled", security_mode="disabled"),
+                       dict(cors_item, id=str(cors_item["id"]) + "-enabled", security_mode="enabled")]
+        split_units, _claimed = owed_adapter_units(split_items, root, {}, set())
+        keys = sorted(u["unit"]["family_key"] for u in split_units)
+        if keys != ["source-cors-response-adapter/v1", "source-cors-response-adapter/v1:enabled"]:
+            return _fail("CORS obligations of different modes are two units, not one mixed card: %s" % keys)
+        by_key = {u["unit"]["family_key"]: set(u["items"]) for u in split_units}
+        if (by_key["source-cors-response-adapter/v1"] != {str(cors_item["id"]) + "-disabled"}
+                or by_key["source-cors-response-adapter/v1:enabled"] != {str(cors_item["id"]) + "-enabled"}):
+            return _fail("each mode's unit claims only its own items: %s" % by_key)
+
         # the checkpoint, before and after the capability ran
         row = impl[0]
         typ = {"fqn": ra.adapter_type(ra.CORS), "resolution": "full", "supertypes": [], "declared": []}

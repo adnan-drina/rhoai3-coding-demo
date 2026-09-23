@@ -14,11 +14,21 @@
   FAIL. That floor is published (source `ee5f50a3`, golden `c13e482c`) and is not
   yet installed on v10. Enabled-mode FAILs now mint a mode-stamped repair
   obligation from `scenarios-enabled/`; a disabled PASS cannot discharge it.
-  The CORS producer renders `preflight-authenticated-when` from the decided
-  switch when the structure model's `configure()` graph recorded no
-  `authenticated()` call. Installation of these producer and handoff bytes,
-  anonymous-preflight repair against the packaged artifact, and corrected M4
-  continuation remain pending. No release claimed.
+  The CORS producer renders `preflight-authenticated-when` only from a
+  declared `security.request_policy: authenticated` plus a qualified enabled
+  anonymous preflight that is an authentication rejection (401 with a challenge
+  and no CORS grant). Missing response headers and a CORS-typed 403 leave
+  ordering unknown. A decided switch names when security is enabled; it does
+  not establish what security requires. Explicit `permitAll()` is never
+  overridden, and an empty `configure()` graph is unknown. Enabled-mode FAILs
+  mint a mode-stamped repair obligation from `scenarios-enabled/`; acceptance
+  carries that mode through the verification record, receipt, runner record
+  and baseline snapshot, so a sealed disabled `receipt.json` cannot discharge
+  an enabled replay. Mixed-mode CORS obligations partition into one unit per
+  mode; a residual mixed card is refused until partitioned.
+  Installation of these producer and handoff bytes, anonymous-preflight
+  repair against the packaged artifact, and corrected M4 continuation remain
+  pending. No release claimed.
 
 - M4's work-log resolver used the profile `HERMES_HOME`; native Kanban logs
   live under the shared home. A read-only walk with the shared home resolved
