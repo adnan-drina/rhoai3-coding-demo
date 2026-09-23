@@ -4,13 +4,19 @@
 
 - Root attempt 6 was DEFERRED with a doubled Location; all six attempts remain
   spent. Operator step `5b4deef1eebd` changes only the Root redirect and Swagger
-  UI properties. Package and startup pass on the repaired artifact; parity is
-  not yet qualified. An Operator takeover disposition now releases only the
+  UI properties. Package and startup pass on the repaired artifact. The fresh full
+  replay passes the Root scenario and navigation (HTTP 200). An Operator takeover disposition now releases only the
   deferral admission hold after a recorded, verified product repair, preserving
   the exhausted budget and making no parity claim. It never mints. Local tests
   cover dirty/stale evidence, a non-Operator predecessor, admission integrity,
-  unchanged attempt history and unchanged parity evidence. Destination install
-  and the full sealed comparison remain pending.
+  unchanged attempt history and unchanged parity evidence. Destination installation passed
+  its selftest with 193 protected files unchanged. The takeover preserved the
+  budget at six spent out of six and minted nothing. The full comparison
+  records 5/18 scenarios PASS, 13 FAIL; entry points are 15 PASS, 7 FAIL and
+  12 INCONCLUSIVE. It becomes the accepted parity baseline with 13 obligations
+  in seven clusters. The earlier two-mismatch count did not describe the
+  whole application. K4 board equality passed (27/27), then native continuation
+  started with `t_844e2bdd` (POM parity repair). Migration remains incomplete.
 
 - Root attempt 5 introduced an unavailable Servlet API and was REVERTED.
   The queued final card `t_55f6cb24` was held through native Kanban before
