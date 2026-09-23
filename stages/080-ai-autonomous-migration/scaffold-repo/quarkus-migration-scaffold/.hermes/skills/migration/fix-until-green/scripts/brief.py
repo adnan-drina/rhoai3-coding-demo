@@ -75,7 +75,12 @@ READS_RULE = (
     "Reads: this brief carries work-list advice, loci and catalog rows. Read a product file at most once per edit cycle. "
     "For the current parity result, read verification/parity/_run.json: require its card/candidate binding and "
     "receipt.composed_by_this_run, then inspect selected scenarios.results[].reason for status, headers, body, effects "
-    "and navigation. The brief does not replace these current comparison details. Older records in another mode or "
+    "and navigation. In status/body/effect differences written 'A vs B', A is the observed DESTINATION and B is the "
+    "expected SOURCE. Confirm that direction in the item's verdict_file: observed/expected for the response and "
+    "effects[].observed/effects[].expected for each read-back. A matching response status does not prove its effects. "
+    "A failed compile cannot establish new HTTP behaviour; check the latest verification/build/run.json and the "
+    "candidate binding before attributing a retained parity result to a new edit. "
+    "The brief does not replace these current comparison details. Older records in another mode or "
     "directory are not this candidate's evidence."
 )
 

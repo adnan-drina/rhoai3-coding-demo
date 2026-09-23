@@ -2,6 +2,17 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Visit task `t_73d4942e` read the effect diff `status 200 vs 404` backwards
+  in its opening reasoning. The generated brief preserved the comparator's
+  correct order but did not label the two sides. Native guidance corrected
+  the worker before any observed patch. The next brief generation explicitly
+  labels status/body/effect differences as observed destination versus expected
+  source and points to both structured effect fields. It also warns that a
+  failed compile cannot establish new HTTP behaviour from a retained parity
+  file. Comparison values, obligation identities and acceptance remain unchanged.
+  This wording update is prepared locally; the active Visit worker retains its
+  installed harness generation.
+
 - Specialty attempt 3 (`t_511cd973`) copied the complete source error body
   into a broad exception handler. It was intercepted before acceptance; its
   patch remains in the destination installation records. The normal gate
