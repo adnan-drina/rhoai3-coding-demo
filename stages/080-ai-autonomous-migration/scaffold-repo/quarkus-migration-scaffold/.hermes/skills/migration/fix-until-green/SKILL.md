@@ -59,6 +59,15 @@ that is not a prerequisite belongs in the handoff for its later gate, not an
 open-ended investigation before this checkpoint. Fix regressions introduced by
 your candidate; do not defer those as unrelated work.
 
+For redirect parity, copy the **captured status**, not a convenient redirect
+helper. If the source answered 302 and the method returns JAX-RS `Response`,
+use `Response.status(302).location(target).build()` with the source-matching
+target. `seeOther` selects 303; `temporaryRedirect` selects 307. Omitting
+`.build()` returns a `ResponseBuilder`, not a `Response`. Keep the existing
+response API; introducing an unavailable Servlet API or a dependency does not
+repair this mismatch. Obtain a fresh scope amendment before any configuration
+edit on a new card; a prior card's amendment never carries over.
+
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
 #   … patch the write set one item at a time (the brief lists each item with its advice and,
