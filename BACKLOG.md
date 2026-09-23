@@ -2,6 +2,14 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Owner validation task `t_7661cc51` confused three total verifier invocations
+  with two acceptance runs. The retained records showed diagnostic,
+  acceptance, diagnostic; the existing counter already reports one acceptance
+  and no stop condition. Native guidance clarified that the corrected candidate
+  may take its second acceptance verification. The skill now explicitly names
+  `acceptance_count` and `stop_rule_applies`; no counter logic, limit or budget
+  changed. This clarification also awaits an idle destination installation.
+
 - POM parity attempt 1 (`t_844e2bdd`) removed the generated-body rejection:
   the candidate-bound comparison then reported only Content-Type parameter
   differences for Owner create/update. Acceptance correctly refused the two

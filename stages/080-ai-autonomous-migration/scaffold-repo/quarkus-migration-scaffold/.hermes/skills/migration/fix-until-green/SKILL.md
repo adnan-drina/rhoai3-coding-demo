@@ -131,7 +131,10 @@ filter. If it is missing or stale, obtain fresh evidence through the verifier.
   under `verification/parity`; the brief is their digest.
 - Stop: run-verify.sh prints `verify runs on card …: N` with the obligations
   still reported (`verification/loop/verify-runs.json`; the brief's
-  `verify_runs`). After two acceptance runs with the same obligations still
+  `verify_runs`). Use `acceptance_count` and `stop_rule_applies`, not the total
+  `count` or a row's `n`: diagnostic runs do not consume this limit. One failed
+  acceptance followed by a corrected edit permits its second acceptance run.
+  After two acceptance runs with the same obligations still
   reported: write a typed diagnosis (what you changed; what each verify
   measured; the one hypothesis you could not test and the evidence that would
   test it) and `kanban_block` kind=needs_input carrying it. No third verify
