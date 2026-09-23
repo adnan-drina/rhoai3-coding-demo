@@ -29,7 +29,11 @@ def fake_oc():
     args = [a for a in sys.argv[2:] if not a.startswith("--request-timeout=")]
     home = Path(os.environ['FAKE_API'])
     verb, kind = args[:2]
-    names = {'configmap': 'ConfigMap', 'secret': 'Secret', 'deployment': 'Deployment', 'service': 'Service'}
+    names = {
+        'configmap': 'ConfigMap', 'secret': 'Secret', 'deployment': 'Deployment',
+        'service': 'Service', 'serviceaccount': 'ServiceAccount', 'sa': 'ServiceAccount',
+        'role': 'Role', 'rolebinding': 'RoleBinding',
+    }
     name = args[2] if len(args) > 2 and not args[2].startswith('-') else ''
     def option(flag, default=''):
         for i, a in enumerate(args):
@@ -93,7 +97,9 @@ def fake_oc():
             if ',' in kind:
                 selected = option('-l')
                 lk, lv = selected.split('=', 1)
-                result = '\n'.join(k for k, obj in objects.items() if obj['kind'] in ('Secret','Deployment','Service') and obj['metadata'].get('labels',{}).get(lk) == lv)
+                wanted = tuple(names.get(k.strip(), k.strip()) for k in kind.split(','))
+                result = '\n'.join(k for k, obj in objects.items()
+                                   if obj['kind'] in wanted and obj['metadata'].get('labels', {}).get(lk) == lv)
             elif key not in objects:
                 if '--ignore-not-found' not in args:
                     print('NotFound', file=sys.stderr)
@@ -170,6 +176,7 @@ class Lifecycle(unittest.TestCase):
         self.finish(self.start(task='late'), False)
         self.assertEqual(self.objects()['ConfigMap/migration-run-demo-v10']['data']['phase'], 'retired')
         self.assertFalse(any('/demo-v10-parity' in k for k in self.objects()))
+        self.assertFalse(any(k.endswith('/demo-v10-worker') for k in self.objects()))
 
     def overlap(self, second_mode):
         first = self.start(task='first', FAKE_HOLD='1')
@@ -188,6 +195,7 @@ class Lifecycle(unittest.TestCase):
         self.overlap('retire')
         self.assertEqual(self.objects()['ConfigMap/migration-run-demo-v10']['data']['phase'], 'retired')
         self.assertFalse(any('/demo-v10-parity' in k for k in self.objects()))
+        self.assertFalse(any(k.endswith('/demo-v10-worker') for k in self.objects()))
 
     def test_concurrent_duplicate_delivery(self):
         self.overlap('provision')
@@ -195,6 +203,24 @@ class Lifecycle(unittest.TestCase):
         server = self.objects()['Secret/demo-v10-parity-postgres']['data']['database-password']
         workspace = self.objects()['Secret/demo-v10-parity-db']['data']['PETCLINIC_DB_PASSWORD']
         self.assertEqual(server, workspace)
+
+    def test_worker_identity_is_created_and_retired(self):
+        self.finish(self.start())
+        objects = self.objects()
+        for kind in ('ServiceAccount', 'Role', 'RoleBinding'):
+            obj = objects['%s/demo-v10-worker' % kind]
+            self.assertEqual(obj['metadata']['labels']['rhoai3.io/migration-run'], 'demo-v10')
+        role = objects['Role/demo-v10-worker']
+        verbs = {(tuple(r.get('resources') or []), tuple(r.get('verbs') or []),
+                  tuple(r.get('resourceNames') or []), tuple(r.get('apiGroups') or ['']))
+                 for r in role['rules']}
+        self.assertIn((('configmaps',), ('get',), ('devspace-ai-tools-init',), ('',)), verbs)
+        self.assertIn((('securitycontextconstraints',), ('use',), ('container-build',),
+                       ('security.openshift.io',)), verbs)
+        self.assertEqual(objects['ConfigMap/migration-run-demo-v10']['data']['workerServiceAccount'],
+                         'demo-v10-worker')
+        self.finish(self.start('retire'))
+        self.assertFalse(any(k.endswith('/demo-v10-worker') for k in self.objects()))
 
     def test_api_failure_is_not_absence(self):
         for name in ('migration-run-demo-v10','demo-v10-parity-postgres'):

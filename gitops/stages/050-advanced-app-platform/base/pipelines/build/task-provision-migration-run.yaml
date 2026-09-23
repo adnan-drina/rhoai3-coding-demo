@@ -20,17 +20,37 @@
 #
 # WHAT THE RUN GETS (every object labelled rhoai3.io/migration-run=<run>, which
 # is what `retire` enumerates, so retirement can account for all of them):
-#   Secret     <run>-parity-postgres      the server's own credentials
-#   Deployment <run>-parity-postgres      PostgreSQL 16, emptyDir (ADR-009)
-#   Service    <run>-parity-postgres
-#   Secret     <run>-parity-db            PETCLINIC_DB_* + PARITY_RUN_RECEIPT,
-#                                         automounted into THIS workspace only
-#   Secret     <run>-parity-credentials   the specimen's fixture identities,
-#                                         copied from the platform-owned source
-#                                         secret, same automount binding
-#   ConfigMap  migration-run-<run>        the provisioning receipt, and after
-#                                         retirement the tombstone that stops
-#                                         a later event resurrecting the run
+#   Secret         <run>-parity-postgres      the server's own credentials
+#   Deployment     <run>-parity-postgres      PostgreSQL 16, emptyDir (ADR-009)
+#   Service        <run>-parity-postgres
+#   Secret         <run>-parity-db            PETCLINIC_DB_* + PARITY_RUN_RECEIPT,
+#                                             automounted into THIS workspace only
+#   Secret         <run>-parity-credentials   the specimen's fixture identities,
+#                                             copied from the platform-owned source
+#                                             secret, same automount binding
+#   ServiceAccount <run>-worker               the identity the workspace pod uses
+#   Role/Binding   <run>-worker               that identity's own permissions
+#   ConfigMap      migration-run-<run>        the provisioning receipt, and after
+#                                             retirement the tombstone that stops
+#                                             a later event resurrecting the run
+#
+# WORKER IDENTITY. DWO 0.43.0 always calls SyncRBAC before considering
+# serviceAccount.disableCreation, and SyncRBAC adds common.ServiceAccountName()
+# to operator-owned devworkspace-default-role (namespace-wide secrets, ConfigMaps,
+# pods/exec, DevWorkspace patch). disableCreation only skips creating the
+# ServiceAccount object; if serviceAccountName is set (required when creation is
+# disabled) that named account is the one bound to the default role. Installed
+# CRD accepts the field (oc explain + server-side dry-run), so this is controller
+# behavior, not a missing schema. Do not patch the operator-owned Role. Select
+# the platform SA with destfile pod-overrides after DWO assigns the generated
+# workspace*-sa: the leftover generated account stays bound to the default role
+# and is not the pod identity. Che injects controller.devfile.io/scc:
+# container-build; that bind also follows the generated SA, so the worker Role
+# must grant use of that named SCC or the pod cannot start.
+# Ref: DWO v0.43.0 controllers/workspace/devworkspace_controller.go
+#      (SyncRBAC then DisableCreation)
+# Ref: DWO v0.43.0 pkg/provision/workspace/rbac/rolebinding.go
+# Ref: DWO v0.43.0 pkg/library/overrides/pods.go (pod-overrides merge)
 #
 # THE AUTOMOUNT CONTRACT, and why it is written as ONE object each. DevWorkspace
 # Operator 0.43 keeps secrets in an informer cache that SELECTS on
@@ -200,11 +220,11 @@ spec:
           oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
             --from-literal=run="${RUN}" --from-literal=phase=retiring \
             --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" | oc apply -f -
-          for kind in deployment service secret; do
+          for kind in deployment service secret serviceaccount role rolebinding; do
             oc delete "${kind}" -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" --ignore-not-found --wait=true
           done
-          left="$(oc get secret,deployment,service -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" \
-                    -o name 2>/dev/null | wc -l | tr -d ' ')"
+          left="$(oc get secret,deployment,service,serviceaccount,role,rolebinding -n "${WSNS}" \
+                    -l "rhoai3.io/migration-run=${RUN}" -o name 2>/dev/null | wc -l | tr -d ' ')"
           if [ "${left}" != "0" ]; then
             echo "REFUSED: ${left} generated object(s) for ${RUN} still exist after retirement" >&2
             exit 1
@@ -217,7 +237,7 @@ spec:
             | oc apply -f -
           oc label configmap "${RECEIPT_CM}" -n "${WSNS}" \
             rhoai3.io/purpose=stage-080-parity "rhoai3.io/migration-run-receipt=${RUN}" --overwrite
-          echo "retired ${RUN}: no generated secret, deployment or service remains; the receipt is a tombstone"
+          echo "retired ${RUN}: no generated secret, deployment, service or worker identity remains; the receipt is a tombstone"
           printf 'retired' | tee "$(results.outcome.path)" >/dev/null
           printf 'retired' > "$(results.receipt.path)"
           exit 0
@@ -260,6 +280,64 @@ spec:
           PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
         fi
         RECEIPT="run=${RUN};namespace=${WSNS};workspace=${RUN};host=${RUN}-parity-postgres;port=${PORT};database=${DB_NAME};engine=postgresql;scaffold=${SCAFFOLD}"
+
+        WORKER_SA="${RUN}-worker"
+        oc apply -f - <<YAML
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: ${WORKER_SA}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/name: ${WORKER_SA}
+            app.kubernetes.io/component: migration-worker
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+        YAML
+        oc apply -f - <<YAML
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata:
+          name: ${WORKER_SA}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/name: ${WORKER_SA}
+            app.kubernetes.io/component: migration-worker
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+        rules:
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            resourceNames: ["devspace-ai-tools-init"]
+            verbs: ["get"]
+          - apiGroups: ["security.openshift.io"]
+            resources: ["securitycontextconstraints"]
+            resourceNames: ["container-build"]
+            verbs: ["use"]
+        YAML
+        oc apply -f - <<YAML
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: ${WORKER_SA}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/name: ${WORKER_SA}
+            app.kubernetes.io/component: migration-worker
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: Role
+          name: ${WORKER_SA}
+        subjects:
+          - kind: ServiceAccount
+            name: ${WORKER_SA}
+            namespace: ${WSNS}
+        YAML
 
         # The server's own credentials. Never automounted: no workspace has any
         # use for the superuser-side names, and a secret nothing mounts is a
@@ -448,6 +526,7 @@ spec:
           --from-literal=serverSecret="${SERVER_SECRET}" \
           --from-literal=workspaceSecret="${WORKSPACE_SECRET}" \
           --from-literal=fixtureSecret="${FIXTURE_SECRET}" \
+          --from-literal=workerServiceAccount="${WORKER_SA}" \
           --from-literal=mountInclude="${RUN}" \
           --from-literal=databaseImage="${DB_IMAGE}" \
           --from-literal=provisionerImage="${CLI_IMAGE}" \
@@ -457,7 +536,7 @@ spec:
         oc label configmap "${RECEIPT_CM}" -n "${WSNS}" \
           rhoai3.io/purpose=stage-080-parity "rhoai3.io/migration-run-receipt=${RUN}" --overwrite
 
-        echo "${OUTCOME} ${RUN}: database ${DB_NAME} on ${HOST}:${PORT}, secrets bound to workspace ${RUN} exactly"
+        echo "${OUTCOME} ${RUN}: database ${DB_NAME} on ${HOST}:${PORT}, secrets bound to workspace ${RUN} exactly, worker ${WORKER_SA}"
         printf '%s' "${OUTCOME}" > "$(results.outcome.path)"
         printf '%s' "${RECEIPT}" > "$(results.receipt.path)"
       # tekton.dev/v1 renamed the step field: a block called `resources` here is

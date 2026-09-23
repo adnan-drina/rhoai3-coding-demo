@@ -37,7 +37,14 @@ PREFLIGHT 1h, DEPLOY 3h, VALIDATE 1h, `max_retries` 1. Do not extend the
 
 ## Isolation qualification
 
-Use [ISOLATION-DEMO.md](ISOLATION-DEMO.md) with disposable names:
+Do not run the full 13-check demonstration until the Stage 050 worker-identity
+repair has passed focused live validation in
+[WORKER-IDENTITY-REPAIR.md](WORKER-IDENTITY-REPAIR.md). That repair is GitOps
+only until synced; it does not revoke v10's generated `workspace*-sa`. Do not
+launch v11 from this packet.
+
+After that focused plan PASSes, use [ISOLATION-DEMO.md](ISOLATION-DEMO.md)
+with disposable names:
 
 ```
 A = iso-v11-final
@@ -45,7 +52,7 @@ B = iso-v11-final-retry
 ```
 
 `autoStartMigration=false`. No M3 workers. Do not touch v10. Bind the
-receipt to the **final** platform commit, published golden SHA, and Task
+receipt to the **resulting** platform commit, published golden SHA, and Task
 image digests. Required checks: the twelve operational names plus
 `workspace_identity`. Every result must be the measured outcome. A FAIL
 stays FAIL. The v10 `workspace_identity` deferral does not apply.
@@ -77,15 +84,21 @@ any later harness copy.
 ## User creation checklist (auto-start disabled)
 
 1. Confirm publication mapping, isolation receipt, Stage 050 Synced/Healthy
-   at `PLATFORM_SHA`, model Ready, and Tekton/listener ready.
+   at `PLATFORM_SHA`, model Ready, and Tekton/listener ready. Confirm the live
+   three-workspace capacity before disposable qualification; keep v10 running.
 2. In Developer Hub **Application migration** template:
    - Name: `spring-petclinic-rest-legacy-v11`
    - Legacy URL: the approved PetClinic freeze-fork
    - **Auto-start migration: off**
 3. Wait until `migration-run-spring-petclinic-rest-legacy-v11` is
    `provisioned` and the database Deployment is Available.
-4. `scripts/patch-workspace-maas-route.sh spring-petclinic-rest-legacy-v11`
-5. Start/open the workspace. Do not enable dest-init dispatch yet.
+4. Open the Dev Spaces link to create the workspace, then stop it through
+   Dev Spaces with auto-start migration still off. Run
+   `scripts/patch-workspace-maas-route.sh spring-petclinic-rest-legacy-v11`.
+   The helper refuses a route change while the workspace is started, preserving
+   its postStart and per-run ServiceAccount.
+5. Start/open the workspace. Confirm the IDE is Ready. Do not enable dest-init
+   dispatch yet; the preflight checks the pod and CLI worker identities.
 6. Run [v11-preflight.sh](v11-preflight.sh) with `POD`, `GOLDEN_CHECKOUT`,
    `GOLDEN_SHA`, `PLATFORM_SHA`, `ISOLATION_RECEIPT`.
 7. Only after preflight PASS: Operator GO (pilot seal after M1, or enable

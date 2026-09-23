@@ -35,11 +35,19 @@ find its subject fails rather than passing vacuously.
 
   5. RETIREMENT. Every generated object must carry the run label retirement
      deletes by, retirement must verify the absence afterwards, and a retired
-     run must not be resurrectable by a later event.
+     run must not be resurrectable by a later event. The per-run worker
+     ServiceAccount, Role and RoleBinding are generated objects too.
 
   6. REPOSITORY RULES. .agents/rules/gitops.md forbids
      resources-finalizer.argocd.argoproj.io and Replace=true. The reviewed
      design used both; the platform-rendered seam must use neither.
+
+  7. WORKER IDENTITY. The factory destfile must select the platform SA with
+     pod-overrides, not DWO serviceAccount.disableCreation (that path still
+     binds the named SA to operator-owned devworkspace-default-role). The
+     worker Role must not grant Secret, pod exec, DevWorkspace, RBAC or
+     ServiceAccount verbs. GitOps must not patch the operator-owned default
+     role.
 
 Land-time only, so it lives beside validate.sh: it reads manifests, touches no
 cluster and imports nothing from the shipped tree.
@@ -211,9 +219,15 @@ def main() -> int:
     need('rhoai3.io/migration-run: ${RUN}' in task,
          "generated objects do not carry the run label retirement enumerates by")
     labelled = task.count("rhoai3.io/migration-run: ${RUN}")
-    need(labelled >= 5,
+    need(labelled >= 8,
          "only %d generated objects carry the run label; server secret, workspace secret, fixture "
-         "secret, Deployment and Service must all be accountable" % labelled)
+         "secret, Deployment, Service, worker ServiceAccount, Role and RoleBinding must all be "
+         "accountable" % labelled)
+    need("serviceaccount" in task and "kind: Role" in task and "kind: RoleBinding" in task,
+         "provisioning does not create the per-run worker ServiceAccount, Role and RoleBinding")
+    need("disableCreation" not in task,
+         "provisioning relies on DWO disableCreation; that path still binds the named SA to "
+         "devworkspace-default-role")
     need('oc delete "${kind}" -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}"' in task,
          "retirement does not delete by the run label")
     need("still exist after retirement" in task,

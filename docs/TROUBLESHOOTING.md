@@ -2048,15 +2048,30 @@ it does not remove these API permissions. Inspect the actual worker identity
 and its bindings, not the namespace's `default` service account. Use name-only
 output for read probes; never print Secret data or tokens.
 
-Keep `workspace_identity: FAIL`. The Operator deferred this hardening for the
-controlled v10 experiment on 2026-09-22; its launch preflight warns on that
-measured failure while retaining the other checks. This exception makes no
-claim of worker security confinement. A future repair must restrict the worker
-identity, including indirect access through pod execution and workspace edits,
-without breaking workspace startup or MaaS initialization. Do not hand-edit an
-operator-reconciled role or broaden another identity to make startup pass.
-Repeat the live two-workspace checks when the platform-owned repair is pursued;
-it is not a prerequisite for this v10 experiment.
+Keep `workspace_identity: FAIL` on the 2026-09-22 v10 measurement. The Operator
+deferred this hardening for the controlled v10 experiment; its launch preflight
+warns on that measured failure while retaining the other checks. That exception
+makes no claim of worker security confinement.
+
+The Stage 050 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
+destfile pod-overrides; operator-owned `devworkspace-default-role` unpatched)
+is documented in
+[WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md).
+Do not hand-edit the operator-reconciled default role or broaden another
+identity to make startup pass. Restricting new workers does not revoke existing
+legacy `workspace*-sa` accounts. Run the focused disposable plan in that file
+after sync; only then requalify all 13 isolation checks. DWO
+`serviceAccount.disableCreation` still binds the named account to the default
+role and is not the repair.
+
+The September 23 `iso-worker-a` trial failed postStart with exit 137, which DWO
+labelled a timeout. Retained events show tooling failing within seconds of
+start; that does not establish timer expiry or OOM. Use Dev Spaces **Open in
+Debug mode** and preserve hook output, admitted lifecycle, exit status, events,
+and controller logs before another attempt. DWO reads the metadata annotation
+set by that action; a devfile `debug-start` attribute does not enable it.
+Never patch MaaS hostAliases during startup. The guarded route helper now
+requires a stopped workspace for changes.
 
 ### Migration source initializer refuses its PVC
 

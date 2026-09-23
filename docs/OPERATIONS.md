@@ -134,10 +134,27 @@ The 2026-09-22 qualification failed `workspace_identity`: actual migration
 workers could read another run's database Secret through the Dev Spaces default
 role. The other 12 checks passed. The Operator deferred permission hardening
 for this controlled v10 experiment on 2026-09-22. The launch check preserves
-the measured FAIL as a warning for this run only; it still requires all 12
-operational checks, evidence hashes and release pins. See the
-[live result](../stages/080-ai-autonomous-migration/ISOLATION-RESULT-2026-09-22.md).
-No platform or golden republish is needed for this local launch-policy change.
+the measured FAIL as a warning for this run only.
+
+A Stage 050 GitOps repair now provisions a per-run `<run>-worker` identity and
+selects it with destfile pod-overrides. It is **not** live-synced from this
+document. Restricting new workers does not revoke existing `workspace*-sa`
+accounts still bound to `devworkspace-default-role`. Follow
+[WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md)
+for the permission matrix and disposable validation plan before deploying.
+After that focused plan PASSes, requalify all 13 isolation checks against the
+resulting platform revision. Do not launch v11 from the unsynced repair.
+
+Stage 050 reserves three concurrent workspace slots per user for preserved v10
+plus two disposable isolation runs. Start the first disposable alone and prove
+IDE/tool initialization before starting the second. The existing group grant
+still permits GET of the two named MaaS Secrets; other-run parity Secrets must
+remain forbidden. The MaaS route helper loads the cluster guard and refuses to
+change a started workspace. Stop through Dev Spaces before applying that merge,
+then start again; do not interrupt postStart with a pod-template change.
+
+No platform or golden republish is needed for the local v10 launch-policy
+change that warned on the measured FAIL.
 
 The migration template's pre-start initializer clones source onto a separate
 volume and writes `.git/rhoai3-source.json`. The worker mounts it read-only;

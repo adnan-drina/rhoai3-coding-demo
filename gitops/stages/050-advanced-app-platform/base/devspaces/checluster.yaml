@@ -28,9 +28,10 @@ spec:
     # Default is 1 running workspace per user: starting any second workspace
     # (e.g. a stray dashboard click on agentic-coolstore) silently stops the
     # active one — observed 2026-07-21 killing an in-flight speckit session.
-    # Two lets the scaffolded project workspace coexist with one stage
-    # workspace.
-    maxNumberOfRunningWorkspacesPerUser: 2
+    # Three keeps the preserved migration workspace running while two fresh
+    # disposable workspaces qualify cross-run isolation. This is capacity,
+    # not parallel migration execution; disposable auto-start stays disabled.
+    maxNumberOfRunningWorkspacesPerUser: 3
     # Trusted sources: the dashboard shows an "untrusted source" dialog for
     # every factory URL until this allowlist exists server-side; with it
     # configured the dialog is skipped and sources outside the list are

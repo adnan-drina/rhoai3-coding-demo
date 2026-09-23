@@ -41,5 +41,40 @@ class IsolationLaunchScope(unittest.TestCase):
                     self.check(proof, 'spring-petclinic-rest-legacy-v11')
 
 
+class WorkerIdentity(unittest.TestCase):
+    def setUp(self):
+        nodes = [n for n in TREE.body if isinstance(n, ast.FunctionDef)
+                 and n.name in ('need', 'check_worker_identity')]
+        scope = {}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), 'worker-identity', 'exec'), scope)
+        self.check = scope['check_worker_identity']
+        self.pod = {'spec': {'serviceAccountName': 'fixture-worker'}}
+        self.receipt = {'workerServiceAccount': 'fixture-worker'}
+
+    def test_per_run_pod_and_receipt(self):
+        self.check(self.pod, self.receipt, {'subjects': [
+            {'kind': 'ServiceAccount', 'namespace': 'test', 'name': 'workspace-old-sa'}]}, 'test', 'fixture')
+
+    def test_generated_or_foreign_pod_refused(self):
+        for name in ('workspace-old-sa', 'other-worker', None):
+            self.pod['spec']['serviceAccountName'] = name
+            with self.subTest(name=name), self.assertRaisesRegex(SystemExit, 'generated or foreign'):
+                self.check(self.pod, self.receipt, {}, 'test', 'fixture')
+
+    def test_unbound_receipt_refused(self):
+        with self.assertRaisesRegex(SystemExit, 'receipt does not bind'):
+            self.check(self.pod, {}, {}, 'test', 'fixture')
+
+    def test_regained_default_role_refused(self):
+        subjects = [
+            {'kind': 'ServiceAccount', 'namespace': 'test', 'name': 'fixture-worker'},
+            {'kind': 'User', 'name': 'system:serviceaccount:test:fixture-worker'},
+            *({'kind': 'Group', 'name': group} for group in
+              ('system:authenticated', 'system:serviceaccounts', 'system:serviceaccounts:test'))]
+        for subject in subjects:
+            with self.subTest(subject=subject), self.assertRaisesRegex(SystemExit, 'default-role'):
+                self.check(self.pod, self.receipt, {'subjects': [subject]}, 'test', 'fixture')
+
+
 if __name__ == '__main__':
     unittest.main()

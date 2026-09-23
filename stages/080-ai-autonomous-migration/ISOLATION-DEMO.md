@@ -341,6 +341,19 @@ An ability to create workloads or use a privileged user token limits the securit
 claim even when the repository webhook path is safe. Never generalize the default
 service account's permissions to the worker.
 
+For a **new** factory workspace after the Stage 050 worker-identity repair,
+the pod ServiceAccount must be `<run>-worker`. Repeat `oc auth can-i` for
+that account **and** every other kube credential inside the container
+(projected token, `~/.kube/config`, extra kubeconfigs). Expect **no** on:
+get/list Secrets; patch ConfigMaps (receipts/locks); create/patch Roles,
+RoleBindings, ServiceAccounts; patch DevWorkspaces; `create pods
+--subresource=exec`; create PipelineRuns in the build namespace. Expect
+**yes** only on `get configmaps/devspace-ai-tools-init`. The leftover
+DWO `workspace*-sa` may still have default-role verbs; that is not the
+pod identity. Restricting new workers does not revoke v10's generated
+account. The focused matrix and regain-via-destfile attempts are in
+[WORKER-IDENTITY-REPAIR.md](WORKER-IDENTITY-REPAIR.md).
+
 ---
 
 ## Step 7 — duplicate and reordered events cannot re-provision
@@ -392,7 +405,7 @@ EOF
 Then:
 
 ```bash
-oc get secret,deploy,svc -n "$WS" -l rhoai3.io/migration-run=iso-demo-v10 -o name
+oc get secret,deploy,svc,sa,role,rolebinding -n "$WS" -l rhoai3.io/migration-run=iso-demo-v10 -o name
 oc get cm migration-run-iso-demo-v10 -n "$WS" -o jsonpath='{.data.phase}{"\n"}'
 oc get secret -n "$WS" | grep '^iso-demo-v10-' | grep -v retry || echo "none left"
 ```

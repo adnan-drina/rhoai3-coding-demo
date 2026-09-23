@@ -438,6 +438,24 @@
   12 checks, and freeze the platform/harness for migration execution. Targeted
   mounts do not restrict API access; no security-confinement claim is made.
   Closed v9 stays provisional, with coverage gaps and prior assistance retained.
+  **Repair in Git, 2026-09-23:** Stage 050 now provisions a per-run
+  `<run>-worker` identity and selects it with destfile pod-overrides rather
+  than DWO `disableCreation` (that path still binds the named SA to the
+  operator default role). Generated kubeconfig is a replacement Config bound
+  to the current pod `tokenFile`; `oc login` is not used. The provisioner Role
+  is namespace-wide for the listed resources; run labels constrain the Task
+  script, not API authorization. Not live-synced. Restricting new workers does
+  not revoke existing legacy workspace accounts. Follow
+  [WORKER-IDENTITY-REPAIR.md](stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md)
+  before deploy; requalify all 13 checks only after that focused plan PASSes.
+  **v11 handoff completion in authoring:** named MaaS GET group exceptions are
+  documented; three workspace slots preserve v10 during the two-run trial;
+  the route helper is cluster-guarded and refuses changes during startup;
+  v11 preflight verifies the receipt/pod/CLI worker identity and rejects the
+  default-role binding. The retired `iso-worker-a` trial's exit 137 is retained
+  as an unresolved startup failure, not proof of timer expiry. Use fresh
+  `iso-worker-b` names through Developer Hub/Dev Spaces with migration off,
+  after normal GitOps publication. No live PASS or v11 creation is claimed.
 - The template now uses a dedicated source initializer and a read-only worker
   mount. Initial live testing exposed Git's PVC ownership check; the initializer
   now trusts only the exact clone path. The launch preflight also rejects

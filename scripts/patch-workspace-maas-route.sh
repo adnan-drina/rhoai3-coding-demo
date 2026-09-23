@@ -12,10 +12,16 @@
 # (SNI, certificate) and the HTTPRoute host match are unchanged and only NAT and
 # the ELB are gone. Host and IP are read from the cluster and validated here;
 # the value is never templated (an invalid hostAlias makes the workspace
-# deployment invalid and the workspace fails to start).
+# deployment invalid and the workspace fails to start). Merge patch only: the
+# factory destfile already sets spec.serviceAccountName to the per-run worker
+# account, and replacing pod-overrides would drop that identity.
 #
 # Usage: scripts/patch-workspace-maas-route.sh <devworkspace-name> [namespace]
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib.sh"
+load_env
+check_oc_logged_in
 DW="${1:?usage: patch-workspace-maas-route.sh <devworkspace-name> [namespace]}"
 NS="${2:-wksp-ai-developer}"
 GW_NS="openshift-ingress"
@@ -37,7 +43,14 @@ if [[ "$CUR" == *"\"$HOST\""* && "$CUR" == *"$IP"* ]]; then
   echo "OK: $DW already routes $HOST to $IP in-cluster (no change)"
   exit 0
 fi
+# Changing the pod template during postStart terminates the hook and can leave
+# a misleading FailedPostStartHook. The user/platform owns workspace lifecycle.
+STARTED="$(oc get dw "$DW" -n "$NS" -o jsonpath='{.spec.started}')"
+[[ "$STARTED" == "false" ]] || {
+  echo "REFUSE: stop $DW through Dev Spaces before changing its MaaS route"
+  exit 1
+}
 oc patch dw "$DW" -n "$NS" --type merge \
   -p "{\"spec\":{\"template\":{\"attributes\":{\"pod-overrides\":{\"spec\":{\"hostAliases\":[{\"ip\":\"$IP\",\"hostnames\":[\"$HOST\"]}]}}}}}}" >/dev/null
-echo "OK: $DW routes $HOST to $IP in-cluster (the pod restarts; dest-init re-runs)"
+echo "OK: $DW routes $HOST to $IP in-cluster (start the stopped workspace through Dev Spaces)"
 echo "verify: oc exec -n $NS <pod> -c development-tooling -- getent hosts $HOST"

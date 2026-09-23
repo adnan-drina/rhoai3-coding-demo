@@ -91,7 +91,7 @@ Red Hat OpenShift Pipelines brings Tekton with Pipelines-as-Code and Tekton Chai
 
 ## Trust Boundaries
 
-Developer Hub is a discovery and self-service surface: it links to approved platform paths rather than embedding provider secrets or kubeconfigs. The OIDC client secret and session secret are generated at deploy time and stored in the `rhdh-secrets` Kubernetes Secret — not committed to Git. Build pipelines execute in a controlled namespace with scoped RBAC. Signing identities are bound to the platform's OIDC issuer — no long-lived signing keys in the cluster; Rekor provides tamper-evident records. Production deployment policies should gate on attestation verification, not on pipeline success alone.
+Developer Hub is a discovery and self-service surface: it links to approved platform paths rather than embedding provider secrets or kubeconfigs. The OIDC client secret and session secret are generated at deploy time and stored in the `rhdh-secrets` Kubernetes Secret — not committed to Git. Build pipelines execute in a controlled namespace with scoped RBAC. Signing identities are bound to the platform's OIDC issuer — no long-lived signing keys in the cluster; Rekor provides tamper-evident records. Production deployment policies should gate on attestation verification, not on pipeline success alone. Stage 080 migration workers receive a platform-provisioned per-run ServiceAccount; operator-owned DevWorkspace default RBAC is left in place, so existing legacy workspace accounts keep their broader permissions until those workspaces are removed.
 
 ## Red Hat Products Used
 

@@ -37,6 +37,23 @@ def check_isolation(proof, workspace):
     identity = proof.get('checks',{}).get('workspace_identity')
     need(identity == 'PASS', 'workspace identity missing, unmeasured, or failed; v10-only FAIL deferral does not apply')
 
+def check_worker_identity(pod, receipt, default_binding, namespace, workspace):
+    expected = workspace + '-worker'
+    need(receipt.get('workerServiceAccount') == expected,
+         'provisioning receipt does not bind the per-run worker identity')
+    need(pod['spec'].get('serviceAccountName') == expected,
+         'workspace pod still uses a generated or foreign ServiceAccount')
+    for subject in default_binding.get('subjects', []):
+        direct = (subject.get('kind') == 'ServiceAccount'
+                  and subject.get('name') == expected
+                  and subject.get('namespace', namespace) == namespace)
+        group = (subject.get('kind') == 'Group' and subject.get('name') in
+                 ('system:authenticated', 'system:serviceaccounts',
+                  'system:serviceaccounts:' + namespace))
+        user = (subject.get('kind') == 'User' and subject.get('name') ==
+                'system:serviceaccount:' + namespace + ':' + expected)
+        need(not (direct or group or user), 'worker is bound to devworkspace-default-role')
+
 def source_mount_ok(pod, container_name):
     spec = pod['spec']
     containers = spec['containers']
@@ -89,6 +106,8 @@ need(p['metadata'].get('labels',{}).get('controller.devfile.io/devworkspace_name
 receipt = json.loads(oc('get','configmap','migration-run-'+workspace,'-n',ns,'-o','json'))['data']
 need(receipt.get('phase') == 'provisioned' and receipt.get('workspace') == workspace
      and receipt.get('namespace') == ns, 'provisioning receipt is not ready for this workspace')
+default_binding = json.loads(oc('get','rolebinding','devworkspace-default-rolebinding','-n',ns,'-o','json'))
+check_worker_identity(p, receipt, default_binding, ns, workspace)
 for key in ('databaseImage','provisionerImage'):
     need(bool(re.fullmatch(r'.+@sha256:[0-9a-f]{64}',receipt.get(key,''))), 'unpinned '+key)
     need(receipt[key] == proof.get('images',{}).get(key), 'image differs from isolation qualification: '+key)
@@ -138,6 +157,15 @@ remote = '''def require(condition, message):
 import hashlib, json, os, sys, subprocess
 from pathlib import Path
 root = Path('/projects/modernized')
+# Check the CLI credential as well as the admitted pod identity. Do not print
+# kubeconfig contents or token values. The replacement Config has one user.
+kube = json.loads(subprocess.check_output(['oc', 'config', 'view', '-o', 'json'], text=True))
+users = kube.get('users', [])
+require(len(users) == 1 and users[0].get('name') == 'current-pod'
+        and users[0].get('user') == {'tokenFile': '/var/run/secrets/kubernetes.io/serviceaccount/token'},
+        'CLI kubeconfig retains a different credential')
+require(subprocess.check_output(['oc', 'whoami'], text=True).strip() == WORKER_IDENTITY,
+        'CLI credential is not the per-run worker')
 sys.path.insert(0, str(root / '.hermes/lib'))
 from planner import run_identity
 from planner.yamlite import load_yaml
@@ -188,7 +216,7 @@ first = int(subprocess.check_output(['git', '-C', str(root), 'log', '--reverse',
 declared = datetime.datetime.fromisoformat(budget['declared_at'].replace('Z', '+00:00')).timestamp()
 require(budget.get('max_wall_hours') == 24 and declared < first, 'budget must be declared before destination creation')
 print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
-'''.replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0]))
+'''.replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker'))
 subprocess.run(['oc','--request-timeout=60s','exec','-i','-n',ns,pod,'-c',os.environ['CONTAINER'],'--','python3','-'],input=remote,text=True,check=True,timeout=75)
 print('PASS: v11 launch preflight; no reset or dispatch performed')
 PY
