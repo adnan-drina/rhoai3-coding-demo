@@ -9,6 +9,14 @@
   forbidding `_run.json` reads; it now names the bound comparison and the
   acceptance-only counter fields. The regression reproduces the scope loss
   before the fix. No scope grant, verification limit or acceptance rule changes.
+  Commit `a1d7f4bf` is installed on v10 with its regression passing and 1,148
+  protected files unchanged. The first installation rolled back when rendering
+  the brief rewrote its derived JSON; the successful installation checked the
+  live scope through read-only functions. Receipt:
+  `.hermes/installations/brief-issued-scope-a1d7f4bf-retry1.json`.
+  The same card resumed with the measured remaining failure: unhandled integrity
+  exception (500 rather than the source's 400), requiring a new scoped mapping
+  edit before another verification. Both earlier verification runs remain.
 
 - Specialty task `t_19857de6` stopped twice on provider HTTP 429 (native
   runs 45 and 46); run 46 performed no application repair. The governed Qwen
