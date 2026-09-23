@@ -2,6 +2,15 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- v10 dest is an **assisted overlay** beyond published golden `61ac38db`.
+  CORS card `t_ddd325d5` attempt 4 was accepted; navigation `t_fd744fef`
+  attempt 7 reached a native checkpoint. Two reusable harness defects remain
+  in that overlay and are corrected in authoring: a scoped receipt must not
+  keep an older full-mode runner as its measurement (`check-mode-parity`
+  refuses that pairing), and disabled/enabled navigation obligations stay
+  independently mintable with the correct receipt path. Install the successor
+  golden only at an idle boundary. No release claimed.
+
 - Visit attempt 3 (`t_c707fd48`, commit `86bb017c4925`) repaired deletion in
   the actual repository fragment. M4's fresh replay passes **18/18 disabled
   scenarios**. Enabled mode measures **65 PASS, 1 INCONCLUSIVE, 1 FAIL**:

@@ -59,6 +59,18 @@ class ModeParity(unittest.TestCase):
         run.write_text(json.dumps(doc))
         self.assertEqual(measure(self.root)["rc"], 2)
 
+    def test_candidate_receipt_cannot_borrow_full_runner(self):
+        self.mode("disabled", "INCONCLUSIVE")
+        self.mode("enabled", "INCONCLUSIVE")
+        self.assertEqual(measure(self.root)["rc"], 0)
+        receipt = self.root / "verification/parity/receipt-enabled.json"
+        doc = json.loads(receipt.read_text())
+        doc["binding"] = {"mode": "candidate", "candidate_sha256": "b" * 64, "card": "t_candidate_b"}
+        receipt.write_text(json.dumps(doc))
+        result = measure(self.root)
+        self.assertEqual(result["rc"], 2)
+        self.assertTrue(any("candidate receipt is paired with a full-mode runner" in e for e in result["errors"]))
+
     def test_existing_enabled_capture_requires_enabled_measurement(self):
         self.mode("disabled", "PASS")
         capture = self.root / "verification/source-oracles/scenarios-enabled"

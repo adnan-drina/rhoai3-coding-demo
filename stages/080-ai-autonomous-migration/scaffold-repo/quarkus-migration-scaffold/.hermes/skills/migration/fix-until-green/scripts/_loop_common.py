@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 import subprocess
@@ -24,6 +25,7 @@ def ensure_hermes_lib() -> None:
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, product_tree_sha256, sha256_file, write_canonical  # noqa: E402
 from planner.paths import DECISIONS, MIGRATION, PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
+from m4_parity import runner_provenance_error  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
 # candidate's packaging or startup result must not survive it. The work list is
@@ -454,6 +456,27 @@ def _runner_is_full_mode(doc: dict[str, Any] | None) -> bool:
     return bool((doc.get("receipt") or {}).get("composed_by_this_run"))
 
 
+def _mode_of_runner_rel(rel: Path | str) -> str:
+    name = Path(rel).name
+    if name == "_run.json":
+        return "disabled"
+    if name.startswith("_run-") and name.endswith(".json"):
+        return name[len("_run-"):-len(".json")]
+    return ""
+
+
+def _receipt_doc_beside_runners(base: Path, mode: str) -> dict[str, Any]:
+    name = "receipt.json" if mode == "disabled" else ("receipt-%s.json" % mode)
+    p = Path(base) / name
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
 LOOP_DISCARDED = LOOP_ACCEPTED.parent / "discarded"
 
 
@@ -551,10 +574,15 @@ def snapshot_parity(root: Path, source: dict[str, Any] | None = None) -> list[Pa
     its own card had been issued from. The obligation the loop was working on
     disappeared: no open cluster, no card, nothing minted.
 
-    Full-mode runner records travel with the receipts. A scoped card run is
-    never snapshotted as the baseline's comparison: the prior full-mode
-    runner of that mode stays, so restore cannot present the discarded
-    candidate's scoped ``_run-enabled.json`` as a full-mode compose.
+    Runner records travel with the receipts they measured. A scoped card
+    run is snapshotted with its candidate receipt so the accepted baseline
+    stays a scoped repair checkpoint; a prior full-mode runner of another
+    artifact is never kept as proof of that receipt (v10: the newer scoped
+    receipt acquired the older full-mode runner and check-mode-parity
+    returned rc=0). Restore therefore cannot present a discarded candidate's
+    scoped ``_run-enabled.json`` as a full-mode compose, and cannot present a
+    full-mode runner of A as the measurement of candidate B. M4 still
+    requires a fresh matching full-mode runner of the same artifact.
 
     ``source`` records whose comparison this baseline is (mode and card); it is
     written beside the snapshot, never inside it. Returns the records kept."""
@@ -565,34 +593,39 @@ def snapshot_parity(root: Path, source: dict[str, Any] | None = None) -> list[Pa
     if not records:
         return []
     dest.mkdir(parents=True, exist_ok=True)
-    prior_full: dict[str, bytes] = {}
+    prior_runners: dict[str, bytes] = {}
     if snap.is_dir():
         for rel in parity_runner_records(snap):
-            try:
-                doc = load_json(snap / rel)
-            except (OSError, ValueError):
-                continue
-            if _runner_is_full_mode(doc):
-                prior_full[str(rel)] = (snap / rel).read_bytes()
-    live_full: dict[str, Path] = {}
-    for rel in parity_runner_records(live):
-        try:
-            doc = load_json(live / rel)
-        except (OSError, ValueError):
-            continue
-        if _runner_is_full_mode(doc):
-            live_full[str(rel)] = rel
+            sp = snap / rel
+            if sp.is_file():
+                prior_runners[str(rel)] = sp.read_bytes()
     shutil.rmtree(snap, ignore_errors=True)
     for rel in records:
         target = snap / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(live / rel, target)
-    for key, rel in live_full.items():
+    kept_runners: set[str] = set()
+    for rel in parity_runner_records(live):
+        try:
+            run = load_json(live / rel)
+        except (OSError, ValueError):
+            continue
+        rec = _receipt_doc_beside_runners(live, _mode_of_runner_rel(rel) or "disabled")
+        if runner_provenance_error(run, rec):
+            continue
         target = snap / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(live / rel, target)
-    for key, data in prior_full.items():
-        if key in live_full:
+        kept_runners.add(str(rel))
+    for key, data in prior_runners.items():
+        if key in kept_runners:
+            continue
+        try:
+            run = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            continue
+        rec = _receipt_doc_beside_runners(snap, _mode_of_runner_rel(key) or "disabled")
+        if runner_provenance_error(run, rec):
             continue
         target = snap / Path(key)
         target.parent.mkdir(parents=True, exist_ok=True)

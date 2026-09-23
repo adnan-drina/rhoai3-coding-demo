@@ -10,6 +10,58 @@ FLOOR = "check-mode-parity"
 ACCEPTING = {"PROVISIONAL_ACCEPT", "SCOPED_ACCEPT", "ACCEPT"}
 
 
+def runner_provenance_error(run, receipt) -> str:
+    """Why this runner record is not the measurement of this receipt.
+
+    A scoped accepted baseline remains a scoped baseline: a full-mode runner
+    of artifact A cannot prove a candidate-B receipt (v10: snapshot_parity
+    retained the older full-mode runner beside a newer scoped receipt, and
+    measure() returned rc=0). Empty string means the pair is coherent, scoped
+    or full; callers that need a complete unscoped compose still ask that
+    separately.
+    """
+    if not isinstance(run, dict):
+        return "no runner record"
+    if not isinstance(receipt, dict):
+        return "no receipt"
+    run_mode = str(run.get("security_mode") or "disabled")
+    rec_mode = str(receipt.get("security_mode") or "disabled")
+    if run_mode != rec_mode:
+        return "runner security mode disagrees with the receipt"
+    rec_sha = str(receipt.get("receipt_sha256") or "")
+    run_sha = str(run.get("receipt_sha256") or "")
+    if rec_sha and run_sha and rec_sha != run_sha:
+        return "runner receipt digest does not match the composed receipt"
+    rec_bind = receipt.get("binding") if isinstance(receipt.get("binding"), dict) else {}
+    run_bind = run.get("binding") if isinstance(run.get("binding"), dict) else {}
+    rec_kind = str(rec_bind.get("mode") or "sealed")
+    rec_cand = str(rec_bind.get("candidate_sha256") or "")
+    run_cand = str(run_bind.get("candidate_sha256") or "")
+    rec_card = str(rec_bind.get("card") or "")
+    run_card = str(run_bind.get("card") or "")
+    rec_art = ""
+    if isinstance(receipt.get("artifact"), dict):
+        rec_art = str(receipt["artifact"].get("sha256") or "")
+    run_art = ""
+    if isinstance(run.get("artifact"), dict):
+        run_art = str(run["artifact"].get("sha256") or "")
+    filtered = list(run.get("scenario_filter") or [])
+    full = (not filtered) and bool((run.get("receipt") or {}).get("composed_by_this_run"))
+    if rec_kind == "candidate":
+        if rec_cand and run_cand and rec_cand != run_cand:
+            return "runner records a different candidate than the receipt"
+        if rec_card and run_card and rec_card != run_card:
+            return "runner records a different card than the receipt"
+        if full and rec_cand and run_cand != rec_cand:
+            return "candidate receipt is paired with a full-mode runner of another measurement"
+        return ""
+    if filtered:
+        return "scoped runner is not a measurement of a sealed receipt"
+    if rec_art and run_art and rec_art != run_art:
+        return "runner artifact does not match the receipt"
+    return ""
+
+
 def measure(root: Path) -> dict:
     parity = root / "verification/parity"
     modes = ["disabled"]
@@ -43,6 +95,9 @@ def measure(root: Path) -> dict:
                     raise ValueError("no successful runner record for this mode")
                 if run.get("scenario_filter") or not (run.get("receipt") or {}).get("composed_by_this_run"):
                     raise ValueError("runner did not compose a full-mode comparison")
+                why = runner_provenance_error(run, doc)
+                if why:
+                    raise ValueError(why)
                 artifact = (run.get("artifact") or {}).get("sha256")
                 if not artifact:
                     raise ValueError("runner records no packaged artifact digest")

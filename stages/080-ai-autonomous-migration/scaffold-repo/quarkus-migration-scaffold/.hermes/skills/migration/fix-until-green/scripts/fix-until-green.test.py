@@ -1314,7 +1314,8 @@ def _restore_runner_records_case() -> int:
     """v10 t_27cea939: rejecting a scoped enabled candidate restores the
     accepted receipts and cannot leave that candidate's ``_run-enabled.json``
     to be read as a full-mode comparison. Discarded runner evidence is kept
-    aside. Snapshotting a later scoped card keeps the prior full-mode runner."""
+    aside. A newer scoped receipt must not acquire an older full-mode runner;
+    check-mode-parity refuses that pairing."""
     from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED, PARITY_DIR
     from _loop_common import LOOP_DISCARDED, restore_reports, snapshot_parity
     from m4_parity import measure
@@ -1371,14 +1372,25 @@ def _restore_runner_records_case() -> int:
             return _fail("m4_parity must not read a scoped leftover as the restored comparison: %s" % measured)
         if measured.get("rc") not in (0, 1):
             return _fail("the restored baseline is a coherent full-mode comparison: %s" % measured)
-        # a later scoped snapshot must keep the prior full-mode runner
-        write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
+        # a newer scoped receipt must never acquire the older full-mode runner
+        write_canonical(pdir / "receipt-enabled.json", dict(receipt("enabled", "INCONCLUSIVE"),
+                                                            binding={"mode": "candidate", "candidate_sha256": "b" * 64,
+                                                                     "card": "t_candidate_b"}))
         snapshot_parity(root)
-        kept = load_json(root / LOOP_ACCEPTED / "parity" / "_run-enabled.json")
-        if list(kept.get("scenario_filter") or []):
-            return _fail("snapshot_parity must not replace a full-mode runner with a scoped card run: %s" % kept)
+        snap_enabled = root / LOOP_ACCEPTED / "parity" / "_run-enabled.json"
+        if snap_enabled.is_file():
+            kept = load_json(snap_enabled)
+            if (not list(kept.get("scenario_filter") or [])
+                    and (kept.get("artifact") or {}).get("sha256") == artifact):
+                return _fail("snapshot_parity must not keep runner A beside candidate B: %s" % kept)
+        write_canonical(pdir / "_run-enabled.json", full_run("enabled"))
+        measured = measure(root)
+        if measured.get("rc") == 0:
+            return _fail("check-mode-parity must refuse candidate B proven by runner A: %s" % measured)
+        if not any("candidate receipt is paired with a full-mode runner" in e for e in measured.get("errors") or []):
+            return _fail("the refusal names the mismatched provenance: %s" % measured)
         # legacy snapshot with no runner: leftover scoped file is removed, not read as full-mode
-        (root / LOOP_ACCEPTED / "parity" / "_run-enabled.json").unlink()
+        (root / LOOP_ACCEPTED / "parity" / "_run-enabled.json").unlink(missing_ok=True)
         (root / LOOP_ACCEPTED / "parity" / "_run.json").unlink(missing_ok=True)
         write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
         restore_reports(root)

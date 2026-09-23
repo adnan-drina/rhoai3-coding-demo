@@ -1458,11 +1458,26 @@ def security_mode_of_run(run: dict[str, Any] | None, issued: dict[str, Any] | No
 PARITY_KINDS = ("response", "cors", "navigation", "representation")
 
 
-def parity_obligation_id(entry_point: str, scenario: str, what: str) -> str:
+def parity_obligation_id(entry_point: str, scenario: str, what: str,
+                         security_mode: Any = None) -> str:
     """The identity of a parity obligation: the entry point, the scenario that
     measured it (empty for a read oracle) and WHICH of the two kinds of diff it
     carries. Line-free and message-free like every other obligation identity
-    here, so a comparator that rewords its diff reports the same obligation."""
+    here, so a comparator that rewords its diff reports the same obligation.
+
+    Navigation identities also include the security mode: a disabled dead
+    redirect and an enabled dead redirect at the same endpoint are two
+    obligations (v10: ``seen_nav`` kept the first mode and dropped the other).
+    Other kinds already distinguish modes by scenario id."""
+    payload = {"ep": entry_point, "scenario": scenario, "what": what}
+    if what == "navigation":
+        payload["mode"] = normalize_loop_security_mode(security_mode)
+    return "parity:%s" % sha256_bytes(canonical_bytes(payload))[:16]
+
+
+def parity_obligation_id_legacy(entry_point: str, scenario: str, what: str) -> str:
+    """The pre-mode navigation digest. Dest cards already issued as
+    ``parity:a79db752`` keep this id so attempt history stays attached."""
     return "parity:%s" % sha256_bytes(canonical_bytes({"ep": entry_point, "scenario": scenario, "what": what}))[:16]
 
 
@@ -1490,11 +1505,14 @@ def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
     obligation can be looked up in a LATER receipt without anyone having
     recorded what it was made of. A scenario's verdict is the verdict of the
     entry point row that declares it -- the row is PASS only when every required
-    scenario of that entry point passed (compose-parity-receipt.py)."""
+    scenario of that entry point passed (compose-parity-receipt.py). Navigation
+    also keys the historical no-mode digest so a card issued before the mode
+    was in the identity still discharges against this receipt."""
     rows = (receipt or {}).get("entry_points") if isinstance(receipt, dict) else None
     if (not isinstance(receipt, dict) or str(receipt.get("schema") or "") != PARITY_RECEIPT_SCHEMA
             or not isinstance(rows, list) or not rows):
         return {"known": False, "verdict": "", "entry_points": {}, "scenarios": {}, "obligations": {}}
+    rec_mode = normalize_loop_security_mode(receipt.get("security_mode"))
     eps: dict[str, str] = {}
     scen: dict[str, str] = {}
     obl: dict[str, dict[str, str]] = {}
@@ -1517,8 +1535,16 @@ def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
                 v = verdict
                 if what == "navigation" and (ep in nav_failed or str(row.get("navigation") or "") == "failed"):
                     v = "FAIL"  # the first response PASSes; the redirect target does not answer
-                obl[parity_obligation_id(ep, sid, what)] = {"entry_point": ep, "scenario": sid,
-                                                            "what": what, "verdict": v}
+                body = {"entry_point": ep, "scenario": sid, "what": what, "verdict": v}
+                if what == "navigation":
+                    body["security_mode"] = rec_mode
+                    oid = parity_obligation_id(ep, sid, what, rec_mode)
+                    obl[oid] = body
+                    legacy = parity_obligation_id_legacy(ep, sid, what)
+                    if legacy not in obl:
+                        obl[legacy] = body
+                else:
+                    obl[parity_obligation_id(ep, sid, what)] = body
     return {"known": True, "verdict": str(receipt.get("verdict") or ""),
             "entry_points": eps, "scenarios": scen, "obligations": obl}
 
@@ -1713,6 +1739,30 @@ def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None
         if extra:
             cur["navigation_obligations"] = list(cur.get("navigation_obligations") or []) + extra
     return cur, carried
+
+
+def _issued_navigation_id(root: Path, entry_point: str, mode: str) -> str:
+    """The obligation id to mint for this mode's dead redirect.
+
+    New cards use the mode-specific digest. A card already issued under the
+    historical no-mode digest keeps that id so its attempt history remains
+    the same cluster's continuation."""
+    modern = parity_obligation_id(entry_point, "", "navigation", mode)
+    legacy = parity_obligation_id_legacy(entry_point, "", "navigation")
+    p = Path(root) / LOOP_ISSUED
+    if not p.is_file():
+        return modern
+    try:
+        issued = load_json(p)
+    except (OSError, ValueError):
+        return modern
+    if not isinstance(issued, dict):
+        return modern
+    items = {str(x) for x in (issued.get("items") or [])}
+    issued_mode = str(issued.get("security_mode") or "").strip().lower()
+    if legacy in items and (not issued_mode or issued_mode == mode):
+        return legacy
+    return modern
 
 
 def judged_parity_receipt(root: Path, run: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -3128,7 +3178,8 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     # redirect target that is dead, loops, or never settles within the bounded
     # walk (ADR-016). There is no FAILing verdict file for these -- the
     # comparison passed, by design -- so the row is the evidence. Walk every
-    # mode receipt plus the judged one; an obligation id is minted once.
+    # mode receipt plus the judged one; the obligation id includes the mode
+    # so a disabled dead redirect and an enabled dead redirect stay independent.
     seen_nav: set[str] = set()
     for mode, rec in _navigation_receipts_for_items(root, receipt):
         for row in navigation_rows(rec):
@@ -3137,7 +3188,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
             ep = str(row.get("entry_point") or "")
             if not ep:
                 continue
-            oid = parity_obligation_id(ep, "", "navigation")
+            oid = _issued_navigation_id(root, ep, mode)
             if oid in seen_nav:
                 continue
             seen_nav.add(oid)
@@ -3145,7 +3196,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
             fails = [f for f in (row.get("navigation_failures") or []) if isinstance(f, dict)]
             locus = ep_path.get(ep) or GLOBAL
             out.append({"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
-                        "entry_point": ep, "scenario": "", "verdict_file": PARITY_RECEIPT.as_posix(),
+                        "entry_point": ep, "scenario": "", "verdict_file": parity_receipt_file(mode).as_posix(),
                         "security_mode": mode,
                         "scenarios": sorted({str(x) for x in (row.get("scenarios") or []) if str(x)}) or parity_scenarios_of(rec, ep, ""),
                         "message_sha256": sha256_bytes(reason.encode("utf-8")),

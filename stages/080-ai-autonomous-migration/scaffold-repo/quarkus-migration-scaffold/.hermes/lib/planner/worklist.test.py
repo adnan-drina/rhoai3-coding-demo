@@ -831,6 +831,9 @@ def _parity_navigation_case() -> int:
             if it.get("gate") != "parity" or it.get("scenarios") != [spec["scenario"]]:
                 return _fail("it is measured by the parity gate, over the scenarios its row declares: %s"
                              % {k: it.get(k) for k in ("gate", "scenarios")})
+            if it.get("verdict_file") != "verification/parity/receipt.json" or it.get("security_mode") != "disabled":
+                return _fail("a disabled-mode navigation names receipt.json: %s"
+                             % {k: it.get(k) for k in ("verdict_file", "security_mode")})
             if target not in it["message"] or "dead" not in it["detail"]:
                 return _fail("the brief must name the address and what became of it: %s | %s" % (it["message"][:200], it["detail"]))
             blob = json.dumps(it["advice"])
@@ -3235,7 +3238,7 @@ def _receipt_v2_case() -> int:
         if len(nav) != 1 or nav[0]["path"] != ctl or nav[0]["scenarios"] != ["sc:read-entry"]:
             return _fail("a navigation obligation is read from navigation_obligations[]: %s" % nav)
         st = parity_state(json.loads((pdir / "receipt.json").read_text()))
-        if st["obligations"][parity_obligation_id(ep, "", "navigation")]["verdict"] != "FAIL" or st["entry_points"][ep] != "PASS":
+        if st["obligations"][parity_obligation_id(ep, "", "navigation", "disabled")]["verdict"] != "FAIL" or st["entry_points"][ep] != "PASS":
             return _fail("a passing redirect with a dead target keeps PASS and its navigation obligation is FAIL: %s" % st["entry_points"])
         pre = by.get(("sc:cors-enabled-preflight-p1", "PARITY_CORS"))
         if not pre or "WWW-Authenticate" not in pre["detail"] or ("sc:cors-enabled-preflight-p1", "PARITY") in by:
@@ -3355,7 +3358,7 @@ def _enabled_navigation_issuance_baseline_case() -> int:
         {"id": ep_other, "path": other_path},
     ]}
     cors_id = parity_obligation_id(ep_cors, enabled_sid, "cors")
-    nav_id = parity_obligation_id(ep_nav, "", "navigation")
+    nav_id = parity_obligation_id(ep_nav, "", "navigation", "enabled")
     other_id = parity_obligation_id(ep_other, other_sid, "response")
     with tempfile.TemporaryDirectory(prefix="nav-issuance-") as td:
         root = Path(td)
@@ -3408,6 +3411,8 @@ def _enabled_navigation_issuance_baseline_case() -> int:
         nav = next(i for i in items if i["id"] == nav_id)
         if nav.get("security_mode") != "enabled" or nav.get("cause") != "redirect-target-dead":
             return _fail("the omitted obligation is the enabled dead redirect: %s" % nav)
+        if nav.get("verdict_file") != "verification/parity/receipt-enabled.json":
+            return _fail("the enabled navigation names receipt-enabled.json: %s" % nav.get("verdict_file"))
         # dest rejection reproduced: that id outside the (wrong) issuance set still vetoes
         m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 1}
         common = dict(gate="parity", issued_items=[cors_id], prev_runtime={}, cur_runtime={},
@@ -3447,6 +3452,77 @@ def _enabled_navigation_issuance_baseline_case() -> int:
                            parity_discharged=discharged)
         if ok is not False or other_id not in why or "gate did not hold" not in why:
             return _fail("a genuine new FAIL still refuses: %s %s %s" % (ok, why, sorted(cur_reg)))
+    return 0
+
+
+def _navigation_mode_independence_case() -> int:
+    """Disabled and enabled navigation FAILs at the same endpoint stay
+    independently addressable. Each points at its own receipt. Passing one
+    mode leaves the other. A dest card already issued under the historical
+    no-mode digest keeps that id."""
+    import json
+    import tempfile
+
+    from planner.paths import LOOP_ISSUED, PARITY_DIR
+    from planner.worklist import parity_obligation_id, parity_obligation_id_legacy
+
+    ep = "ep:org.springframework.samples.petclinic.rest.RootRestController#redirectToSwagger(HttpServletResponse):http"
+    path = "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java"
+    bundle = {"entry_points": [{"id": ep, "path": path}]}
+    disabled_id = parity_obligation_id(ep, "", "navigation", "disabled")
+    enabled_id = parity_obligation_id(ep, "", "navigation", "enabled")
+    legacy_id = parity_obligation_id_legacy(ep, "", "navigation")
+
+    def nav_receipt(mode, verdict="FAIL"):
+        fail = verdict == "FAIL"
+        sid = "sc:read-root" if mode == "disabled" else "sc:auth-allowed-read-root"
+        doc = {"schema": "rhoai3.parity-receipt/v1", "security_mode": mode,
+               "verdict": "FAIL" if fail else "PASS", "receipt_sha256": mode + verdict,
+               "entry_points": [{"entry_point": ep, "verdict": "PASS",
+                                 "navigation": "failed" if fail else "ok", "scenarios": [sid]}]}
+        if fail:
+            doc["navigation_obligations"] = [{"entry_point": ep, "kind": "navigation", "verdict": "FAIL",
+                                              "scenarios": [sid], "reason": "redirect target http://d/ui is dead (404)",
+                                              "navigation_failures": [{"terminal": "dead", "final_status": 404,
+                                                                       "target": "http://d/ui"}]}]
+        else:
+            doc["navigation_obligations"] = []
+        return doc
+
+    with tempfile.TemporaryDirectory(prefix="nav-modes-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        pdir.mkdir(parents=True)
+        (pdir / "receipt.json").write_text(json.dumps(nav_receipt("disabled")))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(nav_receipt("enabled")))
+        nav = [i for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"]
+        ids = {i["id"] for i in nav}
+        if ids != {disabled_id, enabled_id} or disabled_id == enabled_id:
+            return _fail("both modes mint distinct ids: %s" % sorted(ids))
+        by = {i["security_mode"]: i for i in nav}
+        if by["disabled"].get("verdict_file") != "verification/parity/receipt.json":
+            return _fail("disabled names receipt.json: %s" % by["disabled"].get("verdict_file"))
+        if by["enabled"].get("verdict_file") != "verification/parity/receipt-enabled.json":
+            return _fail("enabled names receipt-enabled.json: %s" % by["enabled"].get("verdict_file"))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(nav_receipt("enabled", "PASS")))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {disabled_id}:
+            return _fail("enabled PASS leaves the disabled obligation: %s" % sorted(remain))
+        (pdir / "receipt.json").write_text(json.dumps(nav_receipt("disabled", "PASS")))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(nav_receipt("enabled")))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {enabled_id}:
+            return _fail("disabled PASS leaves the enabled obligation: %s" % sorted(remain))
+        (root / LOOP_ISSUED).parent.mkdir(parents=True, exist_ok=True)
+        (root / LOOP_ISSUED).write_text(json.dumps({"task_id": "t_fd744fef", "security_mode": "enabled",
+                                                    "items": [legacy_id], "gate_items": [legacy_id]}))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {legacy_id}:
+            return _fail("issued historical id is preserved: %s" % sorted(remain))
+        (pdir / "receipt.json").write_text(json.dumps(nav_receipt("disabled")))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {disabled_id, legacy_id}:
+            return _fail("issued enabled legacy plus independent disabled: %s" % sorted(remain))
     return 0
 
 
@@ -3502,7 +3578,7 @@ def _split_discharge_case() -> int:
             items = parity_items(root, bundle, receipt=judged)
             cur = {i["id"] for i in items}
             return progress(m, m, set(), set(), gate="parity", issued_items=[issued],
-                            prev_gate_items={rep_id, body_id, parity_obligation_id(nav_ep, "", "navigation")},
+                            prev_gate_items={rep_id, body_id, parity_obligation_id(nav_ep, "", "navigation", "disabled")},
                             cur_gate_items=cur, prev_runtime={}, cur_runtime={}, prev_parity=before,
                             cur_parity=(root / PARITY_DIR / "receipt.json").read_text() and json.loads((root / PARITY_DIR / "receipt.json").read_text()),
                             parity_remeasured={"cors-actual-accounts"}, parity_discharged=discharged), cur
@@ -3510,7 +3586,7 @@ def _split_discharge_case() -> int:
         (ok, why), cur = attempt("body 11aa vs 22bb", rep_id)
         if ok is not True:
             return _fail("the charset card that removed only the charset is ACCEPTED: %s" % why)
-        if parity_obligation_id(nav_ep, "", "navigation") not in cur or body_id not in cur or rep_id in cur:
+        if parity_obligation_id(nav_ep, "", "navigation", "disabled") not in cur or body_id not in cur or rep_id in cur:
             return _fail("G2: the rebuild from the scoped receipt keeps the carried navigation and the body obligation: %s" % sorted(cur))
         (ok, why), _ = attempt("body 33cc vs 22bb", rep_id)
         if ok is not False or "33cc" not in why:
@@ -3922,7 +3998,7 @@ def _partial_package_scope_case():
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):
