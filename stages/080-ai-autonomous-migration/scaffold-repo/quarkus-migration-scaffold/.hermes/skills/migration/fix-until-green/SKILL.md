@@ -43,6 +43,12 @@ already restored it, then run acceptance verification **before** `advance.py`.
 Restoration does not restore candidate verification; current reports describe
 the accepted tree. A premature `LOOP_CANDIDATE_CHANGED` on this pending card
 means reverify, not reimplement or mint another attempt.
+If the latest diagnosis identifies a repair inside the card's write set, make
+that repair on the restored candidate before verifying. A pending record takes
+precedence over an "issued cluster no longer open" hint: disappearance alone
+does not prove the gate passed. Follow an explicit `REFUSE`/`FAIL` by resolving
+its precondition; retry an interrupted advance once only when its verdict is
+unknown. An unchanged retry cannot fix stale verification.
 
 Once the brief and reference establish the failing API and its replacement,
 make a coherent candidate and verify it. Re-read unchanged inputs only to

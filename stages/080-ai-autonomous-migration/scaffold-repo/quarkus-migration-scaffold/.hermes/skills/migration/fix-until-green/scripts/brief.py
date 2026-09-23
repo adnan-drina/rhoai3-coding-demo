@@ -81,9 +81,11 @@ ADVANCE_RULE = (
     "advance.py rule: run it ONCE per verify, through the terminal tool with its `timeout` parameter set to 600 (the "
     "tool's foreground maximum; the default 180 is not enough for a rebuild and a mint). It prints one `advance: ...` "
     "progress line per phase, and the verdict line (OK: ACCEPTED / REVERTED / CONTINUE / VERIFICATION_PENDING / "
-    "DEFERRED) is on the record the moment it is printed. After ANY non-zero, killed or truncated advance.py, do not "
-    "decide from the exit code: run advance.py again -- it is idempotent and answers `OK: ACCEPTED already (step N, "
-    "commit X)` or `REVERTED already` -- or read verification/loop/steps.json. Never kanban_block a card whose step is "
+    "DEFERRED) is on the record the moment it is printed. Follow an explicit verdict even when its exit code is "
+    "nonzero. For REFUSE/FAIL, resolve the named precondition before another acceptance call; an unchanged retry "
+    "does not repair stale verification. Retry the same invocation once only when interrupted or truncated with "
+    "no conclusive verdict, or read verification/loop/steps.json: a recorded acceptance/rejection is idempotent. "
+    "Never kanban_block a card whose step is "
     "recorded accepted (K2 refuses it): kanban_complete is its terminator."
 )
 
@@ -847,11 +849,21 @@ def load_issued(root: Path) -> dict:
     return doc if isinstance(doc, dict) else {}
 
 
-NOT_OPEN_NEXT = ("Your issued cluster is no longer on the open work list: the last verification measured its "
-                 "obligations as gone. That is for advance.py to judge, not for you: run "
+NOT_OPEN_NEXT = ("Your issued cluster is no longer on the open work list; this alone does not prove its gate passed. "
+                 "That is for advance.py to judge, not for you: run "
                  "`bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance` if the "
                  "candidate changed since, then `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py "
                  "--root . --cluster %s --card $HERMES_KANBAN_TASK`, and follow its verdict. Do not kanban_block for this.")
+
+PENDING_NEXT = (
+    "This card has a retained VERIFICATION_PENDING candidate; disappearance from the work list is not acceptance. "
+    "Read its pending reason and the latest diagnosis first. Restore with restore-pending.py --root . --cluster %s "
+    "only if the candidate is still set aside; do not overwrite restored edits. If the diagnosis identifies an "
+    "in-scope repair, apply it to the retained candidate before verification. If a prerequisite outside the scope "
+    "is still unresolved, keep the candidate and report that blocker. When the candidate or prerequisite is repaired, "
+    "run fresh run-verify.sh --mode acceptance, then advance.py once and follow its verdict. Restoring a candidate "
+    "does not restore its verification. Never retry an explicit stale-evidence refusal unchanged. "
+)
 
 
 def _issued_not_open(issued: dict, doc: dict) -> dict:
@@ -989,6 +1001,11 @@ def main(argv: list[str] | None = None) -> int:
         brief["issued_not_open"] = dict(cluster["not_open"])
         brief["procedure"] = cluster["not_open"]["next"]
     if pending:
+        recovery_next = PENDING_NEXT % cluster["id"]
+        brief["procedure"] = recovery_next
+        if cluster.get("not_open"):
+            cluster["not_open"]["next"] = recovery_next
+            brief["issued_not_open"]["next"] = recovery_next
         brief["verification_pending"] = {
             "card": pending.get("card"),
             "cause": pending.get("cause"),
@@ -996,6 +1013,7 @@ def main(argv: list[str] | None = None) -> int:
             "blocked": pending.get("blocked") or [],
             "changed": pending.get("changed") or pending.get("stored") or [],
             "restore": "python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s" % cluster["id"],
+            "next": recovery_next,
         }
     if repo:
         brief["repository"] = repo

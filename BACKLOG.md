@@ -46,6 +46,16 @@
   same card was unblocked with its candidate and loop attempt preserved.
   This was platform recovery, not another application repair or a package pass.
   The gateway stall's underlying cause remains unproven; no OOM was recorded.
+- Run 29 retried stale acceptance before applying the diagnosed CDI repair,
+  then recovered and began editing the delegates. It had not read the brief
+  before those retries. A separate inspection reproduced contradictory brief
+  guidance: every nonzero advance prompted another call, and a missing issued
+  cluster overrode pending recovery with ordinary acceptance continuation.
+  The brief now prioritizes the pending diagnosis and a fresh verification;
+  only an interrupted invocation with an unknown verdict merits one retry.
+  Tests cover present/absent clusters with and without retained candidates.
+  This is a guidance correction, not a changed acceptance rule or a proven
+  explanation for run 29; installation waits for a safe task boundary.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks

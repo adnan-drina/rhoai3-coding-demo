@@ -86,6 +86,14 @@ candidate with `restore-pending.py`, unblock the same native card, and re-run re
 verification and `advance.py`. This spends no new attempt and does not approve the
 candidate. Keep the original run deadline and append the intervention record.
 
+Pending recovery takes precedence when the issued cluster disappears from the
+work list. Read the retained diagnostic first: if it identifies an in-scope
+repair, apply it to the restored candidate before fresh acceptance verification.
+An explicit stale-evidence refusal is not an interrupted transaction to retry;
+resolve its precondition. Retry an interrupted `advance.py` once only when its
+verdict is unknown, or inspect the recorded verdict. A nonzero exit alone does
+not justify another acceptance call.
+
 When a retained package candidate exposes an unrelated failure outside its
 scope, a changed first error is not a package PASS. The Operator may repair
 the measured prerequisite on the accepted tree using `operator-step.py

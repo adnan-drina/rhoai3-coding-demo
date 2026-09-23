@@ -476,7 +476,60 @@ def _verify_runs_brief_case() -> int:
     return 0
 
 
+def _pending_recovery_case() -> int:
+    """A retained repair can lose its original item while its gate still fails.
+
+    v10 run29 followed the not-open procedure into stale advance retries instead
+    of correcting the candidate. Pending recovery must win in every next-action
+    field, without changing the non-pending issued-card continuation.
+    """
+    import io
+    from contextlib import redirect_stdout
+    import brief as mod
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+
+    with tempfile.TemporaryDirectory(prefix="pending-brief-") as td:
+        root = Path(td)
+        cid = "u:retained"
+        cluster = {"id": cid, "kind": "runtime", "gate": "package",
+                   "write_set": ["src/main/java/Adapter.java"], "items": ["runtime:fragment"]}
+        issued = dict(cluster, schema="rhoai3.loop-issued/v1", cluster=cid, task_id="t_pending")
+        write_canonical(root / LOOP_ISSUED, issued)
+        row = {"cluster": cid, "card": "t_pending", "cause": "unproven-repair",
+               "reason": "package now reports ambiguous injections", "changed": cluster["write_set"]}
+        for present in (True, False):
+            write_canonical(root / WORKLIST, {
+                "head": cid if present else "", "clusters": [cluster] if present else [],
+                "items": [], "not_counted": [], "measure": {"tuple": [0, 0, 0], "known": True}})
+            for pending in (True, False):
+                write_canonical(root / LOOP_DIR / "steps.json", {"pending": [row] if pending else []})
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    rc = mod.main(["--root", str(root), "--cluster", cid])
+                if rc:
+                    return _fail("issued recovery brief must render")
+                doc = json.loads(out.getvalue())
+                if pending:
+                    recovery = doc["verification_pending"].get("next")
+                    if not recovery or doc["procedure"] != recovery:
+                        return _fail("pending recovery must override the procedure, including a missing original item")
+                    if not present and (doc["issued_not_open"]["next"] != recovery or
+                                        doc["cluster"]["not_open"]["next"] != recovery):
+                        return _fail("all pending next-action fields must agree")
+                    if "in-scope repair" not in recovery or "fresh" not in recovery:
+                        return _fail("recover the diagnosed candidate and require fresh acceptance evidence")
+                elif "verification_pending" in doc:
+                    return _fail("non-pending card must keep ordinary continuation")
+                elif not present and doc["procedure"] != mod.NOT_OPEN_NEXT % cid:
+                    return _fail("non-pending disappearance still goes to the acceptance judge")
+    if "After ANY non-zero" in mod.ADVANCE_RULE or "only when interrupted" not in mod.ADVANCE_RULE:
+        return _fail("explicit refusals must not trigger blind advance retries")
+    return 0
+
+
 def main() -> int:
+    if _pending_recovery_case():
+        return 1
     if _scope_rule_brief_case():
         return 1
     if _request_rejection_brief_case():
