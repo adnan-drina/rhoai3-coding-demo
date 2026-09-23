@@ -1324,6 +1324,12 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
     if status:
         exit_conditions.append("the request answers %s, the status the SOURCE answered; the destination answers %s today."
                                % (status["want"], status["have"]))
+        if str(status["want"]).isdigit() and 300 <= int(status["want"]) < 400:
+            exit_conditions.append(
+                "for a JAX-RS Response return type, construct Response.status(%s).location(target).build(), where target "
+                "preserves the captured Location. seeOther selects 303 and temporaryRedirect selects 307; choose neither "
+                "when the source's status differs. Complete the builder with .build(): a ResponseBuilder is not a Response."
+                % status["want"])
     if location:
         want, have, raw = location["want"], location["have"], location["source"]
         exit_conditions.append(

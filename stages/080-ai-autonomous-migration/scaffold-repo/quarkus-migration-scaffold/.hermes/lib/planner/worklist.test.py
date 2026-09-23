@@ -752,7 +752,8 @@ def _parity_advice_case() -> int:
             for needed in (want_loc, raw_loc, have_loc, "ORIGIN mapped",
                            "%r" % spec["root_path"], "already carries its slashes",
                            "quarkus.swagger-ui.always-include=true", "quarkus.swagger-ui.path",
-                           "packaged", "amend-scope.py"):
+                           "packaged", "amend-scope.py", "Response.status(302).location(target).build()",
+                           "seeOther selects 303", "temporaryRedirect selects 307", "ResponseBuilder is not a Response"):
                 if needed not in blob:
                     return _fail("the redirect advice must state %r: %s" % (needed, blob[:900]))
             if red["advice"].get("config_locus") != APP_PROPERTIES:

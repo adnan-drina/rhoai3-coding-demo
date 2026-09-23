@@ -2,6 +2,17 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- The Root scope repair was exercised by attempt 4: the full-ID amendment
+  admitted `application.properties` before its edit. The worker then repeated
+  attempt 1's incomplete `ResponseBuilder` return and was correctly REVERTED.
+  Attempt 5 is active. Response advice now includes a completed JAX-RS builder
+  using the captured status and distinguishes the 303/307 convenience methods;
+  this guidance is tested locally but not installed into the active worker.
+- Both scope corrections passed destination tests. A metadata-only disposition
+  cleared the Root deferral with the accepted product tree unchanged; all three
+  rejected attempts stayed recorded and the existing clearance rule raised the
+  total budget to six. K4's board comparator was EQUAL (24/24), then minted
+  `t_f68eca8d` as attempt 4. This is assisted continuation, not a fresh run.
 - Root attempt 2 was REVERTED with 303/302 and dead-navigation differences.
   Its scope requests used a full parity ID, but the parser required a redundant
   `parity:parity:` prefix and refused before checking the file relationship.
