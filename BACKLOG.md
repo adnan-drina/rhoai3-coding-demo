@@ -2,6 +2,18 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Bounded M5 delivery is an assisted continuation after M4 close, not an
+  extension of the original migration deadline. `resume-after-m4.py` records
+  `verification/delivery/eligibility.json` and names
+  `start-m5-delivery.py`; the M4 worker still must not dest-dispatch M5.
+  Duplicate start reuses `m5:<stage>:<close_card>:<candidate16>`. Proof is
+  candidate SHA → app-push PipelineRun → image digest → ready Deployment →
+  HTTPS Route → live checks. A green PipelineRun is not enough (`deploy-app`
+  can exit 0 with no Deployment). A reachable app does not erase outstanding
+  qualifications and is not a full M5 `ACCEPT`. Application values live in
+  `delivery.yaml`. Preserve the closed v10 migration record; do not reopen it
+  for harness-only copies.
+
 - v10 dest is an **assisted overlay** beyond published golden `61ac38db`.
   Provenance/navigation recovery and CORS bare-gating are installed. On
   packaged artifact `c66b1e9d…` both ADR-014 modes measure 0 FAIL: enabled

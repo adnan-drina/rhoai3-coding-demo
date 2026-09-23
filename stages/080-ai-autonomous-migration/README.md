@@ -14,7 +14,7 @@ The harness must be reusable from the outset. PetClinic is the current proving a
 
 **Historically demonstrated demo spine (Acts A–E):** provision a governed migration workspace → establish MTA migration evidence → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. Spec Kit is **removed**. Migration is one mechanical loop (SAD v3, fix-until-green): tools compute a work list (MTA incidents, compiler diagnostics, failing tests, parity), the model fixes one file cluster per card, and a strict progress measure accepts, retains an unproven candidate, or reverts each step. It is implemented and locally fixture-tested (acceptance is a transaction over a verified candidate; every measurement records whether its tool ran) but gated: until `pins.planner.activation` is flipped by an Operator GO, dest-init mints **M1 ANALYZE only** and M2 refuses. Real toolchain execution, autonomous migration, and runtime parity are unproven; M2 is not demonstrated.
 
-Implementation architecture (design, M1–M5, governance, current implementation vs target) lives in [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md). This README is the demo walkthrough. Do not copy either file into `scaffold-repo/`. Agents: consume and contribute using the SAD [§14](SOLUTION-ARCHITECTURE.md#14-documentation-and-contribution-boundaries). Full M5 factory ship is **not** claimed DEMONSTRATED for the Owner/Pet slice yet.
+Implementation architecture (design, M1–M5, governance, current implementation vs target) lives in [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md). This README is the demo walkthrough. Do not copy either file into `scaffold-repo/`. Agents: consume and contribute using the SAD [§14](SOLUTION-ARCHITECTURE.md#14-documentation-and-contribution-boundaries). Bounded M5 delivery (prepare → existing `app-push` → live Route checks) is implemented; full M5 `ACCEPT` / factory ship is **not** claimed DEMONSTRATED while release qualifications remain.
 
 ---
 
@@ -173,7 +173,8 @@ unless observed in *this* environment.
 | `hermes dashboard` public `:9119` (`hermes-dash`) | **DEFINED** (operator appendix / runbook only; postStart best-effort, overlay `HERMES_WEB_DIST`) — **not** demo surface; not required for DEFINED→DEMONSTRATED |
 | Dest named profiles `orchestrator` + `implementer` + `reviewer` | **DEFINED** in GitOps (create without `--clone`; `review_dispatch` true with reviewer). Dest-armed measurement **not** this sitting. OBJECT dest-apply dest-14. |
 | Owner/Pet → M4 `PROVISIONAL_ACCEPT` | **DEMONSTRATED** |
-| Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED |
+| Owner/Pet → M5 delivery through `app-push` + live Route | **IMPLEMENTED** (harness); live dest demonstration is per-run |
+| Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED (outstanding qualifications remain; kill-ratio pin required for `ACCEPT`) |
 
 Evidence: `harness-refactoring/measurements/hermes-native-tracking/VERIFY.md`;
 runbook: `harness-refactoring/docs/DEMO-SURFACE-RUNBOOK.md`.

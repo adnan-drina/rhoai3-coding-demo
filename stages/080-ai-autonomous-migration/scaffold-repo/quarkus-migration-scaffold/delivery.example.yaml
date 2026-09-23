@@ -1,0 +1,19 @@
+# Delivery contract — application values, not harness defaults.
+#
+# Copy to delivery.yaml at the destination root and fill from this project's
+# OpenAPI, decisions.yaml security section, and pipeline namespace. The M5
+# scripts read these fields; they do not invent PetClinic (or any other
+# specimen) paths.
+delivery:
+  namespace: ""          # OpenShift project that runs app-push (usually <repo>-dev)
+  repo: ""               # Deployment/Service/Route name
+  swagger_path: /q/swagger-ui
+  openapi_path: /q/openapi
+  reads: []              # [{id, method, path}, ...]
+  crud: {}               # {create: {method, path, body}, ...}; required for M5-C
+  auth:
+    mode: ""             # disabled | enabled; must match decisions.yaml
+    header_from_env: ""  # name of the env var that holds the credential reference
+  cors:
+    origin: ""
+    expect_grant: false

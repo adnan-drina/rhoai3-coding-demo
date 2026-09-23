@@ -1,0 +1,13 @@
+{
+  "kind": "m5-prepare",
+  "artifact": "m5-candidate",
+  "steps": [
+    {
+      "id": "prepare-release-candidate",
+      "backing": "native",
+      "native": "prepare-release-candidate.py",
+      "producer": true,
+      "keep": ["verification/delivery/candidate.json", "verification/delivery/eligibility.json"]
+    }
+  ]
+}

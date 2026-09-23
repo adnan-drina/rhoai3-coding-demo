@@ -56,6 +56,16 @@ LOOP_STEPS = LOOP_DIR / "steps.json"
 LOOP_DEFERRED = LOOP_DIR / "deferred.json"
 LOOP_STATE = LOOP_DIR / "state.json"
 LOOP_PENDING_FILES = LOOP_DIR / "pending-files"
+DELIVERY_DIR = VERIFICATION_DIR / "delivery"
+DELIVERY_ELIGIBILITY = DELIVERY_DIR / "eligibility.json"
+DELIVERY_START = DELIVERY_DIR / "start.json"
+DELIVERY_CANDIDATE = DELIVERY_DIR / "candidate.json"
+DELIVERY_PIPELINE = DELIVERY_DIR / "pipeline.json"
+DELIVERY_DEPLOYMENT = DELIVERY_DIR / "deployment.json"
+DELIVERY_LIVE = DELIVERY_DIR / "live.json"
+DELIVERY_BUDGET = DELIVERY_DIR / "budget.json"
+M5_VERDICT = Path("evidence") / "verdicts" / "m5-verdict.json"
+DELIVERY_CONTRACT = Path("delivery.yaml")
 
 PRODUCER_NAMES = ("freeze", "build", "jdk-model", "mta", "bootstrap")
 

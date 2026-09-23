@@ -1,0 +1,19 @@
+{
+  "kind": "m5-push",
+  "artifact": "m5-deployment",
+  "steps": [
+    {
+      "id": "observe-app-push",
+      "backing": "native",
+      "native": "observe-app-push.py",
+      "keep": ["verification/delivery/pipeline.json"]
+    },
+    {
+      "id": "assert-deployed-app",
+      "backing": "native",
+      "native": "assert-deployed-app.py",
+      "producer": true,
+      "keep": ["verification/delivery/deployment.json"]
+    }
+  ]
+}

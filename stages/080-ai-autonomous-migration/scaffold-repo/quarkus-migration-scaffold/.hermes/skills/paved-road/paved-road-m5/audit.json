@@ -1,0 +1,69 @@
+{
+  "artifact": "m5-verdict",
+  "kind": "m5-delivery",
+  "last_wins_across_needles": false,
+  "last_wins_within_needle": true,
+  "producer": "compose-m5-verdict",
+  "silence_fails": true,
+  "source": "steps.json",
+  "steps": [
+    {
+      "backing": "native",
+      "id": "start-m5-delivery",
+      "keep": [
+        "verification/delivery/start.json",
+        "verification/delivery/eligibility.json"
+      ],
+      "needle": "start-m5-delivery.py"
+    },
+    {
+      "backing": "native",
+      "id": "prepare-release-candidate",
+      "keep": [
+        "verification/delivery/candidate.json"
+      ],
+      "needle": "prepare-release-candidate.py"
+    },
+    {
+      "backing": "native",
+      "id": "observe-app-push",
+      "keep": [
+        "verification/delivery/pipeline.json"
+      ],
+      "needle": "observe-app-push.py"
+    },
+    {
+      "backing": "native",
+      "id": "assert-deployed-app",
+      "keep": [
+        "verification/delivery/deployment.json"
+      ],
+      "needle": "assert-deployed-app.py"
+    },
+    {
+      "backing": "native",
+      "id": "live-acceptance",
+      "keep": [
+        "verification/delivery/live.json"
+      ],
+      "needle": "live-acceptance.py"
+    },
+    {
+      "backing": "native",
+      "id": "compose-m5-verdict",
+      "keep": [
+        "evidence/verdicts/m5-verdict.json"
+      ],
+      "needle": "compose-m5-verdict.py",
+      "producer": true
+    },
+    {
+      "backing": "skill",
+      "id": "check-release-readiness",
+      "keep": [],
+      "needle": "check-release-readiness"
+    }
+  ],
+  "unmatched_exit_1_fails": true,
+  "worker_receipts_are_not_proof": true
+}

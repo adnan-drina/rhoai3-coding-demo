@@ -133,6 +133,7 @@ from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E
 from planner.cards import CLOSE_ID  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_DIR, LOOP_ISSUED, PARITY_DIR  # noqa: E402
 from planner.worklist import build_worklist, head_cluster, parity_items  # noqa: E402
+from m5_delivery import ENTRY_CMD, record_eligibility  # noqa: E402
 
 M4_VERDICT = Path("evidence") / "verdicts" / "m4-verdict.json"
 # bind-m4-verdict.py's record of the verdict AS BOUND (digest + copy + bindings)
@@ -523,6 +524,10 @@ def close_out(root: Path, args: Any, verdict: dict, preceipt: dict, steps: dict,
         print("  - outstanding (%s): %s" % (row["kind"], row["detail"]))
     print("OK: run CLOSED on %s for card %s — closed is not shipped: %d item(s) remain before a release → %s"
           % (token, card_id, len(left), path))
+    elig_path = record_eligibility(root)
+    print("M5 delivery is a separate assisted continuation (do not dest-dispatch M5 from this card): %s"
+          % ENTRY_CMD)
+    print("  eligibility → %s" % elig_path)
     return 0
 
 

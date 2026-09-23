@@ -57,6 +57,8 @@ M4_ORACLES = "capture-source-oracles"
 M4_RUNNER = "run-m4-pre-verdict.sh"
 M4_PRODUCER = "compose-m4-verdict"
 M4_LINT = "check-release-readiness"
+M5_START = "start-m5-delivery.py"
+M5_PRODUCER = "compose-m5-verdict.py"
 M3_ORDER = ("brief.py", "run-verify.sh", "advance.py")
 M3_PRODUCER_NATIVE = "advance.py"
 LOOP_STEPS_REL = "verification/loop/steps.json"
@@ -249,6 +251,24 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
             errors.append("%s: the pre-verdict runner must precede %s (the verdict is composed from measured exits)" % (loc, M4_PRODUCER))
         if idx.get(M4_LINT, 0) < idx.get(M4_PRODUCER, 99):
             errors.append("%s: %s lints the verdict and must follow %s" % (loc, M4_LINT, M4_PRODUCER))
+    if kind == "m5-delivery":
+        prod = next((s for s in steps if isinstance(s, dict) and s.get("producer") is True), None)
+        if prod is not None and prod.get("native") != M5_PRODUCER:
+            errors.append("%s: m5-delivery producer must be native %s (checkers never author the verdict)" % (loc, M5_PRODUCER))
+        natives = [str(s.get("native")) for s in steps if isinstance(s, dict) and s.get("backing") == "native"]
+        for name in (M5_START, "prepare-release-candidate.py", "observe-app-push.py", "assert-deployed-app.py", "live-acceptance.py", M5_PRODUCER):
+            if name not in natives:
+                errors.append("%s: m5-delivery must include native %s" % (loc, name))
+        if natives and natives[0] != M5_START:
+            errors.append("%s: m5-delivery must start with %s (eligibility-checked mint; M4 never dest-dispatches this)" % (loc, M5_START))
+        idx = {}
+        for i, s in enumerate(steps):
+            if not isinstance(s, dict):
+                continue
+            name = str(s.get("skill") or s.get("native") or "")
+            idx.setdefault(name, i)
+        if idx.get(M4_LINT, 0) < idx.get(M5_PRODUCER, 99):
+            errors.append("%s: %s lints the M5 verdict and must follow %s" % (loc, M4_LINT, M5_PRODUCER))
     if kind == "m3-loop":
         first = steps[0] if isinstance(steps[0], dict) else {}
         if first.get("backing") != "skill" or first.get("skill") != M3_SKILL:
