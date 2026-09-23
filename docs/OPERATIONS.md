@@ -61,6 +61,18 @@ does not establish an accepted baseline for changed `decisions.yaml`.
 Package/startup and parity remain separate required evidence; `[0,0,0]` is
 not completion.
 
+When an exhausted worker is superseded by an Operator product repair, preserve
+its budget. Record the repair using `operator-step.py --no-mint`, then use
+`--disposition-only --takeover-deferred <cluster>` with the same Operator.
+This requires the recorded repair at HEAD, a clean, freshly verified tree,
+an empty measured work list, passing package/startup, and admission blocked
+only by the named deferral. It appends a takeover, keeps all attempts and
+clearances unchanged, and mints nothing. This releases the hold so the whole
+artifact can be compared; it does not establish parity. Run the sealed
+`run-parity.py` comparison and `refresh-accepted-parity.py --no-mint` before
+K4 continuation. A failed comparison remains an obligation; the takeover
+grants no new worker attempts.
+
 `AUTO_START_MIGRATION=false` suppresses workspace startup. Once M1 has been
 started, its final step uses `autostart-migration.sh --root /projects/modernized
 --after-m1 "$HERMES_KANBAN_TASK"` to continue that native task. The script verifies

@@ -2,6 +2,16 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Root attempt 6 was DEFERRED with a doubled Location; all six attempts remain
+  spent. Operator step `5b4deef1eebd` changes only the Root redirect and Swagger
+  UI properties. Package and startup pass on the repaired artifact; parity is
+  not yet qualified. An Operator takeover disposition now releases only the
+  deferral admission hold after a recorded, verified product repair, preserving
+  the exhausted budget and making no parity claim. It never mints. Local tests
+  cover dirty/stale evidence, a non-Operator predecessor, admission integrity,
+  unchanged attempt history and unchanged parity evidence. Destination install
+  and the full sealed comparison remain pending.
+
 - Root attempt 5 introduced an unavailable Servlet API and was REVERTED.
   The queued final card `t_55f6cb24` was held through native Kanban before
   dispatch to install the concrete redirect guidance. The same guidance is

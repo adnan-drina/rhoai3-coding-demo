@@ -31,6 +31,10 @@ What it does (every check refuses before it changes anything):
     product tree (a harness correction): no commit, no step, the product tree
     must be clean and the current verification must describe it. The same
     lineage is recorded; the budget rises the same way;
+  * --disposition-only --takeover-deferred releases the admission hold after
+    a recorded, verified Operator product repair, without increasing the
+    worker's budget. It refuses other admission blockers and never mints or
+    claims parity. The whole repaired artifact must still be compared;
   * commits exactly the changed product paths with the operator and reason;
   * RE-MEASURES the tree (run-verify.sh; --verify-cmd overrides for tests);
   * appends a step {verdict: operator, adr, operator, reason, commit,
@@ -163,6 +167,70 @@ def _disposition_only(root: Path, args: argparse.Namespace, steps: dict, deferre
     return _mint(root, args.hermes)
 
 
+def _takeover_only(root: Path, args: argparse.Namespace, steps: dict, deferred: dict, changed: list[str], beside: dict | None) -> int:
+    """Hand a stopped worker's problem to an already recorded Operator repair.
+
+    This is not a parity verdict. It releases the admission hold so the repaired
+    artifact can be compared, without buying another worker retry cycle. M4 and
+    every remaining obligation still require their ordinary evidence.
+    """
+    if not args.disposition_only or changed or beside:
+        return _refuse("--takeover-deferred requires --disposition-only on a clean accepted tree with no pending candidate")
+    head = git(root, "rev-parse", "HEAD").stdout.strip()
+    if head != str((steps.get("steps") or [{}])[-1].get("commit") or ""):
+        return _refuse("the product HEAD is not the last recorded accepted step")
+    state = load_state(root) or {}
+    if state.get("candidate_sha256") != candidate_sha256(root):
+        return _refuse("takeover needs current verification of the accepted tree")
+    last = (steps.get("steps") or [{}])[-1]
+    if last.get("verdict") != "operator" or last.get("operator") != args.operator or not last.get("changed"):
+        return _refuse("takeover requires a recorded product repair by this Operator")
+    cur = load_json(root / WORKLIST)
+    from planner.canonical import digest
+    if cur.get("candidate_sha256") != state.get("candidate_sha256") or digest(cur) != digest(build_worklist(root, write=False)):
+        return _refuse("takeover needs a work list rebuilt from the current evidence")
+    measure = cur.get("measure") or {}
+    if (not measure.get("known") or measure.get("tuple") != [0, 0, 0]
+            or cur.get("items") or cur.get("clusters")
+            or cur.get("blocked_clusters") or measure.get("blocked") or not (cur.get("runtime") or {}).get("ready")):
+        return _refuse("takeover needs an empty known work list and passing package/boot gates; parity still requires comparison")
+    from planner.admission import compose_receipt, verify_receipt
+    receipt, gaps = verify_receipt(root, require_admitted=False)
+    blockers = (receipt or {}).get("blocks") or []
+    requested = set(args.takeover_deferred)
+    if (gaps or (receipt or {}).get("receipt_digest") != compose_receipt(root).get("receipt_digest")
+            or not blockers or any(b.get("class") != "MANUAL_CLUSTER" or b.get("subject") not in requested for b in blockers)):
+        return _refuse("takeover requires intact admission with only the named deferral blockers: %s" % (gaps or blockers))
+    resolved = list(args.takeover_deferred)
+    reasons = dict(deferred.get("reasons") or {})
+    for cluster in resolved:
+        key = retry_key_for(steps, cluster)
+        steps.setdefault("deferral_takeovers", []).append({
+            "cluster": cluster, "retry_key": key, "kind": "recorded-operator-repair",
+            "commit": head, "candidate_sha256": state["candidate_sha256"],
+            "receipt_digest": (receipt or {}).get("receipt_digest"),
+            "operator": args.operator, "reason": args.reason,
+            "at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "attempts": attempts_spent(steps, cluster, key), "measure": measure,
+            "cards": [str(r["card"]) for r in steps.get("rejected") or [] if r.get("card")
+                      and (r.get("cluster") == cluster or r.get("retry_key") == key)],
+            "was_deferred_because": reasons.get(cluster, ""), "retry_budget_raised": False, "parity_proven_by_disposition": False,
+        })
+    # This is a distinct disposition, never a budget-raising clearance. Leave
+    # all attempts, rejected rows, cards and earlier clearances byte-equivalent.
+    save_steps(root, steps)
+    deferred["clusters"] = [c for c in deferred.get("clusters") or [] if c not in resolved]
+    deferred["reasons"] = {k: v for k, v in reasons.items() if k not in resolved}
+    save_deferred(root, deferred)
+    rebuilt = build_worklist(root)
+    rec = pipeline.admit(root)
+    publish_loop_state(root, rebuilt)
+    if rec.get("status") != "ADMITTED":
+        return _refuse("takeover recorded but admission %s: %s" % (rec.get("status"), rec.get("reasons")))
+    print("OK: OPERATOR TAKEOVER %s at accepted step %s; attempts and budget unchanged; nothing minted" % (", ".join(resolved), head[:12]))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
@@ -170,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reason", required=True)
     ap.add_argument("--clear-deferred", action="append", default=[], help="a cluster deferred to a human (ADR-002 max_attempts) whose cause this change removes: drop it from verification/loop/deferred.json and append a disposition that raises its budget by what it had spent (attempts and cards are never deleted), so the loop can issue it again; repeatable, and refused for a cluster that is not deferred")
     ap.add_argument("--disposition-only", action="store_true", help="record the --clear-deferred disposition WITHOUT a product change (the cause was a harness defect, since corrected): no commit and no step; refused when the product tree has changes or the current verification does not describe it")
+    ap.add_argument("--takeover-deferred", action="append", default=[], help="with --disposition-only, release only the admission hold for a recorded, verified Operator product repair; preserve the exhausted budget, make no parity claim and never mint")
     ap.add_argument("--author", default="", help="the seat that wrote the change, when it is not the operator (recorded, never inferred)")
     ap.add_argument("--reviewer", default="", help="the seat that independently reviewed the change; required, and distinct from --operator, when the change touches test sources (ADR-008)")
     ap.add_argument("--adr", default="", help="the accepted ADR(s) this change applies, e.g. ADR-004,ADR-005")
@@ -177,6 +246,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-mint", action="store_true")
     ap.add_argument("--hermes", default="hermes")
     args = ap.parse_args(argv)
+    if args.clear_deferred and args.takeover_deferred:
+        return _refuse("choose retry clearance or Operator takeover, not both")
     root = Path(args.root).resolve()
     steps = load_steps(root)
     if not steps.get("steps"):
@@ -186,10 +257,12 @@ def main(argv: list[str] | None = None) -> int:
         return refused
     deferred = load_deferred(root)
     open_clusters = list(deferred.get("clusters") or [])
-    unknown = [c for c in args.clear_deferred if c not in open_clusters]
+    unknown = [c for c in args.clear_deferred + args.takeover_deferred if c not in open_clusters]
     if unknown:
         return _refuse("--clear-deferred names %s, which %s deferred; open deferrals: %s" % (", ".join(unknown), "is not" if len(unknown) == 1 else "are not", ", ".join(open_clusters) or "none"))
     changed = product_paths_changed(root)
+    if args.takeover_deferred:
+        return _takeover_only(root, args, steps, deferred, changed, beside)
     if args.disposition_only:
         return _disposition_only(root, args, steps, deferred, open_clusters, changed, beside)
     if not changed:
