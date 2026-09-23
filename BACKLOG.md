@@ -2,6 +2,18 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- POM parity attempt 1 (`t_844e2bdd`) removed the generated-body rejection:
+  the candidate-bound comparison then reported only Content-Type parameter
+  differences for Owner create/update. Acceptance correctly refused the two
+  newly reported obligations and restored the candidate; the attempt remains
+  spent. Retry `t_e5264d79` received native guidance to use the existing
+  controller scope amendment and verify the complete response contract.
+  The worker procedure now directs parity diagnosis to the current bound
+  runner results, distinguishes body agreement from full parity, and forbids
+  repeating an unchanged candidate after a new-obligation rejection. This
+  procedure clarification is local until an idle destination installation;
+  it changes no acceptance rule or retry budget.
+
 - Root attempt 6 was DEFERRED with a doubled Location; all six attempts remain
   spent. Operator step `5b4deef1eebd` changes only the Root redirect and Swagger
   UI properties. Package and startup pass on the repaired artifact. The fresh full

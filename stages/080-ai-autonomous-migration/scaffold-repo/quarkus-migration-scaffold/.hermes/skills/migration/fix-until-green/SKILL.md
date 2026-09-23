@@ -93,6 +93,17 @@ If it persists, block with that evidence. Do not add a separate Maven run,
 background verification, or try shell/path variants without a diagnosed
 cause. Normal compiler errors are measurements, not verifier failures.
 
+For parity, start with this invocation's `verification/parity/_run.json`:
+check its card/candidate binding and `receipt.composed_by_this_run`, then read
+each selected `scenarios.results[].reason`. A matching body does not settle
+status, headers, effects or navigation. Older scenario files in another mode
+or directory are not this candidate's evidence. If advance rejects newly
+reported obligations, the next attempt must address those differences too;
+repeating the same edit repeats the rejection. Use an existing evidence-backed
+scope amendment before touching another file. If the needed repair cannot be
+authorized in this card, preserve the candidate and block with the measured
+dependency. Do not normalize the comparator or assume a later card can close it.
+
 For `REFUSE: PACKAGE` or `REFUSE: BOOT`, read the corresponding
 `verification/build/package.json` or `boot.json` and the file its `log` field
 names (`verification/build/package.log` / `boot.log`). Inspect the first failing
