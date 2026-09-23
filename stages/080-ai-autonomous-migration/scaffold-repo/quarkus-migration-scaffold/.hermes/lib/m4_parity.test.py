@@ -83,6 +83,22 @@ class ModeParity(unittest.TestCase):
         self.mode("disabled", "FAIL")
         self.assertTrue(verdict_issues(self.verdict(), self.root))
 
+    def test_read_oracle_only_disabled_is_not_full_mode_against_enabled(self):
+        """Empty scenario_filter is not a full comparison. A disabled
+        read-oracle-only run plus an enabled full run of the same artifact
+        must not satisfy check-mode-parity."""
+        self.mode("disabled", "PASS")
+        self.mode("enabled", "PASS")
+        run = self.root / "verification/parity/_run.json"
+        doc = json.loads(run.read_text())
+        doc["scenario_filter"] = []
+        doc["scenarios"] = {"declared": 3, "selected": 0}
+        doc["read_oracles"] = {"ran": False, "requested": ["ep:x.Vet#list():http"], "rerun": []}
+        run.write_text(json.dumps(doc))
+        result = measure(self.root)
+        self.assertEqual(result["rc"], 2)
+        self.assertTrue(any("full-mode" in e for e in result["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

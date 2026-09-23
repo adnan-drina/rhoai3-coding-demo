@@ -1459,7 +1459,8 @@ def security_mode_of_run(run: dict[str, Any] | None, issued: dict[str, Any] | No
 ISSUANCE_SCOPE_PENDING = "issuance-scope-missing"
 _MIXED_MODE_SKIP = "the issued card mixes security modes; partition into one mode per repair card"
 _SCOPE_PENDING = "the issued card does not record a security mode or scenario scope"
-_SCOPE_INCONSISTENT = "the issued card's sealed security mode is inconsistent with its issuance item_scope"
+_SCOPE_INCONSISTENT = "the issued card's sealed security mode or scenario scope is inconsistent with its issuance item_scope"
+_SCOPE_INCOMPLETE = "the issued card's item_scope does not account for every issued item"
 
 
 def _item_security_mode(it: dict[str, Any]) -> str:
@@ -1542,6 +1543,16 @@ def issued_parity_plan(issued: dict[str, Any] | None, worklist: dict[str, Any] |
         sealed_eps = derived_eps
     if sealed_mode == "mixed":
         return {"kind": "skip", "mode": "mixed", "scenarios": [], "entry_points": [], "reason": _MIXED_MODE_SKIP}
+    scope_rows = [r for r in (issued.get("item_scope") or []) if isinstance(r, dict)]
+    if scope_rows:
+        wanted = {str(i) for i in (issued.get("items") or []) if str(i)}
+        scoped_ids = {str(r.get("id") or "") for r in scope_rows if str(r.get("id") or "")}
+        if wanted != scoped_ids:
+            return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCOMPLETE}
+        if sealed_sids and sorted(set(sealed_sids)) != sorted(set(derived_sids)):
+            return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
+        if sealed_eps and sorted(set(sealed_eps)) != sorted(set(derived_eps)):
+            return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
     if derived_mode and sealed_mode != derived_mode:
         return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
     if sealed_mode not in SECURITY_MODES:

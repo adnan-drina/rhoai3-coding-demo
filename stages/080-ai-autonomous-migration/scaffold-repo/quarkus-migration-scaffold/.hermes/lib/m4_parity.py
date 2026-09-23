@@ -10,6 +10,39 @@ FLOOR = "check-mode-parity"
 ACCEPTING = {"PROVISIONAL_ACCEPT", "SCOPED_ACCEPT", "ACCEPT"}
 
 
+def runner_is_scoped(run) -> bool:
+    """Whether this runner record is a card-scoped comparison, not a full mode.
+
+    An empty ``scenario_filter`` is not a full comparison: a read-oracle-only
+    run names no scenarios and still re-runs only the requested oracles."""
+    if not isinstance(run, dict):
+        return False
+    if list(run.get("scenario_filter") or []):
+        return True
+    oracles = run.get("read_oracles") if isinstance(run.get("read_oracles"), dict) else {}
+    requested = [str(e) for e in (oracles.get("requested") or []) if str(e)]
+    rerun = [str(e) for e in (oracles.get("rerun") or []) if str(e)]
+    if (requested or rerun) and not oracles.get("ran"):
+        return True
+    scenarios = run.get("scenarios") if isinstance(run.get("scenarios"), dict) else {}
+    selected = int(scenarios.get("selected") or 0)
+    declared = int(scenarios.get("declared") or 0)
+    if requested and selected == 0:
+        return True
+    if declared and selected < declared:
+        return True
+    return False
+
+
+def runner_is_full_mode(run) -> bool:
+    """A complete unscoped compose of this mode, written by this runner."""
+    if not isinstance(run, dict):
+        return False
+    if runner_is_scoped(run):
+        return False
+    return bool((run.get("receipt") or {}).get("composed_by_this_run"))
+
+
 def runner_provenance_error(run, receipt) -> str:
     """Why this runner record is not the measurement of this receipt.
 
@@ -45,8 +78,8 @@ def runner_provenance_error(run, receipt) -> str:
     run_art = ""
     if isinstance(run.get("artifact"), dict):
         run_art = str(run["artifact"].get("sha256") or "")
-    filtered = list(run.get("scenario_filter") or [])
-    full = (not filtered) and bool((run.get("receipt") or {}).get("composed_by_this_run"))
+    full = runner_is_full_mode(run)
+    scoped = runner_is_scoped(run)
     if rec_kind == "candidate":
         if rec_cand and run_cand and rec_cand != run_cand:
             return "runner records a different candidate than the receipt"
@@ -55,7 +88,7 @@ def runner_provenance_error(run, receipt) -> str:
         if full and rec_cand and run_cand != rec_cand:
             return "candidate receipt is paired with a full-mode runner of another measurement"
         return ""
-    if filtered:
+    if scoped:
         return "scoped runner is not a measurement of a sealed receipt"
     if rec_art and run_art and rec_art != run_art:
         return "runner artifact does not match the receipt"
@@ -93,7 +126,7 @@ def measure(root: Path) -> dict:
                 run = json.loads((parity / ("_run%s.json" % suffix)).read_text())
                 if not isinstance(run, dict) or run.get("security_mode") != mode or not run.get("ok"):
                     raise ValueError("no successful runner record for this mode")
-                if run.get("scenario_filter") or not (run.get("receipt") or {}).get("composed_by_this_run"):
+                if not runner_is_full_mode(run):
                     raise ValueError("runner did not compose a full-mode comparison")
                 why = runner_provenance_error(run, doc)
                 if why:

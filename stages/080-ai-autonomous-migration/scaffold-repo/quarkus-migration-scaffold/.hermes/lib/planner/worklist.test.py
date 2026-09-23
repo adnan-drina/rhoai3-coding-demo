@@ -4054,6 +4054,19 @@ def _issued_parity_plan_case() -> int:
                 or oplan.get("scenarios") or oplan.get("entry_points") != ["ep:x.Vet#list():http"]):
             return _fail("read-oracle-only card (%s) must run named oracles with an empty scenario list: %s" % (label, oplan))
 
+    incomplete = issued_parity_plan(
+        {"gate": "parity", "items": ["parity:a", "parity:b"], "security_mode": "disabled",
+         "scenarios": ["sc:a-first", "sc:b-second"], "entry_points": ["ep:a", "ep:b"],
+         "item_scope": [two[0]]}, {"items": []})
+    if incomplete.get("kind") != "pending" or incomplete.get("scenarios"):
+        return _fail("item_scope covering one of two issued items must pending without replay: %s" % incomplete)
+    disagree = issued_parity_plan(
+        {"gate": "parity", "items": ["parity:a", "parity:b"], "security_mode": "disabled",
+         "scenarios": ["sc:a-first"], "entry_points": ["ep:a", "ep:b"],
+         "item_scope": two}, {"items": []})
+    if disagree.get("kind") != "pending" or disagree.get("scenarios"):
+        return _fail("aggregates that disagree with item_scope must pending without replay: %s" % disagree)
+
     scoped_run = {"runtime": {"parity": {"ran": True, "scoped": True, "scenarios": [],
                                          "read_oracles_rerun": ["ep:x.Vet#list():http"]}}}
     if parity_remeasured(scoped_run) != {"ep:x.Vet#list():http"}:

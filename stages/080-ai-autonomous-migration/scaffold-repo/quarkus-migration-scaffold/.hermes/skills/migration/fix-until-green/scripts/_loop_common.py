@@ -25,7 +25,7 @@ def ensure_hermes_lib() -> None:
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, product_tree_sha256, sha256_file, write_canonical  # noqa: E402
 from planner.paths import DECISIONS, MIGRATION, PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
-from m4_parity import runner_provenance_error  # noqa: E402
+from m4_parity import runner_is_full_mode, runner_is_scoped, runner_provenance_error  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
 # candidate's packaging or startup result must not survive it. The work list is
@@ -449,11 +449,7 @@ def parity_runner_records(base: Path) -> list[Path]:
 
 def _runner_is_full_mode(doc: dict[str, Any] | None) -> bool:
     """A runner record of an unscoped compose of this tree, not a card-scoped run."""
-    if not isinstance(doc, dict):
-        return False
-    if list(doc.get("scenario_filter") or []):
-        return False
-    return bool((doc.get("receipt") or {}).get("composed_by_this_run"))
+    return runner_is_full_mode(doc)
 
 
 def _mode_of_runner_rel(rel: Path | str) -> str:
@@ -743,8 +739,15 @@ def parity_not_of_this_tree(root: Path, *, direct: bool = False) -> str:
     if not direct and par.get("scoped"):
         return "the last comparison was scoped to %s" % ", ".join(par.get("scenarios") or [])
     rec = _json_doc(root, PARITY_DIR / "_run.json", {})
-    if list(rec.get("scenario_filter") or []):
-        return "the runner's record is scoped to %s" % ", ".join(rec.get("scenario_filter") or [])
+    if runner_is_scoped(rec):
+        named = [str(s) for s in (rec.get("scenario_filter") or []) if str(s)]
+        oracles = rec.get("read_oracles") if isinstance(rec.get("read_oracles"), dict) else {}
+        requested = [str(e) for e in (oracles.get("requested") or oracles.get("rerun") or []) if str(e)]
+        if named:
+            return "the runner's record is scoped to %s" % ", ".join(named)
+        if requested:
+            return "the runner's record is a read-oracle-only comparison of %s" % ", ".join(requested)
+        return "the runner's record is scoped"
     if str(rec.get("security_mode") or "disabled") != "disabled" and direct:
         return "the runner's record is of the %s security mode; the loop's baseline is the default mode's" % rec.get("security_mode")
     if not bool((rec.get("receipt") or {}).get("composed_by_this_run")):
