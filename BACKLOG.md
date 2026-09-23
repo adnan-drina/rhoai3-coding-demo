@@ -2,6 +2,25 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Specialty attempt 3 (`t_511cd973`) copied the complete source error body
+  into a broad exception handler. It was intercepted before acceptance; its
+  patch remains in the destination installation records. The normal gate
+  rejected its unverified edit, leaving all three attempts spent. Assisted
+  Operator step `8d735ca9349a` replaces that candidate with a specific foreign-key
+  exception translation after the service transaction rolls back. The response
+  reads the constraint identity from the exception; PostgreSQL's corresponding
+  constraint now retains the name declared by the frozen source schema.
+  Focused JDK 21 probes verify two distinct constraint names, escaping, propagation
+  of unrelated failures, and the existing 204/404 paths. Package and boot pass.
+  The fresh full disabled-mode replay passes Specialty's exact response and
+  unchanged read-back: **17/18 scenarios PASS**, with only Visit deletion's
+  read-back differing (204 response but the row remains). The no-budget-increase
+  takeover releases the deferral for continuation; it does not prove parity or
+  complete the old task. Source expectations and comparator rules are unchanged.
+  Evidence: `.hermes/installations/specialty-assisted-repair/` in v10. This is
+  assisted application repair, not an autonomous worker success or full migration
+  completion; enabled-mode and coverage exits remain outstanding.
+
 - Specialty run 47 exposed a brief defect: after re-measurement the brief
   showed only the controller although `issued.json` still granted both
   repository amendments. The brief now retains the matching issued card's
