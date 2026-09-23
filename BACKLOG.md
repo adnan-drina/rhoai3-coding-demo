@@ -397,3 +397,16 @@ The demo must deploy from any GitHub org and container registry, not just the au
   bounded context into its own repo/deployment via the app-migration
   template as the strangler-pattern exemplar — needs a coexistence
   brief class (routing, shared data) in the roadmap design.
+
+## v11 platform prerequisites — 2026-09-23
+
+The reviewed v11 harness is already published as golden `80b47c6ca5cf605a25145df18d39cb13fb6ad49a`, with scaffold tree `5fed3d349297887d76ea8a004647f3e0d519425a`. This platform change leaves that golden and closed v10 unchanged.
+
+- [x] Author per-run worker SA/Role/RoleBinding provisioning and retirement; select it through pod-overrides without changing DWO's default Role. Replace stale kubeconfig identities with the projected pod token.
+- [x] Guard the MaaS route helper and refuse edits during workspace startup; reserve three slots for preserved v10 plus two disposable workspaces.
+- [x] Add v11 preflight checks for all 13 isolation outcomes and receipt/pod/CLI identity. Document the existing named MaaS Secret GET group exception.
+- [ ] Merge after human review, let Stage 050 sync, and qualify a fresh Developer Hub/Dev Spaces workspace with migration disabled. The retired `iso-worker-a` trial failed postStart with exit 137; timer expiry is not established.
+- [ ] Prove two-workspace isolation on the resulting platform revision and published golden, retaining all 13 measured outcomes. No v10 exception or synthetic PASS.
+- [ ] Hand off manual v11 creation only after qualification.
+
+See [WORKER-IDENTITY-REPAIR.md](stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md) and [V11-PLAN.md](stages/080-ai-autonomous-migration/V11-PLAN.md). Parallel M3 remains deferred.

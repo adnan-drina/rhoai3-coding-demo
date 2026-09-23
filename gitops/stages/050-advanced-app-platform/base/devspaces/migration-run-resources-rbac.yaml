@@ -34,6 +34,14 @@ metadata:
 # same identity that created them, by label, and the absence is then verified.
 # Without list/delete, retirement would be manual, which is what left the
 # previous design's generated secrets behind.
+#
+# ServiceAccounts, Roles and RoleBindings are the per-run worker identity.
+# The provisioner creates them because a workspace that could mint its own
+# RoleBinding could reattach operator-owned devworkspace-default-role.
+# This Role is namespace-wide for the listed resources. Labels on generated
+# objects constrain what the Task script enumerates; they are not API
+# resourceNames and do not limit authorization.
+# Ref: DWO v0.43.0 pkg/provision/workspace/rbac/rolebinding.go
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -41,6 +49,7 @@ metadata:
   namespace: wksp-ai-developer
   labels:
     app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/name: migration-run-resource-manager
     app.kubernetes.io/component: migration-run-provisioner
   annotations:
     argocd.argoproj.io/sync-wave: "17"
@@ -48,8 +57,14 @@ rules:
   - apiGroups: [""]
     resources: ["secrets", "configmaps", "services"]
     verbs: ["get", "list", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "create", "patch", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -66,6 +81,48 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: migration-run-resource-manager
+subjects:
+  - kind: ServiceAccount
+    name: migration-run-provisioner
+    namespace: app-platform-build
+---
+# CheCluster injects controller.devfile.io/scc: container-build onto Dev
+# Spaces workspaces. DWO binds that SCC to the generated workspace*-sa, not
+# to a pod-overrides ServiceAccount. Kubernetes RBAC forbids creating a
+# Role that grants SCC use unless this identity already has the same use
+# verb; this ClusterRole is only that named SCC, so the provisioner can
+# copy it onto the per-run worker Role.
+# Ref: https://kubernetes.io/docs/reference/access-authn-authz/rbac/#privilege-escalation-prevention-and-bootstrapping
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: migration-run-provisioner-container-build
+  labels:
+    app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/name: migration-run-provisioner-container-build
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups: ["security.openshift.io"]
+    resources: ["securitycontextconstraints"]
+    resourceNames: ["container-build"]
+    verbs: ["use"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: migration-run-provisioner-container-build
+  labels:
+    app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/name: migration-run-provisioner-container-build
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: migration-run-provisioner-container-build
 subjects:
   - kind: ServiceAccount
     name: migration-run-provisioner

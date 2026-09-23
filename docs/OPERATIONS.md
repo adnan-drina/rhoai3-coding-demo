@@ -1331,3 +1331,11 @@ interventions were process-layer (completing green-but-uncommitted fix
 sessions, ship-surface gaps) and every one was codified into the
 harness/golden scaffold before run end. Full timeline and evidence:
 `docs/CART-RUN2-ANALYSIS.md`.
+
+## v11 worker identity qualification
+
+Stage 050 provisions `<run>-worker` with only the init ConfigMap GET and named `container-build` SCC use. The factory pod-overrides selects that SA; DWO's leftover generated account keeps its default Role and must not be mounted by new workers. Existing legacy workspace identities are not revoked. Effective permissions also include the existing group GET grants for `maas-devspace-api-keys` and `workspace-maas-credentials`; no other-run parity Secret access is allowed.
+
+Three concurrent workspace slots preserve v10 while two disposable workspaces qualify isolation. Start the first alone and prove IDE/tool initialization before the second. Publish through normal GitOps, then follow [WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md). A standalone Job or a passing fixture is not workspace qualification. Keep migration auto-start disabled.
+
+`scripts/patch-workspace-maas-route.sh` loads the cluster guard and refuses to change a started workspace. Stop it through Dev Spaces, apply the merge, then start it again. The merge preserves the per-run ServiceAccount. Use the [v11 launch packet](../stages/080-ai-autonomous-migration/V11-PLAN.md) only after all 13 isolation checks pass on the final revisions. Actual v11 creation remains the user's manual step.

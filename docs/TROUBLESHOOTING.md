@@ -2027,3 +2027,9 @@ now requests 256Mi and has a 1Gi limit; this is separate from database sizing.
 Preserve the failed TaskRun. If its per-run lock exists, prove the holder TaskRun
 and pod are stopped before releasing it. A failed task is not a provisioning
 receipt and must not be bypassed with manually created database resources.
+
+## v11 identity and postStart failures
+
+A per-run Secret automount is not API isolation. DWO 0.43 still binds a named ServiceAccount to the default Role when `disableCreation` is used. The repair selects the platform worker account with pod-overrides instead. Do not patch the operator-owned default Role or broaden the new worker permissions to make startup pass. The named MaaS Secret GET exception comes from the existing group binding; report effective permissions including that exception.
+
+The retired September 23 `iso-worker-a` trial failed postStart with exit 137, which DWO labelled a timeout. Retained events show tooling failing within seconds of start; that does not establish timer expiry or OOM. Use Dev Spaces **Open in Debug mode** and preserve hook output, admitted lifecycle, exit status, events, and controller logs before another attempt. DWO reads the metadata annotation set by that action; a devfile `debug-start` attribute does not enable it. Never patch MaaS hostAliases during startup. The guarded route helper requires a stopped workspace for changes. See [the bounded validation procedure](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md).

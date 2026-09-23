@@ -6,10 +6,8 @@ attributes:
   # when a second workspace starts while another is running (observed
   # live on round3's first start; run #2's workspace was patched by hand).
   controller.devfile.io/storage-type: per-workspace
-  # DWO debug-start keeps a failed postStart container sleeping
-  # progressTimeout so /tmp/poststart-{stdout,stderr}.txt stay readable.
-  # Do not tee the hook to PVC (Architect 125103ZA).
-  controller.devfile.io/debug-start: "true"
+  # For failed startup, use Dev Spaces "Open in Debug mode". DWO reads the
+  # DevWorkspace metadata annotation, not a devfile template attribute.
   # In-cluster path to the MaaS gateway: see scripts/patch-workspace-maas-route.sh.
   # The public hostname resolves to the AWS load balancer, and that path drops a
   # response stream that stays silent for ~8 min (vLLM buffers a whole tool call;
@@ -23,7 +21,18 @@ attributes:
   # "maas.<domain>/#https://github.com/<owner>/<repo>" and the workspace
   # deployment was rejected outright (v7 first start, 2026-09-10). The Operator
   # applies it after creation with the script above, which reads the host and IP
-  # from the cluster and validates both before patching.
+  # from the cluster and validates both before patching. That patch is a merge
+  # of spec.hostAliases and must keep serviceAccountName below.
+  #
+  # DWO 0.43 SyncRBAC binds Config.Workspace.ServiceAccount.ServiceAccountName
+  # (or the generated workspace*-sa) to operator-owned devworkspace-default-role
+  # even when disableCreation is true. Select the platform per-run SA here so
+  # the pod does not mount that generated account. The generated SA still exists
+  # and keeps the default role; restricting new workers does not revoke it.
+  # Ref: DWO v0.43.0 controllers/workspace/devworkspace_controller.go
+  pod-overrides:
+    spec:
+      serviceAccountName: ${{ values.name }}-worker
 # The source initializer is the only writer of the separate legacy-input
 # volume. The worker receives that volume read-only; the IDE folder list is
 # reordered after injection so legacy remains the MTA exploration target.
@@ -257,19 +266,88 @@ commands:
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
         test -s /tmp/mta.vsix && test -s /tmp/mta-core.vsix && test -s /tmp/redhat-java.vsix && test -s /tmp/mta-java.vsix
-        # kubeconfig from the workspace SA so the MTA extension can reach
-        # the cluster; hub sign-in itself is interactive (OIDC device auth
-        # through the platform realm).
-        if [ ! -f /home/user/.kube/config ]; then
-          SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || true)
-          SA_CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          API_SERVER="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
-          if [ -n "${SA_TOKEN}" ]; then
-            oc login --token="${SA_TOKEN}" --server="${API_SERVER}" \
-              --certificate-authority="${SA_CA}" 2>/dev/null || true
-            echo "kubeconfig created for MTA extension"
-          fi
+        # kubeconfig is THIS pod's projected ServiceAccount token, written as a
+        # replacement Config. oc login merges users/contexts into an existing
+        # file and is not used. Missing token or a failed write refuses
+        # dest-init so a PVC leftover cannot remain the worker identity.
+        # rhoai3-bind-pod-kubeconfig:start
+        BIND_POD_PY="${TMPDIR:-/tmp}/rhoai3-bind-pod-kubeconfig.py"
+        printf '%s\n' \
+          'import os, pathlib, sys, tempfile' \
+          'def refuse(msg):' \
+          '    print("REFUSE: " + msg, file=sys.stderr)' \
+          '    sys.exit(1)' \
+          'def kubeconfig_paths():' \
+          '    home = pathlib.Path(os.environ.get("HOME") or "/home/user")' \
+          '    paths = [home / ".kube" / "config"]' \
+          '    for part in (os.environ.get("KUBECONFIG") or "").split(":"):' \
+          '        if part:' \
+          '            path = pathlib.Path(part)' \
+          '            if path not in paths:' \
+          '                paths.append(path)' \
+          '    return paths' \
+          'def unlink_kubeconfigs():' \
+          '    for path in kubeconfig_paths():' \
+          '        try:' \
+          '            path.unlink()' \
+          '        except FileNotFoundError:' \
+          '            pass' \
+          '        except IsADirectoryError:' \
+          '            pass' \
+          'def bind():' \
+          '    sa = pathlib.Path(os.environ.get("SA_DIR") or "/var/run/secrets/kubernetes.io/serviceaccount")' \
+          '    token, ca, ns_path = sa / "token", sa / "ca.crt", sa / "namespace"' \
+          '    if not token.is_file() or token.stat().st_size == 0:' \
+          '        unlink_kubeconfigs()' \
+          '        refuse("missing projected ServiceAccount token; worker kubeconfig not bound")' \
+          '    if not ca.is_file() or ca.stat().st_size == 0:' \
+          '        unlink_kubeconfigs()' \
+          '        refuse("missing projected ServiceAccount CA; worker kubeconfig not bound")' \
+          '    ns = ns_path.read_text().strip() if ns_path.is_file() else ""' \
+          '    if not ns:' \
+          '        unlink_kubeconfigs()' \
+          '        refuse("missing projected namespace; worker kubeconfig not bound")' \
+          '    host = os.environ.get("KUBERNETES_SERVICE_HOST") or ""' \
+          '    port = os.environ.get("KUBERNETES_SERVICE_PORT") or ""' \
+          '    if not host or not port:' \
+          '        unlink_kubeconfigs()' \
+          '        refuse("missing in-cluster API address; worker kubeconfig not bound")' \
+          '    env_paths = [pathlib.Path(p) for p in (os.environ.get("KUBECONFIG") or "").split(":") if p]' \
+          '    dest = env_paths[0] if env_paths else kubeconfig_paths()[0]' \
+          '    body = "apiVersion: v1\nkind: Config\nclusters:\n- cluster:\n    certificate-authority: %s\n    server: https://%s:%s\n  name: in-cluster\ncontexts:\n- context:\n    cluster: in-cluster\n    namespace: %s\n    user: current-pod\n  name: current-pod\ncurrent-context: current-pod\nusers:\n- name: current-pod\n  user:\n    tokenFile: %s\n" % (ca, host, port, ns, token)' \
+          '    dest.parent.mkdir(parents=True, exist_ok=True)' \
+          '    tmp = None' \
+          '    try:' \
+          '        fd, tmp = tempfile.mkstemp(prefix="config.", dir=str(dest.parent))' \
+          '        with os.fdopen(fd, "w") as fh:' \
+          '            fh.write(body)' \
+          '        os.chmod(tmp, 0o600)' \
+          '        os.replace(tmp, dest)' \
+          '        tmp = None' \
+          '        for path in kubeconfig_paths():' \
+          '            if path != dest:' \
+          '                try:' \
+          '                    path.unlink()' \
+          '                except FileNotFoundError:' \
+          '                    pass' \
+          '    except Exception:' \
+          '        if tmp:' \
+          '            try:' \
+          '                os.unlink(tmp)' \
+          '            except OSError:' \
+          '                pass' \
+          '        unlink_kubeconfigs()' \
+          '        refuse("failed to write worker kubeconfig; older identity not retained")' \
+          '    print("kubeconfig bound to this pod ServiceAccount token")' \
+          'bind()' \
+          >"${BIND_POD_PY}"
+        python3 "${BIND_POD_PY}"
+        BIND_POD_RC=$?
+        rm -f "${BIND_POD_PY}"
+        if [ "${BIND_POD_RC}" != 0 ]; then
+          exit 1
         fi
+        # rhoai3-bind-pod-kubeconfig:end
         # JDT.LS Standard mode so mta-java registers its analysis provider
         # without requiring a .java file to be opened first (PVC-backed).
         if [ -f /projects/.code-workspace ]; then

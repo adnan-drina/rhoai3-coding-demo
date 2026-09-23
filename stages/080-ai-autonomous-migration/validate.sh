@@ -362,15 +362,14 @@ check "080 RHDH skeleton destfile does not invoke dest supervise-gateway" \
 check "080 golden destfile does not invoke dest supervise-gateway" \
   "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
   "0"
-check "080 golden destfile enables DWO debug-start" \
-  "grep -c 'controller.devfile.io/debug-start' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
-  "1"
+# The factory replaces the golden devfile. DWO debug start is a metadata
+# annotation set through Dev Spaces, not a devfile attribute.
 check "080 golden destfile does not tee postStart to PVC" \
   "grep -c 'poststart.log' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
   "0"
-check "080 RHDH skeleton destfile enables DWO debug-start" \
-  "grep -c 'controller.devfile.io/debug-start' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
-  "1"
+check "080 factory does not claim debug mode through an ineffective devfile attribute" \
+  "grep -c 'controller.devfile.io/debug-start:' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || true" \
+  "0"
 check "080 RHDH skeleton destfile does not tee postStart to PVC" \
   "grep -c 'poststart.log' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "0"
@@ -551,9 +550,9 @@ check "080 paved-road-m4 selftest passes (oracles first; runner before the produ
 check "080 the M4 card pins the paved-road index only (not a checklist of gate skills)" \
   "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.cards import CARD_SKILLS; print(','.join(CARD_SKILLS['close']))\"" \
   "paved-road-m4"
-check "080 every phase has a paved road (m1, m2, m3, m4)" \
-  "ls -d '${SCAFFOLD_PAVED}'/paved-road-m*/steps.json | wc -l | tr -d ' '" \
-  "4"
+check "080 every implemented phase has a paved road (including M5 when shipped)" \
+  "python3 -c \"from pathlib import Path; p=Path('${SCAFFOLD_PAVED}'); phases=range(1, 6 if Path('${SCAFFOLD_LIB}/m5_delivery.py').is_file() else 5); print(int(all((p/('paved-road-m'+str(i))/'steps.json').is_file() for i in phases)))\"" \
+  "1"
 check "080 paved-road coverage lint passes" \
   "python3 '${SCAFFOLD_LIB}/paved_road.py' coverage >/dev/null && echo 1 || echo 0" \
   "1"
@@ -952,6 +951,18 @@ check "080 source initializer pins the first clone and refuses changed or unreco
   "1"
 check "080 versioned launch preflight refuses unready or changed inputs" \
   "bash -n '${SCRIPT_DIR}/v10-preflight.sh' && python3 '${SCRIPT_DIR}/v10-preflight.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 v11 preflight refuses missing isolation or a broad worker identity" \
+  "bash -n '${SCRIPT_DIR}/v11-preflight.sh' && python3 '${SCRIPT_DIR}/v11-preflight.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 worker identity is platform-managed with minimum per-run permissions" \
+  "python3 '${SCRIPT_DIR}/assert-worker-permissions.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 worker kubeconfig replacement refuses leftover credentials" \
+  "python3 '${SCRIPT_DIR}/bind-pod-kubeconfig.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 MaaS route changes are guarded and require a stopped workspace" \
+  "python3 '${REPO_ROOT}/scripts/patch-workspace-maas-route.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 per-run isolation invariants hold over the platform manifests (watch label, exact targeting, no repo-as-source, retirement)" \
   "python3 '${SCRIPT_DIR}/assert-run-isolation.py' >/dev/null 2>&1 && echo 1 || echo 0" \
