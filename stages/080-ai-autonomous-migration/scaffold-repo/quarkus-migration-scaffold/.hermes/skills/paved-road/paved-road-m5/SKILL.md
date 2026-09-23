@@ -65,8 +65,9 @@ output of `pin-kill-ratio-from-pit.py` after `--record-measurement` (XML digest
 tied to the measured Git commit and `product_tree_sha256`; those identities
 are not compared as strings. `--root` may resolve the expected delivery
 commit but must not relabel an arbitrary `mutations.xml`). M5 consumption
-requires that producer-written `pit-measurement.json` receipt and matching
-candidate/tree/report bindings; an embedded digest string is not PASS. Do not decorate a pin after
+requires that producer-written `pit-measurement.json` receipt and complete
+candidate/tree/report bindings on both the receipt and the pin; missing
+required fields are not PASS. An embedded digest string is not PASS. Do not decorate a pin after
 measurement.
 Conflicting candidate identities, non-integer or unordered counts (require
 `0 <= killed <= attempted <= generated`), or stored evaluation that disagrees

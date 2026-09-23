@@ -244,7 +244,8 @@ Rebuild later only on dest GO.
 - No artifact carries `ship: true` with a verdict other than a full M5 `ACCEPT`,
   no `PROVISIONAL_ACCEPT` outside M4, and no M5 `ACCEPT` without a verified
   G-1 pin PASS on the delivery candidate (`read_g1_kill_ratio`), including the
-  producer-written PIT measurement receipt bound to that pin. Schema name,
+  producer-written PIT measurement receipt with complete candidate, tree, and
+  report bindings on both the receipt and the pin. Schema name,
   PASS token, embedded digest, and verdict-field substitutes are not pin evidence. A
   `g1_kill_ratio_waiver` or `operator_waiver` on an M5 ACCEPT is REFUSE.
 - M4 floor: `evidence/receipts/m4-floor/<run-id>/` holds all three receipts —

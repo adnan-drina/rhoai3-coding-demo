@@ -17,7 +17,8 @@
   check-factory-m5 canonical G-1 evaluation is complete, including PIT
   measurement provenance (XML digest tied to the measured Git commit and
   product tree before a release-eligible pin; M5 consumption requires the
-  producer-written PIT receipt, not an embedded digest string) and per-M4
+  producer-written PIT receipt with complete candidate/tree/report bindings
+  on pin and receipt, not an embedded digest string) and per-M4
   coverage snapshots taken in the original bind transaction. Include the
   validated M3/M5 display titles (PREFLIGHT / DEPLOY / VALIDATE and BUILD /
   CONFIGURE / COMPILE / MIGRATE / TEST / REPAIR) in this golden; internal

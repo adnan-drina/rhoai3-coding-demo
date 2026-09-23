@@ -103,17 +103,20 @@ def _pin_data(*, passed=True, candidate_sha=""):
         }
         token, stored = "pending_threshold", False
     digest = "e" * 64
+    tree = "a" * 64
     measurement["mutations_xml_sha256"] = digest
     return {
         "schema": "migration/g1-kill-ratio-pin/v2-dual-denominator",
         "status": "PINNED",
         "candidate_sha": sha,
-        "identity": {"candidate_sha": sha},
+        "identity": {"candidate_sha": sha, "tree_sha256": tree},
         "scope": "measured live PIT slice",
         "measurement": measurement,
         "provenance": {
             "schema": "migration/pit-measurement/v1",
+            "candidate_sha": sha,
             "mutations_xml_sha256": digest,
+            "tree_sha256": tree,
         },
         "threshold": {
             "coverage_min": 0.41,
@@ -130,18 +133,17 @@ def _pin_data(*, passed=True, candidate_sha=""):
 
 
 def _write_pit_receipt(root: Path, *, candidate_sha: str, digest: str = "e" * 64,
-                       git_sha: str = "", tree_sha256: str = "") -> None:
+                       git_sha: str = "", tree_sha256: str = "a" * 64) -> None:
     (root / "evidence/derived").mkdir(parents=True, exist_ok=True)
     doc = {
         "schema": "migration/pit-measurement/v1",
         "candidate_sha": candidate_sha,
         "mutations_xml_sha256": digest,
         "source": "target/pit-reports/mutations.xml",
+        "tree_sha256": tree_sha256,
     }
     if git_sha:
         doc["git_sha"] = git_sha
-    if tree_sha256:
-        doc["tree_sha256"] = tree_sha256
     write_canonical(root / "evidence/derived/pit-measurement.json", doc)
 
 
@@ -153,7 +155,34 @@ def _write_pin(root: Path, *, passed=True, candidate_sha=""):
         root,
         candidate_sha=str(data["candidate_sha"]),
         digest=str(data["measurement"]["mutations_xml_sha256"]),
+        tree_sha256=str(data["provenance"]["tree_sha256"]),
     )
+
+
+def _strip_required_binding(doc: dict, *, field: str) -> None:
+    if field == "report":
+        if isinstance(doc.get("measurement"), dict):
+            doc["measurement"].pop("mutations_xml_sha256", None)
+        if isinstance(doc.get("provenance"), dict):
+            doc["provenance"].pop("mutations_xml_sha256", None)
+        doc.pop("mutations_xml_sha256", None)
+    elif field == "tree":
+        if isinstance(doc.get("identity"), dict):
+            doc["identity"].pop("tree_sha256", None)
+        if isinstance(doc.get("provenance"), dict):
+            doc["provenance"].pop("tree_sha256", None)
+        doc.pop("tree_sha256", None)
+    elif field == "candidate":
+        doc.pop("candidate_sha", None)
+        doc.pop("git_sha", None)
+        doc.pop("measured_sha", None)
+        for key in ("identity", "measurement", "provenance", "scope"):
+            inner = doc.get(key)
+            if isinstance(inner, dict):
+                inner.pop("candidate_sha", None)
+                inner.pop("git_sha", None)
+    else:
+        raise AssertionError("unknown required binding %s" % field)
 
 
 def _write_current_account(root: Path, sha: str, rows: list, remaining=0):
@@ -664,11 +693,15 @@ class G1Consistency(unittest.TestCase):
         data["candidate_sha"] = "ff" * 20
         data["identity"] = {"candidate_sha": "ff" * 20}
         data["measurement"]["candidate_sha"] = "ff" * 20
+        if isinstance(data.get("provenance"), dict):
+            data["provenance"]["candidate_sha"] = "ff" * 20
         self.assertFalse(evaluate_g1_pin(data, candidate_sha="cc" * 20, rel="pin.json")["pass"])
         data = _pin_data()
         data.pop("candidate_sha")
         data.pop("identity")
         data["measurement"].pop("candidate_sha", None)
+        data.get("provenance", {}).pop("candidate_sha", None)
+        data.get("provenance", {}).pop("git_sha", None)
         scored = evaluate_g1_pin(data, candidate_sha="cc" * 20, rel="pin.json")
         self.assertFalse(scored["pass"])
         self.assertIn("not bound", scored["detail"])
@@ -1030,17 +1063,18 @@ class ProducerToConsumer(unittest.TestCase):
     def test_malformed_or_mismatched_receipt_cannot_accept(self):
         sha = "cc" * 20
         digest = "e" * 64
+        tree = "a" * 64
         cases = (
             {"schema": "not-pit-measurement", "candidate_sha": sha,
-             "mutations_xml_sha256": digest},
+             "mutations_xml_sha256": digest, "tree_sha256": tree},
             {"schema": "migration/pit-measurement/v1", "candidate_sha": sha,
-             "mutations_xml_sha256": "not-a-digest"},
+             "mutations_xml_sha256": "not-a-digest", "tree_sha256": tree},
             {"schema": "migration/pit-measurement/v1", "candidate_sha": "dd" * 20,
-             "mutations_xml_sha256": digest},
+             "mutations_xml_sha256": digest, "tree_sha256": tree},
             {"schema": "migration/pit-measurement/v1", "candidate_sha": sha,
-             "mutations_xml_sha256": "f" * 64},
+             "mutations_xml_sha256": "f" * 64, "tree_sha256": tree},
             {"schema": "migration/pit-measurement/v1", "candidate_sha": sha,
-             "mutations_xml_sha256": digest, "tree_sha256": "a" * 64},
+             "mutations_xml_sha256": digest, "tree_sha256": "b" * 64},
         )
         for receipt in cases:
             with self.subTest(receipt=receipt):
@@ -1048,18 +1082,82 @@ class ProducerToConsumer(unittest.TestCase):
                 self.addCleanup(tmp.cleanup)
                 _write_closed(root, remaining_gaps=0, outstanding=[])
                 _write_pin(root, passed=True, candidate_sha=sha)
-                if receipt.get("tree_sha256"):
-                    pin = json.loads(
-                        (root / "evidence/derived/g1-kill-ratio-pin.json").read_text(encoding="utf-8")
-                    )
-                    pin.setdefault("provenance", {})["tree_sha256"] = "b" * 64
-                    pin.setdefault("identity", {})["tree_sha256"] = "b" * 64
-                    write_canonical(root / "evidence/derived/g1-kill-ratio-pin.json", pin)
                 write_canonical(root / "evidence/derived/pit-measurement.json", receipt)
                 prepare_candidate(root, runner=_git(sha))
                 _write_bound_delivery(root, sha)
-                self.assertFalse(read_g1_kill_ratio(root, candidate_sha=sha)["pass"])
-                self.assertEqual(compose_verdict(root)["verdict"], "INCONCLUSIVE")
+                self._assert_g1_blocks_release(root, sha)
+
+    def test_missing_pin_report_binding_cannot_accept(self):
+        """Architect missing-pin-report-binding: omitted pin digest is not optional."""
+        root, tmp = _root()
+        self.addCleanup(tmp.cleanup)
+        sha = "aa" * 20
+        xml = root / "mutations.xml"
+        _synthetic_pit(xml)
+        pin = root / "evidence/derived/g1-kill-ratio-pin.json"
+        pin.parent.mkdir(parents=True, exist_ok=True)
+        proc = _run_pin_producer(xml, pin, sha, root=root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        receipt = root / "evidence/derived/pit-measurement.json"
+        receipt_doc = json.loads(receipt.read_text(encoding="utf-8"))
+        receipt_doc["mutations_xml_sha256"] = "f" * 64
+        write_canonical(receipt, receipt_doc)
+        data = json.loads(pin.read_text(encoding="utf-8"))
+        data.get("measurement", {}).pop("mutations_xml_sha256", None)
+        data.get("provenance", {}).pop("mutations_xml_sha256", None)
+        write_canonical(pin, data)
+        _write_closed(root, remaining_gaps=0, outstanding=[])
+        prepare_candidate(root, runner=_git(sha))
+        _write_bound_delivery(root, sha)
+        self.assertFalse(bool(
+            data.get("provenance", {}).get("mutations_xml_sha256")
+            or data.get("measurement", {}).get("mutations_xml_sha256")
+        ))
+        self._assert_g1_blocks_release(root, sha)
+
+    def test_missing_required_binding_cannot_accept(self):
+        for side, field in (
+            ("pin", "report"), ("pin", "tree"), ("pin", "candidate"),
+            ("receipt", "report"), ("receipt", "tree"), ("receipt", "candidate"),
+        ):
+            with self.subTest(side=side, field=field):
+                root, tmp = _root()
+                self.addCleanup(tmp.cleanup)
+                sha = "aa" * 20
+                xml = root / "mutations.xml"
+                _synthetic_pit(xml)
+                pin_path = root / "evidence/derived/g1-kill-ratio-pin.json"
+                pin_path.parent.mkdir(parents=True, exist_ok=True)
+                proc = _run_pin_producer(xml, pin_path, sha, root=root)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                receipt_path = root / "evidence/derived/pit-measurement.json"
+                pin = json.loads(pin_path.read_text(encoding="utf-8"))
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                self.assertTrue(pin.get("provenance", {}).get("mutations_xml_sha256"))
+                self.assertTrue(pin.get("provenance", {}).get("tree_sha256") or pin.get("identity", {}).get("tree_sha256"))
+                self.assertTrue(receipt.get("mutations_xml_sha256"))
+                self.assertTrue(receipt.get("tree_sha256"))
+                target = pin if side == "pin" else receipt
+                _strip_required_binding(target, field=field)
+                write_canonical(pin_path if side == "pin" else receipt_path, target)
+                _write_closed(root, remaining_gaps=0, outstanding=[])
+                prepare_candidate(root, runner=_git(sha))
+                _write_bound_delivery(root, sha)
+                self._assert_g1_blocks_release(root, sha)
+
+    def _assert_g1_blocks_release(self, root: Path, sha: str) -> None:
+        self.assertFalse(read_g1_kill_ratio(root, candidate_sha=sha)["pass"])
+        self.assertEqual(compose_verdict(root)["verdict"], "INCONCLUSIVE")
+        routing = _check_verdict_routing(root)
+        self.assertEqual(routing.returncode, 0, routing.stderr + routing.stdout)
+        write_canonical(root / "evidence/preflight/factory.json", {
+            "phase": "FACTORY", "status": "factory_ready",
+        })
+        factory = subprocess.run(
+            [sys.executable, "-B", str(FACTORY_CHECK), str(root)],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(factory.returncode, 0, factory.stdout + factory.stderr)
 
     def test_real_git_commit_and_product_tree_are_distinct(self):
         root, tmp = _root()

@@ -604,21 +604,57 @@ def evaluate_g1_pin(data: dict[str, Any], *, candidate_sha: str, rel: str) -> di
             "detail": "pinned G-1 kill-ratio PASS at %s" % rel}
 
 
-def _hex64(value: str) -> bool:
+def _hex_len(value: str, length: int) -> bool:
     s = str(value or "").strip().lower()
-    return len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+    return len(s) == length and all(c in "0123456789abcdef" for c in s)
+
+
+def _hex40(value: str) -> bool:
+    return _hex_len(value, 40)
+
+
+def _hex64(value: str) -> bool:
+    return _hex_len(value, 64)
+
+
+def _agreeing_hex(length: int, *values: str) -> str:
+    found: list[str] = []
+    for raw in values:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        if not _hex_len(s, length):
+            return ""
+        key = s.lower()
+        if key not in found:
+            found.append(key)
+    if len(found) != 1:
+        return ""
+    return found[0]
 
 
 def _embedded_xml_digest(data: dict[str, Any]) -> str:
     provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
     measurement = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
-    return str(
-        provenance.get("mutations_xml_sha256") or measurement.get("mutations_xml_sha256") or ""
-    ).strip()
+    return _agreeing_hex(
+        64,
+        str(provenance.get("mutations_xml_sha256") or ""),
+        str(measurement.get("mutations_xml_sha256") or ""),
+    )
+
+
+def _pin_tree_digest(data: dict[str, Any]) -> str:
+    provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
+    identity = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+    return _agreeing_hex(
+        64,
+        str(provenance.get("tree_sha256") or ""),
+        str(identity.get("tree_sha256") or ""),
+    )
 
 
 def _g1_on_disk_provenance_error(root: Path, data: dict[str, Any], candidate_sha: str) -> str:
-    """Require the producer PIT receipt. An embedded digest is not execution evidence."""
+    """Require complete producer candidate/tree/report bindings on pin and receipt."""
     path = root / PIT_MEASUREMENT
     if not path.is_file():
         return "missing measurement provenance"
@@ -631,26 +667,31 @@ def _g1_on_disk_provenance_error(root: Path, data: dict[str, Any], candidate_sha
     bound, bind_err = _pin_bound_sha(data)
     if bind_err:
         return bind_err
-    receipt_sha = str(receipt.get("candidate_sha") or "").strip()
-    receipt_git = str(receipt.get("git_sha") or "").strip()
-    if receipt_sha and receipt_git and receipt_sha != receipt_git:
-        return "measurement provenance does not match the delivery candidate"
-    measured = receipt_sha or receipt_git
-    receipt_digest = str(receipt.get("mutations_xml_sha256") or "").strip()
-    if not measured or not _hex64(receipt_digest):
-        return "missing measurement provenance"
-    if measured != bound or bound != candidate_sha:
-        return "measurement provenance does not match the delivery candidate"
-    pin_digest = _embedded_xml_digest(data)
-    if pin_digest and (not _hex64(pin_digest) or pin_digest.lower() != receipt_digest.lower()):
-        return "measurement provenance does not match the PIT report digest"
-    provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
-    identity = data.get("identity") if isinstance(data.get("identity"), dict) else {}
-    pin_tree = str(provenance.get("tree_sha256") or identity.get("tree_sha256") or "").strip()
+    pin_report = _embedded_xml_digest(data)
+    pin_tree = _pin_tree_digest(data)
+    receipt_candidate = _agreeing_hex(
+        40,
+        str(receipt.get("candidate_sha") or ""),
+        str(receipt.get("git_sha") or ""),
+    )
+    receipt_report = str(receipt.get("mutations_xml_sha256") or "").strip()
     receipt_tree = str(receipt.get("tree_sha256") or "").strip()
-    if pin_tree or receipt_tree:
-        if not _hex64(pin_tree) or not _hex64(receipt_tree) or pin_tree.lower() != receipt_tree.lower():
-            return "measurement provenance does not match the product tree"
+    if not (
+        _hex40(bound)
+        and _hex40(candidate_sha)
+        and _hex40(receipt_candidate)
+        and _hex64(pin_report)
+        and _hex64(receipt_report)
+        and _hex64(pin_tree)
+        and _hex64(receipt_tree)
+    ):
+        return "missing measurement provenance"
+    if receipt_candidate != bound.lower() or bound.lower() != candidate_sha.lower():
+        return "measurement provenance does not match the delivery candidate"
+    if pin_report != receipt_report.lower():
+        return "measurement provenance does not match the PIT report digest"
+    if pin_tree != receipt_tree.lower():
+        return "measurement provenance does not match the product tree"
     return ""
 
 

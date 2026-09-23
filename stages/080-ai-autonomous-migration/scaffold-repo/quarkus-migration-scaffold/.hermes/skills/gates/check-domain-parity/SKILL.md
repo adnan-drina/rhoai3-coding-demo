@@ -195,9 +195,10 @@ Operand first, then live evidence, then pin. Scripts are under
    `product_tree_sha256`, not against the commit string. Conflicting Git
    identities, missing provenance at pin time, or a digest/tree mismatch
    refuse. M5 consumption requires the producer-written
-   `evidence/derived/pit-measurement.json` receipt and matching
-   candidate/tree/report bindings; an embedded digest string is not
-   execution evidence. `--candidate-sha` may be passed explicitly.
+   `evidence/derived/pit-measurement.json` receipt and complete
+   candidate/tree/report bindings on both that receipt and the pin;
+   missing required fields are checked before values are compared.
+   An embedded digest string is not execution evidence. `--candidate-sha` may be passed explicitly.
    Do not decorate the pin after measurement.
 6. **Persisted data** — when `migration/persisted-data/claim.json` sets
    `pre_existing_db`, `check-persisted-data-contract.py <root>` requires passing

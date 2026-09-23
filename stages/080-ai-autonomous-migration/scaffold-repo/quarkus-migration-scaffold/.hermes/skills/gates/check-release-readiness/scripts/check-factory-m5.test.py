@@ -19,21 +19,24 @@ from planner.canonical import write_canonical  # noqa: E402
 
 def _pin_data(candidate_sha="cc" * 20):
     sha = candidate_sha
+    digest, tree = "e" * 64, "a" * 64
     return {
         "schema": "migration/g1-kill-ratio-pin/v2-dual-denominator",
         "status": "PINNED",
         "candidate_sha": sha,
-        "identity": {"candidate_sha": sha},
+        "identity": {"candidate_sha": sha, "tree_sha256": tree},
         "scope": "measured live PIT slice",
         "measurement": {
             "generated": 100, "attempted": 50, "killed": 40, "survived": 10, "timed_out": 0,
             "coverage_ratio": 0.5, "kill_attempted_ratio": 0.8, "kill_generated_ratio": 0.4,
             "source": "target/pit-reports/mutations.xml", "candidate_sha": sha,
-            "mutations_xml_sha256": "e" * 64,
+            "mutations_xml_sha256": digest,
         },
         "provenance": {
             "schema": "migration/pit-measurement/v1",
-            "mutations_xml_sha256": "e" * 64,
+            "candidate_sha": sha,
+            "mutations_xml_sha256": digest,
+            "tree_sha256": tree,
         },
         "threshold": {
             "coverage_min": 0.41, "kill_attempted_min": 0.60, "kill_generated_min": 0.38,
@@ -52,11 +55,15 @@ def _write_pin(root: Path, data: dict) -> None:
     sha = str(data.get("candidate_sha") or "").strip()
     measurement = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
     digest = str(measurement.get("mutations_xml_sha256") or "").strip()
-    if sha and len(digest) == 64:
+    identity = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+    provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
+    tree = str(provenance.get("tree_sha256") or identity.get("tree_sha256") or "").strip()
+    if sha and len(digest) == 64 and len(tree) == 64:
         write_canonical(root / "evidence/derived/pit-measurement.json", {
             "schema": "migration/pit-measurement/v1",
             "candidate_sha": sha,
             "mutations_xml_sha256": digest,
+            "tree_sha256": tree,
             "source": "target/pit-reports/mutations.xml",
         })
 
