@@ -2,13 +2,26 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Specialty task `t_19857de6` stopped twice on provider HTTP 429 (native
+  runs 45 and 46); run 46 performed no application repair. The governed Qwen
+  route recorded six throttled calls under the Dev Spaces subscription,
+  whose measured configuration is 20 million tokens per hour. A 63-token
+  probe through v10's existing endpoint and injected credential passed at
+  03:18:58 UTC on September 23, then the same task was unblocked at 03:19:48.
+  No quota, credential, application retry budget or expected response changed.
+  The preserved Specialty candidate still needs to reproduce the source's
+  refused delete and unchanged read-back; provider recovery is not acceptance.
+
 - Owner validation task `t_7661cc51` confused three total verifier invocations
   with two acceptance runs. The retained records showed diagnostic,
   acceptance, diagnostic; the existing counter already reports one acceptance
   and no stop condition. Native guidance clarified that the corrected candidate
   may take its second acceptance verification. The skill now explicitly names
   `acceptance_count` and `stop_rule_applies`; no counter logic, limit or budget
-  changed. This clarification also awaits an idle destination installation.
+  changed. Both procedure clarifications were installed while Specialty task
+  `t_19857de6` was blocked with no worker, with exact digests and backups under
+  `.hermes/installations/parity-skill-clarification-0dec91d7.json`. All 469
+  protected files, including its dirty product candidate, remained unchanged.
 
 - POM parity attempt 1 (`t_844e2bdd`) removed the generated-body rejection:
   the candidate-bound comparison then reported only Content-Type parameter
@@ -19,8 +32,8 @@
   The worker procedure now directs parity diagnosis to the current bound
   runner results, distinguishes body agreement from full parity, and forbids
   repeating an unchanged candidate after a new-obligation rejection. This
-  procedure clarification is local until an idle destination installation;
-  it changes no acceptance rule or retry budget.
+  procedure clarification was installed at the blocked Specialty task boundary
+  described above; it changes no acceptance rule or retry budget.
 
 - Root attempt 6 was DEFERRED with a doubled Location; all six attempts remain
   spent. Operator step `5b4deef1eebd` changes only the Root redirect and Swagger
