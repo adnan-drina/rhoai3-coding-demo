@@ -129,6 +129,7 @@ Dry-run volume is **not** a kill-ratio pin. After live
 python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
   target/pit-reports/mutations.xml \
   -o evidence/derived/g1-kill-ratio-pin.json \
+  --root . \
   --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \
   --source declared_engineering_target \
   --rationale "Architect stringency <entry>: declared margins, not measured-at-equality"
@@ -181,8 +182,23 @@ Operand first, then live evidence, then pin. Scripts are under
    compares the computed verdict to the fixture's expected verdict, and writes
    `…/admission/out/<gate>/<fixture>.json`. Disagreement ⇒ exit 1.
 5. **Pin the kill ratio** (after live `mutationCoverage`, never after a dry run)
-   — `pin-kill-ratio-from-pit.py <mutations.xml> -o <pin.json> --coverage-min
-   --kill-attempted-min [--kill-generated-min] --source --rationale`.
+   — record execution evidence, then pin:
+   `pin-kill-ratio-from-pit.py <mutations.xml> --record-measurement --root .`
+   writes `evidence/derived/pit-measurement.json` (XML digest + Git commit
+   and `product_tree_sha256`; those two identities are not compared as
+   strings). Then
+   `pin-kill-ratio-from-pit.py <mutations.xml> -o <pin.json> --root .
+   --coverage-min --kill-attempted-min [--kill-generated-min] --source --rationale`.
+   `--root` may resolve the expected delivery Git commit from `candidate.json`
+   or git HEAD, but must not assign that identity to an arbitrary
+   `mutations.xml`. A product-tree SHA-256 in `run.json` is measured against
+   `product_tree_sha256`, not against the commit string. Conflicting Git
+   identities, missing provenance at pin time, or a digest/tree mismatch
+   refuse. M5 consumption requires the producer-written
+   `evidence/derived/pit-measurement.json` receipt and matching
+   candidate/tree/report bindings; an embedded digest string is not
+   execution evidence. `--candidate-sha` may be passed explicitly.
+   Do not decorate the pin after measurement.
 6. **Persisted data** — when `migration/persisted-data/claim.json` sets
    `pre_existing_db`, `check-persisted-data-contract.py <root>` requires passing
    `schema_compat` **and** `quarkus_db_copy_read_all` records; otherwise idle.

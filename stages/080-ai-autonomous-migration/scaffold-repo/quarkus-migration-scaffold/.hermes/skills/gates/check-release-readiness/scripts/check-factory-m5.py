@@ -18,6 +18,22 @@ import json
 import sys
 from pathlib import Path
 
+
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: FACTORY_M5 .hermes/lib marker missing")
+
+
+_ensure_hermes_lib()
+from m5_delivery import delivery_candidate_sha, read_g1_kill_ratio  # noqa: E402
+
 EXIT_CODES = """Exit codes:
   0  pass — factory claim is coherent with a full M5 ACCEPT, or gate idle
      (no factory claim present)
@@ -116,36 +132,13 @@ def typed_g1_waiver(root: Path) -> str | None:
     return None
 
 
-def pinned_kill_ratio_pass(root: Path) -> str | None:
-    """Return label if a g1 kill-ratio pin artifact evaluates PASS, else None."""
-    candidates = [
-        root / "evidence" / "verdicts" / "g1-kill-ratio-pin.json",
-        root / "evidence" / "derived" / "g1-kill-ratio-pin.json",
-    ]
-    vdir = root / "evidence" / "verdicts"
-    if vdir.is_dir():
-        candidates.extend(sorted(vdir.glob("*kill-ratio*pin*.json")))
-    for path in candidates:
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(data, dict):
-            continue
-        ev = data.get("evaluation_against_measurement") or {}
-        if isinstance(ev, dict) and ev.get("pass") in (True, "true", "yes", 1):
-            pinned = data.get("status") == "PINNED" or data.get(
-                "g1_kill_ratio_threshold_pinned"
-            ) in (True, "true", "yes", 1)
-            if pinned or data.get("schema", "").startswith("migration/g1-kill-ratio-pin"):
-                return str(path.relative_to(root))
-        if data.get("g1_kill_ratio") in ("PASS", "pass") and data.get(
-            "g1_kill_ratio_threshold_pinned"
-        ) in (True, "true", "yes", 1):
-            return str(path.relative_to(root))
-    return None
+def verified_kill_ratio_pass(root: Path) -> tuple[bool, str]:
+    """Canonical G-1 pin evaluation for the measured delivery candidate."""
+    candidate = delivery_candidate_sha(root)
+    kill = read_g1_kill_ratio(root, candidate_sha=candidate)
+    if kill.get("pass") and kill.get("pinned"):
+        return True, str(kill.get("path") or "")
+    return False, str(kill.get("detail") or "no verified G-1 pin PASS on the delivery candidate")
 
 
 def load_migration_ack(path: Path) -> dict | None:
@@ -272,9 +265,6 @@ def full_accept_ok(root: Path, obj: dict) -> str | None:
             f"entry_point_descope_count={descope} — full ACCEPT forbidden; "
             f"use SCOPED_ACCEPT (AD-H §18 / finding 3)"
         )
-    kill = str(obj.get("g1_kill_ratio") or obj.get("g1KillRatio") or "").lower()
-    pinned_field = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
-    pin_art = pinned_kill_ratio_pass(root)
     waiver_art = typed_g1_waiver(root)
     self_waiver = (
         "g1_kill_ratio_waiver" in obj
@@ -289,14 +279,13 @@ def full_accept_ok(root: Path, obj: dict) -> str | None:
             "g1_kill_ratio_waiver / operator_waiver cannot author ACCEPT "
             "(B-4/C-3(a); validator has no waiver path)"
         )
-    if kill == "pass" and not (pinned_field or pin_art):
-        return "g1_kill_ratio=PASS without threshold pin artifact or field"
-    if kill == "pass" and (pinned_field or pin_art):
-        return None
-    return (
-        "M5 full ACCEPT needs g1_kill_ratio PASS and threshold pin — "
-        "if G-1 cannot be computed the verdict is not ACCEPT (B-4)"
-    )
+    ok, detail = verified_kill_ratio_pass(root)
+    if not ok:
+        return (
+            "M5 full ACCEPT needs verified G-1 pin PASS on the delivery candidate — %s"
+            % detail
+        )
+    return None
 
 
 def main() -> int:

@@ -1,0 +1,362 @@
+{
+  "schema": "rhoai3.corpus-review/v1",
+  "status": "READY_FOR_OPERATOR_SIGNATURE",
+  "reviewed_on": "2026-09-14",
+  "reviewer": "Codex architect review; not an Operator approval or signature",
+  "run_of_record": "spring-petclinic-rest-legacy-v9",
+  "approved_by": null,
+  "capture_qualification_status": "NOT_RUN",
+  "source_binding": {
+    "status": "MATCH_READ_ONLY_LIVE_V9",
+    "source_digest": "322a6149734fd8ce09b638a57312106dce879ec9ab5aa2263939a22c38ac6fd4",
+    "evidence_bundle_canonical_sha256": "a4685e28d663a35e2f164ef6db100b41f81c09c5659ca1964a871d74b33f4bf1",
+    "structure_file_sha256": "752e503972cf0a3aa6e0cd11120d3a30a37cd3b2e2b0b1b1adbc438e2cb7834f",
+    "entry_inventory_file_sha256": "3a22f263331861301ef6560f54fe4a79884a857729d7c45179bcf120670d5dd3",
+    "entry_point_count": 34,
+    "scenario_reference_count": 5,
+    "distinct_referenced_entry_points": 3,
+    "cors_controller_count": 8,
+    "cors_annotation_values": {
+      "exposedHeaders": [
+        "errors, content-type"
+      ]
+    },
+    "evidence": "Guarded read-only reads from v9 M1 bundle, structure, entry inventory and frozen source; pod workspace label independently checked.",
+    "reviewed_source_files": [
+      {
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+        "sha256": "f663ec42328e3248ac94b7f5b2b31a9b5d89035f7aa8b6f3f56d240970b53e10",
+        "kind": "freeze-manifest production source"
+      },
+      {
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java",
+        "sha256": "c93434790b3897d0a671ab058d212e010da7854b5cca332f56b31dc083e913fc",
+        "kind": "freeze-manifest production source"
+      },
+      {
+        "path": "src/main/java/org/springframework/samples/petclinic/model/Owner.java",
+        "sha256": "6eeecbbd06627b99f7320cb31d05250ea48b162dc1ddeffa4ca9406326bda4bc",
+        "kind": "freeze-manifest production source"
+      },
+      {
+        "path": "target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/OwnerDto.java",
+        "sha256": "814930c502037b0bbe8e56b067ea2dcbd35addc90049962134cca1328df12085",
+        "kind": "generated request DTO read from the frozen-source build output; not a freeze-manifest source file"
+      }
+    ]
+  },
+  "cors_policy_ids": [
+    "crossorigin:7b1a3d9234cd"
+  ],
+  "source_exposed_headers": [
+    "content-type",
+    "errors"
+  ],
+  "original_draft_file_sha256": "fe3d46bd42da479ee7dda174ddc1236da4bc2a69d466f4c550e7e40ddb2dbf8d",
+  "preserved_later_proposal_file_sha256": "3d55acc378dcd258782d371eab442c076a7dd1bf106c7f936132a73d3989f0a7",
+  "previous_four_scenario_corpus_sha256": "a27a93eb6c0bc34c56964aa2fd21f9a8cc2dbdbf98691103d5b4be93ea9e594f",
+  "corpus": {
+    "proposal_path": "v8-corpus-revision.json",
+    "destination_path": "verification/scenarios/corpus.json",
+    "file_sha256": "2a9a87425d3319796d974994dafd77720ef88c8ee2cd2db276b42eb3b2db41bf",
+    "canonical_sha256": "f60e4373de141ca6676ee863daffd2747d89bb3edb239172d057940e7a70e434",
+    "canonicalization": "Harness canonical_bytes: JSON sort_keys=true, compact separators, ensure_ascii=true, one trailing newline, UTF-8."
+  },
+  "body_manifest": [
+    {
+      "proposal_path": "bodies/update-owner-1-city.json",
+      "destination_path": "verification/scenarios/bodies/update-owner-1-city.json",
+      "bytes": 124,
+      "sha256": "3dc011998e72e5c88c2ac0e3bf9d2cbec2e139aad04393e374f871fc6c090403"
+    },
+    {
+      "proposal_path": "bodies/create-owner.json",
+      "destination_path": "verification/scenarios/bodies/create-owner.json",
+      "bytes": 132,
+      "sha256": "5a82405cd593238572b5dc3c250c45fcb1577e2a93b4c2cf24a32057222ef495"
+    },
+    {
+      "proposal_path": "bodies/create-owner-invalid.json",
+      "destination_path": "verification/scenarios/bodies/create-owner-invalid.json",
+      "bytes": 134,
+      "sha256": "b8ab3ff10d41952c978e76a6d10f5762a53b56b85390e0705ce020b1f8df5838"
+    }
+  ],
+  "requests": [
+    {
+      "id": "sc:update-owner-1-city",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#updateOwner(int,org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "PUT",
+      "path": "/api/owners/1",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "identity": {
+        "kind": "none",
+        "user_env": "",
+        "password_env": ""
+      },
+      "body_sha256": "3dc011998e72e5c88c2ac0e3bf9d2cbec2e139aad04393e374f871fc6c090403",
+      "body_absent": false,
+      "request_sha256": "6fc01292ae92ebd72f0ce46182645aeb1028457d77c441a2aedc60e0513226eb",
+      "body_file": "verification/scenarios/bodies/update-owner-1-city.json",
+      "reset_before": true,
+      "cors_policy": null,
+      "effects": [
+        {
+          "id": "eff:owner-1-after-update",
+          "method": "GET",
+          "path": "/api/owners/1"
+        },
+        {
+          "id": "eff:owners-list-after-update",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ]
+    },
+    {
+      "id": "sc:create-owner-location",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "POST",
+      "path": "/api/owners",
+      "headers": {
+        "Content-Type": "application/json",
+        "Origin": "http://petclinic.example.test:4200"
+      },
+      "identity": {
+        "kind": "none",
+        "user_env": "",
+        "password_env": ""
+      },
+      "body_sha256": "5a82405cd593238572b5dc3c250c45fcb1577e2a93b4c2cf24a32057222ef495",
+      "body_absent": false,
+      "request_sha256": "0fc4d42b2fea2cdcae96e8ff07801267071fd8a4707ad33289a9dc704ef70ec8",
+      "body_file": "verification/scenarios/bodies/create-owner.json",
+      "reset_before": true,
+      "cors_policy": "crossorigin:7b1a3d9234cd",
+      "effects": [
+        {
+          "id": "eff:owners-list-after-create",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ]
+    },
+    {
+      "id": "sc:cors-actual-owners",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#getOwners():http",
+      "method": "GET",
+      "path": "/api/owners",
+      "headers": {
+        "Origin": "http://petclinic.example.test:4200"
+      },
+      "identity": {
+        "kind": "none",
+        "user_env": "",
+        "password_env": ""
+      },
+      "body_sha256": "",
+      "body_absent": true,
+      "request_sha256": "cd0544ceb3eb68f40d9ca010f3310adc7b71528b34bcc4fe8ecba73128a51415",
+      "body_file": null,
+      "reset_before": true,
+      "cors_policy": "crossorigin:7b1a3d9234cd",
+      "effects": []
+    },
+    {
+      "id": "sc:cors-preflight-owners",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "OPTIONS",
+      "path": "/api/owners",
+      "headers": {
+        "Origin": "http://petclinic.example.test:4200",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+      },
+      "identity": {
+        "kind": "none",
+        "user_env": "",
+        "password_env": ""
+      },
+      "body_sha256": "",
+      "body_absent": true,
+      "request_sha256": "5c93693be969bd554aa8de64c7a7a656739da9bd3cd34fe4c33e79f35af3958a",
+      "body_file": null,
+      "reset_before": false,
+      "cors_policy": "crossorigin:7b1a3d9234cd",
+      "effects": []
+    },
+    {
+      "id": "sc:create-owner-invalid",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "POST",
+      "path": "/api/owners",
+      "headers": {
+        "Content-Type": "application/json",
+        "Origin": "http://petclinic.example.test:4200"
+      },
+      "identity": {
+        "kind": "none",
+        "user_env": "",
+        "password_env": ""
+      },
+      "body_sha256": "b8ab3ff10d41952c978e76a6d10f5762a53b56b85390e0705ce020b1f8df5838",
+      "body_absent": false,
+      "request_sha256": "861e4f46edc75ccbad94e8599b780b52e9074555d47c57c399ee1c2bea092ba7",
+      "body_file": "verification/scenarios/bodies/create-owner-invalid.json",
+      "reset_before": true,
+      "cors_policy": "crossorigin:7b1a3d9234cd",
+      "effects": [
+        {
+          "id": "eff:owners-list-after-invalid-create",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ]
+    }
+  ],
+  "checks": {
+    "all_request_bodies_resolve": true,
+    "all_five_references_match_live_v9_bundle": true,
+    "all_concrete_paths_and_methods_match_live_inventory": true,
+    "source_and_structure_digests_equal": true,
+    "bundle_digest_stable_across_two_reads": true,
+    "policy_and_exposed_headers_derived_from_live_v9_model": true,
+    "post_and_preflight_pair": true,
+    "declared_source_policy_coverage_gaps": [],
+    "unsigned_draft_refused": true,
+    "unsigned_refusal_reason": "verification/scenarios/corpus.json names no approver; scenario intent is the Operator's, not a worker's",
+    "schema_probe": "Five scenarios load only with a temporary fixture approver in an isolated directory; the proposal remains unsigned.",
+    "original_draft_preserved_byte_for_byte": true,
+    "v7_update_body_preserved_byte_for_byte": true,
+    "valid_create_body_preserved_byte_for_byte": true,
+    "invalid_body_differs_only_in_telephone": true,
+    "scenario_parity_selftest": "PASS, local loopback fixtures; no v9 application execution",
+    "dropped_errors_header_is_a_diff": true,
+    "charset_only_content_type_change_is_a_diff": true,
+    "canonical_json_and_retained_wire_hashes_distinguished": true,
+    "retention_truncation_hashes_verified": true,
+    "missing_or_malformed_exposure_model_refuses_before_source_setup": true,
+    "worklist_parity_typing_selftest": "PASS locally, including scenario CORS/response split and the documented enable key",
+    "skill_format_validation": "0 errors; capture skill reports existing nested scripts/reset-db and generated scripts/__pycache__ depth warnings"
+  },
+  "comparison_contract": {
+    "primary_response_header_keys": [
+      "Location",
+      "Access-Control-Allow-Origin",
+      "Access-Control-Allow-Methods",
+      "Access-Control-Allow-Headers",
+      "Access-Control-Expose-Headers",
+      "Access-Control-Allow-Credentials",
+      "Access-Control-Max-Age",
+      "content-type",
+      "errors"
+    ],
+    "location": "Literal value after mapping only the declared source origin to the destination origin; preserve path, context path, escaping, query, fragment and generated id. No id normalization.",
+    "cors_lists": "Allow-Methods, Allow-Headers and Expose-Headers compare as case-insensitive token sets under the existing harness contract.",
+    "errors_and_content_type": "Literal values, including absent versus present; errors is not moved to a body or normalized as JSON by this contract.",
+    "content_type_consequence": "A charset-only difference is a FAIL of this strict representation contract. RFC 8259 section 11 does not define a charset parameter for application/json; the difference alone does not prove a client regression. No automatic waiver.",
+    "effects": "Declared before/after GET status and canonical body digests; these probes do not inherit the primary-response extra header assertions.",
+    "source_of_expected_values": "Fresh source captures only. Qualification criteria describe the intended scenario, not fabricated response oracles."
+  },
+  "qualification": {
+    "authority": "Operator reviews and records qualification before captures can count as coverage; these criteria are not an implemented automatic promotion gate.",
+    "required_for_every_capture": [
+      "Bind source digest, bundle digest, final signed corpus digest and request/body digests to this packet; archive the prior idle receipt.",
+      "Record the first response with redirects_followed false and asserted_headers_extra exactly [content-type, errors].",
+      "The response headers map contains all nine primary-response header keys, including explicit null for headers actually absent. Invalid-create errors must be present and nonempty.",
+      "Read the retained response and before/after body files from each row's evidence. Require truncated=false and retained_bytes=body_bytes; verify retained_sha256 and raw_body_sha256 against the file, then recompute the row's body_sha256 using the recorded body kind (canonical JSON for JSON, raw bytes otherwise). Only complete verified lists can establish owner presence or absence.",
+      "Verify reset and identity allocation state before destination comparison. Matching list rows alone does not prove matching next generated ids."
+    ],
+    "scenarios": {
+      "sc:update-owner-1-city": [
+        "PUT returns 204; both effect probes return 200.",
+        "The owner with id 1 has city Monona in the owner read-back and full owners list."
+      ],
+      "sc:create-owner-location": [
+        "POST returns 201 with an absolute Location on the recorded source origin under the source context path.",
+        "Complete GET /api/owners responses return 200 before and after; the request owner is absent before and exactly one matching owner is added afterward.",
+        "The generated id agrees across Location, the response owner and the owner added to the list.",
+        "Origin is permitted and Access-Control-Expose-Headers includes errors and content-type; record all permission headers, including legitimate absences."
+      ],
+      "sc:cors-actual-owners": [
+        "GET returns 200 from the reset seeded state.",
+        "Origin is permitted and Access-Control-Expose-Headers includes errors and content-type; record all permission headers, including legitimate absences."
+      ],
+      "sc:cors-preflight-owners": [
+        "Anonymous OPTIONS returns a successful 2xx response without following redirects.",
+        "The effective permission headers allow the paired POST from the same Origin with Content-Type; no credentials or database effects are sent.",
+        "Capture all CORS header keys. Expose-Headers need not be present on the preflight; exposure qualification belongs to actual responses."
+      ],
+      "sc:create-owner-invalid": [
+        "POST returns 400; a nonempty errors header parses as a JSON array containing fieldName telephone, fieldValue not-a-number and a nonempty errorMessage.",
+        "The source supplies the error wording; do not invent a message, locale or constraint name as the expected oracle.",
+        "Complete GET /api/owners responses return 200 before and after, their canonical body digests are equal, and the rejected owner is absent from both lists.",
+        "The 400 response also permits the request Origin and exposes errors and content-type, so cross-origin callers can read the validation error."
+      ]
+    },
+    "coverage_boundary": "Five scenarios reference three Owner entry points. Structural CORS policy coverage has no gaps; runtime qualification and full 34-entry-point/six-Location coverage are not established."
+  },
+  "capture_prerequisites": [
+    "After signature, pause dispatch at a quiescent card boundary and keep it paused through capture qualification.",
+    "Use golden 76e110e6 as the replacement base, then publish and identify the successor containing this review's retention hash correction, rest-cors guidance and documented CORS enable key before installation. This includes loop code (lib/planner/worklist.py), gate scripts and guidance. Install the coherent manifest between cards, preserve pins/home/board/logs/config/loop state, record the installation separately, and verify installed-code tests.",
+    "Require complete retained read-back bodies and verify raw/file hashes separately from canonical parity hashes. The 1 MiB truncation flag is not qualification; truncated evidence cannot prove full-list presence or absence.",
+    "Install the signed corpus and all three bodies at the declared destination paths; verify their final manifest digests before capture."
+  ],
+  "implementation_limits": [
+    "Older source header maps can omit errors/content-type assertions. Fresh complete maps are mandatory for this packet; v9 has no prior captures according to the Operator, so compatibility handling is not needed for this first capture.",
+    "The producer now refuses an unreadable exposed-header model before source setup; the local selftest covers both missing and malformed JSON models. Live v9 execution remains untested.",
+    "CAPTURED records an HTTP observation, including an unexpected status; it does not establish the scenario purpose or authorize coverage.",
+    "Bodies larger than 1 MiB are truncated and explicitly marked. Qualification requiring a complete list must refuse that evidence and obtain a complete capture.",
+    "The 76e110e6 base retains raw body bytes but labels their digest with the canonical JSON parity hash. The local correction adds raw_body_sha256 and retained_sha256 while preserving body_sha256. It must be published and installed before this amended evidence contract is used."
+  ],
+  "signing": {
+    "scope": "The Operator signs the final corpus document and this review manifest together; the manifest binds every referenced body byte digest, request digest, source binding and comparison/qualification contract.",
+    "procedure": "Review the full packet and the implementation follow-up, fill the real approved_by identity in the corpus and manifest, recompute the corpus file and canonical digests plus every request/body digest, and sign that final pair. Any edited bytes after a detached signature require a new signature. Preserve aa9dbe59 as the reviewed unsigned provenance.",
+    "approval_changes_corpus_digest": true,
+    "body_content_is_in_corpus_digest": false,
+    "body_content_binding": "body_manifest SHA-256 plus request_sha256; body paths alone do not bind bytes.",
+    "signature": null,
+    "post_approval_recompute": "PENDING_REAL_OPERATOR_APPROVAL; this implementation update does not supply approved_by or a signature."
+  },
+  "reviewed_capture_code": {
+    "repository_commit": "aa9dbe59547b82836f71af8e5d7595f43255409b",
+    "requested_golden": "76e110e6",
+    "golden_equivalence": "76e110e6 is the Operator-reported published base; this review did not inspect that golden checkout. The hashes below describe reviewed local code including unpublished amendments.",
+    "scripts_sha256": {
+      "_oracle_common.py": "f4b499cd8bb41adc090b227803661efd5e4c1a2055ccdc4b12532e30e92c6e58",
+      "_scenarios.py": "bd6e6184a881c367c4812bf02161be9099b2fdd934f9a4ee99bc853d56862636",
+      "capture-source-oracles.py": "275026b17c20cbcc013821498a53399e0d5f970e532d2a24da4309b3ec38dc1e",
+      "capture-source-scenarios.py": "e01ffc568e09045ce735bba0b0237b419fe82bcb1be5b794951b56774f146d25",
+      "compare-runtime-parity.py": "5eb0f39fb0af51f4e355481daec91847687e21d8541bfeaf49d43f09a2e3cc12",
+      "compare-scenario-parity.py": "85d7d236fb218118205ef5cecaacd3ad21e6ffd72fc11e12ab2572d402a9687e",
+      "compose-parity-receipt.py": "2d121e43bc618c49b0bc0789124a550bdb393c22f44048489cb3f21ebc4ae4d5",
+      "reset-parity-db.sh": "b6484e65eaa9528233357e59a7d64e543665459cc47201e7cea9e558978c1dc1"
+    },
+    "required_unpublished_amendments": [
+      "Separate raw and retained file hashes from canonical parity body_sha256",
+      "Amend rest-cors guidance and its load trigger",
+      "Use quarkus.http.cors.enabled=true in the parity obligation message"
+    ],
+    "loop_and_guidance_sha256": {
+      "lib/planner/worklist.py": "e38c94c58be34235cfaebfc380b9952a7b96bfe15c2d2798ce3ef9164ab4297b",
+      "skills/migration/spring-to-quarkus-patterns/SKILL.md": "14a039136757518bd5fd97a0a26de7caaa5726aa6877524bb1945ca6c8553f1f",
+      "skills/migration/spring-to-quarkus-patterns/references/rest-annotations.md": "49518a20160d5c1b4a2fdfc98861b5519fc5c9e83751c94116381f4069616ed0",
+      "skills/gates/capture-source-oracles/SKILL.md": "309b3e19efc0d4c14a70a9865f3122baedc2ed9e7dda41be55768d147af212fc"
+    },
+    "validation_code_sha256": {
+      "lib/planner/worklist.test.py": "d03d31f58c81634ebbbdd28854fa15991382fe4db90efdda677565c2e70ba75e",
+      "skills/gates/capture-source-oracles/scripts/scenario-parity.test.py": "a4e023331ba09eb52b04315741c489501d4e85e1e71db1623b3d55d327c987ac"
+    }
+  },
+  "not_tested": [
+    "Source HTTP execution or destination execution for this packet",
+    "Runtime 201/400, Location, CORS and full owner-list qualification",
+    "Equivalent database identity allocation after reset",
+    "Published successor to 76e110e6 and installed v9 loop/gate/guidance code and tests",
+    "Full M4 parity"
+  ],
+  "reviewed_unsigned_baseline_commit": "aa9dbe59547b82836f71af8e5d7595f43255409b",
+  "implementation_review_status": "LOCAL_AMENDMENTS_TESTED_NOT_PUBLISHED_OR_INSTALLED"
+}

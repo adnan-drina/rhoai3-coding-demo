@@ -199,7 +199,13 @@ python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . \
    `evidence/verdicts/coverage-account.json` (`compose-coverage-account.py`)
    and carry its counts in the verdict's `coverage_account`: every source an
    accepted ADR retired gets a row naming its replacement scenario and its
-   remaining gap.
+   remaining gap. The composer binds the measured candidate. The original
+   bind transaction snapshots the M4-era account at
+   `verification/loop/accepted/coverage-account.json` bound to that
+   card/verdict; earlier snapshots are kept. Close and already-bound retry
+   do not copy later live onto a missing freeze. Later composer runs may
+   rewrite the live account; they must not rewrite another card's freeze
+   or the historical M4 verdict.
 
    Then bind the verdict — with the tool, never from memory:
 

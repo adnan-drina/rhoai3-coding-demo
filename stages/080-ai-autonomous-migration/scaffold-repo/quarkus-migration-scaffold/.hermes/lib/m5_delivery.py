@@ -7,8 +7,10 @@ specimen name.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -17,6 +19,7 @@ from urllib.request import Request, urlopen
 
 from planner.canonical import load_json, sha256_file, write_canonical
 from planner.paths import (
+    COVERAGE_ACCOUNT,
     DELIVERY_BUDGET,
     DELIVERY_CANDIDATE,
     DELIVERY_CONTRACT,
@@ -26,10 +29,16 @@ from planner.paths import (
     DELIVERY_LIVE,
     DELIVERY_PIPELINE,
     DELIVERY_START,
+    FROZEN_COVERAGE_ACCOUNT,
+    FROZEN_COVERAGE_HISTORY,
+    FROZEN_COVERAGE_SOURCE,
     LOOP_CARDS,
     LOOP_STEPS,
     M5_VERDICT,
+    PARITY_DIR,
+    PIT_MEASUREMENT,
     TYPE_INVENTORY,
+    VERIFY_RUN,
     WORKLIST,
 )
 
@@ -69,8 +78,49 @@ DEFAULT_OPENAPI = "/q/openapi"
 
 M4_VERDICT = Path("evidence") / "verdicts" / "m4-verdict.json"
 RELEASE_BLOCKERS = Path("verification") / "loop" / "release-blockers.json"
-COVERAGE_ACCOUNT = Path("evidence") / "verdicts" / "coverage-account.json"
 DECISIONS = Path("decisions.yaml")
+G1_PIN_CANDIDATES = (
+    Path("evidence") / "verdicts" / "g1-kill-ratio-pin.json",
+    Path("evidence") / "derived" / "g1-kill-ratio-pin.json",
+)
+G1_PIN_SCHEMA = "migration/g1-kill-ratio-pin/v2-dual-denominator"
+G1_BAR_SOURCES = frozenset({"ratchet_from_measured", "declared_engineering_target"})
+PIT_MEASUREMENT_SCHEMA = "migration/pit-measurement/v1"
+COVERAGE_SNAPSHOT_SCHEMA = "rhoai3.m4-coverage-snapshot/v1"
+G1_PIN_SCRIPT = Path(__file__).resolve().parent.parent / "skills" / "gates" / "check-domain-parity" / "scripts" / "pin-kill-ratio-from-pit.py"
+PARITY_RECEIPT = PARITY_DIR / "receipt.json"
+COVERAGE_DISCHARGE = DELIVERY_DIR / "coverage-discharge.json"
+DISCHARGE_SCHEMA = "rhoai3.coverage-discharge/v1"
+# M4 close always records ship:false. Those rows, and the M4 verdict's
+# explanatory prose, are historical context — not M5 release obligations.
+HISTORICAL_KINDS = frozenset({"not-shipped", "verdict-reason"})
+QUALIFICATION_META = {
+    "parity-receipt": {
+        "owner": "parity measurement on the delivery candidate",
+        "evidence": "verification/parity/receipt.json",
+        "resolution": "every remaining entry point measures PASS (or a named, evidenced descope) on this candidate",
+    },
+    "capability-gap": {
+        "owner": "source capability / parity qualification",
+        "evidence": "verification/parity/receipt.json coverage_gaps",
+        "resolution": "the named scenario is demonstrated or retired with evidence; a 404-vs-200 qualification is not a destination FAIL",
+    },
+    "coverage-account": {
+        "owner": "coverage-account.json / M4 coverage_account",
+        "evidence": "evidence/verdicts/coverage-account.json",
+        "resolution": "unique original remaining-gap identities from preserved M4 evidence are discharged against a candidate-bound account; count-only matching is not a discharge; closed M4 bytes stay put",
+    },
+    "cors-gap": {
+        "owner": "restore-source-response-shape",
+        "evidence": "verification/parity/receipt.json cors.gaps",
+        "resolution": "named CORS gaps close against the source oracles",
+    },
+    "g1-kill-ratio": {
+        "owner": "check-domain-parity / pin-kill-ratio-from-pit.py",
+        "evidence": "evidence/derived/g1-kill-ratio-pin.json",
+        "resolution": "producer-bound live mutationCoverage pin evaluates PASS with the threshold pinned; conflicting identities, inconsistent counts, or stored/recomputed disagreement are not PASS; do not invent PASS, decorate a pin, or author a waiver",
+    },
+}
 
 
 def _run(argv: list[str], *, cwd: str | None = None) -> tuple[int, str, str]:
@@ -102,34 +152,739 @@ def close_row(steps: dict[str, Any] | None) -> dict[str, Any] | None:
     return rows[-1]
 
 
-def outstanding_from_artifacts(root: Path) -> list[dict[str, Any]]:
-    """Existing release-contract qualifications. Empty work list is not one."""
+def _count(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (list, tuple, set)):
+        return len(value)
+    raw = str(value if value is not None else "0").strip()
+    if raw.lstrip("-").isdigit():
+        return int(raw)
+    return 0
+
+
+def remaining_from_coverage(cov: dict[str, Any]) -> int:
+    summary = cov.get("summary") if isinstance(cov.get("summary"), dict) else {}
+    if summary:
+        n = _count(summary.get("remaining_gaps"))
+        if n:
+            return n
+    return _count(cov.get("remaining_gaps"))
+
+
+def remaining_ids_from_coverage(cov: dict[str, Any]) -> list[str]:
+    from_list = _path_ids(cov.get("remaining_gaps"))
+    if from_list:
+        return from_list
+    rows = cov.get("rows") if isinstance(cov.get("rows"), list) else []
+    return [str(r.get("path")) for r in rows if isinstance(r, dict) and r.get("remaining_gap") and r.get("path")]
+
+
+def _path_ids(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            path = str(item.get("path") or item.get("id") or "")
+        else:
+            path = str(item or "")
+        if path:
+            out.append(path)
+    return out
+
+
+def _unique_ids(ids: list[str]) -> list[str] | None:
+    if len(ids) != len(set(ids)):
+        return None
+    return list(ids)
+
+
+def _bound_candidate_sha(doc: dict[str, Any]) -> str:
+    identity = doc.get("identity") if isinstance(doc.get("identity"), dict) else {}
+    return str(doc.get("candidate_sha") or identity.get("candidate_sha") or "").strip()
+
+
+def _coverage_snapshot_binding(root: Path) -> dict[str, Any]:
+    path = root / FROZEN_COVERAGE_SOURCE
+    if not path.is_file():
+        return {}
+    try:
+        doc = load_json(path)
+    except Exception:
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def _m4_coverage_card_id(root: Path) -> str:
+    vp = root / M4_VERDICT
+    if not vp.is_file():
+        return ""
+    try:
+        verdict = load_json(vp)
+    except Exception:
+        return ""
+    if not isinstance(verdict, dict):
+        return ""
+    return str(verdict.get("card_id") or "").strip()
+
+
+def _binding_card_id(src: dict[str, Any]) -> str:
+    return str(src.get("card_id") or "").strip()
+
+
+def _snapshot_matches_card(src: dict[str, Any], card_id: str) -> bool:
+    bound = _binding_card_id(src)
+    return bool(card_id) and bool(bound) and bound == card_id
+
+
+def _load_coverage_doc(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        doc = load_json(path)
+    except Exception:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def load_preserved_coverage_account(root: Path) -> dict[str, Any] | None:
+    """Coverage account snapshotted for the M4 card currently being discharged.
+
+    Live coverage-account.json is never a substitute. An unbound freeze or a
+    snapshot bound to a different card is not this M4's original identities.
+    """
+    card_id = _m4_coverage_card_id(root)
+    if not card_id:
+        return None
+    frozen = root / FROZEN_COVERAGE_ACCOUNT
+    src = _coverage_snapshot_binding(root)
+    if frozen.is_file() and _snapshot_matches_card(src, card_id):
+        return _load_coverage_doc(frozen)
+    hist = root / FROZEN_COVERAGE_HISTORY / card_id
+    if not hist.is_dir():
+        return None
+    matches: list[tuple[str, Path]] = []
+    for account_p in hist.rglob("coverage-account.json"):
+        bind_p = account_p.parent / "coverage-account.source.json"
+        bind = _load_coverage_doc(bind_p) or {}
+        if _snapshot_matches_card(bind, card_id):
+            bound_at = str(bind.get("bound_at") or bind.get("verdict_sha256") or "")
+            matches.append((bound_at, account_p))
+    if not matches:
+        return None
+    matches.sort()
+    return _load_coverage_doc(matches[-1][1])
+
+
+def _archive_frozen_coverage(root: Path) -> None:
+    frozen = root / FROZEN_COVERAGE_ACCOUNT
+    if not frozen.is_file():
+        return
+    src = _coverage_snapshot_binding(root)
+    card = _binding_card_id(src) or "unbound"
+    digest = str(src.get("verdict_sha256") or "unknown").strip() or "unknown"
+    dest = root / FROZEN_COVERAGE_HISTORY / card / digest[:16]
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(frozen, dest / "coverage-account.json")
+    src_p = root / FROZEN_COVERAGE_SOURCE
+    if src_p.is_file():
+        shutil.copy2(src_p, dest / "coverage-account.source.json")
+    elif src:
+        write_canonical(dest / "coverage-account.source.json", src)
+
+
+def original_coverage_obligation_ids(root: Path) -> list[str] | None:
+    """Unique original remaining-gap ids from preserved M4-era evidence.
+
+    Live coverage-account.json is not a source: it is the supporting account
+    and can be rewritten. Count-only M4 remaining_gaps is not an identity.
+    A freeze bound to a different M4 card is not this discharge's original set.
+    """
+    sources: list[list[str]] = []
+    verdict_p = root / M4_VERDICT
+    if verdict_p.is_file():
+        try:
+            verdict = load_json(verdict_p)
+        except Exception:
+            verdict = {}
+        acct = verdict.get("coverage_account") if isinstance(verdict.get("coverage_account"), dict) else {}
+        from_list = _path_ids(acct.get("remaining_gaps"))
+        from_rows = [str(r.get("path")) for r in (acct.get("rows") or [])
+                     if isinstance(r, dict) and r.get("remaining_gap") and r.get("path")]
+        if from_list:
+            sources.append(from_list)
+        if from_rows:
+            sources.append(from_rows)
+    blockers_p = root / RELEASE_BLOCKERS
+    if blockers_p.is_file():
+        try:
+            doc = load_json(blockers_p)
+        except Exception:
+            doc = {}
+        blocker_ids: list[str] = []
+        for row in (doc.get("outstanding") or []):
+            if not isinstance(row, dict) or str(row.get("kind") or "") != "coverage-account":
+                continue
+            blocker_ids.extend(str(x) for x in (row.get("ids") or []) if str(x))
+        if blocker_ids:
+            sources.append(blocker_ids)
+    snap = load_preserved_coverage_account(root)
+    if snap is not None:
+        snap_ids = remaining_ids_from_coverage(snap)
+        if snap_ids:
+            sources.append(snap_ids)
+    unique_sets: list[set[str]] = []
+    for src in sources:
+        if _unique_ids(src) is None:
+            return None
+        unique_sets.append(set(src))
+    if not unique_sets or not unique_sets[0]:
+        return None
+    first = unique_sets[0]
+    for other in unique_sets[1:]:
+        if other != first:
+            return None
+    return sorted(first)
+
+
+def _rel(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _enrich(row: dict[str, Any]) -> dict[str, Any]:
+    meta = QUALIFICATION_META.get(str(row.get("kind") or ""))
+    if not meta:
+        return row
+    out = dict(row)
+    out.setdefault("owner", meta["owner"])
+    out.setdefault("evidence", meta["evidence"])
+    out.setdefault("resolution", meta["resolution"])
+    return out
+
+
+def measured_candidate_sha(root: Path, *, runner: Runner | None = None, explicit: str = "") -> str:
+    """Delivery candidate, else the measured verify-run tree, else git HEAD."""
+    sha = str(explicit or "").strip()
+    if sha:
+        return sha
+    cand = load_json(root / DELIVERY_CANDIDATE) if (root / DELIVERY_CANDIDATE).is_file() else {}
+    sha = str(cand.get("candidate_sha") or "").strip()
+    if sha:
+        return sha
+    run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    sha = str(run.get("candidate_sha256") or run.get("candidate_sha") or "").strip()
+    if sha:
+        return sha
+    return git_rev(root, runner)
+
+
+def delivery_candidate_sha(root: Path, *, runner: Runner | None = None) -> str:
+    return measured_candidate_sha(root, runner=runner)
+
+
+def preserve_m4_coverage_account(
+    root: Path,
+    *,
+    card_id: str = "",
+    verdict_sha256: str = "",
+    receipt_sha256: str = "",
+    parity_receipt_sha256: str = "",
+) -> None:
+    """Snapshot the live coverage account for one M4 card/verdict.
+
+    Bind/close lifecycle writes this. A later live account is never copied
+    onto a missing historical snapshot. Composer does not freeze. Never
+    touches m4-verdict.json.
+    """
+    live = root / COVERAGE_ACCOUNT
+    if not live.is_file():
+        return
+    card_id = str(card_id or "").strip() or _m4_coverage_card_id(root)
+    if not card_id:
+        return
+    vp = root / M4_VERDICT
+    if not str(verdict_sha256 or "").strip() and vp.is_file():
+        try:
+            verdict_sha256 = sha256_file(vp)
+        except Exception:
+            verdict_sha256 = ""
+    if vp.is_file() and not (receipt_sha256 and parity_receipt_sha256):
+        try:
+            verdict = load_json(vp)
+        except Exception:
+            verdict = {}
+        if isinstance(verdict, dict):
+            receipt_sha256 = str(receipt_sha256 or verdict.get("receipt_sha256") or "").strip()
+            parity_receipt_sha256 = str(
+                parity_receipt_sha256 or verdict.get("parity_receipt_sha256") or ""
+            ).strip()
+    frozen = root / FROZEN_COVERAGE_ACCOUNT
+    src = _coverage_snapshot_binding(root)
+    if frozen.is_file() and _snapshot_matches_card(src, card_id):
+        return
+    if frozen.is_file():
+        _archive_frozen_coverage(root)
+    frozen.parent.mkdir(parents=True, exist_ok=True)
+    frozen.write_bytes(live.read_bytes())
+    write_canonical(root / FROZEN_COVERAGE_SOURCE, {
+        "schema": COVERAGE_SNAPSHOT_SCHEMA,
+        "card_id": card_id,
+        "verdict_sha256": str(verdict_sha256 or ""),
+        "receipt_sha256": str(receipt_sha256 or ""),
+        "parity_receipt_sha256": str(parity_receipt_sha256 or ""),
+        "account_path": FROZEN_COVERAGE_ACCOUNT.as_posix(),
+    })
+
+
+def _g1_evaluate():
+    spec = importlib.util.spec_from_file_location("pin_kill_ratio_from_pit", G1_PIN_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("G-1 evaluator %s is missing" % G1_PIN_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.evaluate
+
+
+def _int_count(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _measurement_stats(measurement: Any) -> tuple[dict[str, Any] | None, str]:
+    if not isinstance(measurement, dict) or not measurement:
+        return None, "missing measurements"
+    generated = _int_count(measurement["generated"] if "generated" in measurement else measurement.get("mutations_total"))
+    killed = _int_count(measurement.get("killed"))
+    if generated is None or killed is None:
+        return None, "missing measurements"
+    if "attempted" in measurement:
+        attempted = _int_count(measurement.get("attempted"))
+        if attempted is None:
+            return None, "missing measurements"
+    else:
+        survived = _int_count(measurement.get("survived") if "survived" in measurement else 0)
+        timed_out = _int_count(measurement.get("timed_out") if "timed_out" in measurement else 0)
+        if survived is None or timed_out is None:
+            return None, "missing measurements"
+        attempted = killed + survived + timed_out
+    if not (0 <= killed <= attempted <= generated):
+        return None, "inconsistent mutation counts"
+    return {
+        "generated": generated,
+        "attempted": attempted,
+        "killed": killed,
+        "coverage_ratio": (attempted / generated) if generated else None,
+        "kill_attempted_ratio": (killed / attempted) if attempted else None,
+        "kill_generated_ratio": (killed / generated) if generated else None,
+    }, ""
+
+
+def _pin_identity_shas(data: dict[str, Any]) -> list[str]:
+    identity = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+    measurement = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    scope = data.get("scope") if isinstance(data.get("scope"), dict) else {}
+    provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
+    found: list[str] = []
+    for raw in (data.get("candidate_sha"), data.get("measured_sha"), data.get("git_sha"),
+                identity.get("candidate_sha"), identity.get("git_sha"),
+                measurement.get("candidate_sha"),
+                scope.get("candidate_sha"), provenance.get("candidate_sha"),
+                provenance.get("git_sha")):
+        sha = str(raw or "").strip()
+        if sha and len(sha) != 64:
+            found.append(sha)
+    return found
+
+
+def _pin_bound_sha(data: dict[str, Any]) -> tuple[str, str]:
+    shas = _pin_identity_shas(data)
+    unique: list[str] = []
+    for sha in shas:
+        if sha not in unique:
+            unique.append(sha)
+    if not unique:
+        return "", "G-1 pin is not bound to the delivery candidate"
+    if len(unique) > 1:
+        return "", "conflicting candidate identities"
+    return unique[0], ""
+
+
+def _truthy_pass(value: Any) -> bool | None:
+    if value in (True, "true", "yes", 1):
+        return True
+    if value in (False, "false", "no", 0):
+        return False
+    return None
+
+
+def _stored_evaluation_agrees(stored: dict[str, Any], ev: dict[str, Any]) -> bool:
+    if "pass" in stored:
+        stored_pass = _truthy_pass(stored.get("pass"))
+        if stored_pass is None or stored_pass != bool(ev.get("pass")):
+            return False
+    for key in ("killed", "attempted", "generated"):
+        if key not in stored:
+            continue
+        got = _int_count(stored.get(key))
+        if got is None or got != ev.get(key):
+            return False
+    for key in ("coverage_ratio", "kill_attempted_ratio", "kill_generated_ratio"):
+        if key not in stored or stored.get(key) is None:
+            continue
+        recomputed = ev.get(key)
+        try:
+            if recomputed is None or abs(float(stored[key]) - float(recomputed)) > 1e-9:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _threshold_explicitly_pinned(data: dict[str, Any]) -> bool:
+    return data.get("status") == "PINNED" or data.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
+
+
+def _fail_g1(rel: str, detail: str, *, pinned: bool = False) -> dict[str, Any]:
+    return {"pass": False, "pinned": pinned, "value": "", "path": rel, "detail": detail}
+
+
+def evaluate_g1_pin(data: dict[str, Any], *, candidate_sha: str, rel: str) -> dict[str, Any]:
+    """Score one pin artifact. Schema name alone does not pin a threshold."""
+    schema = str(data.get("schema") or "")
+    if schema != G1_PIN_SCHEMA:
+        return _fail_g1(rel, "unsupported pin schema %s" % (schema or "(missing)"))
+    bound, bind_err = _pin_bound_sha(data)
+    if bind_err:
+        return _fail_g1(rel, bind_err)
+    if not candidate_sha or bound != candidate_sha:
+        return _fail_g1(rel, "G-1 pin is bound to a foreign candidate")
+    stats, err = _measurement_stats(data.get("measurement"))
+    if stats is None:
+        return _fail_g1(rel, err)
+    threshold = data.get("threshold") if isinstance(data.get("threshold"), dict) else {}
+    if str(threshold.get("source") or "") not in G1_BAR_SOURCES:
+        return _fail_g1(rel, "unsupported threshold source")
+    try:
+        coverage_min = float(threshold["coverage_min"])
+        kill_attempted_min = float(threshold["kill_attempted_min"])
+    except (KeyError, TypeError, ValueError):
+        return _fail_g1(rel, "threshold contract missing coverage_min/kill_attempted_min")
+    if not (0 < coverage_min <= 1) or not (0 < kill_attempted_min <= 1):
+        return _fail_g1(rel, "threshold policy violated")
+    raw_kg = threshold.get("kill_generated_min")
+    kill_generated_min = float(raw_kg) if raw_kg is not None else None
+    if kill_generated_min is not None and not (0 < kill_generated_min <= 1):
+        return _fail_g1(rel, "threshold policy violated")
+    eps = 1e-9
+    if stats["coverage_ratio"] is not None and abs(stats["coverage_ratio"] - coverage_min) < eps:
+        return _fail_g1(rel, "circular measured_from_this_run is forbidden")
+    if stats["kill_attempted_ratio"] is not None and abs(stats["kill_attempted_ratio"] - kill_attempted_min) < eps:
+        return _fail_g1(rel, "circular measured_from_this_run is forbidden")
+    if (kill_generated_min is not None and stats["kill_generated_ratio"] is not None
+            and abs(stats["kill_generated_ratio"] - kill_generated_min) < eps):
+        return _fail_g1(rel, "circular measured_from_this_run is forbidden")
+    ev = _g1_evaluate()(stats, coverage_min, kill_attempted_min, kill_generated_min)
+    stored = data.get("evaluation_against_measurement") if isinstance(data.get("evaluation_against_measurement"), dict) else {}
+    if stored and not _stored_evaluation_agrees(stored, ev):
+        return _fail_g1(rel, "stored evaluation disagrees with recomputed evaluation")
+    token = str(data.get("g1_kill_ratio") or "").upper()
+    if token == "PASS" and not ev.get("pass"):
+        return _fail_g1(rel, "contradictory G-1 fields: PASS token without evaluator PASS")
+    pinned = _threshold_explicitly_pinned(data)
+    if not pinned:
+        return _fail_g1(rel, "threshold is not pinned (schema name is not a pin)")
+    if not ev.get("pass"):
+        return _fail_g1(rel, "kill-ratio pin at %s is not PASS" % rel, pinned=True)
+    return {"pass": True, "pinned": True, "value": "PASS", "path": rel,
+            "detail": "pinned G-1 kill-ratio PASS at %s" % rel}
+
+
+def _hex64(value: str) -> bool:
+    s = str(value or "").strip().lower()
+    return len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+
+
+def _embedded_xml_digest(data: dict[str, Any]) -> str:
+    provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
+    measurement = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    return str(
+        provenance.get("mutations_xml_sha256") or measurement.get("mutations_xml_sha256") or ""
+    ).strip()
+
+
+def _g1_on_disk_provenance_error(root: Path, data: dict[str, Any], candidate_sha: str) -> str:
+    """Require the producer PIT receipt. An embedded digest is not execution evidence."""
+    path = root / PIT_MEASUREMENT
+    if not path.is_file():
+        return "missing measurement provenance"
+    try:
+        receipt = load_json(path)
+    except Exception:
+        return "missing measurement provenance"
+    if not isinstance(receipt, dict) or str(receipt.get("schema") or "") != PIT_MEASUREMENT_SCHEMA:
+        return "missing measurement provenance"
+    bound, bind_err = _pin_bound_sha(data)
+    if bind_err:
+        return bind_err
+    receipt_sha = str(receipt.get("candidate_sha") or "").strip()
+    receipt_git = str(receipt.get("git_sha") or "").strip()
+    if receipt_sha and receipt_git and receipt_sha != receipt_git:
+        return "measurement provenance does not match the delivery candidate"
+    measured = receipt_sha or receipt_git
+    receipt_digest = str(receipt.get("mutations_xml_sha256") or "").strip()
+    if not measured or not _hex64(receipt_digest):
+        return "missing measurement provenance"
+    if measured != bound or bound != candidate_sha:
+        return "measurement provenance does not match the delivery candidate"
+    pin_digest = _embedded_xml_digest(data)
+    if pin_digest and (not _hex64(pin_digest) or pin_digest.lower() != receipt_digest.lower()):
+        return "measurement provenance does not match the PIT report digest"
+    provenance = data.get("provenance") if isinstance(data.get("provenance"), dict) else {}
+    identity = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+    pin_tree = str(provenance.get("tree_sha256") or identity.get("tree_sha256") or "").strip()
+    receipt_tree = str(receipt.get("tree_sha256") or "").strip()
+    if pin_tree or receipt_tree:
+        if not _hex64(pin_tree) or not _hex64(receipt_tree) or pin_tree.lower() != receipt_tree.lower():
+            return "measurement provenance does not match the product tree"
+    return ""
+
+
+def read_g1_kill_ratio(root: Path, *, candidate_sha: str = "") -> dict[str, Any]:
+    """Pinned G-1 kill-ratio from evidence. Never invents PASS."""
+    root = Path(root)
+    candidate_sha = str(candidate_sha or delivery_candidate_sha(root)).strip()
+    paths: list[Path] = [root / p for p in G1_PIN_CANDIDATES]
+    vdir = root / "evidence" / "verdicts"
+    if vdir.is_dir():
+        paths.extend(sorted(vdir.glob("*kill-ratio*pin*.json")))
+    seen: set[Path] = set()
+    failures: list[dict[str, Any]] = []
+    for path in paths:
+        if path in seen or not path.is_file():
+            continue
+        seen.add(path)
+        try:
+            data = load_json(path)
+        except Exception:
+            continue
+        if not isinstance(data, dict) or not data:
+            continue
+        result = evaluate_g1_pin(data, candidate_sha=candidate_sha, rel=_rel(path, root))
+        if result.get("pass") and result.get("pinned"):
+            why = _g1_on_disk_provenance_error(root, data, candidate_sha)
+            if why:
+                result = _fail_g1(_rel(path, root), why, pinned=True)
+                failures.append(result)
+                continue
+            return result
+        failures.append(result)
+    if failures:
+        return failures[0]
+    return {"pass": False, "pinned": False, "value": "", "path": "",
+            "detail": "no pinned G-1 kill-ratio PASS on the delivery candidate"}
+
+
+def _discharge_doc(root: Path) -> dict[str, Any] | None:
+    dedicated = root / COVERAGE_DISCHARGE
+    if dedicated.is_file():
+        try:
+            doc = load_json(dedicated)
+        except Exception:
+            return None
+        if isinstance(doc, dict):
+            return doc
+    cov_p = root / COVERAGE_ACCOUNT
+    if cov_p.is_file():
+        try:
+            cov = load_json(cov_p)
+        except Exception:
+            return None
+        if isinstance(cov, dict) and (cov.get("supersedes") or cov.get("candidate_sha")):
+            return cov
+    return None
+
+
+def coverage_discharged(root: Path, *, candidate_sha: str, historical_count: int,
+                        historical_ids: list[str]) -> tuple[bool, str]:
+    """Validated supersession of historical coverage-account rows. M4 bytes stay put."""
+    if historical_count <= 0:
+        return False, ""
+    if not historical_ids:
+        return False, "original coverage obligation identities are not preserved"
+    if _unique_ids(historical_ids) is None or len(historical_ids) != historical_count:
+        return False, "original coverage obligation identities are not unique"
+    doc = _discharge_doc(root)
+    if not doc:
+        return False, ""
+    schema = str(doc.get("schema") or "")
+    if schema not in {DISCHARGE_SCHEMA, "rhoai3.coverage-account/v1"}:
+        return False, "unsupported discharge schema"
+    bound = _bound_candidate_sha(doc)
+    if not bound:
+        return False, "coverage discharge is not bound to the delivery candidate"
+    if not candidate_sha or bound != candidate_sha:
+        return False, "coverage discharge is bound to a foreign candidate"
+    supersedes = doc.get("supersedes") if isinstance(doc.get("supersedes"), dict) else {}
+    if str(supersedes.get("kind") or "coverage-account") != "coverage-account":
+        return False, "discharge does not name the coverage-account obligation"
+    m4_p = root / M4_VERDICT
+    claimed = str(supersedes.get("m4_verdict_sha256") or doc.get("m4_verdict_sha256") or "").strip()
+    if not claimed or not m4_p.is_file():
+        return False, "discharge does not bind the unchanged M4 verdict"
+    if claimed != sha256_file(m4_p):
+        return False, "discharge m4_verdict_sha256 does not match the closed M4 verdict bytes"
+    ids = [str(x) for x in (supersedes.get("obligation_ids") or doc.get("obligation_ids") or []) if str(x)]
+    if not ids:
+        return False, "discharge names no obligation ids"
+    if _unique_ids(ids) is None:
+        return False, "discharge obligation ids are not unique"
+    if set(ids) != set(historical_ids):
+        return False, "discharge ids do not match the original coverage-account obligation"
+    cov_p = root / COVERAGE_ACCOUNT
+    if not cov_p.is_file():
+        return False, "supporting coverage account is absent"
+    cov = load_json(cov_p)
+    if not isinstance(cov, dict):
+        return False, "supporting coverage account is absent"
+    support_bound = _bound_candidate_sha(cov)
+    if not support_bound:
+        return False, "coverage account is not bound to the delivery candidate"
+    if support_bound != candidate_sha:
+        return False, "coverage account is bound to a foreign candidate"
+    if remaining_from_coverage(cov) != 0:
+        return False, "current coverage-account still reports remaining gaps"
+    by_path = {}
+    for row in (cov.get("rows") or []):
+        if isinstance(row, dict) and row.get("path"):
+            by_path[str(row["path"])] = row
+    for oid in ids:
+        row = by_path.get(oid)
+        if not row:
+            return False, "obligation %s is not in the current account" % oid
+        if row.get("remaining_gap") is not False:
+            return False, "obligation %s is not replaced in the current account" % oid
+    return True, "coverage-account discharged against candidate %s" % candidate_sha[:16]
+
+
+def _parity_identities(root: Path) -> tuple[list[str], list[dict[str, Any]]]:
+    p = root / PARITY_RECEIPT
+    if not p.is_file():
+        return [], []
+    try:
+        doc = load_json(p)
+    except Exception:
+        return [], []
+    caps: list[dict[str, Any]] = []
+    cap_eps: set[str] = set()
+    for g in (doc.get("coverage_gaps") or []):
+        if not isinstance(g, dict):
+            continue
+        sid = str(g.get("scenario") or "")
+        ep = str(g.get("entry_point") or "")
+        if sid:
+            caps.append({"id": sid, "entry_point": ep, "kind": str(g.get("kind") or ""),
+                         "detail": str(g.get("reason") or sid)})
+            if ep:
+                cap_eps.add(ep)
+    uncovered: list[str] = []
+    for row in (doc.get("entry_points") or []):
+        if not isinstance(row, dict):
+            continue
+        eid = str(row.get("entry_point") or row.get("id") or "")
+        verdict = str(row.get("verdict") or "").upper()
+        if eid and verdict not in {"PASS", "OK"} and eid not in cap_eps:
+            uncovered.append(eid)
+    return uncovered, caps
+
+
+def outstanding_from_artifacts(root: Path, *, candidate_sha: str = "") -> list[dict[str, Any]]:
+    """Genuine remaining release obligations. M4 ship:false is not one."""
+    root = Path(root)
+    candidate_sha = str(candidate_sha or delivery_candidate_sha(root)).strip()
     out: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str]] = set()
+
+    def add(row: dict[str, Any]) -> None:
+        kind = str(row.get("kind") or "")
+        if not kind or kind in HISTORICAL_KINDS:
+            return
+        row = _enrich(row)
+        if kind in {"coverage-account", "g1-kill-ratio"}:
+            for existing in out:
+                if existing.get("kind") == kind:
+                    existing["count"] = max(_count(existing.get("count")), _count(row.get("count")))
+                    if row.get("ids") and not existing.get("ids"):
+                        existing["ids"] = list(row["ids"])
+                    if row.get("id") and not existing.get("id"):
+                        existing["id"] = row["id"]
+                    if row.get("detail") and len(str(row.get("detail"))) > len(str(existing.get("detail") or "")):
+                        existing["detail"] = row["detail"]
+                    return
+            out.append(row)
+            return
+        key = (kind, str(row.get("id") or row.get("detail") or ""))
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+        out.append(row)
+
     blockers_p = root / RELEASE_BLOCKERS
     if blockers_p.is_file():
         doc = load_json(blockers_p)
         for row in (doc.get("outstanding") or []):
             if isinstance(row, dict):
-                out.append(dict(row))
+                add(dict(row))
+    historical_count = 0
     verdict_p = root / M4_VERDICT
     if verdict_p.is_file():
         verdict = load_json(verdict_p)
-        if not verdict.get("ship"):
-            if not any(r.get("kind") == "not-shipped" for r in out):
-                out.append({"kind": "not-shipped", "count": 0,
-                            "detail": "M4 did not ship; delivery reports deployment separately from release"})
         acct = verdict.get("coverage_account") if isinstance(verdict.get("coverage_account"), dict) else {}
-        remaining = int(acct.get("remaining_gaps") or 0) if str(acct.get("remaining_gaps") or "0").isdigit() else 0
-        if remaining:
-            out.append({"kind": "coverage-account", "count": remaining,
-                        "detail": "%d remaining coverage gap(s) from the M4 coverage account" % remaining})
+        historical_count = remaining_from_coverage(acct)
     cov_p = root / COVERAGE_ACCOUNT
+    current_count = 0
+    current_ids: list[str] = []
     if cov_p.is_file():
         cov = load_json(cov_p)
-        remaining = int(cov.get("remaining_gaps") or 0) if str(cov.get("remaining_gaps") or "0").isdigit() else 0
-        if remaining and not any(r.get("kind") == "coverage-account" for r in out):
-            out.append({"kind": "coverage-account", "count": remaining,
-                        "detail": "%d remaining coverage gap(s) in coverage-account.json" % remaining})
+        current_count = remaining_from_coverage(cov)
+        current_ids = remaining_ids_from_coverage(cov)
+    original_ids = original_coverage_obligation_ids(root)
+    discharged, _why = coverage_discharged(
+        root, candidate_sha=candidate_sha, historical_count=historical_count,
+        historical_ids=list(original_ids or []),
+    )
+    if discharged:
+        out[:] = [r for r in out if r.get("kind") != "coverage-account"]
+    elif current_count:
+        add({"kind": "coverage-account", "id": "coverage-account",
+             "count": current_count, "ids": current_ids,
+             "detail": "%d remaining coverage gap(s) in coverage-account.json" % current_count})
+    elif historical_count:
+        add({"kind": "coverage-account", "id": "coverage-account",
+             "count": historical_count, "ids": list(original_ids or []),
+             "detail": "%d remaining coverage gap(s) from the M4 coverage account" % historical_count})
+    uncovered, caps = _parity_identities(root)
+    if caps:
+        out[:] = [r for r in out if r.get("kind") not in {"capability-gap", "parity-receipt"}]
+        for cap in caps:
+            add({"kind": "capability-gap", "id": cap["id"], "entry_point": cap["entry_point"],
+                 "count": 1, "detail": cap["detail"] or cap["id"]})
+        if uncovered:
+            add({"kind": "parity-receipt", "id": "parity-unmeasured",
+                 "ids": uncovered, "count": len(uncovered),
+                 "detail": "%d entry point(s) did not pass and are not the named capability gap" % len(uncovered)})
+    elif uncovered:
+        out[:] = [r for r in out if r.get("kind") != "parity-receipt"]
+        add({"kind": "parity-receipt", "id": "parity-unmeasured",
+             "ids": uncovered, "count": len(uncovered),
+             "detail": "%d entry point(s) did not pass" % len(uncovered)})
+    kill = read_g1_kill_ratio(root, candidate_sha=candidate_sha)
+    if not (kill.get("pass") and kill.get("pinned")):
+        add({"kind": "g1-kill-ratio", "id": "g1-kill-ratio", "count": 0, "detail": kill.get("detail") or ""})
     return out
 
 
@@ -159,19 +914,24 @@ def assess_eligibility(root: Path, *, runner: Runner | None = None) -> dict[str,
     if not candidate:
         reasons.append({"condition": "candidate-sha", "evidence": "git rev-parse HEAD",
                         "owner": "delivery implementer", "resolution": "inspect the current git HEAD; do not reuse a previously reported identity"})
-    outstanding = outstanding_from_artifacts(root)
+    outstanding = outstanding_from_artifacts(root, candidate_sha=candidate)
     open_items = worklist_open_count(root)
     pipeline_eligible = not reasons
-    release_eligible = pipeline_eligible and not outstanding and bool(verdict.get("ship"))
+    kill = read_g1_kill_ratio(root, candidate_sha=candidate)
+    # M4 ship:false is historical. Release eligibility is the existing contract
+    # plus pinned kill-ratio evidence — never M4 already having shipped.
+    release_eligible = pipeline_eligible and not outstanding and bool(kill.get("pass") and kill.get("pinned"))
     if pipeline_eligible and not release_eligible:
         reasons.append({"condition": "release-qualifications", "evidence": str(RELEASE_BLOCKERS),
                         "owner": "existing release contract",
-                        "resolution": "record outstanding qualifications; an empty repair worklist is not full release eligibility"})
+                        "resolution": "record outstanding qualifications; M4 ship:false is not one; an empty repair worklist is not full release eligibility"})
     return {
         "schema": SCHEMA_ELIGIBILITY,
         "m4_card": str((closed or {}).get("card") or (verdict.get("card_id") or "")),
         "m4_verdict": str((closed or {}).get("verdict") or verdict.get("verdict") or ""),
         "m4_ship": bool(verdict.get("ship")),
+        "g1_kill_ratio": kill.get("value") or "",
+        "g1_kill_ratio_threshold_pinned": bool(kill.get("pass") and kill.get("pinned")),
         "candidate_sha": candidate,
         "accepted_revision": str((closed or {}).get("parity_receipt_sha256") or verdict.get("parity_receipt_sha256") or ""),
         "outstanding": outstanding,
@@ -878,8 +1638,9 @@ def compose_verdict(root: Path) -> dict[str, Any]:
             stale.append(label)
     deploy_ok = bool(dep.get("ok")) and not stale
     live_ok = bool(live.get("ok"))
-    outstanding = list(elig.get("outstanding") or cand.get("outstanding") or [])
-    release_eligible = bool(elig.get("release_eligible") or cand.get("release_eligible"))
+    outstanding = outstanding_from_artifacts(root, candidate_sha=candidate)
+    kill = read_g1_kill_ratio(root, candidate_sha=candidate)
+    release_eligible = (not outstanding) and bool(kill.get("pass") and kill.get("pinned"))
     failed_stage = ""
     if not cand.get("ok", True) or not elig.get("pipeline_eligible", True):
         failed_stage = STAGE_LABELS["prepare"]
@@ -904,6 +1665,8 @@ def compose_verdict(root: Path) -> dict[str, Any]:
         routing = "close"
         reason = "full release: live checks passed and the existing release contract is met"
     ship = verdict_token == "ACCEPT"
+    kill_value = "PASS" if (kill.get("pass") and kill.get("pinned")) else str(kill.get("value") or "")
+    kill_pinned = bool(kill.get("pass") and kill.get("pinned"))
     doc = {
         "schema": SCHEMA_VERDICT,
         "gate": "compose-m5-verdict",
@@ -928,11 +1691,17 @@ def compose_verdict(root: Path) -> dict[str, Any]:
         "outstanding": outstanding,
         "limitations": [r.get("detail") or r.get("kind") for r in outstanding if isinstance(r, dict)],
         "stale_evidence": stale,
-        "g1_kill_ratio": "",
-        "g1_kill_ratio_threshold_pinned": False,
+        "g1_kill_ratio": kill_value,
+        "g1_kill_ratio_threshold_pinned": kill_pinned,
+        "g1_kill_ratio_evidence": kill.get("path") or "",
     }
     path = root / M5_VERDICT
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        archive = root / DELIVERY_DIR / "attempts" / "m5-verdict.json"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        if not archive.is_file():
+            archive.write_bytes(path.read_bytes())
     write_canonical(path, doc)
     return doc
 

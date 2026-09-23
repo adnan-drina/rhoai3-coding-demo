@@ -32,9 +32,13 @@ repository (`/projects/modernized`).
 - Prefer constructor injection; config via `@ConfigProperty` / `%profile` keys
   (or `QUARKUS_PROFILE`) — do not invent Spring-style `application-*.properties`
   trees on the destination.
-- REST resources under `/api/`; JSON via Jackson. If health exists, it
-  belongs at `/q/health` (`/q/*` deliberately sits outside the application
-  root path). That is a target convention, not a story to invent.
+- JSON via Jackson. Derive HTTP paths from the effective
+  `quarkus.http.root-path`, `quarkus.http.non-application-root-path`,
+  Swagger/OpenAPI configuration, and the measured application contract
+  (`delivery.yaml`, OpenAPI, source oracles). Do not invent `/api/` or
+  `/q/health` as specimen defaults. Health, when present, follows the
+  non-application root. Fill `delivery.yaml` from that measured contract,
+  not from this file.
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 - Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
   versions in `.hermes/pins.json` only).

@@ -130,7 +130,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-semantics-manifest.py" /projects/mode
 python3 "${HERMES_SKILL_DIR}/scripts/compute-substrate-reopen.py" /projects/modernized \
   --implicated com.example.shared.Entity --print
 
-# Factory must not contradict M5 ACCEPT (required oracle)
+# Factory must not contradict M5 ACCEPT (required oracle). G-1 PASS is the
+# canonical pin evaluator in m5_delivery.read_g1_kill_ratio, not a schema name,
+# PASS token, or verdict field.
 python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
 
 # AD-H §16.6 / AR-2.1 — refuse non-runnable default DB (idle until DB intent)
@@ -240,9 +242,11 @@ Rebuild later only on dest GO.
   idle lines from `check-factory-m5.py`, `check-candidate-promote.py`,
   `check-accept-scope.py`, and `check-persisted-data-contract.py`: idle is not a pass.
 - No artifact carries `ship: true` with a verdict other than a full M5 `ACCEPT`,
-  no `PROVISIONAL_ACCEPT` outside M4, and no `g1_kill_ratio: PASS` without
-  `g1_kill_ratio_threshold_pinned`. A `g1_kill_ratio_waiver` or
-  `operator_waiver` on an M5 ACCEPT is REFUSE.
+  no `PROVISIONAL_ACCEPT` outside M4, and no M5 `ACCEPT` without a verified
+  G-1 pin PASS on the delivery candidate (`read_g1_kill_ratio`), including the
+  producer-written PIT measurement receipt bound to that pin. Schema name,
+  PASS token, embedded digest, and verdict-field substitutes are not pin evidence. A
+  `g1_kill_ratio_waiver` or `operator_waiver` on an M5 ACCEPT is REFUSE.
 - M4 floor: `evidence/receipts/m4-floor/<run-id>/` holds all three receipts —
   `boot_health.json`, `endpoint_smoke.json`, `g4_hook.json`, schema
   `rhoai3.gate-receipt/v1` — and `check-m4-floor-receipts.py` prints `OK: M4

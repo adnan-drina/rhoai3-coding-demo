@@ -70,6 +70,11 @@ documents hand-authoring as a dedicated path.
    `../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>`
    and
    `../manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py <root>`.
+   Re-run `scripts/parse-platform-gav.py <root>` after authoring so the
+   printed GAV still matches `.hermes/pins.json`. T-1: the plugin shares
+   the BOM group id (registry listing under
+   `maven.repository.redhat.com/ga`; see
+   `../reference-rh-quarkus-pom/references/pom-structure.md`).
 5. **Tooling preflight (W3):** run
    `../manage-quarkus-extensions/scripts/assert-extension-tooling.py`
    before the first `ext` / Maven extension mutation. CLI absent → typed

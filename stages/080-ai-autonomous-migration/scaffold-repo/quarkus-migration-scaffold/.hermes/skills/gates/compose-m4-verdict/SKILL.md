@@ -192,7 +192,16 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-coverage-account.py" \
    retired **test** source is replaced only beside fresh executed-test
    evidence. Copy `summary.retired` and `summary.remaining_gaps` into the
    verdict's required `coverage_account`. Do not hand-write the account: the
-   lint recomputes it and refuses a copy that disagrees. A remaining gap is
+   lint recomputes it and refuses a copy that disagrees. The composer binds
+   the measured candidate. The original `bind-m4-verdict.py` transaction
+   snapshots that account at
+   `verification/loop/accepted/coverage-account.json` bound to the M4
+   `card_id`; earlier snapshots stay under
+   `verification/loop/accepted/coverage/history/<card_id>/`. Close, read,
+   and already-bound retry do not backfill a missing freeze from later
+   live evidence. Discharge selects the snapshot for the M4 being closed.
+   If that snapshot is absent, original identities stay unresolved. Do
+   not rewrite the historical M4 verdict. A remaining gap is
    legal (an accepted ADR may knowingly drop coverage) and hiding one is not.
 
 4. Lint (this skill does not replace these checkers):

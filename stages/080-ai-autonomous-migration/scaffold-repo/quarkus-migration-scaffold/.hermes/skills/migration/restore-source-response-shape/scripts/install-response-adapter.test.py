@@ -88,7 +88,7 @@ def main() -> int:
         def empty_enabled(doc):
             out = copy.deepcopy(doc)
             for t in out["types"]:
-                if str(t.get("fqn") or "").endswith("EnabledSecurity"):
+                if any("WebSecurityConfigurerAdapter" in str(s) for s in (t.get("supertypes") or [])):
                     for m in t.get("methods") or []:
                         m["calls"] = []
             return out
@@ -183,6 +183,11 @@ def main() -> int:
               pos["security"])
         check(gated_when(pos) == "fixture.security.enable=true",
               "the adapter row is rendered from that decided switch plus captured security-before-CORS")
+        pos_props = dict(ra.cors_properties(pos))
+        check(pos_props.get("rhoai3.source-cors.security-rejections-bare") == "true",
+              "oracle-proven 401 without CORS also renders security-rejections-bare")
+        check("rhoai3.source-cors.security-precedes-cors" not in pos_props,
+              "an unknown configure() graph does not claim cors() was absent")
 
         # 403 with missing response headers is unknown, not security-before-CORS.
         shutil.rmtree(root / "verification", ignore_errors=True)
@@ -201,6 +206,9 @@ def main() -> int:
         shutil.rmtree(root / "verification", ignore_errors=True)
         (root / "evidence/structure/structure.json").write_text(json.dumps(base))
         props = dict(ra.cors_properties(policy))
+        check(props.get("rhoai3.source-cors.security-precedes-cors") == "true"
+              and props.get("rhoai3.source-cors.security-rejections-bare") == "true",
+              "a cors()-absent graph still renders both security-precedes-cors and security-rejections-bare", props)
         check(props["quarkus.http.cors.origins"] == "*" and props["quarkus.http.cors.methods"] == "GET,POST,PUT",
               "platform rows are the union of what the source grants", props)
         check("quarkus.http.cors.access-control-max-age" not in props,

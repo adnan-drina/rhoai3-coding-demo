@@ -680,6 +680,11 @@ def cors_properties(policy: dict[str, Any]) -> list[tuple[str, str]]:
     when = list(sec.get("preflight_authenticated_when") or [])
     if when:
         rows.append((pre + "preflight-authenticated-when", when[0]))
+        if not sec.get("precedes_cors"):
+            # The same qualified anonymous 401 (challenge, no CORS grant) that
+            # gates preflight authentication is also the source 401 shape for
+            # actual requests: reshape() must strip platform CORS, not write it.
+            rows.append((pre + "security-rejections-bare", "true"))
     rows.append((pre + "rule-count", str(len(rules))))
     for i, r in enumerate(rules):
         rp = "%srule.%d." % (pre, i)

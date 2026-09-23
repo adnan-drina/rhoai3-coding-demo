@@ -1,12 +1,13 @@
 ---
 name: paved-road-m5
 description: >
-  Pin on M5 PREFLIGHT, M5 DEPLOY, and M5 VALIDATE delivery cards after a closed M4 result. Index for
-  bounded delivery: eligibility-checked start, release-candidate prepare,
-  app-push observation, deployed-app assertion, live Route acceptance,
-  composed M5 verdict. Use for the assisted continuation that publishes
-  through the existing pipeline. Never for M1–M4, never to dest-dispatch
-  from the M4 worker, never to invent release gates or waive coverage.
+  Pin on M5 PREFLIGHT, M5 DEPLOY, and M5 VALIDATE delivery cards after a
+  closed M4 result. Index for bounded delivery: eligibility-checked start,
+  release-candidate prepare, app-push observation, deployed-app assertion,
+  live Route acceptance, composed M5 verdict. Use for the assisted
+  continuation that publishes through the existing pipeline. Never for
+  M1–M4, never to dest-dispatch from the M4 worker, never to invent
+  release gates or waive coverage.
 license: Apache-2.0
 compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+; oc/tkn for M5 DEPLOY
 metadata:
@@ -22,8 +23,11 @@ metadata:
 # Paved road: M5 delivery (PREFLIGHT → DEPLOY → VALIDATE)
 
 `steps.json` is the contract; `audit.json` is generated from it. Application
-values (namespace, Route probes, CRUD body) live in the project's
-`delivery.yaml`. This skill does not branch on a specimen name.
+values (namespace, Route probes, swagger/openapi, CRUD body) live in the
+project's `delivery.yaml`, filled from effective `quarkus.http.root-path`,
+`quarkus.http.non-application-root-path`, Swagger/OpenAPI configuration, and
+the measured application contract. Do not assume `/api`, `/q/health`,
+`/q/swagger-ui`, or `/q/openapi`. This skill does not branch on a specimen name.
 
 M4 close is not ship. Delivery is an assisted continuation with a **separate
 budget**. The M4 terminator remains: never dest-dispatch M5 from that card.
@@ -53,10 +57,27 @@ Native reviewer checks PREFLIGHT and VALIDATE. Implementer terminator is `kanban
 Inspect current `git rev-parse HEAD` before reusing a reported identity. Bind
 the closed M4 card, retained verdict, and original parity evidence (do not
 overwrite M4 receipts). Record outstanding qualifications from
-`release-blockers.json` / coverage account. An empty work list is not full
-release eligibility. Do not silently waive gaps or add new gates. Prepare only
-necessary build/deploy config (database and credential **references**). KEEP
-`verification/delivery/candidate.json`.
+`release-blockers.json` / coverage account. M4 `ship: false` and its verdict
+prose are historical context, not M5 release obligations. An empty work list
+is not full release eligibility. Read the pinned G-1 kill-ratio result from
+evidence; do not hardcode empty values or invent PASS. The pin must be the
+output of `pin-kill-ratio-from-pit.py` after `--record-measurement` (XML digest
+tied to the measured Git commit and `product_tree_sha256`; those identities
+are not compared as strings. `--root` may resolve the expected delivery
+commit but must not relabel an arbitrary `mutations.xml`). M5 consumption
+requires that producer-written `pit-measurement.json` receipt and matching
+candidate/tree/report bindings; an embedded digest string is not PASS. Do not decorate a pin after
+measurement.
+Conflicting candidate identities, non-integer or unordered counts (require
+`0 <= killed <= attempted <= generated`), or stored evaluation that disagrees
+with a recompute are not PASS. Historical coverage gaps close only through
+`verification/delivery/coverage-discharge.json` that names the unique original
+obligation identities recovered from preserved M4 evidence (verdict rows,
+blocker `ids`, or the coverage snapshot bound to this M4 card — not a live
+rewritten account, not another card's freeze, and not a count). The supporting `coverage-account.json` must bind this candidate.
+Closed M4 bytes stay put. Do not silently waive gaps or add new gates. Prepare
+only necessary build/deploy config (database
+and credential **references**). KEEP `verification/delivery/candidate.json`.
 
 **M5 DEPLOY.** Publish through the repository workflow that already triggers
 `app-push`. Then:
@@ -91,17 +112,21 @@ Swagger UI and OpenAPI must load and name application paths. Representative
 reads and a disposable CRUD flow (create, read, delete its own row) must pass.
 Auth and CORS must match the configured mode in `delivery.yaml` /
 `decisions.yaml`. Do not change authentication to make tests pass. The composer
-reports **deployment_status** separately from **verdict**; a reachable app with
-outstanding qualifications is `INCONCLUSIVE` / `ship: false`, never a full
-`ACCEPT`. KEEP `evidence/verdicts/m5-verdict.json`.
+reports **deployment_status** separately from **verdict**. Full `ACCEPT` is the
+existing release contract plus pinned kill-ratio PASS on this candidate, with
+bound pipeline/deploy/live checks; it does **not** require M4 to have shipped.
+A reachable app with genuine outstanding qualifications is `INCONCLUSIVE` /
+`ship: false`. Duplicate coverage-account rows collapse to one; `not-shipped`
+and `verdict-reason` are not re-opened. KEEP `evidence/verdicts/m5-verdict.json`
+(prior copies archive under `verification/delivery/attempts/`).
 
 Reviewer: `python3 .../assert-paved-road-audit.py --root . --steps steps-prepare.json`
 (or `steps-push.json` / `steps-accept.json`) over the official kanban log.
 
 ## Failures
 
-Name the failed stage (M5 PREFLIGHT / M5 DEPLOY / M5 VALIDATE), the exact condition, evidence,
-owner, and the smallest bounded repair. Preserve failed attempts. After a
-candidate SHA changes, revalidate pipeline, deployment, and live evidence;
-do not reuse another revision's records. No identical retry, no new
-monitoring agent, no parallel manual deploy path.
+Name the failed stage (M5 PREFLIGHT / M5 DEPLOY / M5 VALIDATE), the exact
+condition, evidence, owner, and the smallest bounded repair. Preserve failed
+attempts. After a candidate SHA changes, revalidate pipeline, deployment, and
+live evidence; do not reuse another revision's records. No identical retry, no
+new monitoring agent, no parallel manual deploy path.

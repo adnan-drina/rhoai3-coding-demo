@@ -133,7 +133,7 @@ from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E
 from planner.cards import CLOSE_ID  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_DIR, LOOP_ISSUED, PARITY_DIR  # noqa: E402
 from planner.worklist import build_worklist, head_cluster, parity_items  # noqa: E402
-from m5_delivery import ENTRY_CMD, record_eligibility  # noqa: E402
+from m5_delivery import ENTRY_CMD, load_preserved_coverage_account, record_eligibility, remaining_ids_from_coverage  # noqa: E402
 
 M4_VERDICT = Path("evidence") / "verdicts" / "m4-verdict.json"
 # bind-m4-verdict.py's record of the verdict AS BOUND (digest + copy + bindings)
@@ -228,7 +228,7 @@ def already_closed(steps: dict, card: str) -> bool:
     return any(str(r.get("card") or "") == card and r.get("closed") for r in close_rows(steps))
 
 
-def outstanding_rows(verdict: dict, preceipt: dict) -> list:
+def outstanding_rows(verdict: dict, preceipt: dict, root: Path | None = None) -> list:
     """What a CLOSED run still owes before it could ship.
 
     `ship: false` on a PROVISIONAL_ACCEPT says the floors were met, not that
@@ -236,7 +236,9 @@ def outstanding_rows(verdict: dict, preceipt: dict) -> list:
     Every row is READ off an artifact -- the parity receipt's own verdict and
     coverage summary, the capability gaps it recorded, the coverage account the
     verdict carries, the verdict's own reason -- so nothing here asserts a
-    completeness the evidence does not hold."""
+    completeness the evidence does not hold. Close does not snapshot a missing
+    historical coverage account from later live evidence.
+    """
     out: list = []
     rows = [r for r in (preceipt.get("entry_points") or []) if isinstance(r, dict)]
     rv = str(preceipt.get("verdict") or "")
@@ -262,9 +264,17 @@ def outstanding_rows(verdict: dict, preceipt: dict) -> list:
     except (TypeError, ValueError):
         remaining, retired = 0, 0
     if remaining:
-        out.append({"kind": "coverage-account", "count": remaining,
-                    "detail": "%d of %d retired source(s) still have a remaining gap (evidence/verdicts/coverage-account.json)"
-                              % (remaining, retired)})
+        row = {"kind": "coverage-account", "count": remaining,
+               "detail": "%d of %d retired source(s) still have a remaining gap (evidence/verdicts/coverage-account.json)"
+                         % (remaining, retired)}
+        ids: list[str] = []
+        if root is not None:
+            snap = load_preserved_coverage_account(root)
+            if snap is not None:
+                ids = remaining_ids_from_coverage(snap)
+        if ids:
+            row["ids"] = ids
+        out.append(row)
     reason = str(verdict.get("reason") or "").strip()
     if reason:
         out.append({"kind": "verdict-reason", "count": 0, "detail": reason[:400]})
@@ -464,7 +474,7 @@ def close_out(root: Path, args: Any, verdict: dict, preceipt: dict, steps: dict,
          explicit empty record saying which verdict cleared it and when -- and
          what is still outstanding, which is not the same thing."""
     now = _now()
-    left = outstanding_rows(verdict, preceipt)
+    left = outstanding_rows(verdict, preceipt, root)
     blockers = {
         "schema": BLOCKERS_SCHEMA,
         "at": now,
