@@ -7,8 +7,18 @@
   `parity:parity:` prefix and refused before checking the file relationship.
   The local correction accepts both spellings, while refusing foreign and
   combined IDs and preserving all relationship checks. A native comment on
-  attempt 3 gives the currently installed syntax; attempts remain spent and
-  no scope was widened by the architect. Installation is pending.
+  attempt 3 gave the prior syntax; attempts remain spent and no scope was
+  widened by the architect. Installed with the reset and pending-brief fixes
+  at the subsequent blocked boundary; destination selftests passed and 191
+  protected product/loop files stayed unchanged.
+- Root attempt 3 fixed the first response (302 and literal Location) but was
+  DEFERRED when navigation still failed. The response-advice producer named
+  Swagger properties only in prose, so even a correctly parsed scope request
+  could not reach their file until a separate navigation obligation appeared.
+  UI redirect advice now carries the same configuration locus its repair
+  instructions require. Tests cover the actual producer through amend-scope,
+  including a renamed specimen; ordinary responses gain no configuration
+  authority. The three failed attempts remain recorded.
 - Parity steps `4877892e` (CORS), `1ad2532d` (Owner) and `abb778b9` (Pet)
   were accepted after package and boot recovery. The Pet step records two
   parity mismatches remaining and known tuple `[0,0,0]`; the root-controller
@@ -20,7 +30,8 @@
   driver refusal, suppresses tracing and passes credential references to Java.
   Tests exercise an empty profile cache, a custom Maven cache, shell tracing,
   missing jars and the real Java runner with a nonconnecting fixture driver;
-  ownership checks remain mandatory. Installation waits for an idle boundary.
+  ownership checks remain mandatory. Installed at the Root deferral boundary;
+  destination regression checks passed without resetting the live database.
 - A proposed containment of Owner run 31 stopped at its PID check because the
   worker had already exited. No task was blocked, no process was stopped, and
   no database reset was performed by that intervention; its accepted step and
@@ -82,7 +93,7 @@
   only an interrupted invocation with an unknown verdict merits one retry.
   Tests cover present/absent clusters with and without retained candidates.
   This is a guidance correction, not a changed acceptance rule or a proven
-  explanation for run 29; installation waits for a safe task boundary.
+  explanation for run 29; installed at the Root deferral boundary.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks

@@ -1338,6 +1338,11 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
                 % doubled)
         target = _url_path(want)
         if any(tok in target.lower() for tok in _DOC_UI_TOKENS):
+            # The advice below requires UI properties before navigation can
+            # pass. Bind that file here too, while the first response still
+            # fails; waiting for a navigation-only item makes the scope
+            # amendment impossible on the card that must repair both.
+            out["config_locus"] = APP_PROPERTIES
             exit_conditions.append(
                 "%s is live in the PACKAGED production artifact: the replacement UI is included in the package "
                 "(quarkus.swagger-ui.always-include=true) and addressed at that legacy path (quarkus.swagger-ui.path matching "

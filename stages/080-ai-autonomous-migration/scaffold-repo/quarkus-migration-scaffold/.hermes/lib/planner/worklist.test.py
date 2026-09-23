@@ -755,10 +755,14 @@ def _parity_advice_case() -> int:
                            "packaged", "amend-scope.py"):
                 if needed not in blob:
                     return _fail("the redirect advice must state %r: %s" % (needed, blob[:900]))
+            if red["advice"].get("config_locus") != APP_PROPERTIES:
+                return _fail("the UI redirect's property advice must carry the configuration locus amend-scope checks")
             if "following the redirect" not in blob or "404" not in blob or "another redirect status" not in blob:
                 return _fail("the redirect advice must refuse 303, redirect following and a dead URL: %s" % blob[:900])
 
             plain = items.get((ep_api, "sc:plain-" + spec["api_member"], "response"))
+            if plain and "config_locus" in plain["advice"]:
+                return _fail("an ordinary response difference must not authorize configuration")
             if not plain or "swagger" in json.dumps(plain["advice"]) or "redirect" in json.dumps(plain["advice"]["refused"]):
                 return _fail("a status-only difference is not a redirect and gets no redirect advice: %s" % plain)
 

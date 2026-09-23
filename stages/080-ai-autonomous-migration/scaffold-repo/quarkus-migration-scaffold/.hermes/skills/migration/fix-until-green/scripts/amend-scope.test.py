@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE))
 from _loop_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
-from planner.worklist import batch_scope_digest  # noqa: E402
+from planner.worklist import batch_scope_digest, response_advice  # noqa: E402
 
 SCOPE = {
     "schema": "rhoai3.batch-scope/v3",
@@ -481,6 +481,20 @@ def _parity_body_case(root: Path) -> int:
                    "--evidence", "parity:parity:nav1", cluster="c:nav")
     if rc == 0 or "not a path a parity card may reach" not in out:
         return _fail("the build file is not the config locus: %s" % out)
+    # Exercise the actual producer for a redirect whose first response still
+    # fails, before a separate dead-navigation obligation exists.
+    nav_item["cause"] = "response"
+    nav_item["advice"] = response_advice([
+        "status 303 vs 302",
+        "header Location http://d/app/app/swagger-ui/index.html vs http://d/app/swagger-ui/index.html "
+        "(source http://s/app/swagger-ui/index.html)"], ctl)
+    wl.write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [item, nav_item]}))
+    issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:nav", "attempt": 1,
+                                  "gate": "parity", "items": ["parity:nav1"], "write_set": [ctl]}))
+    rc, out = _run(root, "--path", props, "--reason", "the recorded UI redirect requires its packaged UI configuration",
+                   "--evidence", "parity:nav1", cluster="c:nav")
+    if rc != 0 or "configuration locus" not in out:
+        return _fail("a failing UI redirect must reach the properties its producer requires: %s" % out)
     # the same file for an obligation whose advice names no property there: refused, with the exact shape
     issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:par", "attempt": 1, "gate": "parity",
                                   "items": ["parity:body1"], "write_set": [ctl]}))
