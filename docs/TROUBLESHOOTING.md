@@ -1570,6 +1570,36 @@ oc get authpolicy -n models-as-a-service \
 
 Confirm the new pod stays `1/1` and that an unauthenticated model request returns 401. Do not raise the operator to RHCL 1.4 to get past this.
 
+## Hermes API timeouts while the model is healthy
+
+**Affected stages:** Stage 040 gateway and Stage 080 workers.
+
+**Observed on v10, 2026-09-22:** six model connection timeouts ended a worker
+before its first tool action. The Qwen 3.8 workload was ready, but the MaaS
+gateway pod had failed readiness for over 30 minutes. Its Service had only an
+unready endpoint. Gateway/HTTPRoute accepted conditions and model readiness
+therefore did not prove the consumer path worked. RHCL remained at 1.3.5;
+this was not the version-drift case below. Gateway memory was near its 1 GiB
+limit, but cgroup OOM counters were zero; the underlying stall cause is unknown.
+
+**Diagnose:** check the gateway pod's readiness and events, its Service's
+EndpointSlices, and a tiny authenticated request from the affected workspace.
+Keep the key inside that workspace and report only status/timing. Collect
+aggregate gateway errors rather than raw request logs, which can contain private
+data. Compare the public path with the internal gateway using the same hostname,
+TLS SNI, credential and model; do not bypass MaaS by calling vLLM directly.
+
+**Recover:** retain failure evidence, then replace the specific stalled gateway
+pod under its existing controller. Verify the replacement is ready and an
+authenticated request succeeds. In this incident, the internal request returned
+200 in 0.25 seconds while the public path still timed out. V10 lacked the
+documented hostAlias; apply `scripts/patch-workspace-maas-route.sh` as described
+in Operations, at an idle/blocked task boundary with candidate and run-state
+backups. Verify protected digests after the workspace restart, then unblock the
+same native task. Preserve migration attempts, acceptance gates and deadline.
+A recovered request establishes availability, not a permanent gateway fix;
+retain any recurrence as a platform issue.
+
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
 **Affected stage:** Stage 040 (breaks every AI consumer: Kilo Code, key provisioning, app LLM calls)

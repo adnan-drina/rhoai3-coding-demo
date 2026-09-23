@@ -37,6 +37,15 @@
   card resumed as native run 28 after status-only triage resolution; its
   specification, issued seal, recurrence count and loop budget are preserved.
   Live acceptance of that repair remains pending.
+- Native run 28 crashed before its first tool action after six MaaS timeouts.
+  The gateway pod was unready while Qwen 3.8 remained healthy; replacing the
+  gateway restored internal access, but the public path still timed out.
+  Applying the documented internal-route hostAlias restarted v10, with all
+  683 protected product, harness and loop files unchanged. An authenticated
+  request from the restarted workspace returned 200 in 0.19 seconds, and the
+  same card was unblocked with its candidate and loop attempt preserved.
+  This was platform recovery, not another application repair or a package pass.
+  The gateway stall's underlying cause remains unproven; no OOM was recorded.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks
