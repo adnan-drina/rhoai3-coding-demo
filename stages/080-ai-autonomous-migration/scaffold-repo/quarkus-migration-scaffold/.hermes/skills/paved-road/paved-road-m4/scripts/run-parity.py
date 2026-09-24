@@ -1140,6 +1140,53 @@ def main(argv: list[str] | None = None) -> int:
         #    issued card's own); every other entry point is named as not
         #    compared, with the reason, and its record on disk is not touched
         to_compare = list(wanted) if reads_all else list(reads_some)
+        # A read oracle was captured through the running source AFTER the whole
+        # corpus replayed, so it describes the state the corpus leaves behind:
+        # the last reset_before scenario and everything after it. A whole-phase
+        # run reaches that state by construction; a scoped run does not -- it
+        # replays the card's scenarios on their own, and a scenario that now
+        # WORKS (a delete that deletes) leaves a state the source never read in.
+        # Dest v12 t_e5c9a129: a correct PetRepositoryImpl.delete() made
+        # sc:delete-pets-1 delete pet 1, and the getPets read oracle re-run
+        # beside it then saw 12 pets of 13, an obligation no repair could
+        # discharge. So before a scoped run re-runs a read oracle, the corpus
+        # tail is replayed in corpus order, the same way step 1 replays it; if
+        # that state cannot be restored the read oracles are not compared.
+        restore_gap = ""
+        restore_skipped: set[str] = set()
+        if to_compare and not reads_all:
+            starts = [i for i, sc in enumerate(declared) if sc.get("reset_before", True)]
+            tail = declared[starts[-1]:] if starts else declared
+            doc["read_oracles"]["state_restore"] = {"tail": [str(sc["id"]) for sc in tail], "results": []}
+            if not starts:
+                proc = subprocess.run(shlex.split(reset_cmd), text=True, capture_output=True)
+                if proc.returncode != 0:
+                    restore_gap = "the reset before the corpus tail exited %d" % proc.returncode
+            for sc in ([] if restore_gap else tail):
+                sid = str(sc["id"])
+                argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
+                           "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
+                proc = _run_child(argv_sc, "scenario %s (restores the state the read oracles were captured in)" % sid)
+                verdict, _reason = _verdict_of(root / parity_dir / (scenario_slug(sid) + ".json"))
+                doc["read_oracles"]["state_restore"]["results"].append({"id": sid, "rc": proc.returncode,
+                                                                          "verdict": verdict})
+                # INCONCLUSIVE is a replay that did not happen as declared (its
+                # reset failed, its request could not be made): not a state
+                if verdict not in ("PASS", "FAIL"):
+                    restore_gap = ("scenario %s of the corpus tail came back %s (rc %d)"
+                                   % (sid, verdict or "with no verdict", proc.returncode))
+                    break
+            if restore_gap:
+                reason = ("not compared: the state the read oracles were captured in (the corpus tail %s) "
+                          "could not be restored: %s" % (", ".join(doc["read_oracles"]["state_restore"]["tail"]),
+                                                         restore_gap))
+                doc["read_oracles"]["state_restore"]["gap"] = restore_gap
+                failures.append(reason)
+                for ep in to_compare:
+                    doc["entry_points"]["skipped"] += 1
+                    doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": reason})
+                restore_skipped = set(to_compare)
+                to_compare = []
         for ep in to_compare:
             gap = read_oracle_gap(root, ep)
             if gap:
@@ -1169,7 +1216,7 @@ def main(argv: list[str] | None = None) -> int:
         if not reads_all:
             compared_now = set(to_compare)
             for ep in wanted:
-                if ep in compared_now:
+                if ep in compared_now or ep in restore_skipped:
                     continue
                 doc["entry_points"]["skipped"] += 1
                 doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": doc["read_oracles"]["reason"]})

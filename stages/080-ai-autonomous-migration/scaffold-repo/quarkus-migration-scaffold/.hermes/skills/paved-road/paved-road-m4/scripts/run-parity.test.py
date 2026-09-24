@@ -711,6 +711,34 @@ def main() -> int:
                 return _fail("the repaired read oracle comes back PASS through the same scoped run: %s %s" % (rc7, doc7.get("read_oracles")))
             if load_json(root / PARITY / (slug(vet_ep) + ".json")).get("verdict") != "PASS":
                 return _fail("the re-run record is PASS again")
+            # the read oracle is compared in the state it was CAPTURED in (dest
+            # v12 t_e5c9a129): the owners read was captured after the corpus,
+            # i.e. after its tail sc:create-owner-second left owner 8. A scoped
+            # run of sc:create-owner alone leaves owner 7; without replaying the
+            # tail the unchanged destination FAILs its own list read.
+            list_ep = next(e for e in READ_EPS if "OwnerController#list" in e)
+            tail = ["sc:create-owner-second", "sc:read-root", "sc:read-root-auth"]
+            rcT, blobT, docT = _run(root, base, reset, scenarios=("sc:create-owner",), extra=("--read-oracle", list_ep))
+            restore = docT["read_oracles"].get("state_restore") or {}
+            if restore.get("tail") != tail or [r["id"] for r in restore.get("results") or []] != tail:
+                return _fail("a scoped read oracle is preceded by the corpus tail, in corpus order: %s" % restore)
+            if rcT != 0 or docT["read_oracles"].get("rerun") != [list_ep] \
+                    or load_json(root / PARITY / (slug(list_ep) + ".json")).get("verdict") != "PASS":
+                return _fail("an unchanged destination passes its read oracle after a scoped scenario run: %s %s"
+                             % (rcT, blobT[-800:]))
+            # a tail that cannot be replayed leaves the state unknown: the read
+            # oracle is not compared, and the run says why
+            bad_reset = td / "bad-reset.py"
+            bad_reset.write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
+            before_list = (root / PARITY / (slug(list_ep) + ".json")).read_bytes()
+            rcB, blobB, docB = _run(root, base, bad_reset, scenarios=("sc:create-owner",), extra=("--read-oracle", list_ep))
+            skipped = [r for r in docB["entry_points"]["not_compared"] if r["entry_point"] == list_ep]
+            if (rcB == 0 or len(skipped) != 1 or "could not be restored" not in skipped[0]["reason"]
+                    or docB["read_oracles"].get("rerun")
+                    or (root / PARITY / (slug(list_ep) + ".json")).read_bytes() != before_list):
+                return _fail("an unrestorable tail refuses the read oracle by name and rewrites nothing: rc=%s %s %s"
+                             % (rcB, skipped, docB.get("failures")))
+            _run(root, base, reset)  # the whole phase again, so later cases start from the captured state
             # an entry point nobody admitted is refused, not skipped in silence
             rc8, blob8, doc8 = _run(root, base, reset, scenarios=("sc:create-owner-second",),
                                     extra=("--read-oracle", "ep:org.acme.Nobody#none():http"))
