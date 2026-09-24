@@ -9,6 +9,7 @@ forever. Steps:
   ("truncated_tool", name, partial_args_str) stream ends mid tool-call arguments with
                                              finish_reason=length (the vLLM max_tokens shape)
   ("http", status, headers_dict, body_dict)  non-200 response (e.g. 429 + Retry-After)
+  ("drop",)                                  200 + SSE headers, then close: a dropped stream
 
 ``usage.prompt_tokens`` is estimated from the request size (chars/4) so
 Hermes' usage-driven context logic behaves as it would against a server.
@@ -92,6 +93,16 @@ class FakeProvider:
                     self._send_json({"error": "unsupported"}, 404)
                     return
                 step = provider.script[min(n - 1, len(provider.script) - 1)]
+                if step[0] == "drop":
+                    # 200 + SSE headers, then the connection closes with no
+                    # event: a dropped stream the client must reconnect.
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.flush()
+                    self.close_connection = True
+                    return
                 if step[0] == "http":
                     _, status, headers, payload = step
                     self._send_json(payload, status=status, headers=headers)

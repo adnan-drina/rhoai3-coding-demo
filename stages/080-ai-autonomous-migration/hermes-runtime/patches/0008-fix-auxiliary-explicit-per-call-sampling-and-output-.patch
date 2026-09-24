@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 22:11:25 +0200
+Subject: [PATCH 8/8] fix(auxiliary): explicit per-call sampling and output cap
+ win over a task's extra_body
+
+auxiliary.<task>.extra_body is merged by the OpenAI SDK OVER the top-level
+request body, so a task default replaced what a caller set explicitly. With
+auxiliary.compression.extra_body = the model profile row plus max_tokens
+32768, the compressor's short micro-summary (temperature 0.1, max_tokens
+1500) went out at 0.7 / 32768. _build_call_kwargs now lets extra_body supply
+only what the call did not set: an explicit temperature removes the
+extra_body temperature, and an explicit max_tokens is sent through the
+configured key as min(explicit, configured), so it never raises a configured
+output bound. Calls that set nothing (the full compression summary) still
+get the whole extra_body, including the 32768 cap.
+---
+ agent/auxiliary_client.py | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
+index 0f13e06db7..f36ca1ba8d 100644
+--- a/agent/auxiliary_client.py
++++ b/agent/auxiliary_client.py
+@@ -8715,6 +8715,26 @@ def _build_call_kwargs(
+                 sticky_key = None
+             if sticky_key:
+                 merged_extra["session_id"] = sticky_key
++    # Explicit per-call values win over a task's configured extra_body. The
++    # OpenAI SDK merges extra_body OVER the top-level body, so without this a
++    # task default (e.g. auxiliary.compression.extra_body temperature/max_tokens)
++    # would silently replace what a caller asked for (the compressor's short
++    # micro-summary: temperature 0.1, max_tokens 1500). extra_body only
++    # supplies what the call did not set. An explicit max_tokens never raises a
++    # configured output bound: the smaller value is sent.
++    if "temperature" in kwargs:
++        merged_extra.pop("temperature", None)
++    if max_tokens is not None:
++        for _cap_key in ("max_tokens", "max_completion_tokens"):
++            if _cap_key not in merged_extra:
++                continue
++            if _cap_key in kwargs:
++                merged_extra.pop(_cap_key)
++            else:
++                try:
++                    merged_extra[_cap_key] = min(int(max_tokens), int(merged_extra[_cap_key]))
++                except (TypeError, ValueError):
++                    merged_extra[_cap_key] = max_tokens
+     if merged_extra:
+         kwargs["extra_body"] = merged_extra
+ 

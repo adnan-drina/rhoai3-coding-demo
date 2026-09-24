@@ -7,7 +7,8 @@ This directory qualifies three worker behaviours: the non-thinking sampling prof
 | Base runtime | `v2026.8.19` / `fcbd1076a93841fa88855acce810e342a5b78101` (tree `cc9f987a…`) |
 | Series 0001–0004 (B11) | tree `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48` |
 | Series 0001–0006 | tree `87a39dca63bca478e1ab93e9ce24ad757de25f8f` |
-| **Series 0001–0007 (final)** | **tree `433f0c6f1d4b415273d18b6db0894a320a74b8d9`**. This was verified by applying all seven patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer; see `../README.md`. |
+| Series 0001–0007 | tree `82b70baed3be3cf6cde0c3c2853aaa92582a80a3` (0007 after the final pacing review; the earlier `433f0c6f…` is superseded) |
+| **Series 0001–0008 (final)** | **tree `374562df41daeba0f40b79b87c0d3d001cf2d4dc`**. This was verified by applying all eight patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer and 0008 is auxiliary per-call precedence; see `../README.md`. |
 | Worker config under test | Rendered from the Stage 050 producer by `render_worker_config.py`. It executes only the `cfg = {...}` prefix of the `HERMESEOF` block in `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`. Snapshot: `tests/rhoai3_b3b4/worker_config.json`. |
 | Provider | The scripted fake OpenAI-compatible server in `tests/rhoai3_b3b4/fake_openai_server.py`, on loopback. No real model is called. |
 
@@ -79,7 +80,7 @@ This was run through the real CLI path, `hermes chat -q … -Q`, with the produc
 | `test_wire_payload_matches_nonthinking_profile` | pass | pass | not run | pass |
 | `test_profile_check_detects_dropped_extra_body` (control) | pass | pass | not run | pass |
 | `test_extra_body_wins_over_top_level_sampling` | pass | pass | not run | pass |
-| `test_auxiliary_compression_request_matches_profile_producer_config` (current producer: row plus `max_tokens` 32768 on both calls) | not re-run | not re-run | not run | pass (also passes on `87a39dca`: config-only) |
+| `test_auxiliary_compression_request_matches_profile_producer_config` (current producer: summary = row + `max_tokens` 32768; micro-summary keeps 0.1 / 1500 plus the row's other keys) | not re-run | not re-run | not run | fails before 0008 (micro-summary sent 0.7 / 32768); passes on 0001–0008 |
 | `test_every_auto_auxiliary_slot_carries_the_profile` | not re-run | not re-run | not run | pass |
 | `test_truncated_tool_call_never_executes` | **fail** | **fail** | pass | pass |
 | `test_429_retry_after_respected` | pass | pass | not run | pass |
@@ -89,20 +90,29 @@ This was run through the real CLI path, `hermes chat -q … -Q`, with the produc
 - The truncation and quota failures on the older trees are all at the board assertion, `detect_crashed_workers(conn) == []`: the dispatcher found a `protocol_violation`.
 - The "never executes" part of the truncation test holds on every tree. Those assertions run first, and the pin already behaves correctly there.
 
-## R2: request pacer tests (patch 0007, `test_r2_request_pacer.py`)
+## R2: request pacer tests (patch 0007, `test_r2_request_pacer.py`, `test_r2_pacer_waits_in_transport.py`)
 
-| Test | 0001–0006 (`87a39dca`) | 0001–0007 (`433f0c6f`) |
-|---|---|---|
-| `test_budget_counts_main_retries_and_auxiliary` | fail (no ledger: 0 slots for 6 requests) | pass |
-| `test_budget_shared_across_two_processes` | fail (8 requests reached the server, budget 5) | pass |
-| `test_budget_persists_across_restart` | fail (restarted process sent a 4th request) | pass |
-| `test_budget_waits_for_oldest_slot` (fake clock) | fail (no `agent.request_pacer`) | pass |
-| `test_budget_exhaustion_is_named_failed_run` | fail (request sent; protocol violation) | pass |
-| `test_budget_unset_is_unchanged` | fail (no `agent.request_pacer` module to assert disabled) | pass |
-| `test_main_path_waits_for_slot_and_completes` (real clock, 2 per 4 s) | fail (no pacing) | pass |
-| `test_budget_from_managed_env_reaches_worker` (settings only in `$HERMES_MANAGED_DIR/.env`; ledger parent created) | fail (no ledger) | pass |
+Columns: 0001–0006 (`87a39dca`); the earlier 0007 (`433f0c6f`, before V13-PACER-FINAL-REVIEW); the final 0001–0008 (`374562df`).
 
-`test_budget_unset_is_unchanged` fails on 87a39dca only because the module is absent. Its behavioural part is identical on both trees by design: the task completes, 2 requests are sent and no ledger is created.
+| Test | `87a39dca` | earlier 0007 `433f0c6f` | final `374562df` |
+|---|---|---|---|
+| `test_budget_counts_main_retries_and_auxiliary` | fail (no ledger: 0 slots for 6 requests) | pass | pass |
+| `test_budget_shared_across_two_processes` | fail (8 requests reached the server, budget 5) | pass | pass |
+| `test_budget_persists_across_restart` | fail (restarted process sent a 4th request) | pass | pass |
+| `test_budget_waits_for_oldest_slot` (fake clock) | fail (no `agent.request_pacer`) | pass | pass |
+| `test_budget_exhaustion_is_named_failed_run` | fail (request sent; protocol violation) | pass | pass |
+| `test_budget_unset_is_unchanged` | fail (no `agent.request_pacer` module to assert disabled) | pass | pass |
+| `test_main_path_waits_for_slot_and_completes` (real clock, 2 per 4 s) | fail (no pacing) | pass | pass |
+| `test_budget_from_managed_env_reaches_worker` (production allowance from the profile table, settings only in `$HERMES_MANAGED_DIR/.env`; ledger parent created) | fail (no ledger) | pass | pass |
+| **`test_budget_total_wait_bound_under_contention`** (production allowance and max wait from the profile table; the competitor wins every expiring slot) | not run | **fail**: waited 900.5 s > 900 s | pass: RequestBudgetExhausted within 900 s, nothing sent |
+| `test_budget_first_slot_beyond_wait_stops_immediately` (guards the kept behaviour) | not run | pass | pass |
+| **`test_cancelled_wait_sends_nothing`** (cancel check turns true during the hook wait) | not run | **fail** (`cancel_check` does not exist in that 0007: waits could not be cancelled) | pass: `RequestCancelledWhileWaiting`, 0 requests, no slot, nothing later |
+| **`test_stream_reconnect_waits_in_hook_without_stale_kill`** (kanban worker, 2 s stale timeout, the dropped stream's reconnect waits ~5 s in the hook) | not run | **fail**: the card stayed `running` and the `kanban_complete` call never reached the agent. Inferred: the watchdog cancelled the waiting attempt, and the request went out after the wait with its response discarded. | pass: the card completes, 3 requests = 3 slots, no stale message, nothing sent after exit |
+| `test_auxiliary_call_waits_in_hook_past_its_timeout` (guard: a 1 s aux timeout does not cover a 3 s pacer wait) | not run | pass | pass |
+
+- `test_budget_unset_is_unchanged` fails on 87a39dca only because the module is absent. Its behavioural part is identical on both trees by design: the task completes, 2 requests are sent and no ledger is created.
+- **Production values are not hard-coded.** Tests that model the production allowance read it from `model_profiles.json`, the snapshot `render_worker_config.py` writes from `gitops/.../devspaces/model-profiles.json` (190/3600, max wait 900 at the time of writing).
+- **The reviewer's reproduction needed no adaptation.** `tmp/v12-run-20260924/v13-pacer-contention-review.py` still extracts `agent/request_pacer.py` from the new 0007 without changes: it keeps its own 200/3600 and calls `_try_take(cfg, label=, take=)` and `acquire()`. It now reports `bounded-stop` at 900.0 s simulated, with 50 competing slots and 0 requests.
 
 ## Run
 
@@ -115,7 +125,7 @@ python <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/render_wor
   <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4/worker_config.json
 ```
 
-The 429 tests use small real delays: the whole suite takes about 40 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (7 patches, tree `433f0c6f…`), checked with `patch --dry-run` only.
+The 429 tests use small real delays: the whole suite takes about 40 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (8 patches, tree `374562df…`), checked with `patch --dry-run` only.
 
 ## Not covered
 

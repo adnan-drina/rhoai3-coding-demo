@@ -128,3 +128,11 @@ def profile_mismatches(body: dict) -> list[str]:
     if "extra_body" in body:
         out.append("extra_body: arrived nested instead of merged into the body")
     return out
+
+
+# The production allowance, from the rendered profile table snapshot
+# (model_profiles.json, written by render_worker_config.py) — never hard-coded.
+_PROFILE_TABLE = json.loads((HERE / "model_profiles.json").read_text())
+PROD_QUOTA = _PROFILE_TABLE["profiles"][_PROFILE_TABLE["default_model"]]["quota"]
+PROD_BUDGET = f"{PROD_QUOTA['max_requests_per_window']}/{PROD_QUOTA['window_seconds']}"
+PROD_MAX_WAIT = PROD_QUOTA["max_wait_seconds"]

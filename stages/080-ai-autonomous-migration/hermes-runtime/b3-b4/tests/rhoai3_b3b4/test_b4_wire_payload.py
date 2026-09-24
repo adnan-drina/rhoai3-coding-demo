@@ -107,18 +107,27 @@ def _aux_compression_bodies(monkeypatch, cfg):
 
 
 def test_auxiliary_compression_request_matches_profile_producer_config(monkeypatch):
-    """Producer config: auxiliary.compression.extra_body is the profile's
-    request_body plus max_tokens = quota.max_output_tokens (32768). Both
-    compressor calls (summary and micro-summary) carry the row and the output
-    bound on the wire; the micro-summary's top-level temperature 0.1 is
-    overridden by extra_body."""
+    """Producer config: auxiliary.compression.extra_body = the profile row plus
+    max_tokens 32768 (quota.max_output_tokens).
+
+    - The full compression summary (no explicit sampling or cap) carries the
+      whole row and max_tokens 32768.
+    - The short micro-summary sets temperature 0.1 and max_tokens 1500
+      explicitly; those win (patch 0008), and it still carries the row's
+      thinking-off and remaining sampling keys.
+    """
     bodies = _aux_compression_bodies(monkeypatch, H.worker_config())
     _capture("aux_compression_producer_config", bodies)
     assert len(bodies) == 2
-    for body in bodies:
-        assert H.profile_mismatches(body) == []
-        assert body["max_tokens"] == H.AUX_OUTPUT_CAP
-    assert bodies[1]["temperature"] == 0.7
+    summary, micro = bodies
+    assert H.profile_mismatches(summary) == []
+    assert summary["max_tokens"] == H.AUX_OUTPUT_CAP
+    assert micro["temperature"] == 0.1
+    assert micro["max_tokens"] == 1500
+    row_without_temperature = {k: v for k, v in H.NONTHINKING_ROW.items() if k != "temperature"}
+    for key, want in row_without_temperature.items():
+        assert micro.get(key) == want, key
+    assert micro["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_every_auto_auxiliary_slot_carries_the_profile():

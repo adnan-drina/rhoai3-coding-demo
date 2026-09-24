@@ -218,8 +218,8 @@ def test_budget_from_managed_env_reaches_worker(tmp_path, monkeypatch):
     managed.mkdir(parents=True)
     ledger = tmp_path / "platform" / "run-control-state" / "requests.log"
     (managed / ".env").write_text(
-        "RHOAI3_REQUEST_BUDGET=200/3600\n"
-        "RHOAI3_REQUEST_BUDGET_MAX_WAIT=900\n"
+        f"RHOAI3_REQUEST_BUDGET={H.PROD_BUDGET}\n"
+        f"RHOAI3_REQUEST_BUDGET_MAX_WAIT={H.PROD_MAX_WAIT}\n"
         f"RHOAI3_REQUEST_LEDGER={ledger}\n"
     )
     monkeypatch.setenv("HERMES_MANAGED_DIR", str(managed))
@@ -232,3 +232,75 @@ def test_budget_from_managed_env_reaches_worker(tmp_path, monkeypatch):
         lines = _ledger_lines(ledger)
         assert len(lines) == len(provider.chat_requests()) == 3
         conn.close()
+
+
+def test_budget_total_wait_bound_under_contention(tmp_path, monkeypatch):
+    """The production allowance and maximum wait (from the profile table). The
+    window is full, and a competing process wins every expiring slot just
+    before the waiting caller looks again. The caller must stop with
+    RequestBudgetExhausted within the TOTAL maximum wait and send nothing
+    (review V13-PACER-FINAL-REVIEW §2; before the fix it waited past 900 s)."""
+    from agent import request_pacer
+    from agent.auxiliary_client import _create_openai_client
+
+    limit = int(H.PROD_QUOTA["max_requests_per_window"])
+    window = float(H.PROD_QUOTA["window_seconds"])
+    max_wait = float(H.PROD_MAX_WAIT)
+    ledger = tmp_path / "requests.log"
+    _set_budget(monkeypatch, ledger, H.PROD_BUDGET, max_wait=H.PROD_MAX_WAIT)
+    start = 1_000_000.0
+    spacing = window / limit
+    clock = {"t": start}
+    competitor_slots = []
+    cfg = request_pacer.config()
+    # A full window: one slot every `spacing` seconds, the oldest expiring first.
+    ledger.write_text("".join(f"{start - (limit - 1 - i) * spacing:.6f} 1 seed\n" for i in range(limit)))
+
+    def fake_sleep(seconds):
+        clock["t"] += seconds
+        # The competitor takes each slot the moment it expires.
+        while True:
+            granted, _ = request_pacer._try_take(cfg, "competitor", True)
+            if not granted:
+                break
+            competitor_slots.append(clock["t"])
+        assert clock["t"] - start <= max_wait + 1e-6, "waited past the total bound"
+
+    monkeypatch.setattr(request_pacer, "_now", lambda: clock["t"])
+    monkeypatch.setattr(request_pacer, "_sleep", fake_sleep)
+    with FakeProvider([("text", "x")]) as provider:
+        client = _create_openai_client(api_key="sk-fake", base_url=provider.base_url)
+        try:
+            client.chat.completions.create(model="m", messages=[{"role": "user", "content": "hi"}])
+            raised = None
+        except Exception as exc:  # the SDK wraps hook errors in APIConnectionError
+            raised = exc if isinstance(exc, request_pacer.RequestBudgetExhausted) else exc.__cause__
+        assert isinstance(raised, request_pacer.RequestBudgetExhausted), raised
+        assert provider.chat_requests() == []
+    assert clock["t"] - start <= max_wait
+    assert raised.waited <= max_wait
+    assert len(competitor_slots) >= 1                       # contention really happened
+    assert str(raised).startswith(f"STOP MODEL_REQUEST_BUDGET: {limit} requests in {int(window)}s")
+
+
+def test_budget_first_slot_beyond_wait_stops_immediately(tmp_path, monkeypatch):
+    """Preserved: when the first predicted slot is already beyond the total
+    allowance, the caller stops at once without sleeping or sending."""
+    from agent import request_pacer
+    from agent.auxiliary_client import _create_openai_client
+
+    ledger = tmp_path / "requests.log"
+    _set_budget(monkeypatch, ledger, "1/3600", max_wait=5)
+    ledger.write_text(f"{time.time():.6f} 1 seed\n")
+    slept = []
+    monkeypatch.setattr(request_pacer, "_sleep", lambda s: slept.append(s))
+    with FakeProvider([("text", "x")]) as provider:
+        client = _create_openai_client(api_key="sk-fake", base_url=provider.base_url)
+        try:
+            client.chat.completions.create(model="m", messages=[{"role": "user", "content": "hi"}])
+            raise AssertionError("expected RequestBudgetExhausted")
+        except Exception as exc:
+            cause = exc if isinstance(exc, request_pacer.RequestBudgetExhausted) else exc.__cause__
+            assert isinstance(cause, request_pacer.RequestBudgetExhausted), exc
+        assert provider.chat_requests() == []
+    assert slept == []
