@@ -1379,7 +1379,25 @@ data:
                 # reasoning blocks, 167 s, same correct patch. The brief carries
                 # what the reasoning re-derived. Hermes passes extra_body for a
                 # named provider (config.providers_dict_to_custom_providers).
-                "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+                #
+                # Sampling: the Qwen3.8-27B card's Instruct (non-thinking) row.
+                # vLLM serves this model with the card's THINKING row
+                # (temperature 1.0, top_p 0.95, no presence penalty) through
+                # --override-generation-config, but workers run thinking off. On
+                # v12 (2026-09-24, t_655b1607) two consecutive responses ran to
+                # the full 8192-token cap for a ~275-token patch; the card names
+                # presence_penalty as the control for repetitive output. Set per
+                # request here, not on the served default, which other clients
+                # may use in thinking mode.
+                "extra_body": {
+                    "chat_template_kwargs": {"enable_thinking": False},
+                    "temperature": 0.7,
+                    "top_p": 0.8,
+                    "top_k": 20,
+                    "min_p": 0.0,
+                    "presence_penalty": 1.5,
+                    "repetition_penalty": 1.0,
+                },
                 "api": "${env:MAAS_API_BASE_URL}",
                 "api_key": "${env:MAAS_API_KEY}",
                 "discover_models": False,
