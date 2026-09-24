@@ -56,6 +56,20 @@ Check pods:
 oc get pods -A | egrep 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 ```
 
+## Stage 050 jobs cannot pull ose-cli after a restart
+
+**Affected stage:** Stage 050 provisioning, catalog refresh, and delivery.
+
+**Cause:** `registry.redhat.io/openshift4/ose-cli` does not publish a `latest`
+tag. Cached images can hide an invalid reference until a node is replaced or
+the image must be pulled again. On 2026-09-24 the catalog-refresh job reported
+`unsupported: This repository does not use the "latest" tag`.
+
+**Recover:** Sync the Stage 050 manifests with the explicit CLI digest also
+used by `provision-migration-run`. Confirm the next catalog-refresh and
+project-provisioner Jobs succeed. A Healthy Argo application alone does not
+prove recurring Jobs or future Tekton steps can pull their images.
+
 ## Argo CD App Is OutOfSync
 
 **Affected stage:** Any
