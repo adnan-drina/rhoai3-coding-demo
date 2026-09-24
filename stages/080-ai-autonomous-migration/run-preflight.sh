@@ -165,8 +165,15 @@ limits = [l for r in sub.get('spec',{}).get('modelRefs',[]) if r.get('name') == 
           for l in (r.get('tokenRateLimits') or [])]
 need(len(limits) == 1, 'devspaces-coding-models declares %d token limits for %s; exactly one is admitted' % (len(limits), os.environ['EXPECTED_MODEL']))
 quota_limit, quota_window = int(limits[0]['limit']), str(limits[0]['window'])
+# Other consumers of the same allowance: only migration RUNS draw the declared
+# per-run demand (their devfile names MIGRATION_RUN_NAME); every other
+# consumer of the subscription is covered by the profile's declared reserve.
+def is_migration_run(w):
+    comps = (w.get('spec',{}).get('template',{}) or {}).get('components') or []
+    return any(e.get('name') == 'MIGRATION_RUN_NAME' for c in comps for e in ((c.get('container') or {}).get('env') or []))
 dws = json.loads(oc('get','devworkspace','-n',ns,'-o','json')).get('items',[])
-quota_others = sum(1 for w in dws if w['metadata']['name'] != workspace and w.get('status',{}).get('phase') in ('Running','Starting'))
+quota_others = sum(1 for w in dws if w['metadata']['name'] != workspace and is_migration_run(w)
+                   and w.get('status',{}).get('phase') in ('Running','Starting'))
 model = json.loads(oc('get','llminferenceservice',os.environ['EXPECTED_MODEL'],'-n','models-as-a-service','-o','json'))
 need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in model.get('status',{}).get('conditions',[])), 'Qwen model is not Ready')
 def args_in(obj):
@@ -237,20 +244,32 @@ from urllib.parse import urlsplit
 require(urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == MAASHOSTVAL, 'worker MaaS endpoint is not the platform gateway host')
 addrs = {a[4][0] for a in socket.getaddrinfo(MAASHOSTVAL, 443, proto=socket.IPPROTO_TCP)}
 require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gateway %s: the workspace is on the public ELB path' % (sorted(addrs), MAASIPVAL))
-# B3: the declared demand fits the quota window, counting every other running
-# workspace as a consumer of the same bucket at the same worst case.
-prof_doc = json.loads(Path('/projects/.platform/hermes/model-profile.json').read_text())
+# B3 / R2: the run's ENFORCED allowance (the Hermes pacer, patch 0007, paces
+# every model request of the run -- main, each retry, auxiliary, reviewer --
+# to max_requests_per_window) at the largest request it can send (the input
+# window plus the largest output any path can request, 32768 after truncation
+# retries) plus the declared reserve for every other consumer, fits the
+# subscription's limit. The profile is the one PINNED for this run.
+prof_path = Path('/etc/rhoai3/run-control/profile.json')
+if not prof_path.is_file():
+    prof_path = Path('/projects/.platform/hermes/model-profile.json')
+prof_doc = json.loads(prof_path.read_text())
 prof = prof_doc['profiles'][prof_doc['default_model']]
 q = prof['quota']
-per_request = int(prof['context_length']) + int(prof['max_tokens'])
-demand = int(q['concurrency']) * int(q['max_requests_per_window']) * per_request
+per_request = int(q['max_input_tokens']) + int(q['max_output_tokens'])
+demand = int(q['max_requests_per_window']) * per_request
 runs = 1 + QOTHERSVAL
-require(q['window'] == QWINVAL, 'the profile declares its demand per %s and the subscription limits per %s' % (q['window'], QWINVAL))
-require(runs * demand <= QLIMITVAL,
-        'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s, effective %d, declared demand %d '
-        '(%d run(s) x %d worker(s) x %d requests x %d tokens); profile /projects/.platform/hermes/model-profile.json'
-        % (prof_doc['default_model'], QWINVAL, QLIMITVAL, runs * demand, runs, int(q['concurrency']),
-           int(q['max_requests_per_window']), per_request))
+win = '%dh' % (int(q['window_seconds']) // 3600) if int(q['window_seconds']) % 3600 == 0 else '%ds' % int(q['window_seconds'])
+require(win == QWINVAL, 'the profile paces per %s and the subscription limits per %s' % (win, QWINVAL))
+require(runs * demand + int(q['reserve_tokens_per_window']) <= QLIMITVAL,
+        'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s, effective %d, declared %d '
+        '(%d run(s) x %d requests x %d tokens + reserve %d); profile %s'
+        % (prof_doc['default_model'], QWINVAL, QLIMITVAL, runs * demand + int(q['reserve_tokens_per_window']), runs,
+           int(q['max_requests_per_window']), per_request, int(q['reserve_tokens_per_window']), prof_path))
+env_text = Path('/projects/.platform/hermes/.env').read_text() if Path('/projects/.platform/hermes/.env').is_file() else ''
+require('RHOAI3_REQUEST_BUDGET=%d/%d' % (int(q['max_requests_per_window']), int(q['window_seconds'])) in env_text
+        and 'RHOAI3_REQUEST_LEDGER=' in env_text,
+        'the worker runtime is not configured to pace this allowance (RHOAI3_REQUEST_BUDGET/LEDGER in the managed .env)')
 # B1: the workspace's own startup gate (planner.maas_route) must agree with
 # the cluster truth read above: the platform values stamped into this
 # workspace name that gateway and address, and TLS verifies through it.

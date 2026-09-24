@@ -67,13 +67,16 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("os.environ.get('RHOAI3_MAAS_HOST') == 'maas.example'", code)
         self.assertIn("os.environ.get('RHOAI3_MAAS_INTERNAL_IP') == '172.30.250.250'", code)
 
-    def test_declared_demand_must_fit_the_shared_quota(self):
-        # B3: worst case per request, every running workspace counted
+    def test_enforced_allowance_must_fit_the_shared_quota(self):
+        # B3 / R2: the paced allowance at the largest request, plus the reserve,
+        # every other running migration run counted, and the pacer configured
         code = self.fill()
-        self.assertIn("per_request = int(prof['context_length']) + int(prof['max_tokens'])", code)
+        self.assertIn("per_request = int(q['max_input_tokens']) + int(q['max_output_tokens'])", code)
         self.assertIn("runs = 1 + 0", code)
-        self.assertIn("require(runs * demand <= 60000000,", code)
+        self.assertIn("require(runs * demand + int(q['reserve_tokens_per_window']) <= 60000000,", code)
         self.assertIn("'MOD' + 'EL_RATE_BUDGET", code)
+        self.assertIn("RHOAI3_REQUEST_BUDGET=%d/%d", code)
+        self.assertIn("is_migration_run", LOCAL)
         self.assertNotIn("QLIMITVAL", code)
 
     def test_shared_defaults_must_match_the_golden(self):

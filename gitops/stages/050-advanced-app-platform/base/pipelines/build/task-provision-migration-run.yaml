@@ -33,6 +33,16 @@
 #   ConfigMap      migration-run-<run>        the provisioning receipt, and after
 #                                             retirement the tombstone that stops
 #                                             a later event resurrecting the run
+#   ConfigMap      <run>-run-control          the run's CONTROL RECORD (B8/R3):
+#                                             contract.json (run, scaffolding
+#                                             commit, activation, authorization)
+#                                             and profile.json (the model profile
+#                                             pinned for this run), mounted
+#                                             READ-ONLY at /etc/rhoai3/run-control
+#                                             into this workspace only. The worker
+#                                             identity has no write on it; this
+#                                             task is its only writer, and it is
+#                                             written once, at provisioning.
 #
 # WORKER IDENTITY. DWO 0.43.0 always calls SyncRBAC before considering
 # serviceAccount.disableCreation, and SyncRBAC adds common.ServiceAccountName()
@@ -220,10 +230,10 @@ spec:
           oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
             --from-literal=run="${RUN}" --from-literal=phase=retiring \
             --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" | oc apply -f -
-          for kind in deployment service secret serviceaccount role rolebinding; do
+          for kind in deployment service secret serviceaccount role rolebinding configmap; do
             oc delete "${kind}" -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" --ignore-not-found --wait=true
           done
-          left="$(oc get secret,deployment,service,serviceaccount,role,rolebinding -n "${WSNS}" \
+          left="$(oc get secret,deployment,service,serviceaccount,role,rolebinding,configmap -n "${WSNS}" \
                     -l "rhoai3.io/migration-run=${RUN}" -o name 2>/dev/null | wc -l | tr -d ' ')"
           if [ "${left}" != "0" ]; then
             echo "REFUSED: ${left} generated object(s) for ${RUN} still exist after retirement" >&2
@@ -511,6 +521,60 @@ spec:
               targetPort: ${PORT}
         YAML
 
+        # The run's CONTROL RECORD (B8 / R1 / R3). The factory's run declaration
+        # (run-budget.json in the scaffolding commit) says the run is governed by
+        # it; the harness refuses to dispatch, measure or mint without it, and
+        # reads nothing from the destination repository for activation. Written
+        # ONCE, here, from the validated event: an existing record for this
+        # scaffolding commit is left untouched (a re-delivered event), so a later
+        # platform table change never re-pins a run in flight. The profile is the
+        # platform's current table AT PROVISIONING, copied verbatim.
+        CONTROL_CM="${RUN}-run-control"
+        control_commit="$(oc get configmap "${CONTROL_CM}" -n "${WSNS}" --ignore-not-found \
+                            -o go-template='{{index .data "contract.json"}}' | sed -n 's/.*"scaffold_commit": *"\([0-9a-f]*\)".*/\1/p')"
+        if [ -n "${control_commit}" ] && [ "${control_commit}" != "${SCAFFOLD}" ]; then
+          echo "REFUSED: ${CONTROL_CM} records scaffolding commit ${control_commit}, this event carries ${SCAFFOLD}" >&2
+          exit 1
+        fi
+        if [ -z "${control_commit}" ]; then
+          # an absent or unreadable table is the named refusal below, never a bare oc exit
+          PROFILE_JSON="$(oc get configmap migration-model-profiles -n "${WSNS}" \
+                            -o go-template='{{index .data "model-profiles.json"}}' || true)"
+          if ! printf '%s' "${PROFILE_JSON}" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["profiles"][d["default_model"]]["quota"]' 2>/dev/null; then
+            echo "REFUSED: migration-model-profiles in ${WSNS} has no usable default profile with a quota; a run is never provisioned without one" >&2
+            exit 1
+          fi
+          CONTRACT_JSON="$(python3 -c 'import json,sys; print(json.dumps({"schema": "rhoai3.run-control/v1", "run_id": sys.argv[1], "scaffold_commit": sys.argv[2], "activation": "pilot", "authorized_by": "provision-migration-run:" + sys.argv[3], "authorization": {"event": "scaffolding push (HMAC-verified webhook, created branch, migration-run topic)", "scaffold_commit": sys.argv[2], "taskrun": sys.argv[3], "provisioned_at": sys.argv[4]}}, sort_keys=True))' \
+                            "${RUN}" "${SCAFFOLD}" "${TASKRUN}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+          {
+            cat <<YAML
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${CONTROL_CM}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/component: run-control
+            controller.devfile.io/mount-to-devworkspace: "true"
+            controller.devfile.io/watch-configmap: "true"
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+          annotations:
+            controller.devfile.io/mount-as: file
+            controller.devfile.io/mount-path: /etc/rhoai3/run-control
+            controller.devfile.io/mount-on-start: "true"
+            controller.devfile.io/mount-to-devworkspace-include: "${RUN}"
+        data:
+        YAML
+            printf '  contract.json: %s\n' "$(printf '%s' "${CONTRACT_JSON}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+            printf '  profile.json: %s\n' "$(printf '%s' "${PROFILE_JSON}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+          } | oc apply -f -
+          echo "run control ${CONTROL_CM} written for ${RUN} at ${SCAFFOLD}"
+        else
+          echo "run control ${CONTROL_CM} already records ${SCAFFOLD}; left untouched"
+        fi
+
         # The receipt. It is the run's evidence (what was created, from which
         # scaffolding commit, by which image) AND the state that makes a second
         # provisioning event idempotent instead of destructive.
@@ -526,6 +590,7 @@ spec:
           --from-literal=serverSecret="${SERVER_SECRET}" \
           --from-literal=workspaceSecret="${WORKSPACE_SECRET}" \
           --from-literal=fixtureSecret="${FIXTURE_SECRET}" \
+          --from-literal=runControl="${CONTROL_CM}" \
           --from-literal=workerServiceAccount="${WORKER_SA}" \
           --from-literal=mountInclude="${RUN}" \
           --from-literal=databaseImage="${DB_IMAGE}" \
