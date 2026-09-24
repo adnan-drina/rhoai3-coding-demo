@@ -964,14 +964,37 @@ oc exec -n rhdh backstage-psql-developer-hub-0 -- psql -d backstage_plugin_catal
   "select id, target from locations where target like '%/templates/%/template.yaml';"
 ```
 
-Runtime catalog Location targets must use the Argo Application `targetRevision` (branch), not a 40-character commit SHA. `generate-rhdh-catalog` also deletes leftover SHA-pinned rows for those two template paths.
+Since B2 (2026-09-24) the runtime catalog pins template Location targets to the one revision its bundle was verified at, the same revision as every other catalog link, so the template and its skeleton are the bundled ones. `generate-rhdh-catalog` then deletes the template Locations of every OTHER revision, which keeps exactly one Location per template. Before B2, targets used the branch, and SHA-pinned rows accumulated because nothing pruned them.
 
 **Recover:**
 
 - Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
-- Confirm Stage 050/080 validation: Location targets are not `/blob/<sha>/`.
+- Confirm Stage 050/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
 
-**Related:** `gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/rhdh-catalog-generator-script.yaml`
+**Related:** `gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
+
+## RHDH Catalog Generator Refuses `FACTORY_BUNDLE_MISMATCH`
+
+**Affected stage:** Stage 050 (runtime catalog)
+
+**Symptom:** The `job-generate-rhdh-catalog` or `refresh-rhdh-catalog` log ends with `REFUSE FACTORY_BUNDLE_MISMATCH: bundle <id>, revision <sha>: <file> at <sha> is not the bundled file`. The runtime catalog is unchanged.
+
+**Likely cause:** The generator, the catalog and every template file are one `rhdh-catalog-bundle` ConfigMap (kustomize `configMapGenerator`, content-hashed name). The generator publishes only when every bundled file is byte-identical at the revision Argo CD synced. A mismatch means the synced revision and the applied bundle disagree. For example, Argo reports a sync revision whose manifests were not yet applied, or someone edited the bundle ConfigMap by hand.
+
+**Recover:**
+
+- Hard-refresh and sync Stage 050 so the bundle and `operationState.syncResult.revision` come from the same commit. The next `refresh-rhdh-catalog` run publishes.
+- `CATALOG_RENDER` refusals name the invalid value (for example a MaaS gateway host that is not an RFC 1123 host). Fix that source object. The last good catalog stays in place until then.
+
+## Migration Workspace Creation Fails With `FACTORY_MAAS_ROUTE_MISSING`
+
+**Affected stage:** Stage 050 / 080 (app-migration template)
+
+**Symptom:** The app-migration scaffolder run fails at "Require the in-cluster MaaS route". Nothing is published.
+
+**Likely cause:** The platform entity `component:default/coolstore-inventory-service` is missing `rhoai3.redhat.com/maas-host` or `rhoai3.redhat.com/maas-internal-ip`, or still carries a placeholder. The runtime catalog was not regenerated after the MaaS gateway existed.
+
+**Recover:** Run the catalog generator (see above), confirm both annotations hold a host and an IPv4 address, then create the run again. A workspace is never created without the route. At every start and continuation, the workspace's own `planner.maas_route` gate refuses `STARTUP_MAAS_ROUTE` if the pod still resolves the gateway publicly.
 
 ## Red Hat Developer Hub Is Healthy But Stage 050 Is OutOfSync
 

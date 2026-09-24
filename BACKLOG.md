@@ -1,5 +1,48 @@
 # Backlog
 
+## v13 reliability release (v12 blockers B1–B13) — 2026-09-24
+
+v12 stopped at a safe checkpoint (`tmp/v12-run-20260924/V12-FREEZE.md`). The
+fixes follow `tmp/v12-run-20260924/architect-durable-fixes-design.md` and are
+on branch `codex/v13-reliability`. Each has a regression that fails on the
+previous code. Nothing is published or launched; the release mapping is
+`tmp/v12-run-20260924/V13-RELEASE-MAPPING.md`.
+
+- [x] B13 scoped parity state restore rewrites no record; B7 known regressions
+  before unknown assessments; B5/B6 typed reach and evidence-backed gate
+  handoffs; B8 run-control activation, K2 git refusal, durable continuation;
+  B10 frozen harness release; B11 Hermes loop halt (runtime patch series)
+  plus one recovery with a checkpoint; B2 one-bundle RHDH catalog; B1 route
+  required at render and at every dispatch; B4 declared model profile, pinned
+  per run; B3 quota admission and Argo refresh paths; B9/B12 order
+  explanations and response-path placement.
+- [ ] Decision before v13: the B3 quota admission refuses the declared demand
+  (300 requests/h × 228,192 tokens = 68.5M/h against 60M/h). Raise the limit,
+  lower the declared rate, or lower `context_length`.
+- [ ] Before v13: bake and push the ws-080 image with
+  `stages/080-ai-autonomous-migration/hermes-runtime` (Dockerfile hunk),
+  then repin the devfile digest and `pins.json` `workspace_overlay`.
+- [ ] Deferred:
+  - B8 activation writer outside the worker's UID. v13 has
+    same-UID run control plus K2, which is not an authority boundary.
+  - B6 "one bounded diagnostic action" on an unproven handoff. It pends,
+    as before.
+  - B9 attaching the source's own sort call. This needs call-argument
+    literals in the source model.
+  - B11 upstream `identical_cycle_halt` (A,B,A,B loops) and a per-poller
+    deadline.
+  - B12 auto-generation when generated output is missing. It is reported
+    as RESPONSE_TYPE_UNRESOLVED instead.
+  - Producer regrouping.
+  - Parallel M3.
+- [ ] Not validated against a live cluster:
+  - B2 pinned-Location registration and prune in RHDH;
+  - the first sync replacing `rhdh-catalog-generator-script`;
+  - B1 scaffolder refusal branch;
+  - B3/B4 live quota and profile values;
+  - the B11 image build.
+  The route gate itself was run read-only in the v12 pod.
+
 ## Migration workspaces start on the in-cluster MaaS route — 2026-09-24
 
 - [x] Defect: from v7 to v12 the in-cluster MaaS hostAlias was a manual Operator
