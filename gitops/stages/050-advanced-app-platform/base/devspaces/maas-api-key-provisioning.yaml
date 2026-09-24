@@ -1429,10 +1429,14 @@ data:
             # B4: the compression summaries run on the main model; without the
             # profile's request body they went out with thinking ON and the
             # served sampling (measured on the pinned runtime, 2026-09-24).
+            # R2: Hermes sends no max_tokens on auxiliary calls, so vLLM would
+            # allow the rest of the context; the quota's per-request output
+            # bound rides in the body.
             "compression": {
                 "provider": "auto",
                 "model": "",
-                "extra_body": dict(MODEL_PROFILES[DEFAULT_MODEL]["request_body"]),
+                "extra_body": dict(MODEL_PROFILES[DEFAULT_MODEL]["request_body"],
+                                   max_tokens=MODEL_PROFILES[DEFAULT_MODEL]["quota"]["max_output_tokens"]),
             },
         },
         # Context compression (top-level key; official defaults threshold
