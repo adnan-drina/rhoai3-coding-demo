@@ -157,6 +157,16 @@ maas_host = oc('get','gateway','maas-default-gateway','-n','openshift-ingress','
 maas_ip = oc('get','service','maas-gateway-internal','-n','openshift-ingress','-o','jsonpath={.spec.clusterIP}').strip()
 need(bool(re.fullmatch(r'[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*', maas_host))
      and bool(re.fullmatch(r'\d+\.\d+\.\d+\.\d+', maas_ip)), 'MaaS gateway host or internal IP unavailable')
+# B3: the quota this run will draw on, and who else draws on it. Per-model
+# token limits live on the MaaSSubscription every workspace key is minted
+# under, so concurrent runs share one bucket.
+sub = json.loads(oc('get','maassubscription','devspaces-coding-models','-n','models-as-a-service','-o','json'))
+limits = [l for r in sub.get('spec',{}).get('modelRefs',[]) if r.get('name') == os.environ['EXPECTED_MODEL']
+          for l in (r.get('tokenRateLimits') or [])]
+need(len(limits) == 1, 'devspaces-coding-models declares %d token limits for %s; exactly one is admitted' % (len(limits), os.environ['EXPECTED_MODEL']))
+quota_limit, quota_window = int(limits[0]['limit']), str(limits[0]['window'])
+dws = json.loads(oc('get','devworkspace','-n',ns,'-o','json')).get('items',[])
+quota_others = sum(1 for w in dws if w['metadata']['name'] != workspace and w.get('status',{}).get('phase') in ('Running','Starting'))
 model = json.loads(oc('get','llminferenceservice',os.environ['EXPECTED_MODEL'],'-n','models-as-a-service','-o','json'))
 need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in model.get('status',{}).get('conditions',[])), 'Qwen model is not Ready')
 def args_in(obj):
@@ -227,6 +237,20 @@ from urllib.parse import urlsplit
 require(urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == MAASHOSTVAL, 'worker MaaS endpoint is not the platform gateway host')
 addrs = {a[4][0] for a in socket.getaddrinfo(MAASHOSTVAL, 443, proto=socket.IPPROTO_TCP)}
 require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gateway %s: the workspace is on the public ELB path' % (sorted(addrs), MAASIPVAL))
+# B3: the declared demand fits the quota window, counting every other running
+# workspace as a consumer of the same bucket at the same worst case.
+prof_doc = json.loads(Path('/projects/.platform/hermes/model-profile.json').read_text())
+prof = prof_doc['profiles'][prof_doc['default_model']]
+q = prof['quota']
+per_request = int(prof['context_length']) + int(prof['max_tokens'])
+demand = int(q['concurrency']) * int(q['max_requests_per_window']) * per_request
+runs = 1 + QOTHERSVAL
+require(q['window'] == QWINVAL, 'the profile declares its demand per %s and the subscription limits per %s' % (q['window'], QWINVAL))
+require(runs * demand <= QLIMITVAL,
+        'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s, effective %d, declared demand %d '
+        '(%d run(s) x %d worker(s) x %d requests x %d tokens); profile /projects/.platform/hermes/model-profile.json'
+        % (prof_doc['default_model'], QWINVAL, QLIMITVAL, runs * demand, runs, int(q['concurrency']),
+           int(q['max_requests_per_window']), per_request))
 # B1: the workspace's own startup gate (planner.maas_route) must agree with
 # the cluster truth read above: the platform values stamped into this
 # workspace name that gateway and address, and TLS verifies through it.
@@ -267,7 +291,7 @@ d = run_declaration.load(root, expected_run=WORKSPACE_NAME)
 require(d.code == run_declaration.OK, str(d))
 require(d.budget.get('max_wall_hours') == EXPECTED_HOURS, 'declared wall budget differs from the golden defaults')
 print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
-'''.replace('EXPECTED_HOURS',repr(expected_hours)).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker')).replace('WORKSPACE_NAME',repr(workspace)).replace('MAASHOSTVAL',repr(maas_host)).replace('MAASIPVAL',repr(maas_ip))
+'''.replace('EXPECTED_HOURS',repr(expected_hours)).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker')).replace('WORKSPACE_NAME',repr(workspace)).replace('MAASHOSTVAL',repr(maas_host)).replace('MAASIPVAL',repr(maas_ip)).replace('QLIMITVAL',str(quota_limit)).replace('QWINVAL',repr(quota_window)).replace('QOTHERSVAL',str(quota_others))
 subprocess.run(['oc','--request-timeout=60s','exec','-i','-n',ns,pod,'-c',os.environ['CONTAINER'],'--','python3','-'],input=remote,text=True,check=True,timeout=75)
 print('PASS: launch preflight for %s; no reset or dispatch performed' % workspace)
 PY

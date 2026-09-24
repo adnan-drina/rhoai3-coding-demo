@@ -1205,14 +1205,104 @@ data:
             "MAAS_API_KEY_QWEN27B)"
         )
     service_ca = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
+    # B4: ONE declared runtime profile per model and mode. Every worker
+    # setting below that depends on the model is generated from this table,
+    # the resolved table is written beside the config (model-profile.json)
+    # with its digest, dest-init pins that digest in the run's control
+    # object, and the loop refuses to run under a different one
+    # (MODEL_PROFILE_MISMATCH). A model without a profile has no provider.
+    MODEL_PROFILES = {
+        "qwen3-8-27b-int4": {
+            "provider": "qwen38",
+            "mode": "non-thinking",
+            # below the served 262144; see model.context_length
+            "context_length": 220000,
+            "served_context": 262144,
+            "max_tokens": 8192,
+            # Request + stream-read timeout for this model. Hermes defaults
+            # the stream read timeout to 120s for non-local endpoints; vLLM
+            # buffers a tool call's arguments until complete, so a worker
+            # writing a ~12 KB file through a tool call sends no bytes for ~4K
+            # tokens at ~18 tok/s (> 120s) and Hermes raises APITimeoutError
+            # and retries (measured live 2026-09-09, pilot v5 M3 t_3efca989).
+            "timeout_seconds": 900,
+            "stale_timeout_seconds": 900,
+            "api_env": "MAAS_API_BASE_URL",
+            # v7 item 7 (measured 2026-09-10 on pilot v6): the served Qwen3
+            # honours the chat template's enable_thinking switch. With
+            # thinking on, a one-line question cost 600 reasoning tokens /
+            # 32 s and loop cards ran 160-400 log lines with 10+ reasoning
+            # blocks; with it off, an 8-item compile card ran 84 lines, 0
+            # reasoning blocks, 167 s, same correct patch. The brief carries
+            # what the reasoning re-derived. Hermes passes extra_body for a
+            # named provider (config.providers_dict_to_custom_providers).
+            #
+            # Sampling: the Qwen3.8-27B card's Instruct (non-thinking) row.
+            # vLLM serves this model with the card's THINKING row
+            # (temperature 1.0, top_p 0.95, no presence penalty) through
+            # --override-generation-config, but workers run thinking off. On
+            # v12 (2026-09-24, t_655b1607) two consecutive responses ran to
+            # the full 8192-token cap for a ~275-token patch; the card names
+            # presence_penalty as the control for repetitive output. Set per
+            # request here, not on the served default, which other clients
+            # may use in thinking mode.
+            # https://huggingface.co/Qwen/Qwen3.8-27B#api-usage
+            "request_body": {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "temperature": 0.7,
+                "top_p": 0.8,
+                "top_k": 20,
+                "min_p": 0.0,
+                "presence_penalty": 1.5,
+                "repetition_penalty": 1.0,
+            },
+            # B3: the declared demand one worker may place on the model's
+            # quota window, checked against the live MaaSSubscription by
+            # run-preflight.sh (MODEL_RATE_BUDGET). v12's busiest hour was
+            # ~280 requests (25M tokens at ~90K per call).
+            "quota": {"window": "1h", "max_requests_per_window": 300, "concurrency": 1},
+        },
+        "qwen3-6-27b": {
+            "provider": "qwen27b",
+            "mode": "non-thinking",
+            # below the served 131072
+            "context_length": 110000,
+            "served_context": 131072,
+            "max_tokens": 8192,
+            "timeout_seconds": 900,
+            "stale_timeout_seconds": 900,
+            "api_env": "MAAS_API_BASE_URL_QWEN36",
+            "request_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            "quota": {"window": "1h", "max_requests_per_window": 300, "concurrency": 1},
+        },
+    }
+    DEFAULT_MODEL = "qwen3-8-27b-int4"
+
+    def _provider(model_id):
+        prof = MODEL_PROFILES[model_id]
+        return {
+            "extra_body": dict(prof["request_body"]),
+            "api": "${env:%s}" % prof["api_env"],
+            "api_key": "${env:MAAS_API_KEY}",
+            "discover_models": False,
+            "models": {
+                model_id: {
+                    "context_length": prof["context_length"],
+                    "stale_timeout_seconds": prof["stale_timeout_seconds"],
+                    "timeout_seconds": prof["timeout_seconds"],
+                    "max_tokens": prof["max_tokens"],
+                },
+            },
+        }
+
     cfg = {
         # Official 4-key model: mapping (configuring-models). Secrets are
         # NOT on this block — they live in managed .env and providers.*.api_key
         # via ${env:NAME} SecretRef. base_url stays empty; providers.qwen38.api
         # is the endpoint (dashboard clears model.base_url on named providers).
         "model": {
-            "provider": "qwen38",
-            "default": "qwen3-8-27b-int4",
+            "provider": MODEL_PROFILES[DEFAULT_MODEL]["provider"],
+            "default": DEFAULT_MODEL,
             "base_url": "",
             "api_mode": "chat_completions",
             # Declared BELOW the served window. Hermes budgets the prompt as
@@ -1224,8 +1314,8 @@ data:
             # also requires context_length 110000. qwen27b stays configured
             # for that switch. Hermes unset max_tokens defaults to half the
             # context (Deputy E-20260809T180800Z), hence max_tokens.
-            "context_length": 220000,
-            "max_tokens": 8192,
+            "context_length": MODEL_PROFILES[DEFAULT_MODEL]["context_length"],
+            "max_tokens": MODEL_PROFILES[DEFAULT_MODEL]["max_tokens"],
         },
         "model_aliases": {
             "qwen38": {
@@ -1370,69 +1460,9 @@ data:
             # Envoy flag DC downstream_remote_disconnect; a 343s silent
             # non-streaming request through the same gateway completed).
             "custom": {"request_timeout_seconds": 900, "stale_timeout_seconds": 900},
-            "qwen38": {
-                # v7 item 7 (measured 2026-09-10 on pilot v6): the served Qwen3
-                # honours the chat template's enable_thinking switch. With
-                # thinking on, a one-line question cost 600 reasoning tokens /
-                # 32 s and loop cards ran 160-400 log lines with 10+ reasoning
-                # blocks; with it off, an 8-item compile card ran 84 lines, 0
-                # reasoning blocks, 167 s, same correct patch. The brief carries
-                # what the reasoning re-derived. Hermes passes extra_body for a
-                # named provider (config.providers_dict_to_custom_providers).
-                #
-                # Sampling: the Qwen3.8-27B card's Instruct (non-thinking) row.
-                # vLLM serves this model with the card's THINKING row
-                # (temperature 1.0, top_p 0.95, no presence penalty) through
-                # --override-generation-config, but workers run thinking off. On
-                # v12 (2026-09-24, t_655b1607) two consecutive responses ran to
-                # the full 8192-token cap for a ~275-token patch; the card names
-                # presence_penalty as the control for repetitive output. Set per
-                # request here, not on the served default, which other clients
-                # may use in thinking mode.
-                "extra_body": {
-                    "chat_template_kwargs": {"enable_thinking": False},
-                    "temperature": 0.7,
-                    "top_p": 0.8,
-                    "top_k": 20,
-                    "min_p": 0.0,
-                    "presence_penalty": 1.5,
-                    "repetition_penalty": 1.0,
-                },
-                "api": "${env:MAAS_API_BASE_URL}",
-                "api_key": "${env:MAAS_API_KEY}",
-                "discover_models": False,
-                "models": {
-                    "qwen3-8-27b-int4": {
-                        # below the served 262144; see model.context_length
-                        "context_length": 220000,
-                        "stale_timeout_seconds": 900,
-                        # Request + stream-read timeout for this model. Hermes
-                        # defaults the stream read timeout to 120s for non-local
-                        # endpoints; vLLM buffers a tool call's arguments until
-                        # complete, so a worker writing a ~12 KB file through a
-                        # tool call sends no bytes for ~4K tokens at ~18 tok/s
-                        # (> 120s) and Hermes raises APITimeoutError and retries
-                        # (measured live 2026-09-09, pilot v5 M3 t_3efca989).
-                        "timeout_seconds": 900,
-                        "max_tokens": 8192,
-                    },
-                },
-            },
-            "qwen27b": {
-                "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
-                "api": "${env:MAAS_API_BASE_URL_QWEN36}",
-                "api_key": "${env:MAAS_API_KEY}",
-                "discover_models": False,
-                "models": {
-                    "qwen3-6-27b": {
-                        # below the served 131072
-                        "context_length": 110000,
-                        "stale_timeout_seconds": 900,
-                        "timeout_seconds": 900,
-                        "max_tokens": 8192,
-                    },
-                },
-            },
+            # generated from MODEL_PROFILES (B4); the rationale lives there
+            "qwen38": _provider("qwen3-8-27b-int4"),
+            "qwen27b": _provider("qwen3-6-27b"),
         },
         # Single-GPU: disable session-title aux calls contending with main.
         # Other aux slots stay official auto (use main / Qwen).
@@ -1857,6 +1887,18 @@ data:
         raise SystemExit(
             "ERROR: security.tirith_enabled must be false (Operator 122315ZO)"
         )
+    # B4: the resolved profile this config was generated from, with its
+    # digest. dest-init pins the digest in run control on the run's first
+    # start; the loop's entry points refuse MODEL_PROFILE_MISMATCH when a later
+    # start regenerated the config from a different profile.
+    import hashlib, json as _json
+    _prof = {"default_model": DEFAULT_MODEL, "profiles": MODEL_PROFILES}
+    _prof_digest = hashlib.sha256(
+        _json.dumps(_prof, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    with open(os.path.join(managed, "model-profile.json"), "w") as fh:
+        _json.dump(dict(_prof, schema="rhoai3.model-profile/v1", digest=_prof_digest),
+                   fh, indent=2, sort_keys=True)
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
         fh.write("default=qwen3-8-27b-int4\n")
         fh.write("provider=qwen38\n")
@@ -2472,6 +2514,8 @@ data:
     if run_control is not None:
         run_control.run_control_dir(root).mkdir(parents=True, exist_ok=True)
         run_control.record_release(root, run_control.harness_release_digest(root), "dest-init")
+        if hasattr(run_control, "record_profile"):
+            run_control.record_profile(root, "dest-init")
         held = run_control.read_activation(root)
         if held is not None:
             print("dest-init: run control already holds the activation (%s) for run %s; left alone"

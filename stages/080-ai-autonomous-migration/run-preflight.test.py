@@ -39,6 +39,7 @@ class DeclaredBudget(unittest.TestCase):
         chain = SUBSTITUTE.replace("'''", '', 1)
         values = {'expected_hours': hours, 'expected': {}, 'ns': 'wksp-ai-developer', 'workspace': workspace,
                   'maas_host': 'maas.example', 'maas_ip': '172.30.250.250',
+                  'quota_limit': 60000000, 'quota_window': '1h', 'quota_others': 0,
                   'windows': [262144], 'json': __import__('json'),
                   'os': type('os', (), {'environ': {'EXPECTED_MODEL': 'qwen3-8-27b-int4'}})}
         return eval('REMOTE' + chain, {'REMOTE': REMOTE, 'repr': repr, 'str': str, **values})
@@ -65,6 +66,15 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("from planner.maas_route import route_gaps", code)
         self.assertIn("os.environ.get('RHOAI3_MAAS_HOST') == 'maas.example'", code)
         self.assertIn("os.environ.get('RHOAI3_MAAS_INTERNAL_IP') == '172.30.250.250'", code)
+
+    def test_declared_demand_must_fit_the_shared_quota(self):
+        # B3: worst case per request, every running workspace counted
+        code = self.fill()
+        self.assertIn("per_request = int(prof['context_length']) + int(prof['max_tokens'])", code)
+        self.assertIn("runs = 1 + 0", code)
+        self.assertIn("require(runs * demand <= 60000000,", code)
+        self.assertIn("'MOD' + 'EL_RATE_BUDGET", code)
+        self.assertNotIn("QLIMITVAL", code)
 
     def test_shared_defaults_must_match_the_golden(self):
         self.assertIn("expected['run-defaults.json'] = digest(golden / 'run-defaults.json')", LOCAL)
