@@ -1,5 +1,22 @@
 # Backlog
 
+## Migration workspaces start on the in-cluster MaaS route — 2026-09-24
+
+- [x] Defect: from v7 to v12 the in-cluster MaaS hostAlias was a manual Operator
+  step after creation (`scripts/patch-workspace-maas-route.sh`). The v12 handoff
+  omitted it, and v12 was created and preflighted on the public ELB path. It was
+  patched and restarted before M1, and the clock was not reset.
+- [x] Fixed in the platform. The catalog generator reads the MaaS Gateway
+  listener host and the `maas-gateway-internal` ClusterIP (scoped read-only Role
+  in `openshift-ingress`), validates both (RFC 1123 host, IPv4) and publishes
+  them on the platform entity, or refuses the catalog. The app-migration
+  template stamps `hostAliases` from those values, never from a URL (the v7
+  failure), and renders none when they are absent. `run-preflight.sh` refuses a
+  workspace whose MaaS host does not resolve only to the internal gateway IP.
+  Rendered through the installed scaffolder with and without the values; Pod
+  admission accepts the stamped alias and refuses the v7-style value; the
+  preflight passes v12 and its gate refuses the public answer.
+
 ## Run declarations: one golden for every run — 2026-09-24
 
 - [x] Root cause: the published golden carried `run-budget.json` and

@@ -38,6 +38,7 @@ class DeclaredBudget(unittest.TestCase):
         # Apply the script's own substitution chain to the remote template.
         chain = SUBSTITUTE.replace("'''", '', 1)
         values = {'expected_hours': hours, 'expected': {}, 'ns': 'wksp-ai-developer', 'workspace': workspace,
+                  'maas_host': 'maas.example', 'maas_ip': '172.30.250.250',
                   'windows': [262144], 'json': __import__('json'),
                   'os': type('os', (), {'environ': {'EXPECTED_MODEL': 'qwen3-8-27b-int4'}})}
         return eval('REMOTE' + chain, {'REMOTE': REMOTE, 'repr': repr, 'str': str, **values})
@@ -49,7 +50,14 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn('d.code == run_declaration.OK', code)
         self.assertIn("d.budget.get('max_wall_hours') == 24", code)
         self.assertNotIn("budget['declared_at']", code)       # no golden-carried timestamp is read
-        self.assertNotRegex(code, r'\b(EXPECTED_HOURS|WORKSPACE_NAME|WORKER_IDENTITY)\b')
+        self.assertNotRegex(code, r'\b(EXPECTED_HOURS|WORKSPACE_NAME|WORKER_IDENTITY|MAASHOSTVAL|MAASIPVAL)\b')
+
+    def test_workspace_must_be_on_the_in_cluster_maas_route(self):
+        code = self.fill()
+        self.assertIn("socket.getaddrinfo('maas.example', 443", code)
+        self.assertIn("== {'172.30.250.250'}", code)
+        self.assertIn("urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == 'maas.example'", code)
+        self.assertIn("oc('get','service','maas-gateway-internal'", LOCAL)
 
     def test_shared_defaults_must_match_the_golden(self):
         self.assertIn("expected['run-defaults.json'] = digest(golden / 'run-defaults.json')", LOCAL)

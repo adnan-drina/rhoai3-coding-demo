@@ -116,9 +116,21 @@ data:
       -o jsonpath='{.spec.host}' 2>/dev/null || true)
     SONARQUBE_URL="https://${SONARQUBE_HOST:-sonarqube-pending.local}"
 
+    # In-cluster MaaS route for migration workspaces. The app-migration
+    # template reads these two values from the platform entity and stamps a pod
+    # hostAlias at creation, so no workspace starts on the public ELB path
+    # (which drops silent tool-call streams). Read from the same objects
+    # scripts/patch-workspace-maas-route.sh reads; validated below, and the
+    # catalog is not published without them.
+    MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
+      -o jsonpath='{.spec.listeners[?(@.name=="https")].hostname}' 2>/dev/null || true)
+    MAAS_INTERNAL_IP=$(oc get service maas-gateway-internal -n openshift-ingress \
+      -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+
     echo "Generating runtime catalog..."
-    python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" "${SONARQUBE_URL}" "${APP_TARGET_REVISION}" <<'PY'
+    python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" "${SONARQUBE_URL}" "${APP_TARGET_REVISION}" "${MAAS_HOST}" "${MAAS_INTERNAL_IP}" <<'PY'
     import pathlib
+    import re
     import sys
 
     source = pathlib.Path(sys.argv[1])
@@ -129,6 +141,14 @@ data:
     coolstore_url = sys.argv[6].rstrip("/")
     sonarqube_url = sys.argv[7].rstrip("/")
     location_ref = sys.argv[8]
+    maas_host = sys.argv[9]
+    maas_internal_ip = sys.argv[10]
+    # A hostAlias hostname must be a bare RFC 1123 host: a URL fragment here
+    # made the v7 workspace deployment invalid. Refuse rather than publish one.
+    if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*", maas_host):
+        raise SystemExit("MaaS gateway https listener hostname %r is not an RFC 1123 host" % maas_host)
+    if not re.fullmatch(r"(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}", maas_internal_ip):
+        raise SystemExit("maas-gateway-internal clusterIP %r is not an IPv4 address" % maas_internal_ip)
 
     content = source.read_text()
     content = content.replace(
@@ -143,6 +163,8 @@ data:
     content = content.replace("https://sonarqube.placeholder.example.com", sonarqube_url)
     content = content.replace("__RHOAI3_DEMO_LOCATION_REF__", location_ref)
     content = content.replace("__RHOAI3_DEMO_REVISION__", revision)
+    content = content.replace("__RHOAI3_MAAS_HOST__", maas_host)
+    content = content.replace("__RHOAI3_MAAS_INTERNAL_IP__", maas_internal_ip)
     if "devspaces" in content and "placeholder.example.com" in content:
         raise SystemExit("Dev Spaces placeholder was not replaced")
     if "rhdh.placeholder.example.com" in content:
@@ -153,6 +175,8 @@ data:
         raise SystemExit("Location ref placeholder was not replaced")
     if "__RHOAI3_DEMO_REVISION__" in content:
         raise SystemExit("Repository revision placeholder was not replaced")
+    if "__RHOAI3_MAAS_" in content:
+        raise SystemExit("MaaS route placeholder was not replaced")
     target.write_text(content)
     PY
 

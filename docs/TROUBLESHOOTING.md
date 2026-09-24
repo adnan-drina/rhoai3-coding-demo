@@ -1062,6 +1062,29 @@ installed policy using server dry runs. Roll back the two policy manifests
 and their Kustomize entries through GitOps if creation is unexpectedly blocked;
 that removes duplicate protection without changing existing workspaces.
 
+## Migration Workspace Reaches MaaS Over The Public Load Balancer
+
+**Symptom:** inside a migration workspace, `getent hosts maas.apps.<domain>`
+prints public addresses instead of `172.30.250.250`; long tool calls stall and
+reconnect; `run-preflight.sh` fails with "the workspace is on the public ELB
+path".
+
+**Cause (fixed 2026-09-24):** from v7 to v12 the in-cluster route was a manual
+Operator step after creation (`scripts/patch-workspace-maas-route.sh`), because
+templating it from a URL had once produced an invalid hostAlias. v12 was created
+and preflighted without it. The factory now stamps the hostAlias at creation
+from two values the catalog generator reads from the Gateway and
+`maas-gateway-internal` Service and validates, and the preflight refuses a
+workspace without it.
+
+**Fix:** check that the live catalog carries `rhoai3.redhat.com/maas-host` and
+`rhoai3.redhat.com/maas-internal-ip` on `coolstore-inventory-service` (the
+`refresh-rhdh-catalog` CronJob republishes within five minutes of a platform
+change; a generator failure naming the MaaS route means Stage 040's Gateway or
+internal Service is missing). For a workspace created before the fix, stop it
+through Dev Spaces, run `scripts/patch-workspace-maas-route.sh <workspace>`, and
+start it. Never template the host from a URL.
+
 ## Migration Autostart Refuses With RUN_DECLARATION_*
 
 **Symptom:** a new migration workspace starts, but `.hermes/AUTOSTART-STATUS`

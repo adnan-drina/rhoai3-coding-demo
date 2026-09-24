@@ -149,6 +149,14 @@ for secret in (receipt['workspaceSecret'],receipt['fixtureSecret']):
     sources = {e.get('valueFrom',{}).get('secretKeyRef',{}).get('name') for e in container.get('env',[])}
     sources |= {e.get('secretRef',{}).get('name') for e in container.get('envFrom',[])}
     need(secret in sources, 'pod does not consume its assigned secret: '+secret)
+# The worker must reach MaaS through the gateway's in-cluster Service, not the
+# public ELB, which drops silent tool-call streams. The factory stamps a pod
+# hostAlias at creation; v12 started without one (it was a manual step) and
+# this preflight passed it, so the route is now a launch requirement.
+maas_host = oc('get','gateway','maas-default-gateway','-n','openshift-ingress','-o','jsonpath={.spec.listeners[?(@.name=="https")].hostname}').strip()
+maas_ip = oc('get','service','maas-gateway-internal','-n','openshift-ingress','-o','jsonpath={.spec.clusterIP}').strip()
+need(bool(re.fullmatch(r'[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*', maas_host))
+     and bool(re.fullmatch(r'\d+\.\d+\.\d+\.\d+', maas_ip)), 'MaaS gateway host or internal IP unavailable')
 model = json.loads(oc('get','llminferenceservice',os.environ['EXPECTED_MODEL'],'-n','models-as-a-service','-o','json'))
 need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in model.get('status',{}).get('conditions',[])), 'Qwen model is not Ready')
 def args_in(obj):
@@ -214,6 +222,11 @@ config = next((p for p in (Path('/etc/hermes/config.yaml'), Path('/projects/.pla
 require(config, 'managed Hermes config missing')
 c = load_yaml(config)
 require(c.get('model', {}).get('default') == MODEL, 'worker model mismatch')
+import socket
+from urllib.parse import urlsplit
+require(urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == MAASHOSTVAL, 'worker MaaS endpoint is not the platform gateway host')
+addrs = {a[4][0] for a in socket.getaddrinfo(MAASHOSTVAL, 443, proto=socket.IPPROTO_TCP)}
+require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gateway %s: the workspace is on the public ELB path' % (sorted(addrs), MAASIPVAL))
 
 def leaves(x):
     if isinstance(x, dict):
@@ -243,7 +256,7 @@ d = run_declaration.load(root, expected_run=WORKSPACE_NAME)
 require(d.code == run_declaration.OK, str(d))
 require(d.budget.get('max_wall_hours') == EXPECTED_HOURS, 'declared wall budget differs from the golden defaults')
 print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
-'''.replace('EXPECTED_HOURS',repr(expected_hours)).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker')).replace('WORKSPACE_NAME',repr(workspace))
+'''.replace('EXPECTED_HOURS',repr(expected_hours)).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker')).replace('WORKSPACE_NAME',repr(workspace)).replace('MAASHOSTVAL',repr(maas_host)).replace('MAASIPVAL',repr(maas_ip))
 subprocess.run(['oc','--request-timeout=60s','exec','-i','-n',ns,pod,'-c',os.environ['CONTAINER'],'--','python3','-'],input=remote,text=True,check=True,timeout=75)
 print('PASS: launch preflight for %s; no reset or dispatch performed' % workspace)
 PY

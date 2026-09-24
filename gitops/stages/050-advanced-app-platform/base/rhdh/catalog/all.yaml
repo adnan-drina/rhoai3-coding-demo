@@ -75,6 +75,11 @@ metadata:
     rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/stage-050-role: target-service
+    # Stamped by the catalog generator from the MaaS Gateway listener and the
+    # maas-gateway-internal Service (validated there); the app-migration
+    # template turns them into the workspace's in-cluster hostAlias.
+    rhoai3.redhat.com/maas-host: __RHOAI3_MAAS_HOST__
+    rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__
   links:
     - url: https://github.com/adnan-drina/coolstore-inventory-service
       title: Source Repo
