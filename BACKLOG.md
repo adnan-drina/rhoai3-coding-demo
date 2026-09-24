@@ -1,5 +1,19 @@
 # Backlog
 
+## Factory duplicate workspace creation — 2026-09-24
+
+- [x] Root cause reproduced from installed Dev Spaces 3.30.1 client code:
+  unqualified factory revision did not match the devfile's `main`. A reload
+  between workspace and editor POSTs left the first v11 seat incomplete; a
+  second creation six seconds later added `-mdmn`.
+- [ ] Publish and live-validate explicit main/existing factory links and the
+  CREATE-only `migration-workspace-run-name` policy. Narrow server dry runs
+  must allow the canonical/non-migration cases and refuse duplicate suffixes
+  and missing/conflicting run values. Existing v11 objects remain untouched.
+- [ ] Upstream limitation: Dashboard's workspace/editor creation is not atomic.
+  The duplicate guard stops a second seat but does not reconstruct a missing
+  editor. Recover partial creation under the original run name.
+
 ## v11 late credential injection — 2026-09-24
 
 - [ ] `iso-worker-b` normal restart reproduced human-token injection after

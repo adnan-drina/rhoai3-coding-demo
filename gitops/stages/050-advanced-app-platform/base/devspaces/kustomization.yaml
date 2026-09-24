@@ -22,6 +22,8 @@ resources:
   - workspace-git-credentials.yaml
   - workspace-sonar-credentials.yaml
   - migration-run-resources-rbac.yaml
+  - migration-workspace-name-policy.yaml
+  - migration-workspace-name-binding.yaml
   # Specimen fixture identities (ADR-014). Never automounted: the platform
   # provisioner copies its keys into each run's own exactly-bound secret.
   - migration-fixture-credentials-source.yaml

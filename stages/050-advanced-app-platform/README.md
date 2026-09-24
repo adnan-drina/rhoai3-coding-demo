@@ -53,6 +53,13 @@ The `overlays/slim` variant deploys the platform without MTA; RHDH sign-in works
 
 Webhooks are not created per repo: a GitHub App installed on all repositories delivers push events to the shared dispatcher EventListener, which routes each repository to its project's own pipeline.
 
+Factory links explicitly select the destination's `main` branch and existing
+workspace name. Stage 080 permits one workspace name per declared migration
+run: a creation policy rejects suffixed copies that would otherwise share its
+database and worker identity. Existing workspaces remain startable. Interrupted
+workspace/editor creation is recovered under the original name; it does not
+authorize a second migration seat.
+
 ## External Setup (one-time, outside the cluster)
 
 1. **Golden repositories** under `github.com/adnan-drina`: run `./scripts/bootstrap-scaffold-repos.sh` (requires `gh` auth with `repo` scope). Re-running force-pushes golden state — that is the reset.

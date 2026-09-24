@@ -1022,6 +1022,22 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
+Factory links specify `?revision=main&existing=<project>` so reopening matches
+the branch in the workspace. Migration workspace creation also requires its
+Kubernetes name to equal the devfile's `MIGRATION_RUN_NAME`. Kubernetes rejects
+a second object with that name; the admission policy rejects a suffixed copy.
+This applies only to new migration workspaces, not existing workspace updates
+or non-migration projects. It does not make Dashboard's separate workspace and
+editor creation requests atomic. An interrupted creation must be recovered
+under the original name; see the duplicate-workspace entry in troubleshooting.
+
+Run `python3 scripts/check-workspace-creation.py --live` after GitOps sync. It
+checks generated links and uses server dry runs to exercise canonical,
+suffixed, generated-name, missing/empty/conflicting-run and non-migration
+requests without creating any workspace. Existing catalog entries retain
+their originally published links; use their exact workspace dashboard link
+until their catalog link is deliberately updated.
+
 ### Stage 050 — Identity (identity component)
 
 The stage 050 `identity` component deploys the standalone platform RHBK (Red Hat build of Keycloak, namespace `rhbk`): RHBK Operator (`stable-v26`), a PostgreSQL backing store, the `platform-rhbk` Keycloak CR (HTTP-enabled behind an edge-terminated Route, `proxy.headers: xforwarded`), a `KeycloakRealmImport` for the `platform` realm shell, and the `configure-platform-identity` PostSync job that patches the `platform-keycloak` OAuthClient, creates the `openshift-v4` identity provider, and pre-creates the demo users with IdP links. RHDH signs in against this realm; the MTA-operator-managed Keycloak is MTA-only.
