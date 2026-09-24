@@ -1,5 +1,12 @@
 # Backlog
 
+## Stage 050 restart image pulls — 2026-09-24
+
+- [x] Replace unsupported `ose-cli:latest` references in Stage 050 Jobs,
+  CronJobs, and delivery Tasks with the existing provisioner CLI digest.
+  Catalog refresh reproduced `ImagePullBackOff` after the overnight shutdown.
+  Live recovery is qualified by successful Jobs after GitOps reconciliation.
+
 ## Stage 080 v11 repeatability — planned 2026-09-23
 
 - [x] **Expose the serial migration roadmap after M2.** Derive known work,
