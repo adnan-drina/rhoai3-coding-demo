@@ -182,10 +182,10 @@ for stage_dir in stage_dirs:
         fail(f"stage {stage_id} Argo CD app source.path must be {expected_path}")
     if labels.get("demo.rhoai.io/stage") != stage_id:
         fail(f"stage {stage_id} Argo CD app missing demo.rhoai.io/stage label")
-    if not annotations.get("argocd.argoproj.io/manifest-generate-paths", "").startswith(
-        "gitops/stages/"
-    ):
-        fail(f"stage {stage_id} Argo CD app manifest-generate-paths should point at gitops/stages")
+    mgp = annotations.get("argocd.argoproj.io/manifest-generate-paths", "")
+    if not (mgp == "." or mgp.startswith("/gitops/stages/")):
+        # relative entries resolve against source.path (existence is checked below)
+        fail(f"stage {stage_id} Argo CD app manifest-generate-paths must be '.' or a '/gitops/stages/...' path, got {mgp!r}")
 
 if seen_ids != sorted(seen_ids):
     fail(f"stage ids must be in ascending directory order: {seen_ids}")
@@ -213,6 +213,32 @@ if gitops_stages_root.is_dir():
                 f"gitops/stages/{name} has no matching stages/{name}/deploy.sh "
                 "(workflow-only stages omit GitOps)"
             )
+
+# Argo CD resolves a RELATIVE manifest-generate-paths entry against the
+# app's spec.source.path, so repeating the repository path doubles it and the
+# annotation matches no commit (B3, 2026-09-24: stage 040 policy change not
+# refreshed). Each entry must be "." or start with "/" and exist.
+if app_root.is_dir():
+    for app_path in sorted(app_root.glob("*.yaml")):
+        text = app_path.read_text(encoding="utf-8")
+        m = re.search(r"argocd\.argoproj\.io/manifest-generate-paths:\s*(\S+)", text)
+        if not m:
+            continue
+        src = re.search(r"^\s+path:\s*(\S+)", text, re.M)
+        for entry in m.group(1).split(";"):
+            entry = entry.strip().strip("'\"")
+            if entry.startswith("/"):
+                target = repo / entry.lstrip("/")
+            elif src:
+                target = repo / src.group(1) / entry
+            else:
+                target = None
+            if target is None or not target.exists():
+                fail(
+                    f"{app_path.relative_to(repo)} manifest-generate-paths entry {entry!r} resolves to "
+                    f"{target.relative_to(repo) if target is not None else 'nothing'}, which does not exist; "
+                    "a relative entry is relative to spec.source.path (use '.' or a '/'-anchored repository path)"
+                )
 
 if errors:
     for error in errors:
