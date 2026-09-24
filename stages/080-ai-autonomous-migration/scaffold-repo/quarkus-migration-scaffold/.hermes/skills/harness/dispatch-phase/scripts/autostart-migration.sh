@@ -87,6 +87,20 @@ if ! DECLARATION_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.run_
   fail_status "${DECLARATION_OUT#REFUSE: }"
 fi
 
+# B1: the in-cluster MaaS route is a prerequisite of every dispatch, start and
+# continuation alike (v12 was created without its hostAlias and its model
+# traffic took the public load balancer). The one shared check
+# (planner.maas_route, also used by the Operator preflight): the platform's
+# expected gateway host and Service address are set, the worker endpoint is
+# that host, it resolves here to that address, and TLS verifies through it.
+# A refusal mints nothing. The explicit off switch above still wins.
+if [[ -f "${ROOT}/.hermes/lib/planner/maas_route.py" ]]; then
+  if ! ROUTE_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.maas_route --root "${ROOT}" 2>&1)"; then
+    fail_status "${ROUTE_OUT#REFUSE }"
+  fi
+  echo "${ROUTE_OUT}"
+fi
+
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi

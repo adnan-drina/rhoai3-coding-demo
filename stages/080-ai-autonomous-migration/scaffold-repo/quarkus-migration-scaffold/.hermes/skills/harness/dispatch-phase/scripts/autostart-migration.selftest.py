@@ -106,11 +106,37 @@ def _pins(root: Path, activation: str | None) -> None:
     (root / ".hermes" / "pins.json").write_text(json.dumps(pins), encoding="utf-8")
 
 
+ROUTE_STUB = """import os, sys
+# Fixture stand-in for planner.maas_route (B1): the real check resolves and
+# connects, which no selftest host can do for a cluster gateway. FIXTURE_ROUTE
+# is read ONLY by this stub; the production module has no such switch.
+if os.environ.get("FIXTURE_ROUTE") == "public":
+    print("REFUSE STARTUP_MAAS_ROUTE: endpoint maas.apps.fixture resolves to 52.18.33.7; required gateway Service "
+          "address 172.30.250.250; no card dispatched", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: MaaS route (fixture)")
+"""
+
+
+def _fixture_lib(lib: Path) -> None:
+    """The golden lib, file by file, with planner.maas_route replaced by the
+    fixture stand-in above; everything else is the real code."""
+    golden = GOLDEN / ".hermes" / "lib"
+    lib.mkdir(parents=True, exist_ok=True)
+    for entry in golden.iterdir():
+        if entry.name != "planner":
+            os.symlink(entry, lib / entry.name)
+    (lib / "planner").mkdir()
+    for entry in (golden / "planner").iterdir():
+        if entry.name != "maas_route.py":
+            os.symlink(entry, lib / "planner" / entry.name)
+    (lib / "planner" / "maas_route.py").write_text(ROUTE_STUB, encoding="utf-8")
+
+
 def _link_lib(root: Path) -> None:
     lib = root / ".hermes" / "lib"
     if not lib.exists():
-        lib.parent.mkdir(parents=True, exist_ok=True)
-        os.symlink(GOLDEN / ".hermes" / "lib", lib)
+        _fixture_lib(lib)
 
 
 def _destination(root: Path, budget: dict | None = None) -> Path:
@@ -205,6 +231,24 @@ def main() -> int:
         root_np.mkdir()
         _pins(root_np, None)
         _destination(root_np)
+        # B1: a workspace whose MaaS endpoint is not on the in-cluster route
+        # dispatches NOTHING, and the status names the refusal
+        root_r = tmp_p / "proj-route"
+        root_r.mkdir()
+        _pins(root_r, "not-activated")
+        _destination(root_r)
+        store_r = tmp_p / "store-route"
+        bin_r = tmp_p / "bin-route"
+        bin_r.mkdir()
+        write_fake_hermes(bin_r / "hermes", store_r)
+        proc_r = run_autostart(root_r, bin_r, {"FIXTURE_ROUTE": "public"})
+        status_r = json.loads((root_r / ".hermes/AUTOSTART-STATUS").read_text()) if (root_r / ".hermes/AUTOSTART-STATUS").is_file() else {}
+        if proc_r.returncode == 0 or _argv_log(store_r) or "STARTUP_MAAS_ROUTE" not in json.dumps(status_r):
+            return _fail("a public MaaS route mints no card and names STARTUP_MAAS_ROUTE: rc=%s creates=%s status=%s"
+                         % (proc_r.returncode, _argv_log(store_r), status_r))
+        proc_r2 = run_autostart(root_r, bin_r, {"FIXTURE_ROUTE": "public"}, after_m1="t_any")
+        if proc_r2.returncode == 0 or _argv_log(store_r):
+            return _fail("a continuation on a public route mints nothing either")
         store_np = tmp_p / "store-np"
         bin_np = tmp_p / "bin-np"
         bin_np.mkdir()
@@ -268,7 +312,7 @@ def main() -> int:
         def _pilot_root(name: str, seal_digest: str | None, with_bundle: bool) -> tuple[Path, Path, Path]:
             r = tmp_p / name
             (r / ".hermes").mkdir(parents=True)
-            os.symlink(GOLDEN / ".hermes" / "lib", r / ".hermes" / "lib")
+            _fixture_lib(r / ".hermes" / "lib")
             bundle = {"schema": "rhoai3.evidence-bundle/v1", "producers": {"mta": {"status": "ok"}}, "obligations": []}
             if with_bundle:
                 (r / "evidence" / "planning").mkdir(parents=True, exist_ok=True)
