@@ -281,3 +281,24 @@ does not qualify live isolation. Resource ownership now requires the platform
 receipt, actual workspace and original scaffolding assignment; provision/retire
 operations serialize per run. v9-to-v10 comparisons describe all changed pins
 and preserve unknowns, coverage gaps and prior authored repairs.
+
+## Creating a migration run
+
+A run is created from the Developer Hub **Application migration** template and
+is named by its full project name — `spring-petclinic-rest-legacy-v12` and
+`orders-modernization` are equally valid; no suffix is parsed. One published
+golden serves every run unedited:
+
+| File | Written by | Holds |
+|------|------------|-------|
+| `run-defaults.json` | golden | budget limits, clock definition, M5 limits, model/image/runtime pins — identical for every run, configured values only |
+| `run-budget.json` | factory, in the destination's initial commit | the run's name, the scaffolder task that declared it, and the defaults it binds |
+
+The scaffolder has no clock, so the declaration carries no timestamp: the
+initial commit is the declaring event and its time is the declaration time.
+`planner/run_declaration.py` refuses a missing, foreign, stale or rewritten
+declaration, and autostart does not mint M1 without a valid one; reopening or
+restarting the workspace re-reads the same committed bytes. After creation, run
+the read-only `run-preflight.sh` with `WORKSPACE` set to the project name (see
+[OPERATIONS](../../docs/OPERATIONS.md#stage-080-run-declaration-and-launch-preflight)).
+`v10-preflight.sh` and `v11-preflight.sh` remain the records of those launches.

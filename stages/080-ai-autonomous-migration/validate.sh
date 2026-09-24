@@ -592,6 +592,15 @@ check "080 autostart does not pin scan-with-mta on the card" \
 check "080 autostart-migration selftest passes" \
   "python3 '${SCAFFOLD_AUTOSTART}/autostart-migration.selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+# Run declarations (2026-09-24): the factory writes the run's own run-budget.json
+# into the destination's initial commit; the published golden carries only the
+# shared run-defaults.json. (The golden-side checks live with the golden work.)
+check "080 the launch preflight is run-agnostic and reads the budget through the declaration" \
+  "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_OK || echo RUN_PREFLIGHT_FAILED" \
+  "RUN_PREFLIGHT_OK"
+check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
+  "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
+  "FACTORY_DECLARES_RUN"
 check "080 derive default DERIVED_ROOT is inside dest tree" \
   "grep -c '\${MODERNIZED_ROOT}/.derived/legacy-at-3' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.sh' || echo 0" \
   "1"

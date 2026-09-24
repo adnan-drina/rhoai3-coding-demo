@@ -1,0 +1,12 @@
+{
+  "schema": "rhoai3.run-budget/v2",
+  "run_id": "${{ values.name }}",
+  "limits": "run-defaults.json#/budget",
+  "declared_at_source": "initial-commit",
+  "declared_by": {
+    "factory": "rhdh-scaffolder",
+    "template": "app-migration",
+    "scaffolder_task": "${{ values.scaffolderTaskId }}"
+  },
+  "note": "This run's budget declaration, written by the factory into the destination's initial commit. The limits are the golden's shared defaults in run-defaults.json; the declaration binds them. It carries no timestamp because the scaffolder has no clock: the budget was declared when the initial commit was made, and that commit's time is the declaration time. Never edit, renew or copy this file; .hermes/lib/planner/run_declaration.py refuses one that changed after that commit."
+}
