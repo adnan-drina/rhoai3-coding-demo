@@ -2446,15 +2446,7 @@ data:
     doc = json.loads(pins_path.read_text(encoding="utf-8"))
     planner = (doc.get("pins") or {}).setdefault("planner", {})
     mode = str(planner.get("activation") or "").strip().lower()
-    if mode == "activated":
-        print("dest-init: planner is activated; no seal needed")
-        raise SystemExit(0)
-    seal = planner.get("pilot")
-    if isinstance(seal, dict) and str(seal.get("run_id") or "").strip():
-        print("dest-init: pilot seal already present for run %s; left alone" % seal.get("run_id"))
-        raise SystemExit(0)
-    planner["activation"] = "pilot"
-    planner["pilot"] = {
+    pilot = {
         "run_id": name,
         "authorized_by": "devworkspace-creator:%s" % creator,
         "evidence_bundle_sha256": "",
@@ -2467,6 +2459,41 @@ data:
             "note": "creating the workspace is the authorization; the harness binds it to the M1 bundle and never invents run_id or authorized_by",
         },
     }
+    # B8 (v12 t_b33f25fa): a golden that carries planner.run_control keeps the
+    # run's activation in <projects>/.platform/run-control, outside anything a
+    # git checkout, reset or stash in the destination can reach, and records
+    # the harness release the run is created with (B10). An older golden keeps
+    # the seal in pins.json exactly as before.
+    sys.path.insert(0, str(root / ".hermes" / "lib"))
+    try:
+        from planner import run_control
+    except Exception:
+        run_control = None
+    if run_control is not None:
+        run_control.run_control_dir(root).mkdir(parents=True, exist_ok=True)
+        run_control.record_release(root, run_control.harness_release_digest(root), "dest-init")
+        held = run_control.read_activation(root)
+        if held is not None:
+            print("dest-init: run control already holds the activation (%s) for run %s; left alone"
+                  % (held.get("activation"), (held.get("pilot") or {}).get("run_id") or "-"))
+            raise SystemExit(0)
+        if mode == "activated":
+            run_control.write_activation(root, {"activation": "activated"}, "recorded", "the golden is activated")
+            print("dest-init: planner is activated; recorded in run control")
+            raise SystemExit(0)
+        run_control.write_activation(root, {"activation": "pilot", "pilot": pilot}, "recorded",
+                                     "dest-init: creating the workspace authorizes the run")
+        print("dest-init: pilot authorization recorded in run control for run %s by %s (bundle unbound)" % (name, creator))
+        raise SystemExit(0)
+    if mode == "activated":
+        print("dest-init: planner is activated; no seal needed")
+        raise SystemExit(0)
+    seal = planner.get("pilot")
+    if isinstance(seal, dict) and str(seal.get("run_id") or "").strip():
+        print("dest-init: pilot seal already present for run %s; left alone" % seal.get("run_id"))
+        raise SystemExit(0)
+    planner["activation"] = "pilot"
+    planner["pilot"] = pilot
     pins_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("dest-init: pilot authorization recorded for run %s by %s (bundle unbound)" % (name, creator))
     PYSEAL
