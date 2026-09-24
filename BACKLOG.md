@@ -18,11 +18,13 @@ previous code. Nothing is published or launched; the release mapping is
   explanations and response-path placement.
 - [x] Quota decision (2026-09-24, revised by the release review R2): the
   Qwen 3.8 limit stays 60M/h. The 80M/h raise (`e7385242`) was reverted
-  (`302b6957`). Each run is held to an enforced allowance of 200 requests/h,
-  counting retries and auxiliary calls, with every request capped at
-  220000 + 32768 tokens. Reserve: 9M/h. Total: 59.55M ≤ 60M. The Hermes
-  pacer (runtime patch 0007) enforces it; `run-preflight.sh` admits
-  against it.
+  (`302b6957`). Each run is held to an enforced allowance of 190
+  requests/h, counting retries and auxiliary calls. Each request is sized
+  at the served window of 262144 tokens (prompt plus output, as vLLM
+  enforces it), because the pacer counts requests, not input tokens.
+  Reserve: 9M/h. Total: 58.81M ≤ 60M; 200 requests/h would be 61.43M.
+  The Hermes pacer (runtime patch 0007) enforces it; `run-preflight.sh`
+  admits against it.
 - [x] B8 protected writer (R3): the migration-run provisioner writes
   `<run>-run-control`, and it is mounted read-only. A run declared under
   run control refuses when the record is missing (R1).

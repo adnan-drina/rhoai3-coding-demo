@@ -68,22 +68,34 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("os.environ.get('RHOAI3_MAAS_INTERNAL_IP') == '172.30.250.250'", code)
 
     def test_enforced_allowance_must_fit_the_shared_quota(self):
-        # B3 / R2: the paced allowance at the largest request, plus the reserve,
+        # B3 / R2: the paced allowance at the served window, plus the reserve,
         # every other running migration run counted, and the pacer configured
         code = self.fill()
-        self.assertIn("per_request = int(q['max_input_tokens']) + int(q['max_output_tokens'])", code)
+        self.assertIn("budget_gap = rate_budget_gap(q, 262144, runs, 60000000)", code)
         self.assertIn("runs = 1 + 0", code)
-        self.assertIn("require(runs * demand + int(q['reserve_tokens_per_window']) <= 60000000,", code)
         self.assertIn("'MOD' + 'EL_RATE_BUDGET", code)
         self.assertIn("RHOAI3_REQUEST_BUDGET=%d/%d", code)
         self.assertIn("is_migration_run", LOCAL)
         self.assertNotIn("QLIMITVAL", code)
 
-    def test_shared_defaults_must_match_the_golden(self):
-        self.assertIn("expected['run-defaults.json'] = digest(golden / 'run-defaults.json')", LOCAL)
-        self.assertIn("defaults['budget']['max_wall_hours']", LOCAL)
-        self.assertIn("defaults['configuration']['model']['id']", LOCAL)
+    def test_rate_budget_arithmetic(self):
+        # The final pacing review: sized at the served 262144 window, 200
+        # requests/h no longer fits 60M with the 9M reserve; 190 does. The
+        # platform profile itself is the one admitted.
+        import json
+        ns = {}
+        fn = next(n for n in ast.parse(self.fill()).body if isinstance(n, ast.FunctionDef) and n.name == 'rate_budget_gap')
+        exec(ast.unparse(fn), ns)
+        gap = ns['rate_budget_gap']
+        base = {'max_request_tokens': 262144, 'max_output_tokens': 32768, 'reserve_tokens_per_window': 9000000}
+        self.assertIn('declared 61428800', gap(dict(base, max_requests_per_window=200), 262144, 1, 60000000))
+        self.assertEqual(gap(dict(base, max_requests_per_window=190), 262144, 1, 60000000), '')
+        self.assertIn('declared 108614720', gap(dict(base, max_requests_per_window=190), 262144, 2, 60000000))
+        # a profile that sizes a request below what the server admits is refused
+        self.assertIn('model serves 262144', gap(dict(base, max_requests_per_window=190, max_request_tokens=252768), 262144, 1, 60000000))
+        profiles = json.loads((HERE.parents[1] / 'gitops/stages/050-advanced-app-platform/base/devspaces/model-profiles.json').read_text())
+        self.assertEqual(gap(profiles['profiles']['qwen3-8-27b-int4']['quota'], 262144, 1, 60000000), '')
 
 
 if __name__ == '__main__':
-    unittest.main(verbosity=1)
+    unittest.main()

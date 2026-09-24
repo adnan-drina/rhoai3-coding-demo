@@ -1,7 +1,7 @@
 {
   "default_model": "qwen3-8-27b-int4",
   "notes": {
-    "quota": "B3/R2: an ENFORCED aggregate allowance for all model requests of one run (main, every retry, auxiliary and reviewer calls), paced by the Hermes runtime (patch 0007) from these values. max_output_tokens is the largest output any request may carry: Hermes raises the cap on a truncation retry to 32768 (conversation_loop.py:3956 at v2026.8.19). Admission (run-preflight.sh MODEL_RATE_BUDGET): max_requests_per_window x (max_input_tokens + max_output_tokens) + reserve_tokens_per_window <= the MaaSSubscription limit: 200 x 252768 + 9000000 = 59553600 <= 60000000 for qwen3-8-27b-int4.",
+    "quota": "B3/R2: an ENFORCED aggregate allowance for all model requests of one run (main, every retry, auxiliary and reviewer calls), paced by the Hermes runtime (patch 0007) from these values. max_request_tokens is the served model's enforced total per request (vLLM --max-model-len, prompt plus output; https://docs.vllm.ai/en/latest/configuration/engine_args/): the pacer counts requests, not input tokens, so admission uses the bound the server enforces rather than the configured context. max_output_tokens is the largest output any request may ask for (Hermes truncation retries grow to 32768; auxiliary calls carry it as their default cap). Admission (run-preflight.sh MODEL_RATE_BUDGET, which also requires max_request_tokens >= the live served window): max_requests_per_window x max_request_tokens + reserve_tokens_per_window <= the MaaSSubscription limit: 190 x 262144 + 9000000 = 58807360 <= 60000000 for qwen3-8-27b-int4 (200 would be 61428800). The reserve is an assumption about other consumers, not a reservation.",
     "request_body": "qwen3-8-27b-int4: the Qwen3.8-27B card's Instruct (non-thinking) row, https://huggingface.co/Qwen/Qwen3.8-27B#api-usage . vLLM serves the THINKING row by default; workers run thinking off (v7 item 7, 2026-09-10). v12 (2026-09-24, t_655b1607) ran two responses to the full output cap without the row.",
     "source": "B4: the ONE declared runtime profile per model and mode. dest-init generates every model-dependent worker setting from it (provider, caps, request body on the main slot and on every auto auxiliary slot, the request pacer); the migration-run provisioner pins a copy per run (<run>-run-control profile.json), and the loop refuses a runtime that differs from the pin.",
     "timeouts": "vLLM buffers a tool call's arguments until complete; a ~12 KB file written through a tool call sends no bytes for ~4K tokens at ~18 tok/s, beyond Hermes's 120s default stream read timeout (pilot v5 M3 t_3efca989)."
@@ -14,7 +14,7 @@
       "mode": "non-thinking",
       "provider": "qwen27b",
       "quota": {
-        "max_input_tokens": 110000,
+        "max_request_tokens": 131072,
         "max_output_tokens": 32768,
         "max_requests_per_window": 200,
         "max_wait_seconds": 900,
@@ -37,9 +37,9 @@
       "mode": "non-thinking",
       "provider": "qwen38",
       "quota": {
-        "max_input_tokens": 220000,
+        "max_request_tokens": 262144,
         "max_output_tokens": 32768,
-        "max_requests_per_window": 200,
+        "max_requests_per_window": 190,
         "max_wait_seconds": 900,
         "reserve_tokens_per_window": 9000000,
         "window_seconds": 3600
