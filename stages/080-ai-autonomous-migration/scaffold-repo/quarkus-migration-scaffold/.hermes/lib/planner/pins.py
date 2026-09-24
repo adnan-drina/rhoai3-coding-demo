@@ -35,34 +35,21 @@ USED_STATUSES = ("ok", "partial")
 
 
 def load_pins(root: Path) -> dict[str, Any]:
-    """The pins, with the run's activation taken from RUN CONTROL (B8).
-
-    When dest-init created the run-control directory the repository's
-    `pins.planner` is never read: the activation file answers, a missing file
-    is RUN_ACTIVATION_MISSING (naming when the journal last saw it), and a
-    seal for another run than the one the factory declared is
-    RUN_ACTIVATION_FOREIGN. Without run control (older destinations, fixtures)
-    the repository's pins answer, as before."""
+    """The pins, with the run's activation from RUN CONTROL when the run's
+    initial-commit declaration says it is governed (planner.run_control): the
+    platform's read-only contract plus the write-once M1 binding, never the
+    repository's `pins.planner`. A governed run whose record is missing,
+    malformed or foreign carries that refusal as its activation gap. A legacy
+    run (declared without run control) reads the repository's pins, as
+    before v13."""
     path = Path(root) / PINS
     doc = load_json(path)
     if not isinstance(doc, dict) or not isinstance(doc.get("pins"), dict):
         raise ValueError("%s: expected {pins: {...}}" % path)
     pins = dict(doc["pins"])
     from planner import run_control
-    if not run_control.in_use(root):
-        return pins
-    block = dict(run_control.planner_block(root, pin(pins, "planner")))
-    if block.get("activation") == run_control.MISSING:
-        block["gap"] = run_control.missing_gap(root, block)
-    elif str(block.get("activation") or "").strip().lower() == PILOT:
-        seal = block.get("pilot") if isinstance(block.get("pilot"), dict) else {}
-        from planner import run_declaration
-        decl = run_declaration.load(Path(root))
-        sealed_run = str(seal.get("run_id") or "")
-        if decl.code == run_declaration.OK and decl.run_id and sealed_run and sealed_run != decl.run_id:
-            block = {"activation": "foreign", "gap": "RUN_ACTIVATION_FOREIGN: the run-control seal names run %r and this "
-                     "destination's factory declaration names %r; a seal is never carried between runs" % (sealed_run, decl.run_id)}
-    pins["planner"] = block
+    if run_control.in_use(root):
+        pins["planner"] = dict(run_control.planner_block(root, pin(pins, "planner")))
     return pins
 
 
@@ -136,9 +123,9 @@ def pilot_bind_gaps(pins: dict[str, Any]) -> list[str]:
     if not str(seal.get("authorized_by") or "").strip():
         gaps.append("pins.planner.pilot.authorized_by missing")
     auth = pilot_authorization(pins)
-    if str(auth.get("source") or "") != "devworkspace":
+    if str(auth.get("source") or "") not in ("devworkspace", "platform-provisioner"):
         gaps.append("pins.planner.pilot.authorization.source is %r, not 'devworkspace' (only the platform may record an authorization the harness binds)" % auth.get("source"))
-    if not str(auth.get("creator") or "").strip():
+    if str(auth.get("source") or "") == "devworkspace" and not str(auth.get("creator") or "").strip():
         gaps.append("pins.planner.pilot.authorization.creator missing (the workspace creator)")
     if str(seal.get("evidence_bundle_sha256") or "").strip():
         gaps.append("pins.planner.pilot.evidence_bundle_sha256 is already bound; a bound seal is never rewritten")

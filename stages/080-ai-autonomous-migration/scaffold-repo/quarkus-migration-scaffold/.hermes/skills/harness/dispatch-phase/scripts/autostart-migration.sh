@@ -101,6 +101,14 @@ if [[ -f "${ROOT}/.hermes/lib/planner/maas_route.py" ]]; then
   echo "${ROUTE_OUT}"
 fi
 
+# R1/R3: a run the factory declared under run control starts only with the
+# platform's record present and intact: the contract, the pinned release and
+# the pinned model profile (planner.run_control.run_gaps). A legacy run has no
+# such declaration and passes through unchanged.
+if ! RUNCTL_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -c 'import sys; from planner.run_control import run_gaps; g = run_gaps(sys.argv[1]); print(g[0] if g else "run control: ok or not declared"); raise SystemExit(1 if g else 0)' "${ROOT}" 2>&1)"; then
+  fail_status "${RUNCTL_OUT}"
+fi
+
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi
@@ -146,24 +154,27 @@ except Exception as exc:
     raise SystemExit(0)
 pins_path = root / ".hermes" / "pins.json"
 bundle_path = root / "evidence" / "planning" / "evidence-bundle.json"
-# B8: under run control the seal lives in <projects>/.platform/run-control,
-# outside anything a git operation in the destination can reset; only a
-# destination without it (created before run control) binds in pins.json.
+# B8/R3: a run governed by run control (its initial-commit declaration says so)
+# is authorized by the PLATFORM's read-only record; the harness's one narrow
+# operation is the write-once binding of this bundle's digest. A legacy run
+# binds in pins.json exactly as before v13.
 from planner import run_control
-controlled = run_control.in_use(root)
+if run_control.in_use(root):
+    if not bundle_path.is_file():
+        print("bind: no evidence bundle yet; M1 has not produced one")
+        raise SystemExit(0)
+    bundle = load_json(bundle_path)
+    unfit = bundle_fitness_gaps(bundle)
+    if unfit:
+        print("REFUSE: BIND_UNFIT_BUNDLE %s" % "; ".join(unfit[:3]))
+        raise SystemExit(0)
+    ok, msg = run_control.bind(root, digest(bundle), "M1 evidence bundle")
+    print(("bind: %s (run control)" if ok else "REFUSE: %s") % msg)
+    raise SystemExit(0)
 try:
-    if controlled:
-        planner = run_control.read_activation(root)
-        if planner is None:
-            print("bind: %s" % run_control.missing_gap(root, run_control.planner_block(root, {})))
-            raise SystemExit(0)
-        doc = {"pins": {"planner": planner}}
-    else:
-        doc = load_json(pins_path)
-except SystemExit:
-    raise
+    doc = load_json(pins_path)
 except Exception as exc:
-    print("bind: activation unreadable (%s); nothing bound" % exc)
+    print("bind: pins unreadable (%s); nothing bound" % exc)
     raise SystemExit(0)
 gaps = pilot_bind_gaps(doc.get("pins") or {})
 if gaps:
@@ -181,12 +192,8 @@ d = digest(bundle)
 seal = doc["pins"]["planner"]["pilot"]
 seal["evidence_bundle_sha256"] = d
 seal["bound_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-if controlled:
-    run_control.write_activation(root, doc["pins"]["planner"], "bound", "M1 evidence bundle %s" % d[:16])
-else:
-    write_canonical(pins_path, doc)
-print("bind: pilot seal for run %s (authorized by %s) bound to bundle %s%s" % (
-    seal.get("run_id"), seal.get("authorized_by"), d[:16], " in run control" if controlled else ""))
+write_canonical(pins_path, doc)
+print("bind: pilot seal for run %s (authorized by %s) bound to bundle %s" % (seal.get("run_id"), seal.get("authorized_by"), d[:16]))
 PYBIND
 
 # Planner activation (SAD §9/§12). Read, never decided here. "activated" mints

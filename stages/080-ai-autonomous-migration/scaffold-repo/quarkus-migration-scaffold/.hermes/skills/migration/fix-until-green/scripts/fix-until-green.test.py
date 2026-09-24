@@ -1384,13 +1384,13 @@ def _missing_baseline_case() -> int:
 
 
 def _continuation_case() -> int:
-    """B8 (v12 t_b33f25fa): an ACCEPTED step whose admission is then refused
-    because the run's activation is gone (run control holds a journaled binding
-    and no activation file) records the continuation as admission-refused,
-    names RUN_ACTIVATION_MISSING, and tells the card to block -- the accepted
-    commit stands. Once the activation is back, re-running advance.py with the
-    same arguments finishes the continuation (the H9b idempotent path)."""
-    from planner import run_control
+    """B8 (v12 t_b33f25fa, the legacy path where it happened): an ACCEPTED
+    step whose admission is then refused because the run's activation is gone
+    (pins.json back to not-activated) records the continuation as
+    admission-refused, names the refusal, and tells the card to block -- the
+    accepted commit stands. Once the activation is back, re-running
+    advance.py with the same arguments finishes the continuation (the H9b
+    idempotent path) without a second step."""
     from planner.paths import MTA_FINDINGS  # noqa: E402
 
     _ATTR = "compiler.err.cant.resolve.location"
@@ -1408,32 +1408,29 @@ def _continuation_case() -> int:
         f.write_text(f.read_text(encoding="utf-8").replace("import java.net.URI;\n", "import java.net.URI;\n// ok\n"),
                      encoding="utf-8")
         specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
-        os.environ["RHOAI3_RUN_CONTROL_DIR"] = str(Path(td) / "platform" / "run-control")
-        try:
-            run_control.write_activation(root, {"activation": "activated"}, "bound", "fixture")
-            act = run_control.run_control_dir(root) / run_control.ACTIVATION
-            act.chmod(0o644)
-            act.unlink()  # the v12 loss, now outside the repository's reach but still simulated
-            p = _advance(root, cluster["id"], "t_b8")
-            blob = p.stdout + p.stderr
-            cont = load_json(root / "verification" / "loop" / "continuation.json")
-            if "OK: ACCEPTED" not in p.stdout or p.returncode == 0:
-                return _fail("the accepted step stands and the refused admission is not a success: rc=%s %s" % (p.returncode, blob[-600:]))
-            if "LOOP_ADMISSION" not in blob or "RUN_ACTIVATION_MISSING" not in blob or "kanban_block" not in blob:
-                return _fail("the refusal names the missing activation and the block terminator: %s" % blob[-600:])
-            if cont.get("state") != "admission-refused" or cont.get("predecessor") != "t_b8" or not cont.get("reasons"):
-                return _fail("the continuation is recorded as admission-refused for this card: %s" % cont)
-            run_control.write_activation(root, {"activation": "activated"}, "restored", "fixture")
-            p = _advance(root, cluster["id"], "t_b8")
-            blob = p.stdout + p.stderr
-            cont = load_json(root / "verification" / "loop" / "continuation.json")
-            if p.returncode != 0 or "ACCEPTED already" not in p.stdout or cont.get("state") != "admitted":
-                return _fail("re-running advance.py finishes the continuation once the activation is back: rc=%s %s %s"
-                             % (p.returncode, cont, blob[-500:]))
-            if sum(1 for s_ in load_json(root / LOOP_STEPS)["steps"] if s_.get("card") == "t_b8") != 1:
-                return _fail("finishing the continuation records no second step")
-        finally:
-            os.environ.pop("RHOAI3_RUN_CONTROL_DIR", None)
+        pins_p = root / ".hermes" / "pins.json"
+        pins_doc = load_json(pins_p)
+        activated = json.loads(json.dumps(pins_doc))
+        pins_doc["pins"]["planner"] = {"activation": "not-activated"}   # the v12 loss
+        write_canonical(pins_p, pins_doc)
+        p = _advance(root, cluster["id"], "t_b8")
+        blob = p.stdout + p.stderr
+        cont = load_json(root / "verification" / "loop" / "continuation.json")
+        if "OK: ACCEPTED" not in p.stdout or p.returncode == 0:
+            return _fail("the accepted step stands and the refused admission is not a success: rc=%s %s" % (p.returncode, blob[-600:]))
+        if "LOOP_ADMISSION" not in blob or "PLANNER_NOT_ACTIVATED" not in blob or "kanban_block" not in blob:
+            return _fail("the refusal names the missing activation and the block terminator: %s" % blob[-600:])
+        if cont.get("state") != "admission-refused" or cont.get("predecessor") != "t_b8" or not cont.get("reasons"):
+            return _fail("the continuation is recorded as admission-refused for this card: %s" % cont)
+        write_canonical(pins_p, activated)
+        p = _advance(root, cluster["id"], "t_b8")
+        blob = p.stdout + p.stderr
+        cont = load_json(root / "verification" / "loop" / "continuation.json")
+        if p.returncode != 0 or "ACCEPTED already" not in p.stdout or cont.get("state") != "admitted":
+            return _fail("re-running advance.py finishes the continuation once the activation is back: rc=%s %s %s"
+                         % (p.returncode, cont, blob[-500:]))
+        if sum(1 for s_ in load_json(root / LOOP_STEPS)["steps"] if s_.get("card") == "t_b8") != 1:
+            return _fail("finishing the continuation records no second step")
     return 0
 
 

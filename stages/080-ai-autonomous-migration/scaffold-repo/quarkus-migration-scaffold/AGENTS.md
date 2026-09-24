@@ -199,10 +199,12 @@ Until the run's activation is `activated` (SAD §12 gate) — or `pilot`
 with a seal bound to this exact evidence bundle — M2 and downstream are
 unavailable: dest-init mints **M1 ANALYZE only**,
 `assert-planner-activated.py` refuses M2, admission never ADMITS, and K4
-re-derives the same verdict so a receipt cannot bypass it. The activation
-is **run control** (`/projects/.platform/run-control/activation.json`,
-read-only, journaled), outside this repository: `.hermes/pins.json` is the
-golden default and is never read for activation once run control exists.
+re-derives the same verdict so a receipt cannot bypass it. For a run whose
+initial-commit `run-budget.json` declares `run_control`, the activation is the
+**platform's** record (`/etc/rhoai3/run-control`, written by the migration-run
+provisioner, mounted read-only) plus the write-once M1 binding; `.hermes/pins.json`
+is only the golden default and is never read for activation. A missing or
+damaged record refuses; nothing in the workspace can write or re-bless it.
 Mutating git (`checkout`, `restore`, `reset`, `stash`, `clean`, `add`,
 `commit`, …) is refused to workers: the loop tools own the index and the
 tree. Do not invent a replacement path on a card. A worker never

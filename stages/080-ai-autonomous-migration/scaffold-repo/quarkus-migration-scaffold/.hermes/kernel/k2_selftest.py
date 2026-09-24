@@ -123,6 +123,13 @@ def main() -> int:
                                "git diff --stat")):
             expect_allow(c, "b8_git_read_%d" % i, cwd=cwd, extra_env=wk)
         expect_allow("git checkout -- .hermes/pins.json", "b8_git_no_profile_is_not_a_worker", cwd=cwd)
+        # R3: the run-control mount and the write-once binding state are outside
+        # the worker's write sandbox; a direct worker write to either is refused
+        for i, c in enumerate(("echo {} > /projects/.platform/run-control-state/binding.json",
+                               "rm -f /projects/.platform/run-control-state/binding.json",
+                               "cp /tmp/x.json /etc/rhoai3/run-control/contract.json",
+                               "tee /projects/.platform/run-control-state/requests.log < /dev/null")):
+            expect_block(c, "r3_control_write_%d" % i, "", cwd=cwd, extra_env=wk)
         expect_allow(
             "export JAVA_HOME=/usr/lib/jvm/java-21-openjdk; java -version",
             "export_then_java_cwd",
