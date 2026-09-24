@@ -448,6 +448,45 @@ def _composed_by_this_run(before: dict[str, Any], after: dict[str, Any], doc: An
     return ""
 
 
+
+def _scenario_files(parity: Path, sid: str) -> list[Path]:
+    """Every file a scenario comparison writes for one scenario: its verdict,
+    the destination bodies it keeps, and the server-error excerpt beside it."""
+    stem = scenario_slug(sid)
+    return [parity / (stem + ".json"), parity / "_bodies" / stem, parity / "_server-errors" / (stem + ".log")]
+
+
+def _snapshot_scenario_files(parity: Path, sids: list[str]) -> dict[Path, Any]:
+    kept: dict[Path, Any] = {}
+    for sid in sids:
+        for p in _scenario_files(parity, sid):
+            if p.is_dir():
+                kept[p] = {q.relative_to(p): q.read_bytes() for q in sorted(p.rglob("*")) if q.is_file()}
+            elif p.is_file():
+                kept[p] = p.read_bytes()
+            else:
+                kept[p] = None
+    return kept
+
+
+def _restore_scenario_files(kept: dict[Path, Any]) -> int:
+    """Put every snapshotted path back exactly: bytes, directory contents, or absence."""
+    import shutil
+    for p, was in kept.items():
+        if p.is_dir():
+            shutil.rmtree(p)
+        elif p.exists():
+            p.unlink()
+        if isinstance(was, bytes):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(was)
+        elif isinstance(was, dict):
+            for rel, data in was.items():
+                (p / rel).parent.mkdir(parents=True, exist_ok=True)
+                (p / rel).write_bytes(data)
+    return len(kept)
+
+
 def _run_child(argv: list[str], label: str) -> subprocess.CompletedProcess:
     """One child, one line of log. The v9 card's 77 KB worker log is the reason
     this prints a summary rather than the child's whole output."""
@@ -1152,30 +1191,41 @@ def main(argv: list[str] | None = None) -> int:
         # discharge. So before a scoped run re-runs a read oracle, the corpus
         # tail is replayed in corpus order, the same way step 1 replays it; if
         # that state cannot be restored the read oracles are not compared.
+        # The replay is for STATE only (v12 golden 40d96b4f, B13): it re-measured
+        # the tail's own scenarios and rewrote their records, and advance.py then
+        # read an unrelated record's change as an obligation the card introduced
+        # and reverted a correct repair. So every file the replay writes for a
+        # tail scenario is put back byte for byte, and a scenario counts as
+        # restored when it made its request (an observed destination response,
+        # which the comparator records only after its resets succeeded) -- its
+        # comparison verdict is not this step's business.
         restore_gap = ""
         restore_skipped: set[str] = set()
         if to_compare and not reads_all:
             starts = [i for i, sc in enumerate(declared) if sc.get("reset_before", True)]
             tail = declared[starts[-1]:] if starts else declared
             doc["read_oracles"]["state_restore"] = {"tail": [str(sc["id"]) for sc in tail], "results": []}
-            if not starts:
-                proc = subprocess.run(shlex.split(reset_cmd), text=True, capture_output=True)
-                if proc.returncode != 0:
-                    restore_gap = "the reset before the corpus tail exited %d" % proc.returncode
-            for sc in ([] if restore_gap else tail):
-                sid = str(sc["id"])
-                argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
-                           "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
-                proc = _run_child(argv_sc, "scenario %s (restores the state the read oracles were captured in)" % sid)
-                verdict, _reason = _verdict_of(root / parity_dir / (scenario_slug(sid) + ".json"))
-                doc["read_oracles"]["state_restore"]["results"].append({"id": sid, "rc": proc.returncode,
-                                                                          "verdict": verdict})
-                # INCONCLUSIVE is a replay that did not happen as declared (its
-                # reset failed, its request could not be made): not a state
-                if verdict not in ("PASS", "FAIL"):
-                    restore_gap = ("scenario %s of the corpus tail came back %s (rc %d)"
-                                   % (sid, verdict or "with no verdict", proc.returncode))
-                    break
+            kept = _snapshot_scenario_files(root / parity_dir, [str(sc["id"]) for sc in tail])
+            try:
+                if not starts:
+                    proc = subprocess.run(shlex.split(reset_cmd), text=True, capture_output=True)
+                    if proc.returncode != 0:
+                        restore_gap = "the reset before the corpus tail exited %d" % proc.returncode
+                for sc in ([] if restore_gap else tail):
+                    sid = str(sc["id"])
+                    argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
+                               "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
+                    proc = _run_child(argv_sc, "scenario %s (restores the state the read oracles were captured in)" % sid)
+                    rec = root / parity_dir / (scenario_slug(sid) + ".json")
+                    observed = ((load_json(rec) if rec.is_file() else {}).get("observed") or {}).get("status")
+                    doc["read_oracles"]["state_restore"]["results"].append({"id": sid, "rc": proc.returncode,
+                                                                              "observed_status": observed})
+                    if not observed:
+                        restore_gap = ("scenario %s of the corpus tail made no request (rc %d): %s"
+                                       % (sid, proc.returncode, (_verdict_of(rec)[1] or "no record")[:200]))
+                        break
+            finally:
+                doc["read_oracles"]["state_restore"]["records_restored"] = _restore_scenario_files(kept)
             if restore_gap:
                 reason = ("not compared: the state the read oracles were captured in (the corpus tail %s) "
                           "could not be restored: %s" % (", ".join(doc["read_oracles"]["state_restore"]["tail"]),

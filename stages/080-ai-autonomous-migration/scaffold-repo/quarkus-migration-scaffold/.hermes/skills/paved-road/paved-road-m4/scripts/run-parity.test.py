@@ -718,7 +718,25 @@ def main() -> int:
             # tail the unchanged destination FAILs its own list read.
             list_ep = next(e for e in READ_EPS if "OwnerController#list" in e)
             tail = ["sc:create-owner-second", "sc:read-root", "sc:read-root-auth"]
+            # B13 (v12 golden 40d96b4f): the replay is for state only. A tail
+            # record whose re-measurement would differ (there, INCONCLUSIVE ->
+            # FAIL) must survive byte for byte, or advance.py reads the change
+            # as an obligation the card introduced and reverts a correct repair.
+            tail_rec = root / SCENARIO_PARITY / (scenario_slug("sc:read-root") + ".json")
+            tail_bodies = root / SCENARIO_PARITY / "_bodies" / scenario_slug("sc:read-root")
+            if not tail_rec.is_file():
+                return _fail("fixture: the tail scenario's record must exist before the scoped run: %s" % tail_rec)
+            sentinel = tail_rec.read_bytes().replace(b'"PASS"', b'"INCONCLUSIVE"')
+            tail_rec.write_bytes(sentinel)
+            bodies_before = sorted((q.relative_to(tail_bodies), q.read_bytes()) for q in tail_bodies.rglob("*") if q.is_file()) \
+                if tail_bodies.is_dir() else None
             rcT, blobT, docT = _run(root, base, reset, scenarios=("sc:create-owner",), extra=("--read-oracle", list_ep))
+            if tail_rec.read_bytes() != sentinel:
+                return _fail("the tail replay restores state only: a tail scenario's record is put back byte for byte")
+            bodies_after = sorted((q.relative_to(tail_bodies), q.read_bytes()) for q in tail_bodies.rglob("*") if q.is_file()) \
+                if tail_bodies.is_dir() else None
+            if bodies_after != bodies_before:
+                return _fail("the tail replay leaves a tail scenario's kept bodies as they were")
             restore = docT["read_oracles"].get("state_restore") or {}
             if restore.get("tail") != tail or [r["id"] for r in restore.get("results") or []] != tail:
                 return _fail("a scoped read oracle is preceded by the corpus tail, in corpus order: %s" % restore)
