@@ -20,11 +20,11 @@ import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import budget as _budget, ensure_hermes_lib, pending_for, verify_runs_for  # noqa: E402
+from _loop_common import budget as _budget, candidate_sha256, ensure_hermes_lib, load_state, pending_for, product_paths_changed, verify_runs_for  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
+from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
 from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, assess_unit, head_cluster, items_of  # noqa: E402
 
 # H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
@@ -1036,6 +1036,32 @@ def main(argv: list[str] | None = None) -> int:
             "restore": "python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s" % cluster["id"],
             "next": recovery_next,
         }
+    # B11: the checkpoint a respawned worker starts from. A run that the
+    # tool-loop guard halted (or that crashed) leaves its unaccepted edits on
+    # the tree; the next run of the SAME card is handed them, with whether the
+    # last acceptance verification measured exactly this tree, and the one
+    # next action -- never "start over" (v12 t_e5c9a129 run 29 re-explored for
+    # minutes a candidate run 28 had already verified).
+    changed_now = [] if pending else product_paths_changed(root)
+    if changed_now:
+        st = load_state(root) or {}
+        run_doc = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+        verified = (bool(st.get("candidate_sha256")) and str(st.get("candidate_sha256")) == candidate_sha256(root)
+                    and str((run_doc or {}).get("mode") or "") == "acceptance")
+        nxt = (("python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster %s --card "
+                "\"$HERMES_KANBAN_TASK\" -- the last acceptance verification measured exactly this tree" % cluster["id"])
+               if verified else
+               ("bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance, then "
+                "advance.py -- the edits on the tree were not measured as they stand"))
+        brief["candidate_on_tree"] = {
+            "changed": changed_now[:20],
+            "verified": verified,
+            "measure_at_verify": st.get("measure") if verified else None,
+            "next": nxt,
+            "note": ("these edits are this card's unaccepted candidate, left by an earlier run of it: do not redo them "
+                     "and do not search for what they already did"),
+        }
+        brief["procedure"] = "FIRST: %s. Then, only if advance.py rejects it: %s" % (nxt, brief["procedure"])
     if repo:
         brief["repository"] = repo
     parity = parity_brief(items, cluster)

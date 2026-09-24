@@ -544,7 +544,64 @@ def _pending_recovery_case() -> int:
     return 0
 
 
+def _candidate_checkpoint_case(pkg: str = "com/acme/shop") -> int:
+    """B11: a respawned run of the same card is handed its predecessor's
+    unaccepted edits and the one next action. Verified exactly as it stands:
+    advance.py first. Edited after verification: run-verify.sh, then
+    advance.py. A clean tree: no checkpoint at all."""
+    import io
+    import subprocess
+    from contextlib import redirect_stdout
+    import brief as mod
+    from _loop_common import candidate_sha256
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, LOOP_STATE, VERIFY_RUN, WORKLIST
+
+    with tempfile.TemporaryDirectory(prefix="ckpt-brief-") as td:
+        root = Path(td)
+        rel = "src/main/java/%s/OrderRepositoryImpl.java" % pkg
+        (root / rel).parent.mkdir(parents=True)
+        (root / rel).write_text("class OrderRepositoryImpl { }\n", encoding="utf-8")
+        for args in (["init", "-q"], ["add", "-A"], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted"]):
+            subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+        cid = "c:ckpt"
+        cluster = {"id": cid, "kind": "parity", "gate": "parity", "path": rel, "write_set": [rel], "items": ["parity:x"]}
+        write_canonical(root / LOOP_ISSUED, dict(cluster, schema="rhoai3.loop-issued/v1", cluster=cid, task_id="t_ckpt"))
+        write_canonical(root / WORKLIST, {"head": cid, "clusters": [cluster], "items": [], "not_counted": [],
+                                          "measure": {"tuple": [0, 0, 0], "known": True}})
+        write_canonical(root / LOOP_DIR / "steps.json", {"pending": []})
+
+        def brief() -> dict:
+            out = io.StringIO()
+            with redirect_stdout(out):
+                if mod.main(["--root", str(root), "--cluster", cid]):
+                    raise SystemExit("brief must render")
+            return json.loads(out.getvalue())
+
+        if "candidate_on_tree" in brief():
+            return _fail("a clean tree carries no checkpoint")
+        (root / rel).write_text("class OrderRepositoryImpl { void delete() { } }\n", encoding="utf-8")
+        write_canonical(root / LOOP_STATE, {"candidate_sha256": candidate_sha256(root), "measure": {"tuple": [0, 0, 0]}})
+        write_canonical(root / VERIFY_RUN, {"schema": "rhoai3.verify-run/v1", "mode": "acceptance"})
+        doc = brief()
+        ck = doc.get("candidate_on_tree") or {}
+        if ck.get("changed") != [rel] or not ck.get("verified") or "advance.py" not in ck.get("next", "") or "run-verify" in ck.get("next", ""):
+            return _fail("a verified candidate goes straight to advance.py (%s): %s" % (pkg, ck))
+        if not doc["procedure"].startswith("FIRST: python3 .hermes/skills/migration/fix-until-green/scripts/advance.py"):
+            return _fail("the checkpoint leads the procedure: %s" % doc["procedure"][:160])
+        (root / rel).write_text("class OrderRepositoryImpl { void delete() { /* again */ } }\n", encoding="utf-8")
+        ck = brief().get("candidate_on_tree") or {}
+        if ck.get("verified") or not ck.get("next", "").startswith("bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh"):
+            return _fail("a candidate edited after verification is re-measured first (%s): %s" % (pkg, ck))
+        write_canonical(root / VERIFY_RUN, {"schema": "rhoai3.verify-run/v1", "mode": "diagnostic"})
+        write_canonical(root / LOOP_STATE, {"candidate_sha256": candidate_sha256(root)})
+        if (brief().get("candidate_on_tree") or {}).get("verified"):
+            return _fail("a diagnostic run is not the acceptance measurement")
+    return 0
+
+
 def main() -> int:
+    if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):
+        return 1
     if _pending_recovery_case():
         return 1
     if _scope_rule_brief_case():

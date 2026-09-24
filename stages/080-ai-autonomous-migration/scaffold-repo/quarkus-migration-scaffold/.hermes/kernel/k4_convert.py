@@ -27,7 +27,7 @@ for p in (_KERNEL, _LIB):
 
 from k1_validate import validate_body  # noqa: E402
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
-from k4_schema import CLOSE_ID, IMPL, REMEDY  # noqa: E402
+from k4_schema import CLOSE_ID, IMPL, LOOP_MAX_RETRIES, REMEDY  # noqa: E402
 from planner.admission import artifact_digests_on_disk, verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file  # noqa: E402
 from planner.cards import idempotency_key, next_card, parse_body, pending_cluster_ids, render_body  # noqa: E402
@@ -223,7 +223,7 @@ def _payload(card: dict[str, Any], body: dict[str, Any], receipt_digest: str, pa
         "body": render_body(body),
         "idempotency_key": idempotency_key(card["id"], card["attempt"], receipt_digest),
         "attempt": card["attempt"],
-        "max_retries": 1,
+        "max_retries": LOOP_MAX_RETRIES,
     }
 
 
@@ -240,7 +240,7 @@ def validate_result(result: Any) -> list[Issue]:
             continue
         if p.get("assignee") != IMPL:
             out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (p.get("logical_id"), p.get("assignee"))))
-        if p.get("max_retries") != 1:
+        if p.get("max_retries") != LOOP_MAX_RETRIES:
             out.append(_issue("K4_MINT_RETRIES", "%s max_retries %s" % (p.get("logical_id"), p.get("max_retries"))))
         if p.get("kind") != "close" and not (parse_body(p["body"]).get("files_writable") or []):
             out.append(_issue("K4_SCOPE", "%s has an empty write set" % p.get("logical_id")))

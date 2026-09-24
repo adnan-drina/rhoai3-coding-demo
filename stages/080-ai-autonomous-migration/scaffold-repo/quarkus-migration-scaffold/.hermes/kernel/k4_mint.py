@@ -30,7 +30,7 @@ for p in (_KERNEL, _LIB):
 
 from k4_convert import convert_admitted, format_issues, validate_result  # noqa: E402
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
-from k4_schema import IMPL, KEY_PREFIX, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
+from k4_schema import IMPL, KEY_PREFIX, LOOP_MAX_RETRIES, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
 from planner.cards import loop_title_ok  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.live_board import collect_board, compare_board, expected_from_loop, mint_map_from_receipts  # noqa: E402
@@ -146,7 +146,7 @@ def argv_for_payload(payload: dict[str, Any], mapping: dict[str, str], *, hermes
         _fail([_issue("K4_MINT_TITLE", "%s title %r is not a loop-card title" % (lid, title))])
     if assignee != IMPL:
         _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
-    if payload.get("max_retries") != 1:
+    if payload.get("max_retries") != LOOP_MAX_RETRIES:
         _fail([_issue("K4_MINT_RETRIES", "%s max_retries %s" % (lid, payload.get("max_retries")))])
     key = str(payload.get("idempotency_key") or "").strip()
     attempt = payload.get("attempt")
@@ -163,7 +163,7 @@ def argv_for_payload(payload: dict[str, Any], mapping: dict[str, str], *, hermes
         argv.extend(["--parent", parent])
     argv.extend(["--idempotency-key", key])
     argv.extend(["--max-runtime", max_runtime_flag()])
-    argv.extend(["--max-retries", "1"])
+    argv.extend(["--max-retries", str(LOOP_MAX_RETRIES)])
     argv.extend(["--workspace", workspace_flag()])
     skills = [str(s).strip() for s in (payload.get("skills") or []) if str(s).strip()]
     if not skills:

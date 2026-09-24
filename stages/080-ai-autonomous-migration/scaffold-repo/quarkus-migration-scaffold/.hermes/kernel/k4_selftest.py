@@ -16,6 +16,7 @@ sys.path.insert(0, str(KERNEL))
 sys.path.insert(0, str(KERNEL.parent / "lib"))
 from k1_validate import validate_body  # noqa: E402
 from k4_convert import convert_admitted, main as convert_main  # noqa: E402
+from k4_schema import LOOP_MAX_RETRIES  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, WORKLIST  # noqa: E402
@@ -69,7 +70,7 @@ def main() -> int:
         from planner.cards import card_title  # noqa: E402
         if p["logical_id"] != wl["head"] or p["title"] != card_title(head_cluster, 1) or not p["title"].startswith("M3 BUILD \u2014 pom.xml (") or p["kind"] != "build" or p["phase"] != "M3":
             return _fail("head payload %s" % {k: p[k] for k in ("logical_id", "title", "kind", "phase")})
-        if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != 1 or p["assignee"] != "implementer":
+        if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != LOOP_MAX_RETRIES or p["assignee"] != "implementer":
             return _fail("key/retries/assignee %s" % p["idempotency_key"])
         if p["skills"] != ["paved-road-m3"]:
             return _fail("a loop card carries exactly one skill: %s" % p["skills"])

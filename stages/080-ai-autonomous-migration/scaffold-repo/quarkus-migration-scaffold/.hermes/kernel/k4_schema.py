@@ -14,6 +14,16 @@ CLOSE_ID = "M4_VERIFY"
 IMPL = "implementer"
 SHA256_RE = r"^[0-9a-f]{64}$"
 KEY_PREFIX = "k4:"
+# B11: a loop card's native retry bound. Hermes counts max_retries as the
+# failure that blocks (1 blocks on the first failure, zero retries). A worker
+# halted by the tool-loop guard records a failed run (hermes-runtime patch
+# 0004); 2 gives it ONE automatic recovery on the same card -- the brief hands
+# the respawned worker its unaccepted candidate -- and the second halt blocks
+# the card with the guard's metadata (gave_up): a named terminal, never an
+# endless reclaim. The count lives in the kanban database, outside product
+# Git, so no turn, compression or restart renews it. Product attempts are
+# advance.py's and are not touched by it.
+LOOP_MAX_RETRIES = 2
 RECEIPT_STEM = 16
 KINDS = ("build", "config", "compile", "incident", "test", "parity", "close")
 M3_KINDS = frozenset({"build", "config", "compile", "incident", "test", "parity"})
@@ -39,7 +49,7 @@ REMEDY = {
     "K4_PARENT": "The parent is the previous accepted step's card (from verification/loop/steps.json) plus the M2 card; never invented.",
     "K4_MINT_CREATE": "Mint argv is hermes kanban create with inline --body. No create_task, swarm, decompose, link, daemon --force.",
     "K4_MINT_TITLE": "Titles are 'M3 <ACTION> — <subject> (<n> items, attempt <k>)' for cluster cards (planner.cards.card_title: BUILD, CONFIGURE, COMPILE, MIGRATE, TEST, REPAIR) and 'M4 VERIFY' for the close card. Kind stays in the payload; the old 'M3 <kind> <file>' form is not a loop-card title.",
-    "K4_MINT_RETRIES": "Every create passes --max-retries 1 (CLI).",
+    "K4_MINT_RETRIES": "Every create passes --max-retries LOOP_MAX_RETRIES (CLI).",
     "K4_MINT_PARENT": "Resolve parents from minted t_* ids; do not invent parents.",
     "K4_MINT_ID": "Parse create --json for task_id or id (t_*). Serialize creates; created_cards is the real t_* list.",
     "K4_MINT_KEY": "Idempotency key is k4:<cluster>:<attempt>:<receipt_digest[:16]>; never a fixed key.",
