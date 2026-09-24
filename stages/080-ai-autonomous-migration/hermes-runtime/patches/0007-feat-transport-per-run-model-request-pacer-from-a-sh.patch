@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Thu, 24 Sep 2026 18:45:48 +0200
-Subject: [PATCH] feat(transport): per-run model request pacer from a shared
- sliding-window ledger
+Subject: [PATCH 7/8] feat(transport): per-run model request pacer from a
+ shared sliding-window ledger
 
 RHOAI3 Stage 080 (architect review R2): the declared request allowance of a
 run must be enforced, not only checked. When RHOAI3_REQUEST_BUDGET=<n>/<s>
@@ -11,26 +11,37 @@ Hermes process of the run sends takes one slot from an append-only,
 flock-protected ledger shared by all processes and surviving restarts.
 Unset => disabled, behaviour unchanged.
 
-- agent/request_pacer.py: ledger, sliding window, wait for the oldest slot
-  up to RHOAI3_REQUEST_BUDGET_MAX_WAIT (default 900 s), else raise
-  RequestBudgetExhausted with a named STOP MODEL_REQUEST_BUDGET message
-  (worded to avoid the dispatcher's quota/auth respawn-blocker pattern).
+- agent/request_pacer.py: ledger and sliding window. One acquisition waits
+  at most RHOAI3_REQUEST_BUDGET_MAX_WAIT (default 900 s) IN TOTAL (elapsed
+  monotonic time, at least the sum of its sleeps), so a competitor that
+  keeps winning expiring slots cannot extend the wait; it stops at once
+  when the first predicted slot is already beyond the allowance. Exhaustion
+  raises RequestBudgetExhausted with a named STOP MODEL_REQUEST_BUDGET
+  message (worded to avoid the dispatcher's quota/auth respawn-blocker
+  pattern) before anything is sent.
 - Enforcement: an httpx request event hook attached at the OpenAI client
   construction choke points (agent_runtime_helpers primary client;
   auxiliary_client sync, async and Vertex clients), so each HTTP attempt,
-  including every Hermes and SDK retry, takes exactly one slot (POST only).
-- Main loop: wait_for_slot() before each API attempt so a long wait happens
-  outside the stream stale detector and touches worker activity; a budget
-  exhaustion is never retried and ends the turn with model_stop=
-  request_budget, recorded by the shared kanban worker-stop recorder as a
-  failed run.
+  including every Hermes and SDK retry and stream reconnect, takes exactly
+  one slot (POST only).
+- Main loop: reserve() takes the attempt's slot before the API call, outside
+  the stream stale detector, touching worker activity; the transport hook
+  consumes that reservation instead of waiting again, so one total-wait
+  bound covers both. Exhaustion is never retried and ends the turn with
+  model_stop=request_budget, recorded by the shared kanban worker-stop
+  recorder as a failed run.
+- A wait inside the transport hook (auxiliary call, stream reconnect) is not
+  a stale stream: the streaming watchdog treats an active pacer wait as
+  activity. A stream attempt registers a cancel check, so a cancelled or
+  interrupted attempt aborts its wait without taking a slot or sending.
 ---
- agent/agent_runtime_helpers.py |   4 +
- agent/auxiliary_client.py      |  10 +-
- agent/conversation_loop.py     |  25 ++++
- agent/request_pacer.py         | 219 +++++++++++++++++++++++++++++++++
- agent/turn_finalizer.py        |   9 ++
- 5 files changed, 264 insertions(+), 3 deletions(-)
+ agent/agent_runtime_helpers.py   |   4 +
+ agent/auxiliary_client.py        |  10 +-
+ agent/chat_completion_helpers.py |  18 +-
+ agent/conversation_loop.py       |  26 +++
+ agent/request_pacer.py           | 301 +++++++++++++++++++++++++++++++
+ agent/turn_finalizer.py          |   9 +
+ 6 files changed, 364 insertions(+), 4 deletions(-)
  create mode 100644 agent/request_pacer.py
 
 diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
@@ -83,24 +94,61 @@ index a069629e44..0f13e06db7 100644
          except Exception as exc:
              logger.warning("resolve_provider_client: cannot create Vertex "
                             "client: %s", exc)
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index 7af486dc5b..ff16932865 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -3927,7 +3927,16 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
+             attempt_request_client["value"] = request_client
+             last_chunk_time["t"] = time.time()
+             agent._touch_activity("waiting for provider response (streaming)")
+-            return request_client.chat.completions.create(**stream_kwargs)
++            # RHOAI3 request pacer: a stream reconnect may wait for a slot in
++            # the transport hook; abort that wait (sending nothing) once this
++            # attempt is cancelled or the agent is interrupted.
++            from agent import request_pacer as _request_pacer
++
++            with _request_pacer.cancel_check(
++                lambda: _stream_attempt_was_cancelled(stream_attempt_id)
++                or bool(getattr(agent, "_interrupt_requested", False))
++            ):
++                return request_client.chat.completions.create(**stream_kwargs)
+ 
+         def _stream_created(raw_stream: Any) -> None:
+             response = getattr(raw_stream, "response", None)
+@@ -5132,6 +5141,13 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
+         # Detect stale streams: connections kept alive by SSE pings
+         # but delivering no real chunks.  Kill the client so the
+         # inner retry loop can start a fresh connection.
++        # RHOAI3 request pacer: a request waiting for a slot has not been
++        # sent yet, so its silence is not a stale provider stream.
++        from agent import request_pacer as _request_pacer
++
++        if _request_pacer.waiting():
++            last_chunk_time["t"] = time.time()
++            agent._touch_activity("waiting for a model request slot (request pacer)")
+         _stale_elapsed = time.time() - last_chunk_time["t"]
+         if _stale_elapsed > _stream_stale_timeout:
+             _est_ctx = estimate_request_context_tokens(api_kwargs)
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index cc8ec3a334..bc3f00c6eb 100644
+index cc8ec3a334..796fd2021f 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
-@@ -3143,6 +3143,12 @@ def run_conversation(
+@@ -3143,6 +3143,13 @@ def run_conversation(
                  elif _model_request_active is not None:
                      _model_request_active.set()
                  _redirect_crossed_response = False
-+                # RHOAI3 per-run request pacer: a long wait for a free slot
-+                # happens here, before the stream stale detector starts; the
-+                # transport hook then takes the slot. Raises
-+                # RequestBudgetExhausted when the wait would exceed the limit.
++                # RHOAI3 per-run request pacer: reserve this attempt's slot
++                # here, before the stream stale detector starts; the transport
++                # hook consumes the reservation instead of waiting again, so
++                # one total-wait bound covers both. Raises
++                # RequestBudgetExhausted when the wait would exceed it.
 +                from agent import request_pacer as _request_pacer
-+                _request_pacer.wait_for_slot(activity=agent._touch_activity)
++                _request_pacer.reserve(activity=agent._touch_activity)
                  try:
                      response = run_llm_execution_middleware(
                          api_kwargs,
-@@ -4388,6 +4394,25 @@ def run_conversation(
+@@ -4388,6 +4395,25 @@ def run_conversation(
                  if agent.thinking_callback:
                      agent.thinking_callback("")
  
@@ -128,10 +176,10 @@ index cc8ec3a334..bc3f00c6eb 100644
                  #   1. Lone surrogates (U+D800..U+DFFF) from clipboard paste
 diff --git a/agent/request_pacer.py b/agent/request_pacer.py
 new file mode 100644
-index 0000000000..a2867dd410
+index 0000000000..4ec86d087a
 --- /dev/null
 +++ b/agent/request_pacer.py
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,301 @@
 +"""Per-run model request pacer (RHOAI3 Stage 080).
 +
 +Enforces a declared request allowance across every Hermes process of one run:
@@ -143,8 +191,9 @@ index 0000000000..a2867dd410
 +  RHOAI3_REQUEST_LEDGER=<path>                    shared, append-only file
 +
 +and optionally RHOAI3_REQUEST_BUDGET_MAX_WAIT=<seconds> (default 900): the
-+longest a caller waits for the oldest slot in the window to expire. A longer
-+wait raises :class:`RequestBudgetExhausted`.
++longest TOTAL time one request may wait for a slot (one bound for the main
++loop's reservation and the transport acquisition together). A longer wait
++raises :class:`RequestBudgetExhausted` before anything is sent.
 +
 +Ledger format: one line per granted slot, ``<epoch seconds> <pid> <label>``,
 +appended under an exclusive ``flock`` on the ledger file itself, so
@@ -162,7 +211,9 @@ index 0000000000..a2867dd410
 +import fcntl
 +import logging
 +import os
++import threading
 +import time
++from contextlib import contextmanager
 +from dataclasses import dataclass
 +from datetime import datetime, timezone
 +from typing import Any, Callable, Optional
@@ -175,6 +226,7 @@ index 0000000000..a2867dd410
 +# Seams for tests (fake clock).
 +_now: Callable[[], float] = time.time
 +_sleep: Callable[[float], None] = time.sleep
++_monotonic: Callable[[], float] = time.monotonic
 +
 +
 +@dataclass(frozen=True)
@@ -188,20 +240,22 @@ index 0000000000..a2867dd410
 +class RequestBudgetExhausted(RuntimeError):
 +    """The next slot is further away than the permitted wait."""
 +
-+    def __init__(self, cfg: PacerConfig, next_slot_at: float, wait: float):
++    def __init__(self, cfg: PacerConfig, next_slot_at: float, wait: float, waited: float = 0.0):
 +        self.limit = cfg.limit
 +        self.window = cfg.window
 +        self.max_wait = cfg.max_wait
 +        self.next_slot_at = next_slot_at
 +        self.wait = wait
++        self.waited = waited
 +        when = datetime.fromtimestamp(next_slot_at, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 +        # Wording must not match kanban_db._RESPAWN_BLOCKER_RE (see
 +        # turn_finalizer.record_kanban_turn_stop).
 +        super().__init__(
 +            f"STOP MODEL_REQUEST_BUDGET: {cfg.limit} requests in {int(cfg.window)}s "
-+            f"already spent by this run; next slot at {when}; waiting {int(wait)}s "
-+            f"exceeds the {int(cfg.max_wait)}s wait allowed; the worker stopped "
-+            "before sending. Infrastructure allowance stop, not a product-repair verdict"
++            f"already spent by this run; next slot at {when}; already waited "
++            f"{int(waited)}s, another {int(wait)}s exceeds the {int(cfg.max_wait)}s "
++            "total wait allowed; the worker stopped before sending. Infrastructure "
++            "allowance stop, not a product-repair verdict"
 +        )
 +
 +
@@ -274,40 +328,110 @@ index 0000000000..a2867dd410
 +            fh.close()
 +
 +
-+def _acquire_or_wait(label: str, take: bool, activity: Optional[Callable[[str], Any]]) -> None:
++class RequestCancelledWhileWaiting(RuntimeError):
++    """The request was cancelled (interrupt / superseded stream attempt) while
++    it waited for a slot; no slot was taken and nothing was sent."""
++
++
++# Process-local wait state: how many threads are sleeping in the pacer right
++# now (the stream stale watchdog treats a pacer wait as activity, not as a
++# silent provider), and slots the main loop reserved before its API call that
++# the transport hook consumes instead of taking a second slot.
++_state_lock = threading.Lock()
++_waiting_threads = 0
++_prepaid: list[float] = []
++_PREPAID_TTL_SECONDS = 60.0
++_tls = threading.local()
++
++
++def waiting() -> bool:
++    """True while any thread of this process is waiting for a request slot."""
++    with _state_lock:
++        return _waiting_threads > 0
++
++
++@contextmanager
++def cancel_check(predicate: Callable[[], bool]):
++    """Register, for requests sent from this thread, a predicate that aborts a
++    pacer wait (raising :class:`RequestCancelledWhileWaiting`) once true."""
++    previous = getattr(_tls, "cancelled", None)
++    _tls.cancelled = predicate
++    try:
++        yield
++    finally:
++        _tls.cancelled = previous
++
++
++def _acquire_or_wait(
++    label: str,
++    activity: Optional[Callable[[str], Any]] = None,
++    cancelled: Optional[Callable[[], bool]] = None,
++) -> None:
++    """Take one slot. The whole wait of this acquisition is bounded by
++    ``max_wait``: the elapsed wait (monotonic clock, and at least the sum of the
++    sleeps taken) is charged against the allowance, so a competitor that keeps
++    winning the expiring slots cannot extend it. The first check still stops
++    immediately when the predicted slot already lies beyond the allowance."""
++    global _waiting_threads
 +    cfg = config()
 +    if cfg is None:
 +        return
++    started = _monotonic()
++    slept = 0.0
 +    while True:
-+        ok, next_at = _try_take(cfg, label, take)
++        if cancelled is not None and cancelled():
++            raise RequestCancelledWhileWaiting(f"request cancelled while waiting for a slot ({label})")
++        ok, next_at = _try_take(cfg, label, True)
 +        if ok:
 +            return
++        waited = max(slept, _monotonic() - started)
 +        wait = max(0.0, next_at - _now())
-+        if wait > cfg.max_wait:
-+            raise RequestBudgetExhausted(cfg, next_at, wait)
-+        logger.info("request pacer: window full (%d/%ss); waiting %.1fs for %s",
-+                    cfg.limit, cfg.window, wait, label)
++        if wait > cfg.max_wait - waited:
++            raise RequestBudgetExhausted(cfg, next_at, wait, waited)
++        logger.info("request pacer: window full (%d/%ss); waiting %.1fs for %s (waited %.1fs)",
++                    cfg.limit, cfg.window, wait, label, waited)
 +        if activity is not None:
 +            try:
 +                activity(f"request pacer: waiting {int(wait)}s for a model request slot")
 +            except Exception:
 +                pass
-+        _sleep(min(wait, _SLEEP_SLICE_SECONDS) if wait > 0 else 0.01)
++        step = min(wait, _SLEEP_SLICE_SECONDS) if wait > 0 else 0.01
++        with _state_lock:
++            _waiting_threads += 1
++        try:
++            _sleep(step)
++        finally:
++            with _state_lock:
++                _waiting_threads -= 1
++        slept += step
 +
 +
 +def acquire(label: str = "request", activity: Optional[Callable[[str], Any]] = None) -> None:
-+    """Take one slot, waiting for the oldest to expire when the window is full."""
-+    _acquire_or_wait(label, True, activity)
++    """Take one slot, waiting (bounded by ``max_wait``) when the window is full."""
++    _acquire_or_wait(label, activity, getattr(_tls, "cancelled", None))
 +
 +
-+def wait_for_slot(activity: Optional[Callable[[str], Any]] = None) -> None:
-+    """Wait (without taking) until a slot is free; raises when the wait is too long.
++def reserve(activity: Optional[Callable[[str], Any]] = None) -> None:
++    """Main loop, before its API call: take the slot now (a long wait happens
++    here, outside the stream stale detector) and leave it prepaid for the
++    transport hook, so the hook does not wait again or take a second slot and
++    the allowance to wait is not renewed between the two."""
++    if config() is None:
++        return
++    _acquire_or_wait("reserve", activity, None)
++    with _state_lock:
++        _prepaid.append(_monotonic())
 +
-+    Called before the main agent's API call so a long wait happens outside the
-+    stream stale detector's window; the transport hook then takes the slot.
-+    """
-+    _acquire_or_wait("peek", False, activity)
 +
++def _take_prepaid() -> bool:
++    now = _monotonic()
++    with _state_lock:
++        while _prepaid and now - _prepaid[0] > _PREPAID_TTL_SECONDS:
++            _prepaid.pop(0)  # reserved but never sent; the slot stays counted
++        if _prepaid:
++            _prepaid.pop(0)
++            return True
++    return False
 +
 +
 +def _label_for(request) -> str:
@@ -317,10 +441,16 @@ index 0000000000..a2867dd410
 +        return "request"
 +
 +
++def _hook_acquire(label: str, cancelled: Optional[Callable[[], bool]]) -> None:
++    if config() is None or _take_prepaid():
++        return
++    _acquire_or_wait(label, None, cancelled)
++
++
 +def _sync_hook(request) -> None:
 +    if getattr(request, "method", "").upper() != "POST":
 +        return
-+    acquire(_label_for(request))
++    _hook_acquire(_label_for(request), getattr(_tls, "cancelled", None))
 +
 +
 +async def _async_hook(request) -> None:
@@ -328,7 +458,7 @@ index 0000000000..a2867dd410
 +        return
 +    import asyncio
 +
-+    await asyncio.to_thread(acquire, _label_for(request))
++    await asyncio.to_thread(_hook_acquire, _label_for(request), None)
 +
 +
 +def attach(openai_client: Any) -> Any:

@@ -1,12 +1,12 @@
 # Stage 080 Hermes runtime patch series (B11, B3/B4, R2)
 
-This directory holds a small patch series for the pinned Hermes runtime in the Stage 080 workspace image, together with its qualification tests and evidence. Patches 0001–0004 fix design item B11 in `tmp/v12-run-20260924/architect-durable-fixes-design.md`: a worker that repeats the same successful tool call is never stopped by the pinned runtime. Patches 0005–0006 turn incomplete model output (B4) and a persistent HTTP 429 (B3) into named failed runs; `b3-b4/README.md` documents them. Patch 0007 enforces the run's declared request allowance, item R2 in `tmp/v12-run-20260924/V13-ARCHITECT-RELEASE-REVIEW.md`; see the section on the request pacer below.
+This directory holds a small patch series for the pinned Hermes runtime in the Stage 080 workspace image, together with its qualification tests and evidence. Patches 0001–0004 fix design item B11 in `tmp/v12-run-20260924/architect-durable-fixes-design.md`: a worker that repeats the same successful tool call is never stopped by the pinned runtime. Patches 0005–0006 turn incomplete model output (B4) and a persistent HTTP 429 (B3) into named failed runs; `b3-b4/README.md` documents them. Patch 0007 enforces the run's declared request allowance, item R2 in `tmp/v12-run-20260924/V13-ARCHITECT-RELEASE-REVIEW.md`, corrected per `tmp/v12-run-20260924/V13-PACER-FINAL-REVIEW.md`; see the section on the request pacer below. Patch 0008 keeps explicit per-call auxiliary values (the short micro-summary's temperature and output cap) from being overridden by a task's configured `extra_body`.
 
 | | |
 |---|---|
 | Base runtime | `NousResearch/hermes-agent` tag `v2026.8.19`, commit `fcbd1076a93841fa88855acce810e342a5b78101`, version 0.20.5 |
-| Patched runtime identity | git tree **`433f0c6f1d4b415273d18b6db0894a320a74b8d9`** for the full series 0001–0007 (run `git write-tree` after applying the series to a clean checkout of the base). Intermediate trees: 0001–0004 `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48`; 0001–0006 `87a39dca63bca478e1ab93e9ce24ad757de25f8f`. |
-| Files touched | `agent/tool_guardrails.py`, `run_agent.py`, `agent/tool_executor.py`, `agent/turn_finalizer.py`, `agent/conversation_loop.py`, `agent/agent_runtime_helpers.py`, `agent/auxiliary_client.py`, new `agent/request_pacer.py`, `tests/agent/test_tool_guardrails.py` |
+| Patched runtime identity | git tree **`374562df41daeba0f40b79b87c0d3d001cf2d4dc`** for the full series 0001–0008 (run `git write-tree` after applying the series to a clean checkout of the base). Intermediate trees: 0001–0004 `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48`; 0001–0006 `87a39dca63bca478e1ab93e9ce24ad757de25f8f`; 0001–0007 `82b70baed3be3cf6cde0c3c2853aaa92582a80a3`. The earlier 0001–0007 tree `433f0c6f…` (before the final pacing review) is superseded. |
+| Files touched | `agent/tool_guardrails.py`, `run_agent.py`, `agent/tool_executor.py`, `agent/turn_finalizer.py`, `agent/conversation_loop.py`, `agent/agent_runtime_helpers.py`, `agent/auxiliary_client.py`, `agent/chat_completion_helpers.py`, new `agent/request_pacer.py`, `tests/agent/test_tool_guardrails.py` |
 | Upstream source | `76648a7faf7822cdd6c0e147c35857e15780c1af` ("identical-call streaks hard-stop any tool on unattended platforms"), which is an ancestor of `ee5ee84a345204a3b1d6ef6ba1ab747e602867b9` |
 
 ## The problem at the pin
@@ -19,7 +19,7 @@ The pinned runtime never stops this loop. In the live v12 run, one worker repeat
 
 ## What the series does
 
-Apply the seven patches in order. Patch 0001 is the upstream backport. Patches 0002 to 0004 are small local additions that the B11 design requires. Patches 0005 to 0007 are local additions for B3/B4 and R2.
+Apply the eight patches in order. Patch 0001 is the upstream backport. Patches 0002 to 0004 are small local additions that the B11 design requires. Patches 0005 to 0008 are local additions for B3/B4 and R2.
 
 | Patch | Origin | Functions changed | Effect |
 |---|---|---|---|
@@ -29,7 +29,8 @@ Apply the seven patches in order. Patch 0001 is the upstream backport. Patches 0
 | `0004-fix-kanban-a-guardrail-halted-worker-records-a-faile.patch` | Local. Mirrors the pinned `_record_kanban_budget_exhausted`. | New `_record_kanban_guardrail_halt` and `_kanban_failure_limit` in `agent/turn_finalizer.py`; `finalize_turn` | When a turn ends with `guardrail_halt` inside a kanban worker, the worker records a failed run through the native `_record_task_failure`. See the next section. |
 | `0005-fix-kanban-incomplete-model-output-ends-a-worker-run.patch` | Local | `conversation_loop.py` incomplete-output returns (new `incomplete_output` key), new `turn_finalizer._record_kanban_worker_stop` and `record_kanban_turn_stop`, `AIAgent.run_conversation` | Output still truncated after the bounded recovery ends as `STOP MODEL_OUTPUT_INCOMPLETE …`, a failed run; the partial tool call is never executed (it was not at the pin either). The shared recorder is gated on `is_dispatcher_owned_worker_context()`, so a delegated child or an in-process cron job cannot close the worker's card. This corrects 0004, which had no such gate. |
 | `0006-fix-kanban-a-persistent-provider-rate-limit-ends-a-w.patch` | Local | rate-limit terminal return in `conversation_loop.py` (`api_attempts`, `retry_after`), `record_kanban_turn_stop` | After 3 attempts, a persistent HTTP 429 ends as `STOP MODEL_QUOTA …`, a failed run. The wording avoids the dispatcher's respawn-blocker pattern. The pinned retry layer is unchanged: Retry-After is honoured, backoff is otherwise jittered, and there is one retry layer. |
-| `0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch` | Local | new `agent/request_pacer.py`; hook attached at `agent_runtime_helpers.py` (primary client) and `auxiliary_client.py` (sync, async and Vertex aux clients); pre-wait and exhaustion handling in `conversation_loop.py`; `record_kanban_turn_stop` | Per-run sliding-window request allowance, shared by every Hermes process of the run through a flock'd ledger. See below. |
+| `0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch` | Local | new `agent/request_pacer.py`; hook attached at `agent_runtime_helpers.py` (primary client) and `auxiliary_client.py` (sync, async and Vertex aux clients); slot reservation and exhaustion handling in `conversation_loop.py`; stale-watchdog exemption and cancel check in `chat_completion_helpers.py` (streaming); `record_kanban_turn_stop` | Per-run sliding-window request allowance, shared by every Hermes process of the run through a flock'd ledger, with one total wait bound per request. See below. |
+| `0008-fix-auxiliary-explicit-per-call-sampling-and-output-.patch` | Local | `auxiliary_client._build_call_kwargs` | A task's configured `extra_body` supplies only what the call did not set. An explicit `temperature` wins. An explicit `max_tokens` is sent as `min(explicit, configured)`, so it never raises a configured bound. Without this, the OpenAI SDK merges `extra_body` over the top-level body. |
 
 Every change is gated on `tool_loop_guardrails.hard_stop_enabled` (and `agent.stall_guards`, which defaults to true). Interactive sessions that only warn behave as before.
 
@@ -63,7 +64,7 @@ git checkout --detach fcbd1076a93841fa88855acce810e342a5b78101
 for p in <repo>/stages/080-ai-autonomous-migration/hermes-runtime/patches/0*.patch; do
   git apply --index "$p"
 done
-test "$(git write-tree)" = 433f0c6f1d4b415273d18b6db0894a320a74b8d9
+test "$(git write-tree)" = 374562df41daeba0f40b79b87c0d3d001cf2d4dc
 
 # 3. Test environment (Python 3.11, the same as the image)
 python3.11 -m venv ../hermes-venv
@@ -92,7 +93,7 @@ To reproduce the failing baseline, skip step 2 and run step 4. `test_halt_ends_p
 
 - The operator copies `patches/*.patch` into `workspace-images/out/hermes-runtime-patches/`, which is in the build context.
 - After the clone, the SHA check and `assert-hermes-source-pin.py`, the stage runs `git apply --index` on each patch.
-- The build fails unless exactly 7 patches are present and `git write-tree` equals `HERMES_PATCHED_TREE` (`433f0c6f…`).
+- The build fails unless exactly 8 patches are present and `git write-tree` equals `HERMES_PATCHED_TREE` (`374562df…`).
 - The stage records the patch checksums in `/opt/rhoai3/hermes-runtime-patches.sha256` and adds `hermes.source_sha` and `hermes.patched_tree` to `/opt/rhoai3/080.pins`.
 
 `hermes --version` still reports 0.20.5, because the version constants are not touched. Use the tree hash in `080.pins` to tell a patched image from an unpatched one. The hunk has not been applied or built.
@@ -103,9 +104,9 @@ Configuration comes from the environment, which the platform sets for migration 
 
 | Variable | Meaning |
 |---|---|
-| `RHOAI3_REQUEST_BUDGET` | `<n>/<window_seconds>`, e.g. `200/3600` |
-| `RHOAI3_REQUEST_LEDGER` | shared ledger file, e.g. `/projects/.platform/run-control-ledger/requests.log` |
-| `RHOAI3_REQUEST_BUDGET_MAX_WAIT` | longest wait for a slot, default 900 s |
+| `RHOAI3_REQUEST_BUDGET` | `<n>/<window_seconds>`; the value comes from the model profile table (`quota.max_requests_per_window`/`window_seconds`, 190/3600 at the time of writing) |
+| `RHOAI3_REQUEST_LEDGER` | shared ledger file; dest-init sets `/projects/.platform/run-control-state/requests.log` (the parent directory is created on first use) |
+| `RHOAI3_REQUEST_BUDGET_MAX_WAIT` | longest **total** wait for one request's slot, default 900 s |
 
 - **One slot per HTTP request.** Every model HTTP request takes one slot. Each granted slot is one appended line, `<epoch> <pid> <label>`, written under an exclusive `flock`. The ledger is shared by concurrent processes and survives restarts; lines older than the window are ignored and never rewritten.
 - **Where it is enforced.** An httpx `request` event hook is attached at the OpenAI client construction choke points. Every HTTP attempt passes through it, including SDK-internal retries (0 at this pin), Hermes 429 retries, truncation cap-boost retries and stream reconnects. Only POSTs are counted.
@@ -118,15 +119,24 @@ Configuration comes from the environment, which the platform sets for migration 
   | Vertex auxiliary client | `agent/auxiliary_client.py:6983` |
 
   Reviewer and other profiles are separate Hermes processes. They share the ledger through the environment.
-- **Where the main agent waits.** It waits in `request_pacer.wait_for_slot` before `run_llm_execution_middleware` (`conversation_loop.py`, right before the API call). That is before the stream stale timer (`chat_completion_helpers.py:3739`) starts. The wait touches worker activity and does not consume the iteration budget, which counts API calls, not time.
-- **When the window stays full.** If the wait for the oldest slot would exceed the maximum, the attempt is not retried. The turn ends with `model_stop=request_budget`, which `record_kanban_turn_stop` records as a failed run: `STOP MODEL_REQUEST_BUDGET: <n> requests in <w>s already spent by this run; next slot at <UTC>; waiting <s>s exceeds the <max>s wait allowed; …`. This wording does not match the dispatcher's respawn-blocker pattern.
+- **Where the main agent waits.** It calls `request_pacer.reserve` before `run_llm_execution_middleware` (`conversation_loop.py`, right before the API call). That takes the attempt's slot before the stream stale timer (`chat_completion_helpers.py:3739`) starts. The transport hook then consumes that reservation instead of waiting again or taking a second slot, so moving between the two cannot renew the allowance to wait. A reservation that is never sent expires after 60 s and stays counted. The wait touches worker activity and does not consume the iteration budget, which counts API calls, not time.
+- **One total wait bound.** One acquisition waits at most `RHOAI3_REQUEST_BUDGET_MAX_WAIT` in total. The elapsed time is measured on a monotonic clock, and is at least the sum of the sleeps taken, so a competing process that keeps winning the expiring slots cannot extend it; the reviewer's contention reproduction now stops at 900 s. The immediate stop is kept: when the first predicted slot already lies beyond the allowance, the caller stops at once without sleeping.
+- **Waits inside the transport hook** happen when an auxiliary call has no reservation, or on a stream reconnect.
+  - While any thread of the process waits in the pacer, the streaming stale watchdog treats the silence as activity. It does not kill the connection, and it touches worker activity.
+  - A stream attempt registers a cancel check (`request_pacer.cancel_check`). A cancelled or interrupted attempt aborts its wait with `RequestCancelledWhileWaiting`, without taking a slot and without sending.
+  - An auxiliary request timeout does not include the wait: httpx request hooks run before the transport timers.
+- **When the window stays full.** If the next slot would push the total wait past the maximum, nothing is sent and the attempt is not retried. The turn ends with `model_stop=request_budget`, which `record_kanban_turn_stop` records as a failed run: `STOP MODEL_REQUEST_BUDGET: <n> requests in <w>s already spent by this run; next slot at <UTC>; already waited <x>s, another <s>s exceeds the <max>s total wait allowed; …`. This wording does not match the dispatcher's respawn-blocker pattern.
 - **Largest output per request.** On the main path it is **32768**, provided `model.max_tokens` is 8192 as the producer sets it:
   - Base cap: 8192.
   - Truncated tool-call retries: `min(8192·2^k, max(32768, requested))` (`conversation_loop.py:3978`).
   - Text-continuation retries: the same formula (`:6670`).
   - Output-cap error recovery only lowers the cap (`:5723`).
   - The 65536 fallback for Claude, MiniMax and Qwen3 in the Anthropic output-limits table is never used while `max_tokens` is set (`agent/transports/chat_completions.py` max_tokens priority).
-- **Auxiliary calls** send no `max_tokens` of their own for this provider (`auxiliary_client._build_call_kwargs`: an explicit cap is kept only for Anthropic-compatible, NVIDIA, MoA and Gemini routes). The producer therefore sets `max_tokens: 32768` (`quota.max_output_tokens`) in `auxiliary.compression.extra_body`, together with the profile's request body. The SDK merges it into the body (commit 50463fa2). Measured on the wire, both compressor calls carry `max_tokens: 32768` and the full row (`b3-b4/test_b4_wire_payload.py`). That value also overrides the micro-summary's own top-level `max_tokens: 1500`. With it, every path in the worker is bounded by 32768. Compression is the only live auxiliary slot on the main model; title generation and background review are disabled.
+- **Auxiliary calls** send no `max_tokens` of their own for this provider (`auxiliary_client._build_call_kwargs`: an explicit cap is kept only for Anthropic-compatible, NVIDIA, MoA and Gemini routes). The producer therefore sets `max_tokens: 32768` (`quota.max_output_tokens`) in `auxiliary.compression.extra_body`, together with the profile's request body. The SDK merges it into the body (commit 50463fa2). Measured on the wire (`b3-b4/test_b4_wire_payload.py`):
+  - The full compression summary, which sets no cap or sampling itself, carries the full row and `max_tokens: 32768`.
+  - With patch 0008, the short micro-summary keeps its own `temperature: 0.1` and `max_tokens: 1500`, and still carries the row's thinking-off and other sampling keys.
+
+  Every path in the worker is bounded by 32768. Compression is the only live auxiliary slot on the main model; title generation and background review are disabled.
 - **Where the pacer settings come from.** dest-init writes them into the **managed** `.env`, `$HERMES_MANAGED_DIR/.env`. The image sets `HERMES_MANAGED_DIR=/projects/.platform/hermes` (`workspace-images/Dockerfile`, 080 stage `ENV`). Hermes applies that file with override into `os.environ` at startup of every entry point. This is from pinned source:
   - `hermes_cli/env_loader.py:585-614`: `_apply_managed_env` loads `$HERMES_MANAGED_DIR/.env` with `override=True`.
   - It is called at the end of `load_hermes_dotenv`, `env_loader.py:539`.

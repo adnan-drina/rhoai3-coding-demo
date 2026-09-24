@@ -67,3 +67,9 @@ if __name__ == "__main__":
     cfg = render(root, *sys.argv[3:5])
     out.write_text(json.dumps(cfg, indent=2, sort_keys=True) + "\n")
     print(f"wrote {out} ({len(cfg)} top-level keys)")
+    # The profile table beside it: tests that model the production allowance
+    # read quota values from here instead of hard-coding them.
+    table = json.loads((root / PROFILES).read_text())
+    prof_out = out.with_name("model_profiles.json")
+    prof_out.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n")
+    print(f"wrote {prof_out}")
