@@ -302,3 +302,18 @@ restarting the workspace re-reads the same committed bytes. After creation, run
 the read-only `run-preflight.sh` with `WORKSPACE` set to the project name (see
 [OPERATIONS](../../docs/OPERATIONS.md#stage-080-run-declaration-and-launch-preflight)).
 `v10-preflight.sh` and `v11-preflight.sh` remain the records of those launches.
+
+A run also keeps its own **run control** under `/projects/.platform/run-control/`,
+outside the destination repository, written by dest-init and the M1 bind:
+
+| File | Holds |
+|------|-------|
+| `activation.json` | the run's planner activation and its bundle seal (read-only; `.hermes/pins.json` is only the golden default) |
+| `release.json` | the harness release the run was created with; the loop refuses to run on another |
+| `profile.json` | the model profile its worker config was generated from; the loop refuses to run on another |
+| `route.json` | the last in-cluster MaaS route check (`planner.maas_route`), required before any dispatch |
+| `journal.jsonl` | every activation, release and profile event, append-only |
+
+The workspace image carries a small patch series for the pinned Hermes
+runtime (`hermes-runtime/`) that stops a worker repeating the same successful
+tool call and records the halt as a failed run.
