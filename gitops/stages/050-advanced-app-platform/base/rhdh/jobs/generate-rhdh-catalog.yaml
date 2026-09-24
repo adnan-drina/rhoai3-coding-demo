@@ -1,5 +1,5 @@
 # RHDH runtime-catalog generation: two consumers of the shared script in
-# ConfigMap rhdh-catalog-generator-script:
+# the rhdh-catalog-bundle ConfigMap (kustomization.yaml configMapGenerator):
 #   - the Sync-hook Job below (immediate regeneration on FULL syncs), and
 #   - the refresh CronJob (convergence within 5 minutes after the
 #     selective syncs that skip hooks — the "catalog revision stamp goes
@@ -79,7 +79,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "7"
 # Read-only, and only the two named objects the generator publishes the
-# in-cluster MaaS route from (see rhdh-catalog-generator-script.yaml).
+# in-cluster MaaS route from (see jobs/catalog/generate.sh).
 rules:
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["gateways"]
@@ -138,17 +138,16 @@ spec:
       restartPolicy: OnFailure
       serviceAccountName: job-generate-rhdh-catalog
       volumes:
-        - name: script
+        - name: bundle
           configMap:
-            name: rhdh-catalog-generator-script
-            defaultMode: 0755
+            name: rhdh-catalog-bundle
       containers:
       - name: generate
         image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
-        command: ["/bin/bash", "/scripts/generate.sh"]
+        command: ["/bin/bash", "/bundle/jobs__catalog__generate.sh"]
         volumeMounts:
-          - name: script
-            mountPath: /scripts
+          - name: bundle
+            mountPath: /bundle
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -171,17 +170,16 @@ spec:
           restartPolicy: OnFailure
           serviceAccountName: job-generate-rhdh-catalog
           volumes:
-            - name: script
+            - name: bundle
               configMap:
-                name: rhdh-catalog-generator-script
-                defaultMode: 0755
+                name: rhdh-catalog-bundle
           containers:
           - name: refresh
             image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
-            command: ["/bin/bash", "/scripts/generate.sh"]
+            command: ["/bin/bash", "/bundle/jobs__catalog__generate.sh"]
             env:
               - name: SKIP_IF_CURRENT
                 value: "true"
             volumeMounts:
-              - name: script
-                mountPath: /scripts
+              - name: bundle
+                mountPath: /bundle
