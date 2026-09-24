@@ -128,7 +128,11 @@ Use two **new** names, auto-start off. Do not reuse v10, do not launch
 `spring-petclinic-rest-legacy-v11`, do not rerun the full 13-check isolation
 packet until this focused plan PASSes.
 
-Use fresh names such as `iso-worker-c` / `iso-worker-c-retry`. The September 24
+The September 24 `iso-worker-c` / `iso-worker-c-retry` pair passed focused
+validation and all 13 isolation checks on platform `080d2585`; both identities
+are retired. See `V11-PLAN.md` for the evidence packet and proof boundaries.
+For a later qualification use new names such as `iso-worker-next` /
+`iso-worker-next-retry`; never reuse these tombstones. The September 24
 `iso-worker-b` restart failed the credential boundary described above; retain
 that failure and retire its identity rather than reuse it for qualification.
 The September 23

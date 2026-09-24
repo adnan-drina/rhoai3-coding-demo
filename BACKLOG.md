@@ -2,12 +2,15 @@
 
 ## v11 late credential injection — 2026-09-24
 
-- [ ] `iso-worker-b` normal restart reproduced human-token injection after
-  Ready, despite the pod's restricted SA. Keep that `workspace_identity` FAIL.
-  Authoring adds a dedicated ephemeral kubeconfig directory mount, honoring
-  the installed Dev Spaces 3.30.1 Dashboard exclusion. Requalify startup,
-  restart and explicit reinjection on fresh disposables before v11. No v10
-  change, second disposable creation, or isolation PASS claimed.
+- [x] Dedicated ephemeral kubeconfig directory mount published at platform
+  `080d2585ce49682b604a3d022beca4265932bb66`, Synced/Healthy. Fresh
+  `iso-worker-c` / `iso-worker-c-retry` passed startup, restart, explicit
+  Dashboard reinjection refusal, and all 13 isolation checks. Receipt:
+  `tmp/v11-readiness-20260924/isolation-receipt.json` (46 evidence files).
+  Historical `iso-worker-b` restart FAIL remains preserved. Disposable run
+  resources retired and workspaces deleted; evidence repositories retained.
+  V10 unchanged. See Stage 080 `V11-PLAN.md` for pins,
+  evidence digest and the manual creation/preflight handoff. V11 not created.
 
 ## v11 preparation publication — 2026-09-24
 

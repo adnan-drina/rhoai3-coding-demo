@@ -1,7 +1,9 @@
 # v11 launch packet — updated 2026-09-24
 
-Preparation only. Do not create `spring-petclinic-rest-legacy-v11` and do
-not dest-install or dest-dispatch from this file. Closed v10 stays frozen
+Prerequisites qualified live on September 24. Creation of
+`spring-petclinic-rest-legacy-v11` remains the user's manual handoff with
+auto-start disabled. Do not dest-install or dest-dispatch from this file.
+Closed v10 stays frozen
 (`ns wksp-ai-developer`, workspace `spring-petclinic-rest-legacy-v10`).
 
 ## Publication mapping
@@ -19,9 +21,11 @@ Equivalence: the published golden tree (dest omit `.hermes/_park`) must
 match the recorded scaffold Git tree (`git rev-parse GOLDEN^{tree}`).
 The September 24 correction only documents the existing M5 self-test.
 Stage 080 validation: 367 passed, one existing MTA ConsoleLink warning, zero
-failed. Stage 050 worker identity and CLI-image repair was published at
-`bbd623997b9b29ce56b0811b914762de45c12bee`; bind live isolation evidence to
-the actual synchronized platform revision after this launch record lands.
+failed. Qualified Stage 050 platform revision:
+`080d2585ce49682b604a3d022beca4265932bb66` (Synced/Healthy). This includes
+the dedicated kubeconfig directory mount that prevents late Dashboard human
+credential injection. The golden is unchanged. This qualification record is
+published on the authoring branch; it does not advance platform main.
 
 Frozen runtime/model (`run-configuration.json` in the golden):
 
@@ -41,28 +45,43 @@ PREFLIGHT 1h, DEPLOY 3h, VALIDATE 1h, `max_retries` 1. Do not extend the
 
 ## Isolation qualification
 
-Do not run the full 13-check demonstration until the Stage 050 worker-identity
-repair has passed focused live validation in
-[WORKER-IDENTITY-REPAIR.md](WORKER-IDENTITY-REPAIR.md). That repair is GitOps
-only until synced; it does not revoke v10's generated `workspace*-sa`. Do not
-launch v11 from this packet.
+The focused identity checks and all 13 [isolation checks](ISOLATION-DEMO.md)
+passed on fresh `iso-worker-c` / `iso-worker-c-retry`, using the exact platform
+and golden revisions above. The same pair was retained for the operational
+checks after focused startup/restart validation; no second pair was needed.
+Both are now retired, their workspaces removed, and their tombstones retained.
+Do not reuse these names. V10's pod identity, service account, default Role
+UID/resourceVersion, and binding were unchanged. V11 has not been created.
 
-After that focused plan PASSes, use [ISOLATION-DEMO.md](ISOLATION-DEMO.md)
-with disposable names:
+Local evidence packet: `tmp/v11-readiness-20260924/isolation-receipt.json`.
+Receipt SHA-256:
+`ecc9562a80cea2b0c9c55299560f658ca025a0ce49f7f3bcc6b344baaed42ec1`.
+The receipt pins 46 retained evidence files. Preserve the packet; it is not
+replaced by this summary or by static tests.
 
-```
-A = iso-v11-final
-B = iso-v11-final-retry
-```
+Measured boundaries:
 
-`autoStartMigration=false`. No M3 workers. Do not touch v10. Bind the
-receipt to the **resulting** platform commit, published golden SHA, and Task
-image digests. Required checks: the twelve operational names plus
-`workspace_identity`. Every result must be the measured outcome. A FAIL
-stays FAIL. The v10 `workspace_identity` deferral does not apply.
+- Initial startup, normal stop/start, explicit Dashboard credential refresh,
+  and both workers' permission matrices retained the restricted pod identity.
+  The earlier `iso-worker-b` restart FAIL is preserved separately.
+- Actual cross-run Secret metadata GETs returned 403. The existing named
+  MaaS Secret GET exception remains; this is not a claim of zero Secret API
+  access or isolation of legacy v10 workers.
+- Both workers refused 16 wrong-target, receipt, and missing-assignment cases.
+  A real reset failed while its database was unavailable.
+- B's data marker, logical dump, credential digests and pod identities survived
+  A's reset, database restart, and retirement unchanged.
+- Concurrent reconstructed, signed creation events went through the real
+  listener. These are integration-test events, not archived GitHub deliveries.
+  Provisioning/retirement overlapped; tombstones prevented resurrection.
+- The pushed repository canary was not executed in the workspace namespace.
 
-[v11-preflight.sh](v11-preflight.sh) refuses any non-PASS, including a
-copied v10 receipt.
+The receipt-validation function from [v11-preflight.sh](v11-preflight.sh)
+passed against these 13 results, but its
+**complete pod-specific preflight remains required after the user creates v11**.
+It checks the fresh destination, source protection, actual pod/CLI identity,
+golden files, model, owned resources and declared budget. No migration task
+was issued during disposable qualification.
 
 ## Activation GO packet (destination only, after M1)
 
