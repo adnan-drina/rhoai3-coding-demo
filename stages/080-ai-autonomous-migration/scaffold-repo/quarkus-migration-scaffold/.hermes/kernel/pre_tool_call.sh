@@ -506,7 +506,28 @@ def loop_step_accepted():
                 return n, str(row.get("commit") or "")
     return None
 
-if profile == "implementer" and is_block() and is_loop_card() is False and loop_step_accepted() is not None:
+def loop_continuation():
+    """(state, reasons) of verification/loop/continuation.json when it names
+    this task as the predecessor of the accept -> admit -> mint transition
+    (B8); None when it names another task or is absent."""
+    task = hook_task_id()
+    if not task:
+        return None
+    roots_ = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots_:
+        if not r:
+            continue
+        try:
+            doc = json.load(open(os.path.join(r, "verification", "loop", "continuation.json"), encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("predecessor") or "") == task:
+            return str(doc.get("state") or ""), list(doc.get("reasons") or [])
+    return None
+
+_cont = loop_continuation()
+if profile == "implementer" and is_block() and is_loop_card() is False and loop_step_accepted() is not None \
+        and not (_cont and _cont[0] != "minted"):
     _n, _c = loop_step_accepted()
     block("kanban_block refused: the acceptance of this card is recorded (verification/loop/steps.json step %d, commit %s); "
           "kanban_complete is the terminator. A killed or repeated advance.py does not undo an acceptance: run "
@@ -529,6 +550,24 @@ if profile == "implementer" and tool in {"terminal", "bash", "shell"} and cmd an
           "activates other beans and config). Run run-verify.sh --mode acceptance: it packages, starts, "
           "replays the scenarios of this card and re-runs its read oracles, and leaves the verdicts, the destination "
           "log and any exception under verification/parity; the brief is their digest.")
+
+# B8 (v12 t_b33f25fa): a worker ran `git checkout -- .hermes/pins.json` and
+# the run activation, an uncommitted platform edit, was gone; no write rule
+# saw it, because no git subcommand was a "write". The index and the working
+# tree belong to the loop tools -- advance.py commits or reverts the
+# candidate, restore-pending.py restores it, commit-destination-tree.py makes
+# the harvest commit -- and harness files are never for a worker to reset.
+GIT_MUTATION = re.compile(
+    r"(?:^|[\s;&|(])git\b(?:\s+-[Cc]\s+\S+|\s+--[A-Za-z][\w-]*(?:=\S+)?)*\s+"
+    r"(add|checkout|restore|reset|stash|clean|rm|mv|revert|switch|apply|am|merge|rebase|pull|cherry-pick|commit|"
+    r"update-index|read-tree|checkout-index|worktree|filter-branch|filter-repo|update-ref|replace)\b")
+if profile and tool in {"terminal", "bash", "shell"} and cmd and GIT_MUTATION.search(cmd):
+    _sub = GIT_MUTATION.search(cmd).group(1)
+    block("git %s refused: the index and the working tree belong to the loop tools (advance.py commits or reverts "
+          "the candidate, restore-pending.py restores it, commit-destination-tree.py makes the harvest commit), and "
+          "harness and run-control files are never for a worker to reset (v12: git checkout -- .hermes/pins.json removed "
+          "the run activation). Read with git diff/status/log/show; if the card needs this, kanban_block "
+          "kind=needs_input naming the command." % _sub)
 
 # A green paved-road audit IS the review: the road declares that audit as the
 # whole check (it reads the official log and every KEEP artifact). the v6 M1
@@ -562,6 +601,15 @@ if is_request_review() and profile == "implementer" and loop_verdict_recorded():
           "no reviewer seat runs for a loop step.")
 
 if is_complete():
+    _cont = loop_continuation()
+    if profile == "implementer" and _cont and _cont[0] != "minted":
+        # B8 (v12 t_b33f25fa): the accepted step had no successor and the card
+        # was completed anyway; the board then sat idle with nothing to say why
+        record_complete_invocation("refuse_continuation_%s" % (_cont[0] or "unknown"))
+        block("kanban_complete refused: the acceptance of this card has no successor yet (continuation %s: %s). "
+              "kanban_block kind=needs_input naming that reason; re-running advance.py with the same arguments "
+              "finishes the admission and the mint once the prerequisite is restored."
+              % (_cont[0] or "unknown", "; ".join(_cont[1][:2]) or "see verification/loop/continuation.json"))
     if profile == "implementer":
         if loop_verdict_recorded() and loop_road_ran():
             # paved-road-m3: the transaction is the audit; brief, run-verify and

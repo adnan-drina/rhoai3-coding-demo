@@ -365,6 +365,13 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: pass --root PATH", file=sys.stderr)
         return 1
     root = root.resolve()
+    from planner.run_control import release_gaps
+    drift = release_gaps(root)
+    if drift:
+        # B10: a run mints only under the harness release it was created with
+        print("REFUSE: %s" % drift[0], file=sys.stderr)
+        print("K4 mint REFUSED before emitting any command (0 creates).", file=sys.stderr)
+        return 1
     control = register_control_cards(root)
     result, issues = convert_admitted(root)
     if issues or result is None:

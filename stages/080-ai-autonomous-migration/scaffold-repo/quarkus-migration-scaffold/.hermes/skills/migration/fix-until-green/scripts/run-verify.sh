@@ -72,6 +72,12 @@ done
 [[ "${MODE}" == "diagnostic" ]] && RUNTIME=0
 ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# B10: verification runs only under the harness release the run was created
+# with; a drifted harness is refused before anything is measured
+if ! DRIFT="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1] + "/.hermes/lib"); from planner.run_control import release_gaps; g = release_gaps(sys.argv[1]); print(g[0] if g else ""); raise SystemExit(1 if g else 0)' "${ROOT}")"; then
+  echo "REFUSE: ${DRIFT}" >&2
+  exit 2
+fi
 WORK="${ROOT}/verification/build/.work"
 rm -rf "${WORK}"; mkdir -p "${WORK}/classes"
 export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"

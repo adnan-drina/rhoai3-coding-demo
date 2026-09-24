@@ -132,10 +132,24 @@ except Exception as exc:
     raise SystemExit(0)
 pins_path = root / ".hermes" / "pins.json"
 bundle_path = root / "evidence" / "planning" / "evidence-bundle.json"
+# B8: under run control the seal lives in <projects>/.platform/run-control,
+# outside anything a git operation in the destination can reset; only a
+# destination without it (created before run control) binds in pins.json.
+from planner import run_control
+controlled = run_control.in_use(root)
 try:
-    doc = load_json(pins_path)
+    if controlled:
+        planner = run_control.read_activation(root)
+        if planner is None:
+            print("bind: %s" % run_control.missing_gap(root, run_control.planner_block(root, {})))
+            raise SystemExit(0)
+        doc = {"pins": {"planner": planner}}
+    else:
+        doc = load_json(pins_path)
+except SystemExit:
+    raise
 except Exception as exc:
-    print("bind: pins unreadable (%s); nothing bound" % exc)
+    print("bind: activation unreadable (%s); nothing bound" % exc)
     raise SystemExit(0)
 gaps = pilot_bind_gaps(doc.get("pins") or {})
 if gaps:
@@ -153,8 +167,12 @@ d = digest(bundle)
 seal = doc["pins"]["planner"]["pilot"]
 seal["evidence_bundle_sha256"] = d
 seal["bound_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-write_canonical(pins_path, doc)
-print("bind: pilot seal for run %s (authorized by %s) bound to bundle %s" % (seal.get("run_id"), seal.get("authorized_by"), d[:16]))
+if controlled:
+    run_control.write_activation(root, doc["pins"]["planner"], "bound", "M1 evidence bundle %s" % d[:16])
+else:
+    write_canonical(pins_path, doc)
+print("bind: pilot seal for run %s (authorized by %s) bound to bundle %s%s" % (
+    seal.get("run_id"), seal.get("authorized_by"), d[:16], " in run control" if controlled else ""))
 PYBIND
 
 # Planner activation (SAD §9/§12). Read, never decided here. "activated" mints
@@ -169,7 +187,9 @@ from pathlib import Path
 root = Path(sys.argv[1])
 sys.path.insert(0, str(root / ".hermes" / "lib"))
 try:
-    pins = json.load(open(root / ".hermes" / "pins.json", encoding="utf-8"))
+    # load_pins takes the activation from run control when it governs this run (B8)
+    from planner.pins import load_pins
+    pins = {"pins": load_pins(root)}
 except Exception:
     pins = {}
 mode = str(((pins.get("pins") or {}).get("planner") or {}).get("activation") or "").strip().lower()

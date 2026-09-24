@@ -35,11 +35,35 @@ USED_STATUSES = ("ok", "partial")
 
 
 def load_pins(root: Path) -> dict[str, Any]:
+    """The pins, with the run's activation taken from RUN CONTROL (B8).
+
+    When dest-init created the run-control directory the repository's
+    `pins.planner` is never read: the activation file answers, a missing file
+    is RUN_ACTIVATION_MISSING (naming when the journal last saw it), and a
+    seal for another run than the one the factory declared is
+    RUN_ACTIVATION_FOREIGN. Without run control (older destinations, fixtures)
+    the repository's pins answer, as before."""
     path = Path(root) / PINS
     doc = load_json(path)
     if not isinstance(doc, dict) or not isinstance(doc.get("pins"), dict):
         raise ValueError("%s: expected {pins: {...}}" % path)
-    return doc["pins"]
+    pins = dict(doc["pins"])
+    from planner import run_control
+    if not run_control.in_use(root):
+        return pins
+    block = dict(run_control.planner_block(root, pin(pins, "planner")))
+    if block.get("activation") == run_control.MISSING:
+        block["gap"] = run_control.missing_gap(root, block)
+    elif str(block.get("activation") or "").strip().lower() == PILOT:
+        seal = block.get("pilot") if isinstance(block.get("pilot"), dict) else {}
+        from planner import run_declaration
+        decl = run_declaration.load(Path(root))
+        sealed_run = str(seal.get("run_id") or "")
+        if decl.code == run_declaration.OK and decl.run_id and sealed_run and sealed_run != decl.run_id:
+            block = {"activation": "foreign", "gap": "RUN_ACTIVATION_FOREIGN: the run-control seal names run %r and this "
+                     "destination's factory declaration names %r; a seal is never carried between runs" % (sealed_run, decl.run_id)}
+    pins["planner"] = block
+    return pins
 
 
 def pin(pins: dict[str, Any], key: str) -> dict[str, Any]:
@@ -67,8 +91,11 @@ def pinned_version(pins: dict[str, Any], key: str) -> str | None:
 
 
 def planner_activation(pins: dict[str, Any]) -> str:
-    """Activation gate (SAD §12). Absent block means not activated."""
+    """Activation gate (SAD §12). Absent block means not activated; a run-control
+    refusal (missing, foreign) is never an activation."""
     p = pin(pins, "planner")
+    if p.get("gap"):
+        return NOT_ACTIVATED
     value = str(p.get("activation") or NOT_ACTIVATED).strip().lower()
     if value == ACTIVATED:
         return ACTIVATED
@@ -151,6 +178,9 @@ def activation_gaps(pins: dict[str, Any], bundle_digest: str) -> list[str]:
     Empty list = admissible (activated, or a pilot seal bound to exactly
     this evidence bundle). Everything else is a fail-closed reason.
     """
+    gap = str(pin(pins, "planner").get("gap") or "")
+    if gap:
+        return [gap]
     mode = planner_activation(pins)
     if mode == ACTIVATED:
         return []

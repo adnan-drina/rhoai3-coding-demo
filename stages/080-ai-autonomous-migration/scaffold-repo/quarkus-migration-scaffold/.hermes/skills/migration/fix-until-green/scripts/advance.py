@@ -491,6 +491,22 @@ def _phase(label: str) -> None:
     print("advance: %s (t+%.1fs)" % (label, time.monotonic() - _T0), file=sys.stderr)
 
 
+
+CONTINUATION = Path("verification") / "loop" / "continuation.json"
+
+
+def _continuation(root: Path, state: str, **fields) -> None:
+    """B8: the accept -> admit -> mint transition, durable. Written at each
+    stage so a kill, a restart or a refused admission leaves the exact stage
+    and reason on disk; K2 refuses kanban_complete on the predecessor while it
+    is not `minted`, so a stalled continuation is a BLOCKED
+    card on the board, never an idle one. Re-running advance.py with the same
+    arguments (the H9b idempotent path) finishes it."""
+    doc = load_json(root / CONTINUATION) if (root / CONTINUATION).is_file() else {}
+    doc = dict(doc if isinstance(doc, dict) else {}, schema="rhoai3.loop-continuation/v1", state=state,
+               at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **fields)
+    write_canonical(root / CONTINUATION, doc)
+
 def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint: bool, hermes: str) -> int | None:
     """H9b: advance.py is IDEMPOTENT on a card whose verdict is already on the
     record. A worker whose terminal call was killed after the acceptance had
@@ -519,14 +535,7 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
         _phase("re-sealing admission")
         rec = pipeline.admit(root)
         publish_loop_state(root, rebuild)
-        if rec["status"] != "ADMITTED":
-            print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec["reasons"][:3])), file=sys.stderr)
-            return 1
-        if mint and not (root / LOOP_ISSUED).is_file():
-            _phase("minting the next card (K4): nothing was issued after the acceptance")
-            return _mint(root, hermes)
-        _phase("done" + ("" if not mint else "; the next card is already issued"))
-        return 0
+        return _finish_continuation(root, rec, card, commit, mint=mint, hermes=hermes)
     # a rejection is "already answered" only while the tree carries no new
     # candidate: a rejected card is restored to the accepted tree, so a repeat
     # call on a clean tree is the killed-terminal case, while a fresh edit is
@@ -557,6 +566,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--hermes", default=os.environ.get("HERMES_BIN", "hermes"))
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    from planner.run_control import release_gaps
+    drift = release_gaps(root)
+    if drift:
+        # B10: never a verdict. The candidate, the attempts and the deadline
+        # stay exactly as they are; a run on a harness it was not created
+        # with stops with the reason instead of being judged by it.
+        print("REFUSE: %s" % drift[0], file=sys.stderr)
+        return 2
     state = load_state(root)
     if state is None:
         print("FAIL: LOOP_NOT_VERIFIED run run-verify.sh first", file=sys.stderr)
@@ -1086,16 +1103,45 @@ def main(argv: list[str] | None = None) -> int:
     # published either way: the accepted step is on record whether or not the
     # next card can be admitted, and the state must describe it
     publish_loop_state(root, rebuild)
+    return _finish_continuation(root, rec, args.card, sha, mint=not args.no_mint, hermes=args.hermes)
+
+
+def _finish_continuation(root: Path, rec: dict, card: str, commit: str, *, mint: bool, hermes: str) -> int:
+    """admitted -> minted, recorded at each stage; anything short of a minted successor is a refusal."""
     if rec["status"] != "ADMITTED":
-        print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec["reasons"][:3])), file=sys.stderr)
+        _continuation(root, "admission-refused", predecessor=card, accepted_commit=commit[:12],
+                      reasons=list(rec.get("reasons") or [])[:5])
+        print("REFUSE: LOOP_ADMISSION %s: %s -- the accepted step is on record; this card cannot complete while no "
+              "successor exists: kanban_block kind=needs_input naming this reason. Re-running advance.py with the same "
+              "arguments finishes the continuation once the named prerequisite is restored"
+              % (rec["status"], "; ".join(rec["reasons"][:3])), file=sys.stderr)
         return 1
-    if args.no_mint:
+    _continuation(root, "admitted", predecessor=card, accepted_commit=commit[:12], reasons=[])
+    if not mint:
         _phase("done (no mint)")
         return 0
+    if (root / LOOP_ISSUED).is_file():
+        _continuation(root, "minted", predecessor=card, accepted_commit=commit[:12])
+        _phase("done; the next card is already issued")
+        return 0
     _phase("minting the next card (K4)")
-    rc = _mint(root, args.hermes)
+    rc = _mint(root, hermes)
+    if rc != 0:
+        _continuation(root, "mint-failed", predecessor=card, accepted_commit=commit[:12],
+                      reasons=["K4 mint exited %d; see the lines above" % rc])
+        return rc
+    if not (root / LOOP_ISSUED).is_file():
+        # K4 minted nothing after an ACCEPTED step: every accepted step has a
+        # successor (the next head cluster, or M4 VERIFY), so this is a stop,
+        # and it must be seen as one (v12: the board went idle in silence)
+        _continuation(root, "no-successor", predecessor=card, accepted_commit=commit[:12],
+                      reasons=["K4 minted no card after the accepted step; see the lines above"])
+        print("REFUSE: LOOP_NO_SUCCESSOR K4 minted no card after the accepted step -- kanban_block kind=needs_input "
+              "naming this reason; re-running advance.py with the same arguments retries the mint", file=sys.stderr)
+        return 1
+    _continuation(root, "minted", predecessor=card, accepted_commit=commit[:12], reasons=[])
     _phase("done")
-    return rc
+    return 0
 
 
 # Causes whose failure is decided by the expression written at the locus and

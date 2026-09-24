@@ -1383,6 +1383,60 @@ def _missing_baseline_case() -> int:
     return 0
 
 
+def _continuation_case() -> int:
+    """B8 (v12 t_b33f25fa): an ACCEPTED step whose admission is then refused
+    because the run's activation is gone (run control holds a journaled binding
+    and no activation file) records the continuation as admission-refused,
+    names RUN_ACTIVATION_MISSING, and tells the card to block -- the accepted
+    commit stands. Once the activation is back, re-running advance.py with the
+    same arguments finishes the continuation (the H9b idempotent path)."""
+    from planner import run_control
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    with tempfile.TemporaryDirectory(prefix="chk-b8-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        pet_err = (pet, 3, "cannot find symbol class ResponseEntity", _ATTR)
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol class UriComponentsBuilder", _ATTR), pet_err])
+        findings = load_json(root / MTA_FINDINGS)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        _issue_cluster(root, cluster, "t_b8")
+        f = root / owner
+        f.write_text(f.read_text(encoding="utf-8").replace("import java.net.URI;\n", "import java.net.URI;\n// ok\n"),
+                     encoding="utf-8")
+        specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
+        os.environ["RHOAI3_RUN_CONTROL_DIR"] = str(Path(td) / "platform" / "run-control")
+        try:
+            run_control.write_activation(root, {"activation": "activated"}, "bound", "fixture")
+            act = run_control.run_control_dir(root) / run_control.ACTIVATION
+            act.chmod(0o644)
+            act.unlink()  # the v12 loss, now outside the repository's reach but still simulated
+            p = _advance(root, cluster["id"], "t_b8")
+            blob = p.stdout + p.stderr
+            cont = load_json(root / "verification" / "loop" / "continuation.json")
+            if "OK: ACCEPTED" not in p.stdout or p.returncode == 0:
+                return _fail("the accepted step stands and the refused admission is not a success: rc=%s %s" % (p.returncode, blob[-600:]))
+            if "LOOP_ADMISSION" not in blob or "RUN_ACTIVATION_MISSING" not in blob or "kanban_block" not in blob:
+                return _fail("the refusal names the missing activation and the block terminator: %s" % blob[-600:])
+            if cont.get("state") != "admission-refused" or cont.get("predecessor") != "t_b8" or not cont.get("reasons"):
+                return _fail("the continuation is recorded as admission-refused for this card: %s" % cont)
+            run_control.write_activation(root, {"activation": "activated"}, "restored", "fixture")
+            p = _advance(root, cluster["id"], "t_b8")
+            blob = p.stdout + p.stderr
+            cont = load_json(root / "verification" / "loop" / "continuation.json")
+            if p.returncode != 0 or "ACCEPTED already" not in p.stdout or cont.get("state") != "admitted":
+                return _fail("re-running advance.py finishes the continuation once the activation is back: rc=%s %s %s"
+                             % (p.returncode, cont, blob[-500:]))
+            if sum(1 for s_ in load_json(root / LOOP_STEPS)["steps"] if s_.get("card") == "t_b8") != 1:
+                return _fail("finishing the continuation records no second step")
+        finally:
+            os.environ.pop("RHOAI3_RUN_CONTROL_DIR", None)
+    return 0
+
+
 def _disposition_case() -> int:
     """A deferral whose cause was a harness defect is cleared by a disposition,
     not a product change: no commit, no step, the history kept -- and the ONE
@@ -1916,7 +1970,7 @@ def main() -> int:
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1
-    if _known_before_unknown_case() or _known_before_unknown_case("com.example.store") or _missing_baseline_case():
+    if _known_before_unknown_case() or _known_before_unknown_case("com.example.store") or _missing_baseline_case() or _continuation_case():
         return 1
     if _unit_checkpoint_case() or _unit_gate_handoff_case() or _unit_gate_handoff_case("com.example.store.web"):
         return 1

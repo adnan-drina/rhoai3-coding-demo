@@ -113,6 +113,16 @@ def main() -> int:
         expect_allow("mvn -q verify", "mvn_cwd", cwd=cwd)
         expect_allow("java -version", "java_cwd", cwd=cwd)
         expect_allow("git status", "git_cwd", cwd=cwd)
+        # B8 (v12 t_b33f25fa): a worker reset the run activation with git checkout
+        wk = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+        for i, c in enumerate(("git checkout -- .hermes/pins.json", "git -C /tmp/x restore src/Owner.java",
+                               "git stash", "git reset --hard HEAD", "git clean -fdx", "cd . && git add -A",
+                               "git --no-pager commit -m x")):
+            expect_block(c, "b8_git_mutation_%d" % i, "refused", cwd=cwd, extra_env=wk)
+        for i, c in enumerate(("git status", "git diff .hermes/pins.json", "git log --oneline -3", "git show HEAD:pom.xml",
+                               "git diff --stat")):
+            expect_allow(c, "b8_git_read_%d" % i, cwd=cwd, extra_env=wk)
+        expect_allow("git checkout -- .hermes/pins.json", "b8_git_no_profile_is_not_a_worker", cwd=cwd)
         expect_allow(
             "export JAVA_HOME=/usr/lib/jvm/java-21-openjdk; java -version",
             "export_then_java_cwd",
@@ -496,6 +506,37 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_native_complete_uses_request_review")
+        # B8: an accepted card whose continuation did not reach a minted
+        # successor cannot complete; it blocks, and may block
+        cont = dest / "verification" / "loop" / "continuation.json"
+        cont.parent.mkdir(parents=True, exist_ok=True)
+        steps_p = dest / "verification" / "loop" / "steps.json"
+        steps_p.write_text(json.dumps({"steps": [{"card": "t_cont", "verdict": "accepted", "commit": "abc"}]}), encoding="utf-8")
+        cenv = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0", "HERMES_KANBAN_TASK": "t_cont"}
+        for state in ("admission-refused", "no-successor", "mint-failed"):
+            cont.write_text(json.dumps({"predecessor": "t_cont", "state": state,
+                                        "reasons": ["RUN_ACTIVATION_MISSING: run v13 was bound at T"]}), encoding="utf-8")
+            r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=cenv)
+            if r.get("action") != "block" or "no successor" not in (r.get("message") or "") or "RUN_ACTIVATION_MISSING" not in (r.get("message") or ""):
+                print("FAIL b8_complete_refused_%s" % state, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok b8_complete_refused_%s" % state)
+            r = run("", roots, cwd=cwd, tool="kanban_block", extra_env=cenv)
+            if r.get("action") == "block" and "acceptance of this card is recorded" in (r.get("message") or ""):
+                print("FAIL b8_block_allowed_%s" % state, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok b8_block_allowed_%s" % state)
+        cont.write_text(json.dumps({"predecessor": "t_other", "state": "admission-refused", "reasons": ["x"]}), encoding="utf-8")
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=cenv)
+        if "no successor" in (r.get("message") or ""):
+            print("FAIL b8_other_predecessor_ignored", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok b8_other_predecessor_ignored")
+        cont.unlink()
+        steps_p.unlink()
         crumb = dest / "evidence" / "receipts" / "hook" / "complete-invocations.jsonl"
         if not crumb.is_file():
             print("FAIL complete_breadcrumb_written missing", file=sys.stderr)
