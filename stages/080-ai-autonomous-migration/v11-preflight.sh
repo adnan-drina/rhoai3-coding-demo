@@ -54,6 +54,18 @@ def check_worker_identity(pod, receipt, default_binding, namespace, workspace):
                 'system:serviceaccount:' + namespace + ':' + expected)
         need(not (direct or group or user), 'worker is bound to devworkspace-default-role')
 
+def worker_kubeconfig_mount_ok(pod, container_name):
+    spec = pod['spec']
+    worker = next(c for c in spec['containers'] if c['name'] == container_name)
+    env = {e['name']: e.get('value') for e in worker.get('env', [])}
+    if env.get('KUBECONFIG') != '/home/user/.kube/config':
+        return False
+    mounts = [m for m in worker.get('volumeMounts', []) if m['mountPath'] == '/home/user/.kube']
+    if len(mounts) != 1:
+        return False
+    volume = next((v for v in spec.get('volumes', []) if v['name'] == mounts[0]['name']), {})
+    return 'emptyDir' in volume
+
 def source_mount_ok(pod, container_name):
     spec = pod['spec']
     containers = spec['containers']
@@ -108,6 +120,8 @@ need(receipt.get('phase') == 'provisioned' and receipt.get('workspace') == works
      and receipt.get('namespace') == ns, 'provisioning receipt is not ready for this workspace')
 default_binding = json.loads(oc('get','rolebinding','devworkspace-default-rolebinding','-n',ns,'-o','json'))
 check_worker_identity(p, receipt, default_binding, ns, workspace)
+need(worker_kubeconfig_mount_ok(p, os.environ['CONTAINER']),
+     'worker kubeconfig directory lacks its ephemeral mount; late Dashboard token injection is possible')
 for key in ('databaseImage','provisionerImage'):
     need(bool(re.fullmatch(r'.+@sha256:[0-9a-f]{64}',receipt.get(key,''))), 'unpinned '+key)
     need(receipt[key] == proof.get('images',{}).get(key), 'image differs from isolation qualification: '+key)

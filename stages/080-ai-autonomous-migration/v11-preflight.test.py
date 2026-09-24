@@ -41,6 +41,34 @@ class IsolationLaunchScope(unittest.TestCase):
                     self.check(proof, 'spring-petclinic-rest-legacy-v11')
 
 
+class KubeconfigInjectionBoundary(unittest.TestCase):
+    def setUp(self):
+        node = next(n for n in TREE.body if isinstance(n, ast.FunctionDef)
+                    and n.name == 'worker_kubeconfig_mount_ok')
+        scope = {}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), 'kubeconfig-mount', 'exec'), scope)
+        self.check = scope['worker_kubeconfig_mount_ok']
+        self.pod = {'spec': {'containers': [{'name': 'worker',
+            'env': [{'name': 'KUBECONFIG', 'value': '/home/user/.kube/config'}],
+            'volumeMounts': [{'name': 'config', 'mountPath': '/home/user/.kube'}]}],
+            'volumes': [{'name': 'config', 'emptyDir': {}}]}}
+
+    def test_ephemeral_directory_mount(self):
+        self.assertTrue(self.check(self.pod, 'worker'))
+
+    def test_file_or_parent_mount_does_not_suppress_dashboard_injection(self):
+        for path in ('/home/user', '/home/user/.kube/config'):
+            self.pod['spec']['containers'][0]['volumeMounts'][0]['mountPath'] = path
+            self.assertFalse(self.check(self.pod, 'worker'))
+
+    def test_different_config_and_persistent_volume_refuse(self):
+        self.pod['spec']['containers'][0]['env'][0]['value'] = '/tmp/config'
+        self.assertFalse(self.check(self.pod, 'worker'))
+        self.pod['spec']['containers'][0]['env'][0]['value'] = '/home/user/.kube/config'
+        self.pod['spec']['volumes'][0] = {'name': 'config', 'persistentVolumeClaim': {'claimName': 'home'}}
+        self.assertFalse(self.check(self.pod, 'worker'))
+
+
 class WorkerIdentity(unittest.TestCase):
     def setUp(self):
         nodes = [n for n in TREE.body if isinstance(n, ast.FunctionDef)

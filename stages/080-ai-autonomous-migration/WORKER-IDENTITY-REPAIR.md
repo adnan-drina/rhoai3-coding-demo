@@ -39,6 +39,32 @@ named SCC so Kubernetes privilege-escalation checks allow copying it.
 GitOps does not patch `devworkspace-default-role`. Existing v10, v9, and
 `agentic-coolstore` objects are not named in this change.
 
+### Late Dashboard credential injection
+
+September 24 `iso-worker-b` started with the restricted identity, but a normal
+restart acquired `logged-user` / `developer` credentials after Ready:
+`oc whoami` became `ai-developer`, authorized to GET the v10 parity Secret.
+Only authorization was tested; Secret data was not read. The initial passing
+matrix does not qualify restart behavior.
+
+Installed Dev Spaces **3.30.1** Dashboard image `sha256:d3f34ed91bff1048e920aae8d0c2b72ffdac90a8ccc5cf66fd443bff058e17b1`
+contains `KubeConfigApiService`'s explicit-directory-mount exclusion, verified
+in `/backend/server/backend.js` and the
+[upstream implementation](https://github.com/eclipse-che/che-dashboard/blob/7ac5c076070ab9d18120152d8205175662b47c81/packages/dashboard-backend/src/devworkspaceClient/services/kubeConfigApi.ts).
+It injects after Running and merges existing users; overwriting once in
+postStart cannot prevent that later write. The migration devfile therefore
+mounts an ephemeral `worker-kubeconfig` volume at `/home/user/.kube`, with
+`KUBECONFIG=/home/user/.kube/config`. This suppresses the Dashboard injector;
+the existing binder still writes only the projected pod token. A file mount
+or parent-directory mount does not satisfy the exclusion.
+
+Validate initial start, normal restart, and explicit Dashboard credential
+reinjection on a fresh workspace. Recheck **all** token copies after Ready,
+including any registry authentication files. Do not call a cleanup race or a
+brief passing kubeconfig snapshot confinement. This exclusion is version-bound
+and must be requalified when Dashboard changes. Existing workspaces retain
+their stamped devfile; do not patch v10.
+
 ## Permission matrix
 
 Identities in a **new** migration worker pod:
@@ -102,7 +128,10 @@ Use two **new** names, auto-start off. Do not reuse v10, do not launch
 `spring-petclinic-rest-legacy-v11`, do not rerun the full 13-check isolation
 packet until this focused plan PASSes.
 
-Use fresh names such as `iso-worker-b` / `iso-worker-b-retry`. The September 23
+Use fresh names such as `iso-worker-c` / `iso-worker-c-retry`. The September 24
+`iso-worker-b` restart failed the credential boundary described above; retain
+that failure and retire its identity rather than reuse it for qualification.
+The September 23
 `iso-worker-a` / `iso-worker-a-retry` trial was retired; do not reuse its
 tombstones. Its standalone Job proved limited permissions but both directly
 created DevWorkspaces failed postStart. It did **not** qualify IDE startup.
