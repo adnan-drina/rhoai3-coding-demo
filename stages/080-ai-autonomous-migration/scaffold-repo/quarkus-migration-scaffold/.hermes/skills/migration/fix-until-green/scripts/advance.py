@@ -723,31 +723,6 @@ def main(argv: list[str] | None = None) -> int:
         print("WARN: %s inconclusive on %s (not a pass and not a violation): %s"
               % (si1_unknown[0]["rule"], ", ".join(sorted({r["path"] for r in si1_unknown})),
                  "; ".join(r["detail"] for r in si1_unknown[:2])), file=sys.stderr)
-    # A proven newly INTRODUCED unhandled checked exception vetoes acceptance
-    # even when the tuple falls (architect decision 3, 2026-09-11). javac
-    # reports one such site per compilation, so a count can fall while a
-    # transformation introduces six: t_cef8a0f6 took the compile count from 29
-    # to 16 by writing six unhandled URI constructors, and was accepted. The
-    # obligation is compiler-derived: baseline (the last accepted commit) and
-    # candidate are modelled under the same compiler configuration, catches
-    # and declared throws accounted for; a site the baseline already had is
-    # EXPOSED, not introduced; incomplete baseline coverage is INCONCLUSIVE.
-    java_changed = [c for c in changed if c.startswith("src/main/java/") and c.endswith(".java")]
-    checked: dict = {}
-    if java_changed:
-        checked = checked_exception_delta(root, str(prev.get("commit") or "HEAD"), java_changed)
-        vetoes = (["%s.%s calls %s: %s unhandled (%s)" % (r["type"].rsplit(".", 1)[-1], r["member_id"], r["callee"], r["exception"], r.get("proof") or "")
-                   for r in checked["introduced"]] +
-                  ["%s.%s now declares %s" % (r["type"].rsplit(".", 1)[-1], r["member_id"], ",".join(r["exceptions"])) for r in checked["throws_added"]])
-        if vetoes:
-            return _reject(root, steps, args.cluster, args.card, cur,
-                           "introduced %d unhandled checked exception(s), a compiler-derived obligation that vetoes acceptance whatever the measure does: %s"
-                           % (len(vetoes), "; ".join(vetoes[:4])), changed, mint=not args.no_mint, hermes=args.hermes)
-        if checked["state"] in ("unavailable", "inconclusive"):
-            return _pending(root, steps, args.cluster, args.card, cur,
-                            "whether this candidate introduces an unhandled checked exception could not be decided: %s"
-                            % (checked["why"] or "; ".join("%s (%s)" % (r.get("key") or r.get("path"), r.get("why")) for r in checked["inconclusive"][:2])),
-                            changed, on_disk, cause="unassessable-exceptions")
     # The SEALED SCOPE: a repository card carries an inventory of every member
     # the declared rule reaches, and the card is not finished while one of them
     # still breaks that rule. An already-correct member needs no edit and earns
@@ -790,22 +765,6 @@ def main(argv: list[str] | None = None) -> int:
         if bad and not family and not unit:
             return _reject(root, steps, args.cluster, args.card, cur, family_detail,
                            changed, mint=not args.no_mint, hermes=args.hermes)
-        # An assessment that could not be made is not an assessment that
-        # passed. The card cannot complete on a member nobody could resolve;
-        # that is a prerequisite to repair, not an attempt to spend.
-        unknown = [r for r in scope_rows if r.get("verdict") == "inconclusive"]
-        if unknown and unit:
-            return _pending(root, steps, args.cluster, args.card, cur,
-                            "%s sealed member(s) of %s could not be assessed against %s: %s" % (
-                                len(unknown), scope_doc.get("unit_id") or args.cluster, scope_doc.get("rule"),
-                                "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
-                            changed, on_disk, cause="unassessable-scope", scope_assessment=scope_rows)
-        if unknown:
-            return _pending(root, steps, args.cluster, args.card, cur,
-                            "%s member(s) of %s could not be assessed against %s: %s" % (
-                                len(unknown), scope_doc.get("repository"), scope_doc.get("rule"),
-                                "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
-                            changed, on_disk, cause="unassessable-scope", scope_assessment=scope_rows)
     # An ATTRIBUTION diagnostic the accepted tree did not report was introduced
     # by this candidate, in whatever file it stands: javac reports every one of
     # them in one compilation (only FLOW_CODES come one at a time), and a
@@ -833,8 +792,14 @@ def main(argv: list[str] | None = None) -> int:
         introduced = []
         undecided = sorted(k for k, i in cur_attr.items() if str(i.get("id") or "") not in prev_err)
         if undecided:
-            print("WARN: introduced-diagnostic veto skipped: no accepted diagnostics snapshot at %s, and %d current diagnostic(s) carry "
-                  "no accepted err: id, which cannot tell a moved line from a new report" % (snap, len(undecided)), file=sys.stderr)
+            # B7: without the snapshot nobody can say whether these were
+            # introduced, and an undecided regression is not an absent one --
+            # the candidate is kept and the step refuses, naming the snapshot
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "DIAGNOSTIC_BASELINE_MISSING: expected %s for accepted %s; %d current diagnostic(s) carry no "
+                            "accepted err: id, so whether this candidate introduced them cannot be decided"
+                            % (snap.relative_to(root), str(prev.get("commit") or "HEAD")[:12], len(undecided)),
+                            changed, on_disk, cause="diagnostic-baseline-missing")
     # THE PARTITION, and only for a unit card. The veto itself does not move:
     # it stays global over every file and it stays here, BEFORE progress().
     # What a unit adds is that some of what it introduced is the unit's own
@@ -866,7 +831,8 @@ def main(argv: list[str] | None = None) -> int:
                                      cur_attr[k].get("rule_id") or "", str(cur_attr[k].get("message") or cur_attr[k].get("detail") or "")[:120])
                  for k in introduced[:3]]
         return _reject(root, steps, args.cluster, args.card, cur,
-                       "introduced %d compile diagnostic(s) the accepted tree did not have: %s" % (len(introduced), "; ".join(named)),
+                       "INTRODUCED_COMPILE_DIAGNOSTIC: introduced %d compile diagnostic(s) the accepted tree (%s) did not have: %s"
+                       % (len(introduced), str(prev.get("commit") or "HEAD")[:12], "; ".join(named)),
                        changed, mint=not args.no_mint, hermes=args.hermes,
                        legal_next="fix the named symbols in the same write set; do not widen the write set to satisfy a missing import")
     if explained_rows:
@@ -875,6 +841,55 @@ def main(argv: list[str] | None = None) -> int:
               "is the NEXT card, never a wider write set"
               % (len(explained_rows), "; ".join("%s → %s" % (r["path"], r["symbol"]) for r in explained_rows[:3])),
               file=sys.stderr)
+    # A proven newly INTRODUCED unhandled checked exception vetoes acceptance
+    # even when the tuple falls (architect decision 3, 2026-09-11). javac
+    # reports one such site per compilation, so a count can fall while a
+    # transformation introduces six: t_cef8a0f6 took the compile count from 29
+    # to 16 by writing six unhandled URI constructors, and was accepted. The
+    # obligation is compiler-derived: baseline (the last accepted commit) and
+    # candidate are modelled under the same compiler configuration, catches
+    # and declared throws accounted for; a site the baseline already had is
+    # EXPOSED, not introduced; incomplete baseline coverage is INCONCLUSIVE.
+    java_changed = [c for c in changed if c.startswith("src/main/java/") and c.endswith(".java")]
+    checked: dict = {}
+    if java_changed:
+        checked = checked_exception_delta(root, str(prev.get("commit") or "HEAD"), java_changed)
+        vetoes = (["%s.%s calls %s: %s unhandled (%s)" % (r["type"].rsplit(".", 1)[-1], r["member_id"], r["callee"], r["exception"], r.get("proof") or "")
+                   for r in checked["introduced"]] +
+                  ["%s.%s now declares %s" % (r["type"].rsplit(".", 1)[-1], r["member_id"], ",".join(r["exceptions"])) for r in checked["throws_added"]])
+        if vetoes:
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "introduced %d unhandled checked exception(s), a compiler-derived obligation that vetoes acceptance whatever the measure does: %s"
+                           % (len(vetoes), "; ".join(vetoes[:4])), changed, mint=not args.no_mint, hermes=args.hermes)
+    # B7 (v12 t_b33f25fa): a KNOWN regression is decided before any UNKNOWN.
+    # The introduced-diagnostic veto and the checked-exception veto above run
+    # first; only a candidate neither of them rejects can be parked because
+    # a member or a site could not be assessed. Before, an unassessable member
+    # returned VERIFICATION_PENDING ahead of both, and seven new files importing
+    # a class that does not exist parked the card for an Operator instead of
+    # being REVERTED with the symbols named.
+    if java_changed:
+        if checked["state"] in ("unavailable", "inconclusive"):
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "whether this candidate introduces an unhandled checked exception could not be decided: %s"
+                            % (checked["why"] or "; ".join("%s (%s)" % (r.get("key") or r.get("path"), r.get("why")) for r in checked["inconclusive"][:2])),
+                            changed, on_disk, cause="unassessable-exceptions")
+    # An assessment that could not be made is not an assessment that
+    # passed. The card cannot complete on a member nobody could resolve;
+    # that is a prerequisite to repair, not an attempt to spend.
+    unknown = [r for r in scope_rows if r.get("verdict") == "inconclusive"]
+    if unknown and unit:
+        return _pending(root, steps, args.cluster, args.card, cur,
+                        "%s sealed member(s) of %s could not be assessed against %s: %s" % (
+                            len(unknown), scope_doc.get("unit_id") or args.cluster, scope_doc.get("rule"),
+                            "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
+                        changed, on_disk, cause="unassessable-scope", scope_assessment=scope_rows)
+    if unknown:
+        return _pending(root, steps, args.cluster, args.card, cur,
+                        "%s member(s) of %s could not be assessed against %s: %s" % (
+                            len(unknown), scope_doc.get("repository"), scope_doc.get("rule"),
+                            "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
+                        changed, on_disk, cause="unassessable-scope", scope_assessment=scope_rows)
     gate = str(issued.get("gate") or "")
     # identities without lines: whether the issued failure is "still reported"
     cur_identities = {str(i.get("identity")) for i in (cur.get("items") or []) if str(i.get("source") or "") == "javac" and i.get("identity")}

@@ -1263,6 +1263,126 @@ def _unit_checkpoint_case() -> int:
     return 0
 
 
+def _known_before_unknown_case(base: str = "org.acme.clinic") -> int:
+    """B7 (v12 t_b33f25fa): a KNOWN regression is decided before any UNKNOWN.
+
+    A unit whose sealed members include one the model cannot type (so the
+    scope assessment is inconclusive) and whose candidate ALSO introduces an
+    attribution diagnostic the accepted tree did not have -- v12's seven new
+    files importing jakarta.enterprise.inject.ApplicationScoped -- is REVERTED
+    with the symbol named, not parked as unassessable-scope. Control: the same
+    inconclusive member with nothing introduced still pends. Run twice, the
+    second time under renamed packages."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+    from planner.worklist import batch_scope_digest
+
+    _ATTR = "compiler.err.cant.resolve.location"
+
+    def sym(name: str) -> str:
+        return "cannot find symbol\n  symbol:   class %s\n  location: class R" % name
+
+    with tempfile.TemporaryDirectory(prefix="chk-b7-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=8))
+        paths = _write_uri_controllers(root, _BUILDER)
+        sealed = [paths[0], paths[1]]
+        errs = [(p, 3, sym("UriComponentsBuilder"), _ATTR) for p in sealed]
+        specimens.prepare_loop(root, errors=list(errs))
+        findings = load_json(root / MTA_FINDINGS)
+        wl = load_json(root / WORKLIST)
+        rows = sorted([i for i in wl["items"] if str(i.get("source")) == "javac" and str(i.get("path")) in sealed],
+                      key=lambda i: str(i["path"]))
+        cluster = _seal_unit(root, sorted(sealed), [str(r["id"]) for r in rows], [str(r["identity"]) for r in rows])
+        # a sealed member the destination model has no type for: a Java file
+        # that declares nothing (the model cannot type it), so the unit's
+        # assessment is inconclusive whatever the candidate does
+        ghost = "src/main/java/%s/support/Pending%sImpl.java" % (base.replace(".", "/"), "Registry")
+        (root / ghost).parent.mkdir(parents=True, exist_ok=True)
+        (root / ghost).write_text("package %s.support;\n// declared by the unit, not yet written\n" % base, encoding="utf-8")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "fixture: the ghost member's file")
+        scope_p = root / cluster["batch_scope"]["path"]
+        scope = load_json(scope_p)
+        scope["members"].append({"path": ghost, "type": "%s.support.PendingRegistryImpl" % base, "member_id": "",
+                                 "occurrence": 0, "state": "reported", "identity": "ghost", "item": "ghost"})
+        scope["writable_paths"] = sorted(set(scope["writable_paths"]) | {ghost})
+        scope["digest"] = batch_scope_digest(scope)
+        write_canonical(scope_p, scope)
+        cluster["batch_scope"]["digest"] = scope["digest"]
+        cluster["batch_scope"]["members"] = len(scope["members"])
+        cluster["write_set"] = sorted(set(cluster["write_set"]) | {ghost})
+        originals = {p: (root / p).read_text(encoding="utf-8") for p in sealed}
+
+        # (1) inconclusive member AND an introduced diagnostic: REVERTED
+        _issue_cluster(root, cluster, "t_b7a")
+        for p in sealed:
+            (root / p).write_text(originals[p].replace(
+                "import java.net.URI;\n", "import java.net.URI;\nimport jakarta.enterprise.inject.ApplicationScoped;\n"),
+                encoding="utf-8")
+        specimens.verify(root, errors=[(p, 4, sym("ApplicationScoped"), _ATTR) for p in sealed],
+                         failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_b7a")
+        blob = p.stdout + p.stderr
+        if "unassessable-scope" in blob or "VERIFICATION_PENDING" in blob:
+            return _fail("a known introduced diagnostic is decided before an unassessable member (%s): %s" % (base, blob[-700:]))
+        if p.returncode == 0 or "REVERTED" not in blob or "INTRODUCED_COMPILE_DIAGNOSTIC" not in blob or "ApplicationScoped" not in blob:
+            return _fail("the candidate is REVERTED naming the introduced symbol (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        if any((root / q).read_text(encoding="utf-8") != originals[q] for q in sealed):
+            return _fail("the rejected candidate is reverted")
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get("rk:unit:u:testunit") != 1:
+            return _fail("the conclusive regression spends exactly one attempt: %s" % load_json(root / LOOP_STEPS).get("attempts"))
+
+        # (2) control: the same inconclusive member, nothing introduced -- still pends
+        pipeline.admit(root)
+        _issue_cluster(root, cluster, "t_b7b")
+        for p in sealed:
+            (root / p).write_text(originals[p].replace("import java.net.URI;\n", "import java.net.URI;\n// progress\n"),
+                                  encoding="utf-8")
+        specimens.verify(root, errors=list(errs), failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_b7b")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "unassessable-scope" not in blob:
+            return _fail("with nothing introduced an unassessable member still pends (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get("rk:unit:u:testunit") != 1:
+            return _fail("a pending verdict spends no attempt")
+    return 0
+
+
+def _missing_baseline_case() -> int:
+    """B7: without the accepted diagnostics snapshot an undecided diagnostic
+    is not an absent regression. The candidate pends DIAGNOSTIC_BASELINE_MISSING,
+    naming the snapshot, and is never accepted on the fall."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS  # noqa: E402
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    with tempfile.TemporaryDirectory(prefix="chk-b7m-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol class UriComponentsBuilder", _ATTR),
+                                             (pet, 3, "cannot find symbol class ResponseEntity", _ATTR)])
+        findings = load_json(root / MTA_FINDINGS)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        snap = root / LOOP_ACCEPTED / VERIFY_DIAGNOSTICS.name
+        if not snap.is_file():
+            return _fail("fixture: the accepted diagnostics snapshot must exist to be removed: %s" % snap)
+        snap.unlink()
+        _issue_cluster(root, cluster, "t_b7m")
+        f = root / owner
+        f.write_text(f.read_text(encoding="utf-8").replace("import java.net.URI;\n", "import java.net.URI;\n// x\n"),
+                     encoding="utf-8")
+        # Owner's diagnostic gone (the count falls), and a NEW one in Pet
+        specimens.verify(root, errors=[(pet, 7, "cannot find symbol class Mystery", _ATTR)], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_b7m")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout:
+            return _fail("a missing diagnostics baseline cannot accept on the fall: rc=%s %s" % (p.returncode, blob[-600:]))
+        if "DIAGNOSTIC_BASELINE_MISSING" not in blob or VERIFY_DIAGNOSTICS.name not in blob:
+            return _fail("the refusal names the missing snapshot: %s" % blob[-600:])
+    return 0
+
+
 def _disposition_case() -> int:
     """A deferral whose cause was a harness defect is cleared by a disposition,
     not a product change: no commit, no step, the history kept -- and the ONE
@@ -1741,6 +1861,8 @@ def main() -> int:
     if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
+        return 1
+    if _known_before_unknown_case() or _known_before_unknown_case("com.example.store") or _missing_baseline_case():
         return 1
     if _unit_checkpoint_case() or _unit_gate_handoff_case():
         return 1
