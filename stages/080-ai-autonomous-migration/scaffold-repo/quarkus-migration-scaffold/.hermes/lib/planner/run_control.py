@@ -267,9 +267,23 @@ def _effective_config_gaps(pinned: dict[str, Any]) -> list[str]:
             out.append("config model.%s: expected %s, got %s" % (key, json.dumps(want), json.dumps(m.get(key))))
     prov = ((cfg.get("providers") or {}).get(str(prof.get("provider") or "")) or {})
     out.extend("config providers.%s.extra_body.%s" % (prof.get("provider"), d) for d in _diff(prof.get("request_body"), prov.get("extra_body")))
+    # R2: auxiliary calls carry no max_tokens of their own, so the quota's
+    # per-request output bound is part of their body
+    q = prof.get("quota") or {}
+    aux_body = dict(prof.get("request_body") or {}, **({"max_tokens": q["max_output_tokens"]} if q.get("max_output_tokens") else {}))
     for slot, aux in sorted((cfg.get("auxiliary") or {}).items()):
         if isinstance(aux, dict) and aux.get("enabled", True) is not False and str(aux.get("provider") or "auto") == "auto":
-            out.extend("config auxiliary.%s.extra_body.%s" % (slot, d) for d in _diff(prof.get("request_body"), aux.get("extra_body")))
+            out.extend("config auxiliary.%s.extra_body.%s" % (slot, d) for d in _diff(aux_body, aux.get("extra_body")))
+    # R2: the allowance the admission counted is the one the runtime paces
+    if q:
+        env_path = managed_dir() / ".env"
+        env = dict(l.split("=", 1) for l in (env_path.read_text(encoding="utf-8").splitlines() if env_path.is_file() else [])
+                   if "=" in l and not l.lstrip().startswith("#"))
+        want = "%s/%s" % (q.get("max_requests_per_window"), q.get("window_seconds"))
+        if env.get("RHOAI3_REQUEST_BUDGET") != want or not env.get("RHOAI3_REQUEST_LEDGER"):
+            out.append("the request pacer is not configured for the pinned allowance (%s RHOAI3_REQUEST_BUDGET=%s, "
+                       "expected %s, ledger %s)" % (env_path, env.get("RHOAI3_REQUEST_BUDGET"), want,
+                                                     env.get("RHOAI3_REQUEST_LEDGER") or "unset"))
     return out
 
 

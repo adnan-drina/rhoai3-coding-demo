@@ -47,7 +47,9 @@ def _git(root: Path, *args: str) -> str:
 
 
 PROFILE = {"default_model": "m-1", "profiles": {"m-1": {"provider": "p1", "mode": "non-thinking", "context_length": 1000,
-           "max_tokens": 100, "request_body": {"temperature": 0.7, "presence_penalty": 1.5}}}}
+           "max_tokens": 100, "request_body": {"temperature": 0.7, "presence_penalty": 1.5},
+           "quota": {"max_requests_per_window": 200, "window_seconds": 3600, "max_output_tokens": 300}}}}
+AUX = dict(PROFILE["profiles"]["m-1"]["request_body"], max_tokens=300)
 
 
 def _config(profile: dict, aux_body: dict | None) -> str:
@@ -83,7 +85,8 @@ def _governed(td: Path, run: str) -> tuple[Path, Path, Path, Path]:
     (control / "profile.json").write_text(json.dumps(PROFILE), encoding="utf-8")
     eff = dict(PROFILE, digest=run_control.profile_digest(PROFILE))
     (managed / "model-profile.json").write_text(json.dumps(eff), encoding="utf-8")
-    (managed / "config.yaml").write_text(_config(PROFILE, PROFILE["profiles"]["m-1"]["request_body"]), encoding="utf-8")
+    (managed / "config.yaml").write_text(_config(PROFILE, AUX), encoding="utf-8")
+    (managed / ".env").write_text("MAAS_API_KEY=x\nRHOAI3_REQUEST_BUDGET=200/3600\nRHOAI3_REQUEST_LEDGER=/l/requests.log\n", encoding="utf-8")
     return root, control, state, managed
 
 
@@ -144,6 +147,15 @@ def _case(run: str) -> int:
             if not g or "auxiliary.compression.extra_body" not in g[0]:
                 return _fail("a generated config whose compression slot lacks the profile is refused: %s" % g)
             (managed / "config.yaml").write_text(_config(PROFILE, PROFILE["profiles"]["m-1"]["request_body"]), encoding="utf-8")
+            g = run_control.profile_gaps(root)
+            if not g or "auxiliary.compression.extra_body.max_tokens: expected 300, got null" not in g[0]:
+                return _fail("an auxiliary slot without the quota output bound is refused (R2): %s" % g)
+            (managed / "config.yaml").write_text(_config(PROFILE, AUX), encoding="utf-8")
+            (managed / ".env").write_text("MAAS_API_KEY=x\n", encoding="utf-8")
+            g = run_control.run_gaps(root)
+            if not g or "request pacer is not configured" not in g[0]:
+                return _fail("a runtime without the pinned request allowance is refused (R2): %s" % g)
+            (managed / ".env").write_text("RHOAI3_REQUEST_BUDGET=200/3600\nRHOAI3_REQUEST_LEDGER=/l/requests.log\n", encoding="utf-8")
             (control / "profile.json").unlink()
             for _ in range(2):   # no re-bless: re-reading never recreates a lost pin
                 g = run_control.run_gaps(root)
