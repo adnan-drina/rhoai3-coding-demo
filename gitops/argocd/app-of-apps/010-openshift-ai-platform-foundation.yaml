@@ -9,7 +9,7 @@ metadata:
     demo.rhoai.io/stage: "010"
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/manifest-generate-paths: gitops/stages/010-openshift-ai-platform-foundation/base
+    argocd.argoproj.io/manifest-generate-paths: .
 spec:
   project: rhoai-demo
   source:
