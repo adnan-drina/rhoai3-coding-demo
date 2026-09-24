@@ -1,0 +1,158 @@
+{
+  "approvals": {
+    "cron_mode": "deny",
+    "deny": [
+      "git push --force*",
+      "*curl*|*sh*",
+      "dd if=* of=/dev/*",
+      "rm -rf /",
+      "rm -rf /*"
+    ],
+    "mode": "off",
+    "timeout": 300
+  },
+  "auxiliary": {
+    "background_review": {
+      "enabled": false
+    },
+    "compression": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "max_tokens": 32768,
+        "min_p": 0.0,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "temperature": 0.7,
+        "top_k": 20,
+        "top_p": 0.8
+      },
+      "model": "",
+      "provider": "auto"
+    },
+    "title_generation": {
+      "enabled": false
+    }
+  },
+  "compression": {
+    "enabled": true,
+    "target_ratio": 0.2,
+    "threshold": 0.8
+  },
+  "curator": {
+    "enabled": false
+  },
+  "dashboard": {
+    "basic_auth": {
+      "password_hash": "scrypt$16384$8$1$uVJKZcdCp3vPd1IQniG+vg==$Dob/0Rk0eZnUmcBXrJu0q5YmCvHmrcrotg/i8pDaUGY=",
+      "username": "ai-developer"
+    }
+  },
+  "display": {
+    "streaming": true
+  },
+  "hooks": {
+    "pre_tool_call": []
+  },
+  "hooks_auto_accept": true,
+  "kanban": {
+    "auto_decompose": false,
+    "dispatch_in_gateway": true,
+    "dispatch_interval_seconds": 15,
+    "dispatch_stale_timeout_seconds": 14400,
+    "failure_limit": 2,
+    "max_in_progress": 1,
+    "reconcile_orphans": true,
+    "review_dispatch": true
+  },
+  "memory": {
+    "memory_enabled": false,
+    "user_profile_enabled": false
+  },
+  "model": {
+    "api_mode": "chat_completions",
+    "base_url": "",
+    "context_length": 220000,
+    "default": "qwen3-8-27b-int4",
+    "max_tokens": 8192,
+    "provider": "qwen38"
+  },
+  "model_aliases": {
+    "qwen27b": {
+      "model": "qwen3-6-27b",
+      "provider": "qwen27b"
+    },
+    "qwen38": {
+      "model": "qwen3-8-27b-int4",
+      "provider": "qwen38"
+    }
+  },
+  "providers": {
+    "custom": {
+      "request_timeout_seconds": 900,
+      "stale_timeout_seconds": 900
+    },
+    "qwen27b": {
+      "api": "${env:MAAS_API_BASE_URL_QWEN36}",
+      "api_key": "${env:MAAS_API_KEY}",
+      "discover_models": false,
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "models": {
+        "qwen3-6-27b": {
+          "context_length": 110000,
+          "max_tokens": 8192,
+          "stale_timeout_seconds": 900,
+          "timeout_seconds": 900
+        }
+      }
+    },
+    "qwen38": {
+      "api": "${env:MAAS_API_BASE_URL}",
+      "api_key": "${env:MAAS_API_KEY}",
+      "discover_models": false,
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "min_p": 0.0,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "temperature": 0.7,
+        "top_k": 20,
+        "top_p": 0.8
+      },
+      "models": {
+        "qwen3-8-27b-int4": {
+          "context_length": 220000,
+          "max_tokens": 8192,
+          "stale_timeout_seconds": 900,
+          "timeout_seconds": 900
+        }
+      }
+    }
+  },
+  "security": {
+    "tirith_enabled": false
+  },
+  "skills": {
+    "external_dirs": [
+      "/nonexistent/skills",
+      "/nonexistent/global-skills"
+    ],
+    "guard_agent_created": true,
+    "inline_shell": false,
+    "write_approval": true
+  },
+  "terminal": {
+    "backend": "local",
+    "timeout": 900
+  },
+  "tool_loop_guardrails": {
+    "hard_stop_enabled": true
+  }
+}
