@@ -592,6 +592,22 @@ check "080 autostart does not pin scan-with-mta on the card" \
 check "080 autostart-migration selftest passes" \
   "python3 '${SCAFFOLD_AUTOSTART}/autostart-migration.selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+# Run declarations (2026-09-24): the golden is reusable, so it names no run and
+# claims no readiness; the factory writes the run's own run-budget.json into the
+# destination's initial commit. One golden revision must serve v12 and every
+# later run without an edit.
+check "080 the golden carries shared run defaults only (no run identity, timestamp or readiness)" \
+  "S='${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold'; test ! -e \"\$S/run-budget.json\" && test ! -e \"\$S/run-configuration.json\" && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); keys=set(); w=lambda o: [keys.add(k) or w(v) for k,v in o.items()] if isinstance(o,dict) else None; w(d); sys.exit(0 if d['budget']['max_wall_hours']>0 and not keys & {'run_id','declared_at','recorded_at','ready'} else 1)\" \"\$S/run-defaults.json\" && echo GOLDEN_RUN_FREE || echo GOLDEN_CARRIES_A_RUN" \
+  "GOLDEN_RUN_FREE"
+check "080 run_declaration refuses missing, foreign, stale and rewritten declarations" \
+  "python3 '${SCAFFOLD_LIB}/planner/run_declaration.test.py' >/dev/null 2>&1 && echo DECLARATION_SELFTEST_OK || echo DECLARATION_SELFTEST_FAILED" \
+  "DECLARATION_SELFTEST_OK"
+check "080 the launch preflight is run-agnostic and reads the budget through the declaration" \
+  "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_OK || echo RUN_PREFLIGHT_FAILED" \
+  "RUN_PREFLIGHT_OK"
+check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
+  "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
+  "FACTORY_DECLARES_RUN"
 check "080 build-worklist reports failures without repeating verification" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/planning/build-worklist/scripts/build-worklist.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

@@ -85,7 +85,7 @@ workspace state.
 | M4 retrievable `src/` + `pom.xml` | skill `assert-retrievable-tree` |
 | Fence-evasion detector (observation, not a boundary) | skill `assert-no-fence-evasion` |
 | Run / phase data | `evidence/` |
-| Planning contracts | `.hermes/planning/` (schemas, catalogs incl. `compat-mapping.json`, MTA rules, `decisions.example.yaml`); the work-list planner `.hermes/lib/planner/`; the only human input is `decisions.yaml` (platform, attempt threshold, ADR-retired items) |
+| Planning contracts | `.hermes/planning/` (schemas, catalogs incl. `compat-mapping.json`, MTA rules, `decisions.example.yaml`); the work-list planner `.hermes/lib/planner/`; the only human input is `decisions.yaml` (platform, attempt threshold, ADR-retired items); the run budget is `run-defaults.json` (shared) bound by the factory's `run-budget.json` (this run, initial commit) — never edit either |
 | Destination POM authoring | skill `author-destination-pom` |
 | Seat config template | `.hermes/config/config.yaml.template` (no secrets) |
 | Dest worker profiles | `.hermes/config/profiles/{orchestrator,implementer,reviewer}.yaml.template` plus sibling `{name}.SOUL.md` |

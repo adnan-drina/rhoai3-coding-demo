@@ -1062,6 +1062,34 @@ installed policy using server dry runs. Roll back the two policy manifests
 and their Kustomize entries through GitOps if creation is unexpectedly blocked;
 that removes duplicate protection without changing existing workspaces.
 
+## Migration Autostart Refuses With RUN_DECLARATION_*
+
+**Symptom:** a new migration workspace starts, but `.hermes/AUTOSTART-STATUS`
+records `"state": "failed"` with a `RUN_DECLARATION_<CODE>` reason and no M1
+card exists. `run-preflight.sh` fails with the same code.
+
+**Cause:** until 2026-09-24 the golden carried `run-budget.json` and
+`run-configuration.json` naming run v11, and the factory copied them into every
+destination. The golden now carries only shared defaults (`run-defaults.json`);
+the factory writes the run's own `run-budget.json` into the initial commit.
+The code names which half is missing or wrong:
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| `MISSING` | no `run-budget.json` | the template predates the change, or golden and template are out of step: recreate from the template |
+| `DEFAULTS_MISSING` | no `run-defaults.json` | the golden predates the change: publish the golden, then recreate |
+| `STALE` | a v1 (v11-era) declaration, or `run-configuration.json` beside a v2 one | an earlier golden was fetched: publish the current golden, then recreate |
+| `FOREIGN` | declaration names another run than `migration.yaml` / `MIGRATION_RUN_NAME` | recreate; never copy another run's declaration |
+| `NOT_INITIAL` / `ALTERED` | added or changed after the initial commit, or the history does not begin at the platform's scaffolding commit | restore the file from the initial commit (`git checkout <root> -- run-budget.json run-defaults.json`); a changed budget is an assisted continuation, recorded, never a renewal |
+| `UNVERIFIABLE` | shallow clone, several roots, or no git | `git fetch --unshallow`, or recreate |
+| `INVALID` | unreadable, unrendered template markup, or missing provenance | recreate from the template |
+
+Do not hand-write a declaration or edit the golden per run: a recreated run is
+the only way to get a declaration made at the run's own initial commit. The
+explicit **Auto-start migration** off switch still skips autostart without
+checking. Diagnose from the workspace with
+`PYTHONPATH=/projects/modernized/.hermes/lib python3 -m planner.run_declaration --root /projects/modernized`.
+
 ## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
 **Affected stage:** Stage 060

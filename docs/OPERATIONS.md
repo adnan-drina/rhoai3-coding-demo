@@ -122,6 +122,34 @@ and runs normal parent gating. Record the diagnosis in a native comment and
 verify those fields and the issued seal remain unchanged. Do not rerun an LLM
 specifier or decomposer over the sealed card, or edit its database directly.
 
+### Stage 080 run declaration and launch preflight
+
+Every run created by the `app-migration` template after 2026-09-24 carries
+`run-budget.json` (schema `rhoai3.run-budget/v2`), written by the factory into
+the destination's initial commit, binding the golden's `run-defaults.json`.
+Nothing is stamped by hand and the golden is not edited per run.
+
+Check a destination's declaration from inside its workspace (read-only):
+
+```bash
+PYTHONPATH=/projects/modernized/.hermes/lib \
+  python3 -m planner.run_declaration --root /projects/modernized --json
+```
+
+It prints the effective budget (limits, run, initial commit, declaration time)
+or `REFUSE: RUN_DECLARATION_<CODE> …`; autostart records the same refusal in
+`.hermes/AUTOSTART-STATUS` and mints nothing. The launch preflight is
+run-agnostic; the expected model and wall budget come from the golden checkout:
+
+```bash
+WORKSPACE=<project-name> POD=<workspace-pod> GOLDEN_CHECKOUT=<clean golden clone> \
+GOLDEN_SHA=<full sha> PLATFORM_SHA=<full sha> ISOLATION_RECEIPT=<receipt.json> \
+  bash stages/080-ai-autonomous-migration/run-preflight.sh
+```
+
+`v10-preflight.sh`/`v11-preflight.sh` apply only to those runs, whose budgets
+were self-contained (schema v1); run-report still reads them as history.
+
 ### Stage 080 run isolation and v10 qualification
 
 Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and

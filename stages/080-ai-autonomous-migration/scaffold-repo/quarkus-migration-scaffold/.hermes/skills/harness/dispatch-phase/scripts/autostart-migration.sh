@@ -77,6 +77,16 @@ case "${AUTO_START_MIGRATION:-true}" in
 esac
 fi
 
+# Run declaration: this run's name and budget, as the factory declared them in
+# the destination's initial commit (planner/run_declaration.py). Checked on
+# every start and on continuation, never renewed: a restart re-reads the same
+# committed bytes. A refusal stops the run before any card exists -- a missing,
+# foreign, stale or rewritten declaration means this repository would run on
+# a budget that is not its own. The explicit off switch above still wins.
+if ! DECLARATION_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.run_declaration --root "${ROOT}" 2>&1)"; then
+  fail_status "${DECLARATION_OUT#REFUSE: }"
+fi
+
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi

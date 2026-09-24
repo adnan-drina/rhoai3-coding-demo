@@ -9,10 +9,16 @@
 #
 # Form fields are minimal (name, legacy URL, optional autostart). The skeleton
 # stamps only per-run files: devfile (workspace), catalog-info (entity),
-# migration.yaml (provenance + specimen harness contract), k8s runtime;
-# everything else comes from the golden repository. migration.yaml contracts
-# for the two demo freeze-forks are selected from legacyRepoUrl (petclinic /
-# coolstore-cart); unknown URLs stay undecided — never cart literals.
+# migration.yaml (provenance + specimen harness contract), run-budget.json
+# (this run's budget declaration), k8s runtime; everything else comes from the
+# golden repository, which carries no run identity: its run-defaults.json holds
+# the limits and pins every run shares, and run-budget.json binds them. The
+# declaration carries no timestamp (this scaffolder has no clock); the initial
+# commit this task publishes is the declaring event, and its time is the
+# declaration time. One golden revision serves every run unedited.
+# migration.yaml contracts for the two demo freeze-forks are selected from
+# legacyRepoUrl (petclinic / coolstore-cart); unknown URLs stay undecided —
+# never cart literals.
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
@@ -109,6 +115,10 @@ spec:
           name: ${{ parameters.name }}
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           autoStartMigration: ${{ parameters.autoStartMigration }}
+          # The scaffolder task that declares this run (run-budget.json). The
+          # task context is the only run-specific fact the installed scaffolder
+          # exposes besides the parameters: it has no clock, so no time is stamped.
+          scaffolderTaskId: ${{ context.task.id }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           # Dashboard 3.30.1 compares the factory revision with checkoutFrom.
           # An omitted revision does not match main and permits a suffixed copy.

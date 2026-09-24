@@ -87,6 +87,9 @@ def run_autostart(root: Path, fake_bin: Path, extra_env: dict[str, str] | None =
     env = os.environ.copy()
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
     env.pop("HERMES_HOME", None)
+    # Run inside a real workspace, these would name THAT run, not the fixture.
+    env.pop("MIGRATION_RUN_NAME", None)
+    env.pop("PARITY_RUN_RECEIPT", None)
     if extra_env:
         env.update(extra_env)
     args = ["bash", str(SCRIPT), "--root", str(root)]
@@ -101,6 +104,37 @@ def _pins(root: Path, activation: str | None) -> None:
     if activation is not None:
         pins["pins"]["planner"] = {"activation": activation}
     (root / ".hermes" / "pins.json").write_text(json.dumps(pins), encoding="utf-8")
+
+
+def _link_lib(root: Path) -> None:
+    lib = root / ".hermes" / "lib"
+    if not lib.exists():
+        lib.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(GOLDEN / ".hermes" / "lib", lib)
+
+
+def _destination(root: Path, budget: dict | None = None) -> Path:
+    """What the factory publishes: its run declaration, the golden's defaults and
+    the run assignment, all in ONE initial commit (run named after the root)."""
+    _link_lib(root)
+    run = root.name
+    if budget is None:
+        budget = {"schema": "rhoai3.run-budget/v2", "run_id": run, "limits": "run-defaults.json#/budget",
+                  "declared_at_source": "initial-commit",
+                  "declared_by": {"factory": "rhdh-scaffolder", "template": "app-migration",
+                                  "scaffolder_task": "selftest-task"}}
+    if budget:
+        (root / "run-budget.json").write_text(json.dumps(budget), encoding="utf-8")
+    (root / "run-defaults.json").write_text((GOLDEN / "run-defaults.json").read_text(encoding="utf-8"),
+                                            encoding="utf-8")
+    (root / "migration.yaml").write_text("resources:\n  run: %s\n" % run, encoding="utf-8")
+    git = ["git", "-c", "user.name=factory", "-c", "user.email=factory@example.invalid",
+           "-c", "commit.gpgsign=false", "-C", str(root)]
+    subprocess.run(git + ["init", "-q"], check=True)
+    subprocess.run(git + ["add", "run-budget.json", "run-defaults.json", "migration.yaml"]
+                   if budget else git + ["add", "run-defaults.json", "migration.yaml"], check=True)
+    subprocess.run(git + ["commit", "-q", "-m", "scaffold"], check=True)
+    return root
 
 
 def _argv_log(store: Path) -> list[list[str]]:
@@ -148,6 +182,7 @@ def main() -> int:
         root = tmp_p / "proj"
         root.mkdir()
         _pins(root, "not-activated")
+        _destination(root)
         store = tmp_p / "store"
         fake_bin = tmp_p / "bin"
         fake_bin.mkdir()
@@ -169,6 +204,7 @@ def main() -> int:
         root_np = tmp_p / "nopins"
         root_np.mkdir()
         _pins(root_np, None)
+        _destination(root_np)
         store_np = tmp_p / "store-np"
         bin_np = tmp_p / "bin-np"
         bin_np.mkdir()
@@ -179,6 +215,7 @@ def main() -> int:
         root_a = tmp_p / "activated"
         root_a.mkdir()
         _pins(root_a, "activated")
+        _destination(root_a)
         store_a = tmp_p / "store-a"
         bin_a = tmp_p / "bin-a"
         bin_a.mkdir()
@@ -198,7 +235,7 @@ def main() -> int:
         if set(json.loads((store_a / "keys.json").read_text())) != {"m1-analyze", "m2-plan"}:
             return _fail("activated rerun must reuse keys")
         # A manually started native M1 continues even with startup disabled.
-        os.symlink(GOLDEN / ".hermes/lib", root_a / ".hermes/lib")
+        _link_lib(root_a)
         before = len(_argv_log(store_a))
         proc = run_autostart(root_a, bin_a, {"AUTO_START_MIGRATION": "false"}, after_m1="t_m1")
         status = json.loads((root_a / ".hermes/AUTOSTART-STATUS").read_text())
@@ -220,7 +257,7 @@ def main() -> int:
             task["task"][key] = original
         task_path.write_text(json.dumps(task))
         # Continuation is not a grant of planner activation.
-        os.symlink(GOLDEN / ".hermes/lib", root / ".hermes/lib")
+        _link_lib(root)
         proc = run_autostart(root, fake_bin, {"AUTO_START_MIGRATION": "false"}, after_m1="t_m1")
         if proc.returncode or json.loads((root / ".hermes/AUTOSTART-STATUS").read_text()).get("m2_id"):
             return _fail("continuation must preserve inactive planner")
@@ -234,10 +271,11 @@ def main() -> int:
             os.symlink(GOLDEN / ".hermes" / "lib", r / ".hermes" / "lib")
             bundle = {"schema": "rhoai3.evidence-bundle/v1", "producers": {"mta": {"status": "ok"}}, "obligations": []}
             if with_bundle:
-                (r / "evidence" / "planning").mkdir(parents=True)
+                (r / "evidence" / "planning").mkdir(parents=True, exist_ok=True)
                 (r / "evidence" / "planning" / "evidence-bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
             seal = {"run_id": "pilot-1", "authorized_by": "stage owner", "evidence_bundle_sha256": seal_digest if seal_digest is not None else digest(bundle)}
             (r / ".hermes" / "pins.json").write_text(json.dumps({"schema": "rhoai3.tooling-pins/v1", "pins": {"planner": {"activation": "pilot", "pilot": seal}}}), encoding="utf-8")
+            _destination(r)
             st = tmp_p / (name + "-store")
             b = tmp_p / (name + "-bin")
             b.mkdir()
@@ -262,6 +300,48 @@ def main() -> int:
         st_b = json.loads((r_bad / ".hermes" / "AUTOSTART-STATUS").read_text())
         if proc.returncode != 0 or st_b.get("m2_id") or st_b.get("planner_activation") != "not-activated":
             return _fail("pilot seal for another bundle must not mint M2: %s" % st_b)
+        # The run declaration gates every start: refused before any card exists,
+        # with the typed code in AUTOSTART-STATUS; the off switch still wins.
+        def _refuses(name: str, code: str, budget: dict | None = None, env: dict | None = None,
+                     tamper=None) -> str:
+            r = tmp_p / name
+            r.mkdir()
+            _pins(r, "activated")
+            _destination(r, budget)
+            if tamper:
+                tamper(r)
+            st = tmp_p / (name + "-store")
+            b = tmp_p / (name + "-bin")
+            b.mkdir()
+            write_fake_hermes(b / "hermes", st)
+            proc = run_autostart(r, b, env)
+            status = json.loads((r / ".hermes" / "AUTOSTART-STATUS").read_text())
+            if (proc.returncode == 0 or status.get("state") != "failed" or code not in status.get("reason", "")
+                    or (st / "argv.jsonl").exists()):
+                return "%s: expected refusal %s before any mint, got rc=%d %s" % (name, code, proc.returncode, status)
+            return ""
+
+        legacy_v11 = {"schema": "rhoai3.run-budget/v1", "run_id": "v11", "declared_at": "2026-09-23T17:10:00Z",
+                      "max_wall_hours": 24}
+        for why in (
+            _refuses("no-declaration", "RUN_DECLARATION_MISSING", budget={}),
+            _refuses("other-run", "RUN_DECLARATION_FOREIGN", env={"MIGRATION_RUN_NAME": "someone-else"}),
+            _refuses("stale-golden", "RUN_DECLARATION_STALE", budget=legacy_v11),
+            _refuses("renewed", "RUN_DECLARATION_ALTERED", tamper=lambda r: (r / "run-budget.json").write_text(
+                json.dumps(dict(json.loads((r / "run-budget.json").read_text()), max_wall_hours=48)))),
+        ):
+            if why:
+                return _fail(why)
+        off_nodecl = tmp_p / "off-nodecl"
+        off_nodecl.mkdir()
+        _pins(off_nodecl, "activated")
+        _destination(off_nodecl, budget={})
+        off_nd_bin = tmp_p / "off-nd-bin"
+        off_nd_bin.mkdir()
+        write_fake_hermes(off_nd_bin / "hermes", tmp_p / "off-nd-store")
+        off_nd = run_autostart(off_nodecl, off_nd_bin, extra_env={"AUTO_START_MIGRATION": "false"})
+        if off_nd.returncode != 0 or json.loads((off_nodecl / ".hermes" / "AUTOSTART-STATUS").read_text()).get("state") != "skipped":
+            return _fail("the explicit off switch must still skip, even before a declaration exists")
         # off
         off_root = tmp_p / "off"
         off_root.mkdir()
@@ -280,7 +360,7 @@ def main() -> int:
     rc = assert_bodies_name_native_backings()
     if rc:
         return rc
-    print("OK: autostart-migration (M1 only when not activated; M2 child of M1 when activated; pilot mints M2 only for the sealed bundle on disk; idempotent; off; golden not activated)")
+    print("OK: autostart-migration (run declaration gates every start; M1 only when not activated; M2 child of M1 when activated; pilot mints M2 only for the sealed bundle on disk; idempotent; off; golden not activated)")
     return 0
 
 
