@@ -131,3 +131,8 @@ condition, evidence, owner, and the smallest bounded repair. Preserve failed
 attempts. After a candidate SHA changes, revalidate pipeline, deployment, and
 live evidence; do not reuse another revision's records. No identical retry, no
 new monitoring agent, no parallel manual deploy path.
+
+## Authoring validation
+
+`python3 scripts/selftest.py` (golden only, never on a card): steps.json ↔
+audit.json sync, delivery step contracts, and the M5 delivery regression suite.
