@@ -231,7 +231,11 @@ def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     for t in here:
         for m in (t.get("declared") or []):
             for ann in (m.get("annotations") or []):
-                for value in (ann.get("values") or {}).values():
+                # DestModel emits `values` as a list of literals; the source
+                # model's rows carry a dict. Read both, or the tool crashes on
+                # the first annotated member it meets (v12 t_b33f25fa, @Value).
+                vals = ann.get("values") or []
+                for value in (vals.values() if isinstance(vals, dict) else vals):
                     if str(value) in fqns:
                         return "sealed: %s.%s reads %s, the property this unit seals" % (t.get("fqn"), m.get("name"), value), ""
     return "", ("%s declares %s, which the unit's sealed symbols do not reach: it does not implement or extend one, does "

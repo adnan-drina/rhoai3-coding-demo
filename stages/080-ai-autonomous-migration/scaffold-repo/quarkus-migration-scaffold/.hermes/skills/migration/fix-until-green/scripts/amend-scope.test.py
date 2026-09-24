@@ -35,7 +35,9 @@ SOURCES = {
         "    List<Vet> findByLastName(String lastName);\n}\n",
     "src/main/java/p/Vet.java": "package p;\npublic class Vet { public String lastName; }\n",
     # a file with no bearing on the failure at all
-    "src/main/java/p/SecurityConfig.java": "package p;\npublic class SecurityConfig { boolean enabled = true; }\n",
+    # an ANNOTATED member: DestModel emits its values as a LIST, which the
+    # unit reach test once read as a dict and crashed on (v12 t_b33f25fa)
+    "src/main/java/p/SecurityConfig.java": "package p;\npublic class SecurityConfig { boolean enabled = true; @SuppressWarnings(\"unused\") public void configure() { } }\n",
     "src/main/java/p/Pet.java": "package p;\npublic class Pet {}\n",
     "src/main/java/p/Owner.java": "package p;\npublic class Owner {}\n",
     "src/test/java/p/VetTest.java": "package p;\npublic class VetTest {}\n",

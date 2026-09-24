@@ -1694,12 +1694,55 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
         return 0
 
 
+def _unit_gate_handoff_case() -> int:
+    """v12 t_b33f25fa: a unit on the PACKAGE gate is accepted at its checkpoint
+    only when its issued obligation is gone, every sealed member assesses
+    clean, and every failure the gate now reports is located in a file the
+    unit does not reach. Each missing condition keeps it pending (None)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_mod", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    root = Path(tempfile.mkdtemp())
+    unreached = lambda _r, _s, rel: ("", "%s declares X, which the unit's sealed symbols do not reach" % rel)
+    reached = lambda _r, _s, rel: ("sealed: %s implements the sealed parent" % rel, "")
+    rows = [{"verdict": "ok", "member": "a#b"}] * 3
+    issued = {"gate_items": ["rt:package:old"]}
+    spel = {"id": "rt:package:new", "gate": "package", "path": "src/main/java/p/RootRestController.java",
+            "cause": "unsupported-spel", "unlocated": False, "set_wide": []}
+    cur = {"items": [spel]}
+    h = adv._unit_gate_handoff(root, {}, rows, issued, cur, "package", reach=unreached)
+    if not h or h["now_reported"][0]["path"] != spel["path"] or h["issued"] != ["rt:package:old"] or "closing card" not in h["owed_by"]:
+        return _fail("the unit whose gate now stops on an unreached obligation must hand off: %s" % h)
+    if "unsupported-spel" not in h["reason"] or "RootRestController" not in h["reason"]:
+        return _fail("the handoff reason must name the obligation and where it is: %s" % h["reason"])
+    for why, kw in (
+        ("the issued obligation is still reported", dict(cur={"items": [spel, dict(spel, id="rt:package:old")]})),
+        ("the new failure is in a file the unit reaches", dict(reach=reached)),
+        ("the new failure is unlocated", dict(cur={"items": [dict(spel, unlocated=True)]})),
+        ("the new failure is set-wide", dict(cur={"items": [dict(spel, set_wide=["repositories"])]})),
+        ("the new failure has no path", dict(cur={"items": [dict(spel, path="")]})),
+        ("a sealed member is inconclusive", dict(rows=rows + [{"verdict": "inconclusive", "member": "c#d"}])),
+        ("a sealed member violates", dict(rows=rows + [{"verdict": "violates", "member": "c#d"}])),
+        ("the gate is not package", dict(gate="boot")),
+        ("the gate reports nothing", dict(cur={"items": []})),
+        ("nothing was issued on the gate", dict(issued={"gate_items": []})),
+    ):
+        args = dict(rows=rows, issued=issued, cur=cur, gate="package", reach=unreached)
+        args.update(kw)
+        got = adv._unit_gate_handoff(root, {}, args["rows"], args["issued"], args["cur"], args["gate"], reach=args["reach"])
+        if got is not None:
+            return _fail("%s: the unit must stay pending, got a handoff %s" % (why, got))
+    shutil.rmtree(root, ignore_errors=True)
+    return 0
+
+
 def main() -> int:
     if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1
-    if _unit_checkpoint_case():
+    if _unit_checkpoint_case() or _unit_gate_handoff_case():
         return 1
     if _si1_case():
         return 1
@@ -2309,7 +2352,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); SCRATCH IN THE TREE (v9 t_46556d5e): untracked files outside this migration's product that appear after the verification (javap's extracted .class files at the root) are a typed refusal naming them -- no attempt, the candidate untouched -- while a product path touched after the verification still REVERTS, and the same candidate is ACCEPTED once the scratch is removed, under a renamed specimen too); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); SCRATCH IN THE TREE (v9 t_46556d5e): untracked files outside this migration's product that appear after the verification (javap's extracted .class files at the root) are a typed refusal naming them -- no attempt, the candidate untouched -- while a product path touched after the verification still REVERTS, and the same candidate is ACCEPTED once the scratch is removed, under a renamed specimen too); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell; a unit on the package gate whose issued obligation is gone, whose members all assess clean and whose gate now stops ONLY on located obligations it does not reach is handed off at its checkpoint (proof owed by the closing card), and any missing condition keeps it pending)")
     return 0
 
 

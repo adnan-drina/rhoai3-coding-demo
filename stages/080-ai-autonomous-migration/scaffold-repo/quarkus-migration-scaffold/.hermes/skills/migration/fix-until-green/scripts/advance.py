@@ -962,6 +962,7 @@ def main(argv: list[str] | None = None) -> int:
                           issued_identities=issued_identities,
                           cur_identities=cur_identities if issued_identities is not None else None,
                           family_scope=family_keys)
+    handoff = None
     if not ok:
         if ok is RETAIN:
             # the compiler moved to another member of THIS card's sealed family
@@ -977,13 +978,19 @@ def main(argv: list[str] | None = None) -> int:
         if ok is UNPROVEN:
             # the repair may well be right and the gate cannot say so yet. A
             # unit whose members could not be assessed is the other shape of
-            # the same thing, and it keeps its own cause.
-            cause = "unassessable-scope" if (unit and any(r.get("verdict") == "inconclusive" for r in scope_rows)) else "unproven-repair"
-            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause=cause)
-        if not (cur.get("measure") or {}).get("known"):
-            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
-        clear_pending(steps, args.cluster, why="rejected")
-        return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
+            # the same thing, and it keeps its own cause. The one exception is
+            # a unit whose gate now stops on an obligation it does not reach
+            # (_unit_gate_handoff): accepted at its checkpoint, proof owed later.
+            handoff = _unit_gate_handoff(root, scope_doc, scope_rows, issued, cur, gate) if unit else None
+            if handoff is None:
+                cause = "unassessable-scope" if (unit and any(r.get("verdict") == "inconclusive" for r in scope_rows)) else "unproven-repair"
+                return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause=cause)
+            reason = handoff["reason"]
+        if handoff is None:
+            if not (cur.get("measure") or {}).get("known"):
+                return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
+            clear_pending(steps, args.cluster, why="rejected")
+            return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
     if scope_ref and family and bad:
         # the measure fell and a member still breaks the family's rule (caught,
         # declared, or its operation deleted): that is not a repair
@@ -1042,6 +1049,10 @@ def main(argv: list[str] | None = None) -> int:
                            # which diagnostics were carried and which catalogue
                            # row documented each one
                            "explained_regressions": list(explained_rows),
+                           # a unit accepted because its gate now stops on an
+                           # obligation it does not reach: what was handed off,
+                           # to what, and who still owes the gate's proof
+                           "gate_handoff": ({k: v for k, v in handoff.items() if k != "reason"} if handoff else {}),
                            "revisions": list(issued.get("revisions") or []),
                            "continuations": list(issued.get("continuations") or []),
                            "checked_exceptions": ({k: (checked.get(k) if k in ("state", "base", "coverage") else len(checked.get(k) or []))
@@ -1067,6 +1078,57 @@ def main(argv: list[str] | None = None) -> int:
     rc = _mint(root, args.hermes)
     _phase("done")
     return rc
+
+
+def _unit_gate_handoff(root: Path, scope_doc: dict, scope_rows: list[dict], issued: dict, cur: dict,
+                       gate: str, reach=None) -> dict | None:
+    """Whether a UNIT's gate obligation is discharged at its checkpoint because
+    the failure the gate NOW reports belongs to a different obligation.
+
+    The package gate reports one failure at a time, so its issued obligation
+    disappearing is not proof by itself (UNPROVEN). But when every sealed
+    member assesses clean and EVERY failure the gate now reports is located in
+    a file this unit does not reach -- judged by the same reach test
+    amend-scope.py applies, which refuses to widen the card to that file --
+    the unit cannot make the gate pass, and neither can any card while the
+    unit holds the slot (v12 t_b33f25fa: the fragment implementations were
+    right and the build then stopped on an unrelated SpEL @Value). The unit
+    is accepted at its checkpoint, the new obligation is the next card, and
+    the package+boot proof stays owed by the closing card, which needs an
+    empty list and both gates passing on the same artifact. Anything short
+    of that -- an unlocated or set-wide failure, a failure in a file the unit
+    reaches, a member not assessed clean -- is None, and the card stays
+    pending exactly as before.
+    """
+    if gate != "package" or not scope_rows or any(r.get("verdict") != "ok" for r in scope_rows):
+        return None
+    issued_gate = {str(i) for i in (issued.get("gate_items") or [])}
+    now = [i for i in (cur.get("items") or []) if str(i.get("gate") or "") == gate]
+    if not issued_gate or not now or issued_gate & {str(i.get("id")) for i in now}:
+        return None
+    if reach is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("amend_scope", Path(__file__).resolve().parent / "amend-scope.py")
+        amend = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(amend)
+        reach = amend._unit_locus
+    rows = []
+    for item in now:
+        rel = str(item.get("path") or "")
+        if item.get("unlocated") or item.get("set_wide") or not rel:
+            return None
+        reached, why_not = reach(root, scope_doc, rel)
+        if reached or not why_not:
+            return None
+        rows.append({"id": str(item.get("id")), "path": rel, "cause": str(item.get("cause") or ""),
+                     "outside_unit": why_not[:300]})
+    return {"gate": gate, "issued": sorted(issued_gate), "now_reported": rows,
+            "owed_by": "the closing card: an empty work list and the package and boot gates passing on the same artifact",
+            "reason": ("the unit's %s obligation %s is no longer reported and every sealed member assesses clean; the "
+                       "gate now stops on %s, located in %s, which this unit does not reach -- a different obligation, "
+                       "minted next; the %s proof stays owed by the closing card"
+                       % (gate, ", ".join(sorted(issued_gate)), ", ".join(r["cause"] or r["id"] for r in rows),
+                          ", ".join(r["path"] for r in rows), gate))}
 
 
 def _mint(root: Path, hermes: str) -> int:
