@@ -1,5 +1,16 @@
 # v11 launch packet — updated 2026-09-24
 
+**Later creation checkpoint:** the user created v11 after the qualification
+below. Dashboard left `spring-petclinic-rest-legacy-v11` incomplete (missing
+editor) and created running `spring-petclinic-rest-legacy-v11-mdmn`. Both remain
+preserved and migration auto-start is off. The factory reuse/duplicate fix is
+platform `47a1fdac656e71b1ae8e21e5b73c3d1526ab4a7d`, live-validated separately
+(`tmp/v11-duplicate-workspace-20260924/`). The 13-check receipt below remains
+bound to `080d2585`; it has not been relabelled to the newer platform revision.
+Recover the canonical workspace identity and reconcile the platform
+qualification before the complete v11 preflight/dispatch. The historical
+creation checklist below is not authorization to create another run.
+
 Prerequisites qualified live on September 24. Creation of
 `spring-petclinic-rest-legacy-v11` remains the user's manual handoff with
 auto-start disabled. Do not dest-install or dest-dispatch from this file.
