@@ -317,6 +317,37 @@ def profile_gaps(root: Path) -> list[str]:
     return []
 
 
+IMAGE_STAMP = Path("/opt/rhoai3/080.pins")
+
+
+def runtime_gaps(root: Path, stamp: Path | None = None) -> list[str]:
+    """A governed run needs the Hermes runtime its harness was qualified on:
+    the image's build stamp names the patched source tree (B11/B3/B4/R2 patch
+    series), and it must be the one `pins.json` `hermes_agent.patched_tree`
+    names. An unpatched or other image would run without the loop halt, the
+    truncation and quota stops, or the request pacer. Legacy runs: no gap."""
+    if declared(root) is None:
+        return []
+    try:
+        want = str(((json.loads((Path(root) / ".hermes/pins.json").read_text(encoding="utf-8")).get("pins") or {})
+                    .get("hermes_agent") or {}).get("patched_tree") or "")
+    except (OSError, ValueError):
+        want = ""
+    if not want:
+        return ["HERMES_RUNTIME_UNPINNED: .hermes/pins.json names no hermes_agent.patched_tree for this governed run"]
+    stamp = Path(stamp or IMAGE_STAMP)
+    try:
+        lines = stamp.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return ["HERMES_RUNTIME_UNPATCHED: the image build stamp %s is unreadable (%s); expected patched tree %s"
+                % (stamp, exc.__class__.__name__, want[:12])]
+    got = next((l.split("=", 1)[1].strip() for l in lines if l.startswith("hermes.patched_tree=")), "")
+    if got != want:
+        return ["HERMES_RUNTIME_UNPATCHED: the image's Hermes tree is %s, the harness is qualified on %s (%s)"
+                % (got[:12] or "unpatched", want[:12], stamp)]
+    return []
+
+
 def run_gaps(root: Path) -> list[str]:
     """Everything a governed run must still be what it was created as."""
     out: list[str] = []

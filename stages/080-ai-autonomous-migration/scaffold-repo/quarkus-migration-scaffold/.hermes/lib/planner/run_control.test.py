@@ -198,19 +198,44 @@ def _case(run: str) -> int:
         subprocess.run(["git", "init", "-q", str(root)], check=True)
         _git(root, "add", "-A")
         _git(root, "commit", "-q", "-m", "legacy scaffold")
-        if run_control.in_use(root) or run_control.run_gaps(root) or pins_mod.planner_activation(pins_mod.load_pins(root)) != "activated":
+        if run_control.in_use(root) or run_control.run_gaps(root) or run_control.runtime_gaps(root, Path(d) / "absent") or pins_mod.planner_activation(pins_mod.load_pins(root)) != "activated":
             return _fail("a legacy run keeps pins.json and has no run-control gaps (%s)" % run)
     return 0
 
 
+def _runtime_case(run: str) -> int:
+    with tempfile.TemporaryDirectory() as d:
+        td = Path(d)
+        root, _control, _state, _managed = _governed(td, run)
+        stamp = td / "080.pins"
+        tree = "4" * 40
+        pins = json.loads((root / ".hermes/pins.json").read_text())
+        if run_control.runtime_gaps(root, stamp)[0].split(":")[0] != "HERMES_RUNTIME_UNPINNED":
+            return _fail("a governed harness without a runtime pin refuses")
+        pins["pins"]["hermes_agent"] = {"patched_tree": tree}
+        (root / ".hermes/pins.json").write_text(json.dumps(pins), encoding="utf-8")
+        for body in (None, "hermes=v0.20.5\n", "hermes.patched_tree=%s\n" % ("5" * 40)):
+            if body is not None:
+                stamp.write_text(body, encoding="utf-8")
+            g = run_control.runtime_gaps(root, stamp)
+            if not g or not g[0].startswith("HERMES_RUNTIME_UNPATCHED"):
+                return _fail("a missing stamp, an unpatched image and another tree refuse: %r -> %s" % (body, g))
+        stamp.write_text("hermes=v0.20.5\nhermes.patched_tree=%s\n" % tree, encoding="utf-8")
+        if run_control.runtime_gaps(root, stamp):
+            return _fail("the pinned patched tree is accepted: %s" % run_control.runtime_gaps(root, stamp))
+    return 0
+
+
 def main() -> int:
+    if _runtime_case("spring-petclinic-rest-legacy-v13") or _runtime_case("orders-service-v2"):
+        return 1
     if _case("spring-petclinic-rest-legacy-v13") or _case("orders-service-v2"):
         return 1
     print("OK: run_control (a governed run is authorized only by the platform's read-only contract -- checkout, reset, "
           "stash and forged pins change nothing; missing, empty, malformed, foreign, moved and env-redirected records "
           "refuse; the M1 binding is write-once; harness drift refuses until a recorded rebase; a runtime profile or "
           "generated config that differs from the pinned profile refuses, digests recomputed from content; nothing "
-          "re-blesses a lost pin; a legacy run keeps pins.json)")
+          "re-blesses a lost pin; an image without the pinned patched Hermes tree refuses; a legacy run keeps pins.json)")
     return 0
 
 

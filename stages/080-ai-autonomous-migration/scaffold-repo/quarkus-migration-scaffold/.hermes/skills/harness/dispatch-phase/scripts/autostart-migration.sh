@@ -108,6 +108,11 @@ fi
 if ! RUNCTL_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -c 'import sys; from planner.run_control import run_gaps; g = run_gaps(sys.argv[1]); print(g[0] if g else "run control: ok or not declared"); raise SystemExit(1 if g else 0)' "${ROOT}" 2>&1)"; then
   fail_status "${RUNCTL_OUT}"
 fi
+# ... and on the Hermes runtime the harness was qualified on: the image stamp
+# names the pinned patched tree (loop halt, truncation/quota stops, pacer).
+if ! RUNTIME_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -c 'import sys; from planner.run_control import runtime_gaps; g = runtime_gaps(sys.argv[1]); print(g[0] if g else "hermes runtime: ok or not declared"); raise SystemExit(1 if g else 0)' "${ROOT}" 2>&1)"; then
+  fail_status "${RUNTIME_OUT}"
+fi
 
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
