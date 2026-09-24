@@ -33,3 +33,27 @@ resources:
   - vscode-editor-configurations.yaml
   - workspaces.yaml
   - agentic-workspace.yaml
+
+# B4 / R1: the ONE declared model profile table (model-profiles.json). dest-init
+# generates every model-dependent worker setting from it; the migration-run
+# provisioner copies it, per run, into that run's read-only run control as the
+# run's PINNED profile, so a later change here never alters a run in flight.
+# Mounted read-only into workspaces at /etc/rhoai3/model-profiles; mount-on-start
+# keeps a change from restarting running workspaces. A fixed name (no hash
+# suffix) because the provisioner reads it by name.
+configMapGenerator:
+- name: migration-model-profiles
+  namespace: wksp-ai-developer
+  files:
+  - model-profiles.json
+  options:
+    disableNameSuffixHash: true
+    labels:
+      controller.devfile.io/mount-to-devworkspace: "true"
+      controller.devfile.io/watch-configmap: "true"
+      rhoai3.io/purpose: model-profiles
+    annotations:
+      argocd.argoproj.io/sync-wave: "17"
+      controller.devfile.io/mount-as: file
+      controller.devfile.io/mount-path: /etc/rhoai3/model-profiles
+      controller.devfile.io/mount-on-start: "true"

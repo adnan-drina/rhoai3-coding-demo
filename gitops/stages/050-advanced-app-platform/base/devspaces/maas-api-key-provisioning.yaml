@@ -1205,78 +1205,27 @@ data:
             "MAAS_API_KEY_QWEN27B)"
         )
     service_ca = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
-    # B4: ONE declared runtime profile per model and mode. Every worker
-    # setting below that depends on the model is generated from this table,
-    # the resolved table is written beside the config (model-profile.json)
-    # with its digest, dest-init pins that digest in the run's control
-    # object, and the loop refuses to run under a different one
-    # (MODEL_PROFILE_MISMATCH). A model without a profile has no provider.
-    MODEL_PROFILES = {
-        "qwen3-8-27b-int4": {
-            "provider": "qwen38",
-            "mode": "non-thinking",
-            # below the served 262144; see model.context_length
-            "context_length": 220000,
-            "served_context": 262144,
-            "max_tokens": 8192,
-            # Request + stream-read timeout for this model. Hermes defaults
-            # the stream read timeout to 120s for non-local endpoints; vLLM
-            # buffers a tool call's arguments until complete, so a worker
-            # writing a ~12 KB file through a tool call sends no bytes for ~4K
-            # tokens at ~18 tok/s (> 120s) and Hermes raises APITimeoutError
-            # and retries (measured live 2026-09-09, pilot v5 M3 t_3efca989).
-            "timeout_seconds": 900,
-            "stale_timeout_seconds": 900,
-            "api_env": "MAAS_API_BASE_URL",
-            # v7 item 7 (measured 2026-09-10 on pilot v6): the served Qwen3
-            # honours the chat template's enable_thinking switch. With
-            # thinking on, a one-line question cost 600 reasoning tokens /
-            # 32 s and loop cards ran 160-400 log lines with 10+ reasoning
-            # blocks; with it off, an 8-item compile card ran 84 lines, 0
-            # reasoning blocks, 167 s, same correct patch. The brief carries
-            # what the reasoning re-derived. Hermes passes extra_body for a
-            # named provider (config.providers_dict_to_custom_providers).
-            #
-            # Sampling: the Qwen3.8-27B card's Instruct (non-thinking) row.
-            # vLLM serves this model with the card's THINKING row
-            # (temperature 1.0, top_p 0.95, no presence penalty) through
-            # --override-generation-config, but workers run thinking off. On
-            # v12 (2026-09-24, t_655b1607) two consecutive responses ran to
-            # the full 8192-token cap for a ~275-token patch; the card names
-            # presence_penalty as the control for repetitive output. Set per
-            # request here, not on the served default, which other clients
-            # may use in thinking mode.
-            # https://huggingface.co/Qwen/Qwen3.8-27B#api-usage
-            "request_body": {
-                "chat_template_kwargs": {"enable_thinking": False},
-                "temperature": 0.7,
-                "top_p": 0.8,
-                "top_k": 20,
-                "min_p": 0.0,
-                "presence_penalty": 1.5,
-                "repetition_penalty": 1.0,
-            },
-            # B3: the declared demand one worker may place on the model's
-            # quota window, checked against the live MaaSSubscription by
-            # run-preflight.sh (MODEL_RATE_BUDGET). v12's busiest hour was
-            # ~280 requests (25M tokens at ~90K per call).
-            "quota": {"window": "1h", "max_requests_per_window": 300, "concurrency": 1},
-        },
-        "qwen3-6-27b": {
-            "provider": "qwen27b",
-            "mode": "non-thinking",
-            # below the served 131072
-            "context_length": 110000,
-            "served_context": 131072,
-            "max_tokens": 8192,
-            "timeout_seconds": 900,
-            "stale_timeout_seconds": 900,
-            "api_env": "MAAS_API_BASE_URL_QWEN36",
-            "request_body": {"chat_template_kwargs": {"enable_thinking": False}},
-            "quota": {"window": "1h", "max_requests_per_window": 300, "concurrency": 1},
-        },
-    }
-    DEFAULT_MODEL = "qwen3-8-27b-int4"
+    # B4 / R1: ONE declared runtime profile per model and mode, and one source
+    # for it (gitops .../devspaces/model-profiles.json, ConfigMap
+    # migration-model-profiles). A migration run reads the copy the platform
+    # PINNED for it in its read-only run control; any other seat reads the
+    # platform's current table. Every model-dependent worker setting below is
+    # generated from it, the resolved profile is written beside the config
+    # (model-profile.json), and the loop refuses a runtime that differs from the
+    # pin (MODEL_PROFILE_MISMATCH).
+    import json as _pjson
+    _pinned_profile = "/etc/rhoai3/run-control/profile.json"
+    _platform_profile = "/etc/rhoai3/model-profiles/model-profiles.json"
+    _profile_src = _pinned_profile if os.path.isfile(_pinned_profile) else _platform_profile
+    if not os.path.isfile(_profile_src):
+        raise SystemExit(
+            "ERROR: no model profile at %s or %s (ConfigMap migration-model-profiles)"
+            % (_pinned_profile, _platform_profile)
+        )
+    with open(_profile_src) as fh:
+        _profile_doc = _pjson.load(fh)
+    MODEL_PROFILES = _profile_doc["profiles"]
+    DEFAULT_MODEL = _profile_doc["default_model"]
 
     def _provider(model_id):
         prof = MODEL_PROFILES[model_id]
@@ -1477,9 +1426,13 @@ data:
             "background_review": {
                 "enabled": False,
             },
+            # B4: the compression summaries run on the main model; without the
+            # profile's request body they went out with thinking ON and the
+            # served sampling (measured on the pinned runtime, 2026-09-24).
             "compression": {
                 "provider": "auto",
                 "model": "",
+                "extra_body": dict(MODEL_PROFILES[DEFAULT_MODEL]["request_body"]),
             },
         },
         # Context compression (top-level key; official defaults threshold
@@ -1659,6 +1612,15 @@ data:
         # Terminal allow-root (Architect 214325ZA). Not the write sandbox.
         fh.write(f"K2_ALLOW_ROOT={safe_root}:/projects/legacy\n")
         fh.write("HERMES_REAL_BIN=/usr/local/bin/hermes\n")
+        # B3 / R2: the run's ENFORCED request allowance, paced by the Hermes
+        # runtime (patch 0007) across every model request of every process of
+        # the run: main calls, each retry, auxiliary and reviewer calls. The
+        # ledger lives in the run-control state directory, outside the
+        # destination and outside the worker's write sandbox.
+        _q = MODEL_PROFILES[DEFAULT_MODEL]["quota"]
+        fh.write("RHOAI3_REQUEST_BUDGET=%d/%d\n" % (_q["max_requests_per_window"], _q["window_seconds"]))
+        fh.write("RHOAI3_REQUEST_BUDGET_MAX_WAIT=%d\n" % _q["max_wait_seconds"])
+        fh.write("RHOAI3_REQUEST_LEDGER=/projects/.platform/run-control-state/requests.log\n")
         # Worker request budgets (belt and braces with providers.custom above):
         # vLLM buffers a tool call's arguments until complete, so a large
         # write is minutes of silence on the wire at ~18 tok/s.
@@ -2501,33 +2463,17 @@ data:
             "note": "creating the workspace is the authorization; the harness binds it to the M1 bundle and never invents run_id or authorized_by",
         },
     }
-    # B8 (v12 t_b33f25fa): a golden that carries planner.run_control keeps the
-    # run's activation in <projects>/.platform/run-control, outside anything a
-    # git checkout, reset or stash in the destination can reach, and records
-    # the harness release the run is created with (B10). An older golden keeps
-    # the seal in pins.json exactly as before.
+    # B8 / R3 (v12 t_b33f25fa): a run the factory declared under run control is
+    # authorized by the PLATFORM's read-only record (the migration-run
+    # provisioner's <run>-run-control ConfigMap); dest-init writes no seal for
+    # it anywhere. Only a legacy run keeps the pins.json seal below.
     sys.path.insert(0, str(root / ".hermes" / "lib"))
     try:
         from planner import run_control
     except Exception:
         run_control = None
-    if run_control is not None:
-        run_control.run_control_dir(root).mkdir(parents=True, exist_ok=True)
-        run_control.record_release(root, run_control.harness_release_digest(root), "dest-init")
-        if hasattr(run_control, "record_profile"):
-            run_control.record_profile(root, "dest-init")
-        held = run_control.read_activation(root)
-        if held is not None:
-            print("dest-init: run control already holds the activation (%s) for run %s; left alone"
-                  % (held.get("activation"), (held.get("pilot") or {}).get("run_id") or "-"))
-            raise SystemExit(0)
-        if mode == "activated":
-            run_control.write_activation(root, {"activation": "activated"}, "recorded", "the golden is activated")
-            print("dest-init: planner is activated; recorded in run control")
-            raise SystemExit(0)
-        run_control.write_activation(root, {"activation": "pilot", "pilot": pilot}, "recorded",
-                                     "dest-init: creating the workspace authorizes the run")
-        print("dest-init: pilot authorization recorded in run control for run %s by %s (bundle unbound)" % (name, creator))
+    if run_control is not None and hasattr(run_control, "declared") and run_control.in_use(root):
+        print("dest-init: run %s is governed by the platform's run control; no pins.json seal is written" % name)
         raise SystemExit(0)
     if mode == "activated":
         print("dest-init: planner is activated; no seal needed")

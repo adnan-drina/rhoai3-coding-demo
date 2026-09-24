@@ -303,16 +303,16 @@ the read-only `run-preflight.sh` with `WORKSPACE` set to the project name (see
 [OPERATIONS](../../docs/OPERATIONS.md#stage-080-run-declaration-and-launch-preflight)).
 `v10-preflight.sh` and `v11-preflight.sh` remain the records of those launches.
 
-A run also keeps its own **run control** under `/projects/.platform/run-control/`,
-outside the destination repository, written by dest-init and the M1 bind:
+A v13+ run is governed by **run control**. Its initial-commit `run-budget.json`
+declares it, and the migration-run provisioner writes the record from the
+validated scaffolding push. The coding worker cannot write it:
 
-| File | Holds |
-|------|-------|
-| `activation.json` | the run's planner activation and its bundle seal (read-only; `.hermes/pins.json` is only the golden default) |
-| `release.json` | the harness release the run was created with; the loop refuses to run on another |
-| `profile.json` | the model profile its worker config was generated from; the loop refuses to run on another |
-| `route.json` | the last in-cluster MaaS route check (`planner.maas_route`), required before any dispatch |
-| `journal.jsonl` | every activation, release and profile event, append-only |
+| Where | Holds |
+|-------|-------|
+| `/etc/rhoai3/run-control/contract.json` (ConfigMap `<run>-run-control`, read-only) | the run, its scaffolding commit (the harness release), activation and authorization |
+| `/etc/rhoai3/run-control/profile.json` | the model profile pinned for this run; the loop refuses a worker config that differs from it |
+| `/projects/.platform/run-control-state/binding.json` | the write-once binding of the M1 evidence bundle digest |
+| `/projects/.platform/run-control-state/requests.log` | the request ledger the Hermes pacer enforces the run's allowance from |
 
 The workspace image carries a small patch series for the pinned Hermes
 runtime (`hermes-runtime/`) that stops a worker repeating the same successful

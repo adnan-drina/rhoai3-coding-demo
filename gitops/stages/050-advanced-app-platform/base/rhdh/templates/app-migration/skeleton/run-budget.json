@@ -8,5 +8,11 @@
     "template": "app-migration",
     "scaffolder_task": "${{ values.scaffolderTaskId }}"
   },
+  "run_control": {
+    "contract": "rhoai3.run-control/v1",
+    "root": "/etc/rhoai3/run-control",
+    "state": "/projects/.platform/run-control-state",
+    "note": "This run is governed by the platform's run-control record: the migration-run provisioner writes <run>-run-control from the validated scaffolding push and mounts it read-only at root; the harness refuses to dispatch, measure or mint without it and never reads activation from .hermes/pins.json. state holds the write-once M1 binding and the request ledger."
+  },
   "note": "This run's budget declaration, written by the factory into the destination's initial commit. The limits are the golden's shared defaults in run-defaults.json; the declaration binds them. It carries no timestamp because the scaffolder has no clock: the budget was declared when the initial commit was made, and that commit's time is the declaration time. Never edit, renew or copy this file; .hermes/lib/planner/run_declaration.py refuses one that changed after that commit."
 }
