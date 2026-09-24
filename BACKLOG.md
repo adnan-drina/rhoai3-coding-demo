@@ -1,5 +1,20 @@
 # Backlog
 
+## v12 isolation qualification — 2026-09-24
+
+- [x] Fresh `iso-v12-qual` / `iso-v12-qual-retry` created through the Developer
+  Hub form as ai-developer with Auto-start off. All 13 isolation checks PASS for
+  platform `63c173885a4fce50d4f04196895e91e75473ec16` + golden
+  `78b3e9dbca1ab917affe97680f4008233b6a65ec` + pinned images. Receipt
+  `tmp/v12-qualification-20260924/isolation-receipt.json` (SHA-256 `6fda37d9…`,
+  84 evidence files). Verified by run-preflight's own receipt-validation block,
+  which also refuses the v11 receipt, a different platform and a tampered file.
+- [x] Disposables retired with tombstones kept and workspaces deleted. v10/v11
+  unchanged. v11 receipt unchanged. A dashboard misclick briefly started v9: it
+  was stopped with init containers only and no dest-init (recorded in the
+  packet).
+- [ ] v12 not created. Handoff and checklist: Stage 080 `V12-HANDOFF.md`.
+
 ## Run declarations: one golden for every run — 2026-09-24
 
 - [x] Root cause: the published golden carried `run-budget.json` and
