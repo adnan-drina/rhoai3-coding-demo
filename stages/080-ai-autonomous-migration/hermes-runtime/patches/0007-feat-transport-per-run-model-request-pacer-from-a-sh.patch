@@ -1,0 +1,373 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 18:45:48 +0200
+Subject: [PATCH] feat(transport): per-run model request pacer from a shared
+ sliding-window ledger
+
+RHOAI3 Stage 080 (architect review R2): the declared request allowance of a
+run must be enforced, not only checked. When RHOAI3_REQUEST_BUDGET=<n>/<s>
+and RHOAI3_REQUEST_LEDGER=<path> are set, every model HTTP request any
+Hermes process of the run sends takes one slot from an append-only,
+flock-protected ledger shared by all processes and surviving restarts.
+Unset => disabled, behaviour unchanged.
+
+- agent/request_pacer.py: ledger, sliding window, wait for the oldest slot
+  up to RHOAI3_REQUEST_BUDGET_MAX_WAIT (default 900 s), else raise
+  RequestBudgetExhausted with a named STOP MODEL_REQUEST_BUDGET message
+  (worded to avoid the dispatcher's quota/auth respawn-blocker pattern).
+- Enforcement: an httpx request event hook attached at the OpenAI client
+  construction choke points (agent_runtime_helpers primary client;
+  auxiliary_client sync, async and Vertex clients), so each HTTP attempt,
+  including every Hermes and SDK retry, takes exactly one slot (POST only).
+- Main loop: wait_for_slot() before each API attempt so a long wait happens
+  outside the stream stale detector and touches worker activity; a budget
+  exhaustion is never retried and ends the turn with model_stop=
+  request_budget, recorded by the shared kanban worker-stop recorder as a
+  failed run.
+---
+ agent/agent_runtime_helpers.py |   4 +
+ agent/auxiliary_client.py      |  10 +-
+ agent/conversation_loop.py     |  25 ++++
+ agent/request_pacer.py         | 219 +++++++++++++++++++++++++++++++++
+ agent/turn_finalizer.py        |   9 ++
+ 5 files changed, 264 insertions(+), 3 deletions(-)
+ create mode 100644 agent/request_pacer.py
+
+diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
+index 1c89288330..7e20c16d60 100644
+--- a/agent/agent_runtime_helpers.py
++++ b/agent/agent_runtime_helpers.py
+@@ -2591,6 +2591,10 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
+     # Uses the module-level `OpenAI` name, resolved lazily on first
+     # access via __getattr__ below. Tests patch via `run_agent.OpenAI`.
+     client = _ra().OpenAI(**client_kwargs)
++    # RHOAI3 per-run request pacer: every HTTP attempt this client makes takes
++    # a slot from the run's shared ledger (no-op unless configured).
++    from agent import request_pacer
++    request_pacer.attach(client)
+     _ra().logger.info(
+         "OpenAI client created (%s, shared=%s) %s",
+         reason,
+diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
+index a069629e44..0f13e06db7 100644
+--- a/agent/auxiliary_client.py
++++ b/agent/auxiliary_client.py
+@@ -286,7 +286,9 @@ def _create_openai_client(*, api_key: str, base_url: str, **kwargs: Any) -> Any:
+     # by default and let Hermes control the budget; explicit callers can still
+     # override via kwargs.
+     kwargs.setdefault("max_retries", 0)
+-    return OpenAI(api_key=api_key, base_url=base_url, **kwargs)
++    # RHOAI3 per-run request pacer (no-op unless configured).
++    from agent import request_pacer
++    return request_pacer.attach(OpenAI(api_key=api_key, base_url=base_url, **kwargs))
+ 
+ 
+ # ── Interrupt protection for atomic auxiliary tasks ──────────────────────
+@@ -6196,7 +6198,8 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
+     # See _create_openai_client: disable SDK-internal retries so Hermes owns
+     # the auxiliary retry/timeout budget (issue #54465).
+     async_kwargs.setdefault("max_retries", 0)
+-    return AsyncOpenAI(**async_kwargs), model
++    from agent import request_pacer
++    return request_pacer.attach(AsyncOpenAI(**async_kwargs)), model
+ 
+ 
+ def _normalize_resolved_model(model_name: Optional[str], provider: str) -> Optional[str]:
+@@ -6980,7 +6983,8 @@ def resolve_provider_client(
+         final_model = _normalize_resolved_model(model or default_model, provider)
+         try:
+             from openai import OpenAI
+-            client = OpenAI(api_key=token, base_url=base_url)
++            from agent import request_pacer
++            client = request_pacer.attach(OpenAI(api_key=token, base_url=base_url))
+         except Exception as exc:
+             logger.warning("resolve_provider_client: cannot create Vertex "
+                            "client: %s", exc)
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index cc8ec3a334..bc3f00c6eb 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -3143,6 +3143,12 @@ def run_conversation(
+                 elif _model_request_active is not None:
+                     _model_request_active.set()
+                 _redirect_crossed_response = False
++                # RHOAI3 per-run request pacer: a long wait for a free slot
++                # happens here, before the stream stale detector starts; the
++                # transport hook then takes the slot. Raises
++                # RequestBudgetExhausted when the wait would exceed the limit.
++                from agent import request_pacer as _request_pacer
++                _request_pacer.wait_for_slot(activity=agent._touch_activity)
+                 try:
+                     response = run_llm_execution_middleware(
+                         api_kwargs,
+@@ -4388,6 +4394,25 @@ def run_conversation(
+                 if agent.thinking_callback:
+                     agent.thinking_callback("")
+ 
++                # RHOAI3 per-run request budget exhausted: never retry (a
++                # retry needs another slot); end the turn with a named stop.
++                from agent.request_pacer import RequestBudgetExhausted as _RBE
++                _budget_exc = api_error if isinstance(api_error, _RBE) else (
++                    api_error.__cause__ if isinstance(getattr(api_error, "__cause__", None), _RBE) else None
++                )
++                if _budget_exc is not None:
++                    agent._vprint(f"{agent.log_prefix}⛔ {_budget_exc}", force=True)
++                    agent._persist_session(messages, conversation_history)
++                    return {
++                        "final_response": str(_budget_exc),
++                        "messages": messages,
++                        "api_calls": api_call_count,
++                        "completed": False,
++                        "failed": True,
++                        "error": str(_budget_exc),
++                        "model_stop": "request_budget",
++                    }
++
+                 # -----------------------------------------------------------
+                 # UnicodeEncodeError recovery.  Two common causes:
+                 #   1. Lone surrogates (U+D800..U+DFFF) from clipboard paste
+diff --git a/agent/request_pacer.py b/agent/request_pacer.py
+new file mode 100644
+index 0000000000..a2867dd410
+--- /dev/null
++++ b/agent/request_pacer.py
+@@ -0,0 +1,219 @@
++"""Per-run model request pacer (RHOAI3 Stage 080).
++
++Enforces a declared request allowance across every Hermes process of one run:
++each model HTTP request (main agent, every retry attempt, auxiliary calls,
++reviewer and other profiles) first takes one slot from a shared sliding-window
++ledger. Disabled unless the platform sets both:
++
++  RHOAI3_REQUEST_BUDGET="<n>/<window_seconds>"   e.g. "200/3600"
++  RHOAI3_REQUEST_LEDGER=<path>                    shared, append-only file
++
++and optionally RHOAI3_REQUEST_BUDGET_MAX_WAIT=<seconds> (default 900): the
++longest a caller waits for the oldest slot in the window to expire. A longer
++wait raises :class:`RequestBudgetExhausted`.
++
++Ledger format: one line per granted slot, ``<epoch seconds> <pid> <label>``,
++appended under an exclusive ``flock`` on the ledger file itself, so
++concurrent processes share it and a restarted process sees the slots already
++spent in the window. Lines older than the window are ignored, never rewritten.
++
++Enforcement point: an httpx ``request`` event hook attached to every OpenAI
++SDK client Hermes constructs (main and auxiliary), so each HTTP attempt is
++counted exactly once, including SDK-internal and Hermes retries. Only POST
++requests are counted (model calls); ``GET /models`` probes are not.
++"""
++
++from __future__ import annotations
++
++import fcntl
++import logging
++import os
++import time
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from typing import Any, Callable, Optional
++
++logger = logging.getLogger(__name__)
++
++DEFAULT_MAX_WAIT_SECONDS = 900.0
++_SLEEP_SLICE_SECONDS = 1.0
++
++# Seams for tests (fake clock).
++_now: Callable[[], float] = time.time
++_sleep: Callable[[float], None] = time.sleep
++
++
++@dataclass(frozen=True)
++class PacerConfig:
++    limit: int
++    window: float
++    ledger: str
++    max_wait: float
++
++
++class RequestBudgetExhausted(RuntimeError):
++    """The next slot is further away than the permitted wait."""
++
++    def __init__(self, cfg: PacerConfig, next_slot_at: float, wait: float):
++        self.limit = cfg.limit
++        self.window = cfg.window
++        self.max_wait = cfg.max_wait
++        self.next_slot_at = next_slot_at
++        self.wait = wait
++        when = datetime.fromtimestamp(next_slot_at, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++        # Wording must not match kanban_db._RESPAWN_BLOCKER_RE (see
++        # turn_finalizer.record_kanban_turn_stop).
++        super().__init__(
++            f"STOP MODEL_REQUEST_BUDGET: {cfg.limit} requests in {int(cfg.window)}s "
++            f"already spent by this run; next slot at {when}; waiting {int(wait)}s "
++            f"exceeds the {int(cfg.max_wait)}s wait allowed; the worker stopped "
++            "before sending. Infrastructure allowance stop, not a product-repair verdict"
++        )
++
++
++def config() -> Optional[PacerConfig]:
++    """Pacer configuration from the environment, or None when disabled."""
++    raw = (os.environ.get("RHOAI3_REQUEST_BUDGET") or "").strip()
++    ledger = (os.environ.get("RHOAI3_REQUEST_LEDGER") or "").strip()
++    if not raw or not ledger:
++        return None
++    try:
++        limit_s, window_s = raw.split("/", 1)
++        limit, window = int(limit_s), float(window_s)
++    except ValueError:
++        logger.error("RHOAI3_REQUEST_BUDGET=%r is not '<n>/<window_seconds>'; pacer disabled", raw)
++        return None
++    if limit < 1 or window <= 0:
++        logger.error("RHOAI3_REQUEST_BUDGET=%r must be positive; pacer disabled", raw)
++        return None
++    try:
++        max_wait = float(os.environ.get("RHOAI3_REQUEST_BUDGET_MAX_WAIT") or DEFAULT_MAX_WAIT_SECONDS)
++    except ValueError:
++        max_wait = DEFAULT_MAX_WAIT_SECONDS
++    return PacerConfig(limit=limit, window=window, ledger=ledger, max_wait=max(0.0, max_wait))
++
++
++def _open_locked(path: str):
++    parent = os.path.dirname(path)
++    if parent:
++        os.makedirs(parent, exist_ok=True)
++    fh = open(path, "a+", encoding="utf-8")
++    fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
++    return fh
++
++
++def _slots_in_window(fh, now: float, window: float) -> list[float]:
++    fh.seek(0)
++    cutoff = now - window
++    out = []
++    for line in fh:
++        head = line.split(" ", 1)[0].strip()
++        try:
++            ts = float(head)
++        except ValueError:
++            continue
++        if ts > cutoff:
++            out.append(ts)
++    out.sort()
++    return out
++
++
++def _try_take(cfg: PacerConfig, label: str, take: bool) -> tuple[bool, float]:
++    """Under the ledger lock: take a slot (or just check). Returns (ok, next_slot_at)."""
++    fh = _open_locked(cfg.ledger)
++    try:
++        now = _now()
++        slots = _slots_in_window(fh, now, cfg.window)
++        if len(slots) < cfg.limit:
++            if take:
++                fh.seek(0, os.SEEK_END)
++                fh.write(f"{now:.6f} {os.getpid()} {label}\n")
++                fh.flush()
++                os.fsync(fh.fileno())
++            return True, now
++        # The slot that must expire for one more request to fit.
++        return False, slots[len(slots) - cfg.limit] + cfg.window
++    finally:
++        try:
++            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
++        finally:
++            fh.close()
++
++
++def _acquire_or_wait(label: str, take: bool, activity: Optional[Callable[[str], Any]]) -> None:
++    cfg = config()
++    if cfg is None:
++        return
++    while True:
++        ok, next_at = _try_take(cfg, label, take)
++        if ok:
++            return
++        wait = max(0.0, next_at - _now())
++        if wait > cfg.max_wait:
++            raise RequestBudgetExhausted(cfg, next_at, wait)
++        logger.info("request pacer: window full (%d/%ss); waiting %.1fs for %s",
++                    cfg.limit, cfg.window, wait, label)
++        if activity is not None:
++            try:
++                activity(f"request pacer: waiting {int(wait)}s for a model request slot")
++            except Exception:
++                pass
++        _sleep(min(wait, _SLEEP_SLICE_SECONDS) if wait > 0 else 0.01)
++
++
++def acquire(label: str = "request", activity: Optional[Callable[[str], Any]] = None) -> None:
++    """Take one slot, waiting for the oldest to expire when the window is full."""
++    _acquire_or_wait(label, True, activity)
++
++
++def wait_for_slot(activity: Optional[Callable[[str], Any]] = None) -> None:
++    """Wait (without taking) until a slot is free; raises when the wait is too long.
++
++    Called before the main agent's API call so a long wait happens outside the
++    stream stale detector's window; the transport hook then takes the slot.
++    """
++    _acquire_or_wait("peek", False, activity)
++
++
++
++def _label_for(request) -> str:
++    try:
++        return str(request.url.path or "request").rsplit("/", 1)[-1] or "request"
++    except Exception:
++        return "request"
++
++
++def _sync_hook(request) -> None:
++    if getattr(request, "method", "").upper() != "POST":
++        return
++    acquire(_label_for(request))
++
++
++async def _async_hook(request) -> None:
++    if getattr(request, "method", "").upper() != "POST":
++        return
++    import asyncio
++
++    await asyncio.to_thread(acquire, _label_for(request))
++
++
++def attach(openai_client: Any) -> Any:
++    """Install the pacer hook on an OpenAI SDK client's httpx client (idempotent).
++
++    A no-op when the pacer is disabled, so clients built without the platform
++    environment are unchanged.
++    """
++    if config() is None or openai_client is None:
++        return openai_client
++    http = getattr(openai_client, "_client", None)
++    hooks = getattr(http, "event_hooks", None)
++    if not isinstance(hooks, dict):
++        return openai_client
++    import httpx
++
++    hook = _async_hook if isinstance(http, httpx.AsyncClient) else _sync_hook
++    request_hooks = list(hooks.get("request") or [])
++    if hook not in request_hooks:
++        request_hooks.append(hook)
++        http.event_hooks = {**hooks, "request": request_hooks}
++    return openai_client
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index 84264b9ded..5ff2cc9bad 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -231,6 +231,15 @@ def record_kanban_turn_stop(agent, result) -> bool:
+             logger,
+             event_payload_extra={"incomplete_output": kind, "output_cap": cap},
+         )
++    if result.get("model_stop") == "request_budget":
++        # The pacer's message already carries the named stop and avoids the
++        # respawn blocker pattern.
++        return _record_kanban_worker_stop(
++            kanban_task,
++            str(result.get("error") or "STOP MODEL_REQUEST_BUDGET"),
++            logger,
++            event_payload_extra={"model_stop": "MODEL_REQUEST_BUDGET"},
++        )
+     if result.get("failed") and result.get("failure_reason") == "rate_limit":
+         attempts = result.get("api_attempts") or getattr(agent, "_api_max_retries", None)
+         retry_after = result.get("retry_after") or "none"

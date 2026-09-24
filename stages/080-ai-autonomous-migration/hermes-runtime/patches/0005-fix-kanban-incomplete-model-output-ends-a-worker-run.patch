@@ -1,0 +1,263 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 18:20:51 +0200
+Subject: [PATCH 5/6] fix(kanban): incomplete model output ends a worker run as
+ a named failure
+
+When a response stays truncated (finish_reason=length) after the bounded
+recovery, run_conversation returns directly without finalize_turn. The
+partial tool call is never executed, but a kanban worker then exits 0 and
+the dispatcher records a protocol violation whose retry guidance tells the
+next worker the prior run may already have done the work. Mark each
+incomplete-output return with a machine-readable incomplete_output kind and
+record it from AIAgent.run_conversation as a failed run (STOP
+MODEL_OUTPUT_INCOMPLETE ...) through _record_task_failure, like the
+iteration-budget and guardrail-halt paths.
+
+The shared recorder is gated on is_dispatcher_owned_worker_context(), so a
+delegated child or in-process cron job can no longer close the worker's
+task; the guardrail-halt recorder (previous patch) now goes through it.
+---
+ agent/conversation_loop.py |  14 ++++-
+ agent/turn_finalizer.py    | 110 ++++++++++++++++++++++++++++---------
+ run_agent.py               |  10 ++++
+ 3 files changed, 107 insertions(+), 27 deletions(-)
+
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index 3d7f07ef39..f87f647d48 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -3698,6 +3698,7 @@ def run_conversation(
+                             "completed": False,
+                             "partial": True,
+                             "error": _exhaust_error,
++                            "incomplete_output": "reasoning_exhausted",
+                         }
+ 
+                     # ── Detect repetition-dominated truncation (#86581) ──
+@@ -3752,6 +3753,7 @@ def run_conversation(
+                             "completed": False,
+                             "partial": True,
+                             "error": _rep_error,
++                            "incomplete_output": "repetition",
+                         }
+ 
+                     if agent.api_mode in {"chat_completions", "bedrock_converse", "anthropic_messages"}:
+@@ -3919,6 +3921,7 @@ def run_conversation(
+                                 "completed": False,
+                                 "partial": True,
+                                 "error": "Response remained truncated after 4 continuation attempts",
++                                "incomplete_output": "text_continuation_exhausted",
+                             }
+ 
+                     if agent.api_mode in {"chat_completions", "bedrock_converse", "anthropic_messages"}:
+@@ -3989,6 +3992,10 @@ def run_conversation(
+                                 "completed": False,
+                                 "partial": True,
+                                 "error": _final_response,
++                                "incomplete_output": (
++                                    "tool_call_stream_dropped" if _is_stub_stall
++                                    else "tool_call_truncated"
++                                ),
+                             }
+ 
+                     # If we have prior messages, roll back to last complete state
+@@ -4005,7 +4012,8 @@ def run_conversation(
+                             "api_calls": api_call_count,
+                             "completed": False,
+                             "partial": True,
+-                            "error": "Response truncated due to output length limit"
++                            "error": "Response truncated due to output length limit",
++                            "incomplete_output": "truncated_rolled_back",
+                         }
+                     else:
+                         # First message was truncated - mark as failed
+@@ -4018,7 +4026,8 @@ def run_conversation(
+                             "api_calls": api_call_count,
+                             "completed": False,
+                             "failed": True,
+-                            "error": "First response truncated due to output length limit"
++                            "error": "First response truncated due to output length limit",
++                            "incomplete_output": "first_response_truncated",
+                         }
+                 
+                 # Track actual token usage from response for context management
+@@ -7074,6 +7083,7 @@ def run_conversation(
+                             "completed": False,
+                             "partial": True,
+                             "error": _final_response,
++                            "incomplete_output": "tool_call_arguments_truncated",
+                         }
+ 
+                     # Track retries for invalid JSON arguments
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index 6fb0e1fccb..40f755a4d5 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -116,20 +116,33 @@ def _kanban_failure_limit() -> int | None:
+         return None
+ 
+ 
+-def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Logger) -> None:
+-    """Record a tool-loop guardrail halt as a failed kanban run.
+-
+-    A halted worker makes no further model request, so it can never call
+-    ``kanban_complete`` / ``kanban_block``; without this record its clean
+-    exit is classified by the dispatcher as a protocol violation whose
+-    retry guidance tells the next worker to verify and complete. Mirrors
+-    ``_record_kanban_budget_exhausted``: the failure goes through
+-    ``_record_task_failure`` so it counts toward the task's ``max_retries``
+-    / ``kanban.failure_limit`` circuit breaker, and the run is closed with
+-    the halt reason. No raw tool arguments are recorded, only their hash.
+-    No-op when the task is no longer running or the run is not ours.
++def _record_kanban_worker_stop(
++    kanban_task: str,
++    error: str,
++    logger: logging.Logger,
++    *,
++    event_payload_extra: dict | None = None,
++) -> bool:
++    """Close this worker's kanban run as failed with a named stop reason.
++
++    Shared by every runtime stop that ends a worker turn without a board
++    transition (tool-loop guardrail halt, incomplete model output, persistent
++    provider rate limit). A worker in that state makes no further model
++    request, so it can never call ``kanban_complete`` / ``kanban_block``;
++    without this record its clean exit is classified by the dispatcher as a
++    protocol violation whose retry guidance tells the next worker to verify
++    and complete. Mirrors ``_record_kanban_budget_exhausted``: the failure
++    goes through ``_record_task_failure`` so it counts toward the task's
++    ``max_retries`` / ``kanban.failure_limit`` circuit breaker and the run is
++    closed with the reason. No-op (returns False) for a delegated child or an
++    in-process cron job (they do not own the task), when the task is no
++    longer running, or when the open run is not this worker's.
+     """
+     try:
++        from agent.delegation_context import is_dispatcher_owned_worker_context
++
++        if not is_dispatcher_owned_worker_context():
++            return False
+         from hermes_cli import kanban_db as _kb
+ 
+         _conn = _kb.connect()
+@@ -139,28 +152,21 @@ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Lo
+                 (kanban_task,),
+             ).fetchone()
+             if row is None or row["status"] != "running":
+-                return
++                return False
+             expected_run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+             if expected_run and str(row["current_run_id"]) != expected_run:
+-                return
+-            signature = getattr(decision, "signature", None)
+-            args_hash = getattr(signature, "args_hash", "") or ""
++                return False
+             _kb._record_task_failure(
+                 _conn,
+                 kanban_task,
+-                error=(
+-                    f"STOP WORKER_TOOL_LOOP: tool {decision.tool_name}, "
+-                    f"guardrail {decision.code}, count {decision.count}, "
+-                    f"args_sha256 {args_hash[:16]} — the worker was halted "
+-                    "before another model request; this run did not "
+-                    "complete the task"
+-                ),
++                error=error,
+                 outcome="crashed",
+                 failure_limit=_kanban_failure_limit(),
+                 release_claim=True,
+                 end_run=True,
+-                event_payload_extra={"guardrail": decision.to_metadata()},
++                event_payload_extra=event_payload_extra,
+             )
++            return True
+         finally:
+             try:
+                 _conn.close()
+@@ -168,10 +174,64 @@ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Lo
+                 pass
+     except Exception:
+         logger.warning(
+-            "Failed to record guardrail-halt failure for task %s",
++            "Failed to record worker stop for task %s: %s",
+             kanban_task,
++            error,
+             exc_info=True,
+         )
++        return False
++
++
++def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Logger) -> None:
++    """Record a tool-loop guardrail halt as a failed kanban run.
++
++    No raw tool arguments are recorded, only their hash.
++    """
++    signature = getattr(decision, "signature", None)
++    args_hash = getattr(signature, "args_hash", "") or ""
++    _record_kanban_worker_stop(
++        kanban_task,
++        (
++            f"STOP WORKER_TOOL_LOOP: tool {decision.tool_name}, "
++            f"guardrail {decision.code}, count {decision.count}, "
++            f"args_sha256 {args_hash[:16]} — the worker was halted "
++            "before another model request; this run did not "
++            "complete the task"
++        ),
++        logger,
++        event_payload_extra={"guardrail": decision.to_metadata()},
++    )
++
++
++def record_kanban_turn_stop(agent, result) -> bool:
++    """Record a turn that ended early on a model/transport stop (kanban workers).
++
++    ``run_conversation`` returns directly (without ``finalize_turn``) when the
++    model output stays incomplete after the bounded recovery, so those turns
++    are recorded here, from ``AIAgent.run_conversation``. Only results that
++    carry an explicit machine-readable stop marker are recorded; every other
++    result is left to the existing paths.
++    """
++    kanban_task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
++    if not kanban_task or not isinstance(result, dict):
++        return False
++    if result.get("completed") or result.get("interrupted"):
++        return False
++    logger = logging.getLogger("agent.conversation_loop")
++    kind = result.get("incomplete_output")
++    if kind:
++        cap = getattr(agent, "max_tokens", None) or "default"
++        return _record_kanban_worker_stop(
++            kanban_task,
++            (
++                f"STOP MODEL_OUTPUT_INCOMPLETE: finish_reason=length ({kind}), "
++                f"output_cap={cap}, recovery exhausted; no partial tool call "
++                "was executed and this run did not complete the task"
++            ),
++            logger,
++            event_payload_extra={"incomplete_output": kind, "output_cap": cap},
++        )
++    return False
+ 
+ 
+ def _drop_verification_continuation_scaffolding(messages) -> None:
+diff --git a/run_agent.py b/run_agent.py
+index 4cde6fe5b9..a03cf95eb7 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -8911,6 +8911,16 @@ class AIAgent:
+                     # outer finally: a refresher firing between stop and join
+                     # would otherwise set an interrupt that survives the clear.
+             terminal = result if isinstance(result, dict) else {}
++            # Kanban worker: a turn that stopped early on incomplete model
++            # output (or another named model/transport stop) closes its run
++            # as failed instead of leaving a clean exit to be read as a
++            # protocol violation.
++            try:
++                from agent.turn_finalizer import record_kanban_turn_stop
++
++                record_kanban_turn_stop(self, terminal)
++            except Exception:
++                logger.debug("kanban turn-stop record failed", exc_info=True)
+             if terminal.get("interrupted") is True:
+                 relay_outcome = "cancelled"
+             elif terminal.get("failed") is True:

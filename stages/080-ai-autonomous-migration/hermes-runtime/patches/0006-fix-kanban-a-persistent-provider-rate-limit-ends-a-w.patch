@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 18:21:45 +0200
+Subject: [PATCH 6/6] fix(kanban): a persistent provider rate limit ends a
+ worker run as a named quota stop
+
+After the main retry loop gives up on HTTP 429 (Retry-After honoured,
+jittered backoff otherwise, one retry layer: the primary client runs with
+SDK max_retries=0), run_conversation returns failed with
+failure_reason=rate_limit. A non-quiet kanban worker then exits 0 and the
+dispatcher recorded a protocol violation (retry guidance: report the work
+via kanban_complete), not counted toward the failure limit. Record it
+instead as a failed run, STOP MODEL_QUOTA, through the shared worker-stop
+recorder so the native breaker bounds it.
+
+The stop text avoids kanban_db._RESPAWN_BLOCKER_RE on purpose: a matching
+last_failure_error makes check_respawn_guard defer the card on every tick
+without counting a failure, leaving it in ready indefinitely. HTTP status,
+attempts, Retry-After and the provider message are carried in the gave_up
+event payload instead. The rate-limit result now also reports api_attempts
+and the last Retry-After header.
+---
+ agent/conversation_loop.py | 16 ++++++++++++++++
+ agent/turn_finalizer.py    | 27 +++++++++++++++++++++++++++
+ 2 files changed, 43 insertions(+)
+
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index f87f647d48..cc8ec3a334 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -286,6 +286,18 @@ def _moa_client_consumes_prepared_request(client: Any) -> bool:
+     return callable(getattr(completions, "prepare", None))
+ 
+ 
++def _last_retry_after_header(api_error) -> Optional[str]:
++    """Raw Retry-After header of a failed API call, if the server sent one."""
++    try:
++        headers = getattr(getattr(api_error, "response", None), "headers", None)
++        if headers is not None and hasattr(headers, "get"):
++            value = headers.get("retry-after") or headers.get("Retry-After")
++            return str(value) if value else None
++    except Exception:
++        pass
++    return None
++
++
+ def _join_truncated_parts(parts: List[str]) -> str:
+     """Join continuation fragments, adding a newline where two would glue together (#78577)."""
+     joined = ""
+@@ -6454,6 +6466,10 @@ def run_conversation(
+                         # Present only for billing walls: structured recovery
+                         # descriptor (provider, billing_url, is_nous, message).
+                         "billing_block": _billing_block,
++                        # Attempts made and the last server Retry-After, so a
++                        # kanban worker can record a named quota stop.
++                        "api_attempts": retry_count,
++                        "retry_after": _last_retry_after_header(api_error),
+                     }
+ 
+                 # For rate limits, respect the Retry-After header if present
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index 40f755a4d5..84264b9ded 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -231,6 +231,33 @@ def record_kanban_turn_stop(agent, result) -> bool:
+             logger,
+             event_payload_extra={"incomplete_output": kind, "output_cap": cap},
+         )
++    if result.get("failed") and result.get("failure_reason") == "rate_limit":
++        attempts = result.get("api_attempts") or getattr(agent, "_api_max_retries", None)
++        retry_after = result.get("retry_after") or "none"
++        # The wording deliberately avoids the dispatcher's quota/auth blocker
++        # pattern (kanban_db._RESPAWN_BLOCKER_RE): a matching
++        # last_failure_error makes check_respawn_guard defer the task on
++        # every tick without ever counting another failure, so the card would
++        # sit in ``ready`` indefinitely instead of reaching the breaker. The
++        # HTTP status and provider message go into the event payload instead.
++        return _record_kanban_worker_stop(
++            kanban_task,
++            (
++                f"STOP MODEL_QUOTA: the model endpoint kept throttling this "
++                f"worker (HTTP status in payload) for all {attempts} attempts, "
++                f"last Retry-After {retry_after}; the worker stopped before "
++                "any further model request. Infrastructure capacity stop, not "
++                "a product-repair verdict"
++            ),
++            logger,
++            event_payload_extra={
++                "model_stop": "MODEL_QUOTA",
++                "http_status": 429,
++                "api_attempts": attempts,
++                "retry_after": result.get("retry_after"),
++                "provider_error": str(result.get("error") or "")[:300],
++            },
++        )
+     return False
+ 
+ 

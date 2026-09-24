@@ -1,0 +1,217 @@
+B3/B4 Hermes runtime qualification log
+Date: 2026-09-24. macOS, Python 3.11 venv, openai 2.24.0. Fake loopback provider only; no real model, no cluster.
+
+=== Patch series identity ===
+2925eb97e226e087f9b7c13eaffbdc730e777ec2a3f780b2736747dc7fa36407  0001-fix-guardrails-identical-call-streaks-hard-stop-any-.patch
+96617a6dd10d1d87d89ee323b0ac697c6c1ff0457bdec6fae8c63aca7450e21d  0002-fix-guardrails-terminal-transport-metadata-cannot-hi.patch
+b139fd133d30d46b6270675d71bfc54af5c4c1a8dccd6dc28bd5a75d320ebb5f  0003-fix-guardrails-never-emit-a-result-reference-stub-wh.patch
+b2b1c949fcc731997eff6d334d31a6e7d39822d2d979bd3df2cdadd1fe1c367f  0004-fix-kanban-a-guardrail-halted-worker-records-a-faile.patch
+7552687a3a63a4be9ced59d3873e1e8536b876d60e8a94ef9bd97eb7f019a835  0005-fix-kanban-incomplete-model-output-ends-a-worker-run.patch
+131a313e4b31abc879aa2a5957b34b4c3332e79e7914928972412177e23faaa6  0006-fix-kanban-a-persistent-provider-rate-limit-ends-a-w.patch
+git apply --index of 0001-0006 onto a clean fcbd1076 worktree -> git write-tree = 87a39dca63bca478e1ab93e9ce24ad757de25f8f
+Trees: pin cc9f987a403a1d02b8b17cc527a57b54402e864b; 0001-0004 a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48; 0001-0005 4acbcd771ccfaffc9dca454efcc00aef09b23a4c; 0001-0006 87a39dca63bca478e1ab93e9ce24ad757de25f8f
+b3-b4/Dockerfile.hunk.txt: patch -p1 --dry-run against workspace-images/Dockerfile -> 'patching file Dockerfile' (not applied)
+
+=== B4 captured request bodies (wire fields; messages/tools omitted) ===
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 8192, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "stream": true, "stream_options": {"include_usage": true}, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "main_agent_request"}
+{"body": {"max_tokens": 8192, "model": "qwen3-8-27b-int4", "stream": true, "stream_options": {"include_usage": true}}, "case": "control_extra_body_dropped"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "sdk_precedence_top_level_0.1_vs_extra_body_0.7"}
+{"body": {"model": "qwen3-8-27b-int4"}, "case": "aux_compression_producer_config"}
+{"body": {"model": "qwen3-8-27b-int4", "temperature": 0.1}, "case": "aux_compression_producer_config"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_with_auxiliary_extra_body"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_with_auxiliary_extra_body"}
+
+=== Fake-server worker probes (real kanban dispatch + real chat -q worker), series 0001-0004 unless noted ===
+-- truncated write_file, finish_reason=length, every request (0001-0004):
+   requests max_tokens 8192,16384,32768,32768,32768; exit 0; no file written; board: protocol_violation, consecutive_failures 0
+-- same with 0005: board: run outcome crashed 'STOP MODEL_OUTPUT_INCOMPLETE: finish_reason=length (tool_call_truncated), output_cap=8192, ...', consecutive_failures 1, detect_crashed_workers []
+-- 429 Retry-After 2 x2 then success: request gaps 2.10s, 2.11s (one HTTP request per attempt)
+-- 429 without Retry-After, persistent: 3 requests, gaps 2.29s, 5.20s; 'Rate limited after 3 retries'; exit 0; board protocol_violation
+-- 429 Retry-After 1, persistent: 3 requests, gaps 1.06s, 1.06s; exit 0; board protocol_violation (0001-0004)
+-- same with 0006: run crashed 'STOP MODEL_QUOTA: ... for all 3 attempts, last Retry-After 1 ...', consecutive_failures 1
+-- auxiliary compression call on persistent 429: 1 request, RateLimitError raised to caller in 0.33s (no SDK retry)
+
+=== tests/rhoai3_b3b4 on fcbd1076a93841fa88855acce810e342a5b78101 ===
+E           AssertionError: assert ['t_a06db8da'] == []
+E           AssertionError: assert ['t_e1d6eb93'] == []
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_with_aux_extra_body
+XFAIL tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config - Stage 050 producer config: auxiliary.compression has no extra_body, so the compression summary requests go out with no chat_template_kwargs and no sampling row (server defaults = thi
+FAILED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+FAILED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+=================== 2 failed, 6 passed, 1 xfailed in 34.49s ====================
+
+=== tests/rhoai3_b3b4 on d950366137 ===
+E           AssertionError: assert ['t_77ebaa09'] == []
+E           AssertionError: assert ['t_b60502ec'] == []
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_with_aux_extra_body
+XFAIL tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config - Stage 050 producer config: auxiliary.compression has no extra_body, so the compression summary requests go out with no chat_template_kwargs and no sampling row (server defaults = thi
+FAILED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+FAILED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+=================== 2 failed, 6 passed, 1 xfailed in 35.28s ====================
+
+=== tests/rhoai3_b3b4 on ce16202 ===
+E           AssertionError: assert ['t_7157bb87'] == []
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+FAILED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+========================= 1 failed, 1 passed in 9.97s ==========================
+
+=== tests/rhoai3_b3b4 on 0001-0006 (87a39dca) ===
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_with_aux_extra_body
+XFAIL tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config - Stage 050 producer config: auxiliary.compression has no extra_body, so the compression summary requests go out with no chat_template_kwargs and no sampling row (server defaults = thi
+======================== 8 passed, 1 xfailed in 39.67s =========================
+
+=== B11 qualification tests + existing related upstream tests on 87a39dca ===
+165 passed, 1 skipped in 37.12s
+
+=== Broad regression (tests/run_agent tests/agent + kanban core/sticky) on 87a39dca ===
+174 failed, 6704 passed, 30 skipped, 1 warning in 609.28s (0:10:09)
+Failing ids identical to the a09b3b45 and fcbd1076 runs (pre-existing on this host; comm diff empty).
+
+================ R2 / patch 0007 (request pacer) ================
+Series sha256:
+2925eb97e226e087f9b7c13eaffbdc730e777ec2a3f780b2736747dc7fa36407  0001-fix-guardrails-identical-call-streaks-hard-stop-any-.patch
+96617a6dd10d1d87d89ee323b0ac697c6c1ff0457bdec6fae8c63aca7450e21d  0002-fix-guardrails-terminal-transport-metadata-cannot-hi.patch
+b139fd133d30d46b6270675d71bfc54af5c4c1a8dccd6dc28bd5a75d320ebb5f  0003-fix-guardrails-never-emit-a-result-reference-stub-wh.patch
+b2b1c949fcc731997eff6d334d31a6e7d39822d2d979bd3df2cdadd1fe1c367f  0004-fix-kanban-a-guardrail-halted-worker-records-a-faile.patch
+7552687a3a63a4be9ced59d3873e1e8536b876d60e8a94ef9bd97eb7f019a835  0005-fix-kanban-incomplete-model-output-ends-a-worker-run.patch
+131a313e4b31abc879aa2a5957b34b4c3332e79e7914928972412177e23faaa6  0006-fix-kanban-a-persistent-provider-rate-limit-ends-a-w.patch
+ad0fcd6417ff7d8ba8024bdc1a33afa0fffbb06f44aad7a88386e485207ab573  0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch
+git apply --index 0001-0007 onto clean fcbd1076 -> git write-tree = 433f0c6f1d4b415273d18b6db0894a320a74b8d9
+Dockerfile.hunk.txt (top level, 7 patches, tree 433f0c6f): patch -p1 --dry-run -> 'patching file Dockerfile' (not applied)
+
+=== test_r2_request_pacer.py on 0001-0006 (87a39dca) ===
+E           assert 0 == 6
+E           AssertionError: ['sent=4 refused=0
+E           assert 8 == 5
+E           AssertionError: assert 'sent=0 refused=1' in 'sent=1 refused=0\n'
+E       ImportError: cannot import name 'request_pacer' from 'agent' (/Users/adrina/Sandbox/rhoai3-coding-demo/workspace-images/out/hermes-agent-v2026.8.19/agent/__init__.py)
+E           AssertionError: assert [{'messages':...': True, ...}] == []
+E       ImportError: cannot import name 'request_pacer' from 'agent' (/Users/adrina/Sandbox/rhoai3-coding-demo/workspace-images/out/hermes-agent-v2026.8.19/agent/__init__.py)
+E           assert 0 == 4
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_failed_run
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+============================== 7 failed in 15.48s ==============================
+
+=== All qualification tests (tests/rhoai3_b11 + tests/rhoai3_b3b4) on 0001-0007 (433f0c6f) ===
+PASSED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_with_aux_extra_body
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_failed_run
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+XFAIL tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config - Stage 050 producer config: auxiliary.compression has no extra_body, so the compression summary requests go out with no cha
+=================== 22 passed, 1 xfailed in 66.88s (0:01:06) ===================
+
+=== Existing related upstream tests on 433f0c6f ===
+158 passed, 1 skipped in 29.55s
+
+=== Broad regression on 433f0c6f ===
+174 failed, 6704 passed, 30 skipped, 1 warning in 593.62s (0:09:53)
+Failing ids identical to the 87a39dca, a09b3b45 and fcbd1076 runs (comm diff empty).
+
+=== Captured wire bodies on 433f0c6f ===
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 8192, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "stream": true, "stream_options": {"include_usage": true}, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "main_agent_request"}
+{"body": {"max_tokens": 8192, "model": "qwen3-8-27b-int4", "stream": true, "stream_options": {"include_usage": true}}, "case": "control_extra_body_dropped"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "sdk_precedence_top_level_0.1_vs_extra_body_0.7"}
+{"body": {"model": "qwen3-8-27b-int4"}, "case": "aux_compression_producer_config"}
+{"body": {"model": "qwen3-8-27b-int4", "temperature": 0.1}, "case": "aux_compression_producer_config"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_with_auxiliary_extra_body"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_with_auxiliary_extra_body"}
+
+================ Update after producer commits ec382b16 / 50463fa2 (profile table + aux max_tokens) ================
+worker_config.json re-rendered from the committed producer + model-profiles.json (render_worker_config.py redirects the platform-table path).
+
+=== tests/rhoai3_b3b4 on 0001-0006 (87a39dca) ===
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_failed_run
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker
+========================= 8 failed, 9 passed in 53.81s =========================
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 0001-0007 (433f0c6f) ===
+PASSED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_failed_run
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker
+======================== 24 passed in 68.87s (0:01:08) =========================
+
+=== Existing related upstream tests on 433f0c6f ===
+158 passed, 1 skipped in 30.18s
+
+=== Captured wire bodies on 433f0c6f (current producer) ===
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 8192, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "stream": true, "stream_options": {"include_usage": true}, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "main_agent_request"}
+{"body": {"max_tokens": 8192, "model": "qwen3-8-27b-int4", "stream": true, "stream_options": {"include_usage": true}}, "case": "control_extra_body_dropped"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "sdk_precedence_top_level_0.1_vs_extra_body_0.7"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 32768, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_producer_config"}
+{"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 32768, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_producer_config"}
