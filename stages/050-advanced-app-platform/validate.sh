@@ -241,8 +241,19 @@ check "050 app-migration skeleton devfile does not template the MaaS hostAlias f
   "grep -c 'values.devspacesUrl | replace' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "0"
 check "050 the factory stamps the in-cluster MaaS hostAlias from validated platform values" \
-  "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh'; grep -qF 'hostAliases:' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasInternalIp }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasHost }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF \"annotations['rhoai3.redhat.com/maas-host']\" \"\$T/templates/app-migration/template.yaml\" && grep -qF 'rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__' \"\$T/catalog/all.yaml\" && grep -qF 'is not an RFC 1123 host' \"\$T/jobs/rhdh-catalog-generator-script.yaml\" && echo FACTORY_STAMPS_MAAS_ROUTE || echo MAAS_ROUTE_NOT_STAMPED" \
+  "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh'; grep -qF 'hostAliases:' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasInternalIp }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasHost }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF \"annotations['rhoai3.redhat.com/maas-host']\" \"\$T/templates/app-migration/template.yaml\" && grep -qF 'rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__' \"\$T/catalog/all.yaml\" && grep -qF 'is not an RFC 1123 host' \"\$T/jobs/catalog/render_catalog.py\" && echo FACTORY_STAMPS_MAAS_ROUTE || echo MAAS_ROUTE_NOT_STAMPED" \
   "FACTORY_STAMPS_MAAS_ROUTE"
+# B2 (2026-09-24): the catalog generator, its renderer, the catalog and every
+# template and skeleton file are ONE content-addressed bundle; the generator
+# publishes only what the synced revision holds, pins every link to it, and
+# keeps the last good catalog on any refusal. The suite runs the real
+# generate.sh against a fake oc and a file:// repository.
+check "050 RHDH catalog bundle: one revision, skew refused, last good catalog kept" \
+  "python3 '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py' >/dev/null 2>&1 && echo BUNDLE_OK || echo BUNDLE_BROKEN" \
+  "BUNDLE_OK"
+check "050 live runtime catalog carries its bundle id and a pinned revision" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' 2>/dev/null | grep -qE '^[0-9a-f]{64}$' && echo LIVE_BUNDLE_STAMPED || echo LIVE_BUNDLE_UNSTAMPED" \
+  "LIVE_BUNDLE_STAMPED"
 check "050 live catalog publishes the validated in-cluster MaaS route on the platform entity" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null | grep -qE 'rhoai3.redhat.com/maas-internal-ip: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && echo LIVE_CATALOG_HAS_MAAS_ROUTE || echo LIVE_CATALOG_MISSING_MAAS_ROUTE" \
   "LIVE_CATALOG_HAS_MAAS_ROUTE"
