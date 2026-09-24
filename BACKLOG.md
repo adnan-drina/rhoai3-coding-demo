@@ -29,8 +29,8 @@ previous code. Nothing is published or launched; the release mapping is
   `<run>-run-control`, and it is mounted read-only. A run declared under
   run control refuses when the record is missing (R1).
 - [ ] Before v13: bake and push the ws-080 image with
-  `stages/080-ai-autonomous-migration/hermes-runtime` (7 patches, tree
-  `433f0c6f`), then repin the devfile digest and `pins.json`
+  `stages/080-ai-autonomous-migration/hermes-runtime` (8 patches, tree
+  `374562df`), then repin the devfile digest and `pins.json`
   `workspace_overlay`. Autostart refuses an image whose stamp is not
   `hermes_agent.patched_tree` (HERMES_RUNTIME_UNPATCHED).
 - [ ] Deferred:
