@@ -102,6 +102,20 @@ spec:
       input:
         entityRef: component:default/coolstore-inventory-service
 
+    # B1: a migration workspace without the in-cluster MaaS route is never
+    # rendered. The installed scaffolder has no "fail" action, so this step
+    # fetches a path that does not exist, and only when either value is missing
+    # or still a catalog placeholder: the run stops here, before anything is
+    # published, with FACTORY_MAAS_ROUTE_MISSING in its error. Refresh the
+    # runtime catalog (stage 050 catalog generator) and create the run again.
+    - id: require-maas-route
+      name: Require the in-cluster MaaS route (FACTORY_MAAS_ROUTE_MISSING when absent)
+      if: ${{ not steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/maas-host'] or not steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/maas-internal-ip'] or ('_' in steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/maas-host']) or ('_' in steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/maas-internal-ip']) }}
+      action: fetch:plain
+      input:
+        url: ./refusals/FACTORY_MAAS_ROUTE_MISSING
+        targetPath: ./.refusal
+
     - id: add-catalog-info
       name: Add catalog metadata and stamp the migration working set
       action: fetch:template

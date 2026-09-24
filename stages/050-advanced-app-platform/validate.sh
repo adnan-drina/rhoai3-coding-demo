@@ -243,6 +243,12 @@ check "050 app-migration skeleton devfile does not template the MaaS hostAlias f
 check "050 the factory stamps the in-cluster MaaS hostAlias from validated platform values" \
   "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh'; grep -qF 'hostAliases:' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasInternalIp }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasHost }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF \"annotations['rhoai3.redhat.com/maas-host']\" \"\$T/templates/app-migration/template.yaml\" && grep -qF 'rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__' \"\$T/catalog/all.yaml\" && grep -qF 'is not an RFC 1123 host' \"\$T/jobs/catalog/render_catalog.py\" && echo FACTORY_STAMPS_MAAS_ROUTE || echo MAAS_ROUTE_NOT_STAMPED" \
   "FACTORY_STAMPS_MAAS_ROUTE"
+# B1 (2026-09-24): a migration workspace without the in-cluster MaaS route is
+# never rendered (the template refuses with FACTORY_MAAS_ROUTE_MISSING), and
+# the platform's route values reach the workspace env the startup gate reads.
+check "050 app-migration template refuses to render without the MaaS route, and stamps the route env" \
+  "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF 'id: require-maas-route' \"\$T/template.yaml\" && grep -qF 'FACTORY_MAAS_ROUTE_MISSING' \"\$T/template.yaml\" && grep -qF 'name: RHOAI3_MAAS_HOST' \"\$T/skeleton/devfile.yaml\" && grep -qF 'name: RHOAI3_MAAS_INTERNAL_IP' \"\$T/skeleton/devfile.yaml\" && echo ROUTE_REQUIRED || echo ROUTE_OPTIONAL" \
+  "ROUTE_REQUIRED"
 # B2 (2026-09-24): the catalog generator, its renderer, the catalog and every
 # template and skeleton file are ONE content-addressed bundle; the generator
 # publishes only what the synced revision holds, pins every link to it, and

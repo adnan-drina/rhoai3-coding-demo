@@ -124,6 +124,15 @@ components:
         # Architect 195231ZA: default on. Off is inspect-before-agents.
         - name: AUTO_START_MIGRATION
           value: "${{ values.autoStartMigration }}"
+        # B1: the route this run must use, as the platform stamped it (the
+        # same two values as the hostAlias above). planner.maas_route checks
+        # the worker endpoint against them before any card is dispatched,
+        # at every start and every continuation. The template refuses to
+        # render at all when either is missing or a placeholder.
+        - name: RHOAI3_MAAS_HOST
+          value: "${{ values.maasHost }}"
+        - name: RHOAI3_MAAS_INTERNAL_IP
+          value: "${{ values.maasInternalIp }}"
         # THIS RUN'S OWN resources, named here so the workspace depends on
         # nothing namespace-wide. Platform code creates them at initiation
         # (provision-migration-run, started by the dispatcher from the
