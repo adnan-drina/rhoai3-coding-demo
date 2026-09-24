@@ -1,0 +1,390 @@
+B11 Hermes runtime patch - qualification log
+Date: 2026-09-24. Host: macOS (Darwin 25.6), Python 3.11 venv, fake provider only (no real model, no network model).
+Base: fcbd1076a93841fa88855acce810e342a5b78101 (v2026.8.19, 0.20.5). Patched branch HEAD (local): d9503661374e79a921449923fda13fcd176ab93b
+
+=== 1. Patch series identity ===
+2925eb97e226e087f9b7c13eaffbdc730e777ec2a3f780b2736747dc7fa36407  0001-fix-guardrails-identical-call-streaks-hard-stop-any-.patch
+96617a6dd10d1d87d89ee323b0ac697c6c1ff0457bdec6fae8c63aca7450e21d  0002-fix-guardrails-terminal-transport-metadata-cannot-hi.patch
+b139fd133d30d46b6270675d71bfc54af5c4c1a8dccd6dc28bd5a75d320ebb5f  0003-fix-guardrails-never-emit-a-result-reference-stub-wh.patch
+b2b1c949fcc731997eff6d334d31a6e7d39822d2d979bd3df2cdadd1fe1c367f  0004-fix-kanban-a-guardrail-halted-worker-records-a-faile.patch
+Applied with 'git apply --index' in order to a clean detached worktree at fcbd1076; git write-tree:
+a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48  (== patched branch HEAD^{tree})
+Dockerfile.hunk.txt: 'patch -p1 --dry-run' against workspace-images/Dockerfile -> 'patching file Dockerfile' (dry run only; not applied).
+
+=== 2. New qualification tests (tests/rhoai3_b11) on UNPATCHED fcbd1076: 7 failed ===
+HEAD=fcbd1076a93841fa88855acce810e342a5b78101 tree=cc9f987a403a1d02b8b17cc527a57b54402e864b dirty=       0
+============================= test session starts ==============================
+platform darwin -- Python 3.11.13, pytest-9.1.1, pluggy-1.6.0 -- /private/tmp/claude-501/-Users-adrina-Sandbox-rhoai3-coding-demo/16e37ea9-fc2e-4893-a8c8-d1e82ec29200/scratchpad/hermes-venv/bin/python
+rootdir: /Users/adrina/Sandbox/rhoai3-coding-demo/workspace-images/out/hermes-agent-v2026.8.19
+configfile: pyproject.toml
+plugins: asyncio-1.3.0, anyio-4.15.1
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion FAILED [ 14%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five FAILED [ 28%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call FAILED [ 42%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop FAILED [ 57%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded FAILED [ 71%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress FAILED [ 85%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable FAILED [100%]
+
+=================================== FAILURES ===================================
+_______________ test_halt_ends_process_without_false_completion ________________
+
+tmp_path = PosixPath('/private/var/folders/sp/02z541qj3cdf4v1wjd5vlxtc0000gn/T/pytest-of-adrina/pytest-13/test_halt_ends_process_without0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a990150>
+
+    def test_halt_ends_process_without_false_completion(tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_KANBAN_CRASH_GRACE_SECONDS", "0")
+        for key in [k for k in os.environ if k.endswith("_API_KEY")]:
+            monkeypatch.delenv(key, raising=False)
+        repo = tmp_path / "repo"
+        (repo / "src/main/java").mkdir(parents=True)
+    
+        with FakeProvider([("tool", "terminal", LOOP_ARGS)]) as provider:
+            _setup_home(provider, repo)
+            from hermes_cli import kanban_db as kb
+    
+            kb.init_db()
+            conn = kb.connect()
+            tid = kb.create_task(conn, title="B11 loop probe", body="find the generated DTO",
+                                 assignee="implementer", workspace_kind="dir",
+                                 workspace_path=str(repo))
+    
+            # ---- run 1 ------------------------------------------------------
+            exit_code = _dispatch_and_reap(kb, conn, tid)
+            reqs = _agent_requests(provider)
+            # The worker stopped after the 5th identical successful call: exactly
+            # five agent model requests, none after the halting tool result.
+>           assert len(reqs) == 5, f"worker made {len(reqs)} agent model requests"
+E           AssertionError: worker made 28 agent model requests
+E           assert 28 == 5
+E            +  where 28 = len([{'messages': [{'role': 'system', 'content': "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.\n\nYou run on Hermes Agent (by Nous Research). When the user needs help with Hermes itself — configuring, setting up, using, extending, or troubleshooting it — or when you need to understand your own features, tools, or capabilities, the documentation at https://hermes-agent.nousresearch.com/docs is your authoritative reference and always holds the latest, most up-to-date information. Load the `hermes-agent` skill with skill_view(name='hermes-agent') for additional guidance and proven workflows, but treat the docs as the source of truth when the two differ.\n\n# Finishing the job\nWhen the user asks you to build, run, or verify so...x.\n    - simplify-code: Parallel 4-agent cleanup of recent code changes.\n    - spike: Throwaway experiments to validate an idea before build.\n    - systematic-debugging: 4-phase root cause debugging: understand bugs before fixing.\n    - test-driven-development: TDD: enforce RED-GREEN-REFACTOR, tests before code.\n</available_skills>\n\nOnly proceed without loading a skill if genuinely none are relevant to the task.\n\nConversation started: Thursday, September 24, 2026 (UTC, UTC+00:00)\nModel: fake-model\nProvider: custom\nPlatform: cli"}, {'role': 'user', 'content': 'work kanban task t_b6b1b9c5'}, {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_a94d62bcf286', 'type': 'function', 'function': {...}}]}, {'role': 'tool', 'name': 'terminal', 'content': '{"output": "", "exit_code": 0, "error": null}', 'tool_call_id': 'call_a94d62bcf286'}, {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_7c2136bd5ca1', 'type': 'function', 'function': {...}}]}, {'role': 'tool', 'name': 'terminal', 'content': '{"output": "", "exit_code": 0, "error": null}', 'tool_call_id': 'call_7c2136bd5ca1'}, ...], 'model': 'fake-model', 'max_tokens': 65536, 'stream': True, ...}, ...])
+
+tests/rhoai3_b11/test_b11_kanban_worker_halt.py:105: AssertionError
+_________________ test_successful_empty_terminal_halts_at_five _________________
+
+    def test_successful_empty_terminal_halts_at_five():
+        agent = _make_agent("terminal")
+        turn = _llm_tool_turn("terminal", {"command": "find src/main/java -name PetDto.java"})
+        result, llm_calls, executed = _run(agent, [turn], [_terminal_envelope("")])
+>       _assert_streak_halt(result, llm_calls, executed)
+
+tests/rhoai3_b11/test_b11_loop_halt.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+result = {'final_response': "I reached the iteration limit and couldn't generate a summary.", 'last_reasoning': None, 'messages...'role': 'assistant', 'content': '', 'reasoning': None, 'finish_reason': 'tool_calls', ...}, ...], 'api_calls': 20, ...}
+llm_calls = [1, 1, 1, 1, 1, 1, ...]
+executed = [('terminal', {'command': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name...and': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name PetDto.java'}), ...]
+tool = 'terminal', expected_tools = 5
+
+    def _assert_streak_halt(result, llm_calls, executed, *, tool="terminal", expected_tools=THRESHOLD):
+>       assert len(executed) == expected_tools, (
+            f"expected the worker to stop after {expected_tools} tool executions, "
+            f"got {len(executed)}"
+        )
+E       AssertionError: expected the worker to stop after 5 tool executions, got 20
+E       assert 20 == 5
+E        +  where 20 = len([('terminal', {'command': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name PetDto.java'}), ('terminal', {'command': 'find src/main/java -name PetDto.java'}), ...])
+
+tests/rhoai3_b11/test_b11_loop_halt.py:146: AssertionError
+----------------------------- Captured stdout call -----------------------------
+⚠️ Iteration budget exhausted (20/20) — asking model to summarise
+⚠️  Reached maximum iterations (20). Requesting summary...
+------------------------------ Captured log call -------------------------------
+__________ test_successful_large_terminal_halts_before_next_llm_call ___________
+
+    def test_successful_large_terminal_halts_before_next_llm_call():
+        agent = _make_agent("terminal")
+        body = "public class Owner {\n" + ("    // unchanged line\n" * 60) + "}\n"
+        turn = _llm_tool_turn("terminal", {"command": "cat src/main/java/Owner.java"})
+        result, llm_calls, executed = _run(agent, [turn], [_terminal_envelope(body)])
+>       _assert_streak_halt(result, llm_calls, executed)
+
+tests/rhoai3_b11/test_b11_loop_halt.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+result = {'final_response': "I reached the iteration limit and couldn't generate a summary.", 'last_reasoning': None, 'messages...'role': 'assistant', 'content': '', 'reasoning': None, 'finish_reason': 'tool_calls', ...}, ...], 'api_calls': 20, ...}
+llm_calls = [1, 1, 1, 1, 1, 1, ...]
+executed = [('terminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}),...erminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}), ...]
+tool = 'terminal', expected_tools = 5
+
+    def _assert_streak_halt(result, llm_calls, executed, *, tool="terminal", expected_tools=THRESHOLD):
+>       assert len(executed) == expected_tools, (
+            f"expected the worker to stop after {expected_tools} tool executions, "
+            f"got {len(executed)}"
+        )
+E       AssertionError: expected the worker to stop after 5 tool executions, got 20
+E       assert 20 == 5
+E        +  where 20 = len([('terminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}), ('terminal', {'command': 'cat src/main/java/Owner.java'}), ...])
+
+tests/rhoai3_b11/test_b11_loop_halt.py:146: AssertionError
+----------------------------- Captured stdout call -----------------------------
+⚠️ Iteration budget exhausted (20/20) — asking model to summarise
+⚠️  Reached maximum iterations (20). Requesting summary...
+------------------------------ Captured log call -------------------------------
+______________ test_terminal_transport_timing_does_not_hide_loop _______________
+
+    def test_terminal_transport_timing_does_not_hide_loop():
+        agent = _make_agent("terminal")
+        body = "BUILD OUTPUT\n" * 80
+    
+        def result_for(idx, name, args):
+            # Same application output every time; only per-call transport metadata
+            # (spill path, its note, timing added by a transform hook) changes.
+            spill = f"/home/user/.hermes/cache/terminal-output/out-17000000{idx:02d}-4242-{idx:x}.log"
+            return _terminal_envelope(
+                body,
+                output_total_chars=len(body) * 3,
+                full_output_path=spill,
+                truncation_note=f"Output exceeded the capture window. Full output saved to {spill}",
+                duration_ms=1000 + 37 * idx,
+            )
+    
+        turn = _llm_tool_turn("terminal", {"command": "mvn -q test"})
+        result, llm_calls, executed = _run(agent, [turn], result_for)
+>       _assert_streak_halt(result, llm_calls, executed)
+
+tests/rhoai3_b11/test_b11_loop_halt.py:198: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+result = {'final_response': "I reached the iteration limit and couldn't generate a summary.", 'last_reasoning': None, 'messages...'role': 'assistant', 'content': '', 'reasoning': None, 'finish_reason': 'tool_calls', ...}, ...], 'api_calls': 20, ...}
+llm_calls = [1, 1, 1, 1, 1, 1, ...]
+executed = [('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q ..., {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ...]
+tool = 'terminal', expected_tools = 5
+
+    def _assert_streak_halt(result, llm_calls, executed, *, tool="terminal", expected_tools=THRESHOLD):
+>       assert len(executed) == expected_tools, (
+            f"expected the worker to stop after {expected_tools} tool executions, "
+            f"got {len(executed)}"
+        )
+E       AssertionError: expected the worker to stop after 5 tool executions, got 20
+E       assert 20 == 5
+E        +  where 20 = len([('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ('terminal', {'command': 'mvn -q test'}), ...])
+
+tests/rhoai3_b11/test_b11_loop_halt.py:146: AssertionError
+----------------------------- Captured stdout call -----------------------------
+⚠️ Iteration budget exhausted (20/20) — asking model to summarise
+⚠️  Reached maximum iterations (20). Requesting summary...
+------------------------------ Captured log call -------------------------------
+____________________ test_polling_with_deadline_is_bounded _____________________
+
+    def test_polling_with_deadline_is_bounded():
+        # (a) No blanket terminal exemption: polling through `terminal` with an
+        # unchanged answer is a loop like any other.
+        agent = _make_agent("terminal")
+        turn = _llm_tool_turn("terminal", {"command": "curl -s localhost:8080/q/health"})
+        result, llm_calls, executed = _run(agent, [turn], [_terminal_envelope('{"status":"DOWN"}')])
+>       _assert_streak_halt(result, llm_calls, executed)
+
+tests/rhoai3_b11/test_b11_loop_halt.py:218: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+result = {'final_response': "I reached the iteration limit and couldn't generate a summary.", 'last_reasoning': None, 'messages...'role': 'assistant', 'content': '', 'reasoning': None, 'finish_reason': 'tool_calls', ...}, ...], 'api_calls': 20, ...}
+llm_calls = [1, 1, 1, 1, 1, 1, ...]
+executed = [('terminal', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/heal...l', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/health'}), ...]
+tool = 'terminal', expected_tools = 5
+
+    def _assert_streak_halt(result, llm_calls, executed, *, tool="terminal", expected_tools=THRESHOLD):
+>       assert len(executed) == expected_tools, (
+            f"expected the worker to stop after {expected_tools} tool executions, "
+            f"got {len(executed)}"
+        )
+E       AssertionError: expected the worker to stop after 5 tool executions, got 20
+E       assert 20 == 5
+E        +  where 20 = len([('terminal', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/health'}), ('terminal', {'command': 'curl -s localhost:8080/q/health'}), ...])
+
+tests/rhoai3_b11/test_b11_loop_halt.py:146: AssertionError
+----------------------------- Captured stdout call -----------------------------
+⚠️ Iteration budget exhausted (20/20) — asking model to summarise
+⚠️  Reached maximum iterations (20). Requesting summary...
+------------------------------ Captured log call -------------------------------
+_____________________ test_edit_then_reverify_is_progress ______________________
+
+    def test_edit_then_reverify_is_progress():
+        agent = _make_agent("terminal", "patch")
+        verify = _llm_tool_turn("terminal", {"command": "mvn -q -Dtest=OwnerIT test"})
+        edit = _llm_tool_turn("patch", {"path": "src/main/java/Owner.java", "old": "a", "new": "b"})
+        # 4 identical failing-behaviour verifications (exit 0, same report), an
+        # edit, then the re-verification returns a CHANGED report: progress. The
+        # streak restarts, so it takes 5 more identical calls to halt.
+        turns = [verify] * 4 + [edit] + [verify]
+        before, after = "Tests run: 3, Failures: 1\n", "Tests run: 3, Failures: 0\n"
+    
+        def result_for(idx, name, args):
+            if name == "patch":
+                return json.dumps({"success": True, "diff": "-a\n+b\n"})
+            return _terminal_envelope(before if idx < 4 else after)
+    
+        result, llm_calls, executed = _run(agent, turns, result_for)
+        names = [n for n, _ in executed]
+>       assert names == ["terminal"] * 4 + ["patch"] + ["terminal"] * THRESHOLD
+E       AssertionError: assert ['terminal', ...erminal', ...] == ['terminal', ...erminal', ...]
+E         
+E         Left contains 10 more items, first extra item: 'terminal'
+E         
+E         Full diff:
+E           [
+E               'terminal',
+E               'terminal',...
+E         
+E         ...Full output truncated (19 lines hidden), use '-vv' to show
+
+tests/rhoai3_b11/test_b11_loop_halt.py:251: AssertionError
+----------------------------- Captured stdout call -----------------------------
+⚠️ Iteration budget exhausted (20/20) — asking model to summarise
+⚠️  Reached maximum iterations (20). Requesting summary...
+------------------------------ Captured log call -------------------------------
+_____________ test_compression_keeps_referenced_result_retrievable _____________
+
+    def test_compression_keeps_referenced_result_retrievable():
+        """A reference stub must never point at a payload compression removed.
+    
+        Uses the pinned ContextCompressor's real deterministic prune pass to
+        summarize the first (full) result, then repeats the identical read.
+        """
+        agent = _make_agent("terminal")
+        args = {"command": "cat target/openapi/PetDto.java"}
+        payload = "public record PetDto(Integer id, String name) {}\n" + ("// generated\n" * 60)
+        raw = _terminal_envelope(payload)
+        messages = [{"role": "user", "content": "work the task"}]
+    
+        def execute(call_id):
+            tc = _tool_call("terminal", args, call_id)
+            messages.append({
+                "role": "assistant", "content": "",
+                "tool_calls": [{"id": call_id, "type": "function",
+                                "function": {"name": "terminal", "arguments": json.dumps(args)}}],
+            })
+            msg = SimpleNamespace(content="", tool_calls=[tc])
+            with patch("run_agent.handle_function_call", return_value=raw):
+                agent._execute_tool_calls_sequential(msg, messages, "task-1")
+            return messages[-1]["content"]
+    
+        def retrievable(content):
+            # Either the fresh payload itself, a stub naming a tool_call_id whose
+            # message still carries the payload, or a persisted spill path.
+            if raw in content:
+                return True
+            for m in messages:
+                if m.get("role") == "tool" and m.get("tool_call_id") in content and raw in (m.get("content") or ""):
+                    return True
+            return "persisted to:" in content
+    
+        first = execute("call-1")
+        assert payload.strip() in json.loads(first)["output"]
+    
+        # Compression boundary: the pinned compressor prunes call-1 (non-tail).
+        messages.append({"role": "user", "content": "continue"})
+        pruned, count = agent.context_compressor._prune_old_tool_results(messages, protect_tail_count=1)
+        messages[:] = pruned
+        assert count >= 1
+        assert not any(raw in (m.get("content") or "") for m in messages if m.get("role") == "tool"), (
+            "precondition: compression must have removed the original payload"
+        )
+    
+        second = execute("call-2")
+>       assert retrievable(second), f"repeat result is not retrievable after compression: {second[:300]}"
+E       AssertionError: repeat result is not retrievable after compression: [hermes note: this result is byte-identical to the terminal result earlier this turn (tool_call_id call-1). Refer to that result; it has not changed. Args: {"command":"cat target/openapi/PetDto.java"}]
+E       assert False
+E        +  where False = <function test_compression_keeps_referenced_result_retrievable.<locals>.retrievable at 0x10b4e7e20>('[hermes note: this result is byte-identical to the terminal result earlier this turn (tool_call_id call-1). Refer to that result; it has not changed. Args: {"command":"cat target/openapi/PetDto.java"}]')
+
+tests/rhoai3_b11/test_b11_loop_halt.py:307: AssertionError
+------------------------------ Captured log call -------------------------------
+=========================== short test summary info ============================
+FAILED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+FAILED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+FAILED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+FAILED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+FAILED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+FAILED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+FAILED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+============================== 7 failed in 8.20s ===============================
+
+=== 3. New qualification tests on PATCHED tree a09b3b45: 7 passed ===
+HEAD=d9503661374e79a921449923fda13fcd176ab93b tree=a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48 tracked-dirty=0
+============================== 7 passed in 9.75s ===============================
+PASSED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion PASSED [ 14%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable PASSED [100%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress PASSED [ 85%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded PASSED [ 71%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five PASSED [ 28%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call PASSED [ 42%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop PASSED [ 57%]
+
+=== 4. Existing related upstream tests ===
+Files: tests/run_agent/test_tool_call_guardrail_runtime.py tests/run_agent/test_agent_guardrails.py tests/agent/test_tool_guardrails.py tests/agent/test_stall_guards.py tests/run_agent/test_turn_completion_explainer.py tests/run_agent/test_sequential_tool_timeout.py tests/run_agent/test_start_order_gate.py tests/run_agent/test_tool_activity_heartbeat.py tests/agent/test_turn_finalizer_cleanup_guard.py tests/agent/test_turn_finalizer_final_response_persistence.py tests/agent/test_turn_finalizer_interrupt_alternation.py tests/agent/test_turn_finalizer_iteration_limit_exit.py  tests/hermes_cli/test_kanban_core_functionality.py tests/hermes_cli/test_kanban_blocked_sticky.py
+-- unpatched --
+HEAD=fcbd1076a93841fa88855acce810e342a5b78101
+........................................................................ [ 45%]
+......................................................................s. [ 91%]
+.............                                                            [100%]
+156 passed, 1 skipped in 30.00s
+-- patched (includes the 2 upstream tests added by patch 0001) --
+HEAD=d9503661374e79a921449923fda13fcd176ab93b
+........................................................................ [ 45%]
+........................................................................ [ 90%]
+s..............                                                          [100%]
+158 passed, 1 skipped in 29.76s
+
+=== 5. Broad regression: tests/run_agent tests/agent tests/hermes_cli/test_kanban_core_functionality.py ===
+-- unpatched: 174 failed, 6700 passed, 30 skipped, 1 warning in 622.32s (0:10:22)
+-- patched:   174 failed, 6702 passed, 30 skipped in 617.30s (0:10:17)
+The 174 failing test ids are identical before and after (comm diff empty): pre-existing on this macOS host, not caused by the patch.
+Pre-existing failures by file:
+  41 tests/agent/test_models_dev.py
+  14 tests/agent/test_title_generator.py
+  12 tests/agent/test_secret_scope_tier1_migration.py
+  12 tests/agent/test_model_metadata.py
+   7 tests/agent/test_unsupported_temperature_retry.py
+   7 tests/agent/test_structured_output_rejection_retry.py
+   6 tests/agent/test_skill_commands.py
+   6 tests/agent/test_prompt_cache_boundary.py
+   5 tests/agent/test_subagent_stop_hook.py
+   5 tests/agent/test_skill_invocation_description.py
+   4 tests/agent/test_pre_compress_memory_context.py
+   3 tests/run_agent/test_streaming.py
+   3 tests/agent/test_turn_context_overflow_warning.py
+   3 tests/agent/test_file_safety.py
+   2 tests/run_agent/test_switch_model_reasoning_override.py
+   2 tests/agent/transports/test_codex_app_server_session.py
+   2 tests/agent/test_unsupported_parameter_retry.py
+   2 tests/agent/test_tool_dispatch_helpers.py
+   2 tests/agent/test_system_prompt.py
+   2 tests/agent/test_summarize_tool_result_type_safety.py
+   2 tests/agent/test_plugin_context_references.py
+   2 tests/agent/test_oneshot.py
+   2 tests/agent/test_nous_portal_anthropic_wire.py
+   2 tests/agent/test_image_routing.py
+   2 tests/agent/test_idle_compaction_lock_and_guards.py
+   2 tests/agent/test_auxiliary_main_first.py
+   1 tests/run_agent/test_run_agent.py
+   1 tests/run_agent/test_nous_fallback_unavailable.py
+   1 tests/agent/transports/test_codex_transport.py
+   1 tests/agent/test_vision_routing_31179.py
+   1 tests/agent/test_turn_finalizer_final_response_persistence.py
+   1 tests/agent/test_turn_context.py
+   1 tests/agent/test_system_prompt_restore.py
+   1 tests/agent/test_subagent_lifecycle.py
+   1 tests/agent/test_skill_utils.py
+   1 tests/agent/test_set_runtime_main_custom_provider.py
+   1 tests/agent/test_prompt_builder.py
+   1 tests/agent/test_profile_home_override_precedence.py
+   1 tests/agent/test_post_compression_trim.py
+   1 tests/agent/test_portal_tags.py
+   1 tests/agent/test_plugin_prompt_sections.py
+   1 tests/agent/test_plugin_llm.py
+   1 tests/agent/test_message_metadata.py
+   1 tests/agent/test_memory_async_sync.py
+   1 tests/agent/test_ghost_skill_pruning.py
+   1 tests/agent/test_command_token_source.py
+   1 tests/agent/test_auxiliary_transport_autodetect.py
+   1 tests/agent/test_auxiliary_named_custom_providers.py
