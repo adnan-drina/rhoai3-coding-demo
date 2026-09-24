@@ -1018,6 +1018,50 @@ oc describe devworkspace <factory-workspace> -n wksp-ai-developer | tail -40
 - Do not delete `claim-devworkspace` while `agentic-coolstore` still needs it.
 - CheCluster `maxNumberOfRunningWorkspacesPerUser: 2` only allows the second seat; it does not change PVC access mode.
 
+## Factory Creates A Suffixed Duplicate Workspace
+
+**Measured on Dev Spaces 3.30.1, 2026-09-24:** v11 workspace creation at
+07:44:54 UTC was interrupted by a Dashboard reload after the DevWorkspace
+POST succeeded but before the editor DevWorkspaceTemplate POST. A second
+creation at 07:45:00 produced `spring-petclinic-rest-legacy-v11-mdmn`.
+The first workspace subsequently failed with `plugin for component editor
+not found`; the second had its editor and reached Running. The logs establish
+the reload boundary, not which browser action initiated it.
+
+There are two defects involved. Dashboard creates the workspace and editor
+in separate client-driven requests, leaving a partial workspace on interruption.
+Its existing-workspace check compares the factory's requested revision with
+the first project's `checkoutFrom.revision`. Our bare repository link supplied
+no revision while the devfile selected `main`. The installed client therefore
+missed the original workspace and allowed a suffixed one. A regression using
+the exact installed client code reproduced the miss and the explicit-revision
+match. Evidence: `tmp/v11-duplicate-workspace-20260924/`.
+
+**Prevention:** factory links explicitly request `revision=main` and
+`existing=<project>`. The `migration-workspace-run-name` admission policy
+rejects CREATE when a declared `MIGRATION_RUN_NAME` differs from the workspace
+name, so a retry or concurrent launcher cannot create a suffixed copy sharing
+the migration run's database and worker identity. The policy preserves
+UPDATE/start/stop of old workspaces. It is an accidental-duplicate guard for
+the migration devfile contract, not an authorization boundary against a user
+deliberately removing that declaration.
+
+**Recovery:** preserve workspace status and Dashboard request timing first.
+Inspect `spec.contributions` and confirm each referenced editor template
+exists. Do not press **Create a new workspace** to recover a partial one.
+Recover its editor through the supported Dev Spaces flow, or remove only a
+confirmed unused partial workspace and recreate the canonical name. Do not
+delete run Secrets, database, repository, or another workspace's storage.
+Already-running suffixed workspaces require a deliberate run-identity check
+before migration dispatch; changing their display name does not change the
+Kubernetes identity. The separate-request interruption remains an upstream
+Dashboard limitation; this fix prevents it from producing a second run seat.
+
+Validation: `python3 scripts/check-workspace-creation.py --live` checks the
+installed policy using server dry runs. Roll back the two policy manifests
+and their Kustomize entries through GitOps if creation is unexpectedly blocked;
+that removes duplicate protection without changing existing workspaces.
+
 ## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
 **Affected stage:** Stage 060

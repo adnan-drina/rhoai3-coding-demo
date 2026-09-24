@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: migration-workspace-run-name
+  labels:
+    app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/component: workspace-policy
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [workspace.devfile.io]
+        apiVersions: [v1alpha2]
+        # Existing workspaces, including historical suffixed ones, can still
+        # start/stop. Enforce uniqueness only for new factory creations.
+        operations: [CREATE]
+        resources: [devworkspaces]
+  matchConditions:
+    - name: migration-run
+      expression: >-
+        has(object.spec.template.components) &&
+        object.spec.template.components.exists(c,
+          has(c.container) && has(c.container.env) &&
+          c.container.env.exists(e, e.name == 'MIGRATION_RUN_NAME'))
+  validations:
+    # Kubernetes name uniqueness supplies the atomic exclusion, including
+    # concurrent clients. A second name must not share one run's DB and SA.
+    - expression: >-
+        object.spec.template.components.all(c,
+          !has(c.container) || !has(c.container.env) ||
+          c.container.env.all(e, e.name != 'MIGRATION_RUN_NAME' ||
+            (has(e.value) && e.value != '' && e.value == object.metadata.name)))
+      message: >-
+        Migration workspace name must equal MIGRATION_RUN_NAME. Reopen the
+        existing workspace; if its creation was interrupted, repair that
+        workspace instead of creating a suffixed copy for the same run.
+      reason: Forbidden

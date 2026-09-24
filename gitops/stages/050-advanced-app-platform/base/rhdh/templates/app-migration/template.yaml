@@ -110,7 +110,9 @@ spec:
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           autoStartMigration: ${{ parameters.autoStartMigration }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
-          devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
+          # Dashboard 3.30.1 compares the factory revision with checkoutFrom.
+          # An omitted revision does not match main and permits a suffixed copy.
+          devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}?revision=main&existing=${{ parameters.name }}
 
     - id: publish
       name: Publish destination repository to GitHub

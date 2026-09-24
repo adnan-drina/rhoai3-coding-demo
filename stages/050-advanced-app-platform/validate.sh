@@ -73,6 +73,9 @@ check "CheCluster phase Active" \
 check "migration workspace MaaS egress NetworkPolicy" \
   "oc get networkpolicy migration-workspace-maas-egress -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "migration-workspace-maas-egress"
+check "factory reuse links and migration duplicate admission (server dry runs)" \
+  "python3 '${REPO_ROOT}/scripts/check-workspace-creation.py' --live && echo WORKSPACE_CREATION_OK" \
+  "WORKSPACE_CREATION_OK"
 
 log_step "Identity (identity component)"
 check_csv_succeeded "rhbk" "rhbk-operator"
