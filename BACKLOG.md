@@ -6,10 +6,12 @@
   unqualified factory revision did not match the devfile's `main`. A reload
   between workspace and editor POSTs left the first v11 seat incomplete; a
   second creation six seconds later added `-mdmn`.
-- [ ] Publish and live-validate explicit main/existing factory links and the
-  CREATE-only `migration-workspace-run-name` policy. Narrow server dry runs
-  must allow the canonical/non-migration cases and refuse duplicate suffixes
-  and missing/conflicting run values. Existing v11 objects remain untouched.
+- [x] Published at platform `47a1fdac656e71b1ae8e21e5b73c3d1526ab4a7d`,
+  Synced/Healthy. Explicit main/existing links plus CREATE-only
+  `migration-workspace-run-name` policy: seven live server dry-run cases passed.
+  Corrected browser launch reopened the same running v11 workspace; both
+  original UIDs unchanged, auto-start still off. Evidence retained under
+  `tmp/v11-duplicate-workspace-20260924/`. Golden unchanged.
 - [ ] Upstream limitation: Dashboard's workspace/editor creation is not atomic.
   The duplicate guard stops a second seat but does not reconstruct a missing
   editor. Recover partial creation under the original run name.
