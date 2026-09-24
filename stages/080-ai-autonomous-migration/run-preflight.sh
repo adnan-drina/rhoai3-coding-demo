@@ -227,6 +227,17 @@ from urllib.parse import urlsplit
 require(urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == MAASHOSTVAL, 'worker MaaS endpoint is not the platform gateway host')
 addrs = {a[4][0] for a in socket.getaddrinfo(MAASHOSTVAL, 443, proto=socket.IPPROTO_TCP)}
 require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gateway %s: the workspace is on the public ELB path' % (sorted(addrs), MAASIPVAL))
+# B1: the workspace's own startup gate (planner.maas_route) must agree with
+# the cluster truth read above: the platform values stamped into this
+# workspace name that gateway and address, and TLS verifies through it.
+if (root / '.hermes/lib/planner/maas_route.py').is_file():
+    require(os.environ.get('RHOAI3_MAAS_HOST') == MAASHOSTVAL and os.environ.get('RHOAI3_MAAS_INTERNAL_IP') == MAASIPVAL,
+            'the workspace was stamped with MaaS route %s -> %s, the cluster gateway is %s -> %s: refresh the factory routing input'
+            % (os.environ.get('RHOAI3_MAAS_HOST'), os.environ.get('RHOAI3_MAAS_INTERNAL_IP'), MAASHOSTVAL, MAASIPVAL))
+    sys.path.insert(0, str(root / '.hermes/lib'))
+    from planner.maas_route import route_gaps
+    gaps, _rec = route_gaps(dict(os.environ))
+    require(not gaps, 'STARTUP_MAAS_ROUTE: %s' % (gaps[0] if gaps else ''))
 
 def leaves(x):
     if isinstance(x, dict):

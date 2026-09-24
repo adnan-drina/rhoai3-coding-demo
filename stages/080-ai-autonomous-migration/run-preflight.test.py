@@ -59,6 +59,13 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == 'maas.example'", code)
         self.assertIn("oc('get','service','maas-gateway-internal'", LOCAL)
 
+    def test_preflight_runs_the_workspace_startup_route_gate(self):
+        # B1: the Operator preflight and the workspace startup check are one rule
+        code = self.fill()
+        self.assertIn("from planner.maas_route import route_gaps", code)
+        self.assertIn("os.environ.get('RHOAI3_MAAS_HOST') == 'maas.example'", code)
+        self.assertIn("os.environ.get('RHOAI3_MAAS_INTERNAL_IP') == '172.30.250.250'", code)
+
     def test_shared_defaults_must_match_the_golden(self):
         self.assertIn("expected['run-defaults.json'] = digest(golden / 'run-defaults.json')", LOCAL)
         self.assertIn("defaults['budget']['max_wall_hours']", LOCAL)
