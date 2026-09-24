@@ -16,16 +16,22 @@ previous code. Nothing is published or launched; the release mapping is
   required at render and at every dispatch; B4 declared model profile, pinned
   per run; B3 quota admission and Argo refresh paths; B9/B12 order
   explanations and response-path placement.
-- [x] Quota decision (2026-09-24): raise the limit. The Qwen 3.8 limit on
-  `devspaces-coding-models` rises to 80M/h (`e7385242`) for the declared 68.5M/h
-  demand. The preflight counts every other running workspace against the same
-  bucket, so stop v12 before the v13 preflight.
+- [x] Quota decision (2026-09-24, revised by the release review R2): the
+  Qwen 3.8 limit stays 60M/h. The 80M/h raise (`e7385242`) was reverted
+  (`302b6957`). Each run is held to an enforced allowance of 200 requests/h,
+  counting retries and auxiliary calls, with every request capped at
+  220000 + 32768 tokens. Reserve: 9M/h. Total: 59.55M ≤ 60M. The Hermes
+  pacer (runtime patch 0007) enforces it; `run-preflight.sh` admits
+  against it.
+- [x] B8 protected writer (R3): the migration-run provisioner writes
+  `<run>-run-control`, and it is mounted read-only. A run declared under
+  run control refuses when the record is missing (R1).
 - [ ] Before v13: bake and push the ws-080 image with
-  `stages/080-ai-autonomous-migration/hermes-runtime` (Dockerfile hunk),
-  then repin the devfile digest and `pins.json` `workspace_overlay`.
+  `stages/080-ai-autonomous-migration/hermes-runtime` (7 patches, tree
+  `433f0c6f`), then repin the devfile digest and `pins.json`
+  `workspace_overlay`. Autostart refuses an image whose stamp is not
+  `hermes_agent.patched_tree` (HERMES_RUNTIME_UNPATCHED).
 - [ ] Deferred:
-  - B8 activation writer outside the worker's UID. v13 has
-    same-UID run control plus K2, which is not an authority boundary.
   - B6 "one bounded diagnostic action" on an unproven handoff. It pends,
     as before.
   - B9 attaching the source's own sort call. This needs call-argument
