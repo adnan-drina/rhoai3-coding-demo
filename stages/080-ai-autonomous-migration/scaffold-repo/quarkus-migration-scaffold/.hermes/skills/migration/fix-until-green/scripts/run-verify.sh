@@ -74,7 +74,8 @@ ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # B10/B4: verification runs only under the harness release and the model
 # profile the run was created with; drift is refused before anything is measured
-if ! DRIFT="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1] + "/.hermes/lib"); from planner.run_control import run_gaps; g = run_gaps(sys.argv[1]); print(g[0] if g else ""); raise SystemExit(1 if g else 0)' "${ROOT}")"; then
+HARNESS_LIB="${SCRIPT_DIR}/../../../../lib"
+if [[ -d "${HARNESS_LIB}/planner" ]] && ! DRIFT="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[2]); from planner.run_control import run_gaps; g = run_gaps(sys.argv[1]); print(g[0] if g else ""); raise SystemExit(1 if g else 0)' "${ROOT}" "${HARNESS_LIB}")"; then
   echo "REFUSE: ${DRIFT}" >&2
   exit 2
 fi
