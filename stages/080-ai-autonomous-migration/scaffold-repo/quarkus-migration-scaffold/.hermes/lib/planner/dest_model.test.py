@@ -416,7 +416,39 @@ def _checked_case() -> int:
     return 0
 
 
+def _annotation_shape_case() -> int:
+    """B5: the two models' annotation shapes, read at the model boundary."""
+    from planner.dest_model import AnnotationShapeError, annotation_literals, annotation_named
+    src = {"fqn": "org.eclipse.microprofile.config.inject.ConfigProperty", "values": {"name": "shop.size", "defaultValue": "20"}}
+    dst = {"fqn": "org.eclipse.microprofile.config.inject.ConfigProperty", "values": ["shop.size", "20"],
+           "named": {"name": ["shop.size"], "defaultValue": ["20"]}}
+    if not (sorted(annotation_literals(src)) == sorted(annotation_literals(dst)) == ["20", "shop.size"]):
+        return _fail("the source named map and the destination literal list carry the same literals: %s %s"
+                     % (annotation_literals(src), annotation_literals(dst)))
+    if annotation_named(dst, "name") != ["shop.size"] or annotation_named(src, "defaultValue") != ["20"]:
+        return _fail("a named attribute is read from the destination's named map or the source's values map")
+    if annotation_named({"values": ["shop.size", "20"]}, "name") is not None:
+        return _fail("a flat literal list is never guessed into a named attribute")
+    kept = annotation_literals({"values": {"required": True, "size": 3, "tags": ["a", ["b"]], "empty": []}})
+    if kept != ["true", "3", "a", "b"]:
+        return _fail("booleans, numbers and nested arrays are kept; an empty array adds nothing: %s" % kept)
+    if annotation_literals({"fqn": "x.Marker"}) != [] or annotation_literals({"values": []}) != []:
+        return _fail("absent and empty values both read as no literal")
+    for bad, pointer in (({"values": "shop.size"}, "/values"), ({"values": [{"k": "v"}]}, "/values/0"),
+                         ({"values": {"name": {"k": "v"}}}, "/values/name")):
+        try:
+            annotation_literals(bad)
+        except AnnotationShapeError as exc:
+            if pointer not in str(exc):
+                return _fail("the shape error names its JSON pointer %s: %s" % (pointer, exc))
+            continue
+        return _fail("an unsupported shape raises instead of being iterated: %s" % bad)
+    return 0
+
+
 def main() -> int:
+    if _annotation_shape_case():
+        return 1
     if not shutil.which("javac"):
         print("SKIP: dest-model selftest needs a JDK on PATH")
         return 0

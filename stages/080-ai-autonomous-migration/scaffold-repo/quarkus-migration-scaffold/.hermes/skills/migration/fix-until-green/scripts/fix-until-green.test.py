@@ -1814,45 +1814,99 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
         return 0
 
 
-def _unit_gate_handoff_case() -> int:
-    """v12 t_b33f25fa: a unit on the PACKAGE gate is accepted at its checkpoint
-    only when its issued obligation is gone, every sealed member assesses
-    clean, and every failure the gate now reports is located in a file the
-    unit does not reach. Each missing condition keeps it pending (None)."""
+def _unit_gate_handoff_case(base: str = "p") -> int:
+    """v12 t_b33f25fa, and B6: a unit on the PACKAGE gate is accepted at its
+    checkpoint only when its issued obligation is gone, every sealed member
+    assesses clean, and every failure the gate now reports has POSITIVE
+    evidence: the typed reach test says OUTSIDE_SCOPE (never UNKNOWN) and the
+    failure is shown independent of the candidate -- an accepted step already
+    recorded it, or its file-local expression is unchanged since the accepted
+    commit. Each missing condition keeps it pending (None) and, where the
+    handoff was the question, says GATE_HANDOFF_UNPROVEN with the cause."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("advance_mod", ADVANCE)
     adv = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(adv)
     root = Path(tempfile.mkdtemp())
-    unreached = lambda _r, _s, rel: ("", "%s declares X, which the unit's sealed symbols do not reach" % rel)
-    reached = lambda _r, _s, rel: ("sealed: %s implements the sealed parent" % rel, "")
+    rel = "src/main/java/%s/RootRestController.java" % base.replace(".", "/")
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    spel_src = 'class RootRestController {\n    @Value("#{servletContext.contextPath}")\n    String path;\n}\n'
+    (root / rel).write_text(spel_src, encoding="utf-8")
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted")
+    accepted = _git(root, "rev-parse", "HEAD").strip()
+    prev = {"commit": accepted, "item_ids": []}
+    steps = {"steps": [prev]}
+    unreached = lambda _r, _s, rel: ("OUTSIDE_SCOPE", "%s declares X, which the unit's sealed symbols do not reach" % rel)
+    reached = lambda _r, _s, rel: ("IN_SCOPE", "sealed: %s implements the sealed parent" % rel)
+    no_type = lambda _r, _s, rel: ("UNKNOWN", "the model has no type for %s" % rel)
+    no_model = lambda _r, _s, rel: ("UNKNOWN", "the destination model is unavailable, so the file's types cannot be named")
     rows = [{"verdict": "ok", "member": "a#b"}] * 3
     issued = {"gate_items": ["rt:package:old"]}
-    spel = {"id": "rt:package:new", "gate": "package", "path": "src/main/java/p/RootRestController.java",
+    spel = {"id": "rt:package:new", "gate": "package", "path": rel,
             "cause": "unsupported-spel", "unlocated": False, "set_wide": []}
-    cur = {"items": [spel]}
-    h = adv._unit_gate_handoff(root, {}, rows, issued, cur, "package", reach=unreached)
-    if not h or h["now_reported"][0]["path"] != spel["path"] or h["issued"] != ["rt:package:old"] or "closing card" not in h["owed_by"]:
-        return _fail("the unit whose gate now stops on an unreached obligation must hand off: %s" % h)
+    cur = {"items": [spel], "measure": {"known": True}}
+
+    def call(**kw):
+        a = dict(rows=rows, issued=issued, cur=cur, gate="package", reach=unreached, prev=prev, steps=steps, changed=[])
+        a.update(kw)
+        why: list = []
+        got = adv._unit_gate_handoff(root, {}, a["rows"], a["issued"], a["cur"], a["gate"], reach=a["reach"],
+                                     prev=a["prev"], steps=a["steps"], changed=a["changed"], why=why)
+        return got, why
+
+    h, _ = call()
+    if not h or h["now_reported"][0]["path"] != rel or h["issued"] != ["rt:package:old"] or "closing card" not in h["owed_by"]:
+        return _fail("the unit whose gate now stops on an unreached, unchanged obligation must hand off: %s" % h)
     if "unsupported-spel" not in h["reason"] or "RootRestController" not in h["reason"]:
         return _fail("the handoff reason must name the obligation and where it is: %s" % h["reason"])
-    for why, kw in (
-        ("the issued obligation is still reported", dict(cur={"items": [spel, dict(spel, id="rt:package:old")]})),
-        ("the new failure is in a file the unit reaches", dict(reach=reached)),
-        ("the new failure is unlocated", dict(cur={"items": [dict(spel, unlocated=True)]})),
-        ("the new failure is set-wide", dict(cur={"items": [dict(spel, set_wide=["repositories"])]})),
-        ("the new failure has no path", dict(cur={"items": [dict(spel, path="")]})),
+    ind = h["now_reported"][0]["independence"]
+    if ind.get("kind") != "unchanged-expression" or "#{servletContext.contextPath}" not in ind.get("expressions", []):
+        return _fail("the handoff records the independence evidence it rests on: %s" % ind)
+    if h.get("accepted_commit") != accepted[:12] or h.get("debt") != {"package": "owed", "boot": "owed"}:
+        return _fail("the handoff records the accepted commit and the package/boot debt: %s" % h)
+    # a pre-existing cause that is NOT file-local may hand off only when an
+    # accepted step already recorded that exact obligation
+    query = dict(spel, id="rt:package:q", cause="query-invalid")
+    h2, _ = call(cur={"items": [query], "measure": {"known": True}},
+                 steps={"steps": [dict(prev, item_ids=["rt:package:q"])]})
+    if not h2 or h2["now_reported"][0]["independence"].get("kind") != "baseline-named":
+        return _fail("a pre-existing unrelated cause an accepted step recorded can continue: %s" % h2)
+    changed_expr = spel_src.replace("#{servletContext.contextPath}", "#{request.contextPath}")
+    for why_name, kw, token in (
+        ("reach is UNKNOWN: the model has no type (B6)", dict(reach=no_type), "reach UNKNOWN"),
+        ("reach is UNKNOWN: the model is unavailable (B6)", dict(reach=no_model), "reach UNKNOWN"),
+        ("a failure in an untouched file whose cause is not file-local and no step recorded (B6)",
+         dict(cur={"items": [query], "measure": {"known": True}}), "independence UNKNOWN"),
+        ("the file the gate names is one the candidate changed", dict(changed=[rel]), "independence UNKNOWN"),
+        ("the measure is not known", dict(cur={"items": [spel], "measure": {"known": False}}), "not known"),
+        ("the new failure is unlocated", dict(cur={"items": [dict(spel, unlocated=True)], "measure": {"known": True}}), "unlocated"),
+        ("the new failure is set-wide", dict(cur={"items": [dict(spel, set_wide=["repositories"])], "measure": {"known": True}}), "set-wide"),
+        ("the new failure is in a file the unit reaches", dict(reach=reached), "reach IN_SCOPE"),
+    ):
+        got, why = call(**kw)
+        if got is not None:
+            return _fail("%s: the unit must stay pending, got a handoff %s" % (why_name, got))
+        if not why or "GATE_HANDOFF_UNPROVEN" not in why[0] or token not in why[0]:
+            return _fail("%s: the refusal names GATE_HANDOFF_UNPROVEN and its cause: %s" % (why_name, why))
+    # the file-local expression changed between the accepted tree and the candidate
+    (root / rel).write_text(changed_expr, encoding="utf-8")
+    got, why = call()
+    (root / rel).write_text(spel_src, encoding="utf-8")
+    if got is not None or not why or "independence UNKNOWN" not in why[0]:
+        return _fail("a changed file-local expression is not independent of the candidate: %s %s" % (got, why))
+    for why_name, kw in (
+        ("the issued obligation is still reported", dict(cur={"items": [spel, dict(spel, id="rt:package:old")], "measure": {"known": True}})),
         ("a sealed member is inconclusive", dict(rows=rows + [{"verdict": "inconclusive", "member": "c#d"}])),
         ("a sealed member violates", dict(rows=rows + [{"verdict": "violates", "member": "c#d"}])),
         ("the gate is not package", dict(gate="boot")),
-        ("the gate reports nothing", dict(cur={"items": []})),
+        ("the gate reports nothing", dict(cur={"items": [], "measure": {"known": True}})),
         ("nothing was issued on the gate", dict(issued={"gate_items": []})),
     ):
-        args = dict(rows=rows, issued=issued, cur=cur, gate="package", reach=unreached)
-        args.update(kw)
-        got = adv._unit_gate_handoff(root, {}, args["rows"], args["issued"], args["cur"], args["gate"], reach=args["reach"])
+        got, _ = call(**kw)
         if got is not None:
-            return _fail("%s: the unit must stay pending, got a handoff %s" % (why, got))
+            return _fail("%s: the unit must stay pending, got a handoff %s" % (why_name, got))
     shutil.rmtree(root, ignore_errors=True)
     return 0
 
@@ -1864,7 +1918,7 @@ def main() -> int:
         return 1
     if _known_before_unknown_case() or _known_before_unknown_case("com.example.store") or _missing_baseline_case():
         return 1
-    if _unit_checkpoint_case() or _unit_gate_handoff_case():
+    if _unit_checkpoint_case() or _unit_gate_handoff_case() or _unit_gate_handoff_case("com.example.store.web"):
         return 1
     if _si1_case():
         return 1

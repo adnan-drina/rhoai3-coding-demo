@@ -563,7 +563,68 @@ def _parity_server_error_case(root: Path) -> int:
     return 0
 
 
+def _typed_reach_case(base: str = "p") -> int:
+    """B5/B6: unit_reach answers IN_SCOPE, OUTSIDE_SCOPE or UNKNOWN, and only a
+    fully checked, typed file is OUTSIDE. An unavailable model, a file the model
+    has no type for, and an annotation whose shape neither model produces are
+    UNKNOWN -- never the non-reach a gate handoff may rest on. The destination's
+    literal list and the source's named map read the same literal. Run under
+    two package roots so no name carries the result."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("amend_scope_typed", HERE / "amend-scope.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    sealed_prop = "%s.store.pagesize" % base
+    scope = {"kind": "unit", "symbols": [{"kind": "property", "fqn": sealed_prop}],
+             "members": [{"path": "src/main/java/%s/Sealed.java" % base.replace(".", "/")}]}
+    rel = "src/main/java/%s/web/Other.java" % base.replace(".", "/")
+    fqn = "%s.web.Other" % base
+
+    def with_types(types):
+        model = {"types": types}
+        mod.dest_model = lambda _root: model
+        mod.types_of = lambda _m, r: [t for t in types if t.get("_path") == r]
+        mod._worklist_items = lambda _root: []
+
+    def typ(annotations):
+        return {"_path": rel, "fqn": fqn, "supertypes": [], "declared": [{"name": "get", "calls": [], "annotations": annotations}]}
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        def unavailable(_root):
+            raise mod.DestModelUnavailable("javac failed")
+        mod.dest_model = unavailable
+        st, why = mod.unit_reach(root, scope, rel)
+        if st != "UNKNOWN" or "unavailable" not in why:
+            return _fail("an unavailable model is UNKNOWN, not outside (%s): %s %s" % (base, st, why))
+        with_types([])
+        st, why = mod.unit_reach(root, scope, rel)
+        if st != "UNKNOWN" or "no type" not in why:
+            return _fail("a file the model has no type for is UNKNOWN (%s): %s %s" % (base, st, why))
+        with_types([typ([{"fqn": "org.eclipse.microprofile.config.inject.ConfigProperty", "values": ["other.key"]}])])
+        st, why = mod.unit_reach(root, scope, rel)
+        if st != "OUTSIDE_SCOPE":
+            return _fail("a typed file every shape was checked against is OUTSIDE_SCOPE (%s): %s %s" % (base, st, why))
+        for shape, ann in (("destination literal list", {"values": [sealed_prop], "named": {"name": [sealed_prop]}}),
+                           ("source named map", {"values": {"name": sealed_prop, "defaultValue": "20"}}),
+                           ("nested array", {"values": [[sealed_prop]]})):
+            with_types([typ([dict(ann, fqn="x.Ann")])])
+            st, why = mod.unit_reach(root, scope, rel)
+            if st != "IN_SCOPE" or sealed_prop not in why:
+                return _fail("the %s reads the sealed property (%s): %s %s" % (shape, base, st, why))
+        with_types([typ([{"fqn": "x.Ann", "values": sealed_prop}])])
+        st, why = mod.unit_reach(root, scope, rel)
+        if st != "UNKNOWN" or "MODEL_ANNOTATION_SHAPE" not in why or "/values" not in why:
+            return _fail("a values shape neither model produces is UNKNOWN naming its pointer, never iterated as characters (%s): %s %s"
+                         % (base, st, why))
+        if mod._unit_locus(root, scope, rel)[0]:
+            return _fail("an UNKNOWN reach never authorizes an amendment")
+    return 0
+
+
 def main() -> int:
+    if _typed_reach_case() or _typed_reach_case("com.example.shop"):
+        return 1
     if not shutil.which("javac"):
         print("SKIP: amend-scope selftest needs a JDK on PATH")
         return 0

@@ -996,10 +996,13 @@ def main(argv: list[str] | None = None) -> int:
             # the same thing, and it keeps its own cause. The one exception is
             # a unit whose gate now stops on an obligation it does not reach
             # (_unit_gate_handoff): accepted at its checkpoint, proof owed later.
-            handoff = _unit_gate_handoff(root, scope_doc, scope_rows, issued, cur, gate) if unit else None
+            handoff_why: list[str] = []
+            handoff = (_unit_gate_handoff(root, scope_doc, scope_rows, issued, cur, gate, prev=prev, steps=steps,
+                                          changed=changed, why=handoff_why) if unit else None)
             if handoff is None:
                 cause = "unassessable-scope" if (unit and any(r.get("verdict") == "inconclusive" for r in scope_rows)) else "unproven-repair"
-                return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause=cause)
+                return _pending(root, steps, args.cluster, args.card, cur,
+                                reason + ("; " + handoff_why[0] if handoff_why else ""), changed, on_disk, cause=cause)
             reason = handoff["reason"]
         if handoff is None:
             if not (cur.get("measure") or {}).get("known"):
@@ -1095,55 +1098,108 @@ def main(argv: list[str] | None = None) -> int:
     return rc
 
 
+# Causes whose failure is decided by the expression written at the locus and
+# nothing else, so an unchanged expression proves the failure pre-existed the
+# candidate (B6). Deliberately ONE: a query, an injection or a missing
+# implementation depends on types in other files, and a candidate can break
+# them without touching the file the gate names.
+FILE_LOCAL_CAUSES = {"unsupported-spel": r"#\{[^}]*\}"}
+
+
+def _gate_cause_independent(root: Path, item: dict, prev_commit: str, steps: dict, changed: list[str]) -> dict | None:
+    """Positive evidence that the gate failure a unit now meets was NOT made by
+    the candidate: an accepted step already recorded this exact obligation id,
+    or its cause is file-local and the exact expression is unchanged between the
+    accepted tree and the candidate. None when neither can be shown."""
+    import re
+    iid = str(item.get("id") or "")
+    for i, st in enumerate(steps.get("steps") or []):
+        if iid and iid in (st.get("item_ids") or []):
+            return {"kind": "baseline-named", "step": i, "commit": str(st.get("commit") or "")[:12]}
+    rel, cause = str(item.get("path") or ""), str(item.get("cause") or "")
+    rx = FILE_LOCAL_CAUSES.get(cause)
+    if not rx or not rel or rel in changed:
+        return None
+    cand = root / rel
+    if not cand.is_file():
+        return None
+    proc = subprocess.run(["git", "-C", str(root), "show", "%s:%s" % (prev_commit or "HEAD", rel)],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
+    before = sorted(set(re.findall(rx, proc.stdout)))
+    after = sorted(set(re.findall(rx, cand.read_text(encoding="utf-8", errors="replace"))))
+    if not before or before != after:
+        return None
+    return {"kind": "unchanged-expression", "cause": cause, "expressions": before[:4],
+            "commit": (prev_commit or "HEAD")[:12]}
+
+
 def _unit_gate_handoff(root: Path, scope_doc: dict, scope_rows: list[dict], issued: dict, cur: dict,
-                       gate: str, reach=None) -> dict | None:
+                       gate: str, reach=None, *, prev: dict | None = None, steps: dict | None = None,
+                       changed: list[str] | None = None, why: list[str] | None = None) -> dict | None:
     """Whether a UNIT's gate obligation is discharged at its checkpoint because
     the failure the gate NOW reports belongs to a different obligation.
 
     The package gate reports one failure at a time, so its issued obligation
-    disappearing is not proof by itself (UNPROVEN). But when every sealed
-    member assesses clean and EVERY failure the gate now reports is located in
-    a file this unit does not reach -- judged by the same reach test
-    amend-scope.py applies, which refuses to widen the card to that file --
-    the unit cannot make the gate pass, and neither can any card while the
-    unit holds the slot (v12 t_b33f25fa: the fragment implementations were
-    right and the build then stopped on an unrelated SpEL @Value). The unit
-    is accepted at its checkpoint, the new obligation is the next card, and
-    the package+boot proof stays owed by the closing card, which needs an
-    empty list and both gates passing on the same artifact. Anything short
-    of that -- an unlocated or set-wide failure, a failure in a file the unit
-    reaches, a member not assessed clean -- is None, and the card stays
-    pending exactly as before.
+    disappearing is not proof by itself (UNPROVEN). The unit is accepted at its
+    checkpoint only on POSITIVE evidence for every failure the gate now reports
+    (B6): the typed reach test (amend-scope.unit_reach, the same test that
+    refuses to widen the card) answers OUTSIDE_SCOPE -- never UNKNOWN -- and
+    the failure is shown independent of the candidate (_gate_cause_independent).
+    v12 t_b33f25fa: the fragment implementations were right and the build then
+    stopped on an unrelated, unchanged SpEL @Value. The package+boot proof stays
+    owed by the closing card. Anything short of that is None, the reason is
+    appended to ``why`` (GATE_HANDOFF_UNPROVEN naming the cause), and the card
+    stays pending exactly as before.
     """
+    def refuse(text: str) -> None:
+        if why is not None:
+            why.append(text)
+        return None
+
     if gate != "package" or not scope_rows or any(r.get("verdict") != "ok" for r in scope_rows):
         return None
     issued_gate = {str(i) for i in (issued.get("gate_items") or [])}
     now = [i for i in (cur.get("items") or []) if str(i.get("gate") or "") == gate]
     if not issued_gate or not now or issued_gate & {str(i.get("id")) for i in now}:
         return None
+    if not (cur.get("measure") or {}).get("known"):
+        return refuse("GATE_HANDOFF_UNPROVEN: the candidate's measure is not known, so no gate record is candidate-bound")
     if reach is None:
         import importlib.util
         spec = importlib.util.spec_from_file_location("amend_scope", Path(__file__).resolve().parent / "amend-scope.py")
         amend = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(amend)
-        reach = amend._unit_locus
+        reach = amend.unit_reach
+    prev_commit = str((prev or {}).get("commit") or "")
     rows = []
     for item in now:
         rel = str(item.get("path") or "")
         if item.get("unlocated") or item.get("set_wide") or not rel:
-            return None
-        reached, why_not = reach(root, scope_doc, rel)
-        if reached or not why_not:
-            return None
+            return refuse("GATE_HANDOFF_UNPROVEN: package obligation %s is %s; independence UNKNOWN"
+                          % (item.get("id"), "unlocated" if (item.get("unlocated") or not rel) else "set-wide"))
+        status, detail = reach(root, scope_doc, rel)
+        if status != "OUTSIDE_SCOPE":
+            return refuse("GATE_HANDOFF_UNPROVEN: package obligation %s at %s; reach %s (%s)"
+                          % (item.get("id"), rel, status, str(detail)[:200]))
+        independent = _gate_cause_independent(root, item, prev_commit, steps or {}, list(changed or []))
+        if independent is None:
+            return refuse("GATE_HANDOFF_UNPROVEN: package obligation %s at %s (%s); independence UNKNOWN: no accepted "
+                          "step recorded it and its cause is not a file-local expression unchanged since %s"
+                          % (item.get("id"), rel, item.get("cause") or "unclassified", (prev_commit or "HEAD")[:12]))
         rows.append({"id": str(item.get("id")), "path": rel, "cause": str(item.get("cause") or ""),
-                     "outside_unit": why_not[:300]})
+                     "outside_unit": str(detail)[:300], "reach": status, "independence": independent})
     return {"gate": gate, "issued": sorted(issued_gate), "now_reported": rows,
+            "accepted_commit": prev_commit[:12],
+            "debt": {"package": "owed", "boot": "owed"},
             "owed_by": "the closing card: an empty work list and the package and boot gates passing on the same artifact",
             "reason": ("the unit's %s obligation %s is no longer reported and every sealed member assesses clean; the "
-                       "gate now stops on %s, located in %s, which this unit does not reach -- a different obligation, "
-                       "minted next; the %s proof stays owed by the closing card"
+                       "gate now stops on %s, located in %s, which this unit does not reach (OUTSIDE_SCOPE) and which "
+                       "the candidate did not cause (%s) -- a different obligation, minted next; the %s proof stays "
+                       "owed by the closing card"
                        % (gate, ", ".join(sorted(issued_gate)), ", ".join(r["cause"] or r["id"] for r in rows),
-                          ", ".join(r["path"] for r in rows), gate))}
+                          ", ".join(r["path"] for r in rows), ", ".join(r["independence"]["kind"] for r in rows), gate))}
 
 
 def _mint(root: Path, hermes: str) -> int:

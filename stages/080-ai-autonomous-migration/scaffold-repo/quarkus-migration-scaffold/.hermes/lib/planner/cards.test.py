@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from planner.cards import TITLE_ACTIONS, TITLE_DASH, card_title, loop_title_ok  # noqa: E402
+from planner.cards import TITLE_ACTIONS, TITLE_DASH, card_title, loop_title_ok, next_card  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -14,7 +14,27 @@ def _fail(msg: str) -> int:
     return 1
 
 
+def _package_debt_case() -> int:
+    """B6: a unit accepted on a gate HANDOFF leaves the package and boot proof
+    owed. However empty the work list and however clean the measure, M4 VERIFY
+    is not minted until both gates pass on the same artifact."""
+    empty = {"clusters": [], "items": [], "deferred": [], "blocked_clusters": [],
+             "measure": {"known": True, "tuple": [0, 0, 0]}}
+    handoff_steps = {"steps": [{"verdict": "accepted", "gate_handoff": {"debt": {"package": "owed", "boot": "owed"}}}]}
+    for label, runtime in (("package owed", {"ready": False, "reasons": ["the full Maven verification failed"]}),
+                           ("never run", {}),
+                           ("different artifacts", {"ready": False, "reasons": ["startup evidence is for a different artifact"]})):
+        if next_card(dict(empty, runtime=runtime), handoff_steps) is not None:
+            return _fail("M4 is refused while package/boot debt is undischarged (%s)" % label)
+    close = next_card(dict(empty, runtime={"ready": True}), handoff_steps)
+    if not close or close.get("title") != "M4 VERIFY":
+        return _fail("M4 VERIFY is minted once both gates pass on one artifact: %s" % close)
+    return 0
+
+
 def main() -> int:
+    if _package_debt_case():
+        return 1
     dash = TITLE_DASH
     cases = [
         ("build", "pom.xml", False, "M3 BUILD %s pom.xml (2 items, attempt 1)" % dash),

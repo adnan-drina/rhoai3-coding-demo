@@ -337,6 +337,64 @@ def above_members(typ: dict[str, Any]) -> list[dict[str, Any]]:
     return list(typ.get("supertype_methods") or []) + list(typ.get("inherited") or [])
 
 
+class AnnotationShapeError(ValueError):
+    """An annotation row whose values have a shape neither model produces."""
+
+
+def _flatten_literals(value: Any, pointer: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, bool):
+        return ["true" if value else "false"]
+    if isinstance(value, (str, int, float)):
+        return [str(value)]
+    if isinstance(value, (list, tuple)):
+        out: list[str] = []
+        for i, v in enumerate(value):
+            out.extend(_flatten_literals(v, "%s/%d" % (pointer, i)))
+        return out
+    raise AnnotationShapeError("%s has %s" % (pointer, type(value).__name__))
+
+
+def annotation_literals(ann: dict[str, Any]) -> list[str]:
+    """Every literal an annotation row carries, from EITHER model (B5).
+
+    The destination model (DestModel.java) writes ``values`` as a flat list of
+    string literals and ``named`` as attribute -> literals; the source model
+    writes ``values`` as attribute -> value. Both are read here, so no caller
+    has to guess (v12 t_b33f25fa crashed calling .values() on the list).
+    Booleans, numbers and nested arrays are kept, spelled as written; absent
+    and empty both give []. Any other outer or inner shape raises
+    AnnotationShapeError naming its JSON pointer: an unreadable row is an
+    unknown, never an empty mapping that reads as "nothing matched"."""
+    if not isinstance(ann, dict):
+        raise AnnotationShapeError("/ has %s" % type(ann).__name__)
+    vals = ann.get("values")
+    if isinstance(vals, dict):
+        out: list[str] = []
+        for k, v in vals.items():
+            out.extend(_flatten_literals(v, "/values/%s" % k))
+        return out
+    if vals is None or isinstance(vals, list):
+        return _flatten_literals(vals, "/values")
+    raise AnnotationShapeError("/values has %s; expected the destination literal list or the source named map"
+                               % type(vals).__name__)
+
+
+def annotation_named(ann: dict[str, Any], attr: str) -> list[str] | None:
+    """The literals written for ONE attribute, or None when the row does not
+    say. Read from the destination's ``named`` map or the source's ``values``
+    map; a flat ``values`` list is never guessed into an attribute, because it
+    cannot say whether its first literal was the name or the default."""
+    if not isinstance(ann, dict):
+        raise AnnotationShapeError("/ has %s" % type(ann).__name__)
+    for key in ("named", "values"):
+        m = ann.get(key)
+        if isinstance(m, dict) and attr in m:
+            return _flatten_literals(m[attr], "/%s/%s" % (key, attr))
+    return None
+
+
 def types_of(model: dict[str, Any], rel_from_root: str, source_root: str = "src/main/java") -> list[dict[str, Any]]:
     """Every type the model has for a path expressed from the TREE root."""
     prefix = source_root.rstrip("/") + "/"
