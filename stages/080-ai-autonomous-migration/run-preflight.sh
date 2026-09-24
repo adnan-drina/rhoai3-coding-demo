@@ -246,26 +246,34 @@ addrs = {a[4][0] for a in socket.getaddrinfo(MAASHOSTVAL, 443, proto=socket.IPPR
 require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gateway %s: the workspace is on the public ELB path' % (sorted(addrs), MAASIPVAL))
 # B3 / R2: the run's ENFORCED allowance (the Hermes pacer, patch 0007, paces
 # every model request of the run -- main, each retry, auxiliary, reviewer --
-# to max_requests_per_window) at the largest request it can send (the input
-# window plus the largest output any path can request, 32768 after truncation
-# retries) plus the declared reserve for every other consumer, fits the
-# subscription's limit. The profile is the one PINNED for this run.
+# to max_requests_per_window) at the largest request the SERVER admits (the
+# pacer counts requests, not input tokens, so the bound is the served window,
+# prompt plus output: vLLM --max-model-len) plus the declared reserve for
+# every other consumer, fits the subscription's limit. The profile is the one
+# PINNED for this run.
+def rate_budget_gap(q, served, runs, limit):
+    per_request = int(q['max_request_tokens'])
+    if per_request < served:
+        return 'the profile sizes a request at %d tokens and the model serves %d' % (per_request, served)
+    if not 0 < int(q['max_output_tokens']) < per_request:
+        return 'the output cap %s does not fit a %d-token request' % (q['max_output_tokens'], per_request)
+    total = runs * int(q['max_requests_per_window']) * per_request + int(q['reserve_tokens_per_window'])
+    if total > limit:
+        return 'effective %d, declared %d (%d run(s) x %d requests x %d tokens + reserve %d)' % (
+            limit, total, runs, int(q['max_requests_per_window']), per_request, int(q['reserve_tokens_per_window']))
+    return ''
 prof_path = Path('/etc/rhoai3/run-control/profile.json')
 if not prof_path.is_file():
     prof_path = Path('/projects/.platform/hermes/model-profile.json')
 prof_doc = json.loads(prof_path.read_text())
 prof = prof_doc['profiles'][prof_doc['default_model']]
 q = prof['quota']
-per_request = int(q['max_input_tokens']) + int(q['max_output_tokens'])
-demand = int(q['max_requests_per_window']) * per_request
 runs = 1 + QOTHERSVAL
 win = '%dh' % (int(q['window_seconds']) // 3600) if int(q['window_seconds']) % 3600 == 0 else '%ds' % int(q['window_seconds'])
 require(win == QWINVAL, 'the profile paces per %s and the subscription limits per %s' % (win, QWINVAL))
-require(runs * demand + int(q['reserve_tokens_per_window']) <= QLIMITVAL,
-        'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s, effective %d, declared %d '
-        '(%d run(s) x %d requests x %d tokens + reserve %d); profile %s'
-        % (prof_doc['default_model'], QWINVAL, QLIMITVAL, runs * demand + int(q['reserve_tokens_per_window']), runs,
-           int(q['max_requests_per_window']), per_request, int(q['reserve_tokens_per_window']), prof_path))
+budget_gap = rate_budget_gap(q, WINDOW, runs, QLIMITVAL)
+require(not budget_gap, 'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s: %s; profile %s'
+        % (prof_doc['default_model'], QWINVAL, budget_gap, prof_path))
 env_text = Path('/projects/.platform/hermes/.env').read_text() if Path('/projects/.platform/hermes/.env').is_file() else ''
 require('RHOAI3_REQUEST_BUDGET=%d/%d' % (int(q['max_requests_per_window']), int(q['window_seconds'])) in env_text
         and 'RHOAI3_REQUEST_LEDGER=' in env_text,
