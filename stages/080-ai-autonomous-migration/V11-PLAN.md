@@ -1,4 +1,4 @@
-# v11 launch packet — 2026-09-23
+# v11 launch packet — updated 2026-09-24
 
 Preparation only. Do not create `spring-petclinic-rest-legacy-v11` and do
 not dest-install or dest-dispatch from this file. Closed v10 stays frozen
@@ -10,14 +10,18 @@ Do not reuse `8c8cc195` or previously published `87251b73`.
 
 | Identity | Value |
 |---|---|
-| Source commit | `1082d51e230e378c1f71032d6e834b00e641a997` |
-| Scaffold git tree | `5fed3d349297887d76ea8a004647f3e0d519425a` |
-| Scaffold tree sha256 | `d2d6166104f5a69b31a9b1a276190ef8e8b077af4ca5d044267f4a9d2d5411f7` (613 files; dest omit `.hermes/_park`) |
+| Source commit | `2c92983eb8880b1ee0f29b8b401875f75d474ad3` |
+| Scaffold git tree | `dfb88e0ef33fbdb7daca6a5a752f9af05a9328d4` |
 | Golden repository | `github.com/adnan-drina/quarkus-migration-scaffold-v2` |
-| Golden commit | `80b47c6ca5cf605a25145df18d39cb13fb6ad49a` |
+| Golden commit | `8f83dbdbc1cdb07b0702e54c48f7356352114ae1` |
 
 Equivalence: the published golden tree (dest omit `.hermes/_park`) must
-match the recorded scaffold tree sha256.
+match the recorded scaffold Git tree (`git rev-parse GOLDEN^{tree}`).
+The September 24 correction only documents the existing M5 self-test.
+Stage 080 validation: 367 passed, one existing MTA ConsoleLink warning, zero
+failed. Stage 050 worker identity and CLI-image repair was published at
+`bbd623997b9b29ce56b0811b914762de45c12bee`; bind live isolation evidence to
+the actual synchronized platform revision after this launch record lands.
 
 Frozen runtime/model (`run-configuration.json` in the golden):
 

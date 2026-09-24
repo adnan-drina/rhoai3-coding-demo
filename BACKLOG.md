@@ -1,5 +1,18 @@
 # Backlog
 
+## v11 preparation publication — 2026-09-24
+
+- Platform worker identity, three-workspace capacity and pinned CLI recovery:
+  `bbd623997b9b29ce56b0811b914762de45c12bee` (direct main publication).
+- Golden: `8f83dbdbc1cdb07b0702e54c48f7356352114ae1`, superseding the
+  `80b47c6c` selection below by an M5 self-test documentation reference only.
+  Golden and authoring scaffold Git tree both
+  `dfb88e0ef33fbdb7daca6a5a752f9af05a9328d4`.
+- Stage 080 validation: 367 passed, one existing MTA launcher-link warning,
+  zero failed. Qwen Ready; bounded MaaS inference returned HTTP 200.
+- Real workspace startup and all 13 isolation checks remain unqualified.
+  No v11 launch. Use the current V11-PLAN mapping for qualification.
+
 ## Stage 050 restart image pulls — 2026-09-24
 
 - [x] Replace unsupported `ose-cli:latest` references in Stage 050 Jobs,
