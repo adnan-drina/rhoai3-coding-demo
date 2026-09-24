@@ -16,9 +16,10 @@ previous code. Nothing is published or launched; the release mapping is
   required at render and at every dispatch; B4 declared model profile, pinned
   per run; B3 quota admission and Argo refresh paths; B9/B12 order
   explanations and response-path placement.
-- [ ] Decision before v13: the B3 quota admission refuses the declared demand
-  (300 requests/h × 228,192 tokens = 68.5M/h against 60M/h). Raise the limit,
-  lower the declared rate, or lower `context_length`.
+- [x] Quota decision (2026-09-24): raise the limit. The Qwen 3.8 limit on
+  `devspaces-coding-models` rises to 80M/h (`e7385242`) for the declared 68.5M/h
+  demand. The preflight counts every other running workspace against the same
+  bucket, so stop v12 before the v13 preflight.
 - [ ] Before v13: bake and push the ws-080 image with
   `stages/080-ai-autonomous-migration/hermes-runtime` (Dockerfile hunk),
   then repin the devfile digest and `pins.json` `workspace_overlay`.
