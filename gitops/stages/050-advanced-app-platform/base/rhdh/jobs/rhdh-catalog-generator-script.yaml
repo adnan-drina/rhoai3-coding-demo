@@ -49,7 +49,7 @@ data:
       STAMPED=$(oc get configmap catalog-runtime-rhdh -n rhdh \
         -o jsonpath='{.metadata.annotations.rhoai3\.redhat\.com/catalog-revision}' 2>/dev/null || true)
       PENDING=$(oc get configmap catalog-runtime-rhdh -n rhdh \
-        -o jsonpath='{.data.all\.yaml}' 2>/dev/null | grep -c "pending.local" || true)
+        -o jsonpath='{.data.all\.yaml}' 2>/dev/null | grep -c -E "pending.local|__RHOAI3_" || true)
       if [ -n "$STAMPED" ] && [ "$STAMPED" = "$APP_SYNC_REVISION" ] && [ "${PENDING:-0}" = "0" ]; then
         echo "Catalog current (revision ${STAMPED}, no pending links); nothing to do"
         exit 0
@@ -177,6 +177,15 @@ data:
         raise SystemExit("Repository revision placeholder was not replaced")
     if "__RHOAI3_MAAS_" in content:
         raise SystemExit("MaaS route placeholder was not replaced")
+    # Version skew guard: the catalog template is fetched from the branch head
+    # while this script comes from the synced ConfigMap. On 2026-09-24 an older
+    # script published a newer catalog's __RHOAI3_MAAS_*__ placeholders
+    # verbatim. Any placeholder this script does not know now fails the run, so
+    # the previous catalog stays in place until the new script is synced (the
+    # fast path above also treats a leftover placeholder as pending).
+    leftover = sorted(set(re.findall(r"__RHOAI3_[A-Z0-9_]+__", content)))
+    if leftover:
+        raise SystemExit("unreplaced catalog placeholders %s: script and catalog template are out of step" % leftover)
     target.write_text(content)
     PY
 

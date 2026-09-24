@@ -23,9 +23,10 @@ attributes:
   # template passes them through. From v7 to v12 this was a manual Operator
   # step after creation (scripts/patch-workspace-maas-route.sh), and v12 started
   # without it; that script remains only for workspaces created before this.
-  # The alias renders only when both values are present, so an older catalog
-  # yields the public path (which run-preflight.sh refuses), never an invalid
-  # deployment.
+  # The alias renders only when both values are present and free of "_" (which
+  # no valid host or IP contains, and every unreplaced placeholder does), so a
+  # stale catalog yields the public path (which run-preflight.sh refuses),
+  # never an invalid deployment.
   #
   # DWO 0.43 SyncRBAC binds Config.Workspace.ServiceAccount.ServiceAccountName
   # (or the generated workspace*-sa) to operator-owned devworkspace-default-role
@@ -36,7 +37,7 @@ attributes:
   pod-overrides:
     spec:
       serviceAccountName: ${{ values.name }}-worker
-{%- if values.maasHost and values.maasInternalIp %}
+{%- if values.maasHost and values.maasInternalIp and not ('_' in values.maasHost) and not ('_' in values.maasInternalIp) %}
       hostAliases:
         - ip: "${{ values.maasInternalIp }}"
           hostnames:
