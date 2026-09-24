@@ -2121,10 +2121,13 @@ def _body_path_property(path: str) -> str:
 
 
 def body_locus_hints(root: Path | None, body_diff: dict[str, Any]) -> list[dict[str, str]]:
-    """Where a body difference may be PRODUCED, when that is cheap to name:
-    for an ORDER-only difference at a collection property, the source-model
-    getter of that property (the source model is the frozen structure; the
-    destination keeps the same relative path). Nothing else is guessed."""
+    """Where to START looking for an order-only difference at a collection
+    property: source-model getters NAMED for that property. A name match is a
+    search hint, never a diagnosis (B12, v12 t_e5c9a129): the getter may not be
+    on this endpoint's response path at all (a mapper can read the field), and
+    an unrelated type with a same-named getter matches too. So every hint says
+    it is unverified, grants no write scope, and points at response_path,
+    which names what the compiler resolved."""
     if not isinstance(body_diff, dict) or not body_diff.get("order_only") or root is None:
         return []
     props = sorted({_body_path_property(d.get("path")) for d in (body_diff.get("differences") or [])
@@ -2139,9 +2142,118 @@ def body_locus_hints(root: Path | None, body_diff: dict[str, Any]) -> list[dict[
             for prop in props:
                 if name == "get" + prop[:1].upper() + prop[1:]:
                     out.append({"property": prop, "type": str(t.get("fqn") or ""), "member": name, "path": path,
-                                "why": "the source orders %s in %s.%s; an order-only difference there is produced by "
-                                       "that getter's translation, not by the controller" % (prop, t.get("fqn"), name)})
+                                "status": "unverified-name-match",
+                                "why": "%s.%s is named for the differing property %s; nothing here shows it is on this "
+                                       "endpoint's response path or that it produces this order -- check response_path "
+                                       "first (a mapper may read the field, not the getter)" % (t.get("fqn"), name, prop)})
     return sorted(out, key=lambda h: (h["path"], h["member"]))[:3]
+
+
+_TYPE_FQN = re.compile(r"\b[a-z_][\w]*(?:\.[a-z_][\w]*)*\.[A-Z][\w]*")
+_DEPENDENCY_PREFIXES = ("java.", "javax.", "jakarta.", "org.springframework.", "io.quarkus.", "org.jboss.",
+                        "com.fasterxml.", "org.eclipse.microprofile.")
+
+
+def _entry_point_member(entry_point: str) -> tuple[str, str]:
+    """(declaring type fqn, member name) of an entry-point id ep:<fqn>#<name>(...)."""
+    body = str(entry_point or "")
+    body = body[3:] if body.startswith("ep:") else body
+    if "#" not in body:
+        return "", ""
+    fqn, rest = body.split("#", 1)
+    return fqn, rest.split("(", 1)[0]
+
+
+def response_path(root: Path | None, entry_point: str) -> dict[str, Any]:
+    """The types on an endpoint's response path as the COMPILER resolved them
+    (B12): the declared return type of the entry point's method in the
+    destination model, each type in it classified by where its file actually
+    is -- handwritten (under src/main/java), generated (a generated-sources
+    root, with the generator and the input a durable change goes to),
+    dependency, or unresolved -- plus every model type with a member that
+    RETURNS one of those types (a mapper), with its generated implementation
+    when an annotation processor wrote one. Nothing is classified by its name
+    (a handwritten class ending in Dto is handwritten). A type nobody can place
+    is RESPONSE_TYPE_UNRESOLVED with the roots searched; that is a discovery
+    gap, never a product attempt."""
+    if root is None or not entry_point:
+        return {}
+    fqn, member = _entry_point_member(entry_point)
+    try:
+        model = dest_model(Path(root))
+    except DestModelUnavailable as exc:
+        return {"entry_point": entry_point, "status": "unavailable", "detail": str(exc)[:200]}
+    types = {str(t.get("fqn") or ""): t for t in (model.get("types") or [])}
+    owner = types.get(fqn)
+    decl = next((m for m in ((owner or {}).get("declared") or []) if str(m.get("name") or "") == member), None)
+    if decl is None or not (decl.get("type_refs") or []):
+        return {"entry_point": entry_point, "status": "unresolved",
+                "detail": "RESPONSE_TYPE_UNRESOLVED: %s declares no member %s the model resolved" % (fqn or "(no type)", member)}
+    ret = str(decl["type_refs"][0])
+    from generated_sources import generator_plugins
+    from planner.dest_model import generated_source_dirs, generated_type_file
+    roots = [p.relative_to(Path(root)).as_posix() for p in generated_source_dirs(Path(root))]
+
+    def place(t_fqn: str) -> dict[str, Any]:
+        row: dict[str, Any] = {"fqn": t_fqn}
+        gen_file, gen_dir = generated_type_file(Path(root), t_fqn)
+        if gen_file is not None:
+            kind = gen_dir.name if gen_dir is not None else ""
+            row.update(ownership="generated", path=gen_file.relative_to(Path(root)).as_posix(), evidence="generated-sources/%s" % kind)
+            if kind == "annotations":
+                row.update(generator="annotation processor", edit_owner="the declaration it is generated from (the "
+                           "annotated interface), never this file")
+            else:
+                plugins = [p for p in generator_plugins(Path(root), dest_only=True)
+                           if any(t_fqn.startswith(str(pk) + ".") for pk in (p.get("packages") or []))] \
+                    or generator_plugins(Path(root), dest_only=True)
+                inputs = sorted({str(s) for p in plugins for s in (p.get("input_specs") or [])})
+                row.update(generator=", ".join(sorted({str(p.get("artifactId") or "") for p in plugins})) or "unknown",
+                           inputs=inputs,
+                           edit_owner=("the generator input %s" % ", ".join(inputs)) if inputs else
+                           "GENERATED_EDIT_OWNER_UNKNOWN: no generator input declares this package")
+            return row
+        t = types.get(t_fqn)
+        if t is not None and str(t.get("path") or ""):
+            return dict(row, ownership="handwritten", path=str(t.get("path")), evidence="destination model",
+                        edit_owner="this card, through amend-scope.py when it is outside the write set")
+        if t_fqn.startswith(_DEPENDENCY_PREFIXES):
+            return dict(row, ownership="dependency", evidence="package outside the application", edit_owner="not editable")
+        return dict(row, ownership="unresolved", searched=["src/main/java"] + roots,
+                    edit_owner="RESPONSE_TYPE_UNRESOLVED: no source root, generated root or dependency declares it")
+
+    placed = [place(f) for f in dict.fromkeys(_TYPE_FQN.findall(ret))]
+    app_types = {r["fqn"] for r in placed if r["ownership"] in ("generated", "handwritten")}
+    producers: list[dict[str, Any]] = []
+    for t_fqn, t in sorted(types.items()):
+        for m in t.get("declared") or []:
+            refs = m.get("type_refs") or []
+            if refs and any(a in str(refs[0]) for a in app_types) and t_fqn != fqn:
+                prow = {"type": t_fqn, "member": str(m.get("name") or ""), "returns": str(refs[0])[:200],
+                        "path": str(t.get("path") or "")}
+                impl_file, impl_dir = generated_type_file(Path(root), t_fqn + "Impl")
+                if impl_file is not None:
+                    prow["generated_impl"] = impl_file.relative_to(Path(root)).as_posix()
+                producers.append(prow)
+    return {"entry_point": entry_point, "status": "resolved", "returns": ret, "types": placed, "producers": producers[:8]}
+
+
+def order_sentence(diff: dict[str, Any]) -> str:
+    """One line from B9's order explanation for the brief, or ''."""
+    exp = diff.get("order") if isinstance(diff.get("order"), dict) else None
+    if not exp:
+        return ""
+    keys = exp.get("keys") or []
+    head = "same elements, %s" % ("REVERSED" if exp.get("relation") == "reversed" else "permuted")
+    if len(keys) == 1:
+        k = keys[0]
+        return "%s at %s: the source sorts %s %s, the destination %s%s" % (
+            head, diff.get("path"), k["key"], k["expected"].upper(), k["observed"].upper(),
+            " (ties: the order among equal keys is not determined)" if k.get("ties") else "")
+    if keys:
+        return "%s at %s: the source is %s -- ambiguous from the bodies alone" % (
+            head, diff.get("path"), ", ".join("%s %s" % (k["key"], k["expected"].upper()) for k in keys))
+    return "%s at %s: %s" % (head, diff.get("path"), exp.get("note") or "not explained by a single field")
 
 
 def body_diff_advice(root: Path | None, doc: dict[str, Any], item_id: str) -> dict[str, Any]:
@@ -2165,6 +2277,12 @@ def body_diff_advice(root: Path | None, doc: dict[str, Any], item_id: str) -> di
     }
     if hints:
         out["locus_hints"] = hints
+    sentences = [order_sentence(d) for d in diffs if str(d.get("kind") or "") == "order"]
+    if any(sentences):
+        out["order_explained"] = [x for x in sentences if x][:BODY_DIFF_SHOWN]
+    rp = response_path(root, str(doc.get("entry_point") or ""))
+    if rp:
+        out["response_path"] = rp
     return out
 
 
@@ -3218,8 +3336,10 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 summary = " Body: %s" % (body["summary"] or "; ".join(
                     "%s %s (%s vs %s)" % (d.get("kind"), d.get("path"), d.get("observed"), d.get("expected"))
                     for d in body["differences"][:2]))
+                if body.get("order_explained"):
+                    summary += " Order: %s." % "; ".join(body["order_explained"][:2])
                 if body.get("locus_hints"):
-                    summary += " Likely produced in %s." % ", ".join("%s (%s)" % (h["path"], h["member"]) for h in body["locus_hints"])
+                    summary += " Search hint (unverified name match): %s." % ", ".join("%s (%s)" % (h["path"], h["member"]) for h in body["locus_hints"])
             server_error = server_error_advice(root, doc, rid, other)
             if server_error:
                 advice["server_error"] = server_error

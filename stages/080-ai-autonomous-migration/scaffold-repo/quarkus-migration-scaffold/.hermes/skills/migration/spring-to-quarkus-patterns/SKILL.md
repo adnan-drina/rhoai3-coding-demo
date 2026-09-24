@@ -58,6 +58,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
 | `references/persistence.md` | Entity / tx / schema cards; this specimen's default is Spring Data JPA (ADR-004) |
 | `references/spring-data-jpa.md` | Supported subset, unsupported methods, one-repository batching; official Quarkus Spring Data JPA guide |
+| `references/sorting.md` | Spring sort idioms (`PropertyComparator`/`MutableSortDefinition`: the 3rd argument is `ascending`, `false` = descending, nulls first; Spring Data `Sort`) → plain Java comparators; read beside the brief's `order_explained` (B9) |
 | `references/transitive-supporting-types.md` | Partitioned DTO/mapper closure — supporting types decision (R-SKILL-A) |
 | `references/jdbc-anti-essay.md` | Raw `JdbcTemplate` on destination — write the Agroal/injection form, do not essay |
 | `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
