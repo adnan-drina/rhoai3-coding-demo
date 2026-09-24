@@ -1,5 +1,39 @@
 # Backlog
 
+## Run declarations: one golden for every run — 2026-09-24
+
+- [x] Root cause: the published golden carried `run-budget.json` and
+  `run-configuration.json` naming `run_id: v11` with fixed timestamps (and
+  `model.ready: true`); the app-migration template copied both unchanged.
+- [x] Golden now carries only `run-defaults.json` (shared limits, clock, M5,
+  pins; no identity, timestamp or readiness). The factory writes
+  `run-budget.json` v2 (full project name, scaffolder task id, binding) into the
+  initial commit; that commit's time is the declaration time (the installed
+  scaffolder 3.0.3 has no clock). `planner/run_declaration.py` refuses
+  missing/foreign/stale/late/rewritten declarations; autostart gates on it;
+  run-report composes it; `run-preflight.sh` is the run-agnostic launch check.
+- [x] Published in order: golden `78b3e9dbca1ab917affe97680f4008233b6a65ec`
+  (614 files, unfiltered diff identical to source `106d334a`, branch
+  `codex/v10-launch-scope`), then platform
+  `62c529fda9cce6e636e7b8a24aebeec76ea830ce`. Live catalog re-ingested
+  `template:default/app-migration` at 09:28:17Z and serves
+  `scaffolderTaskId: ${{ context.task.id }}`.
+- [x] Validation. Live factory: installed createDryRunner/NunjucksWorkflowRunner
+  with the real fetch actions and GitHub reader rendered
+  `spring-petclinic-rest-legacy-v12` and `orders-modernization` from the
+  published golden and skeleton; catalog/publish/register were stubbed.
+  Golden-derived files were byte-identical to `78b3e9db`, identities distinct,
+  declarations complete before publish, published loader OK, defaults
+  identical, limits unchanged. Synthetic: loader and autostart self-tests (git
+  histories: missing/foreign/stale/late/rewritten/shallow/receipt, restart and
+  reopen do not renew), each rendered destination's own autostart (M1 once,
+  reused on restart, foreign refused), all 78 golden suites. Live admission
+  duplicate-workspace dry runs unchanged.
+- [ ] Not done here by design: v12 not created; no worker started; v10/v11
+  destinations and records untouched. Creating v12 is ready to test; launching
+  its migration still needs `run-preflight.sh` (fresh isolation receipt for
+  golden `78b3e9db` + platform `62c529fd`) and the Operator's go.
+
 ## Factory duplicate workspace creation — 2026-09-24
 
 - [x] Root cause reproduced from installed Dev Spaces 3.30.1 client code:
