@@ -1,0 +1,139 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 17:29:21 +0200
+Subject: [PATCH 4/4] fix(kanban): a guardrail-halted worker records a failed
+ run, not a clean exit
+
+When the tool-loop guardrail halts a kanban worker's turn, the worker makes
+no further model request and so cannot call kanban_complete/kanban_block.
+It then exits 0 and the dispatcher recorded a protocol violation whose
+retry guidance tells the next worker the prior run may already have done
+the work and to report it via kanban_complete. Record the halt through
+_record_task_failure instead, exactly like the iteration-budget-exhausted
+path: the run closes with the halt reason (tool, guardrail code, count,
+args hash - never raw arguments), consecutive_failures advances toward
+max_retries / kanban.failure_limit, and the claim is released so the
+dispatcher respawns or blocks per the native circuit breaker.
+---
+ agent/turn_finalizer.py | 87 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 86 insertions(+), 1 deletion(-)
+
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index fbdf19cd91..6fb0e1fccb 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -104,6 +104,76 @@ def _record_kanban_budget_exhausted(
+         )
+ 
+ 
++def _kanban_failure_limit() -> int | None:
++    """Best-effort ``kanban.failure_limit`` from this process's config."""
++    try:
++        from hermes_cli.config import load_config
++
++        raw = ((load_config() or {}).get("kanban") or {}).get("failure_limit")
++        value = int(raw) if raw is not None else None
++        return value if value and value >= 1 else None
++    except Exception:
++        return None
++
++
++def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Logger) -> None:
++    """Record a tool-loop guardrail halt as a failed kanban run.
++
++    A halted worker makes no further model request, so it can never call
++    ``kanban_complete`` / ``kanban_block``; without this record its clean
++    exit is classified by the dispatcher as a protocol violation whose
++    retry guidance tells the next worker to verify and complete. Mirrors
++    ``_record_kanban_budget_exhausted``: the failure goes through
++    ``_record_task_failure`` so it counts toward the task's ``max_retries``
++    / ``kanban.failure_limit`` circuit breaker, and the run is closed with
++    the halt reason. No raw tool arguments are recorded, only their hash.
++    No-op when the task is no longer running or the run is not ours.
++    """
++    try:
++        from hermes_cli import kanban_db as _kb
++
++        _conn = _kb.connect()
++        try:
++            row = _conn.execute(
++                "SELECT status, current_run_id FROM tasks WHERE id = ?",
++                (kanban_task,),
++            ).fetchone()
++            if row is None or row["status"] != "running":
++                return
++            expected_run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
++            if expected_run and str(row["current_run_id"]) != expected_run:
++                return
++            signature = getattr(decision, "signature", None)
++            args_hash = getattr(signature, "args_hash", "") or ""
++            _kb._record_task_failure(
++                _conn,
++                kanban_task,
++                error=(
++                    f"STOP WORKER_TOOL_LOOP: tool {decision.tool_name}, "
++                    f"guardrail {decision.code}, count {decision.count}, "
++                    f"args_sha256 {args_hash[:16]} — the worker was halted "
++                    "before another model request; this run did not "
++                    "complete the task"
++                ),
++                outcome="crashed",
++                failure_limit=_kanban_failure_limit(),
++                release_claim=True,
++                end_run=True,
++                event_payload_extra={"guardrail": decision.to_metadata()},
++            )
++        finally:
++            try:
++                _conn.close()
++            except Exception:
++                pass
++    except Exception:
++        logger.warning(
++            "Failed to record guardrail-halt failure for task %s",
++            kanban_task,
++            exc_info=True,
++        )
++
++
+ def _drop_verification_continuation_scaffolding(messages) -> None:
+     """Remove verification-continuation nudge messages from *messages* in place.
+ 
+@@ -158,6 +228,11 @@ def finalize_turn(
+         and budget_fallback_eligible
+     )
+ 
++    guardrail_halted = (
++        str(_turn_exit_reason) == "guardrail_halt"
++        and getattr(agent, "_tool_guardrail_halt_decision", None) is not None
++    )
++
+     iteration_limit_fallback = False
+     preserved_verification_fallback = False
+     if continuation_budget_exhausted:
+@@ -207,7 +282,7 @@ def finalize_turn(
+             _record_kanban_budget_exhausted(
+                 _kanban_task, api_call_count, agent.max_iterations, logger,
+             )
+-    elif budget_exhausted:
++    elif budget_exhausted and not guardrail_halted:
+         # Bounded fallback (#87096): budget was exhausted but none of the
+         # normal fallback paths were eligible (interrupted / failed /
+         # anomalous exit_reason). If running as a kanban worker we must
+@@ -222,6 +297,16 @@ def finalize_turn(
+                 _kanban_task, api_call_count, agent.max_iterations, logger,
+             )
+ 
++    if guardrail_halted:
++        # A tool-loop guardrail halt ended the turn: record it as a failed
++        # kanban run (see _record_kanban_guardrail_halt) instead of leaving a
++        # clean exit for the dispatcher to read as a protocol violation.
++        _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
++        if _kanban_task:
++            _record_kanban_guardrail_halt(
++                _kanban_task, agent._tool_guardrail_halt_decision, logger,
++            )
++
+     # Determine if conversation completed successfully
+     normal_text_response = str(_turn_exit_reason).startswith("text_response(")
+     completed = (

@@ -1,0 +1,133 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 17:23:53 +0200
+Subject: [PATCH 1/4] fix(guardrails): identical-call streaks hard-stop any
+ tool (backport)
+
+Backport of upstream NousResearch/hermes-agent 76648a7faf7822cdd6c0e147c35857e15780c1af
+("fix(guardrails): identical-call streaks hard-stop any tool on unattended
+platforms") onto v2026.8.19 (fcbd1076). Only the controller hunk
+(agent/tool_guardrails.py), the runtime propagation hunk (run_agent.py
+_append_guardrail_observation) and its unit tests are taken. The
+config_defaults non_interactive_hard_stop_enabled key and docs hunk are
+omitted: at this pin nothing reads that key, and the consuming deployment
+sets tool_loop_guardrails.hard_stop_enabled: true explicitly.
+
+Test adaptation: the pinned poller tool is 'process' (upstream renamed it
+'process_manage'), so the poller-exemption test uses 'process'.
+
+(cherry picked from commit 76648a7faf7822cdd6c0e147c35857e15780c1af)
+---
+ agent/tool_guardrails.py            | 25 +++++++++++++++++
+ run_agent.py                        |  7 +++++
+ tests/agent/test_tool_guardrails.py | 43 +++++++++++++++++++++++++++++
+ 3 files changed, 75 insertions(+)
+
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index e4afbbba82..8bd22bf4f5 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -605,6 +605,31 @@ class ToolCallGuardrailController:
+                 "Do not repeat it — change arguments, use a different tool, or "
+                 "proceed with what you have.]"
+             )
++            # Hard-stop widening (#89069 / #100849 bundle): the per-turn
++            # no-progress BLOCK above only covers tools in idempotent_tools, so
++            # a model replaying the same successful `terminal`/`skill_view`
++            # call with a byte-identical result ran until the iteration budget.
++            # The consecutive-identical streak is tool-agnostic; when hard
++            # stops are enabled, halt at the same idempotent_no_progress
++            # threshold. Pollers stay exempt (an unchanged poll is progress).
++            if (
++                self.config.hard_stop_enabled
++                and count >= self.config.no_progress_block_after
++                and self._halt_decision is None
++            ):
++                self._halt_decision = ToolGuardrailDecision(
++                    action="halt",
++                    code="identical_call_streak_halt",
++                    message=(
++                        f"Stopped {tool_name}: the same call with identical arguments "
++                        f"returned the same result {count} times in a row. Stop "
++                        "repeating it unchanged; use the result already provided or "
++                        "change strategy."
++                    ),
++                    tool_name=tool_name,
++                    count=count,
++                    signature=signature,
++                )
+ 
+         stub = None
+         if (
+diff --git a/run_agent.py b/run_agent.py
+index 6237738141..7721c4b458 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -8298,6 +8298,13 @@ class AIAgent:
+             function_result = append_toolguard_guidance(function_result, decision)
+         if decision.should_halt:
+             self._set_tool_guardrail_halt(decision)
++        else:
++            # observe_call may have raised the identical-call streak halt
++            # (hard_stop_enabled, tool-agnostic) — surface it the same way.
++            streak_halt = self._tool_guardrails.halt_decision
++            if streak_halt is not None and streak_halt.code == "identical_call_streak_halt":
++                function_result = append_toolguard_guidance(function_result, streak_halt)
++                self._set_tool_guardrail_halt(streak_halt)
+         if stall_notice:
+             function_result = (function_result or "") + "\n\n" + stall_notice
+         return function_result
+diff --git a/tests/agent/test_tool_guardrails.py b/tests/agent/test_tool_guardrails.py
+index dbeb2d9d3f..00baa35597 100644
+--- a/tests/agent/test_tool_guardrails.py
++++ b/tests/agent/test_tool_guardrails.py
+@@ -131,6 +131,49 @@ def test_mutating_or_unknown_tools_are_not_blocked_for_repeated_identical_succes
+         assert controller.after_call("custom_tool", {"x": 1}, "ok", failed=False).action == "allow"
+ 
+ 
++def test_identical_call_streak_halts_any_tool_when_hard_stop_enabled():
++    # #89069 / #100849 bundle: a model replaying the same SUCCESSFUL
++    # terminal/skill_view call with a byte-identical result is not covered by
++    # the idempotent_tools no-progress block. The consecutive-identical
++    # streak (observe_call) is tool-agnostic; under hard_stop it must halt.
++    controller = ToolCallGuardrailController(
++        ToolCallGuardrailConfig(hard_stop_enabled=True, no_progress_block_after=5)
++    )
++    args = {"command": "hermes config get memory.provider"}
++    for i in range(1, 5):
++        controller.after_call("terminal", args, "local\n", failed=False)
++        controller.observe_call("terminal", args, "local\n", failed=False)
++        assert controller.halt_decision is None, f"halted early at {i}"
++
++    controller.after_call("terminal", args, "local\n", failed=False)
++    controller.observe_call("terminal", args, "local\n", failed=False)
++    halt = controller.halt_decision
++    assert halt is not None and halt.should_halt
++    assert halt.code == "identical_call_streak_halt"
++    assert halt.tool_name == "terminal" and halt.count == 5
++
++
++def test_identical_call_streak_never_halts_when_hard_stop_disabled_or_for_pollers():
++    soft = ToolCallGuardrailController(
++        ToolCallGuardrailConfig(hard_stop_enabled=False, no_progress_block_after=2)
++    )
++    for _ in range(6):
++        soft.observe_call("terminal", {"command": "ls"}, "a\nb\n", failed=False)
++    assert soft.halt_decision is None  # notice-only in interactive sessions
++
++    hard = ToolCallGuardrailController(
++        ToolCallGuardrailConfig(hard_stop_enabled=True, no_progress_block_after=2)
++    )
++    for _ in range(6):
++        hard.observe_call("process", {"action": "poll", "session_id": "p1"}, "running", failed=False)
++    assert hard.halt_decision is None  # an unchanged poll is legitimate progress
++
++    # A changed result resets the streak.
++    for i in range(6):
++        hard.observe_call("terminal", {"command": "date"}, f"t{i}", failed=False)
++    assert hard.halt_decision is None
++
++
+ 
+ 
+ 

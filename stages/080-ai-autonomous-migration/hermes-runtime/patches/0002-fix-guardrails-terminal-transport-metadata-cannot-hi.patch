@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 17:24:32 +0200
+Subject: [PATCH 2/4] fix(guardrails): terminal transport metadata cannot hide
+ an identical-call streak
+
+The identical-call streak compared the whole terminal JSON envelope, so a
+per-call spill-file path (full_output_path / truncation_note) or a timing
+field added by a result-transform hook made every repeat of an unchanged
+command look like progress. Streak identity now drops only those known
+top-level transport keys for terminal results; output, exit_code, error and
+all other fields still participate. Reference stubs still require the full
+result to be byte-identical.
+---
+ agent/tool_guardrails.py | 59 +++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 58 insertions(+), 1 deletion(-)
+
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index 8bd22bf4f5..507bbad41e 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -353,6 +353,9 @@ class ToolCallGuardrailController:
+         # this per-turn consecutive streak. Coordinate future work there.
+         self._identical_streak_sig: ToolCallSignature | None = None
+         self._identical_streak_result_hash: str = ""
++        # Hash of the full (unstripped) last result; a reference stub is only
++        # emitted when the fresh result is identical to it byte-for-byte.
++        self._identical_streak_raw_hash: str = ""
+         self._identical_streak_count: int = 0
+         # tool_call_id of the FIRST call in the current streak, so a
+         # result-reference stub can point at the message that carries the
+@@ -575,7 +578,13 @@ class ToolCallGuardrailController:
+         """
+         is_plain_str = isinstance(result, str)
+         signature = ToolCallSignature.from_call(tool_name, _coerce_args(args))
+-        result_hash = _result_hash(result) if is_plain_str else ""
++        # Streak identity ignores known per-call transport metadata (see
++        # _TERMINAL_TRANSPORT_KEYS) so a spill-file path or timing field that
++        # changes on every call cannot hide an otherwise unchanged result.
++        # The stub below still requires the full (raw) result to be identical.
++        result_hash = _streak_identity_hash(tool_name, result) if is_plain_str else ""
++        raw_hash = _result_hash(result) if is_plain_str else ""
++        previous_raw_hash = self._identical_streak_raw_hash
+ 
+         if (
+             is_plain_str
+@@ -583,13 +592,16 @@ class ToolCallGuardrailController:
+             and self._identical_streak_result_hash == result_hash
+         ):
+             self._identical_streak_count += 1
++            raw_identical = raw_hash == previous_raw_hash
+         else:
++            raw_identical = False
+             # New streak (or non-string result, which never forms a streak —
+             # multimodal content lists pass through untouched).
+             self._identical_streak_sig = signature if is_plain_str else None
+             self._identical_streak_result_hash = result_hash
+             self._identical_streak_count = 1 if is_plain_str else 0
+             self._identical_streak_first_call_id = tool_call_id or ""
++        self._identical_streak_raw_hash = raw_hash
+ 
+         count = self._identical_streak_count
+ 
+@@ -635,6 +647,7 @@ class ToolCallGuardrailController:
+         if (
+             is_plain_str
+             and count >= 2
++            and raw_identical
+             and not failed
+             and len(result) >= IDENTICAL_RESULT_STUB_MIN_CHARS
+         ):
+@@ -815,6 +828,50 @@ def _result_hash(result: str | None) -> str:
+     return _sha256(canonical)
+ 
+ 
++# Top-level keys of the ``terminal`` result envelope that are per-call
++# transport metadata, not application output. ``full_output_path`` is a spill
++# file named per call (tools/environments/base.py: out-<time>-<pid>-<id>.log)
++# and ``truncation_note`` embeds that path; the timing keys are not emitted by
++# the pinned terminal tool itself but may be added by result-transform hooks.
++# Only these keys are dropped, and only for streak identity: ``output``,
++# ``exit_code``, ``error`` and every other field still participate, so any
++# change in what the command printed or returned resets the streak.
++_TERMINAL_TRANSPORT_KEYS = frozenset(
++    {
++        "full_output_path",
++        "truncation_note",
++        "duration",
++        "duration_ms",
++        "duration_seconds",
++        "elapsed",
++        "elapsed_ms",
++        "elapsed_seconds",
++    }
++)
++
++
++def _streak_identity_hash(tool_name: str, result: str | None) -> str:
++    """Result identity for the consecutive-identical streak.
++
++    Equal to :func:`_result_hash` except that, for ``terminal`` JSON
++    envelopes, known per-call transport metadata is removed first.
++    """
++    if tool_name == "terminal":
++        parsed = safe_json_loads(result or "")
++        if isinstance(parsed, dict) and not _TERMINAL_TRANSPORT_KEYS.isdisjoint(parsed):
++            stripped = {k: v for k, v in parsed.items() if k not in _TERMINAL_TRANSPORT_KEYS}
++            return _sha256(
++                json.dumps(
++                    stripped,
++                    ensure_ascii=False,
++                    sort_keys=True,
++                    separators=(",", ":"),
++                    default=str,
++                )
++            )
++    return _result_hash(result)
++
++
+ def _as_bool(value: Any, default: bool) -> bool:
+     if value is None:
+         return default

@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Thu, 24 Sep 2026 17:28:24 +0200
+Subject: [PATCH 3/4] fix(guardrails): never emit a result-reference stub whose
+ payload is gone
+
+A byte-identical repeat result was replaced by a stub pointing at the first
+call's tool_call_id even when context compression had already pruned that
+message, leaving the model with neither the payload nor a retrieval path.
+The runtime now stubs only while the referenced payload is still present in
+the outgoing messages or has a recorded persisted spill path; otherwise it
+returns the fresh content once and rebases the reference onto this call.
+The identical-call streak count is not reset by this rehydration.
+---
+ agent/tool_executor.py   |  2 ++
+ agent/tool_guardrails.py | 20 ++++++++++++++++++++
+ run_agent.py             | 29 +++++++++++++++++++++++++++++
+ 3 files changed, 51 insertions(+)
+
+diff --git a/agent/tool_executor.py b/agent/tool_executor.py
+index e7bb9126db..c4d6249838 100644
+--- a/agent/tool_executor.py
++++ b/agent/tool_executor.py
+@@ -1753,6 +1753,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
+                     function_result,
+                     failed=is_error,
+                     tool_call_id=getattr(tc, "id", "") or "",
++                    messages=messages,
+                 )
+ 
+             if is_error:
+@@ -2645,6 +2646,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
+                 function_result,
+                 failed=_is_error_result,
+                 tool_call_id=getattr(tool_call, "id", "") or "",
++                messages=messages,
+             )
+             result_preview = function_result if agent.verbose_logging else (
+                 function_result[:200] if len(function_result) > 200 else function_result
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index 507bbad41e..630770cd65 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -665,6 +665,26 @@ class ToolCallGuardrailController:
+         if tool_call_id and file_path:
+             self._persisted_result_paths[tool_call_id] = file_path
+ 
++    @property
++    def result_reference_call_id(self) -> str:
++        """tool_call_id a reference stub for the current streak points at."""
++        return self._identical_streak_first_call_id
++
++    def persisted_result_path(self, tool_call_id: str) -> str | None:
++        """Spillover path recorded for ``tool_call_id``, if any."""
++        return self._persisted_result_paths.get(tool_call_id) if tool_call_id else None
++
++    def rebase_result_reference(self, tool_call_id: str) -> None:
++        """Make ``tool_call_id`` the payload carrier for the current streak.
++
++        Used when the runtime returned fresh content because the referenced
++        payload is no longer retrievable (e.g. pruned by context compression).
++        The streak count is deliberately NOT reset: rehydrating content is not
++        progress.
++        """
++        if tool_call_id:
++            self._identical_streak_first_call_id = tool_call_id
++
+     def _build_result_reference_stub(
+         self, tool_name: str, args: Mapping[str, Any] | None
+     ) -> str:
+diff --git a/run_agent.py b/run_agent.py
+index 7721c4b458..4cde6fe5b9 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -8257,6 +8257,7 @@ class AIAgent:
+         *,
+         failed: bool,
+         tool_call_id: str = "",
++        messages: list | None = None,
+     ) -> str:
+         decision = self._tool_guardrails.after_call(
+             tool_name,
+@@ -8292,6 +8293,19 @@ class AIAgent:
+         # plain-string results are stubbed (multimodal content lists pass
+         # through untouched), and the current message keeps its role and
+         # tool_call_id — only the content is replaced.
++        # A stub is only safe while the payload it points at is still
++        # retrievable: present in the outgoing context, or persisted to a
++        # recorded spill path. Context compression can prune the referenced
++        # tool message mid-turn; in that case return the fresh content once
++        # and make THIS call the reference (the streak count is unchanged).
++        if (
++            result_stub
++            and isinstance(function_result, str)
++            and messages is not None
++            and not self._result_reference_retrievable(messages, function_result)
++        ):
++            result_stub = None
++            self._tool_guardrails.rebase_result_reference(tool_call_id)
+         if result_stub and isinstance(function_result, str):
+             function_result = result_stub
+         if decision.action in {"warn", "halt"}:
+@@ -8309,6 +8323,21 @@ class AIAgent:
+             function_result = (function_result or "") + "\n\n" + stall_notice
+         return function_result
+ 
++    def _result_reference_retrievable(self, messages: list, payload: str) -> bool:
++        """Whether the streak's reference result can still be read by the model."""
++        guardrails = self._tool_guardrails
++        ref_id = guardrails.result_reference_call_id
++        if not ref_id:
++            return False
++        if guardrails.persisted_result_path(ref_id):
++            return True
++        for msg in reversed(messages):
++            if isinstance(msg, dict) and msg.get("role") == "tool" and msg.get("tool_call_id") == ref_id:
++                content = msg.get("content")
++                if isinstance(content, str) and payload in content:
++                    return True
++        return False
++
+     def _stall_guards_enabled(self) -> bool:
+         """Config gate for the runtime anti-stall guards (agent.stall_guards)."""
+         return bool(getattr(self, "_stall_guards", True))
