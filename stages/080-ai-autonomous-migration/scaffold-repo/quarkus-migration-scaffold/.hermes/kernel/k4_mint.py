@@ -365,8 +365,8 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: pass --root PATH", file=sys.stderr)
         return 1
     root = root.resolve()
-    from planner.run_control import release_gaps
-    drift = release_gaps(root)
+    from planner.run_control import run_gaps
+    drift = run_gaps(root)
     if drift:
         # B10: a run mints only under the harness release it was created with
         print("REFUSE: %s" % drift[0], file=sys.stderr)

@@ -197,3 +197,58 @@ def rebase_release(root: Path, reason: str) -> str:
                                                        "reason": reason, "recorded_at": _now()})
     _append(root, {"event": "release-rebased-assisted", "detail": "%s -> %s: %s" % (old[:16], got[:16], reason)})
     return got
+
+
+PROFILE = "profile.json"
+
+
+def managed_profile_path() -> Path:
+    return Path(os.environ.get("HERMES_MANAGED_DIR") or "/projects/.platform/hermes") / "model-profile.json"
+
+
+def _read_profile(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def record_profile(root: Path, source: str) -> None:
+    """B4: pin the model profile the run's worker config was generated from,
+    once, on the run's first start."""
+    p = run_control_dir(root) / PROFILE
+    cur = _read_profile(managed_profile_path())
+    if p.is_file() or not cur.get("digest"):
+        return
+    _write_readonly(p, {"schema": SCHEMA, "profile": cur, "source": source, "recorded_at": _now()})
+    _append(root, {"event": "profile-recorded", "detail": cur["digest"]})
+
+
+def _diff(a: Any, b: Any, path: str = "") -> list[str]:
+    if isinstance(a, dict) and isinstance(b, dict):
+        out = []
+        for k in sorted(set(a) | set(b)):
+            out.extend(_diff(a.get(k), b.get(k), "%s.%s" % (path, k) if path else str(k)))
+        return out
+    return [] if a == b else ["%s: expected %s, got %s" % (path, json.dumps(a), json.dumps(b))]
+
+
+def profile_gaps(root: Path) -> list[str]:
+    """B4: the worker config in force was generated from the profile the run
+    was created with. Empty without a pin (older destinations)."""
+    if not in_use(root):
+        return []
+    pinned = _read_profile(run_control_dir(root) / PROFILE).get("profile") or {}
+    if not pinned.get("digest"):
+        return []
+    cur = _read_profile(managed_profile_path())
+    if cur.get("digest") == pinned["digest"]:
+        return []
+    fields = _diff({k: pinned.get(k) for k in ("default_model", "profiles")},
+                   {k: cur.get(k) for k in ("default_model", "profiles")})
+    return ["MODEL_PROFILE_MISMATCH: profile %s pinned at run creation, runtime %s; %s; source %s. A model or "
+            "sampling change mid-run is a new run or an assisted continuation, never picked up silently"
+            % (pinned["digest"][:16], str(cur.get("digest") or "missing")[:16],
+               "; ".join(fields[:3]) or "the runtime profile is missing", managed_profile_path())]
+
+
+def run_gaps(root: Path) -> list[str]:
+    """Everything a run must still be what it was created as (B10 + B4)."""
+    return release_gaps(root) + profile_gaps(root)

@@ -566,8 +566,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--hermes", default=os.environ.get("HERMES_BIN", "hermes"))
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
-    from planner.run_control import release_gaps
-    drift = release_gaps(root)
+    from planner.run_control import run_gaps
+    drift = run_gaps(root)
     if drift:
         # B10: never a verdict. The candidate, the attempts and the deadline
         # stay exactly as they are; a run on a harness it was not created

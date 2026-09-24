@@ -120,6 +120,34 @@ def _case(run: str) -> int:
             return _fail("the assisted rebase records the new release")
         if "release-rebased-assisted" not in [e["event"] for e in run_control.journal(root)]:
             return _fail("the assisted rebase is journaled permanently")
+        # B4: the model profile the run's worker config was generated from
+        managed = td / "platform-hermes"
+        managed.mkdir()
+        os.environ["HERMES_MANAGED_DIR"] = str(managed)
+        try:
+            prof = {"default_model": "m-%s" % run, "profiles": {"m-%s" % run: {"mode": "non-thinking", "request_body":
+                    {"temperature": 0.7, "presence_penalty": 1.5}, "context_length": 220000}}}
+            import hashlib
+            def write_profile(doc):
+                d = hashlib.sha256(json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                (managed / "model-profile.json").write_text(json.dumps(dict(doc, digest=d)), encoding="utf-8")
+            write_profile(prof)
+            run_control.record_profile(root, "dest-init")
+            if run_control.profile_gaps(root) or run_control.run_gaps(root):
+                return _fail("the pinned profile is the one in force: %s" % run_control.run_gaps(root))
+            drifted = json.loads(json.dumps(prof))
+            drifted["profiles"]["m-%s" % run]["request_body"]["presence_penalty"] = 0.0
+            write_profile(drifted)
+            run_control.record_profile(root, "dest-init restart")  # never re-pins
+            gaps = run_control.profile_gaps(root)
+            if not gaps or not gaps[0].startswith("MODEL_PROFILE_MISMATCH") or "presence_penalty: expected 1.5, got 0.0" not in gaps[0]:
+                return _fail("a profile regenerated differently mid-run is refused naming the field: %s" % gaps)
+            (managed / "model-profile.json").unlink()
+            gaps = run_control.run_gaps(root)
+            if not gaps or "missing" not in gaps[0]:
+                return _fail("a missing runtime profile is refused: %s" % gaps)
+        finally:
+            os.environ.pop("HERMES_MANAGED_DIR", None)
     return 0
 
 
@@ -130,7 +158,8 @@ def main() -> int:
           "pins.json activates nothing; the activation is read-only and journaled; a missing one is "
           "RUN_ACTIVATION_MISSING naming the run, the event and the bundle; another run's seal is "
           "RUN_ACTIVATION_FOREIGN; a changed harness file is HARNESS_RELEASE_MISMATCH, a bytecode cache is not, and "
-          "the assisted rebase is journaled)")
+          "the assisted rebase is journaled; the model profile pinned at creation is the one in force, and a regenerated "
+          "or missing one is MODEL_PROFILE_MISMATCH naming the field)")
     return 0
 
 
