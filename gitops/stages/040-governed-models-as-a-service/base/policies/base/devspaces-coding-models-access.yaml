@@ -36,12 +36,16 @@ spec:
     # 20M/h throttled the v12 autonomous migration on 2026-09-24: its single
     # worker re-sends a ~90K-token context per call and measured 25M tokens in
     # its busiest hour (Limitador counter 13,338 over at 12:34Z, HTTP 429,
-    # card blocked). 60M/h gives ~2.4x the measured peak. Local GPU model:
-    # this budget demonstrates governance, not cost control.
+    # card blocked). 60M/h gave ~2.4x the measured peak. v13 (B3) admits a
+    # run only if its DECLARED worst case fits: 300 requests/h x (220,000 +
+    # 8,192) tokens = 68.5M/h (MODEL_PROFILES in maas-api-key-provisioning,
+    # checked by run-preflight.sh MODEL_RATE_BUDGET); 80M/h is that plus
+    # ~17% headroom, for one migration run at a time on this subscription.
+    # Local GPU model: this budget demonstrates governance, not cost control.
     - name: qwen3-8-27b-int4
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 60000000
+        - limit: 80000000
           window: 1h
   priority: 100
   tokenMetadata:
