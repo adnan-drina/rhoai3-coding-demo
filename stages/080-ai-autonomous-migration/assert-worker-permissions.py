@@ -110,6 +110,10 @@ def main() -> int:
          "kubeconfig bind still swallows failure and can print success for an older identity")
     need("missing projected ServiceAccount token" in bind,
          "a missing projected token does not refuse dest-init")
+    need(bool(re.search(r"- name: worker-kubeconfig\s+path: /home/user/\.kube", destfile)),
+         "the kubeconfig directory is not an explicit mount; Dashboard can inject a human token after Ready")
+    need(bool(re.search(r"- name: worker-kubeconfig\s+volume:\s+ephemeral: true", destfile)),
+         "worker kubeconfig must not retain credentials on a persistent volume")
     need("--type merge" in text(PATCH) and "replace" not in uncommented(PATCH).lower(),
          "the MaaS hostAlias patch is not a merge; replacing pod-overrides would drop the worker SA")
 

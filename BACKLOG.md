@@ -1,5 +1,14 @@
 # Backlog
 
+## v11 late credential injection — 2026-09-24
+
+- [ ] `iso-worker-b` normal restart reproduced human-token injection after
+  Ready, despite the pod's restricted SA. Keep that `workspace_identity` FAIL.
+  Authoring adds a dedicated ephemeral kubeconfig directory mount, honoring
+  the installed Dev Spaces 3.30.1 Dashboard exclusion. Requalify startup,
+  restart and explicit reinjection on fresh disposables before v11. No v10
+  change, second disposable creation, or isolation PASS claimed.
+
 ## v11 preparation publication — 2026-09-24
 
 - Platform worker identity, three-workspace capacity and pinned CLI recovery:

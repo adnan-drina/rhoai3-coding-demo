@@ -2087,6 +2087,16 @@ set by that action; a devfile `debug-start` attribute does not enable it.
 Never patch MaaS hostAliases during startup. The guarded route helper now
 requires a stopped workspace for changes.
 
+### Restricted pod account but human CLI identity after restart
+
+If the pod uses `<run>-worker` but `oc whoami` becomes the human developer
+after Ready, inspect kubeconfig **user names and auth field names only**.
+Dev Spaces 3.30.1 Dashboard merges a human login after startup. Migration
+workspaces require the dedicated ephemeral `/home/user/.kube` directory mount
+in the current factory devfile; a one-time replacement config is insufficient.
+See `WORKER-IDENTITY-REPAIR.md` above for the pinned implementation and restart
+checks. A previously passing initial matrix does not qualify this failure.
+
 ### Migration source initializer refuses its PVC
 
 `SOURCE_INPUT_REFUSED` means the retained checkout is changed, incomplete, or
