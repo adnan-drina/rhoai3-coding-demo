@@ -32,12 +32,16 @@ spec:
       tokenRateLimits:
         - limit: 20000000
           window: 1h
-    # Same explicit budget as qwen3-6-27b. Limits are per model, so adding
-    # this ref does not reduce the existing Qwen 3.6 quota.
+    # Limits are per model, so this ref does not reduce the Qwen 3.6 quota.
+    # 20M/h throttled the v12 autonomous migration on 2026-09-24: its single
+    # worker re-sends a ~90K-token context per call and measured 25M tokens in
+    # its busiest hour (Limitador counter 13,338 over at 12:34Z, HTTP 429,
+    # card blocked). 60M/h gives ~2.4x the measured peak. Local GPU model:
+    # this budget demonstrates governance, not cost control.
     - name: qwen3-8-27b-int4
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 20000000
+        - limit: 60000000
           window: 1h
   priority: 100
   tokenMetadata:
