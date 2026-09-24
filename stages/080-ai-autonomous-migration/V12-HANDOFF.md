@@ -51,6 +51,15 @@ Developer Hub *Application migration* form as `ai-developer` with Auto-start
 The complete `run-preflight.sh` has **not** run: its pod checks need the
 actual v12 workspace.
 
+## Correction: the MaaS route step was missing
+
+This handoff omitted the v11 checklist step that routes the workspace to
+MaaS in-cluster (`scripts/patch-workspace-maas-route.sh`). v12 was created
+and preflighted on the public ELB path. It was stopped, patched and restarted
+before M1 (the clock was not reset), and the preflight re-ran PASS. The gap is
+now closed in the platform: the factory stamps the hostAlias at creation, and
+`run-preflight.sh` refuses a workspace on the public path.
+
 ## Checklist for creating v12
 
 1. Developer Hub → *Application migration*: name `spring-petclinic-rest-legacy-v12`,

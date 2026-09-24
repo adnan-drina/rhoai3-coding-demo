@@ -119,6 +119,12 @@ spec:
           # task context is the only run-specific fact the installed scaffolder
           # exposes besides the parameters: it has no clock, so no time is stamped.
           scaffolderTaskId: ${{ context.task.id }}
+          # In-cluster MaaS route (pod hostAlias), stamped at creation. Both
+          # values come from the platform entity, where the catalog generator
+          # wrote them from the Gateway and its internal Service after
+          # validating them; they are never derived from a URL here.
+          maasHost: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/maas-host'] }}
+          maasInternalIp: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/maas-internal-ip'] }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           # Dashboard 3.30.1 compares the factory revision with checkoutFrom.
           # An omitted revision does not match main and permits a suffixed copy.

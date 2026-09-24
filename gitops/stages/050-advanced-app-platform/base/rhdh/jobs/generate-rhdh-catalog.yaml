@@ -72,6 +72,41 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-generate-rhdh-catalog-maas-route
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+# Read-only, and only the two named objects the generator publishes the
+# in-cluster MaaS route from (see rhdh-catalog-generator-script.yaml).
+rules:
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways"]
+  resourceNames: ["maas-default-gateway"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["services"]
+  resourceNames: ["maas-gateway-internal"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-generate-rhdh-catalog-maas-route
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+subjects:
+- kind: ServiceAccount
+  name: job-generate-rhdh-catalog
+  namespace: rhdh
+roleRef:
+  kind: Role
+  name: job-generate-rhdh-catalog-maas-route
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: job-generate-rhdh-catalog

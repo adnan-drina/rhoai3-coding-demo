@@ -231,14 +231,22 @@ fi
 # Workspace devfile aliases the public MaaS hostname to the in-cluster gateway
 # Service (stage 040, fixed ClusterIP): the public ELB path drops silent
 # response streams (measured 2026-09-10, pilot v6).
-# The MaaS hostAlias is applied by the Operator after workspace creation, never
-# templated: a hostAlias hostname must be a bare RFC 1123 host, and a scaffolder
-# URL value rendered "maas.<domain>/#https://github.com/<owner>/<repo>", which
-# made the workspace deployment invalid (v7 first start, 2026-09-10).
-check "050 app-migration skeleton devfile does not template the MaaS hostAlias hostname" \
+# The MaaS hostAlias is stamped by the factory at creation (2026-09-24; it was a
+# manual Operator step before, and v12 started without it). It comes from two
+# VALUES the catalog generator reads from the Gateway and its internal Service
+# and validates (RFC 1123 host, IPv4), never from URL surgery: deriving it from a
+# scaffolder URL rendered "maas.<domain>/#https://github.com/<owner>/<repo>" and
+# made the v7 workspace deployment invalid (2026-09-10).
+check "050 app-migration skeleton devfile does not template the MaaS hostAlias from a URL" \
   "grep -c 'values.devspacesUrl | replace' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "0"
-check "050 Operator script routes a workspace to the in-cluster gateway with a validated host and IP" \
+check "050 the factory stamps the in-cluster MaaS hostAlias from validated platform values" \
+  "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh'; grep -qF 'hostAliases:' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasInternalIp }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasHost }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF \"annotations['rhoai3.redhat.com/maas-host']\" \"\$T/templates/app-migration/template.yaml\" && grep -qF 'rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__' \"\$T/catalog/all.yaml\" && grep -qF 'is not an RFC 1123 host' \"\$T/jobs/rhdh-catalog-generator-script.yaml\" && echo FACTORY_STAMPS_MAAS_ROUTE || echo MAAS_ROUTE_NOT_STAMPED" \
+  "FACTORY_STAMPS_MAAS_ROUTE"
+check "050 live catalog publishes the validated in-cluster MaaS route on the platform entity" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null | grep -qE 'rhoai3.redhat.com/maas-internal-ip: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && echo LIVE_CATALOG_HAS_MAAS_ROUTE || echo LIVE_CATALOG_MISSING_MAAS_ROUTE" \
+  "LIVE_CATALOG_HAS_MAAS_ROUTE"
+check "050 Operator script still routes a pre-existing workspace to the in-cluster gateway with a validated host and IP" \
   "test -x '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' && grep -c 'RFC 1123 subdomain' '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' | head -1 || echo 0" \
   "2"
 check "050 skeleton devfile points at that script for the in-cluster route" \

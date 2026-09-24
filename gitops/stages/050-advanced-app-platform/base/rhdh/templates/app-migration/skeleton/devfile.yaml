@@ -8,21 +8,24 @@ attributes:
   controller.devfile.io/storage-type: per-workspace
   # For failed startup, use Dev Spaces "Open in Debug mode". DWO reads the
   # DevWorkspace metadata annotation, not a devfile template attribute.
-  # In-cluster path to the MaaS gateway: see scripts/patch-workspace-maas-route.sh.
-  # The public hostname resolves to the AWS load balancer, and that path drops a
-  # response stream that stays silent for ~8 min (vLLM buffers a whole tool call;
-  # measured 2026-09-10, pilot v6). The fix is a pod hostAlias sending the same
-  # hostname to the gateway's fixed ClusterIP (stage 040
-  # service-maas-gateway-internal.yaml), so TLS and the HTTPRoute host match are
-  # unchanged and only NAT and the ELB are gone.
+  # In-cluster path to the MaaS gateway, stamped at creation. The public
+  # hostname resolves to the AWS load balancer, and that path drops a response
+  # stream that stays silent for ~8 min (vLLM buffers a whole tool call;
+  # measured 2026-09-10, pilot v6). A pod hostAlias sends the same hostname to
+  # the gateway's fixed ClusterIP (stage 040 service-maas-gateway-internal.yaml),
+  # so TLS and the HTTPRoute host match are unchanged; only NAT and the ELB go.
   #
-  # It is NOT templated here on purpose. A hostAlias hostname must be a bare
-  # RFC 1123 host; deriving it from a scaffolder URL value produced
-  # "maas.<domain>/#https://github.com/<owner>/<repo>" and the workspace
-  # deployment was rejected outright (v7 first start, 2026-09-10). The Operator
-  # applies it after creation with the script above, which reads the host and IP
-  # from the cluster and validates both before patching. That patch is a merge
-  # of spec.hostAliases and must keep serviceAccountName below.
+  # The host and IP are values, never URL surgery: deriving the hostname from a
+  # scaffolder URL once produced "maas.<domain>/#https://github.com/<owner>/<repo>"
+  # and the workspace deployment was rejected (v7, 2026-09-10). The catalog
+  # generator reads both from the Gateway and its internal Service, validates
+  # them (RFC 1123 host, IPv4) and refuses to publish the catalog otherwise; the
+  # template passes them through. From v7 to v12 this was a manual Operator
+  # step after creation (scripts/patch-workspace-maas-route.sh), and v12 started
+  # without it; that script remains only for workspaces created before this.
+  # The alias renders only when both values are present, so an older catalog
+  # yields the public path (which run-preflight.sh refuses), never an invalid
+  # deployment.
   #
   # DWO 0.43 SyncRBAC binds Config.Workspace.ServiceAccount.ServiceAccountName
   # (or the generated workspace*-sa) to operator-owned devworkspace-default-role
@@ -33,6 +36,12 @@ attributes:
   pod-overrides:
     spec:
       serviceAccountName: ${{ values.name }}-worker
+{%- if values.maasHost and values.maasInternalIp %}
+      hostAliases:
+        - ip: "${{ values.maasInternalIp }}"
+          hostnames:
+            - "${{ values.maasHost }}"
+{%- endif %}
 # The source initializer is the only writer of the separate legacy-input
 # volume. The worker receives that volume read-only; the IDE folder list is
 # reordered after injection so legacy remains the MTA exploration target.
