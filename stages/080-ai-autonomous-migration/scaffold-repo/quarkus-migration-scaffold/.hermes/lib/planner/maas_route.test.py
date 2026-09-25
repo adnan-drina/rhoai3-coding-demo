@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from planner.maas_route import _connect, route_gaps  # noqa: E402
+from planner.maas_route import _connect, record, route_gaps  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -54,7 +54,40 @@ def _case(host: str, ip: str) -> int:
     return 0
 
 
+def _record_case(run: str) -> int:
+    """v13 (2026-09-25): record() called a run_control API the R1 rewrite had
+    removed, so the startup gate crashed in a governed workspace. The record
+    lands in the run's declared state directory; a legacy run records nothing."""
+    import json
+    import subprocess
+    import tempfile
+    g = lambda root, *a: subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                        check=True, capture_output=True, text=True)
+    with tempfile.TemporaryDirectory() as d:
+        root, state = Path(d) / "dest", Path(d) / "state"
+        root.mkdir()
+        (root / "run-budget.json").write_text(json.dumps({"schema": "rhoai3.run-budget/v2", "run_id": run, "run_control": {
+            "contract": "rhoai3.run-control/v1", "root": str(Path(d) / "control"), "state": str(state)}}), encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        g(root, "add", "-A")
+        g(root, "commit", "-q", "-m", "scaffold")
+        record(root, [], {"expected_host": "h", "expected_ip": "10.0.0.1", "tls": "verified"})
+        doc = json.loads((state / "route.json").read_text()) if (state / "route.json").is_file() else {}
+        if not doc.get("ok") or doc.get("tls") != "verified":
+            return _fail("a governed run records the route check in its state directory (%s): %s" % (run, doc))
+        legacy = Path(d) / "legacy"
+        legacy.mkdir()
+        (legacy / "run-budget.json").write_text(json.dumps({"schema": "rhoai3.run-budget/v2", "run_id": run}), encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(legacy)], check=True)
+        g(legacy, "add", "-A")
+        g(legacy, "commit", "-q", "-m", "scaffold")
+        record(legacy, ["x"], {})
+    return 0
+
+
 def main() -> int:
+    if _record_case("spring-petclinic-rest-legacy-v13") or _record_case("orders-service-v2"):
+        return 1
     if _case("maas.apps.cluster-a.example.test", "172.30.250.250") or _case("gw.models.lab", "10.96.7.21"):
         return 1
     why = _connect("localhost", "127.0.0.1", timeout=1.0)

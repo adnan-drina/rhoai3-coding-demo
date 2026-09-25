@@ -103,11 +103,14 @@ def record(root: Path, gaps: list[str], rec: dict[str, Any]) -> None:
         from planner import run_control
     except Exception:
         return
-    if not run_control.in_use(root):
+    decl = run_control.declared(root)
+    if not decl or decl.get("error"):
         return
     doc = dict(rec, ok=not gaps, gaps=gaps,
                checked_at=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
-    p = run_control.run_control_dir(root) / "route.json"
+    # the run's harness state directory (the declared run_control.state); the
+    # read-only platform record cannot hold it
+    p = decl["state"] / "route.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
