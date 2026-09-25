@@ -1035,7 +1035,8 @@ _UNIT_CATALOG = {"catalog": "compat-mapping.json", "block": "symbol_renames", "k
 
 
 def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: list[str], *,
-               member_id: str = "") -> dict:
+               member_id: str = "", rule: str = "unit/diagnostic-family/v1", symbol: tuple[str, str] = ("type", _UNIT_RETIRED),
+               targets: list[dict] | None = None, package: str = "org.springframework.samples.petclinic.rest") -> dict:
     """A sealed v4 unit over these files, and the cluster that carries it.
 
     Hand-written on purpose: what is under test here is the TRANSACTION -- the
@@ -1044,17 +1045,18 @@ def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: li
     from planner.worklist import batch_scope_digest, batch_scope_path
 
     scope = {
-        "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/diagnostic-family/v1",
+        "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": rule,
         "producer": "worklist.build_unit_scope", "tool": {"model": "jdk-dest-model", "version": "1.2.0"},
-        "cluster": "u:testunit", "unit_id": "u:testunit", "family_key": _UNIT_RETIRED,
+        "cluster": "u:testunit", "unit_id": "u:testunit", "family_key": symbol[1],
         "writable_paths": sorted(paths),
-        "symbols": [{"kind": "type", "fqn": _UNIT_RETIRED, "path": paths[0]}],
-        "target_symbols": [{"from": _UNIT_RETIRED, "to": _UNIT_TARGET, "catalog_row": dict(_UNIT_CATALOG)}],
-        "members": [{"path": p, "type": "org.springframework.samples.petclinic.rest.%s" % Path(p).stem,
+        "symbols": [{"kind": symbol[0], "fqn": symbol[1], "path": paths[0]}],
+        "target_symbols": (targets if targets is not None
+                           else [{"from": _UNIT_RETIRED, "to": _UNIT_TARGET, "catalog_row": dict(_UNIT_CATALOG)}]),
+        "members": [{"path": p, "type": "%s.%s" % (package, Path(p).stem),
                      "member_id": member_id, "occurrence": 0, "state": "reported", "identity": ident,
                      "item": iid}
                     for p, ident, iid in zip(paths, identities, item_ids)],
-        "evidence": [{"kind": "javac", "ref": "%s names %s" % (p, _UNIT_RETIRED)} for p in paths],
+        "evidence": [{"kind": "javac", "ref": "%s names %s" % (p, symbol[1])} for p in paths],
         "completion": [{"check": "identities-gone", "tool": "javac", "identities": sorted(identities),
                         "detail": "every sealed identity is gone"},
                        {"check": "unit-assessment", "tool": "worklist.assess_unit", "detail": "no member violates"}],
@@ -1065,7 +1067,7 @@ def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: li
     scope["digest"] = batch_scope_digest(scope)
     sp = batch_scope_path(scope)
     write_canonical(root / sp, scope)
-    return {"id": "u:testunit", "kind": "compile", "path": paths[0], "label": _UNIT_RETIRED,
+    return {"id": "u:testunit", "kind": "compile", "path": paths[0], "label": symbol[1],
             "write_set": sorted(paths), "items": sorted(item_ids), "retry_key": "rk:unit:u:testunit",
             "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
                             "kind": "unit", "unit_id": "u:testunit", "members": len(paths)}}
@@ -1962,12 +1964,103 @@ def _unit_gate_handoff_case(base: str = "p") -> int:
     return 0
 
 
+def _adapter_owned_retirement_advance_case(base: str = "org.springframework.samples.petclinic.rest") -> int:
+    """V16-1 (v16 t_7074fcda), end to end through the transaction.
+
+    A leaf unit over two controllers retiring @CrossOrigin -- class-level on
+    one, method-level on the other, both with arguments -- whose files also
+    carry an unrelated diagnostic another card owns, so the compiler can only
+    attribute them partially. The candidate that removes the annotations and
+    their import is ACCEPTED through the existing parsed-symbol-absence proof
+    (no shortcut: the step records the proof assess_unit gave); one that
+    leaves a method-level annotation is not. Run twice, the second time under
+    renamed packages."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+    from planner.worklist import adapter_owned_annotations, assess_unit
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    owned = "org.springframework.web.bind.annotation.CrossOrigin"
+    row = adapter_owned_annotations(GOLDEN)[owned]
+
+    def sym(name: str) -> str:
+        return "cannot find symbol\n  symbol:   class %s\n  location: class R" % name
+
+    src = "src/main/java/%s/" % base.replace(".", "/")
+    imp = "import %s;\n" % owned
+
+    def ctl(name: str, *, head: str = "", cls: str = "", meth: str = "") -> str:
+        return ("package %s;\n%s%spublic class %s {\n    %spublic String list() { return \"\"; }\n"
+                "    public PendingType pending() { return null; }\n}\n" % (base, head, cls, name, meth))
+
+    with tempfile.TemporaryDirectory(prefix="chk-owned-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=8))
+        owner, pet = src + "OwnerRestController.java", src + "PetRestController.java"
+        originals = {owner: ctl("OwnerRestController", head=imp, cls='@CrossOrigin(exposedHeaders = "errors, content-type")\n'),
+                     pet: ctl("PetRestController", head=imp, meth='@CrossOrigin(origins = "http://client.example", maxAge = 1800) ')}
+        for rel, text in originals.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        sealed = sorted(originals)
+        unrelated = [(p, 6, sym("PendingType"), _ATTR) for p in sealed]
+        specimens.prepare_loop(root, errors=[(p, 4, sym("CrossOrigin"), _ATTR) for p in sealed] + unrelated)
+        findings = load_json(root / MTA_FINDINGS)
+        wl = load_json(root / WORKLIST)
+        rows = sorted([i for i in wl["items"] if str(i.get("source")) == "javac" and "CrossOrigin" in str(i.get("message"))],
+                      key=lambda i: str(i["path"]))
+        if [r["path"] for r in rows] != sealed:
+            return _fail("the fixture needs one CrossOrigin diagnostic per controller: %s" % rows)
+        retire = [{"from": owned, "to": "", "retire": True, "action": row["action"],
+                   "catalog_row": {"catalog": "compat-mapping.json", "block": "adapter_owned_annotations", "key": owned,
+                                   "kind": "annotation", "adapter": row["adapter"], "contract": row["contract"]}}]
+        cluster = _seal_unit(root, sealed, [str(r["id"]) for r in rows], [str(r["identity"]) for r in rows],
+                             member_id="list", rule="unit/package-leaf/v1", symbol=("annotation", owned), targets=retire,
+                             package=base)
+
+        # (1) a method-level annotation left behind: the sealed diagnostic is
+        # still reported, and the member still names the retired symbol
+        _issue_cluster(root, cluster, "t_own1")
+        (root / owner).write_text(ctl("OwnerRestController"), encoding="utf-8")
+        specimens.verify(root, errors=[(pet, 4, sym("CrossOrigin"), _ATTR)] + unrelated, failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_own1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in blob:
+            return _fail("a candidate that leaves a @CrossOrigin is not accepted (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        for rel, text in originals.items():
+            (root / rel).write_text(text, encoding="utf-8")
+
+        # (2) the retirement: annotations and import gone, handlers and routes
+        # kept, the unrelated diagnostic still standing
+        pipeline.admit(root)
+        _issue_cluster(root, cluster, "t_own2")
+        for rel, name in ((owner, "OwnerRestController"), (pet, "PetRestController")):
+            (root / rel).write_text(ctl(name), encoding="utf-8")
+        scope = load_json(root / cluster["batch_scope"]["path"])
+        proofs = {r.get("proof") for r in assess_unit(root, scope)}
+        if proofs != {"parsed-symbol-absence"}:
+            return _fail("the retirement is decided by the existing parsed-symbol-absence proof (%s): %s" % (base, proofs))
+        specimens.verify(root, errors=list(unrelated), failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_own2")
+        blob = p.stdout + p.stderr
+        if p.returncode != 0 or "ACCEPTED" not in blob:
+            return _fail("the retirement is accepted despite the unrelated partial attribution (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        step = (load_json(root / LOOP_STEPS)["steps"] or [{}])[-1]
+        if (step.get("unit") or {}).get("unit_id") != "u:testunit" or step.get("explained_regressions"):
+            return _fail("the step records the unit and tolerated nothing (%s): %s" % (base, step.get("unit")))
+        after = {str(i.get("identity") or "") for i in load_json(root / WORKLIST)["items"] if str(i.get("source")) == "javac"}
+        if len(after) != len(unrelated):
+            return _fail("the unrelated diagnostics stay obligations of their own (%s): %s" % (base, sorted(after)))
+    return 0
+
+
 def main() -> int:
     if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1
     if _known_before_unknown_case() or _known_before_unknown_case("com.example.store") or _missing_baseline_case() or _continuation_case():
+        return 1
+    if _adapter_owned_retirement_advance_case() or _adapter_owned_retirement_advance_case("com.example.store.web"):
         return 1
     if _unit_checkpoint_case() or _unit_gate_handoff_case() or _unit_gate_handoff_case("com.example.store.web"):
         return 1

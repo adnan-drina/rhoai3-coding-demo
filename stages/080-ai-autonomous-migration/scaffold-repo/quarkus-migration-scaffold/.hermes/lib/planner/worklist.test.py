@@ -4077,17 +4077,244 @@ def _issued_parity_plan_case() -> int:
     return 0
 
 
+# --- V16-1: an annotation whose behaviour a harness adapter owns ----------
+#
+# v16 t_7074fcda (u:8c368f6e97b9, 7 controllers): the catalogued
+# UriComponentsBuilder row took the unit from 20 diagnostics to 7, and the 7
+# were `cannot find symbol: class CrossOrigin`. The catalogue had no row, so
+# the brief offered no action and the card parked as unassessable-scope. The
+# annotation's behaviour is owned by the CORS response adapter (ADR-019),
+# which renders the SOURCE policy; the compile action is to retire it.
+_OWNED = "org.springframework.web.bind.annotation.CrossOrigin"
+_OWNED_A = {"base": "org.acme.clinic", "pkg": "rest", "controllers": ("OwnerRestController", "PetRestController"),
+            "unrelated": "org.acme.clinic.web.CrossOrigin"}
+_OWNED_B = {"base": "com.example.warehouse", "pkg": "api", "controllers": ("CrateEndpoint", "PalletEndpoint"),
+            "unrelated": "com.example.warehouse.cors.CrossOrigin"}
+
+
+def _owned_world(n: dict, fqn: str) -> tuple[dict, list[dict], list[str]]:
+    """(a model, the javac items, the paths): the first controller carries the
+    annotation at class level, the second on a handler method -- both with
+    arguments, both bound by an explicit import of `fqn`."""
+    pkg = n["base"].replace(".", "/")
+    ann = dict(_dm_ann(fqn), values={"exposedHeaders": ["errors, content-type"]})
+    types, paths = [], []
+    for i, c in enumerate(n["controllers"]):
+        rel = "%s/%s/%s.java" % (pkg, n["pkg"], c)
+        handler = _dm_member("list", "list()", has_body=True, annotations=[ann] if i == 1 else [])
+        types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=[fqn],
+                              annotations=[ann] if i == 0 else [], declared=[handler]))
+        paths.append("src/main/java/" + rel)
+    items = [_javac(p, fqn.rsplit(".", 1)[-1], 40 + i) for i, p in enumerate(paths)]
+    return {"types": types}, items, paths
+
+
+def _adapter_owned_retirement_case() -> int:
+    """The compile half of ADR-019 ownership, and only that half.
+
+    A unit over @CrossOrigin carries the catalogue's retirement row -- no
+    replacement, the adapter contract that keeps the behaviour, the documented
+    action -- keyed by the QUALIFIED name, so another package's CrossOrigin
+    gets nothing. The retirement is no target, so it widens no checkpoint; and
+    once the controllers no longer carry the annotation the CORS parity
+    obligation is still produced, still owed to the same adapter, and its unit
+    still renders the source policy from M1's structural model."""
+    import json
+    import tempfile
+
+    import response_adapters as ra
+    from planner.paths import PARITY_DIR
+    from planner.worklist import adapter_owned_annotations, owed_adapter_units, unit_retired_symbols
+
+    cors = ra.contract(ra.CORS)
+    rows = adapter_owned_annotations(GOLDEN)
+    row = rows.get(_OWNED)
+    if row is None or row.get("adapter") != ra.CORS or row.get("contract") != cors["contract"]:
+        return _fail("compat-mapping carries an adapter_owned_annotations row for %s naming the registered CORS contract: %s" % (_OWNED, rows))
+    if not row.get("action") or not row.get("source") or not row.get("policy_evidence") or row.get("kind") != "annotation":
+        return _fail("the row documents its kind, source, policy evidence and action: %s" % row)
+    if any("." not in k for k in rows) or any(k.rsplit(".", 1)[-1] == "CrossOrigin" and k != _OWNED for k in rows):
+        return _fail("keys are qualified identities and there is no generic rule: %s" % sorted(rows))
+    for label, n in (("A", _OWNED_A), ("B", _OWNED_B)):
+        model, items, paths = _owned_world(n, _OWNED)
+        units, claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if len(units) != 1 or set(claimed) != {i["id"] for i in items}:
+            return _fail("[%s] the two controllers form one unit: %s" % (label, [c["unit"]["family_key"] for c in units]))
+        unit = units[0]
+        retire = [t for t in unit["unit"]["target_symbols"] if t.get("retire")]
+        if len(retire) != 1 or retire[0]["from"] != _OWNED or retire[0]["to"] != "" or retire[0]["action"] != row["action"]:
+            return _fail("[%s] the unit carries the retirement row and its action, and no replacement: %s" % (label, unit["unit"]["target_symbols"]))
+        cat = retire[0]["catalog_row"]
+        if (cat.get("block"), cat.get("key"), cat.get("contract"), cat.get("adapter")) != ("adapter_owned_annotations", _OWNED, cors["contract"], ra.CORS):
+            return _fail("[%s] the row names its catalogue block and the adapter that keeps the behaviour: %s" % (label, cat))
+        if not any("retired; its behaviour is owed to %s" % cors["contract"] in e["ref"] for e in unit["unit"]["evidence"]):
+            return _fail("[%s] the evidence records the retirement and who owes the behaviour: %s" % (label, unit["unit"]["evidence"]))
+        with tempfile.TemporaryDirectory(prefix="owned-seal-") as d:
+            scope = build_unit_scope(Path(d), unit, items, {"candidate_sha256": "c0"})
+        if [s for s, _k in unit_retired_symbols(scope)] != [_OWNED] or scope["target_symbols"] != unit["unit"]["target_symbols"]:
+            return _fail("[%s] the sealed symbols retire the annotation and the seal carries the row: %s" % (label, scope["symbols"]))
+        if unit.get("gate") or any(c.get("check") == "gate" for c in unit["_unit_seal"]["completion"]):
+            return _fail("[%s] a retirement is a compile obligation: it carries no gate" % label)
+        # the retirement is no target: a diagnostic about anything else in the
+        # sealed files is still explained by nothing
+        other_model, _i, _p = _owned_world(n, "jakarta.ws.rs.core.Context")
+        rows_x, why = unit_explained_regressions(scope, [_javac(paths[0], "Context", 9)], other_model)
+        if rows_x:
+            return _fail("[%s] a retirement row explains no other diagnostic: %s" % (label, rows_x))
+
+        # another package's annotation spelled the same way: its own family,
+        # no row, no action
+        model_u, items_u, _paths_u = _owned_world(n, n["unrelated"])
+        units_u, _ = form_units(items_u, {}, set(), model=model_u, root=GOLDEN)
+        if any(t.get("retire") for c in units_u for t in c["unit"]["target_symbols"]):
+            return _fail("[%s] %s is not %s and gets no retirement row: %s" % (label, n["unrelated"], _OWNED,
+                                                                            [c["unit"]["target_symbols"] for c in units_u]))
+        if [s["fqn"] for c in units_u for s in c["unit"]["symbols"]] != [n["unrelated"]]:
+            return _fail("[%s] the unrelated annotation is its own sealed symbol: %s" % (label, [c["unit"]["symbols"] for c in units_u]))
+
+    # compile acceptance is not behavioural acceptance: with the annotation
+    # retired from the destination, the CORS obligation and its owed adapter
+    # unit still stand, rendered from the SOURCE policy
+    fixture = Path(__file__).resolve().parents[2] / "skills" / "migration" / "restore-source-response-shape" / "fixtures" / "runtime"
+    ep = "ep:org.example.shop.rest.ItemController#create():http"
+    ctl = "src/main/java/org/example/shop/rest/ItemController.java"
+    with tempfile.TemporaryDirectory(prefix="owned-handoff-") as td:
+        root = Path(td)
+        (root / "evidence" / "structure").mkdir(parents=True)
+        shutil.copy2(fixture / "evidence" / "structure" / "structure.json", root / "evidence" / "structure" / "structure.json")
+        (root / ctl).parent.mkdir(parents=True)
+        (root / ctl).write_text("package org.example.shop.rest;\npublic class ItemController {\n    public String create() { return \"\"; }\n}\n", encoding="utf-8")
+        (root / APP_PROPERTIES).parent.mkdir(parents=True)
+        (root / APP_PROPERTIES).write_text("quarkus.http.root-path=/shop/\n", encoding="utf-8")
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        (root / PARITY_DIR / "receipt.json").write_text(json.dumps({"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
+                                                                     "cors": {"source_policies": ["crossorigin:7b1a3d9234cd"], "gaps": []}}))
+        (root / PARITY_DIR / "scenarios" / "pre.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:pre", "verdict": "FAIL",
+            "reason": "header Access-Control-Allow-Origin http://client.example vs None; header Access-Control-Expose-Headers errors, content-type vs None"}))
+        parity = [i for i in parity_items(root, {"entry_points": [{"id": ep, "path": ctl}]}) if i["rule_id"] == "PARITY_CORS"]
+        if len(parity) != 1 or (parity[0].get("owed") or {}).get("contract") != cors["contract"]:
+            return _fail("the CORS obligation is still produced, owed to the contract the retirement row names: %s" % parity)
+        adapters, _claimed = owed_adapter_units(parity, root, {}, set())
+        if len(adapters) != 1 or adapters[0]["unit"]["family_key"] != cors["contract"] or adapters[0].get("gate") != "parity":
+            return _fail("the owed adapter unit is still minted with its parity gate: %s" % [c["unit"]["family_key"] for c in adapters])
+        impl = adapters[0]["unit"]["implementation"][0]
+        rendered = [tuple(p) for p in impl["properties"]]
+        if not rendered or rendered != ra.cors_properties(ra.cors_policy(root)) or adapters[0].get("block"):
+            return _fail("the adapter still renders the preserved source policy: %s" % rendered)
+    return 0
+
+
+def _real_adapter_owned_retirement_case() -> int:
+    """Real javac: the planner's unit over @CrossOrigin, and the existing
+    parsed-symbol-absence proof deciding its retirement.
+
+    The unit is formed from the model of the tree as it was (a class-level and
+    a method-level @CrossOrigin with arguments, and an unrelated diagnostic
+    that keeps attribution partial), so it is the LEAF rule that claims it --
+    the shape v16 t_7074fcda had. The candidate that removes only the
+    annotations and their import is proven by the parse; every other candidate
+    is not: an annotation left, the import left, a qualified spelling left, a
+    handler deleted, or a parse the compiler could not complete."""
+    import tempfile
+    from unittest.mock import patch
+
+    from planner.worklist import unit_retired_symbols
+
+    base, src = "example.rest", "src/main/java/example/rest"
+    owner, pet = "%s/OwnerRestController.java" % src, "%s/PetRestController.java" % src
+    support = {
+        "src/main/java/org/springframework/web/bind/annotation/RestController.java":
+            "package org.springframework.web.bind.annotation; public @interface RestController {}",
+        "src/main/java/com/acme/web/CrossOrigin.java":
+            "package com.acme.web; public @interface CrossOrigin { String[] exposedHeaders() default {}; }",
+    }
+    rc = "import org.springframework.web.bind.annotation.RestController;\n"
+    imp = "import org.springframework.web.bind.annotation.CrossOrigin;\n"
+
+    def ctl(name: str, *, head: str = "", cls: str = "", meth: str = "", pending: bool = True, handler: bool = True) -> str:
+        return ("package %s;\n%s%s%s@RestController\npublic class %s {\n%s%s}\n"
+                % (base, head, rc, cls, name,
+                   ("    %spublic String list() { return \"\"; }\n" % meth) if handler else "",
+                   "    public Missing pending() { return null; }\n" if pending else ""))
+
+    before = {owner: ctl("OwnerRestController", head=imp, cls='@CrossOrigin(exposedHeaders = "errors, content-type")\n'),
+              pet: ctl("PetRestController", head=imp, meth='@CrossOrigin(origins = "http://client.example", maxAge = 1800) ')}
+    with tempfile.TemporaryDirectory(prefix="wl-owned-form-") as d:
+        root = _jdk_root(d, {**support, **before})
+        model = dest_model(root)
+        items = [_javac(owner, "CrossOrigin", 1), _javac(pet, "CrossOrigin", 2)]
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if len(units) != 1 or units[0]["unit"]["rule"] != RULE_PACKAGE_LEAF:
+            return _fail("the two controllers are one leaf unit: %s" % [(c["unit"]["rule"], c["unit"]["family_key"]) for c in units])
+        if not any(t.get("retire") and t["from"] == _OWNED for t in units[0]["unit"]["target_symbols"]):
+            return _fail("the real model binds the token to %s and the unit carries its retirement: %s" % (_OWNED, units[0]["unit"]["target_symbols"]))
+        leaf = build_unit_scope(root, units[0], items, {"candidate_sha256": "c0"})
+    if [s for s, _k in unit_retired_symbols(leaf)] != [_OWNED]:
+        return _fail("the leaf seals the annotation as the symbol it retires: %s" % leaf["symbols"])
+    for m in leaf["members"]:
+        m["member_id"] = "list"  # the handler the method-level annotation sat on must survive
+    family = dict(leaf, rule=RULE_DIAGNOSTIC_FAMILY)
+    retired_ok = {owner: ctl("OwnerRestController"), pet: ctl("PetRestController")}
+    cases = [
+        ("retired", retired_ok, True, "parsed-symbol-absence"),
+        ("class-level-left", dict(retired_ok, **{owner: before[owner]}), False, ""),
+        ("method-level-left", dict(retired_ok, **{pet: before[pet]}), False, ""),
+        ("import-left", dict(retired_ok, **{owner: ctl("OwnerRestController", head=imp)}), False, ""),
+        ("qualified-left", dict(retired_ok, **{pet: ctl("PetRestController", meth="@org.springframework.web.bind.annotation.CrossOrigin(maxAge = 1800) ")}), False, ""),
+        ("handler-deleted", dict(retired_ok, **{pet: ctl("PetRestController", handler=False)}), False, ""),
+        ("parse-error", dict(retired_ok, **{owner: ctl("OwnerRestController").replace("list()", "list(")}), False, ""),
+        # another package's CrossOrigin, left untouched: while attribution is
+        # partial the parse cannot tell the two apart and refuses; resolved,
+        # the model can, and the member is clean
+        ("unrelated-partial", dict(retired_ok, **{owner: ctl("OwnerRestController", head="import com.acme.web.CrossOrigin;\n", cls='@CrossOrigin(exposedHeaders = "x")\n')}), False, ""),
+        ("unrelated-resolved", {owner: ctl("OwnerRestController", head="import com.acme.web.CrossOrigin;\n", cls='@CrossOrigin(exposedHeaders = "x")\n', pending=False),
+                                pet: ctl("PetRestController", pending=False)}, True, "resolved-model"),
+    ]
+    for label, files, allowed, proof in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-owned-assess-") as d:
+            root = _jdk_root(d, {**support, **files})
+            model = dest_model(root)
+            for rule, scope in ((RULE_PACKAGE_LEAF, leaf), (RULE_DIAGNOSTIC_FAMILY, family)):
+                rows = assess_unit(root, scope)
+                if all(r["verdict"] == "ok" for r in rows) != allowed:
+                    return _fail("%s [%s]: retirement assessment %s" % (label, rule, rows))
+                # the owner file carries the annotation under test: its row
+                # names the proof that decided it
+                if allowed and [r.get("proof") for r in rows if r["path"] == owner] != [proof]:
+                    return _fail("%s [%s] is decided by the %s proof: %s" % (label, rule, proof, rows))
+            if label != "retired":
+                continue
+            if {t["resolution"] for t in model["types"] if t["fqn"].startswith(base)} != {"partial"}:
+                return _fail("the retired candidate must exercise partial attribution")
+            # incomplete syntax evidence refuses: the proof is the parse, and a
+            # parse that is missing or incomplete proves nothing
+            for key, value in (("syntax_names", None), ("syntax_complete", False)):
+                typ = next(t for t in model["types"] if t["fqn"] == base + ".OwnerRestController")
+                saved = typ.pop(key)
+                if value is not None:
+                    typ[key] = value
+                with patch("planner.worklist.dest_model", return_value=model):
+                    if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, leaf)):
+                        return _fail("%s %r must leave the retirement inconclusive" % (key, value))
+                typ[key] = saved
+            # and the relaxation is not authority for a declaration closure
+            if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, dict(leaf, rule=RULE_DECLARATION_CLOSURE))):
+                return _fail("a declaration closure never takes the parsed proof")
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
             or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
-            or _unit_budget_case() or _issued_parity_plan_case()):
+            or _unit_budget_case() or _issued_parity_plan_case() or _adapter_owned_retirement_case()):
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case():
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)
@@ -4268,7 +4495,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → an obligation OWED the harness CORS adapter, a Content-Type parameter difference → its own PARITY_CONTENT_TYPE obligation, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (ADR-019: the CORS write set is the adapter's contract path plus the configuration, permissions come from the SOURCE policy and never from one capture, with the paired actual request, the exposed headers, both security modes and the capability's --check as the exit; each owed adapter is ONE sealed unit/owed-adapter/v1 whose checkpoint assesses the template bytes, the contract type and every rendered row, and a rendering the evidence cannot support is a typed blocker; findings in harness-owned generated roots are never obligations; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → an obligation OWED the harness CORS adapter, a Content-Type parameter difference → its own PARITY_CONTENT_TYPE obligation, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (ADR-019: the CORS write set is the adapter's contract path plus the configuration, permissions come from the SOURCE policy and never from one capture, with the paired actual request, the exposed headers, both security modes and the capability's --check as the exit; each owed adapter is ONE sealed unit/owed-adapter/v1 whose checkpoint assesses the template bytes, the contract type and every rendered row, and a rendering the evidence cannot support is a typed blocker; findings in harness-owned generated roots are never obligations; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495); an adapter-owned annotation (@CrossOrigin, v16 t_7074fcda) carries its qualified adapter_owned_annotations retirement row and action, another package's CrossOrigin none, the parse proves its retirement in a leaf or a family and refuses on a missing or incomplete parse, and the CORS obligation and its owed adapter unit still stand after it. The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
 obligation it excludes stays in the work list as its own item with its file still writable, while a closure keeps \
 its callers and reaches the typed UNIT_OVERSIZE refusal rather than dropping them. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH). The CHECKPOINT: a \
 unit whose sealed identities are gone and whose members assess clean is ACCEPTED with the tuple unchanged, and even \

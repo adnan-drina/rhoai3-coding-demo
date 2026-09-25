@@ -599,6 +599,101 @@ def _candidate_checkpoint_case(pkg: str = "com/acme/shop") -> int:
     return 0
 
 
+def _adapter_owned_brief_case() -> int:
+    """V16-1 (v16 t_7074fcda): an annotation whose behaviour a harness
+    adapter owns is RETIRED, and the brief says so as the first action -- on
+    the unit, from its sealed retirement row, and on a compile item whose
+    diagnostic names the QUALIFIED annotation (its import, or the package
+    javac locates it in). Another package's CrossOrigin gets nothing."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from planner.canonical import load_json
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+    from planner.worklist import adapter_owned_annotations, batch_scope_digest
+
+    owned = "org.springframework.web.bind.annotation.CrossOrigin"
+    row = adapter_owned_annotations(GOLDEN).get(owned) or {}
+    if not row.get("action"):
+        return _fail("the golden catalogue carries the %s retirement row" % owned)
+    with tempfile.TemporaryDirectory(prefix="owned-brief-") as td:
+        root = Path(td)
+        (root / ".hermes" / "planning" / "catalogs").mkdir(parents=True)
+        shutil.copy(GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json",
+                    root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json")
+        own, other = "src/main/java/p/OwnerResource.java", "src/main/java/p/PetResource.java"
+        (root / own).parent.mkdir(parents=True, exist_ok=True)
+        (root / own).write_text("package p;\nimport %s;\n@CrossOrigin(exposedHeaders = \"errors, content-type\")\npublic class OwnerResource { }\n" % owned, encoding="utf-8")
+        (root / other).write_text("package p;\nimport com.acme.web.CrossOrigin;\n@CrossOrigin\npublic class PetResource { }\n", encoding="utf-8")
+        inline = "src/main/java/p/VisitResource.java"
+        (root / inline).write_text("package p;\n@%s(maxAge = 1800)\npublic class VisitResource { }\n" % owned, encoding="utf-8")
+
+        def item(path: str, n: int, location: str) -> dict:
+            return {"id": "err:%d" % n, "source": "javac", "kind": "compile", "category": "mandatory", "path": path,
+                    "line": 3, "rule_id": "compiler.err.cant.resolve.location", "identity": "diag:%d" % n,
+                    "message": "cannot find symbol\n  symbol:   class CrossOrigin\n  location: %s" % location}
+
+        rows = enrich([item(own, 1, "class p.OwnerResource"), item(other, 2, "class p.PetResource"),
+                       item(inline, 3, "package org.springframework.web.bind.annotation")],
+                      root, {"id": "c:x", "kind": "compile", "path": own, "write_set": [own, other, inline]})
+        a, b, c = (r["advice"] for r in rows)
+        if a.get("first_action") != row["action"] or (a.get("retire") or {}).get("catalog_row", {}).get("contract") != row["contract"]:
+            return _fail("an imported adapter-owned annotation's first action is the row's retirement: %s" % a)
+        if row["contract"] not in (a.get("do_not") or "") or "not on the destination classpath" in (a.get("do_not") or ""):
+            return _fail("and the item says the behaviour is owed to the adapter, not to a classpath hunt: %s" % a.get("do_not"))
+        if b.get("retire") or b.get("first_action"):
+            return _fail("com.acme.web.CrossOrigin is another annotation and gets no retirement: %s" % b)
+        if (c.get("retire") or {}).get("symbol") != owned:
+            return _fail("javac locating the symbol in the owned package qualifies it too: %s" % c)
+
+        scope = {
+            "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/package-leaf/v1",
+            "cluster": "u:own1", "unit_id": "u:own1", "family_key": "src/main/java/p", "writable_paths": [own],
+            "symbols": [{"kind": "annotation", "fqn": owned, "path": own}],
+            "target_symbols": [{"from": owned, "to": "", "retire": True, "action": row["action"],
+                                "catalog_row": {"catalog": "compat-mapping.json", "block": "adapter_owned_annotations",
+                                                "key": owned, "kind": "annotation", "source": row["source"],
+                                                "adapter": row["adapter"], "contract": row["contract"]}}],
+            "members": [{"path": own, "type": "p.OwnerResource", "member_id": "", "occurrence": 0,
+                         "state": "reported", "identity": "diag:1"}],
+            "evidence": [], "completion": [], "bounds": {"files": 1, "sites": 1, "symbols": 1},
+            "measured": ["err:1"], "inputs": {"candidate_sha256": "c0"},
+        }
+        scope["digest"] = batch_scope_digest(scope)
+        sp = Path("evidence/planning/batch-scope/u-own1") / ("%s.json" % scope["digest"][:32])
+        write_canonical(root / sp, scope)
+        cluster = {"id": "u:own1", "kind": "compile", "path": own, "write_set": [own], "items": ["err:1"],
+                   "label": scope["family_key"], "retry_key": "rk:unit:u:own1",
+                   "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                                   "kind": "unit", "unit_id": "u:own1", "members": 1}}
+        write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "u:own1", "unit_formation": "v1",
+                                          "measure": {"tuple": [0, 1, 0], "known": True, "blocked": []},
+                                          "clusters": [cluster], "not_counted": [],
+                                          "items": [item(own, 1, "class p.OwnerResource")]})
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:own1",
+                                             "task_id": "t_own0001", "write_set": [own]})
+        prev = os.environ.get("HERMES_KANBAN_TASK")
+        os.environ["HERMES_KANBAN_TASK"] = "t_own0001"
+        try:
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+        finally:
+            if prev is None:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+            else:
+                os.environ["HERMES_KANBAN_TASK"] = prev
+        if rc != 0:
+            return _fail("brief.py must serve the retirement unit: rc=%s %s" % (rc, err.getvalue()[:400]))
+        unit = load_json(root / LOOP_DIR / "brief-u-own1.json").get("unit") or {}
+        if row["action"] not in str(unit.get("first_action") or "") or owned not in str(unit.get("first_action") or ""):
+            return _fail("the unit's first action is the retirement row's action: %s" % unit.get("first_action"))
+        t = (unit.get("target_symbols") or [{}])[0]
+        if t.get("retire") is not True or t.get("to") != "" or t.get("action") != row["action"]:
+            return _fail("the unit's target row says retire, with no replacement: %s" % t)
+    return 0
+
+
 def main() -> int:
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):
         return 1
@@ -613,6 +708,8 @@ def main() -> int:
     if _repository_inventory_case():
         return 1
     if _unit_brief_case():
+        return 1
+    if _adapter_owned_brief_case():
         return 1
     if _runtime_advice_case():
         return 1
@@ -751,7 +848,7 @@ def main() -> int:
             return _fail("a file-level profile incident must name the profile and the remaining Spring keys with their mappings: %s" % c4)
     if _issued_cluster_case():
         return 1
-    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file / already_imported classpath; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it; issued cluster over empty head; a UNIT card's brief carries the members grouped under the rule that formed them with each one's current verdict, the documented targets with their catalogue rows, the completion checks naming the tool that decides each, the revisions already granted, an amend line that names --evidence, and the checkpoint rule -- judged once, intermediate regressions inside the sealed symbols allowed until then, and nothing else relaxed)")
+    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file / already_imported classpath; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it; issued cluster over empty head; an adapter-owned annotation (@CrossOrigin) is retired as the item's and the unit's first action, keyed by its qualified name; a UNIT card's brief carries the members grouped under the rule that formed them with each one's current verdict, the documented targets with their catalogue rows, the completion checks naming the tool that decides each, the revisions already granted, an amend line that names --evidence, and the checkpoint rule -- judged once, intermediate regressions inside the sealed symbols allowed until then, and nothing else relaxed)")
     return 0
 
 

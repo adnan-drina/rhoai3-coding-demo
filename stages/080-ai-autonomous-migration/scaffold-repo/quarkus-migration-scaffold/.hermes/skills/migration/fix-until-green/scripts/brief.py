@@ -25,7 +25,7 @@ from _loop_common import budget as _budget, candidate_sha256, ensure_hermes_lib,
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
-from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, assess_unit, head_cluster, items_of  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, adapter_owned_annotations, assess_unit, head_cluster, items_of  # noqa: E402
 
 # H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
 # replaces "never touch a path outside the write set" beside "add it with
@@ -191,6 +191,7 @@ def package_renames(root: Path) -> dict[str, str]:
 _SYMBOL_RE = re.compile(r"symbol:\s+(class|variable|method|interface|enum)\s+([A-Za-z_$][\w$]*)")
 _PACKAGE_RE = re.compile(r"package ([\w.]+) does not exist")
 _LOCATION_RE = re.compile(r"location:\s+(?:class|interface|package)\s+([\w.$]+)")
+_PACKAGE_LOCATION_RE = re.compile(r"location:\s+package\s+([\w.]+)")
 REFERENCES_DIR = Path(".hermes") / "skills" / "migration" / "spring-to-quarkus-patterns" / "references"
 
 
@@ -273,10 +274,14 @@ def reference_hits(refs: list[tuple[Path, str]], token: str, root: Path) -> list
     return [path for n, path in sorted(scored, key=lambda x: (-x[0], x[1])) if n > 0][:3]
 
 
-def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[str, str], refs: list[tuple[Path, str]]) -> dict:
+def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[str, str], refs: list[tuple[Path, str]],
+                   owned: dict[str, dict] | None = None) -> dict:
     """What the compiler said, and the facts the tools hold about the name it could not resolve:
     the inventory row (a legacy type not yet in the destination tree), the documented Jakarta
-    rename for a javax.* package, and the spring-to-quarkus-patterns reference that covers the symbol."""
+    rename for a javax.* package, the spring-to-quarkus-patterns reference that covers the symbol,
+    and, for an annotation a harness adapter owns (compat-mapping adapter_owned_annotations), the
+    retirement row's action as the item's first action. That row applies only to the QUALIFIED
+    name: the file's explicit import, or the package javac names as the symbol's location."""
     msg = str(item.get("message") or item.get("detail") or "")
     out: dict = {"description": "compiler diagnostic", "message": msg}
     sym = _SYMBOL_RE.search(msg)
@@ -331,6 +336,18 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
     hits = reference_hits(refs, token, root)
     if hits:
         out["references"] = hits
+    loc = _PACKAGE_LOCATION_RE.search(msg) if sym else None
+    qualified = imported if imported and not imported.endswith(".*") else ("%s.%s" % (loc.group(1), token) if loc else "")
+    own = (owned or {}).get(qualified) if qualified else None
+    if own is not None:
+        out["retire"] = {"symbol": qualified, "action": str(own.get("action") or ""),
+                         "catalog_row": {"catalog": "compat-mapping.json", "block": "adapter_owned_annotations",
+                                         "key": qualified, "adapter": str(own.get("adapter") or ""),
+                                         "contract": str(own.get("contract") or ""), "source": str(own.get("source") or "")}}
+        out["first_action"] = out["retire"]["action"]
+        out["do_not"] = ("Do not add this import again and do not replace the annotation: its behaviour is owed to %s "
+                         "on its own parity card, never to this file." % out["retire"]["catalog_row"]["contract"])
+        return out
     if out.get("already_imported"):
         if out.get("rename"):
             repl = "%s.%s" % (out["rename"]["to"], token) if not imported.endswith(".*") else out["rename"]["to"] + ".*"
@@ -638,6 +655,7 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     artifacts = {e["gav"].split(":")[-1] for e in els} | {e["gav"] for e in els}
     managed, aliases = bom_managed(root), artifact_aliases(root)
     inventory, renames, refs, cat = load_inventory(root), package_renames(root), _references(root), catalog(root)
+    owned = adapter_owned_annotations(root)
     out: list[dict] = []
     for it in items:
         row = dict(it)
@@ -651,7 +669,7 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
                              "message": str(it.get("message") or ""), "generated_path": gen,
                              "plugin": owner, "plugin_config": pc.get(owner) or {}, "links": [str((pc.get(owner) or {}).get("docs") or "")] if owner else []}
         elif it.get("source") == "javac" and it.get("rule_id") != "BUILD_UNRESOLVABLE":
-            row["advice"] = compile_advice(it, root, inventory, renames, refs)
+            row["advice"] = compile_advice(it, root, inventory, renames, refs, owned)
         if it.get("source") == "mta" and it.get("kind") == "config":
             cfg = config_advice(it, root, rules, cat)
             if cfg:
@@ -1133,6 +1151,10 @@ def main(argv: list[str] | None = None) -> int:
                     "signature": str(m.get("signature") or ""), "consumer": str(m.get("consumer") or ""),
                     "verdict": v.get("verdict", "inconclusive"), "detail": v.get("detail", ""),
                 })
+            # an adapter-owned annotation is RETIRED, not replaced: its row's
+            # action is the unit's first action, the same way a handler
+            # parameter's catalogue action is the item's
+            retire = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("retire")]
             brief["unit"] = {
                 "unit_id": str(scope.get("unit_id") or ""),
                 "rule": str(scope.get("rule") or ""),
@@ -1142,12 +1164,15 @@ def main(argv: list[str] | None = None) -> int:
                 # every documented target with the catalogue row that documents
                 # it: a replacement with no row is not a target, and a
                 # diagnostic about one is not explained by anything
-                "target_symbols": [{"from": t.get("from"), "to": t.get("to"), "catalog_row": t.get("catalog_row")}
+                "target_symbols": [dict({"from": t.get("from"), "to": t.get("to"), "catalog_row": t.get("catalog_row")},
+                                        **({"retire": True, "action": t.get("action")} if t.get("retire") else {}))
                                    for t in (scope.get("target_symbols") or [])],
                 "completion": list(scope.get("completion") or []),
                 "bounds": dict(scope.get("bounds") or {}),
                 "evidence": list(scope.get("evidence") or []),
                 "revisions": list((issued_now or {}).get("revisions") or []),
+                **({"first_action": " ".join("%s (%s)" % (t.get("action"), (t.get("catalog_row") or {}).get("key")) for t in retire)}
+                   if retire else {}),
                 "checkpoint": (
                     "This unit is judged ONCE, at its checkpoint, not per edit. Intermediate regressions INSIDE the "
                     "sealed symbols are allowed until then: the compile count may stand still or briefly rise, and the "

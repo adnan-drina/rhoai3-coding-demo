@@ -4346,6 +4346,35 @@ def symbol_renames(root: Path | None) -> dict[str, dict[str, Any]]:
             and "." in str(k) and "." in str(v.get("to"))}
 
 
+def adapter_owned_annotations(root: Path | None) -> dict[str, dict[str, Any]]:
+    """compat-mapping.json `adapter_owned_annotations`: annotations whose
+    behaviour a registered harness response adapter reproduces (ADR-019).
+
+    A row is the COMPILE half of that ownership: its action retires the
+    annotation and its import, and nothing replaces it in the controller. The
+    behaviour is still owed, to the adapter's parity obligation, which renders
+    the source policy from M1's structural model (response_adapters.cors_policy)
+    and never reads destination code -- so a retirement discharges nothing
+    there. The same qualification rule as symbol_renames: an unqualified key is
+    a spelling and is dropped, and so is a row whose adapter is not registered
+    or whose contract is not the registered adapter's own, because a row that
+    names an adapter the harness does not install documents nothing."""
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("adapter_owned_annotations") or {}
+    return {str(k): dict(v) for k, v in rows.items()
+            if k != "note" and isinstance(v, dict) and "." in str(k) and str(v.get("action") or "")
+            and str(v.get("adapter") or "") in _adapters.KINDS
+            and str(v.get("contract") or "") == _adapters.CONTRACTS[str(v["adapter"])]["contract"]}
+
+
 def package_renames_of(root: Path | None) -> dict[str, str]:
     if root is None:
         return {}
@@ -4360,15 +4389,32 @@ def package_renames_of(root: Path | None) -> dict[str, str]:
 
 
 def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[str, Any]],
-                        packages: dict[str, str]) -> list[dict[str, Any]]:
+                        packages: dict[str, str],
+                        owned: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """[{from, to, catalog_row}] — the documented replacement of each sealed
     symbol, when a catalog row records one. A symbol with no row contributes
     nothing: the unit then has no documented target, and the checkpoint has
-    nothing to tolerate."""
+    nothing to tolerate.
+
+    An adapter-owned annotation has no replacement: its row is
+    {from, to: "", retire: true, action, catalog_row}. The sealed symbol is
+    already a retired kind, so assess_unit asks for it to be gone as it asks
+    for any other; the row adds the documented action and the adapter that
+    keeps the behaviour. An empty `to` is no target, so the checkpoint
+    tolerates nothing more because of it (unit_explained_regressions reads
+    only qualified targets)."""
     out: list[dict[str, Any]] = []
     for s in symbols:
         fqn = str(s.get("fqn") or "")
         if not fqn:
+            continue
+        own = (owned or {}).get(fqn)
+        if own is not None:
+            out.append({"from": fqn, "to": "", "retire": True, "action": str(own.get("action") or ""),
+                        "catalog_row": {"catalog": "compat-mapping.json", "block": "adapter_owned_annotations", "key": fqn,
+                                        "kind": str(own.get("kind") or ""), "source": str(own.get("source") or ""),
+                                        "adapter": str(own.get("adapter") or ""), "contract": str(own.get("contract") or ""),
+                                        "policy_evidence": str(own.get("policy_evidence") or "")}})
             continue
         row = renames.get(fqn)
         if row is not None:
@@ -4848,7 +4894,7 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
     Returns (unit clusters, the item ids they took). Items a unit takes are
     removed from the per-file pass exactly as `taken` already does for symbol
     groups."""
-    renames, packages = symbol_renames(root), package_renames_of(root)
+    renames, packages, owned = symbol_renames(root), package_renames_of(root), adapter_owned_annotations(root)
     compile_rows = [i for i in items if str(i.get("source") or "") == "javac"]
     families = diagnostic_families(compile_rows, model)
     claimed: set[str] = set()
@@ -4856,8 +4902,12 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
 
     def take(unit: dict[str, Any]) -> None:
         unit["symbols"] = sorted(unit["symbols"], key=lambda s: (str(s.get("kind")), str(s.get("fqn")), str(s.get("signature") or "")))
-        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages)
+        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages, owned)
         for t in unit["target_symbols"]:
+            if t.get("retire"):
+                unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s retired; its behaviour is owed to %s"
+                                                                   % (t["catalog_row"]["block"], t["from"], t["catalog_row"]["contract"])})
+                continue
             unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s -> %s"
                                                                % (t["catalog_row"]["block"], t["from"], t["to"])})
         _bound_unit(unit)
@@ -5285,7 +5335,12 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
                         and not _names_retired(set(qualified), fqn, kind)
                         and not _names_retired(set(implicit or []), fqn, kind))
             return False
-        parsed_absence = (rule == RULE_DIAGNOSTIC_FAMILY and bool(retired)
+        # Both rules that RETIRE their symbols (a family, and a leaf that is a
+        # union of families) ask the same question of a member, so both may
+        # answer it from the parse; a declaration closure preserves its
+        # declarations and still needs the resolved model. v16 t_7074fcda: a
+        # leaf over seven controllers retiring @CrossOrigin.
+        parsed_absence = (rule in (RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF) and bool(retired)
                           and typ.get("syntax_complete") is True and isinstance(syntax, list)
                           and all(parsed_retirement(fqn, kind) for fqn, kind in retired))
         if str(typ.get("resolution") or "") != "full" and not parsed_absence:

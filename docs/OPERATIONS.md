@@ -87,9 +87,10 @@ which wrapper phase failed.
 
 For a `VERIFICATION_PENDING` unit, preserve its candidate and issued seal. A
 harness repair belongs at the blocked task boundary with backups, exact file
-hashes and regression results. For symbol retirement, the compiler's complete
-syntax inventory can prove the retired name absent despite unrelated attribution
-errors. Package retirement requires a complete qualified-name scan with no
+hashes and regression results. For symbol retirement in a diagnostic-family or package-leaf unit, the
+compiler's complete syntax inventory can prove the retired name absent despite
+unrelated attribution errors (V16-1: an adapter-owned annotation such as
+@CrossOrigin is retired this way; its behaviour stays owed to the adapter). Package retirement requires a complete qualified-name scan with no
 references under the retired namespace. For inherited type names the compiler
 must resolve the complete ancestor chain independently; unknown ancestry or
 static imports still refuse. This does not prove general inheritance or call
