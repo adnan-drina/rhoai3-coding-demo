@@ -301,3 +301,88 @@ Same 174 failing ids as on 433f0c6f / 87a39dca / fcbd1076 (one id differs only b
 {"body": {"chat_template_kwargs": {"enable_thinking": false}, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "sdk_precedence_top_level_0.1_vs_extra_body_0.7"}
 {"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 32768, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.7, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_producer_config"}
 {"body": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 1500, "min_p": 0.0, "model": "qwen3-8-27b-int4", "presence_penalty": 1.5, "repetition_penalty": 1.0, "temperature": 0.1, "top_k": 20, "top_p": 0.8}, "case": "aux_compression_producer_config"}
+
+================ Request ownership (V13-PACER-FINAL-REVIEW follow-up at 86d153d5): 0007 corrected ================
+Series sha256:
+2925eb97e226e087f9b7c13eaffbdc730e777ec2a3f780b2736747dc7fa36407  0001-fix-guardrails-identical-call-streaks-hard-stop-any-.patch
+96617a6dd10d1d87d89ee323b0ac697c6c1ff0457bdec6fae8c63aca7450e21d  0002-fix-guardrails-terminal-transport-metadata-cannot-hi.patch
+b139fd133d30d46b6270675d71bfc54af5c4c1a8dccd6dc28bd5a75d320ebb5f  0003-fix-guardrails-never-emit-a-result-reference-stub-wh.patch
+b2b1c949fcc731997eff6d334d31a6e7d39822d2d979bd3df2cdadd1fe1c367f  0004-fix-kanban-a-guardrail-halted-worker-records-a-faile.patch
+7552687a3a63a4be9ced59d3873e1e8536b876d60e8a94ef9bd97eb7f019a835  0005-fix-kanban-incomplete-model-output-ends-a-worker-run.patch
+131a313e4b31abc879aa2a5957b34b4c3332e79e7914928972412177e23faaa6  0006-fix-kanban-a-persistent-provider-rate-limit-ends-a-w.patch
+3e4d8bdefcf4d3e2f42758e03c6b409db6e9e98048f2a82a297e855cfc8a5898  0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch
+fe6976d9d745b7ab7dde3b5cb59273469bb7f6bbd8c60de5a2883ab245a8d986  0008-fix-auxiliary-explicit-per-call-sampling-and-output-.patch
+git apply --index 0001-0008 onto a fresh fcbd1076 worktree -> git write-tree = 101ca3d1da753267ffcb7f9b280f09258085256a (0001-0007 alone: 6d6efd1992525da692f2f0f7f23881cf65f3999a). Supersedes 374562df (committed as 2cfd40d1).
+Dockerfile.hunk.txt (8 patches, tree 101ca3d1): patch -p1 --dry-run -> 'patching file Dockerfile' (not applied)
+
+=== Reviewer's 1,200 s case (fake clock, 190/3600, max wait 900; own_probe equivalent of test (a)) ===
+374562df: main thread waited 1200.0 s; labels ['reserve', 'main']   (auxiliary consumed the main reservation)
+101ca3d1: main thread waited 600.0 s; labels ['reserve', 'auxiliary']
+
+=== Contention reproduction (unchanged script) on the new 0007 ===
+{
+  "result": "bounded-stop",
+  "simulated_elapsed_seconds": 900.0,
+  "max_wait_seconds": 900.0,
+  "competing_slots_granted": 50,
+  "model_requests_sent": 0,
+  "source": "stages/080-ai-autonomous-migration/hermes-runtime/patches/0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch"
+}
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 374562df (before) ===
+E       AssertionError: auxiliary call took no slot of its own: ['reserve', 'main']
+E       assert 'auxiliary' in ['reserve', 'main']
+E       AssertionError: stalled main stream was not detected as stale while an auxiliary request waited: it ran 10.0 s (EmptyStreamError)
+E       assert 10.01969329197891 < 7.0
+E       AssertionError: an already-cancelled admission passed on a prepaid slot
+E       assert None is not None
+E               TypeError: reserve() got an unexpected keyword argument 'cancelled'
+FAILED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_auxiliary_cannot_consume_main_reservation_and_deadline_holds
+FAILED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream
+FAILED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_use_its_reservation
+FAILED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async
+=================== 4 failed, 30 passed in 105.37s (0:01:45) ===================
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 101ca3d1 (final): no xfail ===
+PASSED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_auxiliary_cannot_consume_main_reservation_and_deadline_holds
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_use_its_reservation
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_gateway_process_calls_are_paced_from_managed_env
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_auxiliary_call_waits_in_hook_past_its_timeout
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_cancelled_wait_sends_nothing
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_stream_reconnect_waits_in_hook_without_stale_kill
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_failed_run
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_total_wait_bound_under_contention
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_first_slot_beyond_wait_stops_immediately
+======================== 34 passed in 103.34s (0:01:43) ========================
+
+=== Existing related upstream tests + tests/agent/test_auxiliary_client.py on 101ca3d1 ===
+340 passed, 1 skipped in 36.29s
+
+=== Broad regression on 101ca3d1 ===
+174 failed, 6704 passed, 30 skipped, 1 warning in 624.29s (0:10:24)
+Same 174 failing ids as on 374562df / 433f0c6f / 87a39dca / fcbd1076 (comm diff empty).

@@ -7,8 +7,8 @@ This directory qualifies three worker behaviours: the non-thinking sampling prof
 | Base runtime | `v2026.8.19` / `fcbd1076a93841fa88855acce810e342a5b78101` (tree `cc9f987a…`) |
 | Series 0001–0004 (B11) | tree `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48` |
 | Series 0001–0006 | tree `87a39dca63bca478e1ab93e9ce24ad757de25f8f` |
-| Series 0001–0007 | tree `82b70baed3be3cf6cde0c3c2853aaa92582a80a3` (0007 after the final pacing review; the earlier `433f0c6f…` is superseded) |
-| **Series 0001–0008 (final)** | **tree `374562df41daeba0f40b79b87c0d3d001cf2d4dc`**. This was verified by applying all eight patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer and 0008 is auxiliary per-call precedence; see `../README.md`. |
+| Series 0001–0007 | tree `6d6efd1992525da692f2f0f7f23881cf65f3999a` (0007 with request ownership; the earlier `433f0c6f…` and `82b70bae…` are superseded) |
+| **Series 0001–0008 (final)** | **tree `101ca3d1da753267ffcb7f9b280f09258085256a`** (supersedes `374562df…`, committed as 2cfd40d1). This was verified by applying all eight patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer and 0008 is auxiliary per-call precedence; see `../README.md`. |
 | Worker config under test | Rendered from the Stage 050 producer by `render_worker_config.py`. It executes only the `cfg = {...}` prefix of the `HERMESEOF` block in `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`. Snapshot: `tests/rhoai3_b3b4/worker_config.json`. |
 | Provider | The scripted fake OpenAI-compatible server in `tests/rhoai3_b3b4/fake_openai_server.py`, on loopback. No real model is called. |
 
@@ -92,9 +92,9 @@ This was run through the real CLI path, `hermes chat -q … -Q`, with the produc
 
 ## R2: request pacer tests (patch 0007, `test_r2_request_pacer.py`, `test_r2_pacer_waits_in_transport.py`)
 
-Columns: 0001–0006 (`87a39dca`); the earlier 0007 (`433f0c6f`, before V13-PACER-FINAL-REVIEW); the final 0001–0008 (`374562df`).
+Columns: 0001–0006 (`87a39dca`); the earlier 0007 (`433f0c6f`, before V13-PACER-FINAL-REVIEW); 0001–0008 before and after the ownership correction (`374562df`, `101ca3d1`: identical results).
 
-| Test | `87a39dca` | earlier 0007 `433f0c6f` | final `374562df` |
+| Test | `87a39dca` | earlier 0007 `433f0c6f` | `374562df` and `101ca3d1` |
 |---|---|---|---|
 | `test_budget_counts_main_retries_and_auxiliary` | fail (no ledger: 0 slots for 6 requests) | pass | pass |
 | `test_budget_shared_across_two_processes` | fail (8 requests reached the server, budget 5) | pass | pass |
@@ -111,6 +111,19 @@ Columns: 0001–0006 (`87a39dca`); the earlier 0007 (`433f0c6f`, before V13-PACE
 | `test_auxiliary_call_waits_in_hook_past_its_timeout` (guard: a 1 s aux timeout does not cover a 3 s pacer wait) | not run | pass | pass |
 
 - `test_budget_unset_is_unchanged` fails on 87a39dca only because the module is absent. Its behavioural part is identical on both trees by design: the task completes, 2 requests are sent and no ledger is created.
+### Request ownership (review follow-up at 86d153d5; `test_r2_pacer_request_ownership.py`)
+
+| Test | 0001–0008 before (`374562df`) | final (`101ca3d1`) |
+|---|---|---|
+| (a) `test_auxiliary_cannot_consume_main_reservation_and_deadline_holds`: the reviewer's case, production allowance 190/3600 and max wait 900 from the profile table. `reserve()` waits 600 s, then an auxiliary thread asks for a slot. | **fail**: the auxiliary call consumed the main reservation (labels `reserve`, `main`); the main request waited **1,200 s** (measured with the same seed) | pass: the auxiliary call waits for its own slot (labels `reserve`, `auxiliary`); the main request is admitted on its reservation after **600 s** in total |
+| (b) `test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream`: an already-sent main stream stalls for 10 s; 2 s stale timeout; an auxiliary request of the same process queues for a slot | **fail**: the stream ran 10.0 s (`EmptyStreamError` at the stall's end); the auxiliary wait hid the stall | pass: the stall is detected as stale within ~2–3 s; the queued auxiliary request is cancelled and never sent |
+| (c1) `test_cancelled_attempt_cannot_use_its_reservation`: the reviewer's `_hook_acquire('already-cancelled', lambda: True)` with a prepaid slot present, plus a reserved attempt cancelled from another thread | **fail**: the already-cancelled admission passed on the prepaid slot | pass: `RequestCancelledWhileWaiting` on both; nothing sent |
+| (c2) `test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async`: an attempt's second request waits for a slot and is cancelled from another thread, on the sync hook and on the async hook (AsyncOpenAI) | **fail** (`reserve()` had no attempt or cancellation) | pass: only the first request is sent; the attempt header never reaches the provider |
+| `test_gateway_process_calls_are_paced_from_managed_env`: `gateway.run` is imported in a separate process with the settings only in the managed `.env`; then `call_llm(task="triage_specifier")` | pass | pass: the call took a ledger slot. This is a local proxy for the gateway-embedded dispatcher's model calls; the live dispatcher was not run |
+
+- The existing pacing, restart, contention, reconnect, cancellation and short-summary tests pass on the final tree. `test_cancelled_wait_sends_nothing` no longer asserts the removed process-wide `waiting()`.
+- `tmp/v12-run-20260924/v13-pacer-contention-review.py` runs unchanged against the new 0007 and still reports `bounded-stop` at 900.0 s, with 0 requests.
+
 - **Production values are not hard-coded.** Tests that model the production allowance read it from `model_profiles.json`, the snapshot `render_worker_config.py` writes from `gitops/.../devspaces/model-profiles.json` (190/3600, max wait 900 at the time of writing).
 - **The reviewer's reproduction needed no adaptation.** `tmp/v12-run-20260924/v13-pacer-contention-review.py` still extracts `agent/request_pacer.py` from the new 0007 without changes: it keeps its own 200/3600 and calls `_try_take(cfg, label=, take=)` and `acquire()`. It now reports `bounded-stop` at 900.0 s simulated, with 50 competing slots and 0 requests.
 
@@ -125,7 +138,7 @@ python <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/render_wor
   <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4/worker_config.json
 ```
 
-The 429 tests use small real delays: the whole suite takes about 40 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (8 patches, tree `374562df…`), checked with `patch --dry-run` only.
+The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (8 patches, tree `101ca3d1…`), checked with `patch --dry-run` only.
 
 ## Not covered
 

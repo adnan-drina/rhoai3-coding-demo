@@ -11,11 +11,13 @@ Hermes process of the run sends takes one slot from an append-only,
 flock-protected ledger shared by all processes and surviving restarts.
 Unset => disabled, behaviour unchanged.
 
-- agent/request_pacer.py: ledger and sliding window. One acquisition waits
-  at most RHOAI3_REQUEST_BUDGET_MAX_WAIT (default 900 s) IN TOTAL (elapsed
-  monotonic time, at least the sum of its sleeps), so a competitor that
-  keeps winning expiring slots cannot extend the wait; it stops at once
-  when the first predicted slot is already beyond the allowance. Exhaustion
+- agent/request_pacer.py: ledger and sliding window, and a PacedAttempt per
+  logical request attempt that owns its reservation, its original monotonic
+  deadline (created + RHOAI3_REQUEST_BUDGET_MAX_WAIT, default 900 s), its
+  cancellation and its waiting status. Every wait made for the attempt
+  (reservation, stream reconnect) is charged against that one deadline, so
+  a competitor that keeps winning expiring slots cannot extend it; the
+  first predicted slot beyond the allowance stops at once. Exhaustion
   raises RequestBudgetExhausted with a named STOP MODEL_REQUEST_BUDGET
   message (worded to avoid the dispatcher's quota/auth respawn-blocker
   pattern) before anything is sent.
@@ -24,24 +26,28 @@ Unset => disabled, behaviour unchanged.
   auxiliary_client sync, async and Vertex clients), so each HTTP attempt,
   including every Hermes and SDK retry and stream reconnect, takes exactly
   one slot (POST only).
-- Main loop: reserve() takes the attempt's slot before the API call, outside
-  the stream stale detector, touching worker activity; the transport hook
-  consumes that reservation instead of waiting again, so one total-wait
-  bound covers both. Exhaustion is never retried and ends the turn with
-  model_stop=request_budget, recorded by the shared kanban worker-stop
-  recorder as a failed run.
-- A wait inside the transport hook (auxiliary call, stream reconnect) is not
-  a stale stream: the streaming watchdog treats an active pacer wait as
-  activity. A stream attempt registers a cancel check, so a cancelled or
-  interrupted attempt aborts its wait without taking a slot or sending.
+- Ownership is explicit: the main loop reserves the attempt's slot before
+  the API call (outside the stream stale detector) and tags that attempt's
+  own request with its id (header X-RHOAI3-Pace-Attempt, removed by the hook
+  before sending). Only a request carrying that id consumes the reservation;
+  an untagged (auxiliary) request always acquires its own slot with its own
+  deadline; a retried attempt is a new attempt. Cancellation is checked
+  before a reservation is consumed and before any request is admitted (an
+  unused reservation stays counted). The stream attempt binds its own
+  cancellation (superseded attempt, interrupt) to the paced attempt.
+- The stream stale watchdog exempts only its own attempt's pre-send wait,
+  never another thread's pacer wait.
+- Exhaustion is never retried and ends the turn with model_stop=
+  request_budget, recorded by the shared kanban worker-stop recorder as a
+  failed run.
 ---
  agent/agent_runtime_helpers.py   |   4 +
  agent/auxiliary_client.py        |  10 +-
- agent/chat_completion_helpers.py |  18 +-
- agent/conversation_loop.py       |  26 +++
- agent/request_pacer.py           | 301 +++++++++++++++++++++++++++++++
+ agent/chat_completion_helpers.py |  22 ++
+ agent/conversation_loop.py       |  34 +++
+ agent/request_pacer.py           | 406 +++++++++++++++++++++++++++++++
  agent/turn_finalizer.py          |   9 +
- 6 files changed, 364 insertions(+), 4 deletions(-)
+ 6 files changed, 482 insertions(+), 3 deletions(-)
  create mode 100644 agent/request_pacer.py
 
 diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
@@ -95,60 +101,86 @@ index a069629e44..0f13e06db7 100644
              logger.warning("resolve_provider_client: cannot create Vertex "
                             "client: %s", exc)
 diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
-index 7af486dc5b..ff16932865 100644
+index 7af486dc5b..55a61a0d40 100644
 --- a/agent/chat_completion_helpers.py
 +++ b/agent/chat_completion_helpers.py
-@@ -3927,7 +3927,16 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
+@@ -3927,6 +3927,19 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
              attempt_request_client["value"] = request_client
              last_chunk_time["t"] = time.time()
              agent._touch_activity("waiting for provider response (streaming)")
--            return request_client.chat.completions.create(**stream_kwargs)
-+            # RHOAI3 request pacer: a stream reconnect may wait for a slot in
-+            # the transport hook; abort that wait (sending nothing) once this
-+            # attempt is cancelled or the agent is interrupted.
++            # RHOAI3 request pacer: the request carries its paced attempt
++            # (tagged by the main loop). Bind THIS stream attempt's
++            # cancellation to it, so a superseded or interrupted stream
++            # attempt can neither consume the reservation nor pass the
++            # transport after waiting for a slot.
 +            from agent import request_pacer as _request_pacer
 +
-+            with _request_pacer.cancel_check(
-+                lambda: _stream_attempt_was_cancelled(stream_attempt_id)
-+                or bool(getattr(agent, "_interrupt_requested", False))
-+            ):
-+                return request_client.chat.completions.create(**stream_kwargs)
++            _pace_attempt = _request_pacer.attempt_for_kwargs(stream_kwargs)
++            if _pace_attempt is not None:
++                _pace_attempt.set_cancel(
++                    lambda: _stream_attempt_was_cancelled(stream_attempt_id)
++                    or bool(getattr(agent, "_interrupt_requested", False))
++                )
+             return request_client.chat.completions.create(**stream_kwargs)
  
          def _stream_created(raw_stream: Any) -> None:
-             response = getattr(raw_stream, "response", None)
-@@ -5132,6 +5141,13 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
+@@ -5086,6 +5099,9 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
+         if _reasoning_floor is not None:
+             _stream_stale_timeout = max(_stream_stale_timeout, _reasoning_floor)
+ 
++    from agent import request_pacer as _request_pacer
++
++    _own_pace_attempt = _request_pacer.attempt_for_kwargs(api_kwargs)
+     t = threading.Thread(target=_context_thread_target(_call), daemon=True)
+     t.start()
+     _last_heartbeat = time.time()
+@@ -5132,6 +5148,12 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
          # Detect stale streams: connections kept alive by SSE pings
          # but delivering no real chunks.  Kill the client so the
          # inner retry loop can start a fresh connection.
-+        # RHOAI3 request pacer: a request waiting for a slot has not been
-+        # sent yet, so its silence is not a stale provider stream.
-+        from agent import request_pacer as _request_pacer
-+
-+        if _request_pacer.waiting():
++        # RHOAI3 request pacer: only THIS stream's own attempt, while it
++        # waits for a slot before sending, is exempt -- its silence is not a
++        # stale provider stream. Other threads' pacer waits never are.
++        if _own_pace_attempt is not None and _own_pace_attempt.waiting:
 +            last_chunk_time["t"] = time.time()
 +            agent._touch_activity("waiting for a model request slot (request pacer)")
          _stale_elapsed = time.time() - last_chunk_time["t"]
          if _stale_elapsed > _stream_stale_timeout:
              _est_ctx = estimate_request_context_tokens(api_kwargs)
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index cc8ec3a334..796fd2021f 100644
+index cc8ec3a334..d634cf7c9d 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
-@@ -3143,6 +3143,13 @@ def run_conversation(
+@@ -3143,6 +3143,19 @@ def run_conversation(
                  elif _model_request_active is not None:
                      _model_request_active.set()
                  _redirect_crossed_response = False
-+                # RHOAI3 per-run request pacer: reserve this attempt's slot
-+                # here, before the stream stale detector starts; the transport
-+                # hook consumes the reservation instead of waiting again, so
-+                # one total-wait bound covers both. Raises
-+                # RequestBudgetExhausted when the wait would exceed it.
++                # RHOAI3 per-run request pacer: this API attempt reserves its
++                # slot here, before the stream stale detector starts, and the
++                # request is TAGGED with the attempt (a header the transport
++                # hook strips), so only this attempt's own request consumes the
++                # reservation, and any stream reconnect waits within the same
++                # original deadline. Raises RequestBudgetExhausted when the
++                # total wait would exceed the allowance.
 +                from agent import request_pacer as _request_pacer
-+                _request_pacer.reserve(activity=agent._touch_activity)
++                _pace_attempt = _request_pacer.reserve(
++                    activity=agent._touch_activity,
++                    cancelled=lambda: bool(getattr(agent, "_interrupt_requested", False)),
++                )
++                _request_pacer.tag_kwargs(api_kwargs, _pace_attempt)
                  try:
                      response = run_llm_execution_middleware(
                          api_kwargs,
-@@ -4388,6 +4395,25 @@ def run_conversation(
+@@ -3161,6 +3174,8 @@ def run_conversation(
+                         middleware_trace=list(_llm_middleware_trace),
+                     )
+                 finally:
++                    if _pace_attempt is not None:
++                        _pace_attempt.close()
+                     if _redirect_lock is not None:
+                         with _redirect_lock:
+                             if _model_request_active is not None:
+@@ -4388,6 +4403,25 @@ def run_conversation(
                  if agent.thinking_callback:
                      agent.thinking_callback("")
  
@@ -176,10 +208,10 @@ index cc8ec3a334..796fd2021f 100644
                  #   1. Lone surrogates (U+D800..U+DFFF) from clipboard paste
 diff --git a/agent/request_pacer.py b/agent/request_pacer.py
 new file mode 100644
-index 0000000000..4ec86d087a
+index 0000000000..5aa3cf7468
 --- /dev/null
 +++ b/agent/request_pacer.py
-@@ -0,0 +1,301 @@
+@@ -0,0 +1,406 @@
 +"""Per-run model request pacer (RHOAI3 Stage 080).
 +
 +Enforces a declared request allowance across every Hermes process of one run:
@@ -209,6 +241,7 @@ index 0000000000..4ec86d087a
 +from __future__ import annotations
 +
 +import fcntl
++import itertools
 +import logging
 +import os
 +import threading
@@ -329,31 +362,104 @@ index 0000000000..4ec86d087a
 +
 +
 +class RequestCancelledWhileWaiting(RuntimeError):
-+    """The request was cancelled (interrupt / superseded stream attempt) while
-+    it waited for a slot; no slot was taken and nothing was sent."""
++    """The request attempt was cancelled (interrupt / superseded stream attempt)
++    before it was allowed onto the transport; nothing was sent."""
 +
 +
-+# Process-local wait state: how many threads are sleeping in the pacer right
-+# now (the stream stale watchdog treats a pacer wait as activity, not as a
-+# silent provider), and slots the main loop reserved before its API call that
-+# the transport hook consumes instead of taking a second slot.
-+_state_lock = threading.Lock()
-+_waiting_threads = 0
-+_prepaid: list[float] = []
-+_PREPAID_TTL_SECONDS = 60.0
++# Header that carries a PacedAttempt id from the caller to the transport hook.
++# The hook removes it before the request is sent, so the provider never sees it.
++ATTEMPT_HEADER = "X-RHOAI3-Pace-Attempt"
++
++
++class PacedAttempt:
++    """One logical model request attempt and everything the pacer knows about it.
++
++    Created by the main loop for each API attempt and handed to the transport
++    hook EXPLICITLY (via ``ATTEMPT_HEADER`` on that attempt's own request), so
++    ownership does not depend on which thread runs the HTTP call:
++
++    - its reservation (a slot taken before the call) can only be consumed by a
++      request carrying this attempt's id -- never by an auxiliary call or by a
++      different (retried) attempt;
++    - its monotonic deadline (created + max_wait) bounds every wait made for
++      it: the reservation and any later acquisition (stream reconnect);
++    - its cancellation predicate is checked before the reservation is
++      consumed and before a request is allowed onto the transport;
++    - ``waiting`` is true only while THIS attempt sleeps for a slot before
++      sending, so the stream stale watchdog exempts only its own pre-send wait.
++    """
++
++    def __init__(self, label: str, max_wait: float,
++                 cancelled: Optional[Callable[[], bool]] = None):
++        self.id = f"{os.getpid()}-{next(_attempt_ids)}"
++        self.label = label
++        self.started = _monotonic()
++        self.max_wait = max_wait
++        self.slept = 0.0
++        self.waiting = False
++        self._prepaid = False
++        self._cancelled = cancelled
++        self._lock = threading.Lock()
++
++    def waited(self) -> float:
++        return max(self.slept, _monotonic() - self.started)
++
++    def is_cancelled(self) -> bool:
++        pred = self._cancelled
++        try:
++            return bool(pred is not None and pred())
++        except Exception:
++            return False
++
++    def set_cancel(self, predicate: Optional[Callable[[], bool]]) -> None:
++        self._cancelled = predicate
++
++    def take_prepaid(self) -> bool:
++        with self._lock:
++            if self._prepaid:
++                self._prepaid = False
++                return True
++            return False
++
++    def close(self) -> None:
++        """Forget this attempt (an unused reservation stays counted)."""
++        with _registry_lock:
++            _registry.pop(self.id, None)
++
++
++_attempt_ids = itertools.count(1)
++_registry_lock = threading.Lock()
++_registry: "dict[str, PacedAttempt]" = {}
 +_tls = threading.local()
 +
 +
-+def waiting() -> bool:
-+    """True while any thread of this process is waiting for a request slot."""
-+    with _state_lock:
-+        return _waiting_threads > 0
++def attempt_for_kwargs(api_kwargs: Any) -> Optional[PacedAttempt]:
++    """The PacedAttempt an API kwargs dict was tagged with, if any."""
++    try:
++        headers = (api_kwargs or {}).get("extra_headers") or {}
++        attempt_id = headers.get(ATTEMPT_HEADER)
++    except Exception:
++        return None
++    if not attempt_id:
++        return None
++    with _registry_lock:
++        return _registry.get(str(attempt_id))
++
++
++def tag_kwargs(api_kwargs: dict, attempt: Optional[PacedAttempt]) -> dict:
++    """Carry ``attempt`` on this call's request (a header the hook strips)."""
++    if attempt is None:
++        return api_kwargs
++    headers = dict(api_kwargs.get("extra_headers") or {})
++    headers[ATTEMPT_HEADER] = attempt.id
++    api_kwargs["extra_headers"] = headers
++    return api_kwargs
 +
 +
 +@contextmanager
 +def cancel_check(predicate: Callable[[], bool]):
-+    """Register, for requests sent from this thread, a predicate that aborts a
-+    pacer wait (raising :class:`RequestCancelledWhileWaiting`) once true."""
++    """Register, for untagged requests sent from this thread, a cancellation
++    predicate (auxiliary callers). Tagged attempts carry their own."""
 +    previous = getattr(_tls, "cancelled", None)
 +    _tls.cancelled = predicate
 +    try:
@@ -366,27 +472,32 @@ index 0000000000..4ec86d087a
 +    label: str,
 +    activity: Optional[Callable[[str], Any]] = None,
 +    cancelled: Optional[Callable[[], bool]] = None,
++    attempt: Optional[PacedAttempt] = None,
 +) -> None:
-+    """Take one slot. The whole wait of this acquisition is bounded by
-+    ``max_wait``: the elapsed wait (monotonic clock, and at least the sum of the
-+    sleeps taken) is charged against the allowance, so a competitor that keeps
-+    winning the expiring slots cannot extend it. The first check still stops
-+    immediately when the predicted slot already lies beyond the allowance."""
-+    global _waiting_threads
++    """Take one slot within the attempt's total wait bound.
++
++    The whole wait of the attempt (reservation and any later acquisition) is
++    charged against ``max_wait``: the elapsed wait on a monotonic clock, and at
++    least the sum of the sleeps taken, since the attempt was created. A
++    competitor that keeps winning the expiring slots cannot extend it. When the
++    first predicted slot already lies beyond the allowance it stops at once.
++    Cancellation is checked before every look at the ledger, so a cancelled
++    attempt never takes a slot or reaches the transport.
++    """
 +    cfg = config()
 +    if cfg is None:
 +        return
-+    started = _monotonic()
-+    slept = 0.0
++    if attempt is None:
++        attempt = PacedAttempt(label, cfg.max_wait, cancelled)
 +    while True:
-+        if cancelled is not None and cancelled():
++        if attempt.is_cancelled():
 +            raise RequestCancelledWhileWaiting(f"request cancelled while waiting for a slot ({label})")
 +        ok, next_at = _try_take(cfg, label, True)
 +        if ok:
 +            return
-+        waited = max(slept, _monotonic() - started)
++        waited = attempt.waited()
 +        wait = max(0.0, next_at - _now())
-+        if wait > cfg.max_wait - waited:
++        if wait > attempt.max_wait - waited:
 +            raise RequestBudgetExhausted(cfg, next_at, wait, waited)
 +        logger.info("request pacer: window full (%d/%ss); waiting %.1fs for %s (waited %.1fs)",
 +                    cfg.limit, cfg.window, wait, label, waited)
@@ -396,42 +507,35 @@ index 0000000000..4ec86d087a
 +            except Exception:
 +                pass
 +        step = min(wait, _SLEEP_SLICE_SECONDS) if wait > 0 else 0.01
-+        with _state_lock:
-+            _waiting_threads += 1
++        attempt.waiting = True
 +        try:
 +            _sleep(step)
 +        finally:
-+            with _state_lock:
-+                _waiting_threads -= 1
-+        slept += step
++            attempt.waiting = False
++        attempt.slept += step
 +
 +
 +def acquire(label: str = "request", activity: Optional[Callable[[str], Any]] = None) -> None:
-+    """Take one slot, waiting (bounded by ``max_wait``) when the window is full."""
++    """Take one slot for an untagged request (own deadline, thread's cancel check)."""
 +    _acquire_or_wait(label, activity, getattr(_tls, "cancelled", None))
 +
 +
-+def reserve(activity: Optional[Callable[[str], Any]] = None) -> None:
-+    """Main loop, before its API call: take the slot now (a long wait happens
-+    here, outside the stream stale detector) and leave it prepaid for the
-+    transport hook, so the hook does not wait again or take a second slot and
-+    the allowance to wait is not renewed between the two."""
-+    if config() is None:
-+        return
-+    _acquire_or_wait("reserve", activity, None)
-+    with _state_lock:
-+        _prepaid.append(_monotonic())
-+
-+
-+def _take_prepaid() -> bool:
-+    now = _monotonic()
-+    with _state_lock:
-+        while _prepaid and now - _prepaid[0] > _PREPAID_TTL_SECONDS:
-+            _prepaid.pop(0)  # reserved but never sent; the slot stays counted
-+        if _prepaid:
-+            _prepaid.pop(0)
-+            return True
-+    return False
++def reserve(activity: Optional[Callable[[str], Any]] = None,
++            cancelled: Optional[Callable[[], bool]] = None) -> Optional[PacedAttempt]:
++    """Main loop, before its API call: create the attempt, take its slot now
++    (a long wait happens here, outside the stream stale detector) and keep it
++    prepaid for this attempt's own request. Returns the attempt to tag the
++    call with (``tag_kwargs``), or None when the pacer is disabled."""
++    cfg = config()
++    if cfg is None:
++        return None
++    attempt = PacedAttempt("reserve", cfg.max_wait, cancelled)
++    _acquire_or_wait("reserve", activity, None, attempt)
++    with attempt._lock:
++        attempt._prepaid = True
++    with _registry_lock:
++        _registry[attempt.id] = attempt
++    return attempt
 +
 +
 +def _label_for(request) -> str:
@@ -441,24 +545,57 @@ index 0000000000..4ec86d087a
 +        return "request"
 +
 +
-+def _hook_acquire(label: str, cancelled: Optional[Callable[[], bool]]) -> None:
-+    if config() is None or _take_prepaid():
++def _hook_acquire(label: str, cancelled: Optional[Callable[[], bool]],
++                  attempt: Optional[PacedAttempt] = None) -> None:
++    """Admit one HTTP request to the transport.
++
++    A tagged request uses its own attempt: cancellation is checked first, then
++    its reservation is consumed; without one (a stream reconnect) it acquires a
++    new slot within the attempt's ORIGINAL deadline. An untagged request
++    (auxiliary call) never touches another attempt's reservation: it acquires
++    its own slot with its own deadline and cancellation.
++    """
++    if config() is None:
 +        return
++    if attempt is not None:
++        if attempt.is_cancelled():
++            raise RequestCancelledWhileWaiting(f"request cancelled before transport ({label})")
++        if attempt.take_prepaid():
++            return
++        _acquire_or_wait(label, None, None, attempt)
++        return
++    if cancelled is not None and cancelled():
++        raise RequestCancelledWhileWaiting(f"request cancelled before transport ({label})")
 +    _acquire_or_wait(label, None, cancelled)
 +
 +
++def _attempt_from_request(request) -> Optional[PacedAttempt]:
++    try:
++        attempt_id = request.headers.get(ATTEMPT_HEADER)
++        if attempt_id is not None:
++            del request.headers[ATTEMPT_HEADER]
++    except Exception:
++        return None
++    if not attempt_id:
++        return None
++    with _registry_lock:
++        return _registry.get(attempt_id)
++
++
 +def _sync_hook(request) -> None:
++    attempt = _attempt_from_request(request)
 +    if getattr(request, "method", "").upper() != "POST":
 +        return
-+    _hook_acquire(_label_for(request), getattr(_tls, "cancelled", None))
++    _hook_acquire(_label_for(request), getattr(_tls, "cancelled", None), attempt)
 +
 +
 +async def _async_hook(request) -> None:
++    attempt = _attempt_from_request(request)
 +    if getattr(request, "method", "").upper() != "POST":
 +        return
 +    import asyncio
 +
-+    await asyncio.to_thread(_hook_acquire, _label_for(request), None)
++    await asyncio.to_thread(_hook_acquire, _label_for(request), None, attempt)
 +
 +
 +def attach(openai_client: Any) -> Any:

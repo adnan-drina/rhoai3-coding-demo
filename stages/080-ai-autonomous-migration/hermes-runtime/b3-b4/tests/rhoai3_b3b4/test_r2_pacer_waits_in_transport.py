@@ -57,7 +57,6 @@ def test_cancelled_wait_sends_nothing(tmp_path, monkeypatch):
         time.sleep(1.5)                                   # nothing detached keeps sending
         assert provider.chat_requests() == []
     assert len(_ledger_lines(ledger)) == 1
-    assert request_pacer.waiting() is False
 
 
 def test_stream_reconnect_waits_in_hook_without_stale_kill(tmp_path, monkeypatch):

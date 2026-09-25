@@ -10,6 +10,7 @@ forever. Steps:
                                              finish_reason=length (the vLLM max_tokens shape)
   ("http", status, headers_dict, body_dict)  non-200 response (e.g. 429 + Retry-After)
   ("drop",)                                  200 + SSE headers, then close: a dropped stream
+  ("stall", seconds)                         200 + SSE headers, silence, then close: a stalled stream
 
 ``usage.prompt_tokens`` is estimated from the request size (chars/4) so
 Hermes' usage-driven context logic behaves as it would against a server.
@@ -86,6 +87,7 @@ class FakeProvider:
                     body = {}
                 body["_path"] = self.path
                 body["_t"] = time.monotonic()
+                body["_headers"] = {k.lower(): v for k, v in self.headers.items()}
                 with provider._lock:
                     provider.requests.append(body)
                     n = sum(1 for r in provider.requests if r.get("_path", "").endswith("/chat/completions"))
@@ -93,6 +95,17 @@ class FakeProvider:
                     self._send_json({"error": "unsupported"}, 404)
                     return
                 step = provider.script[min(n - 1, len(provider.script) - 1)]
+                if step[0] == "stall":
+                    # 200 + SSE headers, then silence for step[1] seconds, then
+                    # close: an already-sent request whose stream stalls.
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.flush()
+                    time.sleep(float(step[1]))
+                    self.close_connection = True
+                    return
                 if step[0] == "drop":
                     # 200 + SSE headers, then the connection closes with no
                     # event: a dropped stream the client must reconnect.
