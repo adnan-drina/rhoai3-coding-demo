@@ -4,7 +4,7 @@
     "hermes_agent": {
       "version": "v0.20.5",
       "build": "2026.8.19",
-      "patched_tree": "3df755a36ed0ff8b7fdadf30d664a212fe4dfa8f",
+      "patched_tree": "8a3bb406be0cfcb587fb90903da287e3805c297e",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
       "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
