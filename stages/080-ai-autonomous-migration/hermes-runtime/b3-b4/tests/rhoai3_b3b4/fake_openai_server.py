@@ -4,13 +4,18 @@ Extends the B11 fake with the failure shapes B3/B4 need. Every POST
 /v1/chat/completions consumes the next script step; the last step repeats
 forever. Steps:
 
-  ("tool", name, args_dict)                  complete tool call, finish_reason=tool_calls
+  ("tool", name, args_dict[, usage_dict])    complete tool call, finish_reason=tool_calls
   ("text", content)                          plain answer, finish_reason=stop
   ("truncated_tool", name, partial_args_str) stream ends mid tool-call arguments with
                                              finish_reason=length (the vLLM max_tokens shape)
   ("http", status, headers_dict, body_dict)  non-200 response (e.g. 429 + Retry-After)
   ("drop",)                                  200 + SSE headers, then close: a dropped stream
   ("stall", seconds)                         200 + SSE headers, silence, then close: a stalled stream
+
+A trailing dict on a tool/text step may carry: prompt_tokens / completion_tokens
+(reported usage), no_usage=True (terminal response without usage), and
+usage_frames=[{prompt_tokens, completion_tokens}, ...] (cumulative usage
+frames streamed before the terminal chunk).
 
 ``usage.prompt_tokens`` is estimated from the request size (chars/4) so
 Hermes' usage-driven context logic behaves as it would against a server.
@@ -121,8 +126,14 @@ class FakeProvider:
                     self._send_json(payload, status=status, headers=headers)
                     return
                 prompt_tokens = max(1, len(raw) // 4)
-                usage = {"prompt_tokens": prompt_tokens, "completion_tokens": 10,
-                         "total_tokens": prompt_tokens + 10}
+                completion_tokens = 10
+                # Optional trailing dict on a step overrides the reported usage,
+                # e.g. ("tool", name, args, {"prompt_tokens": 190000}).
+                extras = step[-1] if isinstance(step[-1], dict) and step[0] in ("tool", "text") and len(step) > (3 if step[0] == "tool" else 2) else {}
+                prompt_tokens = int(extras.get("prompt_tokens", prompt_tokens))
+                completion_tokens = int(extras.get("completion_tokens", completion_tokens))
+                usage = {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                         "total_tokens": prompt_tokens + completion_tokens}
                 call_id = f"call_{uuid.uuid4().hex[:12]}"
                 if step[0] == "tool":
                     delta = {"role": "assistant", "tool_calls": [{
@@ -137,26 +148,37 @@ class FakeProvider:
                     message = {"role": "assistant", "content": None, "tool_calls": delta["tool_calls"]}
                     finish = "length"
                     usage["completion_tokens"] = int(body.get("max_tokens") or 8192)
+                    usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
                 else:
                     delta = {"role": "assistant", "content": step[1]}
                     message = {"role": "assistant", "content": step[1]}
                     finish = "stop"
                 created = 1_700_000_000
+                if extras.get("no_usage"):
+                    usage = None                      # terminal response without usage
+                body["_usage_sent"] = usage           # what this response reported
                 if body.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.send_header("Cache-Control", "no-cache")
                     self.send_header("Connection", "close")
                     self.end_headers()
-                    chunks = [
-                        {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": created,
-                         "model": body.get("model", "fake-model"),
-                         "choices": [{"index": 0, "delta": delta, "finish_reason": None}]},
-                        {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": created,
-                         "model": body.get("model", "fake-model"),
-                         "choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
-                         "usage": usage},
-                    ]
+                    first = {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": created,
+                             "model": body.get("model", "fake-model"),
+                             "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+                    chunks = [first]
+                    # Optional cumulative usage frames before the terminal one.
+                    for frame in extras.get("usage_frames", []):
+                        chunks.append({"id": "chatcmpl-fake", "object": "chat.completion.chunk",
+                                       "created": created, "model": body.get("model", "fake-model"),
+                                       "choices": [], "usage": {**frame, "total_tokens":
+                                           frame["prompt_tokens"] + frame["completion_tokens"]}})
+                    last = {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": created,
+                            "model": body.get("model", "fake-model"),
+                            "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}
+                    if usage is not None:
+                        last["usage"] = usage
+                    chunks.append(last)
                     for chunk in chunks:
                         self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
                     self.wfile.write(b"data: [DONE]\n\n")
@@ -167,7 +189,7 @@ class FakeProvider:
                         "id": "chatcmpl-fake", "object": "chat.completion", "created": created,
                         "model": body.get("model", "fake-model"),
                         "choices": [{"index": 0, "message": message, "finish_reason": finish}],
-                        "usage": usage,
+                        **({"usage": usage} if usage is not None else {}),
                     })
 
         return Handler

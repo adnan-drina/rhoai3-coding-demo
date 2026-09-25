@@ -1,0 +1,707 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 25 Sep 2026 14:37:50 +0200
+Subject: [PATCH 10/10] feat(transport): reserved-and-settled token accounting
+ for the run allowance
+
+RHOAI3 v15 (V15-1 change 2, tmp/v15-run-20260925/V15-1-DURABLE-QUOTA-
+DESIGN.md section 3). With RHOAI3_ACCOUNTING_MODE=token the per-run
+allowance is metered in tokens instead of requests, with no request-count
+ceiling:
+
+- Configuration (from the run's profile via the managed .env):
+  RHOAI3_TOKEN_BUDGET=<B>/<window_seconds>, RHOAI3_TOKEN_RESERVATION=<C>
+  (the served prompt+output bound), RHOAI3_REQUEST_LEDGER. Exactly one mode:
+  mixed or incomplete settings, or C > B, raise AccountingConfigError and the
+  process refuses before sending. Request mode (RHOAI3_REQUEST_BUDGET) is
+  unchanged for runs pinned to it.
+- Every physical HTTP attempt (main, retry, cap-boost retry, stream
+  reconnect, sync/async auxiliary, gateway, reviewer) reserves C under the
+  existing ledger lock and is admitted only if settled charges in the window
+  plus all open reservations plus C <= B. The main-loop reservation and the
+  transport hand-off consume the same reservation exactly once (the
+  request-ownership PacedAttempt).
+- Settlement: a settlement wrapper around chat.completions.create on the
+  same client construction choke points settles each reservation exactly
+  once at the terminal response to the validated provider usage
+  (prompt+completion, consistent total, <= C); streams settle at the
+  terminal chunk to the last usage record (cumulative frames are not
+  summed). A terminal response without valid usage, or an HTTP error
+  response, settles at C. An uncertain end (cancellation, crash, timeout,
+  a stream that ended without its terminal chunk) writes nothing: the
+  reservation stays open until reserved_at + hold + window, where hold
+  (RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS; default = the longest client
+  request timeout this process honours, floor 900 s; a smaller explicit
+  value is refused) must cover the longest a request can run: any upstream
+  charge for it has then left the provider's own window too. Settled
+  charges count for one full window after settlement. Duplicate settlements are ignored.
+- Ledger lines: R <ts> <pid> <rid> <C> <label> / S <ts> <rid> <charge>
+  <status>; state is reconstructed by reservation id.
+- A token-mode request that reaches the transport without the settlement
+  wiring is refused before sending (AccountingNotAttached).
+- A full allowance defers through change 1's native path with
+  accounting_mode=token and retry_not_before = when enough settled charge
+  expires; when open reservations alone fill it, the deferral is marked
+  uncertain with a bounded re-check time. The dispatcher's capacity check
+  uses the same mode-aware peek.
+---
+ agent/request_pacer.py  | 528 ++++++++++++++++++++++++++++++++++++++--
+ hermes_cli/kanban_db.py |  11 +-
+ 2 files changed, 518 insertions(+), 21 deletions(-)
+
+diff --git a/agent/request_pacer.py b/agent/request_pacer.py
+index dc0f1b16bb..62db0ee957 100644
+--- a/agent/request_pacer.py
++++ b/agent/request_pacer.py
+@@ -22,6 +22,23 @@ Enforcement point: an httpx ``request`` event hook attached to every OpenAI
+ SDK client Hermes constructs (main and auxiliary), so each HTTP attempt is
+ counted exactly once, including SDK-internal and Hermes retries. Only POST
+ requests are counted (model calls); ``GET /models`` probes are not.
++
++Token mode (V15-1 change 2, RHOAI3_ACCOUNTING_MODE=token): instead of a
++request count, every physical HTTP attempt RESERVES ``C`` tokens
++(RHOAI3_TOKEN_RESERVATION, the served prompt+output bound) against a run
++allowance ``B`` per window (RHOAI3_TOKEN_BUDGET="<B>/<window_seconds>"),
++admitted only if ``settled_charges_in_window + unsettled_reservations + C <= B``
++under the ledger lock. After a valid terminal response the reservation is
++SETTLED exactly once to the validated provider usage (prompt+completion);
++a terminal response with missing/invalid usage settles at ``C``; an
++uncertain end (cancel, crash, broken stream, client timeout) keeps the full
++reservation unsettled until ``reserved_at + hold + window`` (hold =
++RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS, default 900, at least the configured
++request timeout): any upstream charge for that request has left the
++provider's own window by then. Settled charges count for a full window after
++settlement. Ledger lines: ``R <ts> <pid> <rid> <C> <label>``
++and ``S <ts> <rid> <charge> <status>``. Exactly one mode per process;
++mixed or incomplete settings refuse before anything is sent.
+ """
+ 
+ from __future__ import annotations
+@@ -54,43 +71,189 @@ class PacerConfig:
+     window: float
+     ledger: str
+     max_wait: float
++    mode: str = "request"
++    budget: int = 0          # token mode: B
++    reservation: int = 0     # token mode: C
++    hold: float = 0.0        # token mode: max request seconds an open reservation is held beyond
++
++
++class AccountingConfigError(RuntimeError):
++    """Governed accounting settings are mixed, incomplete or invalid; the
++    process refuses to send model requests."""
++
++
++class AccountingNotAttached(RuntimeError):
++    """A model request reached the transport without the token-accounting
++    wiring (reservation + settlement) in a token-mode process; refused."""
++
++
++# Re-check interval when no wake time can be computed (unsettled reservations
++# alone block the allowance): report it and let the dispatcher re-check.
++UNCERTAIN_RECHECK_SECONDS = 60.0
+ 
+ 
+ class RequestBudgetExhausted(RuntimeError):
+     """The next slot is further away than the permitted wait."""
+ 
+-    def __init__(self, cfg: PacerConfig, next_slot_at: float, wait: float, waited: float = 0.0):
++    def __init__(self, cfg: PacerConfig, next_slot_at: Optional[float], wait: float, waited: float = 0.0):
+         self.limit = cfg.limit
+         self.window = cfg.window
+         self.max_wait = cfg.max_wait
++        self.uncertain = next_slot_at is None
++        if next_slot_at is None:
++            # Unsettled reservations alone fill the allowance: no wake time can
++            # be computed; ask the dispatcher to re-check after a bounded delay.
++            next_slot_at = _now() + UNCERTAIN_RECHECK_SECONDS
+         self.next_slot_at = next_slot_at
+         self.wait = wait
+         self.waited = waited
+         # Structured local-budget deferral (consumers never parse the message).
+         self.deferral = {
+             "kind": "local_budget_deferral",
+-            "accounting_mode": "request",
++            "accounting_mode": cfg.mode,
+             "retry_not_before": float(next_slot_at),
+-            "limit": cfg.limit,
++            "uncertain": self.uncertain,
++            "limit": cfg.limit if cfg.mode == "request" else cfg.budget,
++            "reservation": cfg.reservation if cfg.mode == "token" else None,
+             "window_seconds": cfg.window,
+             "waited_seconds": float(waited),
+         }
+         when = datetime.fromtimestamp(next_slot_at, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+         # Wording must not match kanban_db._RESPAWN_BLOCKER_RE (see
+         # turn_finalizer.record_kanban_turn_stop).
++        if cfg.mode == "token":
++            head = (f"STOP MODEL_TOKEN_BUDGET: {cfg.budget} tokens per {int(cfg.window)}s "
++                    f"(settled charges plus open reservations) cannot admit another "
++                    f"{cfg.reservation}-token reservation; "
++                    + ("no wake time can be computed while open reservations fill it, "
++                       f"re-check at {when}" if self.uncertain else f"eligible at {when}"))
++        else:
++            head = (f"STOP MODEL_REQUEST_BUDGET: {cfg.limit} requests in {int(cfg.window)}s "
++                    f"already spent by this run; next slot at {when}")
++        another = "an unknown wait" if wait == float("inf") else f"another {int(wait)}s"
+         super().__init__(
+-            f"STOP MODEL_REQUEST_BUDGET: {cfg.limit} requests in {int(cfg.window)}s "
+-            f"already spent by this run; next slot at {when}; already waited "
+-            f"{int(waited)}s, another {int(wait)}s exceeds the {int(cfg.max_wait)}s "
+-            "total wait allowed; the worker stopped before sending. Infrastructure "
+-            "allowance stop, not a product-repair verdict"
++            f"{head}; already waited {int(waited)}s, {another} exceeds the "
++            f"{int(cfg.max_wait)}s total wait allowed; the worker stopped before sending. "
++            "Infrastructure allowance stop, not a product-repair verdict"
+         )
+ 
+ 
++def _max_wait() -> float:
++    try:
++        return max(0.0, float(os.environ.get("RHOAI3_REQUEST_BUDGET_MAX_WAIT") or DEFAULT_MAX_WAIT_SECONDS))
++    except ValueError:
++        return DEFAULT_MAX_WAIT_SECONDS
++
++
++DEFAULT_RESERVATION_HOLD_SECONDS = 900.0
++
++
++def _longest_request_timeout() -> Optional[float]:
++    """Longest request timeout this process is configured with, in seconds.
++
++    The largest of every ``providers.*.request_timeout_seconds``,
++    ``providers.*.models.*.timeout_seconds`` and ``auxiliary.*.timeout`` in the
++    effective config, and ``HERMES_API_TIMEOUT`` (the request timeout of any
++    model path without a provider-configured one; Hermes' default 1800 s when
++    the ``custom`` provider declares none). None when the config cannot be
++    read. NOTE: for a STREAMED response no client timeout bounds the whole
++    response -- the read timeout and the stale detector bound inactivity only;
++    see the README ("retention").
++    """
++    try:
++        from hermes_cli.config import load_config_readonly
++
++        cfg = load_config_readonly() or {}
++    except Exception:
++        return None
++    values: list[float] = []
++
++    def _num(v):
++        try:
++            f = float(v)
++            return f if f > 0 else None
++        except (TypeError, ValueError):
++            return None
++
++    providers = cfg.get("providers") if isinstance(cfg, dict) else None
++    custom_has_timeout = False
++    if isinstance(providers, dict):
++        for name, prov in providers.items():
++            if not isinstance(prov, dict):
++                continue
++            t = _num(prov.get("request_timeout_seconds"))
++            if t:
++                values.append(t)
++                if name == "custom":
++                    custom_has_timeout = True
++            models = prov.get("models")
++            if isinstance(models, dict):
++                for m in models.values():
++                    if isinstance(m, dict) and _num(m.get("timeout_seconds")):
++                        values.append(_num(m.get("timeout_seconds")))
++    aux = cfg.get("auxiliary") if isinstance(cfg, dict) else None
++    if isinstance(aux, dict):
++        for slot in aux.values():
++            if isinstance(slot, dict) and _num(slot.get("timeout")):
++                values.append(_num(slot.get("timeout")))
++    api_timeout = _num(os.environ.get("HERMES_API_TIMEOUT"))
++    if api_timeout:
++        values.append(api_timeout)
++    elif not custom_has_timeout:
++        values.append(1800.0)
++    return max(values) if values else None
++
++
+ def config() -> Optional[PacerConfig]:
+-    """Pacer configuration from the environment, or None when disabled."""
++    """Pacer configuration from the environment, or None when disabled.
++
++    Raises :class:`AccountingConfigError` for mixed/incomplete governed
++    settings (token mode) so a governed process refuses to send.
++    """
++    mode = (os.environ.get("RHOAI3_ACCOUNTING_MODE") or "").strip().lower()
+     raw = (os.environ.get("RHOAI3_REQUEST_BUDGET") or "").strip()
+     ledger = (os.environ.get("RHOAI3_REQUEST_LEDGER") or "").strip()
++    token_raw = (os.environ.get("RHOAI3_TOKEN_BUDGET") or "").strip()
++    reservation_raw = (os.environ.get("RHOAI3_TOKEN_RESERVATION") or "").strip()
++    if mode == "token":
++        if raw:
++            raise AccountingConfigError(
++                "RHOAI3_ACCOUNTING_MODE=token with RHOAI3_REQUEST_BUDGET also set: exactly one mode")
++        if not (token_raw and reservation_raw and ledger):
++            raise AccountingConfigError(
++                "token mode needs RHOAI3_TOKEN_BUDGET, RHOAI3_TOKEN_RESERVATION and RHOAI3_REQUEST_LEDGER")
++        try:
++            b_s, w_s = token_raw.split("/", 1)
++            budget, window, reservation = int(b_s), float(w_s), int(reservation_raw)
++        except ValueError as exc:
++            raise AccountingConfigError(f"invalid token allowance {token_raw!r}/{reservation_raw!r}") from exc
++        if not (window > 0 and 0 < reservation <= budget):
++            raise AccountingConfigError(
++                f"token allowance must satisfy 0 < C <= B and window > 0 (B={budget}, C={reservation}, window={window})")
++        hold_raw = (os.environ.get("RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS") or "").strip()
++        longest = _longest_request_timeout()
++        try:
++            # Default: the longest client request timeout this process honours
++            # (floor 900 s); the platform should set it explicitly.
++            hold = (float(hold_raw) if hold_raw
++                    else max(DEFAULT_RESERVATION_HOLD_SECONDS, longest or 0.0))
++        except ValueError as exc:
++            raise AccountingConfigError(f"invalid RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS={hold_raw!r}") from exc
++        if longest is not None and hold < longest:
++            raise AccountingConfigError(
++                f"RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS={hold:g} is shorter than the longest "
++                f"configured request timeout ({longest:g}s): an open reservation could stop "
++                "counting while its request may still be running")
++        return PacerConfig(limit=0, window=window, ledger=ledger, max_wait=_max_wait(),
++                           mode="token", budget=budget, reservation=reservation, hold=hold)
++    if mode not in ("", "request"):
++        raise AccountingConfigError(f"unknown RHOAI3_ACCOUNTING_MODE={mode!r}")
++    if token_raw or reservation_raw:
++        if raw or mode == "request":
++            raise AccountingConfigError(
++                "request mode with RHOAI3_TOKEN_* also set: exactly one mode")
++        raise AccountingConfigError(
++            "RHOAI3_TOKEN_* set without RHOAI3_ACCOUNTING_MODE=token")
+     if not raw or not ledger:
+         return None
+     try:
+@@ -156,6 +319,161 @@ def _try_take(cfg: PacerConfig, label: str, take: bool) -> tuple[bool, float]:
+             fh.close()
+ 
+ 
++# ---------------------------------------------------------------------------
++# Token mode: reservations and settlements
++# ---------------------------------------------------------------------------
++
++_rid_counter = itertools.count(1)
++
++
++def _token_state(fh, now: float, window: float, hold: Optional[float] = None, with_open: bool = False):
++    """Reconstruct token state by reservation id from the append-only ledger.
++
++    Returns (settled_in_window: list[(settle_ts, charge)], unsettled_sum,
++    reservations: dict rid -> amount, settled: dict rid -> (charge, ts)) and,
++    with ``with_open``, the open reservations as (reserved_at, amount).
++    An open reservation counts until reserved_at + hold + window.
++    """
++    fh.seek(0)
++    reservations: dict[str, int] = {}
++    reserved_at: dict[str, float] = {}
++    settled: dict[str, tuple[int, float]] = {}
++    for line in fh:
++        parts = line.split()
++        if len(parts) >= 5 and parts[0] == "R":
++            try:
++                reservations[parts[3]] = int(parts[4])
++                reserved_at[parts[3]] = float(parts[1])
++            except ValueError:
++                continue
++        elif len(parts) >= 4 and parts[0] == "S":
++            rid = parts[2]
++            if rid in settled:
++                continue                      # duplicate settlement: first one wins
++            try:
++                settled[rid] = (int(parts[3]), float(parts[1]))
++            except ValueError:
++                continue
++    cutoff = now - window
++    settled_in_window = sorted(
++        (ts, charge) for rid, (charge, ts) in settled.items() if ts > cutoff)
++    # Open reservations count until reserved_at + hold + window (hold >= the
++    # longest request timeout); ``hold`` is None => they never stop counting.
++    open_items = sorted(
++        (reserved_at.get(rid, now), amount) for rid, amount in reservations.items()
++        if rid not in settled and (hold is None or reserved_at.get(rid, now) > cutoff - hold))
++    unsettled_sum = sum(amount for _, amount in open_items)
++    if with_open:
++        return settled_in_window, unsettled_sum, reservations, settled, open_items
++    return settled_in_window, unsettled_sum, reservations, settled
++
++
++def _token_try(cfg: PacerConfig, label: str, take: bool) -> "tuple[bool, Optional[float], Optional[str]]":
++    """Under the ledger lock: reserve C tokens (or just check).
++
++    Returns (ok, next_eligible_at, rid). ``next_eligible_at`` is None when no
++    wake time can be computed (open reservations alone fill the allowance).
++    """
++    fh = _open_locked(cfg.ledger)
++    try:
++        now = _now()
++        settled_in_window, unsettled_sum, _res, _set, open_items = _token_state(
++            fh, now, cfg.window, cfg.hold, with_open=True)
++        used = sum(c for _, c in settled_in_window) + unsettled_sum
++        if used + cfg.reservation <= cfg.budget:
++            rid = None
++            if take:
++                rid = f"{os.getpid()}-{int(now * 1000)}-{next(_rid_counter)}"
++                fh.seek(0, os.SEEK_END)
++                fh.write(f"R {now:.6f} {os.getpid()} {rid} {cfg.reservation} {label}\n")
++                fh.flush()
++                os.fsync(fh.fileno())
++            return True, now, rid
++        # When enough charge expires: settled charges at settle + window, open
++        # reservations at reserved_at + hold + window.
++        need = used + cfg.reservation - cfg.budget
++        expiries = sorted(
++            [(ts + cfg.window, charge) for ts, charge in settled_in_window]
++            + [(ts + cfg.hold + cfg.window, amount) for ts, amount in open_items])
++        freed = 0
++        for when, amount in expiries:
++            freed += amount
++            if freed >= need:
++                return False, when, None
++        return False, None, None
++    finally:
++        try:
++            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
++        finally:
++            fh.close()
++
++
++def _try_admit(cfg: PacerConfig, label: str, take: bool) -> "tuple[bool, Optional[float], Optional[str]]":
++    if cfg.mode == "token":
++        return _token_try(cfg, label, take)
++    ok, next_at = _try_take(cfg, label, take)
++    return ok, next_at, None
++
++
++def capacity_available() -> "tuple[bool, Optional[float]]":
++    """Peek (no slot or reservation taken): (free now, next eligible time)."""
++    cfg = config()
++    if cfg is None:
++        return True, None
++    ok, next_at, _rid = _try_admit(cfg, "peek", False)
++    return ok, (None if ok else next_at)
++
++
++def _usage_total(usage: Any, cfg: PacerConfig) -> "tuple[Optional[int], str]":
++    """Validated prompt+completion total of a provider usage record."""
++    if usage is None:
++        return None, "missing_usage"
++    get = (lambda k: usage.get(k)) if isinstance(usage, dict) else (lambda k: getattr(usage, k, None))
++    prompt, completion, total = get("prompt_tokens"), get("completion_tokens"), get("total_tokens")
++    if not (isinstance(prompt, int) and isinstance(completion, int)) or isinstance(prompt, bool) \
++            or isinstance(completion, bool) or prompt < 0 or completion < 0:
++        return None, "invalid_usage"
++    charge = prompt + completion
++    if total is not None and (not isinstance(total, int) or total != charge):
++        return None, "inconsistent_usage"
++    if charge > cfg.reservation:
++        return None, "usage_above_reservation"
++    return charge, "settled"
++
++
++def settle(rid: Optional[str], usage: Any = None, *, terminal: bool = True) -> Optional[int]:
++    """Settle one reservation exactly once.
++
++    - terminal with valid usage: charge = validated prompt+completion;
++    - terminal with missing/invalid usage: charge = the full reservation;
++    - not terminal (uncertain end): nothing is written; the reservation stays
++      open and keeps counting.
++    Duplicate settlements of a rid are ignored. Returns the charge written.
++    """
++    cfg = config()
++    if cfg is None or cfg.mode != "token" or not rid or not terminal:
++        return None
++    charge, status = _usage_total(usage, cfg)
++    if charge is None:
++        charge = cfg.reservation
++    fh = _open_locked(cfg.ledger)
++    try:
++        now = _now()
++        _siw, _uns, reservations, settled = _token_state(fh, now, cfg.window, cfg.hold)
++        if rid in settled or rid not in reservations:
++            return None
++        fh.seek(0, os.SEEK_END)
++        fh.write(f"S {now:.6f} {rid} {int(charge)} {status}\n")
++        fh.flush()
++        os.fsync(fh.fileno())
++        return int(charge)
++    finally:
++        try:
++            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
++        finally:
++            fh.close()
++
++
+ class RequestCancelledWhileWaiting(RuntimeError):
+     """The request attempt was cancelled (interrupt / superseded stream attempt)
+     before it was allowed onto the transport; nothing was sent."""
+@@ -193,6 +511,8 @@ class PacedAttempt:
+         self.slept = 0.0
+         self.waiting = False
+         self._prepaid = False
++        self._prepaid_rid: Optional[str] = None
++        self.current_rid: Optional[str] = None   # token mode: the reservation of the request in flight
+         self._cancelled = cancelled
+         self._lock = threading.Lock()
+ 
+@@ -281,16 +601,19 @@ def _acquire_or_wait(
+     """
+     cfg = config()
+     if cfg is None:
+-        return
++        return None
+     if attempt is None:
+         attempt = PacedAttempt(label, cfg.max_wait, cancelled)
+     while True:
+         if attempt.is_cancelled():
+             raise RequestCancelledWhileWaiting(f"request cancelled while waiting for a slot ({label})")
+-        ok, next_at = _try_take(cfg, label, True)
++        ok, next_at, rid = _try_admit(cfg, label, True)
+         if ok:
+-            return
++            return rid
+         waited = attempt.waited()
++        if next_at is None:
++            # No wake time can be computed: never wait blindly.
++            raise RequestBudgetExhausted(cfg, None, float("inf"), waited)
+         wait = max(0.0, next_at - _now())
+         if wait > attempt.max_wait - waited:
+             raise RequestBudgetExhausted(cfg, next_at, wait, waited)
+@@ -325,9 +648,10 @@ def reserve(activity: Optional[Callable[[str], Any]] = None,
+     if cfg is None:
+         return None
+     attempt = PacedAttempt("reserve", cfg.max_wait, cancelled)
+-    _acquire_or_wait("reserve", activity, None, attempt)
++    rid = _acquire_or_wait("reserve", activity, None, attempt)
+     with attempt._lock:
+         attempt._prepaid = True
++        attempt._prepaid_rid = rid
+     with _registry_lock:
+         _registry[attempt.id] = attempt
+     return attempt
+@@ -350,15 +674,22 @@ def _hook_acquire(label: str, cancelled: Optional[Callable[[], bool]],
+     (auxiliary call) never touches another attempt's reservation: it acquires
+     its own slot with its own deadline and cancellation.
+     """
+-    if config() is None:
++    cfg = config()
++    if cfg is None:
+         return
+     if attempt is not None:
+         if attempt.is_cancelled():
+             raise RequestCancelledWhileWaiting(f"request cancelled before transport ({label})")
+         if attempt.take_prepaid():
++            attempt.current_rid = attempt._prepaid_rid
+             return
+-        _acquire_or_wait(label, None, None, attempt)
++        attempt.current_rid = _acquire_or_wait(label, None, None, attempt)
+         return
++    if cfg.mode == "token":
++        # Every token-mode request is tagged by the settlement wrapper; an
++        # untagged one came through a client path without accounting.
++        raise AccountingNotAttached(
++            f"token-mode request without reservation/settlement wiring refused before sending ({label})")
+     if cancelled is not None and cancelled():
+         raise RequestCancelledWhileWaiting(f"request cancelled before transport ({label})")
+     _acquire_or_wait(label, None, cancelled)
+@@ -407,9 +738,174 @@ def attach(openai_client: Any) -> Any:
+         return openai_client
+     import httpx
+ 
+-    hook = _async_hook if isinstance(http, httpx.AsyncClient) else _sync_hook
++    is_async = isinstance(http, httpx.AsyncClient)
++    hook = _async_hook if is_async else _sync_hook
+     request_hooks = list(hooks.get("request") or [])
+     if hook not in request_hooks:
+         request_hooks.append(hook)
+         http.event_hooks = {**hooks, "request": request_hooks}
++    cfg = config()
++    if cfg is not None and cfg.mode == "token":
++        _wrap_create(openai_client, is_async)
+     return openai_client
++
++
++# ---------------------------------------------------------------------------
++# Token mode: settlement wiring around chat.completions.create
++# ---------------------------------------------------------------------------
++
++def _call_attempt(kwargs: dict) -> "tuple[PacedAttempt, bool]":
++    """The attempt this physical call belongs to (tagged by the main loop), or
++    a fresh one for an untagged (auxiliary) call, tagged here so the hook
++    reserves for it."""
++    attempt = attempt_for_kwargs(kwargs)
++    if attempt is not None:
++        return attempt, False
++    cfg = config()
++    attempt = PacedAttempt("call", cfg.max_wait if cfg else DEFAULT_MAX_WAIT_SECONDS,
++                           getattr(_tls, "cancelled", None))
++    with _registry_lock:
++        _registry[attempt.id] = attempt
++    tag_kwargs(kwargs, attempt)
++    return attempt, True
++
++
++def _settle_after_error(rid: Optional[str], exc: BaseException) -> None:
++    # An HTTP error response is a known terminal response without usage:
++    # conservative full charge. Anything else (connection error, cancel,
++    # timeout, refusal before send) is uncertain or unsent: no settlement.
++    if rid and getattr(exc, "status_code", None) is not None:
++        settle(rid, None, terminal=True)
++
++
++class _SettlingStream:
++    """Proxy for a streamed response: settles once at the TERMINAL chunk
++    boundary (StopIteration) to the last usage record seen (cumulative frames
++    are not summed); an interrupted or abandoned stream settles nothing."""
++
++    def __init__(self, inner: Any, rid: str):
++        self._inner = inner
++        self._it = None
++        self._rid = rid
++        self._usage = None
++        self._finished = False    # saw a terminal chunk (finish_reason)
++
++    def __iter__(self):
++        self._it = iter(self._inner)
++        return self
++
++    def __next__(self):
++        if self._it is None:
++            self._it = iter(self._inner)
++        try:
++            chunk = next(self._it)
++        except StopIteration:
++            self._end()
++            raise
++        self._observe(chunk)
++        return chunk
++
++    def _observe(self, chunk) -> None:
++        usage = getattr(chunk, "usage", None)
++        if usage is not None:
++            self._usage = usage
++        for choice in getattr(chunk, "choices", None) or []:
++            if getattr(choice, "finish_reason", None) is not None:
++                self._finished = True
++
++    def _end(self) -> None:
++        # A stream that ended WITHOUT a terminal chunk (dropped by the peer) is
++        # an uncertain end: no settlement, the reservation stays open.
++        if self._finished:
++            settle(self._rid, self._usage, terminal=True)
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, *exc):
++        close = getattr(self._inner, "close", None)
++        if callable(close):
++            close()
++        return False
++
++    def __getattr__(self, name):
++        return getattr(self._inner, name)
++
++
++class _AsyncSettlingStream(_SettlingStream):
++    def __aiter__(self):
++        self._it = self._inner.__aiter__()
++        return self
++
++    async def __anext__(self):
++        if self._it is None:
++            self._it = self._inner.__aiter__()
++        try:
++            chunk = await self._it.__anext__()
++        except StopAsyncIteration:
++            self._end()
++            raise
++        self._observe(chunk)
++        return chunk
++
++    async def __aenter__(self):
++        return self
++
++    async def __aexit__(self, *exc):
++        close = getattr(self._inner, "close", None)
++        if callable(close):
++            res = close()
++            if hasattr(res, "__await__"):
++                await res
++        return False
++
++
++def _wrap_create(openai_client: Any, is_async: bool) -> None:
++    completions = getattr(getattr(openai_client, "chat", None), "completions", None)
++    create = getattr(completions, "create", None)
++    if create is None or getattr(create, "_rhoai3_settling", False):
++        return
++
++    if not is_async:
++        def settling_create(*args, **kwargs):
++            attempt, ephemeral = _call_attempt(kwargs)
++            attempt.current_rid = None
++            try:
++                try:
++                    result = create(*args, **kwargs)
++                except BaseException as exc:
++                    _settle_after_error(attempt.current_rid, exc)
++                    raise
++                rid = attempt.current_rid
++                if not rid:
++                    return result
++                if kwargs.get("stream"):
++                    return _SettlingStream(result, rid)
++                settle(rid, getattr(result, "usage", None), terminal=True)
++                return result
++            finally:
++                if ephemeral:
++                    attempt.close()
++    else:
++        async def settling_create(*args, **kwargs):
++            attempt, ephemeral = _call_attempt(kwargs)
++            attempt.current_rid = None
++            try:
++                try:
++                    result = await create(*args, **kwargs)
++                except BaseException as exc:
++                    _settle_after_error(attempt.current_rid, exc)
++                    raise
++                rid = attempt.current_rid
++                if not rid:
++                    return result
++                if kwargs.get("stream"):
++                    return _AsyncSettlingStream(result, rid)
++                settle(rid, getattr(result, "usage", None), terminal=True)
++                return result
++            finally:
++                if ephemeral:
++                    attempt.close()
++
++    settling_create._rhoai3_settling = True
++    completions.create = settling_create
+diff --git a/hermes_cli/kanban_db.py b/hermes_cli/kanban_db.py
+index 5c0beccdb2..e9146610d0 100644
+--- a/hermes_cli/kanban_db.py
++++ b/hermes_cli/kanban_db.py
+@@ -8145,11 +8145,12 @@ def _request_capacity() -> "tuple[bool, Optional[float]]":
+         from agent import request_pacer
+     except Exception:
+         return True, None
+-    cfg = request_pacer.config()
+-    if cfg is None:
+-        return True, None
+-    ok, next_at = request_pacer._try_take(cfg, "dispatcher-peek", False)
+-    return ok, (None if ok else next_at)
++    try:
++        return request_pacer.capacity_available()
++    except Exception:
++        # Mixed/invalid governed accounting settings: hold rather than spawn.
++        logger.warning("request capacity check failed; holding deferred card", exc_info=True)
++        return False, None
+ 
+ 
+ def _record_worker_exit(pid: int, raw_status: int) -> None:

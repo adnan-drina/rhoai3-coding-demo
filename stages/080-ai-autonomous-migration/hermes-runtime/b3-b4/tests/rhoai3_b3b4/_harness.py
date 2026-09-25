@@ -136,3 +136,44 @@ _PROFILE_TABLE = json.loads((HERE / "model_profiles.json").read_text())
 PROD_QUOTA = _PROFILE_TABLE["profiles"][_PROFILE_TABLE["default_model"]]["quota"]
 PROD_BUDGET = f"{PROD_QUOTA['max_requests_per_window']}/{PROD_QUOTA['window_seconds']}"
 PROD_MAX_WAIT = PROD_QUOTA["max_wait_seconds"]
+# Token mode (V15-1 change 2). C = the served prompt+output bound from the
+# profile (quota.max_request_tokens); B = the profile's token allowance when the
+# producer declares one, else the design value (51,000,000 = 60M - 9M reserve).
+TOKEN_RESERVATION = int(PROD_QUOTA.get("reservation_tokens", PROD_QUOTA["max_request_tokens"]))
+TOKEN_BUDGET = int(PROD_QUOTA.get("token_allowance_per_window", 51_000_000))
+TOKEN_WINDOW = int(PROD_QUOTA["window_seconds"])
+
+
+def set_token_mode(monkeypatch, ledger, budget=None, reservation=None, window=None, max_wait=None):
+    for key in ("RHOAI3_REQUEST_BUDGET",):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("RHOAI3_ACCOUNTING_MODE", "token")
+    monkeypatch.setenv("RHOAI3_TOKEN_BUDGET", f"{budget or TOKEN_BUDGET}/{window or TOKEN_WINDOW}")
+    monkeypatch.setenv("RHOAI3_TOKEN_RESERVATION", str(reservation or TOKEN_RESERVATION))
+    monkeypatch.setenv("RHOAI3_REQUEST_LEDGER", str(ledger))
+    # The producer's request timeout (providers.custom.request_timeout_seconds
+    # = 900) and the matching reservation hold. In-process tests have no
+    # provider config, so Hermes' HERMES_API_TIMEOUT is set to the same 900.
+    monkeypatch.setenv("HERMES_API_TIMEOUT", str(TOKEN_HOLD))
+    monkeypatch.setenv("RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS", str(TOKEN_HOLD))
+    if max_wait is not None:
+        monkeypatch.setenv("RHOAI3_REQUEST_BUDGET_MAX_WAIT", str(max_wait))
+
+
+TOKEN_HOLD = int(PROD_QUOTA.get("reservation_hold_seconds", 900))
+
+
+def token_ledger(path):
+    """(reservations: {rid: (amount, label)}, settlements: [(rid, charge, status)])"""
+    res, sets = {}, []
+    try:
+        lines = Path(path).read_text().splitlines()
+    except FileNotFoundError:
+        return res, sets
+    for line in lines:
+        p = line.split()
+        if p and p[0] == "R":
+            res[p[3]] = (int(p[4]), p[5] if len(p) > 5 else "")
+        elif p and p[0] == "S":
+            sets.append((p[2], int(p[3]), p[4] if len(p) > 4 else ""))
+    return res, sets

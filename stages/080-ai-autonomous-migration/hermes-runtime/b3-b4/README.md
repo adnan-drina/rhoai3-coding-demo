@@ -8,7 +8,9 @@ This directory qualifies three worker behaviours: the non-thinking sampling prof
 | Series 0001–0004 (B11) | tree `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48` |
 | Series 0001–0006 | tree `87a39dca63bca478e1ab93e9ce24ad757de25f8f` |
 | Series 0001–0007 | tree `6d6efd1992525da692f2f0f7f23881cf65f3999a` (0007 with request ownership; the earlier `433f0c6f…` and `82b70bae…` are superseded) |
-| **Series 0001–0008 (final)** | **tree `101ca3d1da753267ffcb7f9b280f09258085256a`** (supersedes `374562df…`, committed as 2cfd40d1). This was verified by applying all eight patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer and 0008 is auxiliary per-call precedence; see `../README.md`. |
+| Series 0001–0008 | tree `101ca3d1da753267ffcb7f9b280f09258085256a` (the v15 runtime). |
+| Series 0001–0009 | tree `3e219090f61deb3a2676e86c73571f502a886970`. |
+| **Series 0001–0010 (final)** | **tree `32be3bd0617936952a1ed7a4d8718accd8c4661c`** (0010 with the retention amendment; supersedes `9a00357c…`). This was verified by applying all eight patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer, 0008 is auxiliary per-call precedence, 0009 is the V15-1 neutral local-budget deferral and 0010 is V15-1 token accounting; see `../README.md`. |
 | Worker config under test | Rendered from the Stage 050 producer by `render_worker_config.py`. It executes only the `cfg = {...}` prefix of the `HERMESEOF` block in `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`. Snapshot: `tests/rhoai3_b3b4/worker_config.json`. |
 | Provider | The scripted fake OpenAI-compatible server in `tests/rhoai3_b3b4/fake_openai_server.py`, on loopback. No real model is called. |
 
@@ -127,6 +129,81 @@ Columns: 0001–0006 (`87a39dca`); the earlier 0007 (`433f0c6f`, before V13-PACE
 - **Production values are not hard-coded.** Tests that model the production allowance read it from `model_profiles.json`, the snapshot `render_worker_config.py` writes from `gitops/.../devspaces/model-profiles.json` (190/3600, max wait 900 at the time of writing).
 - **The reviewer's reproduction needed no adaptation.** `tmp/v12-run-20260924/v13-pacer-contention-review.py` still extracts `agent/request_pacer.py` from the new 0007 without changes: it keeps its own 200/3600 and calls `_try_take(cfg, label=, take=)` and `acquire()`. It now reports `bounded-stop` at 900.0 s simulated, with 50 competing slots and 0 requests.
 
+## V15-1: durable quota waits and token accounting (patches 0009, 0010)
+
+The binding design is `tmp/v15-run-20260925/V15-1-DURABLE-QUOTA-DESIGN.md`. The owner's decision stands: the quota stays at 60M/h and the run allowance is 51M from the profile. Columns: `101ca3d1` is 0001–0008 (the v15 runtime), `3e219090` is 0001–0009 and `32be3bd0` is 0001–0010 (with the retention amendment). Production values (190/3600, 900 s, C = 262,144) are read from the profile snapshot. B defaults to the design's 51,000,000 until the profile carries `token_allowance_per_window`.
+
+### Change 1: neutral deferral on the native rate-limit path (`test_v15_quota_recovery.py`)
+
+| Proof exit (design section 6) | Test | `101ca3d1` | `3e219090` | `32be3bd0` |
+|---|---|---|---|---|
+| Exact v15 regression. The fake-clock guard is 60 s before and after eligibility; real resumption shifts the ledger. | `test_v15_regression_neutral_deferral_then_same_card_resumes`: 190 slots, next slot 1,535 s away; exit 75; one neutral `rate_limited` run; not respawned on the next tick (`local_budget_wait`); no `gave_up`; counters unchanged; the same card resumes and completes | fail | pass | pass |
+| Genuine failure, then quota deferral (implementer) | `test_genuine_failure_then_deferral_keeps_the_failure_count`: a real SIGKILL crash counts 1; the deferral neither adds nor clears it | fail | pass | pass |
+| Genuine failure, then quota deferral (reviewer origin) | `test_reviewer_origin_deferral_returns_to_review`: a review claim with a deferral returns to `review`, keeps its failure count and is held | fail | pass | pass |
+| Dispatcher restart; stop prevents dispatch | `test_dispatcher_restart_during_deferral_and_stop_prevents_dispatch`: the reap record is lost and the run still ends neutral; the due time persists across reconnect; a blocked card never spawns | fail | pass | pass |
+| Candidate continuation | `test_candidate_edits_survive_the_pause`: the edit made before the pause is still on the tree; the worker context states `LOCAL_BUDGET_WAIT … work stays on the tree`; the resumed run completes | fail | pass | pass |
+| No retry consumed; a crash still does | `test_two_deferrals_consume_no_retry_but_a_crash_does`: a `max_retries=1` card survives two deferrals; a SIGKILL crash then blocks it | fail | pass | pass |
+| (the existing named-stop test, updated) | `test_budget_exhaustion_is_named_and_sends_nothing`: the stop is named, sends nothing and is held by `local_budget_wait`, not by the blocker pattern | fail | pass | pass |
+
+### Change 2: reserved-and-settled token accounting (`test_v15_token_accounting.py`)
+
+| Proof exit | Test | `3e219090` | `32be3bd0` |
+|---|---|---|---|
+| Usage reconciliation | `test_usage_reconciliation_releases_only_the_difference`: a 100K request leaves 100,000 charged, so C − 100,000 is released; a duplicate settlement writes nothing | fail | pass |
+| Streaming cumulative frames | `test_streaming_cumulative_frames_do_not_undercharge`: frames of 50K and 80K, then a 100K terminal record, settle at 100,000 | fail | pass |
+| Throughput without a request ceiling | `test_throughput_without_a_request_ceiling`: 250 requests at 59K each are all admitted and settled; 14.75M < 51M | fail | pass |
+| Worst-case load | `test_worst_case_194_fit_and_the_195th_waits_for_expiry`: 194 × 262,144 fit, the 195th is refused, and it is admitted only after the first settled charge expires (fake clock) | fail | pass |
+| Unknown or failing requests | `test_missing_usage_and_uncertain_ends`: missing usage is charged C; HTTP 500 is charged C; a dropped stream stays open, still counted two windows later; a cancelled call reserves nothing | fail | pass |
+| All physical calls | `test_every_physical_attempt_reserves_separately`: a kanban worker with a 429 retry, a cap-boost retry, a stream reconnect and two completions makes 5 reservations = 5 requests; 4 terminal settlements (the 429 at C); 1 open (the drop); the attempt header never reaches the provider | fail | pass |
+| Reservation concurrency | `test_reservation_concurrency_across_processes`: B = 2C; sync auxiliary, sync auxiliary, async auxiliary and gateway processes compete; exactly 2 are admitted | fail | pass |
+| Accounting required | `test_governed_process_without_accounting_refuses_before_sending`: a hook without settlement wiring is refused with `AccountingNotAttached`; mixed modes and C > B raise `AccountingConfigError`; 0 HTTP | fail | pass |
+| Token-mode deferral | `test_token_mode_deferral_is_neutral_and_resumes`: the stop takes 0009's neutral path with `accounting_mode=token` and `retry_not_before` = when the first settled charge expires | fail | pass |
+
+#### Retention amendment (0010, open reservations stop counting after `reserved_at + hold + window`)
+
+Columns: `9a00357c` is 0010 before the amendment; `32be3bd0` is after it.
+
+| Test | `9a00357c` | `32be3bd0` |
+|---|---|---|
+| (a) `test_open_reservation_retention_counts_through_window`: a dropped stream still counts at `reserved_at + window` | fail. The helper reads `cfg.hold`, which doesn't exist there; the behaviour itself holds, since reservations never age out there | pass |
+| (b) `test_open_reservation_retention_ends_after_hold_plus_window`: it stops counting after `reserved_at + 900 + window` (fake clock) | fail | pass |
+| (c) `test_many_dropped_streams_do_not_exhaust_permanently`: 200 drops at 10 s intervals | **fail**: the deferral is `uncertain` with no wake time, so B is permanently exhausted | pass: the 195th waits for a known wake time; all 200 admitted |
+| `test_hold_shorter_than_request_timeout_is_refused` | fail | pass |
+| `test_default_hold_follows_the_longest_client_timeout`: with `HERMES_API_TIMEOUT=1800`, the default hold is 1800 and an explicit 900 is refused | fail | pass |
+| `test_missing_usage_and_uncertain_ends` (updated to the retention semantics) | fail (`cfg.hold`) | pass |
+| (d) the rest of the proof table | pass | pass |
+
+The existing request-ownership, cancellation, reconnect, contention and short-summary tests pass on `32be3bd0`. Reviewer's contention reproduction: `bounded-stop` at 900 s with 0 requests (request mode is unchanged).
+
+### Usage measurement (fake provider, real worker; `usage_probe.py` here, output in the log)
+
+| Path | Requests usage? | Provider reports usage? | Ledger (0010) | Hermes `session_model_usage` |
+|---|---|---|---|---|
+| Main agent, streaming | yes, `stream_options.include_usage` | yes, in the terminal chunk | settled to usage | recorded |
+| Truncation (`finish_reason=length`) retry | yes | yes | settled to usage (e.g. 34,768) | **not recorded**: the length branch `continue`s before the usage bookkeeping |
+| Provider 429 retry | n/a | no (error response) | settled at C | not recorded (no usage exists) |
+| Dropped or reconnected stream | yes | no terminal chunk | left open (uncertain) | not recorded |
+| Auxiliary compression (non-streaming) | body usage by default | yes, in the body | settled to usage | recorded as auxiliary usage through the aux-accounting chokepoint when inside a run (from source; the live compressor was not triggered in this probe) |
+| Reviewer | same client path as the main agent (separate profile process) | same as main | same as main | same as main (inferred; no reviewer process was run) |
+
+What this means for the v15 figure: 11.29M from `session_model_usage` **undercounts** truncated responses (each up to its prompt plus 32,768 output) and has nothing for 429s or dropped streams. Token metering therefore settles from the responses themselves, never from `session_model_usage`. Whether the installed MaaS gateway returns terminal usage on streams and in bodies remains the design's live qualification item.
+
+### Required golden and platform changes (not made here)
+
+1. **Profile (`gitops/.../devspaces/model-profiles.json`).** Add a versioned accounting block: `accounting_mode: "token"`, `token_allowance_per_window: 51000000`, `reservation_tokens: 262144` (≥ the served 262,144), `window_seconds: 3600`, and the reserve. Remove `max_requests_per_window` for token-mode profiles. Old request-mode profiles keep theirs unchanged.
+2. **Worker config producer and dest-init managed `.env`.** In token mode write `RHOAI3_ACCOUNTING_MODE=token`, `RHOAI3_TOKEN_BUDGET=<B>/<window>`, `RHOAI3_TOKEN_RESERVATION=<C>`, `RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS=<hold>` and `RHOAI3_REQUEST_LEDGER`. The hold must be at least the longest client request timeout (1800 with `HERMES_API_TIMEOUT=1800`), and the recommended value is 3600: streams have no total client timeout. See the README, section "Retention". and **no** `RHOAI3_REQUEST_BUDGET`. `RHOAI3_REQUEST_BUDGET_MAX_WAIT` stays 900.
+3. **`run-preflight.sh` (MODEL_RATE_BUDGET).**
+   - In token mode check `sum(token_allowance per admitted run) + reserve <= subscription`, i.e. 51M + 9M ≤ 60M, without adding C again.
+   - Require `0 < C <= B`, a one-hour window, C ≥ the served total bound, and the token-capable runtime tree `32be3bd0`.
+   - Reject mixed or incomplete fields and aggregates above the subscription.
+4. **Golden runtime declaration.** Declare the accounting version (`token-v1`, runtime tree `32be3bd0`) and repin `pins.json`, `patched_tree`.
+5. **Golden loop tools and K2.**
+   - Treat a `rate_limited` run whose metadata has `local_budget_deferral: true` as a neutral pause: not a failure, not a repair attempt, no advance or revert.
+   - Expect the card back in `ready`/`review`, held by the dispatcher's `local_budget_wait`.
+   - Any tool that counts runs per card must not count these as attempts.
+   - The golden's run deadline check ends a card held past the deadline through the existing deadline outcome.
+6. **Brief.** The resumed worker's context already carries `LOCAL_BUDGET_WAIT … the previous run's work stays on the tree`. The golden brief should add the usual `candidate_on_tree` checkpoint and the next legal action for a resumed card.
+
 ## Run
 
 ```bash
@@ -138,7 +215,7 @@ python <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/render_wor
   <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4/worker_config.json
 ```
 
-The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (8 patches, tree `101ca3d1…`), checked with `patch --dry-run` only.
+The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (10 patches, tree `32be3bd0…`, relative to the Dockerfile with the 8-patch hunk applied), checked with `patch --dry-run` only.
 
 ## Not covered
 

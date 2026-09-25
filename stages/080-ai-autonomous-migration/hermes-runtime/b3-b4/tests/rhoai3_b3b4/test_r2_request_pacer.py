@@ -148,7 +148,10 @@ def test_budget_waits_for_oldest_slot(tmp_path, monkeypatch):
     assert len(lines) == 3 and float(lines[-1][0]) >= 1_000_000.0 + 5
 
 
-def test_budget_exhaustion_is_named_failed_run(tmp_path, monkeypatch):
+def test_budget_exhaustion_is_named_and_sends_nothing(tmp_path, monkeypatch):
+    """The allowance stop is named and sends nothing. Since patch 0009 it is a
+    structured local-budget deferral ending the run neutrally through the native
+    rate-limit path (see test_v15_quota_recovery.py), not a failed run."""
     ledger = tmp_path / "control" / "requests.log"
     ledger.parent.mkdir(parents=True)
     now = time.time()
@@ -159,13 +162,14 @@ def test_budget_exhaustion_is_named_failed_run(tmp_path, monkeypatch):
         H.dispatch_and_reap(kb, conn, tid)
         assert provider.chat_requests() == []              # nothing was sent
         assert kb.detect_crashed_workers(conn) == []
-        task = kb.get_task(conn, tid)
-        assert task.status == "ready" and task.consecutive_failures == 1
-        run = H.runs(conn, tid)[-1]
-        assert run["outcome"] == "crashed"
-        assert run["error"].startswith("STOP MODEL_REQUEST_BUDGET: 2 requests in 3600s already spent by this run; next slot at ")
-        assert kb.check_respawn_guard(conn, tid) is None   # not parked by the blocker pattern
-        kinds = [k for k, _ in H.events(conn, tid)]
+        events = H.events(conn, tid)
+        reasons = [p.get("reason") or "" for k, p in events if k == "local_budget_deferral"]
+        assert reasons and reasons[-1].startswith(
+            "STOP MODEL_REQUEST_BUDGET: 2 requests in 3600s already spent by this run; next slot at ")
+        # Held by the deferral until capacity returns -- never by the
+        # quota/auth blocker pattern (which would park it without a wake time).
+        assert kb.check_respawn_guard(conn, tid) == "local_budget_wait"
+        kinds = [k for k, _ in events]
         assert "protocol_violation" not in kinds and "completed" not in kinds
         assert len(_ledger_lines(ledger)) == 2             # no slot was taken
         conn.close()
