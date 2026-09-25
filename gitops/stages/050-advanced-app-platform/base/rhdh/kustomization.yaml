@@ -41,6 +41,9 @@ configMapGenerator:
   options:
     annotations:
       argocd.argoproj.io/sync-wave: "7"
+      # a refresh Job created from the CronJob's previous spec may still mount
+      # the previous bundle; prune it only after the rest of the sync applied
+      argocd.argoproj.io/sync-options: PruneLast=true
   files:
   - catalog__all.yaml=catalog/all.yaml
   - jobs__catalog__generate.sh=jobs/catalog/generate.sh
