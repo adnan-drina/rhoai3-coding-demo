@@ -2925,6 +2925,14 @@ def _generated_body_case() -> int:
                 or "Generated body type %s requires pets" % dto_fqn not in a["message"] or a["scenarios"] != ["sc:create-1"]):
             return _fail("the obligation is a BUILD item on pom.xml that keeps its parity gate and scenario: %s"
                          % {k: a.get(k) for k in ("path", "kind", "rule_id", "gate", "cause", "line", "missing_required", "generated_type", "scenarios")})
+        # V16-8: the catalog's conditional rule is the ITEM's first action, and
+        # its message says it -- the option, where, and what to keep
+        if (a.get("first_action") != first
+                or "FIRST ACTION (compat-mapping build_plugins org.openapitools:openapi-generator-maven-plugin, generator jaxrs-spec): "
+                   "set <generateJsonCreator>false</generateJsonCreator> under the plugin's <configOptions> in pom.xml (line 24); "
+                   "keep <useBeanValidation>true</useBeanValidation>." not in a["message"]
+                or "keep <useBeanValidation>true</useBeanValidation>" not in first):
+            return _fail("a generated-body item carries the generator rule as its first action: %s | %s" % (a.get("first_action", "")[:120], a["message"][-400:]))
         cl = cluster_items([a], {}, set())
         if len(cl) != 1 or cl[0]["path"] != "pom.xml" or cl[0]["kind"] != "build" or cl[0]["write_set"] != ["pom.xml"] or cl[0]["status"] != "open":
             return _fail("it forms the pom build cluster with pom.xml in the write set: %s" % cl)
@@ -4470,6 +4478,129 @@ def _real_handler_parameter_precedence_case() -> int:
     return 0
 
 
+def _real_binding_result_translation_case() -> int:
+    """V16-8 (v16: `validator.validate(x).isEmpty()` at 13 sites, and `&&` for
+    `||`): the BindingResult translation, checked from the compiler models of
+    the frozen source and the candidate. bindingResult.hasErrors() is
+    !validator.validate(<body>).isEmpty(), negated as negated, the rest of the
+    guard verbatim; a handler that validates itself keeps no @Valid on its
+    parameter. Real javac, twice under renamed packages; the frozen source is
+    modelled WITHOUT its classpath, so BindingResult is named through its
+    imports."""
+    import shutil as _sh
+    import tempfile
+
+    from planner.worklist import frozen_source_model
+
+    retired = "org.springframework.validation.BindingResult"
+    for base in ("org.acme.clinic", "com.example.depot"):
+        pkg = base.replace(".", "/")
+        owner, visit = "src/main/java/%s/rest/OwnerController.java" % pkg, "src/main/java/%s/rest/VisitController.java" % pkg
+        dto = "src/main/java/%s/dto/OwnerDto.java" % pkg
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            "src/main/java/jakarta/validation/Valid.java": "package jakarta.validation;\npublic @interface Valid { }\n",
+            "src/main/java/jakarta/validation/Validator.java":
+                "package jakarta.validation;\npublic interface Validator { <T> java.util.Set<Object> validate(T t); }\n",
+            dto: "package %s.dto;\npublic class OwnerDto { public Integer getId() { return null; } }\n" % base,
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\nimport jakarta.validation.Valid;\n"
+                "import %s.dto.OwnerDto;\n" % (base, base))
+        spring = "import org.springframework.validation.BindingResult;\n"
+        valid_imp = "import jakarta.validation.Validator;\nimport jakarta.inject.Inject;\n"
+
+        def src_owner() -> str:
+            return (head + spring + "public class OwnerController {\n"
+                    '    @PostMapping("/owners")\n    public String addOwner(@RequestBody @Valid OwnerDto dto, BindingResult bindingResult) {\n'
+                    '        if (bindingResult.hasErrors() || dto.getId() != null) { return "400"; }\n        return "201";\n    }\n'
+                    '    @PostMapping("/owners/1")\n    public String updateOwner(@RequestBody @Valid OwnerDto dto, BindingResult bindingResult) {\n'
+                    '        if (!bindingResult.hasErrors()) { return "204"; }\n        return "400";\n    }\n}\n')
+
+        def src_visit() -> str:
+            return (head + spring + "public class VisitController {\n"
+                    '    @PostMapping("/visits")\n    public String addVisit(@RequestBody @Valid OwnerDto dto, BindingResult errors) {\n'
+                    '        if (errors.hasErrors()) { return "400"; }\n        return "201";\n    }\n}\n')
+
+        def dst_owner(add_guard: str, update_guard: str, valid: str = "") -> str:
+            return (head + "import jakarta.validation.Validator;\npublic class OwnerController {\n    Validator validator;\n"
+                    '    @PostMapping("/owners")\n    public String addOwner(@RequestBody %sOwnerDto dto) {\n'
+                    "        var violations = validator.validate(dto);\n"
+                    '        if (%s) { return "400"; }\n        return "201";\n    }\n'
+                    '    @PostMapping("/owners/1")\n    public String updateOwner(@RequestBody OwnerDto dto) {\n'
+                    '        if (%s) { return "204"; }\n        return "400";\n    }\n}\n' % (valid, add_guard, update_guard))
+
+        def dst_visit(guard: str = "!validator.validate(dto).isEmpty()") -> str:
+            return (head + "import jakarta.validation.Validator;\npublic class VisitController {\n    Validator validator;\n"
+                    '    @PostMapping("/visits")\n    public String addVisit(@RequestBody OwnerDto dto) {\n'
+                    '        if (%s) { return "400"; }\n        return "201";\n    }\n}\n' % guard)
+
+        frozen = {".derived/frozen-input/" + rel: text for rel, text in
+                  {**stubs, owner: src_owner(), visit: src_visit()}.items()
+                  if not rel.startswith("src/main/java/jakarta/validation/Validator")}
+        with tempfile.TemporaryDirectory(prefix="wl-v168-") as d:
+            root = _jdk_root(d, {**stubs, **frozen, owner: src_owner(), visit: src_visit()})
+            src_model, gap = frozen_source_model(root)
+            if src_model is None:
+                return _fail("[%s] the frozen source is modelled: %s" % (base, gap))
+            sg = {(t["fqn"].rsplit(".", 1)[-1], m["name"]): m.get("validation_guards")
+                  for t in src_model["types"] for m in t.get("declared") or [] if m.get("validation_guards")}
+            if sg != {("OwnerController", "addOwner"): ["(INVALID || {dto.getId() != null})"],
+                      ("OwnerController", "updateOwner"): ["!INVALID"], ("VisitController", "addVisit"): ["INVALID"]}:
+                return _fail("[%s] the source's hasErrors() guards are read through its imports, without a classpath: %s" % (base, sg))
+            items = [_javac(owner, "BindingResult", 1), _javac(owner, "BindingResult", 2), _javac(visit, "BindingResult", 3)]
+            units, _ = form_units(items, {}, set(), model=dest_model(root), root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            first = (unit or {}).get("unit", {}).get("target_symbols", [{}])[0]
+            if not first.get("handler_parameter") or not isinstance(first.get("translation"), dict):
+                return _fail("[%s] the BindingResult unit leads with the handler row and its translation rule: %s" % (base, first))
+            if "!validator.validate(<body>).isEmpty()" not in first["action"] or "remove @Valid" not in first["action"]:
+                return _fail("[%s] the action states the translation and the handler-owned validation: %s" % (base, first["action"]))
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+
+            def assess(o: str, v: str) -> dict[str, dict]:
+                (root / owner).write_text(o, encoding="utf-8")
+                (root / visit).write_text(v, encoding="utf-8")
+                return {r["member"].split("#", 1)[1].split("(")[0]: r for r in assess_unit(root, scope)
+                        if r.get("state") == "handler-parameter"}
+
+            good_add, good_update = "!violations.isEmpty() || dto.getId() != null", "validator.validate(dto).isEmpty()"
+            rows = assess(dst_owner(good_add, good_update), dst_visit())
+            if {k: r["verdict"] for k, r in rows.items()} != {"addOwner": "ok", "updateOwner": "ok", "addVisit": "ok"}:
+                return _fail("[%s] the faithful translation (a local, the inline call, the negated form) is clean: %s" % (base, rows))
+            for label, o, v, bad, token in (
+                    ("inverted (v16, 13 sites)", dst_owner("violations.isEmpty() || dto.getId() != null", good_update), dst_visit(),
+                     "addOwner", "INVERTED"),
+                    ("|| turned into &&", dst_owner("!violations.isEmpty() && dto.getId() != null", good_update), dst_visit(),
+                     "addOwner", "the candidate on (INVALID && {dto.getId() != null})"),
+                    ("negated form inverted", dst_owner(good_add, "!validator.validate(dto).isEmpty()"), dst_visit(),
+                     "updateOwner", "INVERTED"),
+                    ("plain form inverted", dst_owner(good_add, good_update), dst_visit("validator.validate(dto).isEmpty()"),
+                     "addVisit", "INVERTED"),
+                    ("@Valid kept on a handler that validates", dst_owner(good_add, good_update, "@Valid "), dst_visit(),
+                     "addOwner", "remove @Valid"),
+                    ("validation dropped", dst_owner("dto.getId() != null", good_update), dst_visit(), "addOwner",
+                     "no validation guard")):
+                rows = assess(o, v)
+                if rows[bad]["verdict"] != "violates" or token not in rows[bad]["detail"]:
+                    return _fail("[%s] %s is refused at %s: %s" % (base, label, bad, rows[bad]))
+                if any(r["verdict"] != "ok" for k, r in rows.items() if k != bad):
+                    return _fail("[%s] %s: only %s is refused: %s" % (base, label, bad, rows))
+            # without a readable frozen source no guard is claimed either way;
+            # the @Valid rule is the candidate's own and still holds
+            _sh.rmtree(root / ".derived")
+            rows = assess(dst_owner("violations.isEmpty() || dto.getId() != null", good_update), dst_visit())
+            if rows["addOwner"]["verdict"] != "ok":
+                return _fail("[%s] no source model, no guard claim: %s" % (base, rows["addOwner"]))
+            rows = assess(dst_owner(good_add, good_update, "@Valid "), dst_visit())
+            if rows["addOwner"]["verdict"] != "violates":
+                return _fail("[%s] @Valid on a self-validating handler is refused without the source too" % base)
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
@@ -4480,7 +4611,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case():
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)

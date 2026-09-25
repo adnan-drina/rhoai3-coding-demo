@@ -394,13 +394,39 @@
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
         "note": "not among the parameter kinds the Spring Web guide lists. On the destination a constraint violation on a validated parameter is a jakarta.validation.ConstraintViolationException answered by the platform's built-in ExceptionMapper as 400 with a JSON violation report (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation); a handler that inspects the BindingResult to build its own error body does that through the platform's mechanism instead (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation).",
-        "action": "the compat layer does not bind a BindingResult: remove it from the parameter list, and since a @Valid body is rejected by the platform's built-in validation mapper with a 400 JSON report before the handler runs, the source's own error response (status, headers, body as the scenario's expected response records them) can only come from validating INSIDE the handler: remove @Valid from the body parameter, inject jakarta.validation.Validator (@Inject Validator validator), call validator.validate(body) where the source inspected the BindingResult, and build the source's response from the returned Set<ConstraintViolation<T>> (each violation's getPropertyPath() and getMessage() are the field and message Spring's FieldError carried). BindingResult must not remain a parameter (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation)."
+        "action": "the compat layer does not bind a BindingResult: remove it from the parameter list and validate INSIDE the handler with an injected jakarta.validation.Validator (@Inject Validator validator). Translate every bindingResult.hasErrors() to !validator.validate(<body>).isEmpty() and every !bindingResult.hasErrors() to validator.validate(<body>).isEmpty(), keeping the rest of the guard exactly as the source wrote it (`bindingResult.hasErrors() || dto.getId() != null` becomes `!validator.validate(dto).isEmpty() || dto.getId() != null`: never inverted, never || turned into &&). Since the handler now validates before it mutates anything, remove @Valid from the body parameter (a @Valid body is rejected by the platform's built-in mapper with a 400 JSON report before the handler runs); keep the DTO's own constraints and nested @Valid. Build the source's response (status, headers, body as the scenario's expected response records them) from the returned Set<ConstraintViolation<T>> (each violation's getPropertyPath() and getMessage() are the field and message Spring's FieldError carried). BindingResult must not remain a parameter (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation).",
+        "translation": {
+          "rule": "a conditional translation, applied at every place the handler asks the Errors/BindingResult (V16-8): the call is replaced, the boolean expression around it is not",
+          "from": "<bindingResult>.hasErrors()",
+          "to": "!validator.validate(<the validated body>).isEmpty()",
+          "negated": {
+            "from": "!<bindingResult>.hasErrors()",
+            "to": "validator.validate(<the validated body>).isEmpty()"
+          },
+          "preserve": "every other operand, operator and their order exactly as the source wrote them: `bindingResult.hasErrors() || dto.getId() != null` becomes `!validator.validate(dto).isEmpty() || dto.getId() != null`, never `validator.validate(dto).isEmpty() || ...` (inverted) and never `... && ...` (a different guard); a local (`var violations = validator.validate(dto)`) is the same call",
+          "handler_owned_validation": "the handler validates before it mutates anything, so the platform must not validate first: remove @Valid from the body parameter (the jakarta.validation.Valid row's action); the DTO's own constraints and nested @Valid on its properties stay as they are",
+          "checked_by": "worklist._assess_handler_parameters: the handler's validation guards (DestModel validation_guards) against the frozen source handler's, and @Valid on a parameter of a handler that validates itself",
+          "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/validator#validate(T,java.lang.Class...) (validate returns the violations; an empty set means valid) and https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/Errors.html#hasErrors-- (true when there are errors)"
+        }
       },
       "org.springframework.validation.Errors": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
         "note": "the supertype of BindingResult: the same row (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation).",
-        "action": "the same first action as BindingResult: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator, build the source's response from the violations."
+        "action": "the same first action as BindingResult: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator, translate errors.hasErrors() to !validator.validate(<body>).isEmpty() keeping the rest of the guard verbatim (never inverted, never || turned into &&), remove @Valid from the body parameter, build the source's response from the violations.",
+        "translation": {
+          "rule": "a conditional translation, applied at every place the handler asks the Errors/BindingResult (V16-8): the call is replaced, the boolean expression around it is not",
+          "from": "<bindingResult>.hasErrors()",
+          "to": "!validator.validate(<the validated body>).isEmpty()",
+          "negated": {
+            "from": "!<bindingResult>.hasErrors()",
+            "to": "validator.validate(<the validated body>).isEmpty()"
+          },
+          "preserve": "every other operand, operator and their order exactly as the source wrote them: `bindingResult.hasErrors() || dto.getId() != null` becomes `!validator.validate(dto).isEmpty() || dto.getId() != null`, never `validator.validate(dto).isEmpty() || ...` (inverted) and never `... && ...` (a different guard); a local (`var violations = validator.validate(dto)`) is the same call",
+          "handler_owned_validation": "the handler validates before it mutates anything, so the platform must not validate first: remove @Valid from the body parameter (the jakarta.validation.Valid row's action); the DTO's own constraints and nested @Valid on its properties stay as they are",
+          "checked_by": "worklist._assess_handler_parameters: the handler's validation guards (DestModel validation_guards) against the frozen source handler's, and @Valid on a parameter of a handler that validates itself",
+          "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/validator#validate(T,java.lang.Class...) (validate returns the violations; an empty set means valid) and https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/Errors.html#hasErrors-- (true when there are errors)"
+        }
       },
       "org.springframework.web.util.UriComponentsBuilder": {
         "kind": "type",
@@ -460,8 +486,16 @@
               "default": "<default>"
             }
           ],
-          "action": "set <generateJsonCreator>false</generateJsonCreator> under the plugin's <configOptions> in pom.xml (the generator then emits no required-args @JsonCreator constructor and the model binds through its setters, as the spring generator's did); leave the spec's `required` lists as they are unless the source's contract does not require the property either. Do not edit the generated file (the next build rewrites it) and do not touch the controller for this difference.",
-          "observation": "a @ControllerAdvice/@ExceptionHandler that turns the deserialization failure into a body in the source is a separate concern: the destination's platform answers the boundary refusal itself, and whether a mapper renders a body is a build-profile/mapping question, not this obligation's."
+          "action": "set <generateJsonCreator>false</generateJsonCreator> under the plugin's <configOptions> in pom.xml (the generator then emits no required-args @JsonCreator constructor and the model binds through its setters, as the spring generator's did) and keep <useBeanValidation>true</useBeanValidation> (the model's constraints are what the handler validates); leave the spec's `required` lists as they are unless the source's contract does not require the property either. Do not edit the generated file (the next build rewrites it) and do not touch the controller for this difference.",
+          "observation": "a @ControllerAdvice/@ExceptionHandler that turns the deserialization failure into a body in the source is a separate concern: the destination's platform answers the boundary refusal itself, and whether a mapper renders a body is a build-profile/mapping question, not this obligation's.",
+          "when": "a conditional rule (V16-8): the request body type is generated by this generator, its generated @JsonCreator constructor (or, while target/ is stale, the spec's `required` list) requires a property the source's recorded request does not send, and the pom does not already set generateJsonCreator=false. Then the item is a PARITY_GENERATED_BODY build obligation on pom.xml and this row's action is its FIRST ACTION.",
+          "keep": {
+            "useBeanValidation": {
+              "value": "true",
+              "why": "the model's constraints (@NotNull, @Size, nested @Valid) are what the handler's validator reads; generateJsonCreator only removes the required-args constructor, a container property stays initialized to an empty list, so the constraint on it still holds for a body that omits it"
+            }
+          },
+          "evidence": "the documented jaxrs-spec option (source above); a v10 accepted repair made exactly this edit (commit 7df34470, c:9c5fb3d1b7e3) and v16 verified the regenerated DTO loses its @JsonCreator constructor; skills/migration/fix-until-green/scripts/handler-validation-package.test.py packages both settings"
         },
         "spring": {
           "source": "https://openapi-generator.tech/docs/generators/spring",

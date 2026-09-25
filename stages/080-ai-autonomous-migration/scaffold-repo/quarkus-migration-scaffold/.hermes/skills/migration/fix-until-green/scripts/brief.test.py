@@ -835,6 +835,16 @@ def _handler_parameter_brief_case() -> int:
         bare = [t for t in ts if t.get("to") == "jakarta.ws.rs.core.UriBuilder"]
         if len(bare) != 1 or bare[0].get("not_for") != sites:
             return _fail("no bare UriBuilder target is left for a handler parameter: %s" % bare)
+    # V16-8: a BindingResult handler parameter's row carries the conditional
+    # translation, and the brief shows it with the action
+    br = "org.springframework.validation.BindingResult"
+    t = unit_target_symbols([{"kind": "type", "fqn": br, "path": rel}], symbol_renames(GOLDEN), {}, None, {br: sites}, rows)
+    tr = (t[0] if t else {}).get("translation") or {}
+    if (not t or not t[0].get("handler_parameter") or tr.get("to") != "!validator.validate(<the validated body>).isEmpty()"
+            or (tr.get("negated") or {}).get("to") != "validator.validate(<the validated body>).isEmpty()"
+            or "never `... && ...`" not in str(tr.get("preserve")) or "remove @Valid" not in str(tr.get("handler_owned_validation"))
+            or "!validator.validate(<body>).isEmpty()" not in t[0]["action"] or "never || turned into &&" not in t[0]["action"]):
+        return _fail("the BindingResult row is a conditional translation, not a rename: %s" % t)
     return 0
 
 

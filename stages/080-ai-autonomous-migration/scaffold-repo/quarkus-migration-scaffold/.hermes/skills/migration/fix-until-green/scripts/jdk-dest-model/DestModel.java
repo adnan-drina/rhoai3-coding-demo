@@ -362,6 +362,9 @@ public final class DestModel {
                             }.scan(m.getBody(), null);
                         }
                         mrow.put("call_names", callNames);
+                        List<String> guards = m.getBody() == null ? List.of()
+                                : validationGuards(task, trees, unit, new TreePath(mp, m.getBody()));
+                        if (!guards.isEmpty()) { mrow.put("validation_guards", guards); }
                         declared.add(mrow);
                     }
                     row.put("declared", declared);
@@ -558,6 +561,115 @@ public final class DestModel {
         doc.put("types", types);
         Files.createDirectories(out.toAbsolutePath().getParent());
         try (Writer w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) { writeJson(w, doc); }
+    }
+
+    /**
+     * The VALIDATION GUARDS of one member body: every `if` condition that
+     * decides on bean-validation errors, as a boolean skeleton the Spring
+     * source and its Quarkus translation can be compared by (V16-8).
+     *
+     * `bindingResult.hasErrors()` (org.springframework.validation Errors or
+     * BindingResult) is the atom INVALID; `validator.validate(x).isEmpty()`
+     * (jakarta/javax.validation.Validator), directly or through a local the
+     * member initialized from validate(), is !INVALID. `!`, `||`, `&&` and
+     * parentheses keep their structure; every other operand is its own
+     * compiler-printed source text, so `x.getId() != null` stays itself. A
+     * type the compiler could not resolve (a source tree modelled without its
+     * classpath) is named through the file's own single-type imports.
+     */
+    private static List<String> validationGuards(JavacTask task, Trees trees, CompilationUnitTree unit, TreePath body) {
+        Map<String, String> imports = new LinkedHashMap<>();
+        for (com.sun.source.tree.ImportTree it : unit.getImports()) {
+            if (it.isStatic()) { continue; }
+            String q = it.getQualifiedIdentifier().toString();
+            if (!q.endsWith(".*")) { imports.put(q.substring(q.lastIndexOf('.') + 1), q); }
+        }
+        java.util.Set<String> violationLocals = new java.util.HashSet<>();
+        List<String> out = new ArrayList<>();
+        new TreePathScanner<Void, Void>() {
+            @Override public Void visitVariable(com.sun.source.tree.VariableTree v, Void x) {
+                ExpressionTree init = v.getInitializer();
+                if (init != null && isValidate(new TreePath(getCurrentPath(), init))) {
+                    violationLocals.add(v.getName().toString());
+                }
+                return super.visitVariable(v, x);
+            }
+            @Override public Void visitIf(com.sun.source.tree.IfTree n, Void x) {
+                String g = skeleton(new TreePath(getCurrentPath(), n.getCondition()));
+                if (g.contains("INVALID")) { out.add(g); }
+                return super.visitIf(n, x);
+            }
+            private String typeOf(TreePath p) {
+                TypeMirror tm = trees.getTypeMirror(p);
+                if (tm == null) { return ""; }
+                String t = task.getTypes().erasure(tm).toString();
+                return t.contains(".") ? t : imports.getOrDefault(t, t);
+            }
+            private boolean invokes(TreePath p, String name, String... owners) {
+                Tree t = p.getLeaf();
+                if (!(t instanceof com.sun.source.tree.MethodInvocationTree)) { return false; }
+                ExpressionTree sel = ((com.sun.source.tree.MethodInvocationTree) t).getMethodSelect();
+                if (!(sel instanceof com.sun.source.tree.MemberSelectTree)
+                        || !((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().contentEquals(name)) { return false; }
+                Element el = trees.getElement(p);
+                String owner = (el != null && el.getEnclosingElement() instanceof TypeElement)
+                        ? ((TypeElement) el.getEnclosingElement()).getQualifiedName().toString() : "";
+                String recv = typeOf(new TreePath(new TreePath(p, sel), ((com.sun.source.tree.MemberSelectTree) sel).getExpression()));
+                for (String o : owners) { if (o.equals(owner) || o.equals(recv)) { return true; } }
+                return false;
+            }
+            private boolean isValidate(TreePath p) {
+                return invokes(p, "validate", "jakarta.validation.Validator", "javax.validation.Validator");
+            }
+            private boolean isViolations(TreePath p) {
+                Tree t = p.getLeaf();
+                if (t instanceof com.sun.source.tree.IdentifierTree) {
+                    return violationLocals.contains(((com.sun.source.tree.IdentifierTree) t).getName().toString());
+                }
+                return isValidate(p);
+            }
+            private String neg(String s) {
+                return s.startsWith("!") && !s.startsWith("!(") ? s.substring(1)
+                        : (s.startsWith("!(") && s.endsWith(")") && balanced(s.substring(2, s.length() - 1)))
+                          ? s.substring(2, s.length() - 1) : (s.startsWith("(") || !s.contains(" ") ? "!" + s : "!(" + s + ")");
+            }
+            private boolean balanced(String s) {
+                int d = 0;
+                for (char c : s.toCharArray()) { if (c == '(') { d++; } else if (c == ')') { if (--d < 0) { return false; } } }
+                return d == 0;
+            }
+            private String skeleton(TreePath p) {
+                Tree t = p.getLeaf();
+                switch (t.getKind()) {
+                    case PARENTHESIZED:
+                        return skeleton(new TreePath(p, ((com.sun.source.tree.ParenthesizedTree) t).getExpression()));
+                    case LOGICAL_COMPLEMENT:
+                        return neg(skeleton(new TreePath(p, ((com.sun.source.tree.UnaryTree) t).getExpression())));
+                    case CONDITIONAL_OR:
+                    case CONDITIONAL_AND: {
+                        com.sun.source.tree.BinaryTree b = (com.sun.source.tree.BinaryTree) t;
+                        return "(" + skeleton(new TreePath(p, b.getLeftOperand()))
+                                + (t.getKind() == Tree.Kind.CONDITIONAL_OR ? " || " : " && ")
+                                + skeleton(new TreePath(p, b.getRightOperand())) + ")";
+                    }
+                    case METHOD_INVOCATION: {
+                        if (invokes(p, "hasErrors", "org.springframework.validation.Errors",
+                                "org.springframework.validation.BindingResult")) { return "INVALID"; }
+                        ExpressionTree sel = ((com.sun.source.tree.MethodInvocationTree) t).getMethodSelect();
+                        if (sel instanceof com.sun.source.tree.MemberSelectTree
+                                && ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().contentEquals("isEmpty")
+                                && isViolations(new TreePath(new TreePath(p, sel),
+                                        ((com.sun.source.tree.MemberSelectTree) sel).getExpression()))) {
+                            return "!INVALID";
+                        }
+                        return "{" + t.toString().replaceAll("\\s+", " ") + "}";
+                    }
+                    default:
+                        return "{" + t.toString().replaceAll("\\s+", " ") + "}";
+                }
+            }
+        }.scan(body, null);
+        return out;
     }
 
     /** Resolved calls and unhandled checked-exception sites in one member body. */

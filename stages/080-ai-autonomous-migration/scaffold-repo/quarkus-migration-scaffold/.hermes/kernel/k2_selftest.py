@@ -99,6 +99,17 @@ def main() -> int:
             else:
                 print("ok", name)
 
+        # V16-10 (v16): the > of a quoted sed replacement is text, and the
+        # sed script, awk program and grep pattern are expressions, not paths
+        expect_allow("cd %s && grep -n 'quarkus.profile' src/main/resources/application.properties | sed 's/=.*/=<set>/'" % dest,
+                     "v16_10_sed_expression_not_a_path", cwd=cwd)
+        expect_allow("grep -rn '/api/owners/' src | awk -F: '/Controller/ {print $1}'", "v16_10_grep_awk_expressions_not_paths", cwd=cwd)
+        expect_block("cat /etc/passwd", "v16_10_real_path_still_refused", "outside allow root", cwd=cwd)
+        expect_block("sed 's/=.*/=<set>/' /etc/hosts", "v16_10_sed_file_outside_root_refused", "/etc/hosts", cwd=cwd)
+        expect_block("grep -n /etc/passwd /etc/passwd", "v16_10_grep_file_spelled_like_pattern_refused", "/etc/passwd", cwd=cwd)
+        expect_block("awk -f /etc/prog.awk src/a.txt", "v16_10_awk_program_file_refused", "/etc/prog.awk", cwd=cwd)
+        expect_block("echo '<set>' > /etc/k2probe", "v16_10_unquoted_redirect_refused", "/etc/k2probe", cwd=cwd)
+
         expect_allow("export JAVA_HOME=/usr/lib/jvm/java-21-openjdk", "java_home")
         expect_allow("export PATH=/bin:$PATH", "path_concat")
         expect_allow("export PATH=/bin:$PATH; ls", "pathless_ls_cwd", cwd=cwd)

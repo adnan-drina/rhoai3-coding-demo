@@ -28,7 +28,7 @@ Paraphrased public API names. Prefer living Full-path from
 | rest-query-default | `@RequestParam(defaultValue=…)` | `@QueryParam` **plus** `@DefaultValue` (separate annotation) | ADOPT | JAX-RS has no `defaultValue=` on `@QueryParam`. dest-8 T002 emitted `@QueryParam(defaultValue=…)` (Spring leftover) and only the compiler caught it. |
 | rest-header | `@RequestHeader` | `@HeaderParam` | ADOPT | |
 | rest-body | `@RequestBody` | unannotated entity param / `@Consumes` | ADOPT | |
-| rest-valid | `@Valid` + `BindingResult` | Endpoint `@Valid` **or** manual validation — pick one strategy | ADOPT | AR-3.4 — `@Valid` runs before/with method; builtin violation mapper |
+| rest-valid | `@Valid` + `BindingResult` | Endpoint `@Valid` **or** manual validation — pick one strategy | ADOPT | AR-3.4 — `@Valid` runs before/with method; builtin violation mapper. Manual validation translates `bindingResult.hasErrors()` to `!validator.validate(dto).isEmpty()` with the rest of the guard verbatim (`\|\|` stays `\|\|`) and drops the parameter's `@Valid`; the DTO's constraints stay. |
 | rest-wildcard | Spring `/**` / `*` path patterns | Jakarta URI **templates** (`{param}` / regex in `{param:regex}`) | REDESIGN | Literal `*` in `@Path` is **not** a wildcard (AR-2.4) |
 | rest-response-status | `@ResponseStatus` | `Response.status(...)` or exception mapper | ADOPT | |
 | rest-advice | `@RestControllerAdvice` / `@ExceptionHandler` | `@ServerExceptionMapper` / `ExceptionMapper` | ADOPT | Do not map all `Exception` → 400 (AR-2.6) |

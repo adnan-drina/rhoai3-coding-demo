@@ -759,7 +759,97 @@ if tool == "patch" and isinstance(inp.get("patch"), str):
         _pth = _m.group(1) or _m.group(2)
         if _pth and _pth not in paths:
             paths.append(_pth)
+SHELL_SEPS = ("&&", "||", ";", "|", "|&")
+_PERL_INPLACE = re.compile(r"^-[pnlaw]*i(?:[.~][^\s]*)?$")
+
+def _command_segments(c):
+    """The command text split into simple commands, each a token list (shlex;
+    a quoting error falls back to whitespace), leading env assignments dropped."""
+    try:
+        import shlex
+        toks = shlex.split(c, posix=True)
+    except ValueError:
+        toks = c.split()
+    out, seg = [], []
+    for t in toks:
+        if t in SHELL_SEPS:
+            if seg:
+                out.append(seg)
+            seg = []
+        else:
+            seg.append(t)
+    if seg:
+        out.append(seg)
+    cleaned = []
+    for seg in out:
+        k = 0
+        while k < len(seg) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", seg[k]):
+            k += 1
+        if k < len(seg):
+            cleaned.append(seg[k:])
+    return cleaned
+
+def expression_args(c):
+    """The EXPRESSION arguments of sed, awk and grep in the command: a sed
+    script, an awk program, a grep pattern. They are text the tool
+    interprets, never a file it opens (V16-10: s/=.*/=<set>/ was read as a
+    path). A file operand -- and awk -f / grep -f / sed -f FILE -- stays a
+    path. Returned as the shell reads them (unquoted)."""
+    out = []
+    for seg in _command_segments(c) if c else []:
+        base, args = seg[0].rsplit("/", 1)[-1], seg[1:]
+        if base in ("sed", "gsed"):
+            given, i = False, 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-e", "--expression") and i + 1 < len(args):
+                    out.append(args[i + 1]); given = True; i += 2; continue
+                if a.startswith("--expression="):
+                    out.append(a.split("=", 1)[1]); given = True; i += 1; continue
+                if a in ("-f", "--file", "-l", "--line-length"):
+                    given = given or a in ("-f", "--file"); i += 2; continue
+                if a.startswith("-") and a != "-":
+                    i += 1; continue
+                if not given:
+                    out.append(a)
+                break
+        elif base in ("awk", "gawk", "mawk", "nawk"):
+            i = 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-f", "--file"):
+                    break
+                if a in ("-v", "-F", "--assign", "--field-separator") and i + 1 < len(args):
+                    i += 2; continue
+                if a.startswith("-") and a != "-":
+                    i += 1; continue
+                out.append(a)
+                break
+        elif base in ("grep", "egrep", "fgrep", "rg"):
+            given, i = False, 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-e", "--regexp") and i + 1 < len(args):
+                    out.append(args[i + 1]); given = True; i += 2; continue
+                if a.startswith("--regexp="):
+                    out.append(a.split("=", 1)[1]); given = True; i += 1; continue
+                if a in ("-f", "--file"):
+                    given = True; i += 2; continue
+                if a in ("-m", "-A", "-B", "-C", "--max-count", "--after-context", "--before-context", "--context",
+                         "-g", "--glob", "-t", "--type") and i + 1 < len(args):
+                    i += 2; continue
+                if a.startswith("-") and a != "-":
+                    i += 1; continue
+                if not given:
+                    out.append(a)
+                break
+    return [e for e in out if e]
+
 cmd_for_paths = strip_env_assignments(cmd) if cmd else ""
+for _expr in expression_args(cmd):
+    # the first occurrence only: the expression precedes the file operands,
+    # and a file operand spelled the same way must still be read as a path
+    cmd_for_paths = cmd_for_paths.replace(_expr, " ", 1)
 if cmd_for_paths:
     for tok in cmd_for_paths.split():
         if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
@@ -833,36 +923,6 @@ def write_effect_paths(c):
         found.append(m.group(1))
     return found
 
-SHELL_SEPS = ("&&", "||", ";", "|", "|&")
-_PERL_INPLACE = re.compile(r"^-[pnlaw]*i(?:[.~][^\s]*)?$")
-
-def _command_segments(c):
-    """The command text split into simple commands, each a token list (shlex;
-    a quoting error falls back to whitespace), leading env assignments dropped."""
-    try:
-        import shlex
-        toks = shlex.split(c, posix=True)
-    except ValueError:
-        toks = c.split()
-    out, seg = [], []
-    for t in toks:
-        if t in SHELL_SEPS:
-            if seg:
-                out.append(seg)
-            seg = []
-        else:
-            seg.append(t)
-    if seg:
-        out.append(seg)
-    cleaned = []
-    for seg in out:
-        k = 0
-        while k < len(seg) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", seg[k]):
-            k += 1
-        if k < len(seg):
-            cleaned.append(seg[k:])
-    return cleaned
-
 def inplace_edit_targets(c):
     """Files an IN-PLACE EDITOR in the command text would rewrite: sed -i /
     --in-place (GNU, and BSD -i with an empty suffix) and perl -i / -pi / -ni[.bak].
@@ -935,14 +995,38 @@ def inplace_edit_targets(c):
             found.extend(f for f in files if f)
     return found
 
+def _shell_words(c):
+    """The command as the shell reads it: quoted text is one word and an
+    operator (>, >>, &&, |, ...) is a word of its own only where it is not
+    quoted. None when the text does not parse (unbalanced quotes)."""
+    try:
+        import shlex
+        lex = shlex.shlex(c, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        return list(lex)
+    except ValueError:
+        return None
+
 def redirect_targets(c):
     """Files a shell REDIRECTION in the command text would create or extend
     (> and >>), by name. Relative operands were invisible before: the path
     collector reads only absolute, ./ and ../ tokens, so `echo x > src/A.java`
     was a write the write set never saw (H4). /dev/*, `>&n` and process
-    substitutions are not files."""
+    substitutions are not files. Only an UNQUOTED operator redirects (V16-10:
+    the > of a quoted sed replacement such as s/=.*/=<set>/ is text, and read
+    as a redirection it named the path /)."""
     found = []
     if not c:
+        return found
+    words = _shell_words(c)
+    if words is not None:
+        for i, w in enumerate(words):
+            if not w or set(w) - set("<>|&") or ">" not in w or w.startswith("<") or w.endswith("&"):
+                continue
+            target = words[i + 1] if i + 1 < len(words) else ""
+            if not target or target.startswith("/dev/") or target.startswith("&") or not (set(target) - set("<>|&;")):
+                continue
+            found.append(target)
         return found
     for m in re.finditer(r"(?<![<>])>>?\s*([^\s|;&<>()]+)", c):
         target = m.group(1).strip(chr(34) + chr(39))
@@ -1210,7 +1294,11 @@ def looks_like_write_cmd(c):
         return False
     if inplace_edit_targets(c):
         return True
-    if re.search(r"(?:^|[^=])>(?!>)", c) and ">/dev/null" not in c.replace(" ", ""):
+    if _shell_words(c) is not None:
+        # the shell reading of the command decides what redirects (V16-10)
+        if redirect_targets(c):
+            return True
+    elif re.search(r"(?:^|[^=])>(?!>)", c) and ">/dev/null" not in c.replace(" ", ""):
         if re.search(r">\s*/dev/null\b", c):
             pass
         elif re.search(r"[^0-9]>\s*\S+", c) or re.search(r"^\s*>\s*\S+", c):

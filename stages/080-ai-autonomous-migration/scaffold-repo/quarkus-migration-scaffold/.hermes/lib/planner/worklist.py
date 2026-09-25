@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit,  # noqa: E501
+from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit, tree_model,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
 from planner.paths import is_product_path, LOOP_ACCEPTED, VERIFY_DIR, CATALOGS_DIR, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 import response_adapters as _adapters  # noqa: E402  (.hermes/lib, beside this package)
@@ -3369,6 +3369,20 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 summary = (" Generated body type %s requires %s, which the recorded request does not send: the generator's configuration in pom.xml is the locus, not the controller." % (
                     gb.get("type"), ", ".join(gb["missing_required"])) if gb.get("missing_required") else
                     " Generated body type %s: %s" % (gb.get("type"), (gb.get("carried_routing") or {}).get("reason")))
+                # V16-8: the catalog's conditional rule for this generator IS
+                # the first action, on the item itself and in its message, so
+                # no reader has to find it inside the handler advice
+                crow = gb.get("catalog_row") or {}
+                opt = crow.get("required_args_constructor") or {}
+                if opt and not (gb.get("option") or {}).get("stopped"):
+                    keep = crow.get("keep") or {}
+                    summary += (" FIRST ACTION (compat-mapping build_plugins %s, generator %s): set <%s>%s</%s> under the plugin's "
+                                "<configOptions> in pom.xml (line %s)%s." % (
+                                    "%s:%s" % (plugin.get("groupId") or "org.openapitools", plugin.get("artifactId") or OPENAPI_GENERATOR_ARTIFACT),
+                                    crow.get("generator"), opt.get("option"), opt.get("value_that_stops_it"), opt.get("option"),
+                                    plugin.get("configuration_line") or plugin.get("line") or "?",
+                                    "".join("; keep <%s>%s</%s>" % (k, (v or {}).get("value"), k) for k, v in sorted(keep.items()))))
+                    row["first_action"] = str(rejection.get("first_action") or "")
             out.append(dict(row,
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
                             message=("%s differs from the source (%s): %s.%s" % (ep, scenario or "read oracle", "; ".join(other), summary))[:1200],
@@ -4472,7 +4486,7 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
         hrow = (handler_rows or {}).get(fqn)
         if sites and hrow is not None:
             out.append({"from": fqn, "to": "", "handler_parameter": True, "action": str(hrow.get("action") or ""),
-                        "sites": sites,
+                        "sites": sites, **({"translation": dict(hrow["translation"])} if isinstance(hrow.get("translation"), dict) else {}),
                         "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
                                         "key": fqn, "kind": str(hrow.get("kind") or ""), "source": str(hrow.get("source") or "")}})
         own = (owned or {}).get(fqn)
@@ -5602,12 +5616,91 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(dict(base, verdict="ok", proof="parsed-symbol-absence" if parsed_absence else "resolved-model",
                         detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
     out.extend(_assess_implementations(Path(root), scope, model, by_path, rule))
-    out.extend(_assess_handler_parameters(scope, by_path, rule))
+    out.extend(_assess_handler_parameters(scope, by_path, rule, root=Path(root)))
     return out
 
 
+def _translation_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], bound: dict[str, str],
+                         source: dict[str, Any] | None, source_gap: str) -> dict[str, Any] | None:
+    """V16-8: the BindingResult translation, checked structurally. The
+    handler's validation guards must be the frozen source handler's, with
+    hasErrors() and !validate(...).isEmpty() the same atom (INVALID); and a
+    handler that validates itself must not keep @Valid on a parameter (the
+    platform would validate first and answer the violation itself). None when
+    nothing is wrong; a source the model cannot read makes no guard claim."""
+    dst = sorted({str(g) for m in handlers for g in (m.get("validation_guards") or [])})
+    if dst:
+        kept = ["%s %s" % (_param_identity(p, bound) or p.get("type"), p.get("name")) for m in handlers
+                for p in (m.get("params") or []) if isinstance(p, dict)
+                and any((str(a.get("fqn") or "") if "." in str(a.get("fqn") or "") else bound.get(str(a.get("simple") or a.get("fqn") or ""), ""))
+                        in _VALID_ANNOTATIONS for a in (p.get("annotations") or []) if isinstance(a, dict))]
+        if kept:
+            return {"verdict": "violates",
+                    "detail": "the handler %s.%s validates its body itself (%s) and still carries @Valid on %s: the platform "
+                              "validates a @Valid parameter first and answers the violation with its own 400 report, so the "
+                              "source's response is never built -- remove @Valid from the parameter (compat-mapping "
+                              "handler_parameters jakarta.validation.Valid); keep the DTO's constraints and nested @Valid"
+                              % (typ_fqn, name, "; ".join(dst), ", ".join(kept))}
+    if source is None:
+        return None
+    src = _guards(_unit_types(source), typ_fqn, name)
+    if not src:
+        return None
+    missing = [g for g in src if g not in dst]
+    if not missing:
+        return None
+    inverted = [g for g in missing if _negated(g) in dst or _flipped(g) in dst]
+    return {"verdict": "violates",
+            "detail": "the source handler %s.%s decides on %s and the candidate on %s%s: bindingResult.hasErrors() is "
+                      "!validator.validate(<body>).isEmpty(), and the rest of the guard stays as the source wrote it "
+                      "(compat-mapping handler_parameters BindingResult translation)"
+                      % (typ_fqn, name, "; ".join(missing), "; ".join(dst) or "no validation guard",
+                         " -- INVERTED" if inverted else "")}
+
+
+FROZEN_INPUT = Path(".derived") / "frozen-input"
+_VALID_ANNOTATIONS = ("jakarta.validation.Valid", "javax.validation.Valid")
+
+
+def frozen_source_model(root: Path | None) -> tuple[dict[str, Any] | None, str]:
+    """(the compiler model of the FROZEN source, why not). Its own build
+    classpath when M1 recorded one (evidence/build/classpath.txt), else none:
+    the parse tree and the file's own imports still name what it calls."""
+    if root is None:
+        return None, "no destination root"
+    tree = Path(root) / FROZEN_INPUT
+    cp = Path(root) / "evidence" / "build" / "classpath.txt"
+    try:
+        return tree_model(Path(root), tree, classpath=cp if cp.is_file() and cp.stat().st_size else None), ""
+    except DestModelUnavailable as exc:
+        return None, str(exc)
+
+
+def _guards(types: list[dict[str, Any]], fqn: str, name: str) -> list[str] | None:
+    """The validation guards of every member `name` of type `fqn`, or None
+    when the model has no such member."""
+    ms = [m for t in types if str(t.get("fqn") or "") == fqn for m in (t.get("declared") or [])
+          if isinstance(m, dict) and str(m.get("name") or "") == name]
+    if not ms:
+        return None
+    return sorted({str(g) for m in ms for g in (m.get("validation_guards") or [])})
+
+
+def _flipped(g: str) -> str:
+    """The guard with every validation atom inverted (INVALID <-> !INVALID):
+    the v16 translation that kept the operators and lost the negation."""
+    return g.replace("!INVALID", "\0").replace("INVALID", "!INVALID").replace("\0", "INVALID")
+
+
+def _negated(g: str) -> str:
+    if g.startswith("!(") and g.endswith(")"):
+        return g[2:-1]
+    if g.startswith("!"):
+        return g[1:]
+    return ("!" + g) if g.startswith("(") or " " not in g else "!(%s)" % g
+
 def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[dict[str, Any]]],
-                               rule: str) -> list[dict[str, Any]]:
+                               rule: str, *, root: Path | None = None) -> list[dict[str, Any]]:
     """V16-5: every handler site a handler_parameters row sealed, after the
     candidate. The handler must no longer take the retired type, nor the type
     symbol_renames names for it, unless that parameter carries @Context -- an
@@ -5616,6 +5709,10 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
     by deleting it."""
     renames = {str(t.get("from") or ""): str(t.get("to") or "") for t in (scope.get("target_symbols") or [])
                if isinstance(t, dict) and t.get("to")}
+    source: dict[str, Any] | None = None
+    source_gap = ""
+    if root is not None and any(isinstance(t, dict) and t.get("translation") for t in (scope.get("target_symbols") or [])):
+        source, source_gap = frozen_source_model(root)
     out: list[dict[str, Any]] = []
     for row in scope.get("target_symbols") or []:
         if not isinstance(row, dict) or not row.get("handler_parameter"):
@@ -5651,6 +5748,11 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
                                 detail="the handler %s.%s still takes %s without @Context; the compat layer binds no such "
                                        "parameter -- %s" % (typ_fqn, name, ", ".join(bad), row.get("action") or "")))
                 continue
+            if row.get("translation"):
+                verdict = _translation_verdict(typ_fqn, name, handlers, bound, source, source_gap)
+                if verdict:
+                    out.append(dict(base, **verdict))
+                    continue
             out.append(dict(base, verdict="ok", detail="the handler %s.%s no longer takes %s as a bound parameter"
                                                        % (typ_fqn, name, " or ".join(sorted(banned)))))
     return out

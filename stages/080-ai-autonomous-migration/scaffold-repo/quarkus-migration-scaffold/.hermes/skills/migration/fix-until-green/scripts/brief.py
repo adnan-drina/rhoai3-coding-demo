@@ -1180,6 +1180,7 @@ def main(argv: list[str] | None = None) -> int:
                                         **({"retire": True, "action": t.get("action")} if t.get("retire") else {}),
                                         **({"handler_parameter": True, "action": t.get("action"), "sites": t.get("sites")}
                                            if t.get("handler_parameter") else {}),
+                                        **({"translation": t.get("translation")} if t.get("translation") else {}),
                                         **({"applies_to": t.get("applies_to"), "not_for": t.get("not_for")}
                                            if t.get("not_for") else {}))
                                    for t in (scope.get("target_symbols") or [])],
