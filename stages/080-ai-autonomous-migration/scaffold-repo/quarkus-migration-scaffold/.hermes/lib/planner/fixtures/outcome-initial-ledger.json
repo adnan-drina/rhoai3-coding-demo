@@ -1,0 +1,201 @@
+{
+  "entry_points": [
+    {
+      "entry_point_id": "ep:org.example.ledger.jobs.NightlyReconcile#run():scheduled",
+      "file": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+      "kind": "non-http"
+    },
+    {
+      "entry_point_id": "ep:org.example.ledger.msg.PaymentListener#onMessage(org.example.ledger.msg.Payment):messaging",
+      "file": "src/main/java/org/example/ledger/msg/PaymentListener.java",
+      "kind": "non-http"
+    },
+    {
+      "entry_point_id": "ep:org.example.ledger.Main#main(java.lang.String[]):main",
+      "file": "src/main/java/org/example/ledger/Main.java",
+      "kind": "non-http"
+    }
+  ],
+  "oracles": {
+    "ep:org.example.ledger.jobs.NightlyReconcile#run():scheduled": [
+      "nightly-balance"
+    ],
+    "ep:org.example.ledger.msg.PaymentListener#onMessage(org.example.ledger.msg.Payment):messaging": [
+      "payment-posted"
+    ]
+  },
+  "provenance": {
+    "construction": "hand-written; a structurally different application with no HTTP entry point, a shared dependency that sorts AFTER one of its consumers, a test-kind cluster and a measured non-HTTP parity obligation",
+    "observed_migration_event": false,
+    "scope_note": "constructed admission-time snapshot of a non-HTTP ledger service: scheduled job, message listener and CLI main sharing one repository",
+    "snapshot_kind": "synthetic"
+  },
+  "references": {
+    "src/main/java/org/example/ledger/jobs/NightlyReconcile.java": [
+      "src/main/java/org/example/ledger/store/LedgerRepository.java"
+    ],
+    "src/main/java/org/example/ledger/msg/PaymentListener.java": [
+      "src/main/java/org/example/ledger/store/LedgerRepository.java"
+    ]
+  },
+  "worklist": {
+    "blocked_clusters": [],
+    "clusters": [
+      {
+        "id": "c:ds",
+        "items": [
+          "cfg:ledger:datasource"
+        ],
+        "kind": "config",
+        "order_key": [
+          1,
+          0,
+          "a"
+        ],
+        "path": "src/main/resources/application.yaml",
+        "status": "open",
+        "write_set": [
+          "src/main/resources/application.yaml"
+        ]
+      },
+      {
+        "id": "c:jobs",
+        "items": [
+          "err:jobs:scheduled-annotation"
+        ],
+        "kind": "compile",
+        "order_key": [
+          2,
+          0,
+          "src/main/java/org/example/ledger/jobs/NightlyReconcile.java"
+        ],
+        "path": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+        "retry_key": "rk:jobs",
+        "status": "open",
+        "write_set": [
+          "src/main/java/org/example/ledger/jobs/NightlyReconcile.java"
+        ]
+      },
+      {
+        "id": "c:repo",
+        "items": [
+          "err:repo:jdbc-template"
+        ],
+        "kind": "compile",
+        "order_key": [
+          2,
+          1,
+          "src/main/java/org/example/ledger/store/LedgerRepository.java"
+        ],
+        "path": "src/main/java/org/example/ledger/store/LedgerRepository.java",
+        "retry_key": "rk:repo",
+        "status": "open",
+        "write_set": [
+          "src/main/java/org/example/ledger/store/LedgerRepository.java"
+        ]
+      },
+      {
+        "id": "c:test",
+        "items": [
+          "test:ledger:balance"
+        ],
+        "kind": "test",
+        "order_key": [
+          4,
+          0,
+          "src/main/java/org/example/ledger/jobs/Balance.java"
+        ],
+        "path": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+        "retry_key": "rk:test-balance",
+        "status": "open",
+        "write_set": [
+          "src/main/java/org/example/ledger/jobs/Balance.java"
+        ]
+      },
+      {
+        "gate": "parity",
+        "id": "c:parity",
+        "items": [
+          "parity:reconcile-run"
+        ],
+        "kind": "parity",
+        "order_key": [
+          5,
+          0,
+          "src/main/java/org/example/ledger/jobs/NightlyReconcile.java"
+        ],
+        "path": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+        "status": "open",
+        "write_set": [
+          "src/main/java/org/example/ledger/jobs/NightlyReconcile.java"
+        ]
+      }
+    ],
+    "deferred": [],
+    "items": [
+      {
+        "category": "mandatory",
+        "id": "cfg:ledger:datasource",
+        "kind": "config",
+        "line": 0,
+        "path": "src/main/resources/application.yaml",
+        "rule_id": "",
+        "source": "mta"
+      },
+      {
+        "category": "mandatory",
+        "id": "err:repo:jdbc-template",
+        "kind": "compile",
+        "line": 0,
+        "path": "src/main/java/org/example/ledger/store/LedgerRepository.java",
+        "rule_id": "",
+        "source": "javac"
+      },
+      {
+        "category": "mandatory",
+        "id": "err:jobs:scheduled-annotation",
+        "kind": "compile",
+        "line": 0,
+        "path": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+        "rule_id": "",
+        "source": "javac"
+      },
+      {
+        "category": "mandatory",
+        "id": "test:ledger:balance",
+        "kind": "test",
+        "line": 0,
+        "path": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+        "rule_id": "",
+        "source": "surefire"
+      },
+      {
+        "category": "mandatory",
+        "entry_point": "ep:org.example.ledger.jobs.NightlyReconcile#run():scheduled",
+        "id": "parity:reconcile-run",
+        "kind": "parity",
+        "line": 0,
+        "path": "src/main/java/org/example/ledger/jobs/NightlyReconcile.java",
+        "rule_id": "",
+        "scenario": "nightly-balance",
+        "source": "parity"
+      }
+    ],
+    "measure": {
+      "blocked": [],
+      "compile_errors": 2,
+      "failing_tests": 1,
+      "known": true,
+      "mandatory_incidents": 0,
+      "parity_mismatches": 1,
+      "tuple": [
+        0,
+        2,
+        1
+      ]
+    },
+    "not_counted": [],
+    "schema": "rhoai3.worklist/v1",
+    "unlocatable": []
+  }
+}

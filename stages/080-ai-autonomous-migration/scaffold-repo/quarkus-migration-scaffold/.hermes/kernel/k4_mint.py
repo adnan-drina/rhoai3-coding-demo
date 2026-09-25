@@ -365,6 +365,20 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: pass --root PATH", file=sys.stderr)
         return 1
     root = root.resolve()
+    # Outcome board (OUTCOME-BOARD-CONTRACT.md): the protocol is fixed at run
+    # creation. An outcome-board run publishes its whole graph through
+    # k4_graph (worker identity retained); serial minting refuses there, and
+    # an outcome store on a serial run refuses both.
+    from planner.outcome_protocol import describe, mixed_state, select_protocol
+    sel = select_protocol(root)
+    if sel.outcome:
+        import k4_graph
+        return k4_graph.main(["--root", str(root), "publish" if execute else "preview", "--hermes", hermes])
+    mixed = mixed_state(root, sel)
+    if mixed:
+        print(describe(mixed), file=sys.stderr)
+        print("K4 mint REFUSED before emitting any command (0 creates).", file=sys.stderr)
+        return 1
     from planner.run_control import run_gaps
     drift = run_gaps(root)
     if drift:

@@ -328,58 +328,69 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
         return None, issues
     if write_root:
         write_bodies(root, result["payloads"])
-        # the issued card: advance.py promotes a candidate only for this cluster/attempt/key
-        issued_path = root / LOOP_ISSUED
-        prev = load_json(issued_path) if issued_path.is_file() else {}
-        issued_ids = set(card.get("items") or [])
-        scope = seal_issued_parity_scope(worklist, issued_ids)
-        issued_mode = str(scope.get("security_mode") or "")
-        if not issued_mode:
-            # a non-parity card has no mode of its own; a parity card whose
-            # items were already gone at mint must not invent disabled --
-            # verification pending rather than a silent fallback
-            issued_mode = "" if str(card.get("gate") or "") == "parity" else "disabled"
-        write_canonical(issued_path, {
-            "schema": "rhoai3.loop-issued/v1",
-            "cluster": card["id"],
-            "kind": card["kind"],
-            "attempt": card["attempt"],
-            "idempotency_key": payload["idempotency_key"],
-            "receipt_sha256": receipt["receipt_digest"],
-            "write_set": list(card["write_set"]),
-            "gate": str(card.get("gate") or ""),
-            "items": list(card.get("items") or []),
-            # what the gate held when this card was issued: acceptance compares
-            # against that, not against the last accepted step (a gate can
-            # start failing long after the last acceptance)
-            "gate_items": sorted(gate_items(worklist, str(card.get("gate") or ""))) if card.get("gate") else [],
-            # the sealed scope inventory this card is judged against; acceptance
-            # re-reads it from disk and refuses a digest that is not this one
-            "batch_scope": dict(card.get("batch_scope") or {}),
-            # the formed unit and its SYMBOL seal, beside the file seal: which
-            # diagnostics the checkpoint may tolerate, what assess_unit must
-            # find discharged, what a CONTINUE may move to
-            "unit": dict(card.get("unit") or {}),
-            "unit_symbols": list((card.get("unit") or {}).get("symbols") or []),
-            "retry_key": str(card.get("retry_key") or card["id"]),
-            # the one budget answer (planner.budget), recorded where the card is issued
-            "budget": loop_budget(load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}, card["id"],
-                                  str(card.get("retry_key") or card["id"]), max_attempts(load_decisions(root))),
-            # each issued compile failure's identity WITHOUT its line: acceptance
-            # asks whether THIS is still reported, not whether its err: id is
-            "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
-                                if str(i.get("id")) in issued_ids and i.get("identity")},
-            "security_mode": issued_mode,
-            # sealed at mint so a later work-list rebuild that dropped the
-            # item cannot change what this card verifies. item_scope is the
-            # per-item snapshot verification recovers; the live work list is
-            # remaining-work only and is not consulted at verify time.
-            "scenarios": list(scope.get("scenarios") or []),
-            "entry_points": list(scope.get("entry_points") or []),
-            "item_scope": list(scope.get("item_scope") or []),
-            "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
-        })
+        write_issued(root, worklist, card, receipt["receipt_digest"], payload["idempotency_key"])
     return result, []
+
+
+def write_issued(root: Path, worklist: dict[str, Any], card: dict[str, Any], receipt_digest: str,
+                 idempotency_key: str, task_id: str | None = None) -> None:
+    """verification/loop/issued.json for one cluster card. The serial loop
+    writes it at mint (task_id bound later by k4_mint); an outcome-board issue
+    writes it for the cluster the authority issued, with its own key and the
+    claimed task (outcome_gate.py issue). Same record, same readers."""
+    root = Path(root)
+    # the issued card: advance.py promotes a candidate only for this cluster/attempt/key
+    issued_path = root / LOOP_ISSUED
+    prev = load_json(issued_path) if issued_path.is_file() else {}
+    issued_ids = set(card.get("items") or [])
+    scope = seal_issued_parity_scope(worklist, issued_ids)
+    issued_mode = str(scope.get("security_mode") or "")
+    if not issued_mode:
+        # a non-parity card has no mode of its own; a parity card whose
+        # items were already gone at mint must not invent disabled --
+        # verification pending rather than a silent fallback
+        issued_mode = "" if str(card.get("gate") or "") == "parity" else "disabled"
+    write_canonical(issued_path, {
+        "schema": "rhoai3.loop-issued/v1",
+        "cluster": card["id"],
+        "kind": card["kind"],
+        "attempt": card["attempt"],
+        "idempotency_key": idempotency_key,
+        "receipt_sha256": receipt_digest,
+        "write_set": list(card["write_set"]),
+        "gate": str(card.get("gate") or ""),
+        "items": list(card.get("items") or []),
+        # what the gate held when this card was issued: acceptance compares
+        # against that, not against the last accepted step (a gate can
+        # start failing long after the last acceptance)
+        "gate_items": sorted(gate_items(worklist, str(card.get("gate") or ""))) if card.get("gate") else [],
+        # the sealed scope inventory this card is judged against; acceptance
+        # re-reads it from disk and refuses a digest that is not this one
+        "batch_scope": dict(card.get("batch_scope") or {}),
+        # the formed unit and its SYMBOL seal, beside the file seal: which
+        # diagnostics the checkpoint may tolerate, what assess_unit must
+        # find discharged, what a CONTINUE may move to
+        "unit": dict(card.get("unit") or {}),
+        "unit_symbols": list((card.get("unit") or {}).get("symbols") or []),
+        "retry_key": str(card.get("retry_key") or card["id"]),
+        # the one budget answer (planner.budget), recorded where the card is issued
+        "budget": loop_budget(load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}, card["id"],
+                              str(card.get("retry_key") or card["id"]), max_attempts(load_decisions(root))),
+        # each issued compile failure's identity WITHOUT its line: acceptance
+        # asks whether THIS is still reported, not whether its err: id is
+        "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
+                            if str(i.get("id")) in issued_ids and i.get("identity")},
+        "security_mode": issued_mode,
+        # sealed at mint so a later work-list rebuild that dropped the
+        # item cannot change what this card verifies. item_scope is the
+        # per-item snapshot verification recovers; the live work list is
+        # remaining-work only and is not consulted at verify time.
+        "scenarios": list(scope.get("scenarios") or []),
+        "entry_points": list(scope.get("entry_points") or []),
+        "item_scope": list(scope.get("item_scope") or []),
+        "task_id": (task_id if task_id is not None else
+                    (str(prev.get("task_id") or "") if prev.get("idempotency_key") == idempotency_key else "")),
+    })
 
 
 def format_issues(issues: list[Issue]) -> str:

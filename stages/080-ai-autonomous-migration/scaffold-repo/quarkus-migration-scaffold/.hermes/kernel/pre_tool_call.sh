@@ -515,6 +515,44 @@ def review_reviewer():
         rv = m.group(1).strip(chr(34)) if m else ""
     return rv
 
+# Outcome board (stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md).
+# On an outcome-board run the terminators and product writes are decided from
+# the authority record and the native board, never from the card body or K2_*
+# overrides. A serial-loop run (no store, run-defaults not naming the protocol)
+# passes through unchanged. Not claimed control (cooperative store, F1).
+OB_ROOT = ""
+for _c in [(os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()] + [x.strip() for x in allow.split(os.pathsep)]:
+    if _c:
+        OB_ROOT = os.path.realpath(_c)
+        break
+OB = None
+if OB_ROOT:
+    try:
+        _ob_hit = os.path.exists(os.path.join(OB_ROOT, "verification", "outcome-board", "authority.sqlite3")) or \
+            b"outcome-board/v1" in open(os.path.join(OB_ROOT, "run-defaults.json"), "rb").read()
+    except OSError:
+        _ob_hit = False
+    if _ob_hit:
+        for _d in (os.path.join(OB_ROOT, ".hermes", "kernel"), os.path.join(OB_ROOT, ".hermes", "lib")):
+            if _d and os.path.isdir(_d) and _d not in sys.path:
+                sys.path.insert(0, _d)
+        try:
+            from planner import outcome_hook as OB
+        except Exception as exc:
+            block("outcome-board hook unavailable (fail closed): %s" % exc)
+        _ob_kind = "complete" if is_complete() else ("request_review" if is_request_review() else ("block" if is_block() else ""))
+        if _ob_kind == "request_review" and review_reviewer() != "reviewer":
+            block("kanban_request_review refused: name the reviewer (reviewer=reviewer)")
+        if _ob_kind:
+            _ob_d = OB.terminator(OB_ROOT, kind=_ob_kind, profile=profile, env=dict(os.environ), audit_green=paved_road_audit_green)
+            if _ob_d is not None:
+                if _ob_kind == "complete":
+                    record_complete_invocation("outcome_%s" % str(_ob_d.get("code") or "").lower())
+                if _ob_d.get("action") == "block":
+                    block(_ob_d.get("message") or "outcome-board refusal")
+                print("{}")
+                raise SystemExit(0)
+
 # A review handed to nobody is dispatched back to the implementer: pilot v6
 # t_b2fe5a8d (2026-09-10) sent reviewer=None, the implementer re-ran advance.py
 # on its own accepted card (LOOP_WRONG_CARD), blocked it, and the successor
@@ -1612,7 +1650,21 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
         if dest_root() and not in_dest_write_sandbox(pr):
             block("write pom.xml is outside the dest write sandbox (legacy is read-only)")
 
-writeset = load_writeset()
+OB_WRITES = None
+if OB is not None and (tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect):
+    _ob_rels = []
+    for p in (paths if tool in WRITE_TOOLS else (list(effect) if effect else list(paths))):
+        _rp = resolve_rp(p)
+        if tool not in WRITE_TOOLS and (toolchain_read(_rp) or toolchain_read(str(p).replace("\\", "/"))):
+            continue
+        _rel = dest_rel(_rp)
+        if _rel:
+            _ob_rels.append(_rel)
+    OB_WRITES = OB.writes(OB_ROOT, rel_paths=_ob_rels, env=dict(os.environ))
+    if OB_WRITES is not None and OB_WRITES.get("action") == "block":
+        block(OB_WRITES.get("message") or "outcome-board refusal")
+# on an outcome-board run the authority decided the write above; the body and K2_* never select a write set or phase
+writeset = load_writeset() if OB_WRITES is None else None
 # H4 (dest v9 t_4d75569c): the files_writable of the card body is the write
 # set as MINTED. amend-scope.py widens the write set of the ISSUED card on the
 # record (verification/loop/issued.json), and the body is never re-minted, so
@@ -1624,7 +1676,7 @@ writeset = load_writeset()
 _issued_ws = loop_write_set()
 if writeset is not None and _issued_ws:
     writeset = list(writeset) + [w for w in _issued_ws if w not in writeset]
-phase = load_phase()
+phase = load_phase() if OB_WRITES is None else ""
 if phase in {"M4", "VERDICT"}:
     if looks_like_write_cmd(cmd) and (
         "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)

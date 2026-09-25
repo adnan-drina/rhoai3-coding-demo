@@ -88,6 +88,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _outcome_bridge  # noqa: E402  outcome-board protocol; a no-op on serial-loop runs
 from _loop_common import PARITY_SNAPSHOT, _pending_dir, attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports, tree_changes  # noqa: E402
 
 ensure_hermes_lib()
@@ -334,6 +335,8 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     cluster (K4 mints the next attempt); defer + stop at the threshold.
     `legal_next` is what the retry brief tells the next attempt it may do;
     a reason that knows better than the default says so here."""
+    if _outcome_bridge.active(root) and _outcome_bridge.record(root, "REVERTED", candidate_sha256(root), reason):
+        return 1  # the outcome ledger refused (stale run, no issue): nothing moves
     verify = _verify_meta(load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
     issued = load_issued(root) or {}
     loci_before = [{"id": str(i.get("id") or i), "path": str(i.get("path") or ""), "line": i.get("line")}
@@ -409,6 +412,8 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
     Operator steps can land. Keeps issued.json so the same card can restore
     the candidate and re-verify; K4 must not mint a new attempt (pending
     blocks next_card). Terminator: kanban_block kind=needs_input naming the cluster."""
+    if _outcome_bridge.record(root, "VERIFICATION_PENDING", on_disk, reason):
+        return 1  # the outcome ledger refused: the candidate stays exactly where it is
     run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
     cause = cause or classify_inconclusive(cur.get("measure") or {}, run if isinstance(run, dict) else {})
     clear_pending(steps, cluster, why="replaced")
@@ -1127,6 +1132,8 @@ def main(argv: list[str] | None = None) -> int:
               "the package gate reaches proves or refutes it" % wiring["summary"])
     clear_pending(steps, args.cluster, why="accepted")
     _phase("verdict: accepted; committing the candidate")
+    if _outcome_bridge.record(root, "ACCEPTED", on_disk):
+        return 1  # accept-begin must be on the outcome ledger before the commit (crash recovery)
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     _phase("snapshotting the tool reports")
     snapshot_reports(root)
@@ -1168,6 +1175,10 @@ def main(argv: list[str] | None = None) -> int:
     # published either way: the accepted step is on record whether or not the
     # next card can be admitted, and the state must describe it
     publish_loop_state(root, rebuild)
+    if rec["status"] == "ADMITTED":
+        ob = _outcome_bridge.after_accept(root, sha, on_disk, rebuild if isinstance(rebuild, dict) else {}, run if isinstance(run, dict) else {})
+        if ob is not None:
+            return ob  # outcome board: the outcome is accepted, or its next cluster is issued on this same card
     return _finish_continuation(root, rec, args.card, sha, mint=not args.no_mint, hermes=args.hermes)
 
 
@@ -1455,6 +1466,9 @@ def _gate_scope_guidance(issued: dict, cur: dict, gate: str, changed: list[str])
 def _mint(root: Path, hermes: str) -> int:
     """Trusted continuation: K4 mints the next card. The current card is a
     parent through steps.json, never the M2 control card."""
+    ob = _outcome_bridge.reissue(root)
+    if ob is not None:
+        return ob  # outcome board: the next attempt stays on the same card; the graph is already published
     kernel = root / ".hermes" / "kernel" / "k4_mint.py"
     env = dict(os.environ)
     env.pop("HERMES_KANBAN_TASK", None)  # control cards come from verification/loop/cards.json

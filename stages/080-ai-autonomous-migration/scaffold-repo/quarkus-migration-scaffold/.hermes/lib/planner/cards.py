@@ -277,40 +277,45 @@ def pending_cluster_ids(steps: dict[str, Any] | None) -> list[str]:
     return out
 
 
+def cluster_card(head: dict[str, Any], steps: dict[str, Any] | None) -> dict[str, Any]:
+    """The M3 card for one cluster: the serial loop's head, or the cluster an
+    outcome-board issue names (planner.outcome_lifecycle)."""
+    rk = str(head.get("retry_key") or head["id"])
+    spent = attempts_spent(steps or {}, head["id"], rk)  # planner.budget: the one definition
+    card = {
+        "id": head["id"],
+        "kind": head["kind"],
+        "title": card_title(head, spent + 1),
+        "phase": "M3",
+        "path": head["path"],
+        "write_set": list(head["write_set"]),
+        "items": list(head["items"]),
+        "attempt": spent + 1,
+        "skills": list(CARD_SKILLS[head["kind"]]),
+    }
+    if head.get("gate"):
+        card["gate"] = str(head["gate"])
+    if head.get("batch_scope"):
+        card["batch_scope"] = dict(head["batch_scope"])
+    # A formed unit carries its sealed identity onto the card: the rule, the
+    # symbols, the documented targets, the evidence and the completion
+    # checks. The MEMBERS stay in the sealed inventory the card's refs point
+    # at -- a body is not where an inventory lives.
+    if head.get("unit"):
+        card["unit"] = dict(head["unit"])
+    if head.get("retry_key"):
+        card["retry_key"] = rk
+    return card
+
+
 def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[str, Any] | None:
     """The one card the loop needs now, or None when the run cannot proceed
     (a deferred cluster is open, a pending candidate is retained, or nothing else is left)."""
-    attempts = dict((steps or {}).get("attempts") or {})
     if pending_cluster_ids(steps):
         return None
     head = head_cluster(worklist)
     if head is not None:
-        rk = str(head.get("retry_key") or head["id"])
-        spent = attempts_spent(steps or {}, head["id"], rk)  # planner.budget: the one definition
-        card = {
-            "id": head["id"],
-            "kind": head["kind"],
-            "title": card_title(head, spent + 1),
-            "phase": "M3",
-            "path": head["path"],
-            "write_set": list(head["write_set"]),
-            "items": list(head["items"]),
-            "attempt": spent + 1,
-            "skills": list(CARD_SKILLS[head["kind"]]),
-        }
-        if head.get("gate"):
-            card["gate"] = str(head["gate"])
-        if head.get("batch_scope"):
-            card["batch_scope"] = dict(head["batch_scope"])
-        # A formed unit carries its sealed identity onto the card: the rule, the
-        # symbols, the documented targets, the evidence and the completion
-        # checks. The MEMBERS stay in the sealed inventory the card's refs point
-        # at -- a body is not where an inventory lives.
-        if head.get("unit"):
-            card["unit"] = dict(head["unit"])
-        if head.get("retry_key"):
-            card["retry_key"] = rk
-        return card
+        return cluster_card(head, steps)
     if worklist.get("deferred") or worklist.get("blocked_clusters"):
         return None
     m = worklist.get("measure") or {}
