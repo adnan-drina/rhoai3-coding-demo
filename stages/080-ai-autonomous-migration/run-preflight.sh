@@ -252,15 +252,34 @@ require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gate
 # every other consumer, fits the subscription's limit. The profile is the one
 # PINNED for this run.
 def rate_budget_gap(q, served, runs, limit):
+    reserve = int(q['reserve_tokens_per_window'])
+    if q.get('accounting_mode') == 'token':
+        # V15-1: reserved-and-settled tokens (runtime 0010). Each request
+        # reserves reservation_tokens (at least the served window) and is
+        # admitted while settled + open + reservation <= the run allowance, so
+        # the run can never exceed its allowance; admission sums allowances.
+        allowance, reservation = int(q['token_allowance_per_window']), int(q['reservation_tokens'])
+        if 'max_requests_per_window' in q:
+            return 'a token-mode profile also declares a request ceiling (max_requests_per_window)'
+        if reservation < served:
+            return 'the profile reserves %d tokens per request and the model serves %d' % (reservation, served)
+        if not 0 < reservation <= allowance:
+            return 'the reservation %d does not fit the allowance %d' % (reservation, allowance)
+        if not 0 < int(q['max_output_tokens']) < reservation:
+            return 'the output cap %s does not fit a %d-token request' % (q['max_output_tokens'], reservation)
+        total = runs * allowance + reserve
+        if total > limit:
+            return 'effective %d, declared %d (%d run(s) x %d token allowance + reserve %d)' % (limit, total, runs, allowance, reserve)
+        return ''
     per_request = int(q['max_request_tokens'])
     if per_request < served:
         return 'the profile sizes a request at %d tokens and the model serves %d' % (per_request, served)
     if not 0 < int(q['max_output_tokens']) < per_request:
         return 'the output cap %s does not fit a %d-token request' % (q['max_output_tokens'], per_request)
-    total = runs * int(q['max_requests_per_window']) * per_request + int(q['reserve_tokens_per_window'])
+    total = runs * int(q['max_requests_per_window']) * per_request + reserve
     if total > limit:
         return 'effective %d, declared %d (%d run(s) x %d requests x %d tokens + reserve %d)' % (
-            limit, total, runs, int(q['max_requests_per_window']), per_request, int(q['reserve_tokens_per_window']))
+            limit, total, runs, int(q['max_requests_per_window']), per_request, reserve)
     return ''
 prof_path = Path('/etc/rhoai3/run-control/profile.json')
 if not prof_path.is_file():
@@ -275,7 +294,13 @@ budget_gap = rate_budget_gap(q, WINDOW, runs, QLIMITVAL)
 require(not budget_gap, 'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s: %s; profile %s'
         % (prof_doc['default_model'], QWINVAL, budget_gap, prof_path))
 env_text = Path('/projects/.platform/hermes/.env').read_text() if Path('/projects/.platform/hermes/.env').is_file() else ''
-require('RHOAI3_REQUEST_BUDGET=%d/%d' % (int(q['max_requests_per_window']), int(q['window_seconds'])) in env_text
+require(((q.get('accounting_mode') == 'token'
+          and 'RHOAI3_ACCOUNTING_MODE=token' in env_text
+          and 'RHOAI3_TOKEN_BUDGET=%d/%d' % (int(q.get('token_allowance_per_window') or 0), int(q['window_seconds'])) in env_text
+          and 'RHOAI3_TOKEN_RESERVATION=%d' % int(q.get('reservation_tokens') or 0) in env_text
+          and 'RHOAI3_REQUEST_BUDGET=' not in env_text)
+         or (q.get('accounting_mode') != 'token'
+             and 'RHOAI3_REQUEST_BUDGET=%d/%d' % (int(q.get('max_requests_per_window') or 0), int(q['window_seconds'])) in env_text))
         and 'RHOAI3_REQUEST_LEDGER=' in env_text,
         'the worker runtime is not configured to pace this allowance (RHOAI3_REQUEST_BUDGET/LEDGER in the managed .env)')
 # B1: the workspace's own startup gate (planner.maas_route) must agree with

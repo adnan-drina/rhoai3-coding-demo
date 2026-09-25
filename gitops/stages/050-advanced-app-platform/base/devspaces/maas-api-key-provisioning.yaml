@@ -1626,7 +1626,17 @@ data:
         # ledger lives in the run-control state directory, outside the
         # destination and outside the worker's write sandbox.
         _q = MODEL_PROFILES[DEFAULT_MODEL]["quota"]
-        fh.write("RHOAI3_REQUEST_BUDGET=%d/%d\n" % (_q["max_requests_per_window"], _q["window_seconds"]))
+        if _q.get("accounting_mode") == "token":
+            # V15-1 (runtime 0010): reserve the served window before each
+            # request, settle to the reported usage; no request ceiling. An
+            # uncertain request keeps its reservation for the longest client
+            # request timeout (HERMES_API_TIMEOUT below) plus the window.
+            fh.write("RHOAI3_ACCOUNTING_MODE=token\n")
+            fh.write("RHOAI3_TOKEN_BUDGET=%d/%d\n" % (_q["token_allowance_per_window"], _q["window_seconds"]))
+            fh.write("RHOAI3_TOKEN_RESERVATION=%d\n" % _q["reservation_tokens"])
+            fh.write("RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS=3600\n")
+        else:
+            fh.write("RHOAI3_REQUEST_BUDGET=%d/%d\n" % (_q["max_requests_per_window"], _q["window_seconds"]))
         fh.write("RHOAI3_REQUEST_BUDGET_MAX_WAIT=%d\n" % _q["max_wait_seconds"])
         fh.write("RHOAI3_REQUEST_LEDGER=/projects/.platform/run-control-state/requests.log\n")
         # Worker request budgets (belt and braces with providers.custom above):
