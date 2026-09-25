@@ -147,6 +147,9 @@ previous code. Nothing is published or launched; the release mapping is
   CronJobs, and delivery Tasks with the existing provisioner CLI digest.
   Catalog refresh reproduced `ImagePullBackOff` after the overnight shutdown.
   Live recovery is qualified by successful Jobs after GitOps reconciliation.
+- [x] The same for the Stage 020, 030 and 040 hooks (2026-09-25). The v13 040
+  sync stalled on `job-prepare-maas-gateway-tls` with `ImagePullBackOff`,
+  because Red Hat's registry no longer serves a `latest` tag for `ose-cli`.
 
 ## Stage 080 v10 readiness — 2026-09-22
 
