@@ -1,7 +1,7 @@
 {
   "default_model": "qwen3-8-27b-int4",
   "notes": {
-    "quota": "B3/R2: an ENFORCED aggregate allowance for all model requests of one run (main, every retry, auxiliary and reviewer calls), paced by the Hermes runtime (patch 0007) from these values. max_request_tokens is the served model's enforced total per request (vLLM --max-model-len, prompt plus output; https://docs.vllm.ai/en/latest/configuration/engine_args/): the pacer counts requests, not input tokens, so admission uses the bound the server enforces rather than the configured context. max_output_tokens is the largest output any request may ask for (Hermes truncation retries grow to 32768; auxiliary calls carry it as their default cap). Admission (run-preflight.sh MODEL_RATE_BUDGET, which also requires max_request_tokens >= the live served window): max_requests_per_window x max_request_tokens + reserve_tokens_per_window <= the MaaSSubscription limit: 190 x 262144 + 9000000 = 58807360 <= 60000000 for qwen3-8-27b-int4 (200 would be 61428800). The reserve is an assumption about other consumers, not a reservation.",
+    "quota": "V15-1 (architect design, 2026-09-25): reserved-and-settled TOKEN accounting, enforced by the Hermes runtime (patch 0010) for every model request of one run (main, every retry and reconnect, auxiliary, gateway and reviewer calls). Before each physical request the runtime reserves reservation_tokens (the served window, vLLM --max-model-len, prompt plus output: https://docs.vllm.ai/en/latest/configuration/engine_args/); after a valid terminal response it settles to the reported usage; missing usage keeps the full reservation, an uncertain request keeps it until it can no longer be charged. A request is admitted while settled + open reservations + reservation_tokens <= token_allowance_per_window. No request ceiling. Admission (run-preflight.sh MODEL_RATE_BUDGET): sum of the allowances of every running migration run + reserve_tokens_per_window <= the MaaSSubscription limit: 51000000 + 9000000 = 60000000 for qwen3-8-27b-int4, 11000000 + 9000000 = 20000000 for qwen3-6-27b. Replaces the 190 requests/h ceiling, which charged every request at the full window and stalled v15 after 34 minutes (about 59K tokens per request measured). max_output_tokens is the largest output any request may ask for. max_wait_seconds bounds a worker's wait; beyond it the card is deferred neutrally (patch 0009).",
     "request_body": "qwen3-8-27b-int4: the Qwen3.8-27B card's Instruct (non-thinking) row, https://huggingface.co/Qwen/Qwen3.8-27B#api-usage . vLLM serves the THINKING row by default; workers run thinking off (v7 item 7, 2026-09-10). v12 (2026-09-24, t_655b1607) ran two responses to the full output cap without the row.",
     "source": "B4: the ONE declared runtime profile per model and mode. dest-init generates every model-dependent worker setting from it (provider, caps, request body on the main slot and on every auto auxiliary slot, the request pacer); the migration-run provisioner pins a copy per run (<run>-run-control profile.json), and the loop refuses a runtime that differs from the pin.",
     "timeouts": "vLLM buffers a tool call's arguments until complete; a ~12 KB file written through a tool call sends no bytes for ~4K tokens at ~18 tok/s, beyond Hermes's 120s default stream read timeout (pilot v5 M3 t_3efca989)."
@@ -14,11 +14,13 @@
       "mode": "non-thinking",
       "provider": "qwen27b",
       "quota": {
+        "accounting_mode": "token",
+        "token_allowance_per_window": 11000000,
+        "reservation_tokens": 131072,
         "max_request_tokens": 131072,
         "max_output_tokens": 32768,
-        "max_requests_per_window": 200,
-        "max_wait_seconds": 900,
         "reserve_tokens_per_window": 9000000,
+        "max_wait_seconds": 900,
         "window_seconds": 3600
       },
       "request_body": {
@@ -37,11 +39,13 @@
       "mode": "non-thinking",
       "provider": "qwen38",
       "quota": {
+        "accounting_mode": "token",
+        "token_allowance_per_window": 51000000,
+        "reservation_tokens": 262144,
         "max_request_tokens": 262144,
         "max_output_tokens": 32768,
-        "max_requests_per_window": 190,
-        "max_wait_seconds": 900,
         "reserve_tokens_per_window": 9000000,
+        "max_wait_seconds": 900,
         "window_seconds": 3600
       },
       "request_body": {

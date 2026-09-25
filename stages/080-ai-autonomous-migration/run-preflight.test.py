@@ -74,7 +74,7 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("budget_gap = rate_budget_gap(q, 262144, runs, 60000000)", code)
         self.assertIn("runs = 1 + 0", code)
         self.assertIn("'MOD' + 'EL_RATE_BUDGET", code)
-        self.assertIn("RHOAI3_REQUEST_BUDGET=%d/%d", code)
+        self.assertIn("RHOAI3_REQUEST_BUDGET=%d/%d", code)   # request mode (runs pinned before V15-1)
         self.assertIn("is_migration_run", LOCAL)
         self.assertNotIn("QLIMITVAL", code)
 
@@ -94,8 +94,20 @@ class DeclaredBudget(unittest.TestCase):
         # a profile that sizes a request below what the server admits is refused
         self.assertIn('model serves 262144', gap(dict(base, max_requests_per_window=190, max_request_tokens=252768), 262144, 1, 60000000))
         profiles = json.loads((HERE.parents[1] / 'gitops/stages/050-advanced-app-platform/base/devspaces/model-profiles.json').read_text())
-        self.assertEqual(gap(profiles['profiles']['qwen3-8-27b-int4']['quota'], 262144, 1, 60000000), '')
+        # V15-1: token mode admits by summed run allowances (51M + 9M reserve)
+        tok = profiles['profiles']['qwen3-8-27b-int4']['quota']
+        self.assertEqual(tok['accounting_mode'], 'token')
+        self.assertEqual(gap(tok, 262144, 1, 60000000), '')
+        self.assertIn('declared 111000000', gap(tok, 262144, 2, 60000000))
+        self.assertIn('model serves 262144', gap(dict(tok, reservation_tokens=131072), 262144, 1, 60000000))
+        self.assertIn('does not fit the allowance', gap(dict(tok, token_allowance_per_window=100000), 262144, 1, 60000000))
+        self.assertIn('request ceiling', gap(dict(tok, max_requests_per_window=190), 262144, 1, 60000000))
+        self.assertEqual(gap(profiles['profiles']['qwen3-6-27b']['quota'], 131072, 1, 20000000), '')
 
+    def test_runtime_settings_match_the_mode(self):
+        code = self.fill()
+        self.assertIn("'RHOAI3_ACCOUNTING_MODE=token' in env_text", code)
+        self.assertIn("'RHOAI3_REQUEST_BUDGET=' not in env_text", code)
 
 if __name__ == '__main__':
     unittest.main()
