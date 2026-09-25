@@ -425,14 +425,30 @@ public final class DestModel {
                         // be a guess. An attribute whose argument is not a string
                         // literal is absent from the map, never present-and-wrong.
                         Map<String, Object> named = new LinkedHashMap<>();
+                        // the CLASS LITERALS an attribute was written with,
+                        // each as the type the compiler resolved it to:
+                        // @Typed(PetRepositoryImpl.class) restricts a bean's
+                        // types to exactly that class (CDI 4.1, Restricting
+                        // the bean types of a bean), and only a resolved type
+                        // can be compared with the one an obligation names.
+                        // An attribute with any other kind of element, or a
+                        // literal the compiler could not resolve, is absent.
+                        Map<String, Object> classes = new LinkedHashMap<>();
                         boolean literal = true;
                         for (ExpressionTree arg : a.getArguments()) {
                             String attr = "value";
                             Tree expr = arg;
+                            TreePath argPath = new TreePath(ap, arg);
+                            TreePath exprPath = argPath;
                             if (arg.getKind() == Tree.Kind.ASSIGNMENT) {
                                 com.sun.source.tree.AssignmentTree as = (com.sun.source.tree.AssignmentTree) arg;
                                 attr = as.getVariable().toString();
                                 expr = as.getExpression();
+                                exprPath = new TreePath(argPath, expr);
+                            }
+                            List<String> classLiterals = new ArrayList<>();
+                            if (collectClassLiterals(exprPath, classLiterals) && !classLiterals.isEmpty()) {
+                                classes.put(attr, classLiterals);
                             }
                             List<String> mine = new ArrayList<>();
                             // `values` keeps the String literals it always
@@ -449,6 +465,7 @@ public final class DestModel {
                         if (a.getArguments().isEmpty()) { literal = true; }
                         row.put("values", values);
                         row.put("named", named);
+                        if (!classes.isEmpty()) { row.put("classes", classes); }
                         // an argument that is not a string literal is a
                         // question this tool cannot answer, and it says so
                         row.put("resolution", (fqn.isEmpty() || !literal) ? "inconclusive" : "full");
@@ -483,6 +500,26 @@ public final class DestModel {
                     if (!(init instanceof LiteralTree)) { return null; }
                     Object value = ((LiteralTree) init).getValue();
                     return value instanceof String ? (String) value : null;
+                }
+
+                private boolean collectClassLiterals(TreePath p, List<String> out) {
+                    Tree t = p.getLeaf();
+                    if (t instanceof com.sun.source.tree.MemberSelectTree
+                            && ((com.sun.source.tree.MemberSelectTree) t).getIdentifier().contentEquals("class")) {
+                        TypeMirror tm = trees.getTypeMirror(
+                                new TreePath(p, ((com.sun.source.tree.MemberSelectTree) t).getExpression()));
+                        if (tm == null || tm.getKind() == TypeKind.ERROR) { return false; }
+                        out.add(task.getTypes().erasure(tm).toString());
+                        return true;
+                    }
+                    if (t.getKind() == Tree.Kind.NEW_ARRAY) {
+                        boolean all = true;
+                        for (ExpressionTree e : ((com.sun.source.tree.NewArrayTree) t).getInitializers()) {
+                            all &= collectClassLiterals(new TreePath(p, e), out);
+                        }
+                        return all;
+                    }
+                    return false;
                 }
 
                 private boolean collectLiterals(Tree t, List<String> strings, List<String> scalars) {

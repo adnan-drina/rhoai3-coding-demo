@@ -318,6 +318,26 @@ def loop_record_names_task(task):
                     return True
     return False
 
+def loop_pending_for_task(task):
+    """verification/loop/steps.json (under an allow root) holds a
+    VERIFICATION_PENDING row for this card: a retained candidate that only
+    restore-pending.py puts back (V16-6)."""
+    if not task:
+        return False
+    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots:
+        if not r:
+            continue
+        p = os.path.join(r, "verification", "loop", "steps.json")
+        try:
+            doc = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and any(isinstance(row, dict) and str(row.get("card") or "") == task
+                                         for row in (doc.get("pending") or [])):
+            return True
+    return False
+
 LOOP_ROAD = ("brief.py", "run-verify.sh", "advance.py")
 
 def is_loop_card():
@@ -395,8 +415,41 @@ def loop_verdict_recorded():
             return True
     return False
 
+def this_run_text(log, task, text):
+    """The part of the card log THIS run wrote (V16-6, v16 t_d3f89ded).
+
+    The dispatcher appends every run of a card to one log, so an advance.py
+    [exit 1] from the run that ended VERIFICATION_PENDING still stood in the
+    run the Operator resumed: K2 allowed only advance.py or kanban_block,
+    advance.py refused LOOP_PENDING_NOT_RESTORED until restore-pending.py ran,
+    and the documented resume deadlocked. The first hook call of a run
+    (HERMES_KANBAN_RUN_ID) records the log size beside the log; the bound
+    gates are read from there on. No run id, or a mark that cannot be kept:
+    the whole log, as before."""
+    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    if not run:
+        return text
+    mark = os.path.join(os.path.dirname(log), "%s.k2-run.json" % task)
+    try:
+        doc = json.load(open(mark, encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = None
+    if isinstance(doc, dict) and str(doc.get("run") or "") == run and isinstance(doc.get("offset"), int):
+        start = doc["offset"]
+    else:
+        start = len(text.encode("utf-8", errors="replace"))
+        try:
+            tmp = mark + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump({"run": run, "offset": start}, fh)
+            os.replace(tmp, mark)
+        except OSError:
+            return text
+    raw = text.encode("utf-8", errors="replace")
+    return raw[start:].decode("utf-8", errors="replace") if start <= len(raw) else text
+
 def bound_gates_red():
-    """Needles whose last invocation is still [exit 1].
+    """Needles whose last invocation is still [exit 1] in THIS run.
 
     Same last-wins-within-needle rule as paved_road.unmatched_exit1:
     omitted success marker is green. Skip FAIL:/REFUSE prose (reviewer
@@ -416,6 +469,7 @@ def bound_gates_red():
         text = open(log, encoding="utf-8", errors="replace").read()
     except OSError:
         return []
+    text = this_run_text(log, task, text)
     names = (
         "assert-planner-activated", "bootstrap-destination", "build-worklist", "admit-migration-plan",
         "verify-admission-receipt", "verify-live-kanban-loop", "k3_live",
@@ -1279,6 +1333,19 @@ def scratch_removal_allowed(c, unmatched):
             return False
     return True
 
+# V16-3 (runtime 0011): the stop request of a run is raised by advance.py, a
+# loop tool, after a VERIFICATION_PENDING is persisted. A model-issued write
+# to the stop-requests/ directory of the board (or the request path of the run) is
+# refused: the block it asks for must name a verdict the loop recorded.
+_stop_req = (os.environ.get("HERMES_KANBAN_STOP_REQUEST") or "").strip()
+_stop_marks = ["stop-requests"] + ([_stop_req, os.path.dirname(_stop_req)] if _stop_req else [])
+_stop_targets = " ".join([cmd or "", str(inp.get("path") or ""), str(inp.get("file_path") or ""),
+                          " ".join(str(x) for x in (effect or []))])
+if (tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect or re.search(r"\btouch\b", cmd or "")) \
+        and any(m and m in _stop_targets for m in _stop_marks):
+    block("write to the kanban stop-requests directory refused: the stop request is raised by advance.py "
+          "after a VERIFICATION_PENDING is recorded (runtime 0011), never by a tool call")
+
 scratch_ok = False
 
 # dest-22 P0-B: after a mandated needle last-exited 1, the implementer
@@ -1297,6 +1364,10 @@ if profile == "implementer" and not is_block() and not is_complete():
             # cleared by re-measuring and advancing again: run-verify.sh is the
             # step before advance on the loop road (v6 t_57aef986 was refused
             # run-verify here and could only block)
+            pass
+        elif "fix-until-green/scripts/restore-pending.py" in blob and loop_pending_for_task(hook_task_id()):
+            # V16-6: the card has a retained candidate, and restore-pending.py
+            # is the only way back to it; run-verify.sh and advance.py follow
             pass
         elif scratch_removal_allowed(cmd, unmatched):
             # the removal advance.py LOOP_SCRATCH_IN_TREE asked for, of exactly

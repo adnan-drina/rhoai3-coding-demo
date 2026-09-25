@@ -1155,6 +1155,18 @@ def main(argv: list[str] | None = None) -> int:
             # action is the unit's first action, the same way a handler
             # parameter's catalogue action is the item's
             retire = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("retire")]
+            # V16-5: a handler_parameters row leads its symbol, ahead of any
+            # rename, and names the handlers it is for; the rename then covers
+            # only the other uses and says which handlers it is NOT for
+            handler = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("handler_parameter")]
+            scoped = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("not_for")]
+            first = (["%s (%s, at %s)" % (t.get("action"), (t.get("catalog_row") or {}).get("key"),
+                                         ", ".join("%s.%s(%s)" % (str(x.get("type") or "").rsplit(".", 1)[-1], x.get("member"),
+                                                                 x.get("parameter")) for x in (t.get("sites") or [])))
+                      for t in handler]
+                     + ["everywhere else %s is used (not those handler parameters), move to %s (compat-mapping symbol_renames)"
+                        % (t.get("from"), t.get("to")) for t in scoped]
+                     + ["%s (%s)" % (t.get("action"), (t.get("catalog_row") or {}).get("key")) for t in retire])
             brief["unit"] = {
                 "unit_id": str(scope.get("unit_id") or ""),
                 "rule": str(scope.get("rule") or ""),
@@ -1165,14 +1177,39 @@ def main(argv: list[str] | None = None) -> int:
                 # it: a replacement with no row is not a target, and a
                 # diagnostic about one is not explained by anything
                 "target_symbols": [dict({"from": t.get("from"), "to": t.get("to"), "catalog_row": t.get("catalog_row")},
-                                        **({"retire": True, "action": t.get("action")} if t.get("retire") else {}))
+                                        **({"retire": True, "action": t.get("action")} if t.get("retire") else {}),
+                                        **({"handler_parameter": True, "action": t.get("action"), "sites": t.get("sites")}
+                                           if t.get("handler_parameter") else {}),
+                                        **({"applies_to": t.get("applies_to"), "not_for": t.get("not_for")}
+                                           if t.get("not_for") else {}))
                                    for t in (scope.get("target_symbols") or [])],
                 "completion": list(scope.get("completion") or []),
                 "bounds": dict(scope.get("bounds") or {}),
                 "evidence": list(scope.get("evidence") or []),
                 "revisions": list((issued_now or {}).get("revisions") or []),
-                **({"first_action": " ".join("%s (%s)" % (t.get("action"), (t.get("catalog_row") or {}).get("key")) for t in retire)}
-                   if retire else {}),
+                **({"first_action": " ".join(first)} if first else {}),
+                # V16-4: what each owed implementation must BE, including the
+                # CDI exposure a fragment delegate is owed under, and the one
+                # thing that proves the wiring -- packaging, not this checkpoint
+                **({"implementation": [dict({k: r.get(k) for k in ("parent", "type", "path", "contract", "members")},
+                                            **({"cdi": r["cdi"],
+                                                "required": ("annotate %s @%s and @%s(%s.class), beside its `implements %s`: "
+                                                             "its only CDI bean type is its concrete class, so the generated "
+                                                             "repository stays the bean of %s. Do not remove the scope, "
+                                                             "profile-gate the delegate, rename it or retarget an injection. "
+                                                             "The structural check proves the annotations; only the package "
+                                                             "gate under the decided build profile proves the wiring"
+                                                             % (str(r.get("type") or "").rsplit(".", 1)[-1],
+                                                                str(r["cdi"].get("scope") or "").rsplit(".", 1)[-1],
+                                                                r["cdi"].get("typed"),
+                                                                str(r.get("type") or "").rsplit(".", 1)[-1],
+                                                                str(r.get("parent") or "").rsplit(".", 1)[-1],
+                                                                str(r.get("parent") or "").rsplit(".", 1)[-1]))}
+                                               if isinstance(r.get("cdi"), dict) else {}))
+                                       for r in (scope.get("implementation_obligations") or [])
+                                       if isinstance(r, dict) and r.get("verify") != "template"]}
+                   if any(isinstance(r, dict) and r.get("verify") != "template"
+                          for r in (scope.get("implementation_obligations") or [])) else {}),
                 "checkpoint": (
                     "This unit is judged ONCE, at its checkpoint, not per edit. Intermediate regressions INSIDE the "
                     "sealed symbols are allowed until then: the compile count may stand still or briefly rise, and the "

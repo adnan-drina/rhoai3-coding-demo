@@ -2061,6 +2061,16 @@ def _real_fragment_bound_case() -> int:
     return 0
 
 
+# the platform's CDI annotations, present so an import of them binds (the
+# destination's classpath carries them through quarkus-arc)
+_CDI_STUBS = {
+    "src/main/java/jakarta/enterprise/context/ApplicationScoped.java":
+        "package jakarta.enterprise.context;\npublic @interface ApplicationScoped { }\n",
+    "src/main/java/jakarta/enterprise/inject/Typed.java":
+        "package jakarta.enterprise.inject;\npublic @interface Typed { Class<?>[] value() default {}; }\n",
+}
+
+
 def _real_fragment_case() -> int:
     """The fragment unit, end to end on the real model: formed, sealed with the
     implementation it owes, assessed before and after the adapter is written,
@@ -2068,6 +2078,7 @@ def _real_fragment_case() -> int:
 
     Every verdict is repeated on a tree that shares no package, type, member or
     identifier with the first."""
+    import json
     import tempfile
 
     for label, n in (("A", _REAL_A), ("B", _REAL_B)):
@@ -2078,7 +2089,7 @@ def _real_fragment_case() -> int:
         child_path = "%s/%s/%s.java" % (src, n["store_pkg"].replace(".", "/"), n["store"])
         adapter = "%s/%s/%sImpl.java" % (src, n["frag_pkg"].replace(".", "/"), n["frag"])
         with tempfile.TemporaryDirectory(prefix="wl-real-frag-") as d:
-            root = _jdk_root(d, _real_sources(n, consumer=True))
+            root = _jdk_root(d, {**_real_sources(n, consumer=True), **_CDI_STUBS})
             model = dest_model(root)
             items = _real_items(n) + [_set_wide_item()]
             units, claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
@@ -2117,12 +2128,51 @@ def _real_fragment_case() -> int:
             if wrong["verdict"] != "violates" or "does not implement" not in wrong["detail"]:
                 return _fail("[%s] the promised relationship is checked, not assumed: %s" % (label, wrong))
 
-            # THE REPAIR: the adapter implements the parent and answers the
-            # member it owed
-            (root / adapter).write_text(
-                "package %s.%s;\nimport java.util.List;\npublic class %sImpl implements %s {\n"
-                "    public List<String> %s(String clause) { return List.of(); }\n}\n"
-                % (base, n["frag_pkg"], n["frag"], n["frag"], n["member"]), encoding="utf-8")
+            # V16-4 (v16 t_1118e877): the adapter implements the parent and
+            # answers the member it owed, but it is a bean of the parent's type
+            # too, beside the generated repository -- every injection of the
+            # parent is ambiguous at augmentation. The obligation names the
+            # CDI exposure it is owed under, and the model checks it.
+            impl = n["frag"] + "Impl"
+
+            def write_adapter(annotations: str) -> None:
+                (root / adapter).write_text(
+                    "package %s.%s;\nimport java.util.List;\n%spublic class %s implements %s {\n"
+                    "    public List<String> %s(String clause) { return List.of(); }\n}\n"
+                    % (base, n["frag_pkg"], annotations, impl, n["frag"], n["member"]), encoding="utf-8")
+
+            cdi = owed[0].get("cdi") or {}
+            if (cdi.get("scope"), cdi.get("typed"), cdi.get("types")) != (
+                    "jakarta.enterprise.context.ApplicationScoped", "jakarta.enterprise.inject.Typed", [frag + "Impl"]):
+                return _fail("[%s] the fragment obligation names the concrete-only CDI exposure it is owed: %s" % (label, owed[0]))
+            if "@Typed(%s.class)" % impl not in json.dumps(unit["_unit_seal"]["completion"]):
+                return _fail("[%s] the completion check states the exposure: %s" % (label, unit["_unit_seal"]["completion"]))
+            for why_name, annotations, verdict, token in (
+                    ("no CDI annotation", "", "violates", "@jakarta.enterprise.inject.Typed(%s.class)" % impl),
+                    ("the scope alone", "@jakarta.enterprise.context.ApplicationScoped\n", "violates", "ambiguous"),
+                    ("@Typed alone", "@jakarta.enterprise.inject.Typed(%s.class)\n" % impl, "violates", "ApplicationScoped"),
+                    ("@Typed naming the parent too", "@jakarta.enterprise.context.ApplicationScoped\n"
+                     "@jakarta.enterprise.inject.Typed({%s.class, %s.class})\n" % (impl, n["frag"]), "violates", frag),
+                    ("@Typed with no type", "@jakarta.enterprise.context.ApplicationScoped\n@jakarta.enterprise.inject.Typed\n",
+                     "violates", "no type")):
+                write_adapter(annotations)
+                got = next(r for r in assess_unit(root, scope) if r.get("state") == "implementation")
+                if got["verdict"] != verdict or token not in got["detail"]:
+                    return _fail("[%s] %s: the delegate's CDI exposure is checked from the model: %s" % (label, why_name, got))
+
+            # THE REPAIR: scope kept, bean types restricted to the concrete class
+            write_adapter("import jakarta.enterprise.context.ApplicationScoped;\nimport jakarta.enterprise.inject.Typed;\n"
+                          "@ApplicationScoped\n@Typed(%s.class)\n" % impl)
+            # a model that cannot read the class literal proves nothing
+            from unittest.mock import patch
+            blind = dest_model(root)
+            for t in blind["types"]:
+                for a in t.get("annotations") or []:
+                    a.pop("classes", None)
+            with patch("planner.worklist.dest_model", return_value=blind):
+                got = next(r for r in assess_unit(root, scope) if r.get("state") == "implementation")
+            if got["verdict"] != "inconclusive":
+                return _fail("[%s] unresolved @Typed literals are inconclusive, never a pass: %s" % (label, got))
             after = assess_unit(root, scope)
             bad = [r for r in after if r["verdict"] != "ok"]
             if bad:
@@ -4304,6 +4354,122 @@ def _real_adapter_owned_retirement_case() -> int:
     return 0
 
 
+def _real_handler_parameter_precedence_case() -> int:
+    """V16-5 (v16 t_7074fcda, then t_d3f89ded run #25): a sealed symbol that
+    is the type of an HTTP HANDLER PARAMETER gets the handler_parameters row's
+    action ahead of the generic symbol_renames target. The rename left seven
+    handlers with an unannotated UriBuilder, which compiled and was refused at
+    augmentation as a second request body.
+
+    Real javac, twice under renamed packages: handlers (one of them never
+    uses the parameter) get the UriInfo action and are named; a helper
+    builder in the SAME file keeps the ordinary mapping; a handler whose
+    parameter is another package's UriComponentsBuilder is not matched. At
+    the checkpoint, the bare rename at a handler violates and the documented
+    repair -- @Context UriInfo at the handler, UriBuilder in the helper --
+    is clean."""
+    import tempfile
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    for base, lookalike in (("org.acme.shop", "org.acme.shop.util.UriComponentsBuilder"),
+                            ("com.example.depot", "com.example.depot.links.UriComponentsBuilder")):
+        src = "src/main/java/%s/rest/" % base.replace(".", "/")
+        owner, visit, other = src + "OwnerController.java", src + "VisitController.java", src + "PetController.java"
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            "src/main/java/jakarta/ws/rs/core/Context.java": "package jakarta.ws.rs.core;\npublic @interface Context { }\n",
+            "src/main/java/jakarta/ws/rs/core/UriBuilder.java": "package jakarta.ws.rs.core;\npublic abstract class UriBuilder { }\n",
+            "src/main/java/jakarta/ws/rs/core/UriInfo.java": "package jakarta.ws.rs.core;\npublic interface UriInfo { }\n",
+            "src/main/java/%s.java" % lookalike.replace(".", "/"):
+                "package %s;\npublic class UriComponentsBuilder { }\n" % lookalike.rsplit(".", 1)[0],
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\n" % base)
+
+        def owner_src(handler_param: str, helper_param: str, imports: str, handlers: bool = True) -> str:
+            return (head + imports + "public class OwnerController {\n"
+                    + (('    @PostMapping("/owners")\n    public String addOwner(@RequestBody String body, %s) { return link(null); }\n'
+                        '    @PostMapping("/owners/touch")\n    public String touch(@RequestBody String body, %s) { return ""; }\n')
+                       % (handler_param, handler_param) if handlers else "")
+                    + "    static String link(%s) { return \"\"; }\n}\n" % helper_param)
+
+        def visit_src(handler_param: str, imports: str) -> str:
+            return (head + imports + "public class VisitController {\n"
+                    '    @PostMapping("/visits")\n    public String addVisit(@RequestBody String body, %s) { return ""; }\n}\n'
+                    % handler_param)
+
+        spring = "import %s;\n" % retired
+        before = {**stubs,
+                  owner: owner_src("UriComponentsBuilder ucBuilder", "UriComponentsBuilder b", spring),
+                  visit: visit_src("UriComponentsBuilder ucBuilder", spring),
+                  other: head + "import %s;\npublic class PetController {\n    @PostMapping(\"/pets\")\n"
+                                "    public String addPet(@RequestBody String body, UriComponentsBuilder ucBuilder) { return \"\"; }\n}\n"
+                                % lookalike}
+        with tempfile.TemporaryDirectory(prefix="wl-v165-") as d:
+            root = _jdk_root(d, before)
+            model = dest_model(root)
+            items = [_javac(owner, "UriComponentsBuilder", 1), _javac(owner, "UriComponentsBuilder", 2),
+                     _javac(visit, "UriComponentsBuilder", 3)]
+            units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            if unit is None:
+                return _fail("[%s] the UriComponentsBuilder family forms a unit: %s" % (base, [c["unit"]["family_key"] for c in units]))
+            targets = unit["unit"]["target_symbols"]
+            first = targets[0] if targets else {}
+            sites = sorted((x["type"].rsplit(".", 1)[-1], x["member"], x["parameter"]) for x in first.get("sites") or [])
+            if (not first.get("handler_parameter") or first.get("from") != retired or first.get("to") != ""
+                    or (first.get("catalog_row") or {}).get("block") != "handler_parameters.undocumented"
+                    or "@Context jakarta.ws.rs.core.UriInfo" not in str(first.get("action"))):
+                return _fail("[%s] the handler-parameter row is the unit's FIRST target, with its action: %s" % (base, targets))
+            if sites != [("OwnerController", "addOwner", "ucBuilder"), ("OwnerController", "touch", "ucBuilder"),
+                         ("VisitController", "addVisit", "ucBuilder")]:
+                return _fail("[%s] every handler parameter is named (the unused one too), the helper and the lookalike "
+                             "are not: %s" % (base, sites))
+            rename = [t for t in targets if t.get("to") == "jakarta.ws.rs.core.UriBuilder"]
+            if (len(rename) != 1 or rename[0].get("not_for") != first["sites"]
+                    or "other than the HTTP handler parameters" not in str(rename[0].get("applies_to"))):
+                return _fail("[%s] the helper's builder keeps the ordinary mapping, scoped away from the handlers: %s" % (base, rename))
+            if not any("handler parameter(s)" in e["ref"] and "precedes any rename" in e["ref"] for e in unit["unit"]["evidence"]):
+                return _fail("[%s] the evidence records the precedence: %s" % (base, unit["unit"]["evidence"]))
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+
+            def assess(files: dict[str, str]) -> dict[tuple[str, str], str]:
+                for rel, text in files.items():
+                    (root / rel).write_text(text, encoding="utf-8")
+                return {(r["member"].split("#", 1)[1].split("(")[0], r["member"].split("(")[1].rstrip(")")): r["verdict"]
+                        for r in assess_unit(root, scope) if r.get("state") == "handler-parameter"}
+
+            ctx = "import jakarta.ws.rs.core.Context;\nimport jakarta.ws.rs.core.UriBuilder;\nimport jakarta.ws.rs.core.UriInfo;\n"
+            # the bare rename, as t_7074fcda wrote it: compiles, and violates
+            bare = assess({owner: owner_src("UriBuilder ucBuilder", "UriBuilder b", ctx), visit: visit_src("UriBuilder ucBuilder", ctx)})
+            if set(bare.values()) != {"violates"} or len(bare) != 3:
+                return _fail("[%s] a handler left with an unannotated UriBuilder violates, the unused one too: %s" % (base, bare))
+            # the documented repair: the handler takes @Context UriInfo, the
+            # helper in the same file keeps its UriBuilder
+            good = assess({owner: owner_src("@Context UriInfo uriInfo", "UriBuilder b", ctx), visit: visit_src("@Context UriInfo uriInfo", ctx)})
+            if set(good.values()) != {"ok"} or len(good) != 3:
+                return _fail("[%s] @Context UriInfo at the handler with the helper's UriBuilder kept is clean: %s" % (base, good))
+            # a handler repaired by deleting it is not repaired
+            gone = assess({owner: owner_src("", "UriBuilder b", ctx, handlers=False)})
+            if gone.get(("addOwner", "ucBuilder")) != "violates" or gone.get(("addVisit", "ucBuilder")) != "ok":
+                return _fail("[%s] a deleted handler violates: %s" % (base, gone))
+
+            # a symbol no handler takes keeps its row exactly as before
+            helper_only = {**stubs, owner: owner_src("", "UriComponentsBuilder b", spring, handlers=False),
+                           visit: head + spring + "public class VisitController {\n    static void h(UriComponentsBuilder b) { }\n}\n"}
+            for rel, text in helper_only.items():
+                (root / rel).write_text(text, encoding="utf-8")
+            units2, _ = form_units([_javac(owner, "UriComponentsBuilder", 1), _javac(visit, "UriComponentsBuilder", 2)],
+                                   {}, set(), model=dest_model(root), root=GOLDEN)
+            t2 = [t for c in units2 for t in c["unit"]["target_symbols"] if t["from"] == retired]
+            if len(t2) != 1 or t2[0].get("to") != "jakarta.ws.rs.core.UriBuilder" or t2[0].get("not_for") or t2[0].get("handler_parameter"):
+                return _fail("[%s] ordinary builder uses outside handler parameters keep their mapping: %s" % (base, t2))
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
@@ -4314,7 +4480,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case():
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)

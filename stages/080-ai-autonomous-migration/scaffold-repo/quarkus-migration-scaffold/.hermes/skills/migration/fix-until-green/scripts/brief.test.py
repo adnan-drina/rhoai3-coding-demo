@@ -694,6 +694,150 @@ def _adapter_owned_brief_case() -> int:
     return 0
 
 
+def _fragment_brief_case() -> int:
+    """V16-4: a fragment unit's brief says what each owed delegate must BE --
+    its path, the parent it implements and the concrete-only CDI exposure it is
+    owed under -- and that only packaging proves the wiring."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from planner.canonical import load_json
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+    from planner.worklist import batch_scope_digest, unit_implementation_obligations
+
+    with tempfile.TemporaryDirectory(prefix="frag-brief-") as td:
+        root = Path(td)
+        parent_path = "src/main/java/q/store/LedgerStore.java"
+        (root / parent_path).parent.mkdir(parents=True, exist_ok=True)
+        (root / parent_path).write_text("package q.store;\npublic interface LedgerStore { int total(); }\n", encoding="utf-8")
+        owed = unit_implementation_obligations([{"parent": "q.store.LedgerStore", "path": parent_path,
+                                                 "members": [{"signature": "total()", "name": "total"}]}])
+        impl = owed[0]["path"]
+        scope = {
+            "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/declaration-closure/v1",
+            "cluster": "u:frag1", "unit_id": "u:frag1", "family_key": "spring-data-fragment-implementations:q.store.LedgerStore",
+            "writable_paths": sorted([parent_path, impl]),
+            "symbols": [{"kind": "member", "fqn": "q.store.LedgerStore", "signature": "total()", "path": parent_path}],
+            "target_symbols": [], "implementation_obligations": owed,
+            "members": [{"path": parent_path, "type": "q.store.LedgerStore", "member_id": "total", "occurrence": 0,
+                         "state": "declares", "signature": "total()"}],
+            "evidence": [], "completion": [], "bounds": {"files": 2, "sites": 1, "symbols": 1},
+            "measured": ["rt:package:frag"], "inputs": {"candidate_sha256": "c0"},
+        }
+        scope["digest"] = batch_scope_digest(scope)
+        sp = Path("evidence/planning/batch-scope/u-frag1") / ("%s.json" % scope["digest"][:32])
+        write_canonical(root / sp, scope)
+        cluster = {"id": "u:frag1", "kind": "config", "path": parent_path, "write_set": sorted([parent_path, impl]),
+                   "items": ["rt:package:frag"], "label": scope["family_key"], "retry_key": "rk:unit:u:frag1", "gate": "package",
+                   "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                                   "kind": "unit", "unit_id": "u:frag1", "members": 1}}
+        write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "u:frag1", "unit_formation": "v1",
+                                          "measure": {"tuple": [0, 0, 0], "known": True, "blocked": []},
+                                          "clusters": [cluster], "not_counted": [],
+                                          "items": [{"id": "rt:package:frag", "source": "runtime", "kind": "config",
+                                                     "category": "mandatory", "path": parent_path, "gate": "package",
+                                                     "set_wide": "spring-data-fragment-implementations",
+                                                     "message": "missing implementation"}]})
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:frag1",
+                                             "task_id": "t_frag0001", "write_set": cluster["write_set"]})
+        prev = os.environ.get("HERMES_KANBAN_TASK")
+        os.environ["HERMES_KANBAN_TASK"] = "t_frag0001"
+        try:
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+        finally:
+            if prev is None:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+            else:
+                os.environ["HERMES_KANBAN_TASK"] = prev
+        if rc != 0:
+            return _fail("brief.py must serve the fragment unit: rc=%s %s" % (rc, err.getvalue()[:400]))
+        rows = (load_json(root / LOOP_DIR / "brief-u-frag1.json").get("unit") or {}).get("implementation") or []
+        if len(rows) != 1 or rows[0].get("path") != impl or rows[0].get("type") != "q.store.LedgerStoreImpl":
+            return _fail("the brief names each owed delegate: %s" % rows)
+        req = str(rows[0].get("required") or "")
+        if ("@ApplicationScoped" not in req or "@jakarta.enterprise.inject.Typed(LedgerStoreImpl.class)" not in req
+                or "package gate" not in req or "profile-gate" not in req):
+            return _fail("and the concrete-only CDI exposure it is owed, and what proves it: %s" % req)
+    return 0
+
+
+def _handler_parameter_brief_case() -> int:
+    """V16-5: the brief's first action for a UriComponentsBuilder unit is the
+    handler_parameters action at the handlers it names, THEN the rename for
+    every other use; the rename row in target_symbols says which handlers it
+    is not for. No bare UriBuilder target is left for a handler parameter."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from planner.canonical import load_json
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+    from planner.worklist import batch_scope_digest, handler_parameters, symbol_renames, unit_target_symbols
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    rel = "src/main/java/q/web/LedgerController.java"
+    sites = [{"path": rel, "type": "q.web.LedgerController", "member": "addEntry", "signature": "addEntry(java.lang.String,UriComponentsBuilder)",
+              "parameter": "ucBuilder"}]
+    rows = handler_parameters(GOLDEN)["undocumented"]
+    targets = unit_target_symbols([{"kind": "type", "fqn": retired, "path": rel}], symbol_renames(GOLDEN), {}, None,
+                                  {retired: sites}, rows)
+    with tempfile.TemporaryDirectory(prefix="handler-brief-") as td:
+        root = Path(td)
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("package q.web;\npublic class LedgerController { }\n", encoding="utf-8")
+        scope = {"schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/diagnostic-family/v1",
+                 "cluster": "u:hp1", "unit_id": "u:hp1", "family_key": retired, "writable_paths": [rel],
+                 "symbols": [{"kind": "type", "fqn": retired, "path": rel}], "target_symbols": targets,
+                 "members": [{"path": rel, "type": "q.web.LedgerController", "member_id": "", "occurrence": 0,
+                              "state": "reported", "identity": "diag:1"}],
+                 "evidence": [], "completion": [], "bounds": {"files": 1, "sites": 1, "symbols": 1},
+                 "measured": ["err:1"], "inputs": {"candidate_sha256": "c0"}}
+        scope["digest"] = batch_scope_digest(scope)
+        sp = Path("evidence/planning/batch-scope/u-hp1") / ("%s.json" % scope["digest"][:32])
+        write_canonical(root / sp, scope)
+        cluster = {"id": "u:hp1", "kind": "compile", "path": rel, "write_set": [rel], "items": ["err:1"], "label": retired,
+                   "retry_key": "rk:unit:u:hp1",
+                   "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                                   "kind": "unit", "unit_id": "u:hp1", "members": 1}}
+        write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "u:hp1", "unit_formation": "v1",
+                                          "measure": {"tuple": [0, 1, 0], "known": True, "blocked": []},
+                                          "clusters": [cluster], "not_counted": [],
+                                          "items": [{"id": "err:1", "source": "javac", "kind": "compile", "category": "mandatory",
+                                                     "path": rel, "line": 3, "identity": "diag:1",
+                                                     "rule_id": "compiler.err.cant.resolve.location",
+                                                     "message": "cannot find symbol\n  symbol:   class UriComponentsBuilder"}]})
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:hp1", "task_id": "t_hp0001",
+                                             "write_set": [rel]})
+        prev = os.environ.get("HERMES_KANBAN_TASK")
+        os.environ["HERMES_KANBAN_TASK"] = "t_hp0001"
+        try:
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+        finally:
+            if prev is None:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+            else:
+                os.environ["HERMES_KANBAN_TASK"] = prev
+        if rc != 0:
+            return _fail("brief.py must serve the unit: rc=%s %s" % (rc, err.getvalue()[:400]))
+        unit = load_json(root / LOOP_DIR / "brief-u-hp1.json").get("unit") or {}
+        first = str(unit.get("first_action") or "")
+        act = rows[retired]["action"]
+        if not first.startswith(act) or "LedgerController.addEntry(ucBuilder)" not in first:
+            return _fail("the handler_parameters action leads, at the handler it names: %r" % first[:300])
+        if first.find("everywhere else") < first.find(act) or "jakarta.ws.rs.core.UriBuilder" not in first[first.find("everywhere else"):]:
+            return _fail("the rename follows, for every other use: %r" % first)
+        ts = unit.get("target_symbols") or []
+        if not ts or not ts[0].get("handler_parameter") or ts[0].get("sites") != sites:
+            return _fail("target_symbols lead with the handler row: %s" % ts)
+        bare = [t for t in ts if t.get("to") == "jakarta.ws.rs.core.UriBuilder"]
+        if len(bare) != 1 or bare[0].get("not_for") != sites:
+            return _fail("no bare UriBuilder target is left for a handler parameter: %s" % bare)
+    return 0
+
+
 def main() -> int:
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):
         return 1
@@ -710,6 +854,10 @@ def main() -> int:
     if _unit_brief_case():
         return 1
     if _adapter_owned_brief_case():
+        return 1
+    if _fragment_brief_case():
+        return 1
+    if _handler_parameter_brief_case():
         return 1
     if _runtime_advice_case():
         return 1

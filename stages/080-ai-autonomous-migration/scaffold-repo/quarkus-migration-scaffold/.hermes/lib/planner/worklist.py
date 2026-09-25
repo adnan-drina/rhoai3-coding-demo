@@ -4388,9 +4388,59 @@ def package_renames_of(root: Path | None) -> dict[str, str]:
     return {str(k): str(v) for k, v in (doc.get("package_renames") or {}).items() if k != "note" and isinstance(v, str)}
 
 
+# JAX-RS resource-method designators: a method carrying one is a handler even
+# when its path is the class's (the Spring mapping annotations name a path).
+_HTTP_METHOD_DESIGNATORS = {"jakarta.ws.rs.%s" % m for m in ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")}
+_JAXRS_CONTEXT = "jakarta.ws.rs.core.Context"
+
+
+def _is_handler(member: dict[str, Any], bound: dict[str, str]) -> bool:
+    anns = [a for a in (member.get("annotations") or []) if isinstance(a, dict)]
+    if _mapping_paths(anns):
+        return True
+    for a in anns:
+        fqn = str(a.get("fqn") or "")
+        fqn = fqn if "." in fqn else bound.get(str(a.get("simple") or fqn), "")
+        if fqn in _MAPPING_ANNOTATIONS or fqn in _HTTP_METHOD_DESIGNATORS:
+            return True
+    return False
+
+
+def _param_identity(param: dict[str, Any], bound: dict[str, str]) -> str:
+    """A parameter's QUALIFIED type: the compiler's, or what the declaring
+    file's imports bind a simple spelling to; '' when nothing binds it. An
+    unrelated type spelled the same way is its own qualified name, never this
+    one (the same rule as symbol_renames)."""
+    t = _erased(str(param.get("type") or ""))
+    return t if "." in t else bound.get(t, "")
+
+
+def handler_parameter_sites(model: dict[str, Any] | None, paths: list[str], fqn: str) -> list[dict[str, Any]]:
+    """Every HTTP handler parameter in `paths` whose resolved type is `fqn`:
+    [{path, type, member, parameter}]. A handler is a declared member with a
+    mapping annotation or a JAX-RS method designator; a helper method, a
+    field or a local that uses the same type is not a handler parameter."""
+    want = set(paths)
+    out: list[dict[str, Any]] = []
+    for t in _unit_types(model):
+        if _unit_path(t) not in want:
+            continue
+        bound = unit_bound_imports(t)
+        for m in t.get("declared") or []:
+            if not isinstance(m, dict) or not _is_handler(m, bound):
+                continue
+            for p in m.get("params") or []:
+                if isinstance(p, dict) and _param_identity(p, bound) == fqn:
+                    out.append({"path": _unit_path(t), "type": str(t.get("fqn") or ""), "member": str(m.get("name") or ""),
+                                "signature": str(m.get("signature") or ""), "parameter": str(p.get("name") or "")})
+    return sorted(out, key=lambda r: (r["path"], r["member"], r["parameter"]))
+
+
 def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[str, Any]],
                         packages: dict[str, str],
-                        owned: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+                        owned: dict[str, dict[str, Any]] | None = None,
+                        handler_sites: dict[str, list[dict[str, Any]]] | None = None,
+                        handler_rows: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """[{from, to, catalog_row}] — the documented replacement of each sealed
     symbol, when a catalog row records one. A symbol with no row contributes
     nothing: the unit then has no documented target, and the checkpoint has
@@ -4402,12 +4452,29 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
     for any other; the row adds the documented action and the adapter that
     keeps the behaviour. An empty `to` is no target, so the checkpoint
     tolerates nothing more because of it (unit_explained_regressions reads
-    only qualified targets)."""
+    only qualified targets).
+
+    V16-5 (v16 t_7074fcda): where the symbol is the type of an HTTP HANDLER
+    PARAMETER and compat-mapping `handler_parameters.undocumented` has a row
+    for it, that row's action comes FIRST, as {from, to: "", handler_parameter:
+    true, action, sites, catalog_row}: the compat layer binds no such
+    parameter, and the type rename left seven handlers with an unannotated
+    UriBuilder the platform read as a second body. The symbol_renames row then
+    covers only the OTHER uses -- a helper's builder, a local -- and says so
+    (`not_for`: the handler sites); a symbol no handler takes keeps its row
+    exactly as it was."""
     out: list[dict[str, Any]] = []
     for s in symbols:
         fqn = str(s.get("fqn") or "")
         if not fqn:
             continue
+        sites = (handler_sites or {}).get(fqn) or []
+        hrow = (handler_rows or {}).get(fqn)
+        if sites and hrow is not None:
+            out.append({"from": fqn, "to": "", "handler_parameter": True, "action": str(hrow.get("action") or ""),
+                        "sites": sites,
+                        "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
+                                        "key": fqn, "kind": str(hrow.get("kind") or ""), "source": str(hrow.get("source") or "")}})
         own = (owned or {}).get(fqn)
         if own is not None:
             out.append({"from": fqn, "to": "", "retire": True, "action": str(own.get("action") or ""),
@@ -4418,9 +4485,13 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
             continue
         row = renames.get(fqn)
         if row is not None:
-            out.append({"from": fqn, "to": str(row.get("to") or ""),
-                        "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames", "key": fqn,
-                                        "kind": str(row.get("kind") or ""), "source": str(row.get("source") or "")}})
+            target = {"from": fqn, "to": str(row.get("to") or ""),
+                      "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames", "key": fqn,
+                                      "kind": str(row.get("kind") or ""), "source": str(row.get("source") or "")}}
+            if sites and hrow is not None:
+                target["applies_to"] = "every use of %s other than the HTTP handler parameters listed in not_for" % fqn
+                target["not_for"] = sites
+            out.append(target)
             continue
         for old in sorted(packages, key=len, reverse=True):
             if fqn == old or fqn.startswith(old + "."):
@@ -4428,7 +4499,8 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
                             "catalog_row": {"catalog": "compat-mapping.json", "block": "package_renames", "key": old,
                                             "kind": "package", "source": ""}})
                 break
-    return sorted(out, key=lambda r: (r["from"], r["to"]))
+    # a handler-parameter row leads its symbol: it is the first action
+    return sorted(out, key=lambda r: (r["from"], not r.get("handler_parameter"), r["to"]))
 
 
 # --- the four rules --------------------------------------------------------
@@ -4614,6 +4686,137 @@ FRAGMENT_IMPL_CONTRACT = "spring-data-fragment-impl/v1"
 FRAGMENT_IMPL_SOURCE = ("https://docs.spring.io/spring-data/jpa/reference/repositories/custom-implementations.html "
                         "(a fragment interface X is implemented by XImpl in X's own package)")
 
+# ...and the CDI exposure it is owed under (V16-4, v16 t_1118e877). XImpl
+# implements X, and so does the generated Spring Data repository, which the
+# extension also makes a bean; with both beans of type X every injection of X
+# is ambiguous at augmentation. The generated repository injects its delegate
+# by the CONCRETE class, so the delegate keeps its scope and its Java
+# `implements X` and restricts its CDI bean types to that class alone:
+# @jakarta.enterprise.inject.Typed(XImpl.class). Not a profile gate (the
+# generated repository needs the delegate) and not a missing scope (the
+# extension registers the delegate anyway).
+FRAGMENT_IMPL_SCOPE = "jakarta.enterprise.context.ApplicationScoped"
+FRAGMENT_IMPL_TYPED = "jakarta.enterprise.inject.Typed"
+FRAGMENT_IMPL_CDI_SOURCE = ("https://jakarta.ee/specifications/cdi/4.1/jakarta-cdi-spec-4.1#restricting_bean_types "
+                            "(@Typed restricts a bean's types, not its Java inheritance); "
+                            "https://github.com/quarkusio/quarkus/blob/3.27.0/extensions/spring-data-jpa/deployment/src/main/java/"
+                            "io/quarkus/spring/data/deployment/generate/SpringDataRepositoryCreator.java (the generated "
+                            "repository injects the fragment implementation by its concrete class)")
+
+
+def fragment_cdi_exposure(typ: dict[str, Any], cdi: dict[str, Any]) -> tuple[str, str]:
+    """(verdict, detail): does this delegate carry the owed CDI exposure --
+    its scope, and @Typed naming exactly its own concrete class?
+
+    Read from the compiler model's annotation rows, the class literals as the
+    compiler resolved them (DestModel `classes`). A @Typed whose literals the
+    model could not resolve is inconclusive, never a pass."""
+    fqn = str(typ.get("fqn") or "")
+    scope, typed = str(cdi.get("scope") or ""), str(cdi.get("typed") or "")
+    want = [str(x) for x in (cdi.get("types") or [fqn])]
+    anns = [a for a in (typ.get("annotations") or []) if isinstance(a, dict)]
+    owed = "@%s @%s(%s.class)" % (scope, typed, fqn.rsplit(".", 1)[-1])
+    if scope and not any(str(a.get("fqn") or "") == scope for a in anns):
+        return "violates", ("%s does not carry @%s: the delegate keeps its scope and restricts its bean types -- "
+                            "annotate it %s (%s)" % (fqn, scope, owed, FRAGMENT_IMPL_CONTRACT))
+    rows = [a for a in anns if str(a.get("fqn") or "") == typed]
+    if not rows:
+        return "violates", ("%s exposes every interface it implements as a CDI bean type, so an injection of the "
+                            "repository interface is ambiguous with the generated Spring Data repository: annotate it "
+                            "%s" % (fqn, owed))
+    got = (rows[0].get("classes") or {}).get("value") if isinstance(rows[0].get("classes"), dict) else None
+    if got is None and str(rows[0].get("resolution") or "") == "full" and not rows[0].get("values"):
+        got = []  # written with no argument at all: every literal it has was read, and there is none
+    if not isinstance(got, list):
+        return "inconclusive", "the model could not resolve the class literals of @Typed on %s" % fqn
+    if sorted(str(x) for x in got) != sorted(want):
+        return "violates", ("@Typed on %s names %s; the only bean type owed is %s (the repository interface stays the "
+                            "generated repository's)" % (fqn, ", ".join(sorted(str(x) for x in got)) or "no type",
+                                                         ", ".join(want)))
+    return "ok", "%s is @%s and @Typed(%s.class): its only CDI bean type is its concrete class" % (
+        fqn, scope.rsplit(".", 1)[-1], fqn.rsplit(".", 1)[-1])
+
+
+# The annotations that decide a bean's existence, its types, its qualifiers or
+# an injection point: what the container resolves at augmentation, and so what
+# only the package gate can prove (V16-4 acceptance rule). CDI 4.1 and the
+# Spring DI / Spring Data compatibility annotations the platform maps onto it.
+CDI_WIRING_ANNOTATIONS = frozenset((
+    "jakarta.enterprise.context.ApplicationScoped", "jakarta.enterprise.context.RequestScoped",
+    "jakarta.enterprise.context.SessionScoped", "jakarta.enterprise.context.Dependent", "jakarta.inject.Singleton",
+    "jakarta.enterprise.inject.Typed", "jakarta.enterprise.inject.Produces", "jakarta.enterprise.inject.Disposes",
+    "jakarta.enterprise.inject.Alternative", "jakarta.enterprise.inject.Specializes", "jakarta.enterprise.inject.Default",
+    "jakarta.enterprise.inject.Any", "jakarta.enterprise.inject.Vetoed", "jakarta.annotation.Priority",
+    "jakarta.inject.Inject", "jakarta.inject.Named",
+    "io.quarkus.arc.DefaultBean", "io.quarkus.arc.Unremovable", "io.quarkus.arc.profile.IfBuildProfile",
+    "io.quarkus.arc.profile.UnlessBuildProfile", "io.quarkus.arc.lookup.LookupIfProperty",
+    "io.quarkus.arc.lookup.LookupUnlessProperty",
+    "org.springframework.stereotype.Component", "org.springframework.stereotype.Service",
+    "org.springframework.stereotype.Repository", "org.springframework.stereotype.Controller",
+    "org.springframework.web.bind.annotation.RestController", "org.springframework.context.annotation.Bean",
+    "org.springframework.context.annotation.Configuration", "org.springframework.context.annotation.Primary",
+    "org.springframework.context.annotation.Scope", "org.springframework.context.annotation.Profile",
+    "org.springframework.beans.factory.annotation.Autowired", "org.springframework.beans.factory.annotation.Qualifier",
+))
+
+
+def _wiring_annotations(anns: Any) -> list[str]:
+    out = []
+    for a in anns or []:
+        if not isinstance(a, dict) or str(a.get("fqn") or "") not in CDI_WIRING_ANNOTATIONS:
+            continue
+        classes = a.get("classes") if isinstance(a.get("classes"), dict) else {}
+        out.append("@%s%s" % (a["fqn"], "(%s)" % ",".join("%s=%s" % (k, "|".join(v)) for k, v in sorted(classes.items()))
+                                         if classes else ""))
+    return sorted(out)
+
+
+def cdi_wiring_of(model: dict[str, Any] | None, paths: list[str]) -> dict[str, dict[str, Any]]:
+    """type fqn -> its CDI wiring, for the types declared in `paths`: the
+    wiring annotations on the type (and, when it has any, its supertypes --
+    they ARE its bean types unless @Typed restricts them) and on each declared
+    member and field. A type without any contributes nothing."""
+    want = set(paths)
+    out: dict[str, dict[str, Any]] = {}
+    for t in _unit_types(model):
+        if _unit_path(t) not in want:
+            continue
+        own = _wiring_annotations(t.get("annotations"))
+        members = {str(m.get("signature") or m.get("name") or ""): _wiring_annotations(m.get("annotations"))
+                   for m in (t.get("declared") or []) if isinstance(m, dict)}
+        fields = {str(f.get("name") or ""): _wiring_annotations(f.get("annotations"))
+                  for f in (t.get("fields") or []) if isinstance(f, dict)}
+        members = {k: v for k, v in members.items() if v}
+        fields = {k: v for k, v in fields.items() if v}
+        if not own and not members and not fields:
+            continue
+        out[str(t.get("fqn") or "")] = {"path": _unit_path(t), "type": own,
+                                        "supertypes": sorted(_erased(x) for x in (t.get("supertypes") or [])) if own else [],
+                                        "members": members, "fields": fields}
+    return out
+
+
+def cdi_wiring_changes(root: Path, base_ref: str, changed: list[str]) -> list[dict[str, Any]]:
+    """What this CANDIDATE changed in CDI wiring, per type, from the compiler
+    models of the accepted commit and the candidate: a bean added or removed,
+    its bean-defining or type-restricting annotations, its supertypes (its bean
+    types), a producer or an injection point. [] when nothing changed; raises
+    DestModelUnavailable when either model cannot be made."""
+    java = sort_unique([p for p in changed if str(p).endswith(".java")])
+    if not java:
+        return []
+    now = cdi_wiring_of(dest_model(Path(root)), java)
+    before = cdi_wiring_of(model_at_commit(Path(root), base_ref), java)
+    rows: list[dict[str, Any]] = []
+    for fqn in sorted(set(now) | set(before)):
+        a, b = before.get(fqn), now.get(fqn)
+        if a == b:
+            continue
+        change = "added" if a is None else ("removed" if b is None else "changed")
+        rows.append({"type": fqn, "path": (b or a or {}).get("path", ""), "change": change,
+                     "before": (a or {}).get("type", []), "after": (b or {}).get("type", [])})
+    return rows
+
 
 def unit_implementation_obligations(parents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The new implementation paths a fragment unit is OWED, named in advance.
@@ -4642,6 +4845,8 @@ def unit_implementation_obligations(parents: list[dict[str, Any]]) -> list[dict[
             "members": sort_unique([str(m.get("signature") or "") for m in (p.get("members") or [])]),
             "contract": FRAGMENT_IMPL_CONTRACT,
             "source": FRAGMENT_IMPL_SOURCE,
+            "cdi": {"scope": FRAGMENT_IMPL_SCOPE, "typed": FRAGMENT_IMPL_TYPED, "types": [parent + "Impl"],
+                    "source": FRAGMENT_IMPL_CDI_SOURCE},
         })
     return sorted(out, key=lambda r: (r["parent"], r["path"]))
 
@@ -4877,10 +5082,14 @@ def _unit_completion(unit: dict[str, Any]) -> list[dict[str, Any]]:
                                   % (row["path"], row["contract"], str(row["template_sha256"])[:12], row["type"],
                                      row["config"], len(row.get("properties") or []), row.get("install") or "")})
             continue
+        cdi = row.get("cdi") or {}
         out.append({"check": "implementation", "tool": "worklist.assess_unit", "parent": row["parent"],
                     "path": row["path"], "type": row["type"],
                     "detail": "%s is implemented by a concrete %s at %s (%s), and the model shows it implements the "
-                              "parent" % (row["parent"], row["type"], row["path"], row["contract"])})
+                              "parent%s" % (row["parent"], row["type"], row["path"], row["contract"],
+                                            ("; it is @%s and @Typed(%s.class)"
+                                             % (str(cdi.get("scope") or "").rsplit(".", 1)[-1], row["type"].rsplit(".", 1)[-1]))
+                                            if cdi else "")})
     if unit.get("gate"):
         out.append({"check": "gate", "tool": "run-verify.sh", "gate": unit["gate"],
                     "detail": "the %s gate passes on the verified artifact" % unit["gate"]})
@@ -4895,6 +5104,7 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
     removed from the per-file pass exactly as `taken` already does for symbol
     groups."""
     renames, packages, owned = symbol_renames(root), package_renames_of(root), adapter_owned_annotations(root)
+    handler_rows = handler_parameters(root).get("undocumented", {})
     compile_rows = [i for i in items if str(i.get("source") or "") == "javac"]
     families = diagnostic_families(compile_rows, model)
     claimed: set[str] = set()
@@ -4902,8 +5112,17 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
 
     def take(unit: dict[str, Any]) -> None:
         unit["symbols"] = sorted(unit["symbols"], key=lambda s: (str(s.get("kind")), str(s.get("fqn")), str(s.get("signature") or "")))
-        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages, owned)
+        sites = {str(sym.get("fqn") or ""): handler_parameter_sites(model, list(unit["files"]), str(sym.get("fqn") or ""))
+                 for sym in unit["symbols"] if str(sym.get("fqn") or "") in handler_rows}
+        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages, owned, sites, handler_rows)
         for t in unit["target_symbols"]:
+            if t.get("handler_parameter"):
+                unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s at %d handler parameter(s) (%s); "
+                                                                   "its action precedes any rename"
+                                                                   % (t["catalog_row"]["block"], t["from"], len(t["sites"]),
+                                                                      ", ".join("%s.%s" % (x["type"].rsplit(".", 1)[-1], x["member"])
+                                                                                for x in t["sites"][:3]))})
+                continue
             if t.get("retire"):
                 unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s retired; its behaviour is owed to %s"
                                                                    % (t["catalog_row"]["block"], t["from"], t["catalog_row"]["contract"])})
@@ -5219,9 +5438,16 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
                             detail="%s implements %s but declares no body for %s; an abstract answer answers nothing"
                                    % (typ.get("fqn"), parent, ", ".join(missing[:3]))))
             continue
+        if isinstance(row.get("cdi"), dict):
+            verdict, detail = fragment_cdi_exposure(typ, row["cdi"])
+            if verdict != "ok":
+                out.append(dict(base, verdict=verdict, detail=detail))
+                continue
         out.append(dict(base, verdict="ok",
-                        detail="%s implements %s and declares %d concrete member(s) it owed"
-                               % (typ.get("fqn"), parent, len(row.get("members") or []))))
+                        detail="%s implements %s and declares %d concrete member(s) it owed%s"
+                               % (typ.get("fqn"), parent, len(row.get("members") or []),
+                                  ("; its only CDI bean type is itself (structural: the bean wiring is proven by the "
+                                   "package gate, not here)") if isinstance(row.get("cdi"), dict) else "")))
     return out
 
 
@@ -5376,6 +5602,57 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(dict(base, verdict="ok", proof="parsed-symbol-absence" if parsed_absence else "resolved-model",
                         detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
     out.extend(_assess_implementations(Path(root), scope, model, by_path, rule))
+    out.extend(_assess_handler_parameters(scope, by_path, rule))
+    return out
+
+
+def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[dict[str, Any]]],
+                               rule: str) -> list[dict[str, Any]]:
+    """V16-5: every handler site a handler_parameters row sealed, after the
+    candidate. The handler must no longer take the retired type, nor the type
+    symbol_renames names for it, unless that parameter carries @Context -- an
+    unannotated UriBuilder compiles and is refused at augmentation as a second
+    request body. The handler itself must survive; the route is not repaired
+    by deleting it."""
+    renames = {str(t.get("from") or ""): str(t.get("to") or "") for t in (scope.get("target_symbols") or [])
+               if isinstance(t, dict) and t.get("to")}
+    out: list[dict[str, Any]] = []
+    for row in scope.get("target_symbols") or []:
+        if not isinstance(row, dict) or not row.get("handler_parameter"):
+            continue
+        banned = {str(row.get("from") or "")} | ({renames[row["from"]]} if renames.get(str(row.get("from") or "")) else set())
+        for site in row.get("sites") or []:
+            path, typ_fqn, name = str(site.get("path") or ""), str(site.get("type") or ""), str(site.get("member") or "")
+            base = {"member": "%s#%s(%s)" % (path, name, site.get("parameter") or ""), "path": path, "rule": rule,
+                    "state": "handler-parameter"}
+            typ = next((t for t in by_path.get(path) or [] if str(t.get("fqn") or "") == typ_fqn), None)
+            if typ is None:
+                out.append(dict(base, verdict="inconclusive", detail="the model has no type %s at %s" % (typ_fqn, path)))
+                continue
+            bound = unit_bound_imports(typ)
+            handlers = [m for m in typ.get("declared") or [] if isinstance(m, dict) and str(m.get("name") or "") == name
+                        and _is_handler(m, bound)]
+            if not handlers:
+                out.append(dict(base, verdict="violates", detail="the handler %s.%s is gone; its route is not repaired by "
+                                                                 "deleting it" % (typ_fqn, name)))
+                continue
+            bad = []
+            for m in handlers:
+                for p in m.get("params") or []:
+                    if not isinstance(p, dict) or _param_identity(p, bound) not in banned:
+                        continue
+                    ctx = any((str(a.get("fqn") or "") if "." in str(a.get("fqn") or "")
+                               else bound.get(str(a.get("simple") or a.get("fqn") or ""), "")) == _JAXRS_CONTEXT
+                              for a in (p.get("annotations") or []) if isinstance(a, dict))
+                    if not ctx:
+                        bad.append("%s %s" % (_param_identity(p, bound), p.get("name")))
+            if bad:
+                out.append(dict(base, verdict="violates",
+                                detail="the handler %s.%s still takes %s without @Context; the compat layer binds no such "
+                                       "parameter -- %s" % (typ_fqn, name, ", ".join(bad), row.get("action") or "")))
+                continue
+            out.append(dict(base, verdict="ok", detail="the handler %s.%s no longer takes %s as a bound parameter"
+                                                       % (typ_fqn, name, " or ".join(sorted(banned)))))
     return out
 
 
@@ -5875,8 +6152,9 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
                 return False, "the %s obligation %s is still reported (its identity is the gate, the cause, the file and the member; a different message at the same place is the same obligation)" % (gate, ",".join(sorted(issued & after)[:2]))
             if issued:
                 return UNPROVEN, ("the %s gate still fails and %s is no longer reported, which is not proof it was repaired: this tool "
-                                "reports one failure at a time. The candidate is retained unaccepted; repair the members it now names "
-                                "in the same candidate, and the gate passing discharges them together"
+                                "reports one failure at a time. The candidate is retained unaccepted; only a failure the gate now "
+                                "names inside this card's write set is this candidate's to repair (advance.py names which), and "
+                                "the gate passing discharges them together"
                                 % (gate, ",".join(sorted(issued)[:2])))
             return False, "the %s gate is still not passing (%s)" % (gate, "; ".join((cur_rt.get("reasons") or [])[:2]) or "see its receipt")
     issued_err = {str(i) for i in (issued_items or []) if str(i).startswith("err:")}

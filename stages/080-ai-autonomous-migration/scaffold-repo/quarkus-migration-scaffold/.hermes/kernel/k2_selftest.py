@@ -1149,6 +1149,70 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_complete_loop_pending_refused")
+        # V16-6 (v16 t_d3f89ded): the card log spans runs. The run that
+        # ended VERIFICATION_PENDING left advance.py [exit 1] in it, and the
+        # Operator-resumed run could run neither restore-pending.py (K2) nor
+        # advance.py (LOOP_PENDING_NOT_RESTORED): deadlock.
+        pend_env = {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(loop_home), "HERMES_KANBAN_TASK": "t_pend"}
+        restore = "python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster c:1"
+        r = run(restore, roots, cwd=cwd, extra_env=pend_env)
+        if r.get("action") == "block":
+            print("FAIL v16_6_restore_allowed_with_pending_record", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_restore_allowed_with_pending_record")
+        r = run(restore, roots, cwd=cwd, extra_env=dict(pend_env, HERMES_KANBAN_TASK="t_loop"))
+        if r.get("action") != "block":
+            print("FAIL v16_6_restore_refused_without_pending_record", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_restore_refused_without_pending_record")
+        # the bound-gate memory is THIS run: a resumed run starts clean, and
+        # a red needle inside it still binds
+        read = "cat pom.xml"
+        r = run(read, roots, cwd=cwd, extra_env=pend_env)
+        if r.get("action") != "block":
+            print("FAIL v16_6_same_run_still_bound", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_same_run_still_bound")
+        run2 = dict(pend_env, HERMES_KANBAN_RUN_ID="2")
+        seq = [restore, "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance",
+               "python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_pend", read]
+        got = [run(c, roots, cwd=cwd, extra_env=run2).get("action") for c in seq]
+        if "block" in got:
+            print("FAIL v16_6_resumed_run_restore_verify_advance", got, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_resumed_run_restore_verify_advance")
+        with open(loop_root / "kanban" / "logs" / "t_pend.log", "a", encoding="utf-8") as fh:
+            fh.write("  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_pend  7.4s [exit 1]\n")
+        r = run(read, roots, cwd=cwd, extra_env=run2)
+        if r.get("action") != "block" or "advance" not in str(r.get("message")):
+            print("FAIL v16_6_red_needle_in_this_run_binds", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_red_needle_in_this_run_binds")
+        r = run(read, roots, cwd=cwd, extra_env=dict(pend_env, HERMES_KANBAN_RUN_ID="3"))
+        if r.get("action") == "block":
+            print("FAIL v16_6_next_run_starts_clean", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_next_run_starts_clean")
+        # V16-3: the stop request is raised by advance.py, never by a tool call
+        stop_req = loop_root / "kanban" / "stop-requests" / "t_pend.run3.json"
+        stop_env = dict(pend_env, HERMES_KANBAN_RUN_ID="3", HERMES_KANBAN_STOP_REQUEST=str(stop_req))
+        for label, cmd_, tool_, extra_ in (
+                ("write_file", "", "write_file", {"path": str(stop_req), "content": "{}"}),
+                ("redirect", "echo {} > %s" % stop_req, "terminal", None),
+                ("touch", "touch %s" % stop_req, "terminal", None),
+                ("python_open", "python3 -c \"open(\\\"%s\\\", \\\"w\\\").write(\\\"{}\\\")\"" % stop_req, "terminal", None)):
+            r = run(cmd_, roots, cwd=cwd, tool=tool_, extra_env=stop_env, extra_input=extra_)
+            if r.get("action") != "block" or "stop-requests" not in str(r.get("message")):
+                print("FAIL v16_3_stop_request_write_refused_%s" % label, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok v16_3_stop_request_write_refused_%s" % label)
         # v9 t_cc3b6aac: brief.py LOOP_WRONG_CARD / LOOP_CLUSTER_NOT_OPEN is a
         # legal stop. kanban_block must work without run-verify/advance in
         # the log; rummage and the rest of the road must not.

@@ -52,6 +52,17 @@ def main() -> int:
             s = line.strip()
             if s.startswith(("import ", "from ")) and "create_task" in s:
                 return _fail("%s imports create_task" % label)
+    # V16-1/V16-5 target rows carry prose (the action) and handler sites; the
+    # card body names the row and counts the sites, and the seal keeps the rest
+    from k4_convert import _target_ref
+    ref = _target_ref({"from": "a.B", "to": "", "handler_parameter": True, "action": "x" * 600,
+                       "sites": [{"path": "p%d" % i} for i in range(7)],
+                       "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
+                                       "key": "a.B", "kind": "type", "source": "s" * 200}})
+    if ref != {"from": "a.B", "to": "", "handler_parameter": True, "sites": 7,
+               "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented", "key": "a.B",
+                               "kind": "type"}}:
+        return _fail("a card body carries a target row's identity, never its prose: %s" % ref)
     with tempfile.TemporaryDirectory(prefix="k4-") as tmp:
         t = Path(tmp).resolve()
         root = specimens.build_dest(t / "http", specimens.specimen("http"), decisions=specimens.admitted_decisions())

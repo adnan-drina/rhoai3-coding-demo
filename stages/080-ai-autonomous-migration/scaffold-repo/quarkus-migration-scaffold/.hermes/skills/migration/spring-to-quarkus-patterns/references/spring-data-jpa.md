@@ -55,8 +55,12 @@ registers the delegates; its
 injects them by concrete implementation type.
 [CDI 4.1](https://jakarta.ee/specifications/cdi/4.1/jakarta-cdi-spec-4.1#restricting_bean_types)
 defines `@Typed` as a bean-type restriction, not a change to Java inheritance.
-Require the packaged build to prove both unambiguous application injection and
-successful delegate injection on the shipped platform. Runtime persistence
+The harness owes this exposure on every delegate it seals: the
+`spring-data-fragment-impl/v1` obligation names `@ApplicationScoped` and
+`@Typed(XImpl.class)`, and the unit assessment refuses a delegate without
+them. That check is structural. Require the packaged build to prove both
+unambiguous application injection and successful delegate injection on the
+shipped platform. Runtime persistence
 behavior still needs its source-derived scenarios.
 
 ## Unsupported (do not keep, do not fake)

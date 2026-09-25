@@ -41,9 +41,11 @@ def _fail(msg: str) -> int:
     return 1
 
 
-def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
+def _run(argv: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env.pop("HERMES_KANBAN_TASK", None)
+    env.pop("HERMES_KANBAN_STOP_REQUEST", None)
+    env.update(extra_env or {})
     return subprocess.run(argv, text=True, capture_output=True, env=env)
 
 
@@ -51,8 +53,9 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(root), *args], text=True, capture_output=True).stdout
 
 
-def _advance(root: Path, cluster: str, card: str) -> subprocess.CompletedProcess[str]:
-    return _run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", cluster, "--card", card, "--no-mint"])
+def _advance(root: Path, cluster: str, card: str, extra_env: dict | None = None) -> subprocess.CompletedProcess[str]:
+    return _run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", cluster, "--card", card, "--no-mint"],
+                extra_env)
 
 
 def _seal_gaps(root: Path) -> list[str]:
@@ -2053,6 +2056,225 @@ def _adapter_owned_retirement_advance_case(base: str = "org.springframework.samp
     return 0
 
 
+def _scope_aware_pending_case(base: str = "org.acme.inventory") -> int:
+    """V16-2 (v16 t_d3f89ded): what the package gate names NOW, against the
+    card's scope. A location outside the write set is not independence: a bean
+    the card added makes an unchanged consumer's injection point ambiguous, and
+    the error names the consumer. So:
+
+    * a card-added bean causing an ambiguity at an outside consumer gets no
+      handoff, and the pending verdict says the candidate may have caused it;
+    * a failure an accepted step already recorded (proven pre-existing) may
+      hand off, with package/boot debt and -- for a unit that owes CDI beans --
+      the bean obligations on the record and the wiring marked unverified;
+    * a failure with no location has an UNKNOWN cause and stays pending;
+    * no pending message ever asks for an edit outside the write set.
+    Run twice, the second time under renamed packages."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_scope", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    src = "src/main/java/%s/" % base.replace(".", "/")
+    delegate, consumer = src + "repository/ItemRepositoryImpl.java", src + "service/StockService.java"
+    card_file = src + "web/RootController.java"
+    ambiguity = ("Build step io.quarkus.arc.deployment.ArcProcessor#validate threw an exception: "
+                 "jakarta.enterprise.inject.AmbiguousResolutionException: Ambiguous dependencies for type "
+                 "%s.repository.ItemRepository and qualifiers [@Default]\n - injection target: %s.service.StockService#items\n"
+                 " - available beans:\n  - CLASS bean [types=[...], target=%s.springdatajpa.SpringDataItemRepository_91a5Impl]\n"
+                 "  - CLASS bean [types=[...], target=%s.repository.ItemRepositoryImpl]" % (base, base, base, base))
+    amb = {"id": "rt:package:amb", "gate": "package", "path": consumer, "cause": "ambiguous-injection",
+           "unlocated": False, "set_wide": [], "message": ambiguity}
+    unit_issued = {"items": ["rt:package:frag"], "gate_items": ["rt:package:frag"], "write_set": [delegate]}
+    card_issued = {"items": ["rt:package:spel"], "gate_items": ["rt:package:spel"], "write_set": [card_file]}
+    forbidden = ("in the same candidate", "repair it in this candidate", "repair the members it now names")
+
+    def unedited(text: str) -> bool:
+        return not any(f in text for f in forbidden) and "must not edit" in text
+
+    root = Path(tempfile.mkdtemp())
+    _git(root, "init", "-q")
+    (root / "README").write_text("x\n", encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted")
+    prev = {"commit": _git(root, "rev-parse", "HEAD").strip(), "item_ids": []}
+    unreached = lambda _r, _s, rel: ("OUTSIDE_SCOPE", "%s is not reached by the unit's sealed symbols" % rel)
+    beans = [{"parent": "%s.repository.ItemRepository" % base, "type": "%s.repository.ItemRepositoryImpl" % base,
+              "path": delegate, "contract": "spring-data-fragment-impl/v1",
+              "cdi": {"scope": "jakarta.enterprise.context.ApplicationScoped", "typed": "jakarta.enterprise.inject.Typed",
+                      "types": ["%s.repository.ItemRepositoryImpl" % base]}}]
+    scope_doc = {"implementation_obligations": beans}
+    rows = [{"verdict": "ok", "member": "a#b"}]
+
+    # (1) the card ADDED the bean the ambiguity names; the consumer is untouched
+    why: list = []
+    h = adv._unit_gate_handoff(root, scope_doc, rows, unit_issued, {"items": [amb], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [prev]}, changed=[delegate], why=why)
+    if h is not None or not why or "independence UNKNOWN" not in why[0]:
+        return _fail("a card-added bean's outside ambiguity gets no independent handoff (%s): %s %s" % (base, h, why))
+    g = adv._gate_scope_guidance(unit_issued, {"items": [amb]}, "package", [delegate])
+    if (not g or g["cause"] != "outside-scope-prerequisite" or g["record"]["caused_by_candidate"] != [delegate]
+            or "may have caused it and no handoff is possible" not in g["reason"] or consumer not in g["reason"]):
+        return _fail("the pending verdict names the outside consumer and the bean this candidate changed (%s): %s" % (base, g))
+    if not unedited(g["reason"]):
+        return _fail("the pending message never asks for an edit outside the write set (%s): %s" % (base, g["reason"]))
+    # the v16 shape: the bean came from an EARLIER accepted card, this card
+    # (RootController) changed nothing the error names -- still no handoff,
+    # and the prerequisite is the Operator's, beside the pending card
+    g = adv._gate_scope_guidance(card_issued, {"items": [amb]}, "package", [card_file])
+    if (not g or g["cause"] != "outside-scope-prerequisite" or g["record"]["caused_by_candidate"]
+            or "operator-step.py beside this pending card" not in g["reason"] or "write set: %s" % card_file not in g["reason"]
+            or [f["path"] for f in g["record"]["failures"]] != [consumer]):
+        return _fail("an outside failure the candidate did not name is an Operator prerequisite (%s): %s" % (base, g))
+    if not unedited(g["reason"]) or delegate not in g["record"]["failures"][0]["beans_named"]:
+        return _fail("the record names the beans, the message no edit (%s): %s" % (base, g))
+
+    # (2) a PROVEN pre-existing failure: an accepted step recorded it
+    spel = {"id": "rt:package:spel", "gate": "package", "path": card_file, "cause": "unsupported-spel",
+            "unlocated": False, "set_wide": []}
+    h = adv._unit_gate_handoff(root, scope_doc, rows, unit_issued, {"items": [spel], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [dict(prev, item_ids=["rt:package:spel"])]},
+                               changed=[delegate], why=[])
+    if not h or h["now_reported"][0]["independence"]["kind"] != "baseline-named" or h["debt"] != {"package": "owed", "boot": "owed"}:
+        return _fail("a proven pre-existing failure hands off with package/boot debt (%s): %s" % (base, h))
+    if ([b["type"] for b in h.get("bean_obligations") or []] != [beans[0]["type"]]
+            or not str(h.get("bean_wiring") or "").startswith("unverified") or "NOT verified" not in h["reason"]):
+        return _fail("the handoff keeps the bean obligations traceable and never claims the wiring (%s): %s" % (base, h))
+    h = adv._unit_gate_handoff(root, {}, rows, unit_issued, {"items": [spel], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [dict(prev, item_ids=["rt:package:spel"])]},
+                               changed=[delegate], why=[])
+    if not h or "bean_obligations" in h or "NOT verified" in h["reason"]:
+        return _fail("a unit that owes no bean records none (%s): %s" % (base, h))
+
+    # (3) UNKNOWN: the gate failed where nothing locates it
+    lost = {"id": "rt:package:lost", "gate": "package", "path": "", "cause": "unclassified", "unlocated": True, "set_wide": []}
+    why = []
+    h = adv._unit_gate_handoff(root, scope_doc, rows, unit_issued, {"items": [lost], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [prev]}, changed=[delegate], why=why)
+    g = adv._gate_scope_guidance(card_issued, {"items": [lost]}, "package", [card_file])
+    if h is not None or not g or g["cause"] != "unclassified-gate-failure" or "UNKNOWN" not in g["reason"]:
+        return _fail("an unlocated failure stays pending with an unknown cause (%s): %s %s" % (base, h, g))
+    if not unedited(g["reason"]):
+        return _fail("and asks for no edit (%s): %s" % (base, g["reason"]))
+
+    # (4) the only failure named is INSIDE the write set: that one IS the
+    # candidate's to repair, and only it is named
+    inside = dict(spel, id="rt:package:inside", path=card_file, cause="query-invalid")
+    g = adv._gate_scope_guidance(card_issued, {"items": [inside]}, "package", [card_file])
+    if not g or g["cause"] or card_file not in g["reason"] or "repair it in this candidate" not in g["reason"]:
+        return _fail("a failure inside the write set is the candidate's own remaining work (%s): %s" % (base, g))
+    if adv._gate_scope_guidance(card_issued, {"items": [spel]}, "package", [card_file]) is not None:
+        return _fail("the issued obligation still reported is not a NEW failure to guide on")
+    if adv._gate_scope_guidance(card_issued, {"items": [amb]}, "", [card_file]) is not None:
+        return _fail("only a package or boot card is guided this way")
+    shutil.rmtree(root, ignore_errors=True)
+    return 0
+
+
+def _cdi_wiring_acceptance_case(base: str = "org.acme.inventory") -> int:
+    """V16-4 acceptance rule: compilation cannot establish bean correctness.
+    A candidate that changes CDI wiring -- here, a delegate gaining
+    @Typed(ItemRepositoryImpl.class), and a bean added -- and whose package gate
+    did not pass on THIS candidate is accepted only as unverified wiring with
+    package and boot owed. Packaging that passed on this candidate proves it,
+    packaging of another tree does not, and a change that touches no wiring
+    records nothing. Real git, real compiler models of both trees."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_wiring", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    from planner.paths import VERIFY_PACKAGE
+
+    src = "src/main/java/%s/" % base.replace(".", "/")
+    impl = src + "repository/ItemRepositoryImpl.java"
+    extra = src + "service/Audit.java"
+    stubs = {
+        "src/main/java/jakarta/enterprise/context/ApplicationScoped.java":
+            "package jakarta.enterprise.context;\npublic @interface ApplicationScoped { }\n",
+        "src/main/java/jakarta/enterprise/inject/Typed.java":
+            "package jakarta.enterprise.inject;\npublic @interface Typed { Class<?>[] value() default {}; }\n",
+        src + "repository/ItemRepository.java":
+            "package %s.repository;\npublic interface ItemRepository { int count(); }\n" % base,
+    }
+    body = ("package %s.repository;\n%s@jakarta.enterprise.context.ApplicationScoped\n%spublic class ItemRepositoryImpl "
+            "implements ItemRepository {\n    public int count() { return %d; }\n}\n")
+    root = Path(tempfile.mkdtemp())
+    (root / ".hermes").mkdir()
+    (root / ".hermes" / "pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}', encoding="utf-8")
+    for rel, text in {**stubs, impl: body % (base, "", "", 0)}.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted")
+    accepted = _git(root, "rev-parse", "HEAD").strip()
+
+    # a body change is not wiring
+    (root / impl).write_text(body % (base, "", "", 1), encoding="utf-8")
+    if adv._cdi_wiring_record(root, accepted, [impl], "cand-0"):
+        return _fail("a change that touches no CDI wiring records nothing (%s)" % base)
+    # the delegate restricted, a bean added: wiring changed
+    (root / impl).write_text(body % (base, "", "@jakarta.enterprise.inject.Typed(ItemRepositoryImpl.class)\n", 1), encoding="utf-8")
+    (root / extra).parent.mkdir(parents=True, exist_ok=True)
+    (root / extra).write_text("package %s.service;\n@jakarta.enterprise.context.ApplicationScoped\npublic class Audit { }\n" % base,
+                              encoding="utf-8")
+    rec = adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1")
+    kinds = {r["type"].rsplit(".", 1)[-1]: r["change"] for r in rec.get("changed") or []}
+    if kinds != {"ItemRepositoryImpl": "changed", "Audit": "added"} or rec.get("verified") is not False:
+        return _fail("a wiring change with no packaging is recorded unverified (%s): %s" % (base, rec))
+    if rec.get("debt") != {"package": "owed", "boot": "owed"} or "did not run" not in rec.get("packaging", ""):
+        return _fail("with package and boot owed, and why (%s): %s" % (base, rec))
+    typed_after = next(r for r in rec["changed"] if r["type"].endswith("ItemRepositoryImpl"))["after"]
+    if not any("jakarta.enterprise.inject.Typed(value=%s.repository.ItemRepositoryImpl)" % base in a for a in typed_after):
+        return _fail("the record names the restriction the compiler resolved (%s): %s" % (base, typed_after))
+    # packaging of ANOTHER tree proves nothing about this one
+    (root / VERIFY_PACKAGE).parent.mkdir(parents=True, exist_ok=True)
+    write_canonical(root / VERIFY_PACKAGE, {"ran": True, "rc": 0, "candidate_sha256": "other", "profile": "prod"})
+    if adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1").get("verified") is not False:
+        return _fail("a package receipt of another candidate does not verify this wiring (%s)" % base)
+    write_canonical(root / VERIFY_PACKAGE, {"ran": True, "rc": 1, "candidate_sha256": "cand-1", "profile": "prod",
+                                            "failed_goal": "quarkus-maven-plugin:build"})
+    failed = adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1")
+    if failed.get("verified") is not False or "packaging failed on this candidate" not in failed.get("packaging", ""):
+        return _fail("a failed package on this candidate verifies nothing (%s): %s" % (base, failed))
+    # packaging under the decided profile PASSED on this candidate: proven
+    write_canonical(root / VERIFY_PACKAGE, {"ran": True, "rc": 0, "candidate_sha256": "cand-1", "profile": "prod"})
+    if adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1"):
+        return _fail("packaging that passed on this candidate leaves no wiring debt (%s)" % base)
+    shutil.rmtree(root, ignore_errors=True)
+    return 0
+
+
+def _stop_request_case() -> int:
+    """V16-3: the stop request belongs to the dispatcher-spawned worker of THIS
+    card. No variable (an older runtime, a manual or Operator run) or another
+    card's id: none, and kanban_block stays the terminator."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_stop", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    saved = {k: os.environ.get(k) for k in ("HERMES_KANBAN_STOP_REQUEST", "HERMES_KANBAN_TASK")}
+    try:
+        for env, card, want in (({}, "t_a", None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json"}, "t_a", None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json", "HERMES_KANBAN_TASK": "t_b"}, "t_a", None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json", "HERMES_KANBAN_TASK": "t_a"}, "",
+                                 None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json", "HERMES_KANBAN_TASK": "t_a"}, "t_a",
+                                 Path("/b/stop-requests/t_a.run2.json"))):
+            for k in saved:
+                os.environ.pop(k, None)
+            os.environ.update(env)
+            if adv._stop_request_path(card) != want:
+                return _fail("the stop request is raised only for this card's own run: %s %s -> %s" % (env, card, adv._stop_request_path(card)))
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return 0
+
+
 def main() -> int:
     if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
@@ -2062,11 +2284,17 @@ def main() -> int:
         return 1
     if _adapter_owned_retirement_advance_case() or _adapter_owned_retirement_advance_case("com.example.store.web"):
         return 1
+    if _scope_aware_pending_case() or _scope_aware_pending_case("com.example.depot"):
+        return 1
+    if _cdi_wiring_acceptance_case() or _cdi_wiring_acceptance_case("com.example.depot"):
+        return 1
     if _unit_checkpoint_case() or _unit_gate_handoff_case() or _unit_gate_handoff_case("com.example.store.web"):
         return 1
     if _si1_case():
         return 1
     if _pending_classify_case():
+        return 1
+    if _stop_request_case():
         return 1
     if _attempt_budget_case():
         return 1
@@ -2567,17 +2795,44 @@ def main() -> int:
                           log="Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException reported at %s" % fqn(two))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         attempts_before = dict((load_json(root / LOOP_STEPS).get("attempts") or {}))
-        p = _advance(root, cl2["id"], "t_pkg3")
+        # V16-3 (runtime 0011): the dispatcher-spawned worker of THIS card is
+        # given the run's stop-request path; the pending verdict raises it
+        stop = t / "board" / "stop-requests" / "t_pkg3.run1.json"
+        p = _advance(root, cl2["id"], "t_pkg3", {"HERMES_KANBAN_STOP_REQUEST": str(stop), "HERMES_KANBAN_TASK": "t_pkg3"})
         # a failing gate cannot discharge an obligation: the repair is RETAINED,
         # not accepted, and no attempt is spent
         blob = p.stdout + p.stderr
+        req = json.loads(stop.read_text(encoding="utf-8")) if stop.is_file() else {}
+        pend = [r for r in (load_json(root / LOOP_STEPS).get("pending") or []) if r.get("cluster") == cl2["id"]]
+        if (req.get("kind") != "needs_input" or req.get("task") != "t_pkg3" or not pend
+                or not str(req.get("reason") or "").startswith("VERIFICATION_PENDING %s cause=outside-scope-prerequisite card=t_pkg3: " % cl2["id"])
+                or "candidate retained (sha256 %s) under verification/loop/pending-files/%s" % (pend[-1]["candidate_sha256"][:16], cl2["id"].replace(":", "_")) not in req["reason"]
+                or not req["reason"].endswith("after the prerequisite: restore-pending.py, run-verify.sh --mode acceptance, advance.py")):
+            return _fail("a pending verdict raises the run's stop request once the pending row is persisted: %s %s" % (req, blob[-400:]))
+        if "The runtime blocks this card" not in blob or "Terminator: kanban_block" in blob:
+            return _fail("with the stop request raised the worker is not told to block again: %s" % blob[-400:])
+        if [x.name for x in stop.parent.iterdir()] != [stop.name]:
+            return _fail("the request is written atomically, no temporary file left: %s" % list(stop.parent.iterdir()))
         if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "not proof it was repaired" not in blob:
             return _fail("an unproven gate repair must be retained, not accepted: %s" % blob[:400])
+        # V16-2 (v16 t_d3f89ded): the gate now fails at `two`, which is outside
+        # this card's write set. The pending verdict names that path, the
+        # card's scope and the Operator prerequisite -- and never tells the
+        # worker to repair it in this candidate.
+        if ("GATE_FAILURE_OUTSIDE_SCOPE" not in blob or two not in blob or "write set: %s" % one not in blob
+                or "Required Operator prerequisite" not in blob or "operator-step.py" not in blob):
+            return _fail("the pending verdict names the outside path, the scope and the Operator prerequisite: %s" % blob[-900:])
+        if "in the same candidate" in blob or "repair the members it now names" in blob or "must not edit those files" not in blob:
+            return _fail("the pending message never asks for an edit outside the write set: %s" % blob[-900:])
         steps_now = load_json(root / LOOP_STEPS)
         if (steps_now.get("attempts") or {}) != attempts_before:
             return _fail("retaining a candidate must not spend an attempt: %s → %s" % (attempts_before, steps_now.get("attempts")))
-        if not [r for r in (steps_now.get("pending") or []) if r.get("cluster") == cl2["id"] and r.get("cause") == "unproven-repair"]:
+        held = [r for r in (steps_now.get("pending") or []) if r.get("cluster") == cl2["id"]]
+        if not held or held[-1].get("cause") != "outside-scope-prerequisite":
             return _fail("the retained candidate must be recorded with its cause: %s" % steps_now.get("pending"))
+        rec = held[-1].get("outside_scope") or {}
+        if [f["path"] for f in rec.get("failures") or []] != [two] or rec.get("scope") != [one] or not rec.get("prerequisite"):
+            return _fail("the record carries the outside paths, the scope and the prerequisite: %s" % rec)
 
         # and the way out is the one the record names: restore the candidate,
         # repair what the gate now reports, and let the gate passing discharge

@@ -125,14 +125,19 @@ rule to `kanban_complete`.
    `REVERTED` even when the measure fell.
 6. Terminator: **`kanban_complete`** after ACCEPTED or REVERTED (K2 allows
    it because the loop record names this card and steps 1, 2, 4, 5 are in
-   this log). `kanban_block` kind=needs_input naming the cluster after
-   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*` (K2 allows that
-   block even when run-verify and advance did not run). `CONTINUE` is not a
+   this log). After VERIFICATION_PENDING: nothing -- `advance.py` raised the
+   run's stop request, and the runtime blocks the card (needs_input) and
+   ends the run; only when `advance.py` printed `Terminator: kanban_block`
+   (no stop-request variable) is `kanban_block` the terminator.
+   `kanban_block` kind=needs_input naming the cluster after DEFERRED or a
+   `REFUSE: LOOP_*` (K2 allows that block even when run-verify and advance
+   did not run). `CONTINUE` is not a
    verdict: neither complete nor block. Never `kanban_request_review` on a loop
    card; never retry inside this card after REVERTED (the retry is the next K4 card).
    After VERIFICATION_PENDING, restore with `restore-pending.py` when the
-   prerequisite changes, then run acceptance verify and advance on **this**
-   card — do not mint a new attempt.
+   prerequisite changes (the Operator's unblock starts a new run; K2 allows
+   the restore whenever this card has a pending record), then run acceptance
+   verify and advance on **this** card — do not mint a new attempt.
 
 ## Evidence, stop, reads (every loop card)
 

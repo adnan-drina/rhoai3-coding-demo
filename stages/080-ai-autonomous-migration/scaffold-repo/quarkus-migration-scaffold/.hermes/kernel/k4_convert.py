@@ -188,6 +188,26 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
     return body
 
 
+def _target_ref(t: Any) -> Any:
+    """A target row as the card carries it: its identity and the catalogue row
+    that documents it. The action text, the handler sites and the handlers a
+    rename is not for stay in the sealed batch-scope document and the brief
+    (V16-1/V16-5 rows are prose-sized; K1 refuses a body that inlines them)."""
+    if not isinstance(t, dict):
+        return t
+    row = {k: t[k] for k in ("from", "to") if k in t}
+    cat = t.get("catalog_row") if isinstance(t.get("catalog_row"), dict) else {}
+    row["catalog_row"] = {k: cat[k] for k in ("catalog", "block", "key", "kind") if k in cat}
+    for flag in ("retire", "handler_parameter"):
+        if t.get(flag):
+            row[flag] = True
+    if t.get("sites"):
+        row["sites"] = len(t["sites"])
+    if t.get("not_for"):
+        row["not_for"] = len(t["not_for"])
+    return row
+
+
 def _unit_block(card: dict[str, Any]) -> dict[str, Any]:
     """The additive `unit` block, and only for a cluster the former made.
 
@@ -204,7 +224,7 @@ def _unit_block(card: dict[str, Any]) -> dict[str, Any]:
         "rule": str(unit.get("rule") or ""),
         "family_key": str(unit.get("family_key") or ""),
         "symbols": list(unit.get("symbols") or [])[:UNIT_BODY_SYMBOLS],
-        "target_symbols": list(unit.get("target_symbols") or [])[:UNIT_BODY_SYMBOLS],
+        "target_symbols": [_target_ref(t) for t in list(unit.get("target_symbols") or [])[:UNIT_BODY_SYMBOLS]],
         "evidence": list(unit.get("evidence") or [])[:UNIT_BODY_EVIDENCE],
         "size": dict(unit.get("size") or {}),
         "completion": [str(c) for c in (unit.get("completion") or [])],

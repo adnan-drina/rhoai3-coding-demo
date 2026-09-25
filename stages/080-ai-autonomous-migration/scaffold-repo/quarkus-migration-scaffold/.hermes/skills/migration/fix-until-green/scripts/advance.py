@@ -88,15 +88,15 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import PARITY_SNAPSHOT, attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports, tree_changes  # noqa: E402
+from _loop_common import PARITY_SNAPSHOT, _pending_dir, attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports, tree_changes  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import carry_unmeasured, issued_parity_plan, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, SECURITY_MODES, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_PACKAGE, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.worklist import cdi_wiring_changes, carry_unmeasured, issued_parity_plan, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, SECURITY_MODES, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -401,7 +401,8 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     return 1
 
 
-def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str, cause: str = "", scope_assessment: list[dict] | None = None) -> int:
+def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str, cause: str = "", scope_assessment: list[dict] | None = None,
+             outside_scope: dict | None = None) -> int:
     """Retain an unaccepted candidate when verification cannot conclude.
 
     Does not count an implementation attempt. Restores the accepted tree so
@@ -426,6 +427,11 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
     )
     if scope_assessment is not None:
         row["scope_assessment"] = scope_assessment
+    if outside_scope:
+        # V16-2: what the gate names outside this card, the card's scope, and
+        # the prerequisite only the Operator can supply -- on the record, so a
+        # resumed card and the Operator read the same facts the message gave
+        row["outside_scope"] = outside_scope
     revert_paths(root, changed)
     restore_reports(root)
     steps.setdefault("pending", []).append(row)
@@ -433,14 +439,54 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
     rebuilt = build_worklist(root)
     pipeline.admit(root)
     publish_loop_state(root, rebuilt)
+    stop = _stop_request_path(card)
     print(
         "VERIFICATION_PENDING %s cause=%s card=%s: %s → retain the candidate; do not re-implement. "
         "When the prerequisite changes: python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s "
-        "then bash run-verify.sh --mode acceptance and advance.py. Terminator: kanban_block kind=needs_input naming the cluster."
-        % (cluster, cause, card, reason, cluster),
+        "then bash run-verify.sh --mode acceptance and advance.py. %s"
+        % (cluster, cause, card, reason, cluster,
+           "The runtime blocks this card (needs_input) and ends the run: nothing else to call."
+           if stop else "Terminator: kanban_block kind=needs_input naming the cluster."),
         file=sys.stderr,
     )
+    if stop:
+        _write_stop_request(stop, card, "VERIFICATION_PENDING %s cause=%s card=%s: %s; candidate retained (sha256 %s) under %s; "
+                            "after the prerequisite: restore-pending.py, run-verify.sh --mode acceptance, advance.py"
+                            % (cluster, cause, card, reason, on_disk[:16], _pending_dir(root, cluster).relative_to(root).as_posix()))
     return 1
+
+
+def _stop_request_path(card: str) -> Path | None:
+    """V16-3 (runtime 0011): the run's stop-request file, when this process is
+    the dispatcher-spawned worker of THIS card. Anything else -- an older
+    runtime, a manual or Operator run, another card's id -- is None and the
+    worker's own kanban_block stays the terminator."""
+    path = (os.environ.get("HERMES_KANBAN_STOP_REQUEST") or "").strip()
+    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    if not path or not card or card != task:
+        return None
+    return Path(path)
+
+
+def _write_stop_request(path: Path, card: str, reason: str) -> None:
+    """Ask the runtime to record the native needs_input block and end the run.
+    Written after the pending row, the retained candidate and the loop state
+    are persisted, so the block never precedes what it names. Atomic: a
+    temporary file in the same directory, then os.replace -- the runtime never
+    reads half a request."""
+    import json
+    import tempfile
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=".%s." % path.name, dir=str(path.parent))
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"kind": "needs_input", "reason": reason, "task": card}, fh)
+        os.replace(tmp, path)
+    except OSError as exc:
+        # the pending verdict stands either way; without the request the
+        # worker's kanban_block is the terminator, as on an older runtime
+        print("WARN: the stop request %s could not be written (%s); end the card with kanban_block kind=needs_input "
+              "naming the cluster" % (path, exc), file=sys.stderr)
 
 
 def _continue(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str,
@@ -1018,6 +1064,16 @@ def main(argv: list[str] | None = None) -> int:
                                           changed=changed, why=handoff_why) if unit else None)
             if handoff is None:
                 cause = "unassessable-scope" if (unit and any(r.get("verdict") == "inconclusive" for r in scope_rows)) else "unproven-repair"
+                # V16-2 (v16 t_d3f89ded): what the gate names NOW, against this
+                # card's scope. A failure outside it is never this candidate's
+                # to repair, and the message must not say so.
+                guide = _gate_scope_guidance(issued, cur, gate, changed)
+                if guide and guide["cause"]:
+                    return _pending(root, steps, args.cluster, args.card, cur,
+                                    guide["reason"] + ("; " + handoff_why[0] if handoff_why else ""), changed, on_disk,
+                                    cause=guide["cause"], outside_scope=guide["record"])
+                if guide:
+                    reason = guide["reason"]
                 return _pending(root, steps, args.cluster, args.card, cur,
                                 reason + ("; " + handoff_why[0] if handoff_why else ""), changed, on_disk, cause=cause)
             reason = handoff["reason"]
@@ -1064,6 +1120,11 @@ def main(argv: list[str] | None = None) -> int:
                            "substitute page from product code (ADR-016)"
                            % (",".join(nav_items[:2]), h["navigation_path"], h["type"], h["member"], h["file"] or "?"),
                            changed, mint=not args.no_mint, hermes=args.hermes)
+    wiring = _cdi_wiring_record(root, str(prev.get("commit") or ""), changed, on_disk)
+    if wiring and not wiring.get("verified"):
+        print("NOTE: CDI_WIRING_UNVERIFIED %s; the package gate did not pass on this candidate, so this acceptance "
+              "is no claim that the bean wiring is complete: package and boot stay owed, and the first candidate "
+              "the package gate reaches proves or refutes it" % wiring["summary"])
     clear_pending(steps, args.cluster, why="accepted")
     _phase("verdict: accepted; committing the candidate")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
@@ -1088,6 +1149,10 @@ def main(argv: list[str] | None = None) -> int:
                            # obligation it does not reach: what was handed off,
                            # to what, and who still owes the gate's proof
                            "gate_handoff": ({k: v for k, v in handoff.items() if k != "reason"} if handoff else {}),
+                           # V16-4: a candidate that changed CDI wiring, and
+                           # whether packaging under the decided build profile
+                           # proved it; unverified wiring is recorded debt
+                           "cdi_wiring": wiring,
                            "revisions": list(issued.get("revisions") or []),
                            "continuations": list(issued.get("continuations") or []),
                            "checked_exceptions": ({k: (checked.get(k) if k in ("state", "base", "coverage") else len(checked.get(k) or []))
@@ -1236,16 +1301,155 @@ def _unit_gate_handoff(root: Path, scope_doc: dict, scope_rows: list[dict], issu
                           % (item.get("id"), rel, item.get("cause") or "unclassified", (prev_commit or "HEAD")[:12]))
         rows.append({"id": str(item.get("id")), "path": rel, "cause": str(item.get("cause") or ""),
                      "outside_unit": str(detail)[:300], "reach": status, "independence": independent})
-    return {"gate": gate, "issued": sorted(issued_gate), "now_reported": rows,
-            "accepted_commit": prev_commit[:12],
+    # V16-4: a unit whose obligations are CDI beans (a fragment delegate owed
+    # its concrete-only exposure) is checked STRUCTURALLY here; whether the
+    # container resolves them is decided at augmentation, which the build has
+    # not reached. The handoff keeps those obligations on the record and says
+    # the wiring is unverified -- never that it is correct.
+    beans = [{"type": str(r.get("type") or ""), "path": str(r.get("path") or ""), "parent": str(r.get("parent") or ""),
+              "contract": str(r.get("contract") or ""), "cdi": dict(r["cdi"])}
+             for r in (scope_doc.get("implementation_obligations") or [])
+             if isinstance(r, dict) and isinstance(r.get("cdi"), dict)]
+    out = {"gate": gate, "issued": sorted(issued_gate), "now_reported": rows,
+           "accepted_commit": prev_commit[:12],
+           "debt": {"package": "owed", "boot": "owed"},
+           "owed_by": "the closing card: an empty work list and the package and boot gates passing on the same artifact",
+           "reason": ("the unit's %s obligation %s is no longer reported and every sealed member assesses clean; the "
+                      "gate now stops on %s, located in %s, which this unit does not reach (OUTSIDE_SCOPE) and which "
+                      "the candidate did not cause (%s) -- a different obligation, minted next; the %s proof stays "
+                      "owed by the closing card"
+                      % (gate, ", ".join(sorted(issued_gate)), ", ".join(r["cause"] or r["id"] for r in rows),
+                         ", ".join(r["path"] for r in rows), ", ".join(r["independence"]["kind"] for r in rows), gate))}
+    if beans:
+        out["bean_obligations"] = beans
+        out["bean_wiring"] = ("unverified: the package gate stopped before augmentation validated these %d bean(s); "
+                              "the first candidate that clears %s must package under the decided build profile before "
+                              "the wiring is claimed complete" % (len(beans), ", ".join(r["path"] for r in rows)))
+        out["reason"] += ("; the bean wiring of %s is NOT verified by this checkpoint (structural only)"
+                          % ", ".join(b["type"].rsplit(".", 1)[-1] for b in beans[:4]))
+    return out
+
+
+def _cdi_wiring_record(root: Path, prev_commit: str, changed: list[str], on_disk: str) -> dict:
+    """V16-4 acceptance rule: compilation cannot establish bean correctness.
+    When the candidate changed CDI wiring (cdi_wiring_changes, from the compiler
+    models of the accepted commit and the candidate) and the package gate did
+    not pass on THIS candidate, the step records the change as unverified with
+    package and boot owed. {} when nothing changed or packaging proved it."""
+    pkg = load_json(root / VERIFY_PACKAGE) if (root / VERIFY_PACKAGE).is_file() else {}
+    bound = isinstance(pkg, dict) and bool(on_disk) and str(pkg.get("candidate_sha256") or "") == on_disk
+    if bound and pkg.get("ran") and pkg.get("rc") == 0:
+        return {}
+    if not any(str(p).endswith(".java") for p in changed) or not prev_commit:
+        return {}
+    try:
+        rows = cdi_wiring_changes(root, prev_commit, changed)
+    except DestModelUnavailable as exc:
+        return {"changed": [], "assessed": False, "verified": False, "packaged": False,
+                "debt": {"package": "owed", "boot": "owed"},
+                "summary": "whether the candidate changed CDI wiring could not be assessed (%s)" % str(exc)[:160]}
+    if not rows:
+        return {}
+    ran = "packaging failed on this candidate (%s)" % (pkg.get("failed_goal") or pkg.get("detail") or "rc %s" % pkg.get("rc")) \
+        if bound and pkg.get("ran") else "packaging did not run on this candidate"
+    return {"changed": rows[:20], "assessed": True, "verified": False, "packaged": False,
+            "profile": str(pkg.get("profile") or "") if bound else "", "packaging": ran,
             "debt": {"package": "owed", "boot": "owed"},
-            "owed_by": "the closing card: an empty work list and the package and boot gates passing on the same artifact",
-            "reason": ("the unit's %s obligation %s is no longer reported and every sealed member assesses clean; the "
-                       "gate now stops on %s, located in %s, which this unit does not reach (OUTSIDE_SCOPE) and which "
-                       "the candidate did not cause (%s) -- a different obligation, minted next; the %s proof stays "
-                       "owed by the closing card"
-                       % (gate, ", ".join(sorted(issued_gate)), ", ".join(r["cause"] or r["id"] for r in rows),
-                          ", ".join(r["path"] for r in rows), ", ".join(r["independence"]["kind"] for r in rows), gate))}
+            "summary": "the candidate changed the CDI wiring of %s; %s" % (
+                ", ".join("%s (%s)" % (r["type"].rsplit(".", 1)[-1], r["change"]) for r in rows[:4]), ran)}
+
+
+# A bean the container names as a candidate for an injection point: the
+# `target=` of each "available beans" row ArC prints for an ambiguous or
+# unsatisfied dependency (quarkus-arc BeanDeployment.processErrors).
+_BEAN_TARGET = r"target=([A-Za-z_$][\w$.]*)"
+
+
+def _bean_source(target: str) -> str:
+    """The source file a bean `target=` names: a nested type is its outer
+    file, and a generated class (SpringDataXRepository_<hash>Impl) is the
+    interface it was generated from."""
+    pkg, _, simple = target.rpartition(".")
+    simple = simple.split("$")[0].split("_")[0]
+    return "src/main/java/%s%s.java" % ((pkg.replace(".", "/") + "/") if pkg else "", simple)
+
+
+def _gate_scope_guidance(issued: dict, cur: dict, gate: str, changed: list[str]) -> dict | None:
+    """V16-2 (v16 t_d3f89ded): what the gate reports NOW, against the card's
+    scope -- the write set it was issued (and every amendment recorded on it).
+
+    A failure the gate locates outside that scope is never this candidate's to
+    repair: its location may be an unchanged consumer while the cause is a
+    bean this candidate added, or a prerequisite another card or the Operator
+    owns. So the answer is VERIFICATION_PENDING naming the paths, the scope
+    and the Operator prerequisite -- never an instruction to edit them here,
+    and never an acceptance by filename (a location is not independence).
+    A failure with no location, or set-wide, has an UNKNOWN cause and stays
+    pending until it is classified. None when the gate reports nothing new;
+    {cause: ""} when everything it names is inside the scope."""
+    import re
+    if gate not in ("package", "boot"):
+        return None
+    issued_ids = {str(i) for i in (issued.get("items") or [])} | {str(i) for i in (issued.get("gate_items") or [])}
+    now = [i for i in (cur.get("items") or []) if str(i.get("gate") or "") == gate and str(i.get("id")) not in issued_ids]
+    if not now:
+        return None
+    scope = sorted({str(p) for p in (issued.get("write_set") or [])})
+    inside, outside, unknown = [], [], []
+    for i in now:
+        rel = str(i.get("path") or "")
+        if i.get("unlocated") or i.get("set_wide") or not rel:
+            unknown.append(i)
+        elif rel in scope:
+            inside.append(i)
+        else:
+            outside.append(i)
+    if not outside and not unknown:
+        return {"cause": "", "record": {},
+                "reason": ("the %s gate still fails and the issued obligation is no longer reported, which is not proof it "
+                           "was repaired; the gate now names %s, inside this card's write set: repair it in this "
+                           "candidate, and the gate passing discharges them together"
+                           % (gate, ", ".join("%s (%s)" % (i["path"], i.get("cause") or "unclassified") for i in inside[:3])))}
+    # the beans the container names for the failing injection point, and
+    # which of them this candidate changed: a location is not a cause
+    changed_set = {str(p) for p in changed}
+    rows = []
+    for i in outside + unknown:
+        text = str(i.get("message") or "") + "\n" + str(i.get("detail") or "")
+        beans = sorted({_bean_source(m) for m in re.findall(_BEAN_TARGET, text)})
+        rows.append({"id": str(i.get("id") or ""), "path": str(i.get("path") or ""),
+                     "cause": str(i.get("cause") or "unclassified"),
+                     "location": "unknown" if i in unknown else "outside-scope",
+                     "beans_named": beans, "beans_changed_by_candidate": sorted(set(beans) & changed_set)})
+    caused = sorted({b for r in rows for b in r["beans_changed_by_candidate"]})
+    located = [r for r in rows if r["location"] == "outside-scope"]
+    unk = [r for r in rows if r["location"] == "unknown"]
+    parts = []
+    if located:
+        parts.append("the %s gate now stops on %s at %s, outside this card's scope (write set: %s)"
+                     % (gate, ", ".join(sorted({r["cause"] for r in located})), ", ".join(sorted({r["path"] for r in located})),
+                        ", ".join(scope) or "none"))
+    if unk:
+        parts.append("%s %d failure(s) whose location or cause is UNKNOWN (%s), which stay pending until classified"
+                     % ("and" if located else "the %s gate now reports" % gate, len(unk),
+                        ", ".join("%s %s" % (r["id"], r["cause"]) for r in unk[:3])))
+    if caused:
+        prereq = ("the failure names bean(s) this candidate changed (%s), so the candidate may have caused it and no "
+                  "handoff is possible: the Operator decides whether to reject the candidate or to record a scope "
+                  "decision for the causal files" % ", ".join(caused))
+    else:
+        prereq = ("the Operator classifies the cause and, if it is not this candidate, records the repair of %s with "
+                  "operator-step.py beside this pending card; then restore-pending.py, run-verify.sh --mode acceptance "
+                  "and advance.py on this card" % (", ".join(sorted({r["path"] for r in located})) or "the named files"))
+    reason = ("GATE_FAILURE_OUTSIDE_SCOPE: the %s obligation %s is no longer reported, which is not proof it was "
+              "repaired, and %s. This candidate must not edit %s and must not widen its write set to reach %s. "
+              "Required Operator prerequisite: %s"
+              % (gate, ", ".join(sorted(str(i) for i in (issued.get("gate_items") or issued.get("items") or []))[:2]) or "issued",
+                 "; ".join(parts), "those files" if located else "anything outside its write set",
+                 "them" if located else "a cause no one has located", prereq))
+    return {"cause": "outside-scope-prerequisite" if located else "unclassified-gate-failure", "reason": reason,
+            "record": {"gate": gate, "scope": scope, "failures": rows, "caused_by_candidate": caused,
+                       "prerequisite": prereq}}
 
 
 def _mint(root: Path, hermes: str) -> int:
