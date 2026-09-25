@@ -42,8 +42,8 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:5b3c4c6c1bec3876a53fff8682f988b13e56ffa81303fe162a763b9680c55a58",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-09-25 (V15-1: Hermes runtime series 0001-0010 applied at build, /opt/rhoai3/080.pins hermes.patched_tree=32be3bd0617936952a1ed7a4d8718accd8c4661c; token accounting). Previous: sha256:3918cc7032218721a3ce68ed8db8cf360f9f300f8977f46d2a4c40b0069f47c3 (tree 101ca3d1). Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
+        "digest": "sha256:7e7d5dbeada3690fadc8d532895ba11d0a6c7a08c2b51a185eeb3f951fd7f0c2",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-09-25 (next golden: Hermes runtime series 0001-0012, /opt/rhoai3/080.pins hermes.patched_tree=8a3bb406be0cfcb587fb90903da287e3805c297e). Previous: sha256:5b3c4c6c1bec3876a53fff8682f988b13e56ffa81303fe162a763b9680c55a58 (tree 32be3bd0). Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {
