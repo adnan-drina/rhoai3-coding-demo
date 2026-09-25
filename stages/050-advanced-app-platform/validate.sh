@@ -270,12 +270,17 @@ check "050 skeleton devfile points at that script for the in-cluster route" \
   "grep -c 'patch-workspace-maas-route.sh' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "1"
 
-if echo "$RUNTIME_CATALOG" | grep -E 'templates/(app-migration|agentic-quarkus-scaffold)/template.yaml' | grep -qE '/blob/[0-9a-f]{40}/'; then
-    echo -e "${RED}[FAIL]${NC} Runtime catalog Location targets are SHA-pinned (they accumulate)"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif echo "$RUNTIME_CATALOG" | grep -q 'templates/app-migration/template.yaml'; then
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog template Locations are not SHA-pinned"
+# B2: template Locations are pinned to the ONE revision the bundle was
+# published at (superseded revisions are pruned by the generator), so every
+# pinned template target names the catalog's recorded revision.
+CATALOG_REVISION="$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\.redhat\.com/catalog-revision}' 2>/dev/null || true)"
+PINNED_REVISIONS="$(echo "$RUNTIME_CATALOG" | grep -E 'templates/[^/]+/template\.yaml' | grep -oE '/blob/[0-9a-f]{40}/' | sort -u)"
+if [[ -n "$CATALOG_REVISION" && "$PINNED_REVISIONS" == "/blob/${CATALOG_REVISION}/" ]]; then
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog template Locations are pinned to the catalog revision ${CATALOG_REVISION:0:12}"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} Runtime catalog template Locations are not pinned to one catalog revision (catalog-revision '${CATALOG_REVISION:-none}', pinned: $(echo $PINNED_REVISIONS))"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
 log_step "RHDH Configuration"
