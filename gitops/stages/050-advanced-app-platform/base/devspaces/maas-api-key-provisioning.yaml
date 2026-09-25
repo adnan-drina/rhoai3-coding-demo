@@ -1604,7 +1604,11 @@ data:
         cfg["hooks"]["pre_tool_call"] = []
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
-        yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
+        # a JSON round trip unshares nested values (the provider and the
+        # compression slot copy the same request body), so PyYAML writes no
+        # &anchor/*alias pair; the harness reader refuses anchors, and v13's
+        # first start refused MODEL_PROFILE_MISMATCH on one (2026-09-25)
+        yaml.safe_dump(_pjson.loads(_pjson.dumps(cfg)), fh, default_flow_style=False, sort_keys=False)
     env_path = os.path.join(managed, ".env")
     with open(env_path, "w") as fh:
         fh.write(f"MAAS_API_BASE_URL={model_base}\n")
