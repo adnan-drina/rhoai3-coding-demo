@@ -1,14 +1,13 @@
-# Dockerfile hunk: apply the Hermes runtime patch series 0001-0008 (B11, B3/B4,
-# R2) in the rhoai3-ws-080-unsigned stage of workspace-images/Dockerfile.
-# This is the single authoritative hunk for the series.
+# Dockerfile hunk: move the rhoai3-ws-080-unsigned stage of
+# workspace-images/Dockerfile from the 8-patch series (tree 101ca3d1, as
+# currently applied there) to the 10-patch series 0001-0010 (B11, B3/B4, R2,
+# V15-1). This is the single authoritative hunk. It is relative to the
+# Dockerfile as it stands now, with the earlier hunk already applied; a
+# Dockerfile without any patch step needs that earlier hunk first (git history
+# of this file, commit 86d153d5).
 #
 # NOT applied. workspace-images/ is gitignored and the image bake and push
 # happen outside this repo. Apply by hand, from the repo root:
-#
-#   The build context excludes out/*; workspace-images/.dockerignore must
-#   re-include the series (after the MTA CLI line):
-#     !out/hermes-runtime-patches/
-#     !out/hermes-runtime-patches/**
 #
 #   mkdir -p workspace-images/out/hermes-runtime-patches
 #   rm -f workspace-images/out/hermes-runtime-patches/*.patch
@@ -18,58 +17,32 @@
 #      stages/080-ai-autonomous-migration/hermes-runtime/Dockerfile.hunk.txt \
 #      | patch -d workspace-images -p1 --dry-run   # then without --dry-run
 #
-# The build fails closed if the patch count is not 8 or if the patched tree
-# is not HERMES_PATCHED_TREE (101ca3d1da753267ffcb7f9b280f09258085256a). The
-# diff was made against the Dockerfile as of 2026-09-24 (unpatched stage).
+# The build fails closed if the patch count is not 10 or if the patched tree
+# is not HERMES_PATCHED_TREE (32be3bd0617936952a1ed7a4d8718accd8c4661c). The
+# diff was made against workspace-images/Dockerfile as of 2026-09-25.
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -115,6 +115,16 @@
- ARG HERMES_GIT_SHA=fcbd1076a93841fa88855acce810e342a5b78101
- ARG HERMES_VERSION=0.20.5
- ARG HERMES_DATE=2026.8.19
-+# B11 runtime patch series (stages/080-ai-autonomous-migration/hermes-runtime):
-+# identical successful tool-call streak halt + halt propagation, terminal
-+# transport-metadata identity, stub retrievability, kanban halt accounting,
-+# incomplete-output and persistent-429 named stops (0005, 0006), per-run
-+# request pacer (0007; active only when RHOAI3_REQUEST_BUDGET/_LEDGER are set),
-+# explicit auxiliary per-call values over task extra_body (0008).
-+# Staged into the build context by the operator (cp .../patches/*.patch
-+# out/hermes-runtime-patches/). The git tree of the patched source must equal
-+# HERMES_PATCHED_TREE or the build fails.
-+ARG HERMES_PATCHED_TREE=101ca3d1da753267ffcb7f9b280f09258085256a
+@@ -120,11 +120,12 @@
+ # transport-metadata identity, stub retrievability, kanban halt accounting,
+ # incomplete-output and persistent-429 named stops (0005, 0006), per-run
+ # request pacer (0007; active only when RHOAI3_REQUEST_BUDGET/_LEDGER are set),
+-# explicit auxiliary per-call values over task extra_body (0008).
++# explicit auxiliary per-call values over task extra_body (0008), neutral
++# local-budget deferral (0009), reserved-and-settled token accounting (0010).
+ # Staged into the build context by the operator (cp .../patches/*.patch
+ # out/hermes-runtime-patches/). The git tree of the patched source must equal
+ # HERMES_PATCHED_TREE or the build fails.
+-ARG HERMES_PATCHED_TREE=101ca3d1da753267ffcb7f9b280f09258085256a
++ARG HERMES_PATCHED_TREE=32be3bd0617936952a1ed7a4d8718accd8c4661c
  ARG MTA_VSIX_VERSION=8.2.0
  ARG REDHAT_JAVA_VERSION=1.47.0
  ARG KANTRA_VERSION=v0.10.0-beta.1
-@@ -128,6 +138,7 @@
- COPY out/mta-${MTA_CLI_VERSION}-cli-linux-amd64.zip /tmp/mta-cli.zip
- RUN echo "${MTA_CLI_ZIP_SHA256}  /tmp/mta-cli.zip" | sha256sum -c -
- COPY scripts/assert-hermes-source-pin.py /opt/rhoai3/assert-hermes-source-pin.py
-+COPY out/hermes-runtime-patches/ /opt/rhoai3/hermes-runtime-patches/
- COPY scripts/assert-zip-exec-bits.py /opt/rhoai3/assert-zip-exec-bits.py
- COPY scripts/normalize-exec-bits.py /opt/rhoai3/normalize-exec-bits.py
- USER 0
-@@ -169,6 +180,13 @@
+@@ -180,7 +181,7 @@
           --agent-src /opt/hermes-agent \
           --version "${HERMES_VERSION}" \
           --date "${HERMES_DATE}" \
-+    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 8 \
-+    && for p in /opt/rhoai3/hermes-runtime-patches/*.patch; do \
-+         git -C /opt/hermes-agent apply --index "$p" || exit 1; \
-+       done \
-+    && test "$(git -C /opt/hermes-agent write-tree)" = "${HERMES_PATCHED_TREE}" \
-+    && (cd /opt/rhoai3/hermes-runtime-patches && sha256sum *.patch) \
-+         > /opt/rhoai3/hermes-runtime-patches.sha256 \
-     && /usr/bin/python3.11 -m venv /opt/hermes-venv \
-     && /opt/hermes-venv/bin/pip install --upgrade pip \
-     && /opt/hermes-venv/bin/pip install -e "/opt/hermes-agent[web]" \
-@@ -210,7 +228,9 @@
-     && python3 /opt/rhoai3/normalize-exec-bits.py /opt/mta-cli /opt/kantra \
-     && ln -sf /opt/mta-cli/mta-cli /usr/local/bin/mta-cli \
-     && printf '%s\n' "mta-cli=${MTA_CLI_VERSION}" "mta-cli.sha256=$(sha256sum /opt/mta-cli/mta-cli | cut -d' ' -f1)" \
--         "kantra=${KANTRA_VERSION}" "hermes=${HERMES_VERSION}" > /opt/rhoai3/080.pins \
-+         "kantra=${KANTRA_VERSION}" "hermes=${HERMES_VERSION}" \
-+         "hermes.source_sha=${HERMES_GIT_SHA}" "hermes.patched_tree=${HERMES_PATCHED_TREE}" \
-+         > /opt/rhoai3/080.pins \
-     && printf '%s\n' \
-          "# REFUSE - wrong SOUL.md" \
-          "" \
+-    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 8 \
++    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 10 \
+     && for p in /opt/rhoai3/hermes-runtime-patches/*.patch; do \
+          git -C /opt/hermes-agent apply --index "$p" || exit 1; \
+        done \

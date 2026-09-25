@@ -1,0 +1,350 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 25 Sep 2026 14:31:30 +0200
+Subject: [PATCH 09/10] fix(kanban): a local request-allowance stop is a
+ neutral deferral on the native rate-limit path
+
+RHOAI3 v15 (V15-1 change 1, tmp/v15-run-20260925/V15-1-DURABLE-QUOTA-
+DESIGN.md section 2). A worker that stops on the run's local request
+allowance (the next eligible slot is beyond the 900 s per-attempt wait) was
+recorded through the failed-worker recorder: immediate respawn, the same
+stop 3 s later, gave_up, blocked card. A predictable local wait is neither a
+failure nor a reason for an immediate retry.
+
+- request_pacer: RequestBudgetExhausted carries a structured deferral
+  (accounting mode, retry_not_before = when the needed capacity becomes
+  eligible, allowance); consumers never parse the STOP message.
+- Worker: persists one local_budget_deferral event bound to its task and
+  worker run (with model and accounting mode) BEFORE exiting, then leaves
+  through the pinned native temporary-rate-limit exit,
+  KANBAN_RATE_LIMIT_EXIT_CODE (cli.py, quiet and non-quiet chat -q paths).
+  Nothing was sent after the stop; the candidate on the tree, verification
+  evidence and deadlines are untouched.
+- Reaper (detect_crashed_workers): a run with a persisted deferral ends with
+  the neutral rate_limited outcome whatever the exit status (also after a
+  dispatcher restart lost the reap record): source-phase requeue (ready or
+  review), no _record_task_failure, no counter increment or reset; the run
+  metadata carries retry_not_before; last_failure_error states the local
+  wait and that the previous run's work stays on the tree (worker context).
+- Respawn guard: a latest rate_limited run with a local deferral holds the
+  card (local_budget_wait) until retry_not_before AND a free slot in the
+  shared ledger (peek, no slot taken); the native atomic claim then resumes
+  the same card. A newer genuine failure or a manual stop supersedes it.
+  Provider 429 handling is unchanged.
+---
+ agent/conversation_loop.py |   4 ++
+ agent/request_pacer.py     |   9 ++++
+ agent/turn_finalizer.py    |  70 +++++++++++++++++++++++--
+ cli.py                     |  21 ++++++++
+ hermes_cli/kanban_db.py    | 105 +++++++++++++++++++++++++++++++++++--
+ 5 files changed, 201 insertions(+), 8 deletions(-)
+
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index d634cf7c9d..a7077ab55a 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -4420,6 +4420,10 @@ def run_conversation(
+                         "failed": True,
+                         "error": str(_budget_exc),
+                         "model_stop": "request_budget",
++                        "deferral": {
++                            **getattr(_budget_exc, "deferral", {}),
++                            "model": getattr(agent, "model", None),
++                        },
+                     }
+ 
+                 # -----------------------------------------------------------
+diff --git a/agent/request_pacer.py b/agent/request_pacer.py
+index 5aa3cf7468..dc0f1b16bb 100644
+--- a/agent/request_pacer.py
++++ b/agent/request_pacer.py
+@@ -66,6 +66,15 @@ class RequestBudgetExhausted(RuntimeError):
+         self.next_slot_at = next_slot_at
+         self.wait = wait
+         self.waited = waited
++        # Structured local-budget deferral (consumers never parse the message).
++        self.deferral = {
++            "kind": "local_budget_deferral",
++            "accounting_mode": "request",
++            "retry_not_before": float(next_slot_at),
++            "limit": cfg.limit,
++            "window_seconds": cfg.window,
++            "waited_seconds": float(waited),
++        }
+         when = datetime.fromtimestamp(next_slot_at, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+         # Wording must not match kanban_db._RESPAWN_BLOCKER_RE (see
+         # turn_finalizer.record_kanban_turn_stop).
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index 5ff2cc9bad..40e070a1da 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -182,6 +182,64 @@ def _record_kanban_worker_stop(
+         return False
+ 
+ 
++# Exit code a dispatcher-owned kanban worker must leave with (None = default).
++_kanban_exit_code: "int | None" = None
++
++
++def kanban_worker_exit_code() -> "int | None":
++    """Exit code requested by a kanban turn stop (``KANBAN_RATE_LIMIT_EXIT_CODE``
++    after a local budget deferral), or None."""
++    return _kanban_exit_code
++
++
++def _record_kanban_local_deferral(
++    kanban_task: str,
++    deferral: dict,
++    reason: str,
++    logger: logging.Logger,
++) -> bool:
++    """Persist a local request-allowance deferral for this worker run.
++
++    Written while the task is still ``running`` and before the process exits,
++    so the dispatcher can classify the ended run as the neutral
++    ``rate_limited`` outcome even after its own restart. The task, claim and
++    counters are not touched here; the native reaper does the requeue.
++    """
++    global _kanban_exit_code
++    try:
++        from agent.delegation_context import is_dispatcher_owned_worker_context
++
++        if not is_dispatcher_owned_worker_context():
++            return False
++        from hermes_cli import kanban_db as _kb
++
++        _conn = _kb.connect()
++        try:
++            row = _conn.execute(
++                "SELECT status, current_run_id FROM tasks WHERE id = ?",
++                (kanban_task,),
++            ).fetchone()
++            if row is None or row["status"] != "running":
++                return False
++            expected_run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
++            if expected_run and str(row["current_run_id"]) != expected_run:
++                return False
++            _kb.record_local_budget_deferral(
++                _conn, kanban_task, int(row["current_run_id"]),
++                {**deferral, "reason": reason},
++            )
++        finally:
++            try:
++                _conn.close()
++            except Exception:
++                pass
++        _kanban_exit_code = _kb.KANBAN_RATE_LIMIT_EXIT_CODE
++        return True
++    except Exception:
++        logger.warning("Failed to record local budget deferral for task %s", kanban_task, exc_info=True)
++        return False
++
++
+ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Logger) -> None:
+     """Record a tool-loop guardrail halt as a failed kanban run.
+ 
+@@ -232,13 +290,17 @@ def record_kanban_turn_stop(agent, result) -> bool:
+             event_payload_extra={"incomplete_output": kind, "output_cap": cap},
+         )
+     if result.get("model_stop") == "request_budget":
+-        # The pacer's message already carries the named stop and avoids the
+-        # respawn blocker pattern.
+-        return _record_kanban_worker_stop(
++        # A local request-allowance wait is not a failed run. Persist the
++        # structured deferral for this worker run, then leave through the
++        # native temporary-rate-limit exit (KANBAN_RATE_LIMIT_EXIT_CODE): the
++        # dispatcher requeues the same card neutrally (no failure counted or
++        # reset) and does not respawn it before retry_not_before, nor while
++        # the run's ledger has no free slot.
++        return _record_kanban_local_deferral(
+             kanban_task,
++            dict(result.get("deferral") or {}),
+             str(result.get("error") or "STOP MODEL_REQUEST_BUDGET"),
+             logger,
+-            event_payload_extra={"model_stop": "MODEL_REQUEST_BUDGET"},
+         )
+     if result.get("failed") and result.get("failure_reason") == "rate_limit":
+         attempts = result.get("api_attempts") or getattr(agent, "_api_max_retries", None)
+diff --git a/cli.py b/cli.py
+index b53906386a..5f953853c4 100644
+--- a/cli.py
++++ b/cli.py
+@@ -21407,6 +21407,16 @@ def main(
+                                     _exit_code = _RL_CODE
+                                 except Exception:
+                                     _exit_code = 1
++                        # RHOAI3: a kanban worker that deferred on the run's
++                        # local request allowance leaves through the native
++                        # temporary-rate-limit exit (neutral requeue).
++                        try:
++                            from agent.turn_finalizer import kanban_worker_exit_code
++
++                            if os.environ.get("HERMES_KANBAN_TASK") and kanban_worker_exit_code():
++                                _exit_code = kanban_worker_exit_code()
++                        except Exception:
++                            pass
+                         sys.exit(_exit_code)
+ 
+                 # Exit with error code if credentials or agent init fails
+@@ -21435,6 +21445,17 @@ def main(
+                 cli._print_exit_summary(clear_screen=False)
+         finally:
+             _finalize_single_query(cli)
++        # RHOAI3: see the quiet branch — a kanban worker's local budget
++        # deferral exits with the native temporary-rate-limit code.
++        try:
++            from agent.turn_finalizer import kanban_worker_exit_code
++
++            if os.environ.get("HERMES_KANBAN_TASK") and kanban_worker_exit_code():
++                sys.exit(kanban_worker_exit_code())
++        except SystemExit:
++            raise
++        except Exception:
++            pass
+         return
+     
+     # Run interactive mode
+diff --git a/hermes_cli/kanban_db.py b/hermes_cli/kanban_db.py
+index 79398b7d68..5c0beccdb2 100644
+--- a/hermes_cli/kanban_db.py
++++ b/hermes_cli/kanban_db.py
+@@ -8097,6 +8097,61 @@ _RECENT_WORKER_EXITS_MAX = 4096
+ _recent_worker_exits: "dict[int, tuple[int, float]]" = {}
+ 
+ 
++# ---------------------------------------------------------------------------
++# RHOAI3: local request-allowance deferral (V15-1)
++# ---------------------------------------------------------------------------
++# A worker that stops because the run's local request allowance is full writes
++# a ``local_budget_deferral`` event bound to its run before exiting with
++# KANBAN_RATE_LIMIT_EXIT_CODE. The reaper then ends that run with the neutral
++# ``rate_limited`` outcome (no _record_task_failure), even if the exit status
++# was lost (dispatcher restart), and the respawn guard holds the same card
++# until ``retry_not_before`` and a free slot in the shared ledger.
++
++LOCAL_BUDGET_DEFERRAL_EVENT = "local_budget_deferral"
++
++
++def record_local_budget_deferral(conn, task_id: str, run_id: int, deferral: dict) -> None:
++    """Persist one deferral record for (task, worker run); idempotent."""
++    with write_txn(conn):
++        exists = conn.execute(
++            "SELECT 1 FROM task_events WHERE task_id = ? AND run_id = ? AND kind = ?",
++            (task_id, int(run_id), LOCAL_BUDGET_DEFERRAL_EVENT),
++        ).fetchone()
++        if exists:
++            return
++        payload = {k: v for k, v in dict(deferral).items() if k not in ("messages",)}
++        _append_event(conn, task_id, LOCAL_BUDGET_DEFERRAL_EVENT, payload, run_id=int(run_id))
++
++
++def _local_deferral_for_run(conn, task_id: str, run_id) -> Optional[dict]:
++    if run_id is None:
++        return None
++    row = conn.execute(
++        "SELECT payload FROM task_events WHERE task_id = ? AND run_id = ? AND kind = ? "
++        "ORDER BY id DESC LIMIT 1",
++        (task_id, int(run_id), LOCAL_BUDGET_DEFERRAL_EVENT),
++    ).fetchone()
++    try:
++        payload = json.loads(row["payload"]) if row and row["payload"] else None
++    except (TypeError, ValueError):
++        payload = None
++    return payload if isinstance(payload, dict) else None
++
++
++def _request_capacity() -> "tuple[bool, Optional[float]]":
++    """Whether the run's shared request ledger has a free slot now (peek, no
++    slot taken), and the next slot time when it has not. No pacer => free."""
++    try:
++        from agent import request_pacer
++    except Exception:
++        return True, None
++    cfg = request_pacer.config()
++    if cfg is None:
++        return True, None
++    ok, next_at = request_pacer._try_take(cfg, "dispatcher-peek", False)
++    return ok, (None if ok else next_at)
++
++
+ def _record_worker_exit(pid: int, raw_status: int) -> None:
+     """Record a reaped child's exit status for later classification.
+ 
+@@ -8892,7 +8947,7 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
+     exited_hook_payloads: list[dict] = []
+     with write_txn(conn):
+         rows = conn.execute(
+-            "SELECT id, worker_pid, claim_lock, started_at, assignee "
++            "SELECT id, worker_pid, claim_lock, started_at, assignee, current_run_id "
+             "FROM tasks "
+             "WHERE status = 'running' AND worker_pid IS NOT NULL"
+         ).fetchall()
+@@ -8916,7 +8971,34 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
+             pid = int(row["worker_pid"])
+             kind, code = _classify_worker_exit(pid)
+             rate_limited_exit = False
+-            if kind == "clean_exit":
++            # RHOAI3: a run that recorded a local request-allowance deferral
++            # sent nothing after it and ends neutrally whatever the exit
++            # status (also after a dispatcher restart lost the reap record).
++            _deferral = _local_deferral_for_run(conn, row["id"], row["current_run_id"])
++            if _deferral is not None:
++                protocol_violation = False
++                rate_limited_exit = True
++                _rnb = _deferral.get("retry_not_before")
++                _when = (
++                    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(_rnb)))
++                    if _rnb is not None else "unknown"
++                )
++                error_text = (
++                    f"LOCAL_BUDGET_WAIT: this run's local model request allowance "
++                    f"was full; next eligible at {_when}; requeued without counting "
++                    "a failure; the previous run's work stays on the tree"
++                )
++                event_kind = "rate_limited"
++                event_payload = {
++                    "pid": pid,
++                    "claimer": row["claim_lock"],
++                    "exit_code": code,
++                    "local_budget_deferral": True,
++                    "retry_not_before": _rnb,
++                    "accounting_mode": _deferral.get("accounting_mode"),
++                    "model": _deferral.get("model"),
++                }
++            elif kind == "clean_exit":
+                 # Worker subprocess returned 0 but its task is still
+                 # ``running`` in the DB — it exited without calling
+                 # ``kanban_complete`` / ``kanban_block``. Overwhelmingly the
+@@ -9465,15 +9547,30 @@ def check_respawn_guard(
+     #    no longer applies and the normal paths take over.
+     rl_cooldown = _resolve_rate_limit_cooldown_seconds()
+     latest_run = conn.execute(
+-        "SELECT outcome, ended_at FROM task_runs "
++        "SELECT outcome, ended_at, metadata FROM task_runs "
+         "WHERE task_id = ? AND ended_at IS NOT NULL "
+-        "ORDER BY ended_at DESC LIMIT 1",
++        "ORDER BY ended_at DESC, id DESC LIMIT 1",
+         (task_id,),
+     ).fetchone()
+     if (
+         latest_run is not None
+         and latest_run["outcome"] == "rate_limited"
+     ):
++        # RHOAI3: a local request-allowance deferral holds the card until its
++        # retry_not_before AND a free slot in the shared ledger (another
++        # process may have used the capacity since the time was computed).
++        try:
++            _meta = json.loads(latest_run["metadata"]) if latest_run["metadata"] else {}
++        except (TypeError, ValueError):
++            _meta = {}
++        if isinstance(_meta, dict) and _meta.get("local_budget_deferral"):
++            _rnb = _meta.get("retry_not_before")
++            if _rnb is not None and time.time() < float(_rnb):
++                return "local_budget_wait"
++            free, _next = _request_capacity()
++            if not free:
++                return "local_budget_wait"
++            return None
+         if rl_cooldown <= 0:
+             # Cooldown disabled — respawn immediately, and skip the
+             # blocker_auth regex so the stamped rate-limit text doesn't

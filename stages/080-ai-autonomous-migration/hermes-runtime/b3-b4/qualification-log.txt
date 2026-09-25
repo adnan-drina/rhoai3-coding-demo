@@ -386,3 +386,247 @@ PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_first_slot_beyond
 === Broad regression on 101ca3d1 ===
 174 failed, 6704 passed, 30 skipped, 1 warning in 624.29s (0:10:24)
 Same 174 failing ids as on 374562df / 433f0c6f / 87a39dca / fcbd1076 (comm diff empty).
+
+================ V15-1 (V15-1-DURABLE-QUOTA-DESIGN.md): 0009 neutral deferral, 0010 token accounting ================
+Series sha256:
+2925eb97e226e087f9b7c13eaffbdc730e777ec2a3f780b2736747dc7fa36407  0001-fix-guardrails-identical-call-streaks-hard-stop-any-.patch
+96617a6dd10d1d87d89ee323b0ac697c6c1ff0457bdec6fae8c63aca7450e21d  0002-fix-guardrails-terminal-transport-metadata-cannot-hi.patch
+b139fd133d30d46b6270675d71bfc54af5c4c1a8dccd6dc28bd5a75d320ebb5f  0003-fix-guardrails-never-emit-a-result-reference-stub-wh.patch
+b2b1c949fcc731997eff6d334d31a6e7d39822d2d979bd3df2cdadd1fe1c367f  0004-fix-kanban-a-guardrail-halted-worker-records-a-faile.patch
+7552687a3a63a4be9ced59d3873e1e8536b876d60e8a94ef9bd97eb7f019a835  0005-fix-kanban-incomplete-model-output-ends-a-worker-run.patch
+131a313e4b31abc879aa2a5957b34b4c3332e79e7914928972412177e23faaa6  0006-fix-kanban-a-persistent-provider-rate-limit-ends-a-w.patch
+3e4d8bdefcf4d3e2f42758e03c6b409db6e9e98048f2a82a297e855cfc8a5898  0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch
+fe6976d9d745b7ab7dde3b5cb59273469bb7f6bbd8c60de5a2883ab245a8d986  0008-fix-auxiliary-explicit-per-call-sampling-and-output-.patch
+56e0b484702a7eba465d019599f2d48d7fc2d7e9a06de688f253db139f56cf30  0009-fix-kanban-a-local-request-allowance-stop-is-a-neutr.patch
+3b6833f70f59039dd3b298c676ba48b18d71949c99a007637e9e50f8fa0c2bf0  0010-feat-transport-reserved-and-settled-token-accounting.patch
+git apply --index 0001-0010 onto a fresh fcbd1076 worktree -> git write-tree = 9a00357c1852d093dbadbfbc5a809d605d8e8213 (0001-0009: 3e219090f61deb3a2676e86c73571f502a886970; 0001-0008: 101ca3d1, the v15 runtime)
+Dockerfile.hunk.txt (10 patches, tree 9a00357c; relative to workspace-images/Dockerfile with the 8-patch hunk applied): patch -p1 --dry-run -> 'patching file Dockerfile' (not applied)
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 101ca3d1da753267ffcb7f9b280f09258085256a ===
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing
+FAILED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_v15_regression_neutral_deferral_then_same_card_resumes
+FAILED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_genuine_failure_then_deferral_keeps_the_failure_count
+FAILED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_reviewer_origin_deferral_returns_to_review
+FAILED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_dispatcher_restart_during_deferral_and_stop_prevents_dispatch
+FAILED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_candidate_edits_survive_the_pause
+FAILED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_two_deferrals_consume_no_retry_but_a_crash_does
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes
+================== 16 failed, 33 passed in 136.82s (0:02:16) ===================
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 3e219090f61deb3a2676e86c73571f502a886970 ===
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes
+================== 10 failed, 39 passed in 148.88s (0:02:28) ===================
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 9a00357c1852d093dbadbfbc5a809d605d8e8213 ===
+FAILED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing
+=================== 1 failed, 48 passed in 150.68s (0:02:30) ===================
+(test_budget_exhaustion_is_named_and_sends_nothing was then updated to expect local_budget_wait: 101ca3d1 fail, 3e219090 pass, 9a00357c pass)
+
+=== Final run on 9a00357c: tests/rhoai3_b11 + tests/rhoai3_b3b4, no xfail ===
+PASSED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_auxiliary_cannot_consume_main_reservation_and_deadline_holds
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_use_its_reservation
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_gateway_process_calls_are_paced_from_managed_env
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_auxiliary_call_waits_in_hook_past_its_timeout
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_cancelled_wait_sends_nothing
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_stream_reconnect_waits_in_hook_without_stale_kill
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_total_wait_bound_under_contention
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_first_slot_beyond_wait_stops_immediately
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_v15_regression_neutral_deferral_then_same_card_resumes
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_genuine_failure_then_deferral_keeps_the_failure_count
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_reviewer_origin_deferral_returns_to_review
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_dispatcher_restart_during_deferral_and_stop_prevents_dispatch
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_candidate_edits_survive_the_pause
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_two_deferrals_consume_no_retry_but_a_crash_does
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes
+======================== 49 passed in 150.20s (0:02:30) ========================
+
+=== Contention reproduction (request mode, unchanged script) ===
+{
+  "result": "bounded-stop",
+  "simulated_elapsed_seconds": 900.0,
+  "max_wait_seconds": 900.0,
+  "competing_slots_granted": 50,
+  "model_requests_sent": 0,
+  "source": "stages/080-ai-autonomous-migration/hermes-runtime/patches/0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch"
+}
+
+=== Existing related upstream tests + tests/agent/test_auxiliary_client.py on 9a00357c ===
+340 passed, 1 skipped in 35.74s
+
+=== Kanban suites (tests/hermes_cli -k kanban) ===
+101ca3d1: 15 failed, 291 passed, 2 skipped, 6313 deselected, 3 warnings in 63.09s (0:01:03)
+9a00357c: 15 failed, 291 passed, 2 skipped, 6313 deselected, 3 warnings in 62.00s (0:01:01)
+identical failing ids (pre-existing on this host)
+
+=== Broad regression on 9a00357c ===
+174 failed, 6704 passed, 30 skipped, 1 warning in 600.63s (0:10:00)
+Same failing ids as on 101ca3d1 (comm diff empty).
+
+=== Usage measurement probe (real kanban worker, token mode, producer config) ===
+task done
+REQ 0 main stream True include_usage True usage_sent {'prompt_tokens': 180000, 'completion_tokens': 100, 'total_tokens': 180100}
+REQ 1 main stream True include_usage True usage_sent {'prompt_tokens': 20000, 'completion_tokens': 1500, 'total_tokens': 21500}
+REQ 2 main stream True include_usage True usage_sent {'prompt_tokens': 26576, 'completion_tokens': 8192, 'total_tokens': 34768}
+REQ 3 main stream True include_usage True usage_sent None
+REQ 4 main stream True include_usage True usage_sent {'prompt_tokens': 5000, 'completion_tokens': 200, 'total_tokens': 5200}
+REQ 5 main stream True include_usage True usage_sent {'prompt_tokens': 5100, 'completion_tokens': 50, 'total_tokens': 5150}
+provider-reported total (all responses with usage): 246718
+LEDGER R 1790341260.993065 83841 83841-1790341260993-1 262144 reserve
+LEDGER S 1790341261.057429 83841-1790341260993-1 180100 settled
+LEDGER R 1790341261.229386 83841 83841-1790341261229-2 262144 reserve
+LEDGER S 1790341261.236731 83841-1790341261229-2 21500 settled
+LEDGER R 1790341261.240772 83841 83841-1790341261240-3 262144 reserve
+LEDGER S 1790341261.246942 83841-1790341261240-3 34768 settled
+LEDGER R 1790341261.249155 83841 83841-1790341261249-4 262144 reserve
+LEDGER S 1790341261.253355 83841-1790341261249-4 262144 missing_usage
+LEDGER R 1790341262.291326 83841 83841-1790341262291-5 262144 reserve
+LEDGER S 1790341262.318337 83841-1790341262291-5 5200 settled
+LEDGER R 1790341262.329733 83841 83841-1790341262329-6 262144 reserve
+LEDGER S 1790341262.337931 83841-1790341262329-6 5150 settled
+STATE /var/folders/sp/02z541qj3cdf4v1wjd5vlxtc0000gn/T/usage-al0ea19z/state.db []
+STATE /var/folders/sp/02z541qj3cdf4v1wjd5vlxtc0000gn/T/usage-al0ea19z/profiles/implementer/state.db [{'model': 'qwen3-8-27b-int4', 'task': '', 'api_call_count': 4, 'input_tokens': 210100, 'output_tokens': 1850}]
+
+================ 0010 retention amendment (open reservations count until reserved_at + hold + window) ================
+Series sha256 (0009, 0010; 0001-0008 unchanged):
+56e0b484702a7eba465d019599f2d48d7fc2d7e9a06de688f253db139f56cf30  0009-fix-kanban-a-local-request-allowance-stop-is-a-neutr.patch
+72bd018fb7e19c52b02a10c08291f224b821d93c4195964d71287c2cb0ecc98d  0010-feat-transport-reserved-and-settled-token-accounting.patch
+git apply --index 0001-0010 onto a fresh fcbd1076 worktree -> git write-tree = 32be3bd0617936952a1ed7a4d8718accd8c4661c (supersedes 9a00357c)
+Dockerfile.hunk.txt (10 patches, tree 32be3bd0): patch -p1 --dry-run -> 'patching file Dockerfile' (not applied)
+
+=== test_v15_token_accounting.py on 0010 before the amendment (9a00357c) ===
+E               AttributeError: 'PacerConfig' object has no attribute 'hold'
+E           AttributeError: 'PacerConfig' object has no attribute 'hold'
+E           AttributeError: 'PacerConfig' object has no attribute 'hold'
+E                   AssertionError: assert True is False
+E       Failed: DID NOT RAISE AccountingConfigError
+E       AttributeError: 'PacerConfig' object has no attribute 'hold'
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_counts_through_window
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_ends_after_hold_plus_window
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_many_dropped_streams_do_not_exhaust_permanently
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_hold_shorter_than_request_timeout_is_refused
+FAILED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_default_hold_follows_the_longest_client_timeout
+========================= 6 failed, 8 passed in 21.73s =========================
+
+=== tests/rhoai3_b11 + tests/rhoai3_b3b4 on 32be3bd0: no xfail ===
+PASSED tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress
+PASSED tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff
+PASSED tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal
+PASSED tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config
+PASSED tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_auxiliary_cannot_consume_main_reservation_and_deadline_holds
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_use_its_reservation
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async
+PASSED tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_gateway_process_calls_are_paced_from_managed_env
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_auxiliary_call_waits_in_hook_past_its_timeout
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_cancelled_wait_sends_nothing
+PASSED tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_stream_reconnect_waits_in_hook_without_stale_kill
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_total_wait_bound_under_contention
+PASSED tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_first_slot_beyond_wait_stops_immediately
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_v15_regression_neutral_deferral_then_same_card_resumes
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_genuine_failure_then_deferral_keeps_the_failure_count
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_reviewer_origin_deferral_returns_to_review
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_dispatcher_restart_during_deferral_and_stop_prevents_dispatch
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_candidate_edits_survive_the_pause
+PASSED tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_two_deferrals_consume_no_retry_but_a_crash_does
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_counts_through_window
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_ends_after_hold_plus_window
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_many_dropped_streams_do_not_exhaust_permanently
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_hold_shorter_than_request_timeout_is_refused
+PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_default_hold_follows_the_longest_client_timeout
+======================== 54 passed in 157.05s (0:02:37) ========================
+
+=== Existing related upstream tests + tests/agent/test_auxiliary_client.py on 32be3bd0 ===
+340 passed, 1 skipped in 35.76s
+
+=== Broad regression on 32be3bd0 ===
+174 failed, 6704 passed, 30 skipped, 1 warning in 599.21s (0:09:59)
+Same failing ids as before (comm diff empty).

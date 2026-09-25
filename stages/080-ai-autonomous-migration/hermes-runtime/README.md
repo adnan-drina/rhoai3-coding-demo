@@ -5,8 +5,8 @@ This directory holds a small patch series for the pinned Hermes runtime in the S
 | | |
 |---|---|
 | Base runtime | `NousResearch/hermes-agent` tag `v2026.8.19`, commit `fcbd1076a93841fa88855acce810e342a5b78101`, version 0.20.5 |
-| Patched runtime identity | git tree **`101ca3d1da753267ffcb7f9b280f09258085256a`** for the full series 0001–0008 (run `git write-tree` after applying the series to a clean checkout of the base). Intermediate trees: 0001–0004 `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48`; 0001–0006 `87a39dca63bca478e1ab93e9ce24ad757de25f8f`; 0001–0007 `6d6efd1992525da692f2f0f7f23881cf65f3999a`. These trees are superseded: `433f0c6f…` (0001–0007 before the final pacing review) and `374562df…` (0001–0008 before the request-ownership correction). |
-| Files touched | `agent/tool_guardrails.py`, `run_agent.py`, `agent/tool_executor.py`, `agent/turn_finalizer.py`, `agent/conversation_loop.py`, `agent/agent_runtime_helpers.py`, `agent/auxiliary_client.py`, `agent/chat_completion_helpers.py`, new `agent/request_pacer.py`, `tests/agent/test_tool_guardrails.py` |
+| Patched runtime identity | git tree **`32be3bd0617936952a1ed7a4d8718accd8c4661c`** for the full series 0001–0010 (run `git write-tree` after applying the series to a clean checkout of the base). Intermediate trees: 0001–0004 `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48`; 0001–0006 `87a39dca63bca478e1ab93e9ce24ad757de25f8f`; 0001–0007 `6d6efd1992525da692f2f0f7f23881cf65f3999a`; 0001–0008 `101ca3d1da753267ffcb7f9b280f09258085256a` (the v15 runtime); 0001–0009 `3e219090f61deb3a2676e86c73571f502a886970`. Tree `9a00357c…` (0010 before the retention amendment) is superseded. These trees are superseded: `433f0c6f…` (0001–0007 before the final pacing review) and `374562df…` (0001–0008 before the request-ownership correction). |
+| Files touched | `agent/tool_guardrails.py`, `run_agent.py`, `agent/tool_executor.py`, `agent/turn_finalizer.py`, `agent/conversation_loop.py`, `agent/agent_runtime_helpers.py`, `agent/auxiliary_client.py`, `agent/chat_completion_helpers.py`, `cli.py`, `hermes_cli/kanban_db.py`, new `agent/request_pacer.py`, `tests/agent/test_tool_guardrails.py` |
 | Upstream source | `76648a7faf7822cdd6c0e147c35857e15780c1af` ("identical-call streaks hard-stop any tool on unattended platforms"), which is an ancestor of `ee5ee84a345204a3b1d6ef6ba1ab747e602867b9` |
 
 ## The problem at the pin
@@ -19,7 +19,7 @@ The pinned runtime never stops this loop. In the live v12 run, one worker repeat
 
 ## What the series does
 
-Apply the eight patches in order. Patch 0001 is the upstream backport. Patches 0002 to 0004 are small local additions that the B11 design requires. Patches 0005 to 0008 are local additions for B3/B4 and R2.
+Apply the ten patches in order. Patch 0001 is the upstream backport. Patches 0002 to 0004 are small local additions that the B11 design requires. Patches 0005 to 0008 are local additions for B3/B4 and R2. Patches 0009 and 0010 implement V15-1 (`tmp/v15-run-20260925/V15-1-DURABLE-QUOTA-DESIGN.md`): change 1 and change 2, as separate patches.
 
 | Patch | Origin | Functions changed | Effect |
 |---|---|---|---|
@@ -31,6 +31,8 @@ Apply the eight patches in order. Patch 0001 is the upstream backport. Patches 0
 | `0006-fix-kanban-a-persistent-provider-rate-limit-ends-a-w.patch` | Local | rate-limit terminal return in `conversation_loop.py` (`api_attempts`, `retry_after`), `record_kanban_turn_stop` | After 3 attempts, a persistent HTTP 429 ends as `STOP MODEL_QUOTA …`, a failed run. The wording avoids the dispatcher's respawn-blocker pattern. The pinned retry layer is unchanged: Retry-After is honoured, backoff is otherwise jittered, and there is one retry layer. |
 | `0007-feat-transport-per-run-model-request-pacer-from-a-sh.patch` | Local | new `agent/request_pacer.py`; hook attached at `agent_runtime_helpers.py` (primary client) and `auxiliary_client.py` (sync, async and Vertex aux clients); per-attempt reservation and tagging, plus exhaustion handling, in `conversation_loop.py`; own-attempt stale-watchdog exemption and cancellation binding in `chat_completion_helpers.py` (streaming); `record_kanban_turn_stop` | Per-run sliding-window request allowance, shared by every Hermes process of the run through a flock'd ledger. Each request attempt owns its reservation, deadline, cancellation and waiting status, and hands them to the transport explicitly. See below. |
 | `0008-fix-auxiliary-explicit-per-call-sampling-and-output-.patch` | Local | `auxiliary_client._build_call_kwargs` | A task's configured `extra_body` supplies only what the call did not set. An explicit `temperature` wins. An explicit `max_tokens` is sent as `min(explicit, configured)`, so it never raises a configured bound. Without this, the OpenAI SDK merges `extra_body` over the top-level body. |
+| `0009-fix-kanban-a-local-request-allowance-stop-is-a-neutr.patch` | Local (V15-1 change 1) | `RequestBudgetExhausted.deferral`; the budget result in `conversation_loop.py`; `turn_finalizer._record_kanban_local_deferral` and `kanban_worker_exit_code`; `cli.py` (quiet and non-quiet `chat -q` exit); `kanban_db.record_local_budget_deferral`, `detect_crashed_workers`, `check_respawn_guard` | A local allowance stop is a **neutral deferral on the pinned native temporary-rate-limit path**, not a failed run. The worker persists a structured `local_budget_deferral` bound to its run, then exits with `KANBAN_RATE_LIMIT_EXIT_CODE` (75). The reaper ends the run as `rate_limited` whatever the exit status: source-phase requeue, no `_record_task_failure`, no counter increment or reset. The respawn guard holds the same card until `retry_not_before` **and** a free slot in the shared ledger. See below. |
+| `0010-feat-transport-reserved-and-settled-token-accounting.patch` | Local (V15-1 change 2) | `agent/request_pacer.py` (token mode: reservation, settlement, settlement wrapper, mode-aware capacity peek); `kanban_db._request_capacity` | Token mode: every physical HTTP attempt reserves `C`; admission is `settled_in_window + open_reservations + C <= B`; settlement to validated usage happens exactly once at the terminal response. There is **no request-count ceiling**. See below. |
 
 Every change is gated on `tool_loop_guardrails.hard_stop_enabled` (and `agent.stall_guards`, which defaults to true). Interactive sessions that only warn behave as before.
 
@@ -64,7 +66,7 @@ git checkout --detach fcbd1076a93841fa88855acce810e342a5b78101
 for p in <repo>/stages/080-ai-autonomous-migration/hermes-runtime/patches/0*.patch; do
   git apply --index "$p"
 done
-test "$(git write-tree)" = 101ca3d1da753267ffcb7f9b280f09258085256a
+test "$(git write-tree)" = 32be3bd0617936952a1ed7a4d8718accd8c4661c
 
 # 3. Test environment (Python 3.11, the same as the image)
 python3.11 -m venv ../hermes-venv
@@ -93,7 +95,7 @@ To reproduce the failing baseline, skip step 2 and run step 4. `test_halt_ends_p
 
 - The operator copies `patches/*.patch` into `workspace-images/out/hermes-runtime-patches/`, which is in the build context.
 - After the clone, the SHA check and `assert-hermes-source-pin.py`, the stage runs `git apply --index` on each patch.
-- The build fails unless exactly 8 patches are present and `git write-tree` equals `HERMES_PATCHED_TREE` (`101ca3d1…`).
+- The build fails unless exactly 10 patches are present and `git write-tree` equals `HERMES_PATCHED_TREE` (`32be3bd0…`). The hunk is relative to `workspace-images/Dockerfile` as it stands now, with the 8-patch hunk already applied.
 - The stage records the patch checksums in `/opt/rhoai3/hermes-runtime-patches.sha256` and adds `hermes.source_sha` and `hermes.patched_tree` to `/opt/rhoai3/080.pins`.
 
 `hermes --version` still reports 0.20.5, because the version constants are not touched. Use the tree hash in `080.pins` to tell a patched image from an unpatched one. The hunk has not been applied or built.
@@ -129,7 +131,7 @@ Configuration comes from the environment, which the platform sets for migration 
 - **Cancellation** is checked before a reservation is consumed and before any request is admitted, including after waiting. The main loop binds the agent's interrupt. A stream attempt binds its own cancellation (superseded attempt or interrupt) to the paced attempt. An auxiliary caller can use `request_pacer.cancel_check` for its untagged requests. A cancelled attempt raises `RequestCancelledWhileWaiting`, sends nothing and takes no slot. This was tested from another thread, and on the async hook.
 - **Stale watchdog.** A stream's watchdog exempts only **its own** attempt's pre-send wait (`PacedAttempt.waiting`); it treats that as activity. A waiting auxiliary request never pauses the watchdog of an already-sent, stalled stream.
 - **Auxiliary timeouts.** An auxiliary request timeout does not include the pacer wait: httpx request hooks run before the transport timers.
-- **When the window stays full.** If the next slot would push the total wait past the maximum, nothing is sent and the attempt is not retried. The turn ends with `model_stop=request_budget`, which `record_kanban_turn_stop` records as a failed run: `STOP MODEL_REQUEST_BUDGET: <n> requests in <w>s already spent by this run; next slot at <UTC>; already waited <x>s, another <s>s exceeds the <max>s total wait allowed; …`. This wording does not match the dispatcher's respawn-blocker pattern.
+- **When the window stays full.** If the next slot would push the total wait past the maximum, nothing is sent and the attempt is not retried. The turn ends with `model_stop=request_budget` and a structured deferral. Since 0009 this is a **neutral deferral**, not a failed run (see below). The message is: `STOP MODEL_REQUEST_BUDGET: <n> requests in <w>s already spent by this run; next slot at <UTC>; already waited <x>s, another <s>s exceeds the <max>s total wait allowed; …`. This wording does not match the dispatcher's respawn-blocker pattern.
 - **Largest output per request.** On the main path it is **32768**, provided `model.max_tokens` is 8192 as the producer sets it:
   - Base cap: 8192.
   - Truncated tool-call retries: `min(8192·2^k, max(32768, requested))` (`conversation_loop.py:3978`).
@@ -149,6 +151,95 @@ Configuration comes from the environment, which the platform sets for migration 
   - `gateway/run.py:2081` calls it at gateway start, and again per turn through `_reload_runtime_env_preserving_config_authority`, `gateway/run.py:2106`.
 
   The dispatcher also passes its own `os.environ` to each worker (`kanban_db._default_spawn`, `env = dict(os.environ)`). Auxiliary and compression calls run inside the worker process, and the pacer reads `os.environ` on every request. It was measured: in `test_budget_from_managed_env_reaches_worker` the settings exist only in a managed `.env`, never in the dispatcher's environment. The worker loaded them and put one ledger slot per request into a ledger whose parent directory did not exist beforehand (`request_pacer._open_locked` creates it). Gateway: `test_gateway_process_calls_are_paced_from_managed_env` imports `gateway.run` in a separate process whose settings exist only in the managed `.env`, then makes the dispatcher-side kind of model call (`call_llm(task="triage_specifier")`). The call took a ledger slot. That shows a gateway process pacing its own model calls. The live gateway-embedded dispatcher, with its real triggers, was not run.
+
+## Local-budget deferral (0009, V15-1 change 1)
+
+**What changed.** A local allowance stop is predictable from the local ledger and sent nothing, so it is no longer a failed worker run. The pinned native path already has `KANBAN_RATE_LIMIT_EXIT_CODE = 75`, a neutral `rate_limited` run outcome, source-phase requeue and a respawn cooldown that deliberately bypasses `_record_task_failure`. Patch 0009 uses that path and does not add another board or scheduler. `schedule_task` is not used, because at this pin it only parks a card for external unblock.
+
+**Worker side:**
+- The worker writes one `local_budget_deferral` event bound to (task, worker run). It carries `accounting_mode`, `retry_not_before`, the model, the allowance and the reason. It is written while the task is still `running` and **before** the process exits. `retry_not_before` is when enough capacity becomes eligible, not merely when an old entry expires.
+- It exits with 75 (`cli.py`, quiet and non-quiet `chat -q`).
+- The candidate on the tree, verification evidence and the original deadline are untouched. Nothing is advanced, reverted or given a verdict.
+
+**Reaper (`detect_crashed_workers`):**
+- A run with a persisted deferral ends as `rate_limited` whatever the exit status, including after a dispatcher restart that lost the reap record.
+- The task returns to the phase it came from, `ready` or `review` (the reviewer origin is kept).
+- `consecutive_failures` and product counters are neither incremented nor reset.
+- The run metadata carries `local_budget_deferral`, `retry_not_before`, `accounting_mode` and `model`.
+- `last_failure_error` reads `LOCAL_BUDGET_WAIT: …; the previous run's work stays on the tree`. The resumed worker sees this in its `kanban_show` context. The wording avoids the respawn-blocker pattern.
+
+**Respawn guard (`check_respawn_guard`):**
+- While the latest run is such a deferral, the card is held (`local_budget_wait`) until `retry_not_before`, and after that until the shared ledger has a free slot, checked by peeking without taking one. Another process may have used the capacity meanwhile.
+- The native atomic claim then resumes **the same card**. No worker is spawned and no model call is made while it is held.
+- A newer genuine failure or a manual stop (block) supersedes the deferral.
+- Provider 429 handling is unchanged: a persistent external 429 remains the bounded `STOP MODEL_QUOTA`.
+
+**Golden side:** the golden's run deadline is not known to the kanban dispatcher. A deadline that expires while a card is held must end through the golden's existing deadline outcome.
+
+## Token accounting (0010, V15-1 change 2)
+
+**Settings.** `RHOAI3_ACCOUNTING_MODE=token` selects the mode; the platform writes these values from the run's profile into the managed `.env`:
+
+| Variable | Meaning |
+|---|---|
+| `RHOAI3_TOKEN_BUDGET` | `<B>/<window_seconds>`, the run allowance, e.g. `51000000/3600` |
+| `RHOAI3_TOKEN_RESERVATION` | `<C>`, the served prompt+output bound, e.g. `262144` |
+| `RHOAI3_REQUEST_LEDGER` | the shared ledger |
+
+- Exactly one mode per process. Mixed or incomplete settings, or `C > B`, raise `AccountingConfigError` and nothing is sent.
+- Request mode (`RHOAI3_REQUEST_BUDGET`) is unchanged for runs pinned to it.
+- In token mode there is **no request-count ceiling**.
+
+**Reservation.**
+- Every physical HTTP attempt reserves `C` under the ledger lock. That covers main calls, 429 retries, truncation cap-boost retries, stream reconnects, sync/async auxiliary calls, the gateway and the reviewer.
+- A request is admitted only if `settled_charges_in_window + open_reservations + C <= B`.
+- The main-loop reservation and the transport hand-off consume the same reservation exactly once, through the request-ownership `PacedAttempt`.
+
+**Settlement.** A wrapper on `chat.completions.create`, installed at the same client construction choke points, settles each reservation **exactly once** at the terminal response:
+- **Valid usage:** the charge is the validated prompt+completion. The integers must be non-negative, the total consistent and the charge ≤ `C`.
+- **Streams:** they settle at the terminal chunk to the last usage record; cumulative frames are not summed.
+- **No valid usage:** a terminal response without valid usage, or an HTTP error response, settles at `C`. Missing usage never counts as zero.
+- **Uncertain end:** a cancellation, crash, timeout, or a stream that ended without its terminal chunk writes nothing. The reservation stays open until `reserved_at + hold + window`, then stops counting (see **Retention** below). It never grants speculative credit.
+- **Expiry:** settled charges count for one full window after settlement.
+- **Duplicates:** repeated settlements are ignored.
+
+**Ledger lines.** `R <ts> <pid> <rid> <C> <label>` and `S <ts> <rid> <charge> <status>`. State is reconstructed by reservation id; no prompts or secrets are stored.
+
+**Refusals and deferrals.**
+- A token-mode request that reaches the transport without the settlement wiring is refused before sending (`AccountingNotAttached`).
+- A full allowance defers through 0009 with `accounting_mode=token` and `retry_not_before` = when enough settled charge expires.
+- Open reservations also have a known expiry (retention), so a wake time is always computable. The `uncertain` flag (bounded 60 s re-check) remains only as a guard.
+
+**Usage measured on the fake-provider paths** (`b3-b4/README.md`):
+- Main streaming requests ask for usage (`stream_options.include_usage`), and it settles.
+- Auxiliary (compression) calls are non-streaming with usage in the body.
+- 429 responses carry no usage (charged `C`).
+- Hermes' own `session_model_usage` **omits truncated responses** (the length branch skips the usage bookkeeping). The ledger does not.
+
+**Not in the runtime:**
+- Admission (`run-preflight.sh`, `sum(token_allowance) + reserve <= subscription`) and the profile fields are platform and golden changes; see the list in `b3-b4/README.md`.
+- Enabling token mode for new runs follows the focused live qualification in the design.
+
+### Retention of open reservations (0010 amendment)
+
+**What it does.** An open (unsettled) reservation counts until `reserved_at + hold + window_seconds`, then stops counting. Settled charges are unchanged: they count for one window after settlement.
+
+**Why.**
+- An uncertain request (cancelled, crashed, dropped stream, client timeout) keeps its full reservation, as the architect requires. That does not have to mean forever.
+- Any upstream charge for a request lands no later than the request's own end. Once `hold` covers the longest a request can run, a charge for that request has left MaaS's own one-hour window by `reserved_at + hold + window` as well.
+- Holding forever meant every dropped stream permanently removed C = 262,144 tokens. At B = 51M, about 194 such events would stop a run for good; v12 had stale-timeout drops.
+- Tests (a)–(c) show the difference. (a) A dropped stream still counts at `reserved_at + window`. (b) It stops counting after `reserved_at + 900 + window` on a fake clock. (c) 200 drops spread over time never exhaust B permanently: the 195th waits for a known wake time, then proceeds.
+
+**Setting.** `RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS`.
+- Default: the longest client request timeout this process honours, with a floor of 900 s. That is the largest of `providers.*.request_timeout_seconds`, `providers.*.models.*.timeout_seconds`, `auxiliary.*.timeout` and `HERMES_API_TIMEOUT`, and 1800 when the `custom` provider declares none.
+- An explicit value below that is refused with `AccountingConfigError`.
+- With the producer's managed `.env` (`HERMES_API_TIMEOUT=1800`) the default is **1800**.
+
+**Which timeout really bounds a request (from pinned source).**
+- **Non-streaming.** `_resolved_api_call_timeout` (`run_agent.py:1402`) is the per-call `timeout=`. It uses `providers.<id>.models.<m>.timeout_seconds`, then `providers.<id>.request_timeout_seconds`, then `HERMES_API_TIMEOUT` (default 1800). With the producer config the provider value **900** wins; `HERMES_API_TIMEOUT` then applies only to a model path without a provider-configured timeout.
+- **Streaming (the main agent).** `_call_chat_completions` (`chat_completion_helpers.py:3841`) builds `httpx.Timeout(connect, read=<stream read timeout>, write=<base timeout>, pool)`. There is **no total timeout**. The read timeout (900) and the stale detector (`stale_timeout_seconds` 900) bound **inactivity** only. A stream that keeps producing chunks is bounded end to end only by its output: at most 32,768 tokens plus prefill.
+
+**Recommendation.** No client timeout bounds a streamed request end to end. The platform should set `RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS` explicitly, to at least `max(1800, stale_timeout + 32768 / slowest generation rate)`. At ~18 tok/s that is ≈ 900 + 1,820 s, so **3,600** is a safe round value. It must never be below the longest client timeout (1800 here), and the runtime enforces that part. Whether MaaS still counts a request the client dropped, and when, is part of the design's live qualification.
 
 ## What this does not cover
 
