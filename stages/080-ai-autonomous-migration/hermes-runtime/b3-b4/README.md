@@ -11,7 +11,8 @@ This directory qualifies three worker behaviours: the non-thinking sampling prof
 | Series 0001–0008 | tree `101ca3d1da753267ffcb7f9b280f09258085256a` (the v15 runtime). |
 | Series 0001–0009 | tree `3e219090f61deb3a2676e86c73571f502a886970`. |
 | Series 0001–0010 | tree `32be3bd0617936952a1ed7a4d8718accd8c4661c` (0010 with the retention amendment; supersedes `9a00357c…`; the v16 runtime). |
-| **Series 0001–0011 (final)** | **tree `3df755a36ed0ff8b7fdadf30d664a212fe4dfa8f`**. This was verified by applying all eleven patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer, 0008 is auxiliary per-call precedence, 0009 is the V15-1 neutral local-budget deferral, 0010 is V15-1 token accounting and 0011 is V16-3 (worker stop request, read-loop family); see `../README.md`. |
+| Series 0001–0011 | tree `3df755a36ed0ff8b7fdadf30d664a212fe4dfa8f`. |
+| **Series 0001–0012 (final)** | **tree `8a3bb406be0cfcb587fb90903da287e3805c297e`**. This was verified by applying all twelve patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer, 0008 is auxiliary per-call precedence, 0009 is the V15-1 neutral local-budget deferral, 0010 is V15-1 token accounting 0011 is V16-3 (worker stop request, read-loop family) and 0012 is V16-7/V16-9 (read cycle, refused calls); see `../README.md`. |
 | Worker config under test | Rendered from the Stage 050 producer by `render_worker_config.py`. It executes only the `cfg = {...}` prefix of the `HERMESEOF` block in `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`. Snapshot: `tests/rhoai3_b3b4/worker_config.json`. |
 | Provider | The scripted fake OpenAI-compatible server in `tests/rhoai3_b3b4/fake_openai_server.py`, on loopback. No real model is called. |
 
@@ -238,8 +239,26 @@ The binding design is the "V16-3" section of `tmp/v16-run-20260925/architect-dec
    - K2 must not require a worker-issued `kanban_block` after a pending verdict. The card is already blocked, and a second `kanban_block` finds nothing running.
    - Optional hardening: refuse model-issued writes to the board's `stop-requests/` directory. A self-written request only blocks the model's own card, so this is not a safety requirement.
    - The existing `impl_complete_loop_pending_refused` rule stays.
-4. **Pins.** Runtime tree `3df755a3` in `pins.json` / `patched_tree` and in the golden's runtime declaration.
+4. **Pins.** Runtime tree `3df755a3` (or `8a3bb406` with 0012) in `pins.json` / `patched_tree` and in the golden's runtime declaration.
 5. **Operator.** Unchanged: `operator-step.py` beside the pending card, then one `hermes kanban unblock`. A second pending on the resumed card routes it to `triage` through the native unblock-loop breaker (`BLOCK_RECURRENCE_LIMIT` = 2).
+
+## V16-7 and V16-9: read cycles and refused calls (patch 0012)
+
+The evidence is `tmp/v16-run-20260925/blockers.md`, sections V16-7 and V16-9. Before = `3df755a3` (0001–0011), after = `8a3bb406` (0001–0012). The end-to-end tests (`test_v16_cycle_and_refusal.py`) use the real dispatcher, real workers and the real `terminal` tool. The refusal tests also use a real shell `pre_tool_call` hook that answers like K2: any `sed` pipeline is refused with `path / resolves outside allow root` (the V16-10 misparse). `agent.max_turns` is 60 in these tests, so an unpatched worker ends at the budget.
+
+| Test | Before (`3df755a3`) | After (`8a3bb406`) |
+|---|---|---|
+| `test_recorded_eleven_file_cycle_halts_within_bound`: `grep -n "required\|@NotNull" <dto>.java` over 11 generated DTOs, round-robin | **FAIL**: 60 agent model requests; ran to the iteration budget | pass: 44 requests (one round that shows the DTOs plus 3 rounds with nothing new), then `STOP WORKER_TOOL_LOOP: tool terminal, guardrail read_cycle_no_new_content_halt, count 3, args_sha256 6d1564a2180a9611, family 11 read-only calls: grep -n "required\|@NotNull" target/…/OwnerDto.java; …` |
+| `test_legitimate_read_of_eleven_new_files_does_not_halt` | pass | pass: completed |
+| `test_refusal_replay_halts_at_three`: the same refused call, forever | **FAIL**: 60 requests, every one refused by the hook | pass: 3 requests, then `STOP WORKER_TOOL_LOOP: tool terminal, guardrail identical_refusal_halt, count 3, args_sha256 6ce294ca8b37f79a, family terminal refused: path / resolves outside allow root; …` |
+| `test_refused_call_then_changed_does_not_halt` (refused twice, then an allowed command, then complete) | pass | pass: completed |
+| `test_cycle_of_two_in_any_order_halts_and_an_edit_resets` (controller) | **FAIL**: no halt | pass |
+| `test_reading_many_new_files_never_halts` (200 new reads, controller) | pass | pass |
+| `test_refusals_feed_the_same_tool_failure_family` (8 different refusals, never 3 identical: `same_tool_failure_halt` at 8) | **FAIL**: `after_refusal` does not exist | pass |
+| `test_executed_calls_keep_their_thresholds` (identical executed calls still halt at 5) | pass | pass |
+| The 63 existing qualification tests | pass | pass (71/71 with the 8 new) |
+
+No golden change is needed. The K2 misparse behind the incident refusal (V16-10) is a golden fix of its own. With 0012, a model that keeps hitting it stops after three identical refusals instead of 488.
 
 ## Run
 
@@ -252,7 +271,7 @@ python <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/render_wor
   <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4/worker_config.json
 ```
 
-The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (11 patches, tree `3df755a3…`, relative to the Dockerfile with the 10-patch hunk applied), checked with `patch --dry-run` only.
+The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (12 patches, tree `8a3bb406…`, relative to the Dockerfile with the 10-patch hunk applied), checked with `patch --dry-run` only.
 
 ## Not covered
 
