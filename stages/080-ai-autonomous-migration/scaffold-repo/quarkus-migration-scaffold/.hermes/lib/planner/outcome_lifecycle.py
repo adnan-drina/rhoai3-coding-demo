@@ -445,6 +445,8 @@ def check_complete(ctx: Ctx, *, task_id: str, run_id: int, profile: str, audit_g
     _integrity(ctx)
     store = ctx.store
     if task_id == store.meta("m2_task"):
+        if not audit_green:
+            raise Refusal("M2_AUDIT_RED", "the paved-road M2 audit has not exited 0 in this log")
         return _m2_release(ctx)
     pub = _pub_by_task(store, task_id)
     if pub is None:

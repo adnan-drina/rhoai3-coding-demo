@@ -66,9 +66,18 @@ def native_key(run_id: str, node: dict[str, Any]) -> str:
     return "outcome:%s:%s:%s" % (KEY_VERSION, run_id, oid)
 
 
-def expected_fields(node: dict[str, Any], parents: list[str]) -> dict[str, Any]:
+def expected_fields(node: dict[str, Any], parents: list[str], workspace: str = WORKSPACE) -> dict[str, Any]:
     return {"title": node["title"], "body": node["description"], "assignee": node.get("assignee"),
-            "parents": sorted(parents), "skills": list(node.get("skills") or []), "workspace": WORKSPACE}
+            "parents": sorted(parents), "skills": list(node.get("skills") or []), "workspace": workspace}
+
+
+def workspace_for(root: Path, execution: str) -> str:
+    """The workspace every outcome card runs in: the destination tree. A real run
+    is always /projects/modernized (scratch workspaces are OBJECT); only a
+    disposable qualification fixture runs in its own root."""
+    if execution == "qualification":
+        return "dir:" + str(Path(root).resolve())
+    return WORKSPACE
 
 
 def _safe(oid: str) -> str:
@@ -80,7 +89,8 @@ def _brief_path(root: Path, oid: str, rev: int) -> tuple[Path, str]:
     return Path(root) / BRIEFS / name, name
 
 
-def init_store(root: Path, *, run_id: str, m2_task: str, native_db: str, protocol: str) -> Store:
+def init_store(root: Path, *, run_id: str, m2_task: str, native_db: str, protocol: str,
+               workspace: str = WORKSPACE) -> Store:
     store = Store(root, create=True)
     with store.txn() as c:
         cur_run = store.meta("run_id")
@@ -93,7 +103,7 @@ def init_store(root: Path, *, run_id: str, m2_task: str, native_db: str, protoco
         if cur_db and cur_db != native_db:
             raise PublishError("NATIVE_REDIRECTED", "store names board %s, caller resolves %s" % (cur_db, native_db))
         for k, v in (("schema", "rhoai3.outcome-authority/v1"), ("run_id", run_id), ("m2_task", m2_task),
-                     ("native_db", native_db), ("protocol", protocol)):
+                     ("native_db", native_db), ("protocol", protocol), ("workspace", workspace)):
             if not store.meta(k):
                 store.set_meta(c, k, v)
         if not store.meta("publication_state"):
@@ -164,7 +174,8 @@ def publish_node(root: Path, store: Store, native: Any, plan: dict[str, Any], no
             raise PublishError("PUBLICATION_PARENT", "%s parent %s has no native id yet" % (node["outcome_id"], p))
         parents.append(tid)
     assignee = None if hold else node.get("assignee")
-    exp = expected_fields(dict(node, assignee=assignee), parents)
+    workspace = store.meta("workspace") or WORKSPACE
+    exp = expected_fields(dict(node, assignee=assignee), parents, workspace)
     exp["final_assignee"] = node.get("assignee")
     pub = _pub(store, node["outcome_id"])
     if pub is None:
@@ -191,7 +202,7 @@ def publish_node(root: Path, store: Store, native: Any, plan: dict[str, Any], no
             tid = live[0]["id"]
         else:
             tid = native.create(title=exp["title"], body=exp["body"], assignee=assignee, parents=parents, key=key,
-                                skills=exp["skills"], workspace=WORKSPACE, max_retries=MAX_RETRIES)
+                                skills=exp["skills"], workspace=workspace, max_retries=MAX_RETRIES)
             fault("after-create")
         with store.txn() as c:
             c.execute("UPDATE publication SET task_id=?, state='created' WHERE outcome_id=?", (tid, node["outcome_id"]))
@@ -347,6 +358,16 @@ def main(argv: list[str] | None = None) -> int:
         print(describe(gate), file=sys.stderr)
         print("K4 graph REFUSED before any native operation.", file=sys.stderr)
         return 1
+    if ns.action == "readback":
+        # read-only, from the board recorded at publication; any caller
+        try:
+            store = Store(root)
+            gaps = readback(store, KanbanNative(store.meta("native_db"), hermes=ns.hermes.split()))
+        except (StoreError, RuntimeError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"gaps": gaps, "publication_state": store.meta("publication_state")}, indent=2))
+        return 0 if not gaps else 1
     m2 = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     if not m2.startswith("t_"):
         print("K4_GRAPH_CALLER: publication runs from the open M2 card (HERMES_KANBAN_TASK unset); "
@@ -357,11 +378,6 @@ def main(argv: list[str] | None = None) -> int:
         t = native.task(m2)
         if t is None or t.get("status") in ("done", "archived"):
             raise PublishError("PUBLICATION_M2_CLOSED", "M2 %s is %s; publication happens under the open M2" % (m2, (t or {}).get("status", "absent")))
-        if ns.action == "readback":
-            store = Store(root)
-            gaps = readback(store, native)
-            print(json.dumps({"gaps": gaps, "publication_state": store.meta("publication_state")}, indent=2))
-            return 0 if not gaps else 1
         if ns.plan_file:
             # the runtime qualification publishes a plan derived from a fixture; a real run
             # (factory declaration, run control) can never be in qualification mode
@@ -371,7 +387,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             from planner.outcome_lifecycle import initial_plan_from_root
             plan = initial_plan_from_root(root)
-        store = init_store(root, run_id=plan["run_id"], m2_task=m2, native_db=native.db_path, protocol=OUTCOME)
+        store = init_store(root, run_id=plan["run_id"], m2_task=m2, native_db=native.db_path, protocol=OUTCOME,
+                           workspace=workspace_for(root, sel.execution))
         persist_plan(store, plan)
         publish_plan(root, store, native, plan, m2_task=m2)
         gaps = complete_generation(store, native)
