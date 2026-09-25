@@ -563,7 +563,10 @@ def m1_handoff_gaps(root: Path, task_id: str) -> list[str]:
     """Exit zero from a skipped launcher is not an M1 handoff."""
     try:
         status = load_json(root / ".hermes" / "AUTOSTART-STATUS")
-        pins = load_json(root / ".hermes" / "pins.json")["pins"]
+        # the run's activation as every other gate reads it: from the
+        # platform's run control for a governed run (v13+), else pins.json
+        from planner.pins import load_pins
+        pins = load_pins(root)
         mode = (pins.get("planner") or {}).get("activation", "not-activated")
         if (not task_id or status.get("state") != "minted"
                 or status.get("m1_id") != task_id or status.get("after_m1") != task_id):

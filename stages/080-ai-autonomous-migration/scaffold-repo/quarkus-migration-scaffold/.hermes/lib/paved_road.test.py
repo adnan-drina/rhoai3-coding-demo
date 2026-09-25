@@ -66,9 +66,40 @@ class TestM1Handoff(unittest.TestCase):
         (self.root / ".hermes/AUTOSTART-STATUS").write_text(json.dumps(self.status))
         (self.root / ".hermes/pins.json").write_text(json.dumps(self.pins))
         result = subprocess.CompletedProcess([], 0, json.dumps(self.card), "")
-        with patch("paved_road.subprocess.run", return_value=result) as run:
+        real_run = subprocess.run
+        # `paved_road.subprocess` is the shared module: pass git (run control
+        # reading the run's initial commit) through, fake only the kanban CLI
+        fake = lambda argv, *a, **k: real_run(argv, *a, **k) if argv[:1] == ["git"] else result  # noqa: E731
+        with patch("paved_road.subprocess.run", side_effect=fake) as run:
             gaps = m1_handoff_gaps(self.root, "t_m1")
         return gaps, run
+
+    def test_governed_pilot_m2_passes_m1_audit(self):
+        # v14 (2026-09-25): a governed run's activation is the platform record
+        # plus the M1 binding; pins.json stays not-activated. The audit read
+        # pins.json directly and refused "M2 recorded without planner
+        # activation" although autostart had minted M2 as pilot.
+        from planner import run_control
+        from planner.canonical import digest
+        run = "orders-service-v3"
+        control, state = self.root / "control", self.root / "state"
+        control.mkdir()
+        (self.root / "run-budget.json").write_text(json.dumps({"schema": "rhoai3.run-budget/v2", "run_id": run,
+            "run_control": {"contract": run_control.CONTRACT_SCHEMA, "root": str(control), "state": str(state)}}))
+        git = lambda *a: subprocess.run(["git", "-C", str(self.root), "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                        check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        git("add", "-A")
+        git("commit", "-q", "-m", "scaffold")
+        (control / "contract.json").write_text(json.dumps({"schema": run_control.CONTRACT_SCHEMA, "run_id": run,
+            "scaffold_commit": git("rev-parse", "HEAD"), "activation": "pilot", "authorized_by": "provision-migration-run:tr-1",
+            "authorization": {"event": "scaffolding push"}}))
+        ok, msg = run_control.bind(self.root, digest(json.loads("{}")), "M1")
+        self.assertTrue(ok, msg)
+        self.pins = {"pins": {"planner": {"activation": "not-activated"}}}
+        self.status["planner_activation"] = "pilot"
+        gaps, _ = self.check_handoff()
+        self.assertEqual(gaps, [])
 
     def test_skipped_exit_zero_does_not_pass_m1_audit(self):
         self.status = {"state": "skipped", "reason": "AUTO_START_MIGRATION off"}
@@ -109,7 +140,7 @@ class TestM1Handoff(unittest.TestCase):
         self.status.update(m2_id="", planner_activation="not-activated")
         gaps, run = self.check_handoff()
         self.assertEqual(gaps, [])
-        run.assert_not_called()
+        self.assertFalse([c for c in run.call_args_list if c.args[0][:1] != ["git"]], "no M2 card lookup")
 
     def test_unbound_pilot_cannot_claim_analysis_only(self):
         self.pins["pins"]["planner"]["activation"] = "pilot"
