@@ -990,7 +990,7 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 
 **Affected stage:** Stage 050 / 080 (app-migration template)
 
-**Symptom:** The app-migration scaffolder run fails at "Require the in-cluster MaaS route". Nothing is published.
+**Symptom:** The app-migration scaffolder run fails at "MaaS route present (this step runs only to refuse with FACTORY_MAAS_ROUTE_MISSING)". Nothing is published.
 
 **Likely cause:** The platform entity `component:default/coolstore-inventory-service` is missing `rhoai3.redhat.com/maas-host` or `rhoai3.redhat.com/maas-internal-ip`, or still carries a placeholder. The runtime catalog was not regenerated after the MaaS gateway existed.
 
