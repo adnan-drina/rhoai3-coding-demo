@@ -21,15 +21,13 @@ template-only change is a manifest change Argo CD applies. This module:
 A bundle key is the file's path under gitops/.../base/rhdh with "/" spelled
 "__" (a ConfigMap key cannot hold "/").
 """
-from __future__ import annotations
-
 import argparse
 import hashlib
 import re
 import sys
 import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Dict, List, Optional
 
 RHDH_BASE = "gitops/stages/050-advanced-app-platform/base/rhdh"
 CATALOG_KEY = "catalog__all.yaml"
@@ -46,7 +44,7 @@ def key_path(key: str) -> str:
     return "%s/%s" % (RHDH_BASE, key.replace("__", "/"))
 
 
-def bundle_files(bundle: Path) -> dict[str, bytes]:
+def bundle_files(bundle: Path) -> Dict[str, bytes]:
     """The bundle's files by key; a ConfigMap volume's ..data links and the
     generator's own dot-named work files are not files of it."""
     out = {}
@@ -57,15 +55,15 @@ def bundle_files(bundle: Path) -> dict[str, bytes]:
     return out
 
 
-def digest(files: dict[str, bytes]) -> str:
+def digest(files: Dict[str, bytes]) -> str:
     h = hashlib.sha256()
     for key in sorted(files):
         h.update(key.encode("utf-8") + b"\0" + hashlib.sha256(files[key]).digest())
     return h.hexdigest()
 
 
-def fetch_raw(raw_base: str) -> Callable[[str, str], bytes | None]:
-    def fetch(revision: str, path: str) -> bytes | None:
+def fetch_raw(raw_base: str) -> Callable[[str, str], Optional[bytes]]:
+    def fetch(revision: str, path: str) -> Optional[bytes]:
         try:
             with urllib.request.urlopen("%s/%s/%s" % (raw_base.rstrip("/"), revision, path), timeout=20) as resp:
                 return resp.read()
@@ -74,7 +72,7 @@ def fetch_raw(raw_base: str) -> Callable[[str, str], bytes | None]:
     return fetch
 
 
-def verify(files: dict[str, bytes], revision: str, fetch: Callable[[str, str], bytes | None]) -> list[str]:
+def verify(files: Dict[str, bytes], revision: str, fetch: Callable[[str, str], Optional[bytes]]) -> List[str]:
     """Every bundled file as the repository holds it at `revision`, or why not.
 
     The catalog's links, its template Locations and the scaffolder's skeleton
@@ -126,9 +124,10 @@ def render(content: str, *, revision: str, devspaces_url: str, rhdh_url: str, co
     return out
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")
+    sub.required = True   # add_subparsers(required=...) is Python 3.7+; the job image has 3.6
     d = sub.add_parser("digest")
     d.add_argument("--bundle", required=True)
     v = sub.add_parser("verify")

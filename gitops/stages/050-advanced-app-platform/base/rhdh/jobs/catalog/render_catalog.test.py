@@ -179,13 +179,37 @@ def _end_to_end_case(revision: str, host: str, ip: str, domain: str) -> int:
     return 0
 
 
+def _python36_case() -> int:
+    """The Job image (ose-cli, RHEL 8) runs Python 3.6.8; v13's first sync
+    failed every catalog refresh at import. The renderer must parse as 3.6
+    and use no 3.7+ language or stdlib feature this repo has tripped on."""
+    import ast
+    src = (HERE / "render_catalog.py").read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(src, feature_version=(3, 6))
+    except SyntaxError as exc:
+        return _fail("render_catalog.py does not parse as Python 3.6: %s" % exc)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "__future__" and any(a.name == "annotations" for a in node.names):
+            return _fail("render_catalog.py uses `from __future__ import annotations` (Python 3.7+)")
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in ("dict", "list", "tuple", "set", "type"):
+            return _fail("render_catalog.py subscripts builtin %s[...] (Python 3.9+) at line %d" % (node.value.id, node.lineno))
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr) and any(
+                isinstance(v, ast.Constant) and v.value is None for v in (node.left, node.right)):
+            return _fail("render_catalog.py uses `X | None` (Python 3.10+) at line %d" % node.lineno)
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("add_subparsers", "run") and any(
+                k.arg in ("required", "capture_output", "text") for k in node.keywords):
+            return _fail("render_catalog.py passes a Python 3.7+ keyword at line %d" % node.lineno)
+    return 0
+
+
 def main() -> int:
-    if _coverage_case() or _bundle_name_case():
+    if _python36_case() or _coverage_case() or _bundle_name_case():
         return 1
     if (_end_to_end_case("a" * 40, "maas.apps.example.test", "172.30.250.250", "apps.example.test")
             or _end_to_end_case("0123456789abcdef0123456789abcdef01234567", "gw.cluster-b.lab", "10.0.4.7", "cluster-b.lab")):
         return 1
-    print("OK: rhdh catalog bundle (every template and catalog file is bundled; a catalog-only change renames the bundle "
+    print("OK: rhdh catalog bundle (the renderer runs on the Job image's Python 3.6; every template and catalog file is bundled; a catalog-only change renames the bundle "
           "and the Job and CronJob follow; an old generator against a new catalog and a placeholder-free template skew are "
           "FACTORY_BUNDLE_MISMATCH with nothing published; a failed render publishes nothing; a published catalog pins "
           "techdocs and template Locations to the one verified revision and stamps the bundle id)")
