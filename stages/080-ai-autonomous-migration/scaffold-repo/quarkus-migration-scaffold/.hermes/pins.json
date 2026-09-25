@@ -4,7 +4,7 @@
     "hermes_agent": {
       "version": "v0.20.5",
       "build": "2026.8.19",
-      "patched_tree": "101ca3d1da753267ffcb7f9b280f09258085256a",
+      "patched_tree": "32be3bd0617936952a1ed7a4d8718accd8c4661c",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
       "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
@@ -43,7 +43,7 @@
     "workspace_overlay": {
       "ws_080": {
         "digest": "sha256:3918cc7032218721a3ce68ed8db8cf360f9f300f8977f46d2a4c40b0069f47c3",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-09-25 (v13: Hermes runtime patch series 0001-0008 applied at build, /opt/rhoai3/080.pins hermes.patched_tree=101ca3d1da753267ffcb7f9b280f09258085256a; MTA CLI 8.2.1.1 at /opt/mta-cli as before). Previous (v12): sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f. Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
+        "note": "Quay registry digest from `podman push --digestfile` 2026-09-25 (v13: Hermes runtime patch series 0001-0008 applied at build, /opt/rhoai3/080.pins hermes.patched_tree=32be3bd0617936952a1ed7a4d8718accd8c4661c; MTA CLI 8.2.1.1 at /opt/mta-cli as before). Previous (v12): sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f. Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {

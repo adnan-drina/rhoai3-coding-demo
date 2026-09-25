@@ -279,11 +279,24 @@ def _effective_config_gaps(pinned: dict[str, Any]) -> list[str]:
         env_path = managed_dir() / ".env"
         env = dict(l.split("=", 1) for l in (env_path.read_text(encoding="utf-8").splitlines() if env_path.is_file() else [])
                    if "=" in l and not l.lstrip().startswith("#"))
-        want = "%s/%s" % (q.get("max_requests_per_window"), q.get("window_seconds"))
-        if env.get("RHOAI3_REQUEST_BUDGET") != want or not env.get("RHOAI3_REQUEST_LEDGER"):
-            out.append("the request pacer is not configured for the pinned allowance (%s RHOAI3_REQUEST_BUDGET=%s, "
-                       "expected %s, ledger %s)" % (env_path, env.get("RHOAI3_REQUEST_BUDGET"), want,
-                                                     env.get("RHOAI3_REQUEST_LEDGER") or "unset"))
+        if str(q.get("accounting_mode") or "request") == "token":
+            # V15-1: reserved-and-settled tokens (runtime 0010); no request ceiling
+            want = {"RHOAI3_ACCOUNTING_MODE": "token",
+                    "RHOAI3_TOKEN_BUDGET": "%s/%s" % (q.get("token_allowance_per_window"), q.get("window_seconds")),
+                    "RHOAI3_TOKEN_RESERVATION": str(q.get("reservation_tokens"))}
+            bad = ["%s=%s (expected %s)" % (k, env.get(k), v) for k, v in want.items() if env.get(k) != v]
+            if env.get("RHOAI3_REQUEST_BUDGET"):
+                bad.append("RHOAI3_REQUEST_BUDGET=%s is set in token mode" % env.get("RHOAI3_REQUEST_BUDGET"))
+            if not env.get("RHOAI3_REQUEST_LEDGER"):
+                bad.append("RHOAI3_REQUEST_LEDGER unset")
+            if bad:
+                out.append("the token accounting is not configured for the pinned allowance (%s: %s)" % (env_path, "; ".join(bad)))
+        else:
+            want = "%s/%s" % (q.get("max_requests_per_window"), q.get("window_seconds"))
+            if env.get("RHOAI3_REQUEST_BUDGET") != want or not env.get("RHOAI3_REQUEST_LEDGER"):
+                out.append("the request pacer is not configured for the pinned allowance (%s RHOAI3_REQUEST_BUDGET=%s, "
+                           "expected %s, ledger %s)" % (env_path, env.get("RHOAI3_REQUEST_BUDGET"), want,
+                                                         env.get("RHOAI3_REQUEST_LEDGER") or "unset"))
     return out
 
 

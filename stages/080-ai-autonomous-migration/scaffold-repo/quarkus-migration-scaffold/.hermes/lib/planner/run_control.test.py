@@ -156,6 +156,20 @@ def _case(run: str) -> int:
             if not g or "request pacer is not configured" not in g[0]:
                 return _fail("a runtime without the pinned request allowance is refused (R2): %s" % g)
             (managed / ".env").write_text("RHOAI3_REQUEST_BUDGET=200/3600\nRHOAI3_REQUEST_LEDGER=/l/requests.log\n", encoding="utf-8")
+            # V15-1: a token-mode profile needs the token settings, and no request ceiling
+            tok = json.loads(json.dumps(PROFILE))
+            tok["profiles"]["m-1"]["quota"] = {"accounting_mode": "token", "token_allowance_per_window": 51000000,
+                                               "reservation_tokens": 262144, "window_seconds": 3600, "max_output_tokens": 300}
+            (control / "profile.json").write_text(json.dumps(tok), encoding="utf-8")
+            (managed / "model-profile.json").write_text(json.dumps(tok), encoding="utf-8")
+            g = run_control.run_gaps(root)
+            if not g or "token accounting is not configured" not in g[0] or "RHOAI3_REQUEST_BUDGET=200/3600 is set" not in g[0]:
+                return _fail("a token-mode profile with request-mode settings is refused (V15-1): %s" % g)
+            (managed / ".env").write_text("RHOAI3_ACCOUNTING_MODE=token\nRHOAI3_TOKEN_BUDGET=51000000/3600\n"
+                                          "RHOAI3_TOKEN_RESERVATION=262144\nRHOAI3_REQUEST_LEDGER=/l/requests.log\n", encoding="utf-8")
+            g = run_control.run_gaps(root)
+            if g:
+                return _fail("a token-mode profile with its token settings passes (V15-1): %s" % g)
             (control / "profile.json").unlink()
             for _ in range(2):   # no re-bless: re-reading never recreates a lost pin
                 g = run_control.run_gaps(root)
