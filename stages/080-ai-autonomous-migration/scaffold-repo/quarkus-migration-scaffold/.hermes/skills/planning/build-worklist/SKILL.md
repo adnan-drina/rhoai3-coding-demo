@@ -44,11 +44,28 @@ lexicographic decrease with no new mandatory incident.
 Under `decisions.loop.unit_formation: v1` a coordinated repair clusters as
 one **unit** instead of per file: a diagnostic family, a declaration and its
 direct implementers and callers, a package nothing outside names, or a
-property and its consumers. What decides those is the compiler's own model —
-a declared member's `type_refs` and resolved `calls`, the supertypes, the
-imports — never a type row's own `type_refs` (the extractor writes none) and
-never a package name. A type the compiler could not fully resolve states no
-relationships, so it can never establish that a package is isolated.
+property and its consumers. What decides those is the compiler's own model,
+never a package name: each type row's declaration walk (`type_refs`: the
+declared types its supertypes, type-parameter bounds, field types and member
+signatures name, through generic arguments, array components, wildcard and
+type-variable bounds, intersections and enclosing types), plus a declared
+member's `type_refs` and resolved `calls`, the supertypes and the imports.
+
+The walk is bounded and says whether it finished: `type_refs_complete` is
+false, with `type_refs_incomplete` naming where and why, when a part is
+unresolved, unsupported or over the depth/node bound. A reference found is
+evidence even on an incomplete row; an absence is evidence only on a complete
+one. So a package is a **leaf** only when every type inside and outside it is
+named, its walk is complete, every outside type is fully resolved, and no
+failed file of the source root is missing from the model. "Isolated" means no
+recorded inbound declaration reference in `src/main/java` — not unreachable,
+unused or safe to delete: framework callbacks, reflection, configuration and
+body-only references are outside the walk. When the evidence is short, the
+leaf rule steps aside and the family, declaration and per-file rules take the
+same obligations; nothing is dropped and nothing becomes writable because a
+reference was found. The same completeness bounds the retirement check: an
+incomplete walk cannot prove a retired symbol gone, though the independent
+parse proof still can.
 
 A unit is bounded at 20 files, 160 sites and 8 symbols. A union narrows by
 dropping whole families, lowest cardinality first, and each dropped

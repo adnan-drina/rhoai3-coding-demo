@@ -17,6 +17,7 @@
 // than guess.
 //
 //   java DestModel --source <dir> --out <json> --release <n> [--classpath <file>] [--also-source <dir>]...
+//                  [--type-ref-budget <nodes>]   (tests only: force the node bound)
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -37,8 +38,16 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.TypeParameterElement;
+import javax.lang.model.element.Parameterizable;
+import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
+import javax.lang.model.type.UnionType;
+import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -72,9 +81,17 @@ public final class DestModel {
             "compiler.err.missing.ret.stmt",
             "compiler.err.unreachable.stmt"));
 
+    // The declaration-reference walk (types[].type_refs) is FINITE by
+    // construction: a mirror deeper than this, or more mirrors than this in one
+    // type's declarations, ends the walk as INCOMPLETE -- never as an empty,
+    // complete answer. Both are far above any declaration a person writes.
+    static final int TYPE_REF_MAX_DEPTH = 32;
+    static final int TYPE_REF_MAX_NODES = 20000;
+
     public static void main(String[] args) throws Exception {
         Path source = null, out = null, classpath = null;
         String release = "21";
+        int typeRefBudget = TYPE_REF_MAX_NODES;
         List<Path> alsoSources = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -86,6 +103,7 @@ public final class DestModel {
                 case "--out": out = Paths.get(args[++i]); break;
                 case "--release": release = args[++i]; break;
                 case "--classpath": classpath = Paths.get(args[++i]); break;
+                case "--type-ref-budget": typeRefBudget = Integer.parseInt(args[++i]); break;
                 default: throw new IllegalArgumentException("unknown argument " + args[i]);
             }
         }
@@ -184,6 +202,7 @@ public final class DestModel {
 
         List<Map<String, Object>> types = new ArrayList<>();
         Path root = source;
+        final int refBudget = typeRefBudget;
         for (CompilationUnitTree unit : units) {
             Path file = Paths.get(unit.getSourceFile().toUri());
             if (!file.toAbsolutePath().normalize().startsWith(sourceRoot)) { continue; }  // an --also-source unit
@@ -237,6 +256,15 @@ public final class DestModel {
                     for (TypeMirror itf : type.getInterfaces()) { supers.add(itf.toString()); }
                     row.put("supertypes", supers);
                     row.put("annotations", annotationsOf(node.getModifiers(), path, unit, relPath));
+                    // What this type's DECLARATIONS name, from the compiler's
+                    // mirrors: the supertypes, the type parameters' bounds, and
+                    // below every field type and member signature.
+                    RefWalk refWalk = new RefWalk(refBudget);
+                    refWalk.walk(type.getSuperclass(), "extends");
+                    for (TypeMirror itf : type.getInterfaces()) { refWalk.walk(itf, "implements"); }
+                    for (TypeParameterElement tp : type.getTypeParameters()) {
+                        refWalk.walk(tp.asType(), "type-parameter:" + tp.getSimpleName());
+                    }
 
                     List<Map<String, Object>> declared = new ArrayList<>();
                     List<Map<String, Object>> fields = new ArrayList<>();
@@ -260,6 +288,9 @@ public final class DestModel {
                             String constant = stringConstant(v, path);
                             if (constant != null) { frow.put("constant", constant); }
                             frow.put("annotations", annotationsOf(v.getModifiers(), new TreePath(path, member), unit, relPath));
+                            Element fieldEl = trees.getElement(new TreePath(path, member));
+                            if (fieldEl == null) { refWalk.unknown("field:" + v.getName(), "unattributed"); }
+                            else { refWalk.walk(fieldEl.asType(), "field:" + v.getName()); }
                             fields.add(frow);
                             if (v.getInitializer() != null) {
                                 scanBody(task, trees, elements, positions, unit,
@@ -291,6 +322,13 @@ public final class DestModel {
                             refs.add(ee.getReturnType().toString());
                             for (Element pe : ee.getParameters()) { refs.add(pe.asType().toString()); }
                             for (TypeMirror th : ee.getThrownTypes()) { refs.add(th.toString()); }
+                            String locus = "member:" + signature(ee);
+                            refWalk.walk(ee.getReturnType(), locus);
+                            for (Element pe : ee.getParameters()) { refWalk.walk(pe.asType(), locus); }
+                            for (TypeMirror th : ee.getThrownTypes()) { refWalk.walk(th, locus); }
+                            for (TypeParameterElement tp : ee.getTypeParameters()) { refWalk.walk(tp.asType(), locus); }
+                        } else {
+                            refWalk.unknown("member:" + m.getName(), "unattributed");
                         }
                         mrow.put("type_refs", refs);
                         // the CHECKED exceptions this member declares. Adding one to an
@@ -403,6 +441,11 @@ public final class DestModel {
                     }
                     row.put("supertype_methods", supertypeMethods);
                     row.put("inherited_known", ok);
+                    // Additive facts. `type_refs_complete` is about THIS walk
+                    // only; `resolution` above stays the compiler's own answer.
+                    row.put("type_refs", new ArrayList<>(refWalk.refs));
+                    row.put("type_refs_complete", refWalk.incomplete.isEmpty());
+                    row.put("type_refs_incomplete", refWalk.incompleteRows());
                     types.add(row);
                     return super.visitClass(node, unused);
                 }
@@ -794,6 +837,137 @@ public final class DestModel {
                 sites.add(row);
             }
         }.scan(start, null);
+    }
+
+    /**
+     * The declared types one type's DECLARATIONS name, asked of the compiler's
+     * mirrors: generic arguments, array components, wildcard bounds, type
+     * variable bounds, every bound of an intersection and the enclosing type of
+     * a nested parameterized type. A field spelled {@code java.util.List<inside.A>}
+     * names inside.A; its source spelling, erased, names only java.util.List
+     * (rgctl offline evaluation 2026-09-25, G03G/G03A/G03N).
+     *
+     * Three outcomes, never conflated: a resolved reference (in {@link #refs}),
+     * a complete walk that found nothing more, and incomplete evidence (in
+     * {@link #incomplete}, with where and why). An unknown part never removes
+     * a reference already established, and an error spelling is never emitted
+     * as a resolved name.
+     *
+     * Termination does not rest on mirror identity (the API does not promise
+     * one mirror per type): a type variable is expanded once per walk, keyed by
+     * the declaration that binds it and its position there, so {@code T extends
+     * Comparable<T>} ends where it began and two different {@code T}s are two
+     * keys. The walk is an explicit stack with a depth and a node bound; hitting
+     * either is recorded as incomplete. It reads only what the declarations
+     * state -- never the members or ancestors of a referenced type, which would
+     * turn a direct reference into a transitive closure.
+     */
+    static final class RefWalk {
+        final java.util.TreeSet<String> refs = new java.util.TreeSet<>();
+        final java.util.TreeSet<String> incomplete = new java.util.TreeSet<>();
+        private final java.util.Set<List<Object>> expanded = new java.util.HashSet<>();
+        private final int budget;
+        private int nodes;
+
+        RefWalk(int budget) { this.budget = budget; }
+
+        void unknown(String locus, String reason) { incomplete.add(locus + "\u0000" + reason); }
+
+        List<Map<String, Object>> incompleteRows() {
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (String s : incomplete) {
+                int i = s.indexOf('\u0000');
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("locus", s.substring(0, i));
+                row.put("reason", s.substring(i + 1));
+                out.add(row);
+            }
+            return out;
+        }
+
+        void walk(TypeMirror start, String locus) {
+            if (start == null) { unknown(locus, "unattributed"); return; }
+            java.util.ArrayDeque<Object[]> stack = new java.util.ArrayDeque<>();
+            stack.push(new Object[] {start, 0});
+            while (!stack.isEmpty()) {
+                Object[] frame = stack.pop();
+                TypeMirror tm = (TypeMirror) frame[0];
+                int depth = (Integer) frame[1];
+                if (tm == null) { continue; }  // an absent optional part (a wildcard's missing bound)
+                if (nodes >= budget) { unknown(locus, "node-limit"); return; }
+                nodes++;
+                if (depth > TYPE_REF_MAX_DEPTH) { unknown(locus, "depth-limit"); continue; }
+                TypeKind kind = tm.getKind();
+                if (kind.isPrimitive() || kind == TypeKind.VOID || kind == TypeKind.NONE || kind == TypeKind.NULL) {
+                    continue;  // an expected terminal: no declared dependency
+                }
+                switch (kind) {
+                    case DECLARED: {
+                        DeclaredType dt = (DeclaredType) tm;
+                        Element el = dt.asElement();
+                        if (!(el instanceof TypeElement)) { unknown(locus, "undeclared-element"); break; }
+                        String fqn = ((TypeElement) el).getQualifiedName().toString();
+                        // a local or anonymous class is resolved but has no
+                        // name another file could use; nothing to emit
+                        if (!fqn.isEmpty()) { refs.add(fqn); }
+                        for (TypeMirror arg : dt.getTypeArguments()) { stack.push(new Object[] {arg, depth + 1}); }
+                        TypeMirror owner = dt.getEnclosingType();
+                        if (owner != null && owner.getKind() != TypeKind.NONE) { stack.push(new Object[] {owner, depth + 1}); }
+                        break;
+                    }
+                    case ERROR: {
+                        // an error spelling is not a resolved name: record it,
+                        // keep whatever its arguments still establish
+                        String spelled = tm.toString();
+                        unknown(locus, "unresolved " + (spelled.length() > 120 ? spelled.substring(0, 120) : spelled));
+                        if (tm instanceof DeclaredType) {
+                            for (TypeMirror arg : ((DeclaredType) tm).getTypeArguments()) { stack.push(new Object[] {arg, depth + 1}); }
+                        }
+                        break;
+                    }
+                    case ARRAY:
+                        stack.push(new Object[] {((ArrayType) tm).getComponentType(), depth + 1});
+                        break;
+                    case WILDCARD: {
+                        WildcardType wt = (WildcardType) tm;
+                        stack.push(new Object[] {wt.getExtendsBound(), depth + 1});
+                        stack.push(new Object[] {wt.getSuperBound(), depth + 1});
+                        break;
+                    }
+                    case TYPEVAR: {
+                        List<Object> key = typeVariableKey((TypeVariable) tm);
+                        if (key == null) { unknown(locus, "unidentified-type-variable " + tm); break; }
+                        if (!expanded.add(key)) { break; }  // a back-edge or an already-read bound: done
+                        stack.push(new Object[] {((TypeVariable) tm).getUpperBound(), depth + 1});
+                        stack.push(new Object[] {((TypeVariable) tm).getLowerBound(), depth + 1});
+                        break;
+                    }
+                    case INTERSECTION:
+                        for (TypeMirror b : ((IntersectionType) tm).getBounds()) { stack.push(new Object[] {b, depth + 1}); }
+                        break;
+                    case UNION:
+                        for (TypeMirror b : ((UnionType) tm).getAlternatives()) { stack.push(new Object[] {b, depth + 1}); }
+                        break;
+                    default:
+                        unknown(locus, "unsupported-kind " + kind);
+                }
+            }
+        }
+
+        /** (the declaration that binds this variable, its position there), or
+         *  null when that cannot be stated -- e.g. a captured variable. */
+        private static List<Object> typeVariableKey(TypeVariable tv) {
+            try {
+                Element e = tv.asElement();
+                if (!(e instanceof TypeParameterElement)) { return null; }
+                Element generic = ((TypeParameterElement) e).getGenericElement();
+                if (!(generic instanceof Parameterizable)) { return null; }
+                int index = ((Parameterizable) generic).getTypeParameters().indexOf(e);
+                return index < 0 ? null : Arrays.asList(generic, index);
+            } catch (RuntimeException unidentified) {
+                return null;
+            }
+        }
     }
 
     private static boolean collectImplicitTypeNames(JavacTask task, TypeMirror start,

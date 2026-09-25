@@ -563,6 +563,90 @@ def _parity_server_error_case(root: Path) -> int:
     return 0
 
 
+def _generic_reference_case(root: Path) -> int:
+    """Better reference evidence is INPUT to the existing amendment decision,
+    never authority. The model now sees a type named only inside a generic
+    argument (types[].type_refs, rgctl offline evaluation 2026-09-25); that
+    does not make the naming file writable, rewrite an issued write set or a
+    seal, satisfy a unit's reach rules, or lift an amendment's evidence and
+    limit requirements."""
+    import importlib.util
+
+    from planner.dest_model import dest_model
+
+    registry = "src/main/java/p/Registry.java"
+    ctl = "src/main/java/p/web/ListCtl.java"
+    files = {registry: "package p;\npublic class Registry {\n    java.util.List<p.ClinicService> services;\n}\n",
+             ctl: "package p.web;\npublic class ListCtl {\n    public java.util.List<p.Pet> list() { return null; }\n}\n"}
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "generic reference fixture")
+    rows = {str(t.get("fqn")): t for t in dest_model(root).get("types") or []}
+    if "p.ClinicService" not in (rows["p.Registry"].get("type_refs") or []) or "p.Pet" not in (rows["p.web.ListCtl"].get("type_refs") or []):
+        return _fail("the model names a type used only as a generic argument: %s / %s"
+                     % (rows["p.Registry"].get("type_refs"), rows["p.web.ListCtl"].get("type_refs")))
+
+    # a UNIT card: the reference is not one of the reach shapes, so the file
+    # stays outside the unit however the evidence is phrased
+    scope = dict(UNIT_SCOPE)
+    scope["digest"] = batch_scope_digest(scope)
+    sp = root / "evidence/planning/batch-scope/u-abc123" / ("%s.json" % scope["digest"][:32])
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps(scope))
+    wl = root / "evidence/planning/worklist.json"
+    wl.write_text(json.dumps(UNIT_WORKLIST))
+    issued = root / "verification/loop/issued.json"
+    before = {"schema": "rhoai3.loop-issued/v1", "cluster": "u:abc123", "attempt": 1,
+              "write_set": list(scope["writable_paths"]), "retry_key": "rk:unit:u:abc123",
+              "batch_scope": {"path": sp.relative_to(root).as_posix(), "digest": scope["digest"]}}
+    issued.write_text(json.dumps(before))
+    spec = importlib.util.spec_from_file_location("amend_scope_generic", HERE / "amend-scope.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    state, why = mod.unit_reach(root, scope, registry)
+    if state != "OUTSIDE_SCOPE":
+        return _fail("a file that only names a sealed type in a generic argument is outside the unit: %s %s" % (state, why))
+    if json.loads(issued.read_text()) != before or json.loads(sp.read_text()) != scope:
+        return _fail("asking the model changes no issued write set and no seal")
+    rc, out = _run(root, "--path", registry, "--reason", "the registry holds a list of the sealed service",
+                   "--evidence", "model:p.ClinicService", cluster="u:abc123")
+    if rc == 0 or "sealed symbols do not reach" not in out:
+        return _fail("a generic reference is not a unit locus: %s" % out)
+    if json.loads(issued.read_text()) != before or json.loads(sp.read_text()) != scope:
+        return _fail("a refused revision leaves the issued write set and the seal as they were")
+
+    # a PARITY card: the controller's generic return type now reaches p.Pet,
+    # which is more accurate input to the existing amendment -- still granted
+    # only on the card's own parity evidence, recorded, and bounded
+    item = {"id": "parity:list1", "source": "parity", "gate": "parity", "kind": "parity", "rule_id": "PARITY",
+            "path": ctl, "detail": "sc:list: body aa vs bb",
+            "advice": {"body_diff": {"summary": "pet order", "order_only": True, "locus_hints": []}}}
+    wl.write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [item]}))
+    par = {"schema": "rhoai3.loop-issued/v1", "cluster": "c:list", "attempt": 1, "gate": "parity",
+           "items": ["parity:list1"], "write_set": [ctl]}
+    issued.write_text(json.dumps(par))
+    pet = "src/main/java/p/Pet.java"
+    rc, out = _run(root, "--path", pet, "--reason", "the pet order is produced by the entity", cluster="c:list")
+    if rc == 0 or json.loads(issued.read_text()) != par:
+        return _fail("without the card's evidence nothing is granted, and the write set is unchanged: %s" % out)
+    rc, out = _run(root, "--path", pet, "--reason", "the pet order is produced by the entity",
+                   "--evidence", "parity:parity:list1", cluster="c:list")
+    if rc != 0 or "reaches p.Pet in 1 step" not in out:
+        return _fail("the generic return type is a reference the parity reach reads: %s" % out)
+    doc = json.loads(issued.read_text())
+    if doc["write_set"] != [pet, ctl] or doc["amendments"][-1]["evidence"]["kind"] != "parity":
+        return _fail("the grant is the recorded amendment, nothing more: %s" % doc)
+    doc["amendments"].append({"path": "src/main/java/p/Other.java"})
+    issued.write_text(json.dumps(doc))
+    rc, out = _run(root, "--path", "src/main/java/p/Owner.java", "--reason", "one more file the model happens to reach",
+                   "--evidence", "parity:parity:list1", cluster="c:list")
+    if rc == 0 or "limit 2" not in out:
+        return _fail("the amendment limit still binds: %s" % out)
+    return 0
+
+
 def _typed_reach_case(base: str = "p") -> int:
     """B5/B6: unit_reach answers IN_SCOPE, OUTSIDE_SCOPE or UNKNOWN, and only a
     fully checked, typed file is OUTSIDE. An unavailable model, a file the model
@@ -749,6 +833,8 @@ def main() -> int:
         if _parity_body_case(root):
             return 1
         if _parity_server_error_case(root):
+            return 1
+        if _generic_reference_case(root):
             return 1
 
     print("OK: amend-scope (tests, the build file, unknown paths, unreasoned asks and files the failure does not reach "

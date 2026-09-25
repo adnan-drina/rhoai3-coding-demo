@@ -4243,16 +4243,22 @@ def call_owner(call: Any) -> str:
 def unit_type_refs(typ: dict[str, Any]) -> set[str]:
     """Every type this declaration NAMES, in the shape the real extractor emits.
 
-    The relationships the compiler states live at MEMBER level: jdk-dest-model
-    writes ``mrow.put("type_refs", …)`` for a declared member's return, its
-    parameters and its throws, ``mrow.put("calls", …)`` for the resolved
-    callees, and ``fields[].type`` for a field; the type row itself carries
-    `supertypes` and `imports` and no `type_refs` of its own (there is no
-    ``row.put("type_refs", …)`` in DestModel.java). Asking the type level of a
-    real model therefore returned nothing, and a package with a genuine outside
-    consumer was classified as a leaf. The type-level key is still read because
-    another producer's model may carry one, and dropping evidence is never the
-    safe direction."""
+    Two levels, both read. The type row's own `type_refs` is jdk-dest-model's
+    declaration walk: the resolved declared types its supertypes, type
+    parameter bounds, field types and member signatures name, through generic
+    arguments, array components, wildcard and type-variable bounds,
+    intersections and enclosing types. Before that walk existed the only
+    evidence was the member-level spellings -- a declared member's
+    `type_refs` (return, parameters, throws), its resolved `calls`,
+    ``fields[].type``, `supertypes` and `imports` -- which this still reads,
+    erased; erasure cut ``java.util.List<inside.A>`` to java.util.List and kept
+    ``inside.B[]`` as a name nothing declares, so a package named only inside a
+    generic argument or an array looked unreferenced (rgctl offline evaluation
+    2026-09-25, G03G/G03A/G03N).
+
+    A reference found here is POSITIVE evidence even on an incomplete row. The
+    absence of one is evidence only when the row's walk is complete
+    (unit_type_refs_complete); callers asserting absence must ask that too."""
     out: set[str] = set()
     if not isinstance(typ, dict):
         return out
@@ -4279,15 +4285,32 @@ def unit_type_refs(typ: dict[str, Any]) -> set[str]:
     return {r for r in out if r}
 
 
+def unit_type_refs_complete(typ: dict[str, Any]) -> bool:
+    """Whether this row's declaration walk is COMPLETE: jdk-dest-model said so
+    explicitly (`type_refs_complete` is True) and the references it found are a
+    list. Missing (a model from before the walk), malformed or False is
+    unknown, never "complete and empty".
+
+    Complete covers the supported declaration scan only -- supertypes, bounds,
+    field types, member signatures. It says nothing about member bodies,
+    annotation arguments, reflection, configuration or other dynamic entry."""
+    return (isinstance(typ, dict) and typ.get("type_refs_complete") is True
+            and isinstance(typ.get("type_refs"), list))
+
+
 def unit_states_relationships(typ: dict[str, Any]) -> bool:
-    """Whether this type row can be asked what it refers to at all.
+    """Whether this type row can be asked what it does NOT refer to.
 
     A partially resolved type is a type the compiler could not finish: its
     member refs and its resolved calls are whatever survived the failure. An
     ISOLATION claim ("nothing outside names what is inside") is a claim about
     absence, and absence in a row that states no relationships is not evidence
-    of one. Fail closed: no relationship evidence, no leaf."""
-    return isinstance(typ, dict) and str(typ.get("resolution") or "") == "full"
+    of one. Nor is absence from a declaration walk that did not finish (an
+    unresolved, unsupported or bounded part). Fail closed: no complete
+    relationship evidence, no leaf. Positive references on such a row still
+    count wherever a reference, not an absence, is the question."""
+    return (isinstance(typ, dict) and str(typ.get("resolution") or "") == "full"
+            and unit_type_refs_complete(typ))
 
 
 def unit_annotation_sites(model: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -4873,15 +4896,39 @@ def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | N
     "Leaf" is decided by the relationships the compiler states about the types
     the union actually holds, never by a package NAME: a package nothing
     outside refers to is a leaf whatever it is called. Those relationships are
-    read at the level the extractor writes them — a declared member's
-    `type_refs` and resolved `calls`, a field's type, the supertypes and the
-    imports (unit_type_refs) — because the type row of a real model carries no
-    `type_refs` at all, and a planner that asked it there saw no consumer where
-    there was one.
+    read by unit_type_refs: the type row's declaration walk plus the member
+    signatures, resolved calls, field types, supertypes and imports.
 
-    Isolation is a claim about ABSENCE, so it is refused on missing evidence: a
-    single outside type the compiler could not fully resolve is a type that
-    cannot say what it names, and the union is not minted as a leaf."""
+    "Isolated" means only: no recorded inbound DECLARATION reference within the
+    modeled source root, on complete evidence. It is not a claim that the code
+    is unreachable, unused, safe to delete or safe to run in parallel --
+    framework callbacks, reflection, configuration and body-only references
+    are outside the walk.
+
+    Isolation is a claim about ABSENCE, so it is refused on missing evidence,
+    and the rule steps aside (every obligation stays with the family,
+    declaration and per-file rules) when:
+
+    * an outside type is partially resolved, or its declaration walk is
+      incomplete, missing or malformed (unit_states_relationships);
+    * an inside type has no identity, or its walk is not complete: a union
+      whose own types cannot say what they are cannot be proved unnamed, and
+      with nothing outside, an incomplete inside would otherwise pass vacuously
+      (rgctl offline evaluation 2026-09-25, G09);
+    * a union file has no type row, or the compiler reported a file in the
+      modeled root that produced no row at all (its types, and whatever they
+      name, are unknown)."""
+    rows = _unit_types(model)
+    unresolved = (model or {}).get("unresolved_files")
+    if not isinstance(unresolved, list):
+        return []  # malformed: which files failed is unknown, so nothing is isolated
+    row_paths = {_unit_path(t) for t in rows}
+    # entries outside the modeled root (an --also-source generated file, which
+    # the extractor compiles for attribution and never emits) are that root's
+    # own concern, exactly as their types are absent from `types`
+    in_root = [str(u) for u in unresolved if not (str(u).startswith("../") or str(u).startswith("/"))]
+    if any(("src/main/java/" + u) not in row_paths for u in in_root):
+        return []  # a failed file with no row: its references are unknowable
     by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for fam in families:
         if any(str(i.get("id")) in claimed for i in fam["items"]):
@@ -4893,12 +4940,19 @@ def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | N
     for directory in sorted(by_dir):
         fams = sorted(by_dir[directory], key=lambda f: f["key"])
         files = sort_unique([p for f in fams for p in f["files"]])
-        inside = {str(t.get("fqn") or "") for t in _unit_types(model) if _unit_path(t) in set(files)}
+        inside_rows = [t for t in rows if _unit_path(t) in set(files)]
+        inside = {str(t.get("fqn") or "") for t in inside_rows}
         if not inside:
             continue
-        outside = [t for t in _unit_types(model) if _unit_path(t) not in set(files)]
+        # every union file is typed, every typed file names its type, and
+        # every inside walk is complete: otherwise what the union declares --
+        # and so what an outside reference would have to name -- is unknown
+        named = {_unit_path(t) for t in inside_rows if str(t.get("fqn") or "")}
+        if set(files) - named or any(not unit_type_refs_complete(t) for t in inside_rows):
+            continue
+        outside = [t for t in rows if _unit_path(t) not in set(files)]
         if any(not unit_states_relationships(t) for t in outside):
-            continue  # no relationship evidence: isolation cannot be established
+            continue  # no complete relationship evidence: isolation cannot be established
         if any(r in inside for t in outside for r in unit_type_refs(t)):
             continue
         if len(files) < 2 and len(fams) < 2:
@@ -5592,6 +5646,15 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
             for declaration in [t] + list(t.get("declared") or []) + list(t.get("fields") or []):
                 names.update(str(a.get("fqn") or "") for a in declaration.get("annotations") or [])
         still = sorted(s for s, kind in retired if _names_retired(names, s, kind))
+        # A reference still found proves the symbol remains, whatever else is
+        # unknown. Its ABSENCE proves nothing when a declaration walk in this
+        # file did not finish (an unresolved, unsupported or bounded part); only
+        # the independent parsed proof above can answer then.
+        if retired and not still and not parsed_absence and not all(unit_type_refs_complete(t) for t in here):
+            out.append(dict(base, verdict="inconclusive",
+                            detail="the declaration references of %s are incomplete, so their absence does not prove the "
+                                   "retired symbol(s) gone" % path))
+            continue
         if mid:
             ids = member_ids(typ)
             member = next((m for m in typ.get("declared") or [] if ids.get(str(m.get("signature") or "")) == mid or str(m.get("name") or "") == mid), None)

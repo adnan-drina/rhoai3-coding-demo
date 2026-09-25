@@ -1001,12 +1001,25 @@ def _dm_member(name: str, signature: str, *, has_body: bool = False, calls=(), t
 
 
 def _dm_type(fqn: str, path: str, *, kind: str = "class", imports=(), supertypes=(), annotations=(),
-             declared=(), type_refs=(), resolution: str = "full") -> dict:
-    return {"path": path, "fqn": fqn, "kind": kind, "resolution": resolution,
-            "imports": list(imports), "supertypes": list(supertypes),
-            "annotations": [dict(a) for a in annotations], "declared": [dict(d) for d in declared],
-            "fields": [], "unhandled_throws": [], "inherited": [], "supertype_methods": [],
-            "inherited_known": True, "type_refs": sorted(set(type_refs))}
+             declared=(), type_refs=(), resolution: str = "full", refs_complete=True) -> dict:
+    # a hand-written row states a COMPLETE declaration walk unless the case
+    # says otherwise: the real extractor writes `type_refs_complete` on every
+    # row, and a row without it is unknown evidence (_leaf_evidence_case)
+    row = {"path": path, "fqn": fqn, "kind": kind, "resolution": resolution,
+           "imports": list(imports), "supertypes": list(supertypes),
+           "annotations": [dict(a) for a in annotations], "declared": [dict(d) for d in declared],
+           "fields": [], "unhandled_throws": [], "inherited": [], "supertype_methods": [],
+           "inherited_known": True, "type_refs": sorted(set(type_refs))}
+    if refs_complete is not None:
+        row["type_refs_complete"] = refs_complete
+        row["type_refs_incomplete"] = [] if refs_complete is True else [{"locus": "field:x", "reason": "unresolved"}]
+    return row
+
+
+def _dm_model(types) -> dict:
+    """A hand-written model in the real document's shape: its rows, and the
+    compiler's per-file failures (none unless the case adds one)."""
+    return {"types": list(types), "unresolved_files": []}
 
 
 def _javac(path: str, token: str, n: int, *, kind: str = "class") -> dict:
@@ -1157,7 +1170,7 @@ def _unit_world(n: dict) -> tuple[dict, list[dict], dict]:
         "frag_write_set": sorted([p for p in frag_files if p not in set(frag_children)] + frag_adapters),
         "exc": n["exc"], "gated": n["gated"],
     }
-    return {"types": types}, items, expect
+    return _dm_model(types), items, expect
 
 
 def _set_wide_item(scope: str = "spring-data-fragment-implementations") -> dict:
@@ -1273,7 +1286,7 @@ def _unit_formation_case() -> int:
             return _fail("[B] a renamed world matches no catalog row, so it has no documented target: %s" % sorted(targets))
 
         # the set the model cannot enumerate stays the typed blocker it was
-        bare, bare_claimed = form_units([_set_wide_item()], {}, set(), model={"types": []}, root=GOLDEN)
+        bare, bare_claimed = form_units([_set_wide_item()], {}, set(), model=_dm_model([]), root=GOLDEN)
         if bare or bare_claimed:
             return _fail("[%s] a set the model cannot enumerate mints nothing; the blocker stands" % label)
         other, _ = form_units(items + [_set_wide_item("some-other-set")], {}, set(), model=model, root=GOLDEN)
@@ -1296,7 +1309,7 @@ def _unit_bound_case() -> int:
                            type_refs=["%s.outside.Anchor" % base]) for i in range(UNIT_MAX_FILES + 5)]
     wide_types.append(_dm_type("%s.outside.Anchor" % base, "%s/outside/Anchor.java" % pkg,
                                type_refs=["%s.w.W00" % base]))
-    units, _ = form_units(wide_items, {}, set(), model={"types": wide_types}, root=None)
+    units, _ = form_units(wide_items, {}, set(), model=_dm_model(wide_types), root=None)
     if len(units) != 1 or units[0]["status"] != "blocked":
         return _fail("a family wider than the bound is a blocked cluster: %s" % [(c["unit"]["family_key"], c["status"]) for c in units])
     block = units[0]["block"]
@@ -1316,7 +1329,7 @@ def _unit_bound_case() -> int:
         # family i has i+1 sites, so the drop order is fixed by cardinality
         for k in range(i + 1):
             many.append(_javac("src/main/java/%s/leaf/%s.java" % (pkg, name), "S%02d" % i, 1000 * i + k))
-    units, _ = form_units(many, {}, set(), model={"types": many_types}, root=None)
+    units, _ = form_units(many, {}, set(), model=_dm_model(many_types), root=None)
     leaf = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
     if len(leaf) != 1:
         return _fail("the leaf unions the families: %s" % [c["unit"]["rule"] for c in units])
@@ -1328,7 +1341,7 @@ def _unit_bound_case() -> int:
     kept = {str(s["fqn"]) for s in seal["symbols"]}
     if "org.springframework.sym.S00" in kept or "org.springframework.sym.S11" not in kept:
         return _fail("the lowest-cardinality families are the ones dropped: %s" % sorted(kept))
-    again, _ = form_units(list(reversed(many)), {}, set(), model={"types": list(reversed(many_types))}, root=None)
+    again, _ = form_units(list(reversed(many)), {}, set(), model=_dm_model(list(reversed(many_types))), root=None)
     twin = [c for c in again if c["unit"]["rule"] == RULE_PACKAGE_LEAF][0]
     if twin["id"] != leaf[0]["id"] or twin["write_set"] != leaf[0]["write_set"]:
         return _fail("narrowing is deterministic: %s vs %s" % (twin["id"], leaf[0]["id"]))
@@ -1350,7 +1363,7 @@ def _unit_bound_case() -> int:
                                declared=[_dm_member("go", "go()", has_body=True, calls=["%s.%s" % (svc, sig)])],
                                type_refs=[svc]))
     citems = [_javac("src/main/java/%s/s/Wide.java" % pkg, "DataAccessException", 1)]
-    units, _ = form_units(citems, {}, set(), model={"types": ctypes}, root=None)
+    units, _ = form_units(citems, {}, set(), model=_dm_model(ctypes), root=None)
     closure = [c for c in units if c["unit"]["rule"] == RULE_DECLARATION_CLOSURE]
     if len(closure) != 1 or closure[0]["status"] != "blocked":
         return _fail("a closure wider than the bound is refused, never narrowed by dropping callers: %s"
@@ -1370,7 +1383,7 @@ def _unit_bound_case() -> int:
     # and a narrowing that DOES happen retains every obligation it excluded:
     # the dropped families' items are claimed by no unit, so the work list
     # still carries them as their own items
-    dropped_units, dropped_claimed = form_units(many, {}, set(), model={"types": many_types}, root=None)
+    dropped_units, dropped_claimed = form_units(many, {}, set(), model=_dm_model(many_types), root=None)
     leaf_seal = [c for c in dropped_units if c["unit"]["rule"] == RULE_PACKAGE_LEAF][0]["_unit_seal"]
     excluded = leaf_seal["bounds"].get("excluded") or []
     if not excluded or not all(r.get("items") for r in excluded):
@@ -1613,7 +1626,7 @@ def _uri_world(n: dict, imports: tuple[str, ...]) -> tuple[dict, list[str]]:
         rel = "%s/%s/%s.java" % (pkg, n["pkg"], c)
         types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=list(imports)))
         paths.append("src/main/java/" + rel)
-    return {"types": types}, paths
+    return _dm_model(types), paths
 
 
 def _uri_unit(n: dict) -> tuple[dict, list[dict], list[str]]:
@@ -1643,7 +1656,7 @@ def _leaf_unit(n: dict) -> tuple[dict, list[str]]:
         types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=[sym]))
         paths.append("src/main/java/" + rel)
         items.append(_javac(paths[-1], sym.rsplit(".", 1)[-1], 70 + i))
-    units, _ = form_units(items, {}, set(), model={"types": types}, root=GOLDEN)
+    units, _ = form_units(items, {}, set(), model=_dm_model(types), root=GOLDEN)
     leaf = next(c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF)
     with tempfile.TemporaryDirectory(prefix="unit-leaf-") as d:
         return build_unit_scope(Path(d), leaf, items, {"candidate_sha256": "c1"}), paths
@@ -1867,7 +1880,7 @@ def _unit_config_case() -> int:
                     "cause": "config-value", "set_wide": "", "path": "src/main/resources/application.properties",
                     "category": "mandatory", "line": 0, "rule_id": "RUNTIME_APPLICATION_CONFIGURATION",
                     "message": "Failed to load config value of type class java.lang.String for: %s" % prop}
-            units, claimed = form_units([item], {}, set(), model={"types": types}, root=root)
+            units, claimed = form_units([item], {}, set(), model=_dm_model(types), root=root)
             cfg = [c for c in units if c["unit"]["rule"] == RULE_CONFIG_CONSUMERS]
             if len(cfg) != 1 or "rt:boot:cfg" not in claimed:
                 return _fail("[%s] one unit over the property and its consumers: %s" % (label, [c["unit"]["rule"] for c in units]))
@@ -1886,7 +1899,7 @@ def _unit_config_case() -> int:
             if unit.get("gate") != "boot" or not any(c["check"] == "gate" for c in unit["_unit_seal"]["completion"]):
                 return _fail("[%s] a gate obligation carries its gate as a completion check: %s" % (label, unit["_unit_seal"]["completion"]))
             # nothing reads it: no consumer, no unit, and today's path stands
-            alone, alone_claimed = form_units([item], {}, set(), model={"types": []}, root=root)
+            alone, alone_claimed = form_units([item], {}, set(), model=_dm_model([]), root=root)
             if alone or alone_claimed:
                 return _fail("[%s] a property with no annotated consumer forms no unit" % label)
     return 0
@@ -1976,12 +1989,14 @@ def _real_leaf_case() -> int:
             with tempfile.TemporaryDirectory(prefix="wl-real-leaf-") as d:
                 root = _jdk_root(d, _real_sources(n, consumer=consumer))
                 model = dest_model(root)
-                # the shape itself: the extractor writes no type-level type_refs,
-                # and the reference is under the member
+                # the shape itself: the reference is under the member, AND on
+                # the type row's declaration walk, which is complete here
                 if consumer:
                     con = next(t for t in model["types"] if str(t["fqn"]).endswith("." + n["consumer"]))
-                    if con.get("type_refs"):
-                        return _fail("[%s] the real extractor writes no type-level type_refs: %s" % (label, con.get("type_refs")))
+                    helper = "%s.%s.%s" % (n["base"], n["leaf_pkg"], n["helper_a"])
+                    if helper not in (con.get("type_refs") or []) or con.get("type_refs_complete") is not True:
+                        return _fail("[%s] the real extractor's declaration walk names %s, completely: %s %s"
+                                     % (label, helper, con.get("type_refs"), con.get("type_refs_complete")))
                     if not any(str(n["helper_a"]) in str(r) for m in con["declared"] for r in (m.get("type_refs") or [])):
                         return _fail("[%s] the reference is under the declared member: %s" % (label, con["declared"]))
                     if not any(str(x).endswith("." + n["helper_a"]) for x in unit_type_refs(con)):
@@ -2002,9 +2017,462 @@ def _real_leaf_case() -> int:
             partial = [dict(t, resolution="partial") if not _dm_is_leaf(t, n) else t for t in model["types"]]
             if any(unit_states_relationships(t) for t in partial if not _dm_is_leaf(t, n)):
                 return _fail("[%s] a partially resolved type states no relationships" % label)
-            units, _ = form_units(_real_items(n), {}, set(), model={"types": partial}, root=GOLDEN)
+            units, _ = form_units(_real_items(n), {}, set(), model=_dm_model(partial), root=GOLDEN)
             if [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
                 return _fail("[%s] isolation is not established by a type that could not say what it names" % label)
+    return 0
+
+
+# --- declared references through generics, arrays and bounds ---------------
+#
+# rgctl offline evaluation 2026-09-25 (G03G/G03A/G03N/G09): a holder naming a
+# package's type ONLY inside a generic argument or an array component left no
+# edge the planner could read, and a package whose own evidence was partial
+# was minted as a leaf with nothing outside to check. The extractor now writes
+# the declaration walk on the type row (`type_refs`, `type_refs_complete`), and
+# isolation requires complete walks on BOTH sides. Classification may change;
+# scope, bounds, order policy and conservation may not.
+
+_GEN_A = {"base": "org.acme.clinic", "leaf_pkg": "util", "api_pkg": "rest", "consumer": "OwnerResource",
+          "helper_a": "SortDefinition", "helper_b": "ToStringCreator", "sym": "MutableSortDefinition"}
+_GEN_B = {"base": "com.example.warehouse", "leaf_pkg": "helper", "api_pkg": "api", "consumer": "CrateEndpoint",
+          "helper_a": "OrderSpec", "helper_b": "DescriptionMaker", "sym": "AttributeRanker"}
+
+# (label, class header suffix, body) with {q} the helper's fully qualified name
+# and {s} its simple name; nothing is imported unless the shape says so
+_GENERIC_SHAPES = (
+    ("qualified-list", "", "    java.util.List<{q}> xs;\n"),
+    ("multi-dim-array", "", "    {q}[][] grid;\n"),
+    ("nested-map", "", "    java.util.Map<String, java.util.List<{q}>> nested;\n"),
+    ("wildcard-extends", "", "    java.util.List<? extends {q}> up;\n"),
+    ("wildcard-super", "", "    java.util.List<? super {q}> down;\n"),
+    ("method-return", "", "    public java.util.Optional<{q}> find() {{ return null; }}\n"),
+    ("method-param", "", "    public void put(java.util.Set<{q}[]> s) {{ }}\n"),
+    ("class-bound", "<T extends {q}>", ""),
+    ("method-bound", "", "    public <T extends {q}> void m() {{ }}\n"),
+    ("intersection-bound", "<T extends java.lang.Object & java.lang.Comparable<{q}>>", "    T value;\n"),
+    ("generic-supertype", " extends java.util.ArrayList<{q}>", ""),
+    ("imported-list", "", "    java.util.List<{s}> xs;\n"),
+)
+
+
+def _generic_sources(n: dict, shape: tuple | None) -> dict[str, str]:
+    base, src = n["base"], "src/main/java/" + n["base"].replace(".", "/")
+    files = {
+        "%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_a"]):
+            "package %s.%s;\npublic class %s {\n    public int rank() { return 1; }\n}\n" % (base, n["leaf_pkg"], n["helper_a"]),
+        "%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_b"]):
+            "package %s.%s;\npublic class %s {\n    public String render() { return \"\"; }\n}\n" % (base, n["leaf_pkg"], n["helper_b"]),
+    }
+    q = "%s.%s.%s" % (base, n["leaf_pkg"], n["helper_a"])
+    if shape is None:
+        # the disconnected control: an outside type naming nothing inside
+        body, header, imports = "    int n;\n", "", ""
+    else:
+        label, header, body = shape
+        imports = "import %s;\n" % q if label.startswith("imported") else ""
+        header, body = header.format(q=q, s=n["helper_a"]), body.format(q=q, s=n["helper_a"])
+    files["%s/%s/%s.java" % (src, n["api_pkg"], n["consumer"])] = (
+        "package %s.%s;\n%spublic class %s%s {\n%s}\n" % (base, n["api_pkg"], imports, n["consumer"], header, body))
+    return files
+
+
+def _ownership(items: list[dict], clusters: list[dict]) -> tuple[list[str], list[str]]:
+    """(obligations no cluster owns, obligations more than one cluster owns)."""
+    owners: dict[str, list[str]] = {}
+    for c in clusters:
+        for i in c.get("items") or []:
+            owners.setdefault(str(i), []).append(str(c["id"]))
+    ids = {str(i["id"]) for i in items}
+    return sorted(ids - set(owners)), sorted(k for k, v in owners.items() if len(v) > 1)
+
+
+def _real_generic_leaf_case() -> int:
+    """Real extraction to formation: a consumer that names a leaf helper only
+    through a generic argument, an array component, a wildcard or a bound
+    prevents the leaf -- because the EDGE is in the model, not because the
+    completeness guard declined. Every row here is fully resolved and complete,
+    so removing the collector would make each case form a false leaf. The
+    disconnected control still forms one; the consumer never becomes
+    writable; every obligation keeps exactly one owner."""
+    import tempfile
+
+    from planner.worklist import unit_type_refs
+
+    for label, n in (("A", _GEN_A), ("B", _GEN_B)):
+        leaf_dir = "src/main/java/%s/%s" % (n["base"].replace(".", "/"), n["leaf_pkg"])
+        consumer_path = "src/main/java/%s/%s/%s.java" % (n["base"].replace(".", "/"), n["api_pkg"], n["consumer"])
+        helper = "%s.%s.%s" % (n["base"], n["leaf_pkg"], n["helper_a"])
+        items = _real_items(n)
+        control_key = None
+        for shape in (None,) + _GENERIC_SHAPES:
+            name = "control" if shape is None else shape[0]
+            with tempfile.TemporaryDirectory(prefix="wl-gen-leaf-") as d:
+                model = dest_model(_jdk_root(d, _generic_sources(n, shape)))
+            con = next(t for t in model["types"] if str(t["fqn"]).endswith("." + n["consumer"]))
+            if any(t.get("resolution") != "full" or t.get("type_refs_complete") is not True for t in model["types"]):
+                return _fail("[%s/%s] the fixture must be fully resolved and complete, so only the edge decides: %s"
+                             % (label, name, [(t["fqn"], t.get("resolution"), t.get("type_refs_complete")) for t in model["types"]]))
+            names_helper = helper in unit_type_refs(con)
+            if names_helper != (shape is not None):
+                return _fail("[%s/%s] the consumer's references %s the helper: %s"
+                             % (label, name, "must name" if shape else "must not name", sorted(unit_type_refs(con))))
+            units, _claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
+            clusters = cluster_items(items, {}, set(), units=units)
+            leaves = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
+            if shape is None:
+                if [c["unit"]["family_key"] for c in leaves] != [leaf_dir]:
+                    return _fail("[%s] the disconnected control IS a leaf: %s" % (label, [c["unit"]["rule"] for c in units]))
+                control_key = (sorted(leaves[0]["write_set"]), leaves[0].get("order_key"))
+            else:
+                if leaves:
+                    return _fail("[%s/%s] a reference through %s prevents the leaf: %s" % (label, name, name, leaves[0]["write_set"]))
+                fam = [c for c in units if c["unit"]["rule"] == RULE_DIAGNOSTIC_FAMILY]
+                # the SAME repair under the existing family rule: same files,
+                # same order key, the consumer not added to anything
+                if len(fam) != 1 or (sorted(fam[0]["write_set"]), fam[0].get("order_key")) != control_key:
+                    return _fail("[%s/%s] the obligations regroup under the existing family rule with the leaf's scope and order: %s vs %s"
+                                 % (label, name, [(c["unit"]["rule"], c["write_set"], c.get("order_key")) for c in units], control_key))
+            if any(consumer_path in (c.get("write_set") or []) for c in clusters):
+                return _fail("[%s/%s] a reference makes nothing writable: %s" % (label, name, consumer_path))
+            unowned, twice = _ownership(items, clusters)
+            if unowned or twice:
+                return _fail("[%s/%s] every obligation has exactly one owner: unowned %s, twice %s" % (label, name, unowned, twice))
+    return 0
+
+
+_G03_HOLDERS = {
+    "G03G": "    java.util.List<{i}.{a}> values;\n",
+    "G03A": "    {i}.{b}[] values;\n",
+    "G03N": ("    java.util.Map<java.lang.String, java.util.List<{i}.{a}>> nested;\n"
+             "    java.util.List<? extends {i}.{a}> wild;\n    java.util.List<? super {i}.{b}> wildSuper;\n"),
+    "control": "    int values;\n",
+}
+_G03_NAMES = ({"i": "inside", "o": "outside", "a": "A", "b": "B", "ann": "MissingAnn", "lib": "com.missing.Lib", "g": "g09"},
+              {"i": "vault.core", "o": "gate.web", "a": "Ledger", "b": "Tally", "ann": "Vanished", "lib": "org.gone.Thing", "g": "h09"})
+_DIAG_CLASSES: list[Path] = []
+
+
+def _jdk_items(root: Path) -> list[dict]:
+    """The compiler's own diagnostics over the tree (JdkDiagnostics, as
+    run-verify.sh runs it), as work-list items with their line-free identity."""
+    import json
+    import subprocess
+    import tempfile
+
+    if not _DIAG_CLASSES:
+        tool = Path(__file__).resolve().parents[2] / "skills/migration/fix-until-green/scripts/jdk-diagnostics/JdkDiagnostics.java"
+        classes = Path(tempfile.mkdtemp(prefix="wl-diag-classes-"))
+        subprocess.run(["javac", "-d", str(classes), str(tool)], check=True, capture_output=True)
+        _DIAG_CLASSES.append(classes)
+    out = root / "verification/build/diag.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["java", "-cp", str(_DIAG_CLASSES[0]), "JdkDiagnostics", "--source", str(root), "--out", str(out),
+                    "--release", "21"], check=True, capture_output=True, timeout=120)
+    items = compile_items(json.loads(out.read_text(encoding="utf-8")))
+    for i in items:
+        i["identity"] = diagnostic_identity(None, i)
+    return items
+
+
+def _real_partial_leaf_case() -> int:
+    """The recorded G03 variants and G09 with the compiler's own diagnostics.
+
+    G03: the inside files are PARTIAL (an unresolved annotation) but their
+    declaration walks are complete, and the fully resolved holder names them
+    only through a generic argument, an array or a wildcard: no leaf, and the
+    same two files regroup as one diagnostic family. G09: the only file's walk
+    is incomplete and nothing is outside it; the empty outside set is not
+    evidence of isolation. Both run on a twin that shares no identifier."""
+    import tempfile
+
+    for n in _G03_NAMES:
+        ip, op = n["i"].replace(".", "/"), n["o"].replace(".", "/")
+        inside = {"src/main/java/%s/%s.java" % (ip, c): "package %s;\n\npublic class %s { @%s int mark; }\n" % (n["i"], c, n["ann"])
+                  for c in (n["a"], n["b"])}
+        write = sorted(inside)
+        control = None
+        for case in ("control", "G03G", "G03A", "G03N"):
+            holder = "src/main/java/%s/Holder.java" % op
+            files = dict(inside, **{holder: "package %s;\n\npublic class Holder {\n%s}\n" % (n["o"], _G03_HOLDERS[case].format(**n))})
+            with tempfile.TemporaryDirectory(prefix="wl-g03-") as d:
+                root = _jdk_root(d, files)
+                items = _jdk_items(root)
+                model = dest_model(root)
+            rows = {t["fqn"]: t for t in model["types"]}
+            h = rows["%s.Holder" % n["o"]]
+            if h.get("resolution") != "full" or h.get("type_refs_complete") is not True:
+                return _fail("[%s/%s] the holder is fully resolved and complete: %s" % (n["i"], case, h))
+            for c in (n["a"], n["b"]):
+                r = rows["%s.%s" % (n["i"], c)]
+                if r.get("resolution") != "partial" or r.get("type_refs_complete") is not True:
+                    return _fail("[%s/%s] an unresolved ANNOTATION leaves the inside declaration walk complete: %s" % (n["i"], case, r))
+            if len(items) != 2:
+                return _fail("[%s/%s] javac reports the two annotation sites: %s" % (n["i"], case, [i["detail"] for i in items]))
+            units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+            clusters = cluster_items(items, {}, set(), units=units)
+            shape = [(c["unit"]["rule"], sorted(c["write_set"]), c.get("order_key"), sorted(c["items"])) for c in units]
+            if case == "control":
+                if len(shape) != 1 or shape[0][0] != RULE_PACKAGE_LEAF or shape[0][1] != write:
+                    return _fail("[%s] the disconnected control forms the leaf: %s" % (n["i"], shape))
+                control = shape[0]
+            elif len(shape) != 1 or shape[0][0] != RULE_DIAGNOSTIC_FAMILY or shape[0][1:] != control[1:]:
+                return _fail("[%s/%s] no false leaf; the same files, order and obligations regroup as one family: %s vs %s"
+                             % (n["i"], case, shape, control))
+            if any(holder in (c.get("write_set") or []) for c in clusters):
+                return _fail("[%s/%s] the holder is not made writable" % (n["i"], case))
+            unowned, twice = _ownership(items, clusters)
+            if unowned or twice:
+                return _fail("[%s/%s] conservation: unowned %s, twice %s" % (n["i"], case, unowned, twice))
+
+        # G09: a single partial file, no outside types at all
+        pkg = n["g"]
+        uses = "src/main/java/%s/Uses.java" % pkg
+        lib_simple = n["lib"].rsplit(".", 1)[-1]
+        src = ("package %s;\n\nimport %s;\npublic class Uses {\n    %s lib;\n    public void go() { lib.run(); }\n}\n"
+               % (pkg, n["lib"], lib_simple))
+        with tempfile.TemporaryDirectory(prefix="wl-g09-") as d:
+            root = _jdk_root(d, {uses: src})
+            items = _jdk_items(root)
+            model = dest_model(root)
+        row = model["types"][0]
+        if row.get("type_refs_complete") is not False or len(model["types"]) != 1:
+            return _fail("[%s] the unresolved field makes the only walk incomplete: %s" % (pkg, row))
+        if len(items) < 2:
+            return _fail("[%s] javac reports the missing package and the missing type: %s" % (pkg, [i["detail"] for i in items]))
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
+            return _fail("[%s] an empty outside set with incomplete inside evidence is not isolation: %s"
+                         % (pkg, [(c["unit"]["rule"], c["unit"]["symbols"]) for c in units]))
+        clusters = cluster_items(items, {}, set(), units=units)
+        unowned, twice = _ownership(items, clusters)
+        if unowned or twice or any(sorted(c["write_set"]) != [uses] for c in clusters):
+            return _fail("[%s] every obligation stays owned, inside its own file: %s" % (pkg, [(c["id"], c["write_set"], c["items"]) for c in clusters]))
+    return 0
+
+
+def _leaf_evidence_case() -> int:
+    """Missing, malformed or incomplete evidence can never establish isolation,
+    on either side, and refusing the leaf drops nothing: the families still
+    own every obligation exactly once. A complete empty outside set does."""
+    from planner.worklist import package_leaf_units, unit_states_relationships, unit_type_refs
+
+    base, pkg = "org.acme.leafy", "org/acme/leafy"
+    leaf_dir = "src/main/java/%s/leaf" % pkg
+
+    def world() -> tuple[dict, list[dict]]:
+        types = [_dm_type("%s.leaf.H%d" % (base, i), "%s/leaf/H%d.java" % (pkg, i), imports=["x.legacy.Sym%d" % i])
+                 for i in range(2)]
+        types.append(_dm_type("%s.api.Out" % base, "%s/api/Out.java" % pkg, type_refs=["java.lang.Object"]))
+        items = [_javac("%s/H%d.java" % (leaf_dir, i), "Sym%d" % i, i) for i in range(2)]
+        return {"types": types, "unresolved_files": []}, items
+
+    def leaf_of(model: dict, items: list[dict]) -> bool:
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        clusters = cluster_items(items, {}, set(), units=units)
+        unowned, twice = _ownership(items, clusters)
+        if unowned or twice:
+            raise AssertionError("conservation: unowned %s, twice %s" % (unowned, twice))
+        return any(c["unit"]["rule"] == RULE_PACKAGE_LEAF and c["unit"]["family_key"] == leaf_dir for c in units)
+
+    def mutate(fn) -> tuple[dict, list[dict]]:
+        model, items = world()
+        fn(model)
+        return model, items
+
+    def out_row(m: dict) -> dict:
+        return next(t for t in m["types"] if t["fqn"].endswith(".api.Out"))
+
+    def in_row(m: dict) -> dict:
+        return next(t for t in m["types"] if t["fqn"].endswith(".leaf.H0"))
+
+    try:
+        if not leaf_of(*world()):
+            return _fail("control: complete evidence on both sides forms the leaf")
+        refused = (
+            ("inside walk incomplete", lambda m: in_row(m).update(type_refs_complete=False)),
+            ("inside walk unknown (old-shaped row)", lambda m: in_row(m).pop("type_refs_complete")),
+            ("inside identity missing", lambda m: in_row(m).update(fqn="")),
+            ("outside walk incomplete", lambda m: out_row(m).update(type_refs_complete=False)),
+            ("outside walk unknown (old-shaped row)", lambda m: out_row(m).pop("type_refs_complete")),
+            ("outside walk malformed", lambda m: out_row(m).update(type_refs_complete="true")),
+            ("outside refs malformed", lambda m: out_row(m).update(type_refs=None)),
+            ("outside partially resolved", lambda m: out_row(m).update(resolution="partial")),
+            ("unresolved outside file without a row", lambda m: m.update(unresolved_files=["%s/api/Broken.java" % pkg])),
+            ("unresolved inside file without a row", lambda m: (m["types"].remove(in_row(m)),
+                                                                m.update(unresolved_files=["%s/leaf/H0.java" % pkg]))),
+            ("union file without a row", lambda m: m["types"].remove(in_row(m))),
+            ("unresolved_files malformed", lambda m: m.update(unresolved_files="x")),
+        )
+        for label, fn in refused:
+            if leaf_of(*mutate(fn)):
+                return _fail("%s cannot establish a package leaf" % label)
+        # G09's shape: the inside walk is incomplete and NOTHING is outside
+        g09 = mutate(lambda m: (m["types"].remove(out_row(m)), in_row(m).update(type_refs_complete=False)))
+        if leaf_of(*g09):
+            return _fail("an empty outside set does not vacuously prove isolation for an incomplete inside")
+        # while a COMPLETE empty outside set is a valid (vacuous) isolation
+        if not leaf_of(*mutate(lambda m: m["types"].remove(out_row(m)))):
+            return _fail("a complete inside with nothing outside is a leaf: the guard is about evidence, not emptiness")
+        # an incomplete row keeps the positive edges it did establish
+        known = _dm_type("%s.api.Out" % base, "%s/api/Out.java" % pkg, type_refs=["%s.leaf.H1" % base], refs_complete=False)
+        if "%s.leaf.H1" % base not in unit_type_refs(known) or unit_states_relationships(known):
+            return _fail("an incomplete row keeps its known references and states no absence")
+        model, items = world()
+        families = [{"key": "k%d" % i, "symbol_kind": "type", "items": [items[i]], "files": [items[i]["path"]]} for i in range(2)]
+        if not package_leaf_units(families, model, set()):
+            return _fail("control: the leaf helper agrees with form_units")
+        # deterministic under reversed enumeration
+        m1, i1 = world()
+        u1, _ = form_units(i1, {}, set(), model=m1, root=GOLDEN)
+        m2, i2 = world()
+        m2["types"].reverse()
+        u2, _ = form_units(list(reversed(i2)), {}, set(), model=m2, root=GOLDEN)
+        if [(c["id"], c["write_set"], c.get("order_key")) for c in u1] != [(c["id"], c["write_set"], c.get("order_key")) for c in u2]:
+            return _fail("formation is independent of enumeration order")
+    except AssertionError as exc:
+        return _fail(str(exc))
+    return 0
+
+
+def _real_leaf_bound_case() -> int:
+    """The bounds under corrected classification, on the real model: 20/21
+    files, 160/161 sites and 8/9 symbols for an ordinary unit, with the
+    current narrowing and typed-block semantics, and every obligation owned
+    exactly once. A generic consumer outside changes which rule claims the
+    obligations, never the bound they meet or the files they may write. (The
+    16/17 fragment exception is _real_fragment_bound_case, unchanged.)"""
+    import tempfile
+
+    base = "org.acme.bulk"
+    pkg = base.replace(".", "/")
+
+    def tree(n_files: int, consumer: bool) -> dict[str, str]:
+        files = {"src/main/java/%s/leaf/F%02d.java" % (pkg, i): "package %s.leaf;\npublic class F%02d {\n}\n" % (base, i)
+                 for i in range(n_files)}
+        if consumer:
+            files["src/main/java/%s/api/Use.java" % pkg] = (
+                "package %s.api;\npublic class Use {\n    java.util.List<%s.leaf.F00> xs;\n}\n" % (base, base))
+        return files
+
+    def path(i: int) -> str:
+        return "src/main/java/%s/leaf/F%02d.java" % (pkg, i)
+
+    def plan(n_files: int, items: list[dict], consumer: bool) -> tuple[list[dict], list[dict]]:
+        with tempfile.TemporaryDirectory(prefix="wl-leaf-bound-") as d:
+            model = dest_model(_jdk_root(d, tree(n_files, consumer)))
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        clusters = cluster_items(items, {}, set(), units=units)
+        unowned, twice = _ownership(items, clusters)
+        if unowned or twice:
+            raise AssertionError("conservation: unowned %s, twice %s" % (unowned, twice))
+        if any(p.endswith("/api/Use.java") for c in clusters for p in (c.get("write_set") or [])):
+            raise AssertionError("the consumer became writable")
+        return units, clusters
+
+    try:
+        for consumer in (False, True):
+            rule = RULE_DIAGNOSTIC_FAMILY if consumer else RULE_PACKAGE_LEAF
+            # files: one family over 20 files is open, over 21 is a typed block
+            for n_files, status in ((UNIT_MAX_FILES, "open"), (UNIT_MAX_FILES + 1, "blocked")):
+                items = [_javac(path(i), "Legacy", i) for i in range(n_files)]
+                units, _ = plan(n_files, items, consumer)
+                if [(c["unit"]["rule"], c["status"], len(c["write_set"])) for c in units] != [(rule, status, n_files)]:
+                    return _fail("[consumer=%s] %d files: %s" % (consumer, n_files, [(c["unit"]["rule"], c["status"], len(c["write_set"])) for c in units]))
+                if status == "blocked" and not units[0]["block"].startswith("UNIT_OVERSIZE: "):
+                    return _fail("[consumer=%s] the oversize block is typed: %r" % (consumer, units[0]["block"]))
+            # sites: one family over two files, 160 sites open, 161 blocked
+            for n_sites, status in ((UNIT_MAX_SITES, "open"), (UNIT_MAX_SITES + 1, "blocked")):
+                items = [_javac(path(i % 2), "Legacy", i) for i in range(n_sites)]
+                units, _ = plan(2, items, consumer)
+                if [(c["unit"]["rule"], c["status"], c["unit"]["size"]["sites"]) for c in units] != [(rule, status, n_sites)]:
+                    return _fail("[consumer=%s] %d sites: %s" % (consumer, n_sites, [(c["unit"]["rule"], c["status"], c["unit"]["size"]) for c in units]))
+        # symbols: a leaf of 8 families is whole; of 9 it narrows to 8 and the
+        # dropped family's obligations stay owned by their own cluster
+        for n_sym, narrowed in ((UNIT_MAX_SYMBOLS, False), (UNIT_MAX_SYMBOLS + 1, True)):
+            items = [_javac(path(i), "Sym%d" % i, 100 * i + k) for i in range(n_sym) for k in range(i + 1)]
+            units, clusters = plan(n_sym, items, False)
+            leaf = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
+            if len(leaf) != 1 or leaf[0]["status"] != "open" or leaf[0]["unit"]["size"]["symbols"] != UNIT_MAX_SYMBOLS:
+                return _fail("%d symbols: %s" % (n_sym, [(c["unit"]["rule"], c["status"], c["unit"]["size"]) for c in units]))
+            if ("narrowed" in leaf[0]["_unit_seal"]["bounds"]) != narrowed:
+                return _fail("%d symbols: narrowed is recorded only when a family was dropped: %s" % (n_sym, leaf[0]["_unit_seal"]["bounds"]))
+            if narrowed:
+                dropped = {str(i["id"]) for i in items if i["path"] == path(0)}
+                if dropped & set(leaf[0]["items"]) or not any(dropped <= set(c["items"]) for c in clusters if c is not leaf[0]):
+                    return _fail("the lowest-cardinality family is dropped and retained as its own work")
+            # and with a generic consumer the same obligations are claimed by
+            # the existing rules, still inside the bound or typed-blocked
+            units_c, _ = plan(n_sym, items, True)
+            if [c for c in units_c if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
+                return _fail("%d symbols: the generic consumer prevents the leaf" % n_sym)
+            for c in units_c:
+                s = c["unit"]["size"]
+                if c["status"] == "open" and (s["files"] > UNIT_MAX_FILES or s["sites"] > UNIT_MAX_SITES or s["symbols"] > UNIT_MAX_SYMBOLS):
+                    return _fail("an open unit is inside the bound: %s" % s)
+    except AssertionError as exc:
+        return _fail(str(exc))
+    return 0
+
+
+def _real_generic_retirement_case() -> int:
+    """assess_unit, on the real model: a retired type left only inside a
+    generic argument or an array is still named; a truncated declaration walk
+    cannot prove it absent; and the independent parsed-retirement proof still
+    answers on a partial or truncated row whose syntax no longer names it."""
+    import tempfile
+
+    from planner.worklist import unit_retired_symbols
+
+    retired = "com.legacy.Retired"
+    stub = {"src/main/java/com/legacy/Retired.java": "package com.legacy;\npublic class Retired {\n}\n",
+            "src/main/java/other/Retired.java": "package other;\npublic class Retired {\n}\n"}
+    a, b = "src/main/java/app/UsesA.java", "src/main/java/app/UsesB.java"
+
+    def cls(name: str, body: str, head: str = "") -> str:
+        return "package app;\n%spublic class %s {\n%s}\n" % (head, name, body)
+
+    before = {a: cls("UsesA", "    Retired r;\n", "import com.legacy.Retired;\n"),
+              b: cls("UsesB", "    Retired r;\n", "import com.legacy.Retired;\n")}
+    with tempfile.TemporaryDirectory(prefix="wl-gen-ret-form-") as d:
+        root = _jdk_root(d, {**stub, **before})
+        model = dest_model(root)
+        items = [_javac(a, "Retired", 1), _javac(b, "Retired", 2)]
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if len(units) != 1:
+            return _fail("the two files are one unit: %s" % [(c["unit"]["rule"], c["unit"]["family_key"]) for c in units])
+        scope = build_unit_scope(root, units[0], items, {"candidate_sha256": "c0"})
+    if [s for s, _k in unit_retired_symbols(scope)] != [retired]:
+        return _fail("the unit retires %s: %s" % (retired, scope["symbols"]))
+    scopes = {RULE_PACKAGE_LEAF: dict(scope, rule=RULE_PACKAGE_LEAF), RULE_DIAGNOSTIC_FAMILY: dict(scope, rule=RULE_DIAGNOSTIC_FAMILY)}
+    deep = "java.util.List<" * 40 + "%s" + ">" * 40
+    clean_b = cls("UsesB", "    int r;\n")
+    cases = (
+        # (label, UsesA, verdict for UsesA, proof when ok)
+        ("retired", cls("UsesA", "    int r;\n"), "ok", "parsed-symbol-absence"),
+        # the parse still spells a same-named other type, so only the complete
+        # resolved walk can answer, and it does
+        ("resolved-absent", cls("UsesA", "    java.util.List<other.Retired> r;\n"), "ok", "resolved-model"),
+        ("generic-left", cls("UsesA", "    java.util.List<com.legacy.Retired> r;\n"), "violates", ""),
+        ("array-left", cls("UsesA", "    com.legacy.Retired[][] r;\n"), "violates", ""),
+        ("wildcard-left", cls("UsesA", "    java.util.List<? super com.legacy.Retired> r;\n"), "violates", ""),
+        ("bound-left", cls("UsesA", "    public <T extends com.legacy.Retired> void m() { }\n"), "violates", ""),
+        # a full compiler row whose walk was truncated: no absence proof from it
+        ("truncated-left", cls("UsesA", "    %s r;\n" % (deep % retired)), "inconclusive", ""),
+        # the parse no longer names it: the independent proof still answers
+        ("truncated-absent", cls("UsesA", "    %s r;\n" % (deep % "String")), "ok", "parsed-symbol-absence"),
+        ("partial-absent", cls("UsesA", "    Missing m;\n"), "ok", "parsed-symbol-absence"),
+        ("partial-generic-left", cls("UsesA", "    Missing m;\n    java.util.List<com.legacy.Retired> r;\n"), "inconclusive", ""),
+    )
+    for label, text, verdict, proof in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-gen-ret-") as d:
+            root = _jdk_root(d, {**stub, a: text, b: clean_b})
+            for rule, sc in scopes.items():
+                rows = [r for r in assess_unit(root, sc) if r["path"] == a]
+                if [r["verdict"] for r in rows] != [verdict]:
+                    return _fail("%s [%s]: UsesA must be %s: %s" % (label, rule, verdict, rows))
+                if verdict == "ok" and [r.get("proof") for r in rows] != [proof]:
+                    return _fail("%s [%s] is decided by the %s proof: %s" % (label, rule, proof, rows))
     return 0
 
 
@@ -4164,7 +4632,7 @@ def _owned_world(n: dict, fqn: str) -> tuple[dict, list[dict], list[str]]:
                               annotations=[ann] if i == 0 else [], declared=[handler]))
         paths.append("src/main/java/" + rel)
     items = [_javac(p, fqn.rsplit(".", 1)[-1], 40 + i) for i, p in enumerate(paths)]
-    return {"types": types}, items, paths
+    return _dm_model(types), items, paths
 
 
 def _adapter_owned_retirement_case() -> int:
@@ -4303,16 +4771,23 @@ def _real_adapter_owned_retirement_case() -> int:
         model = dest_model(root)
         items = [_javac(owner, "CrossOrigin", 1), _javac(pet, "CrossOrigin", 2)]
         units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
-        if len(units) != 1 or units[0]["unit"]["rule"] != RULE_PACKAGE_LEAF:
-            return _fail("the two controllers are one leaf unit: %s" % [(c["unit"]["rule"], c["unit"]["family_key"]) for c in units])
+        # `Missing pending()` leaves each controller's declaration walk
+        # INCOMPLETE, so the package-leaf rule steps aside (isolation needs
+        # complete inside evidence, rgctl offline evaluation 2026-09-25) and the
+        # same two files are one diagnostic family. The retirement assessment
+        # below is asked under BOTH rules, as v16 t_7074fcda's leaf was.
+        if len(units) != 1 or units[0]["unit"]["rule"] != RULE_DIAGNOSTIC_FAMILY or sorted(units[0]["write_set"]) != sorted([owner, pet]):
+            return _fail("the two controllers are one family unit: %s" % [(c["unit"]["rule"], c["unit"]["family_key"], c["write_set"]) for c in units])
+        if any(t.get("type_refs_complete") is not False for t in model["types"] if t["fqn"].startswith(base)):
+            return _fail("the unresolved return type makes the controllers' walks incomplete")
         if not any(t.get("retire") and t["from"] == _OWNED for t in units[0]["unit"]["target_symbols"]):
             return _fail("the real model binds the token to %s and the unit carries its retirement: %s" % (_OWNED, units[0]["unit"]["target_symbols"]))
-        leaf = build_unit_scope(root, units[0], items, {"candidate_sha256": "c0"})
-    if [s for s, _k in unit_retired_symbols(leaf)] != [_OWNED]:
-        return _fail("the leaf seals the annotation as the symbol it retires: %s" % leaf["symbols"])
-    for m in leaf["members"]:
+        family = build_unit_scope(root, units[0], items, {"candidate_sha256": "c0"})
+    if [s for s, _k in unit_retired_symbols(family)] != [_OWNED]:
+        return _fail("the unit seals the annotation as the symbol it retires: %s" % family["symbols"])
+    for m in family["members"]:
         m["member_id"] = "list"  # the handler the method-level annotation sat on must survive
-    family = dict(leaf, rule=RULE_DIAGNOSTIC_FAMILY)
+    leaf = dict(family, rule=RULE_PACKAGE_LEAF)
     retired_ok = {owner: ctl("OwnerRestController"), pet: ctl("PetRestController")}
     cases = [
         ("retired", retired_ok, True, "parsed-symbol-absence"),
@@ -4607,11 +5082,15 @@ def main() -> int:
             or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
-            or _unit_budget_case() or _issued_parity_plan_case() or _adapter_owned_retirement_case()):
+            or _unit_budget_case() or _issued_parity_plan_case() or _adapter_owned_retirement_case()
+            or _leaf_evidence_case()):
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
         if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case():
+            return 1
+        if (_real_generic_leaf_case() or _real_partial_leaf_case() or _real_leaf_bound_case()
+                or _real_generic_retirement_case()):
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)
@@ -4814,7 +5293,7 @@ symbol; an adapter that does not implement the parent violates, a written one di
 inheritance violates; the unit's boot gate must pass before acceptance, a passing gate never excuses a violating \
 member, and a gate that was passing may not be broken; and the two counterexamples are decided from the compiler's \
 own imports -- the wrong jakarta.ws.rs.Context and an unbound UriBuilder explain nothing while the imported \
-catalogued target does. Each of them repeated on a twin sharing no identifier")
+catalogued target does. Each of them repeated on a twin sharing no identifier. DECLARED REFERENCES (rgctl offline evaluation 2026-09-25): a consumer naming a leaf type only through a generic argument, an array, a wildcard, a bound, an intersection or a generic supertype prevents the leaf by the edge itself and never becomes writable, while the disconnected control still forms one; the recorded G03 variants regroup as one family with the same files, order and obligations; missing, malformed or incomplete evidence on either side (and G09's empty outside) establishes no isolation and drops no obligation; the 20/21 file, 160/161 site and 8/9 symbol bounds hold under both classifications; and a retired type left in a generic, an array or a bound is still named, a truncated walk proves nothing absent, and the parse proof still answers")
     return 0
 
 
