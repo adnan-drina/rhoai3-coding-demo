@@ -67,6 +67,16 @@ refresh the view.
 From here the loop propagates itself: each M3 card's `advance.py` mints
 the next card after the tools accept its step.
 
+## Outcome-board runs (new protocol, disabled by default)
+
+The `k4-mint` step is the same command. On an outcome-board run it publishes
+the WHOLE known graph instead of one card. The graph holds outcomes,
+M4 ASSESS, and the unassigned M5 stages, all under this open M2, with this
+card's identity retained. Publication stops by name on an archived or
+duplicate identity and resumes safely under the same command.
+`kanban_request_review` is allowed only when the whole-graph read-back is
+green. The reviewer's `kanban_complete` releases the graph.
+
 ## Self-test
 
 `python3 scripts/selftest.py` (golden only, never on a card): steps.json ↔ audit.json sync, gate first, fixture PASS/REFUSE set, and the paved-road coverage lint.

@@ -168,6 +168,29 @@ for compile / incident / test items (its `references/*.md` are cited per
 symbol in the brief), `configure-quarkus-profiles` for config items. They
 are references, not checklists: the brief's items are the work.
 
+## Outcome-board runs (new protocol, disabled by default)
+
+Only when the run declares `outcome-board/v1` (see `.hermes/LAYOUT.md`). The
+card is an OUTCOME, not one attempt: it stays open across rejected and pending
+attempts, and it completes only when the outcome is accepted.
+
+1. First call: `python3 .hermes/kernel/outcome_gate.py --root . issue`. It
+   binds this native run and writes `verification/loop/issued.json` for the
+   ONE cluster you may edit now. The printed `allowed_paths` is your write
+   set. No issue means no product write (K2 refuses).
+2. Then the same road: brief → patch → run-verify → advance. advance.py
+   records the verdict on the outcome ledger. REVERTED or CONTINUE means
+   read the brief again on this card, because the next attempt is re-issued
+   here and no new card is minted. `OUTCOME ACCEPTED` means
+   `kanban_complete`. `OUTCOME_BUDGET_EXHAUSTED` or VERIFICATION_PENDING
+   means `kanban_block kind=needs_input`.
+3. After a restart (a new native run), run `issue` again. A retained
+   candidate is reported. `outcome_gate.py --root . restore-pending` adopts
+   it and never renews the budget.
+
+`kanban_request_review` is refused on an outcome card: its acceptance is
+the recorded measurement.
+
 ## Operator
 
 - DEFERRED is a mechanism stop, not a request for a human to edit code.

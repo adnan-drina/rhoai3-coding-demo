@@ -216,4 +216,18 @@ parallel workers + verifier + synthesizer.
     substitute for `request_changes`. GitOps golden seats `reviewer` and
     `review_dispatch: true`. OBJECT parking M4 in `review` on dest-14
     (predates the recut). Do not dest-apply dest-14.
-
+31. **Outcome board (architect 2026-09-25, APPROVE WITH CONDITIONS):**
+    a run selects `outcome-board/v1` once. The selection comes from
+    `run-defaults.json` (bound by the initial commit) or run control, and it
+    never applies to an existing run. Execution stays `disabled` until a
+    protected writer exists (F1: `enabled` refuses `AUTHORITY_UNPROTECTED`).
+    `qualification` is for disposable fixtures only. Under the protocol a
+    card is an OUTCOME: rejected and pending attempts stay on it, and it
+    completes only on recorded acceptance. Descriptions carry no machine
+    JSON. The hook decides writes and completion from the authority record
+    and the native run, never the body or `K2_*`. Mixed serial and outcome
+    records refuse. The M4 terminator is unchanged, and a REFUSE assessment
+    completes; delivery stays refused until the continuation grants M5.
+    Publication is still K4 (`k4_mint.py` → `k4_graph.py`). No second
+    scheduler, no polling agent and no parallel M3. Contract:
+    `stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md`.

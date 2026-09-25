@@ -311,6 +311,18 @@ python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --ro
 - `PROVISIONAL_ACCEPT` without a retrievable tree: uncommitted `src/` or
   `pom.xml` means there is nothing to ship.
 
+## Outcome-board runs (new protocol, disabled by default)
+
+The card is one assessment GENERATION (`assess:m4:gN`). The road does not
+change. After the verdict is linted, and before `kanban_request_review`, run
+`python3 .hermes/kernel/outcome_gate.py --root . assessment-record`. It
+records the verdict bound to this card, the candidate, and the measured
+obligations. The reviewer's `kanban_complete` is allowed for EVERY verdict,
+REFUSE included, once the audit is green and the record exists. A REFUSE is
+a valid assessment. The dispatcher's continuation publishes the bounded
+repairs and the next assessment generation, and keeps M5 held. You never
+reopen or rewrite an earlier generation.
+
 ## Operator
 
 A REFUSE verdict is the run's honest result, not a failure of the loop.

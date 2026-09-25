@@ -1,5 +1,33 @@
 # Backlog
 
+## Native outcome board (Stage 080, new runs only) — 2026-09-26
+
+The architect approved the outcome-board design with conditions
+(`tmp/kanban-native-alignment-2026-09-25/reports/architect-review.md`, F1–F5).
+The implementation is in the golden, disabled by default. The contract is
+`stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md`.
+
+- [x] Protocol, initial graph, K4 graph publication, run-bound authority,
+  same-outcome repair, continuations (M2 release, M4 REFUSE → repairs →
+  successor assessment, ordered M5 grants), stage predicates and effect
+  serialization. Synthetic suite: `lib/planner/outcome_board.test.py`.
+  Exact runtime and real workers:
+  `hermes-runtime/tests/rhoai3_outcome_board` (tree 8a3bb406).
+- [ ] **Blocked (F1/C2): no protected writer.** Gateway, dispatcher, hooks
+  and workers share one UID in one container, so the authority store is
+  cooperative. `execution: enabled` refuses `AUTHORITY_UNPROTECTED` until a
+  separate principal owns the store: a sidecar with its own UID and a
+  read-only mount into the worker, or a platform service. This is a
+  platform decision; it is not substituted by a weaker check.
+- [ ] Publication dependencies for any run that selects the protocol, all
+  in Stage 050 `maas-api-key-provisioning.yaml`:
+  - add `kanban_block|kanban_request_review|request_review` to the
+    `pre_tool_call` matcher;
+  - register `on_kanban_dispatch_tick` →
+    `python3 /projects/modernized/.hermes/kernel/outcome_reconcile.py --root /projects/modernized`.
+  Nothing selects the protocol today, so the golden publishes safely without
+  them.
+
 ## Destination declared references and package-leaf isolation — 2026-09-25
 
 The rgctl offline evaluation (`tmp/rgctl-offline-evaluation-20260925/`,

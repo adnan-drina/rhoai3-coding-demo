@@ -186,6 +186,16 @@ filter. If it is missing or stale, obtain fresh evidence through the verifier.
 | (Operator) `scripts/rewind.py` | the Operator puts the loop back at an accepted step: product tree restored and re-measured, later steps and the spent budget moved to the record as `rewound`, deferral cleared, next card minted in a new epoch | not a card action; `--operator` and `--reason` are recorded in `steps.json.rewinds` |
 | `REFUSE: LOOP_*` | stale state / no baseline / receipt not authoritative | `kanban_block` kind=needs_input |
 
+## Outcome-board runs
+
+On a run that declares `outcome-board/v1` the transaction is the same, and
+the surroundings follow the outcome protocol (`.hermes/LAYOUT.md`):
+`outcome_gate.py issue` comes first on every run. A verdict is recorded on
+the outcome ledger, and its budget is cumulative across runs and restarts. A
+REVERTED attempt is re-issued on the same card instead of re-minted. An
+acceptance is begun on the ledger before the commit and recorded after it.
+The card completes when the OUTCOME is accepted, not when one cluster is.
+
 ## After M4
 
 M4 is a measurement, and `REFUSE` is one of its answers. The close card ends

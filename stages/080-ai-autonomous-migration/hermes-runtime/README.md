@@ -311,6 +311,24 @@ Configuration comes from the environment, which the platform sets for migration 
 - **Thresholds.** Executed calls keep theirs: identical successful calls 5, same-tool failures 8.
 - **Recording.** Both halts are recorded like B11's (`STOP WORKER_TOOL_LOOP …`, a failed run, a native respawn and then the breaker). Hard stops must be enabled (`hard_stop_enabled`).
 
+## Outcome-board qualification (no runtime patch)
+
+`tests/rhoai3_outcome_board` qualifies the outcome board
+(`../OUTCOME-BOARD-CONTRACT.md`) on the exact runtime with the real CLI,
+dispatcher and workers. It uses the fake provider. No runtime change was
+needed. The board uses the pinned `on_kanban_dispatch_tick` observer, native
+idempotency keys, attachments and the worker's `HERMES_KANBAN_RUN_ID`.
+
+```bash
+cp -R <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4 tests/
+cp -R <repo>/stages/080-ai-autonomous-migration/hermes-runtime/tests/rhoai3_outcome_board tests/
+RHOAI3_GOLDEN_HERMES=<repo>/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes \
+  PYTHONPATH=$PWD ../hermes-venv/bin/python -m pytest -p no:cacheprovider -q tests/rhoai3_outcome_board
+```
+
+This was qualified on tree `8a3bb406` (series 0001–0012): 5 passed. The
+tests are not part of the B11/B3/B4 release run, so run them separately.
+
 ## What this does not cover
 
 - **Worker recovery policy** is golden-side (commit "a halted worker gets one automatic recovery ..."): K4 mints loop cards with `max_retries` 2 (`k4_schema.LOOP_MAX_RETRIES`), so the first guard halt respawns the card once and the second blocks it with the `gave_up` guardrail metadata; `brief.py` hands the respawned run its unaccepted candidate (`candidate_on_tree`) and the one next action. The count lives in the kanban database, outside product Git. Not covered anywhere yet: a named `WORKER_RECOVERY_EXHAUSTED` code (the native `gave_up` event carries the halt metadata instead).

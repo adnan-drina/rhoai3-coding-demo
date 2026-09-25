@@ -152,8 +152,25 @@ change.
   new principal: a sidecar with a separate UID that owns the store, or a platform
   service. Until one is qualified, `enabled` refuses and only `qualification` runs
   locally.
-- C1/C6: qualified locally on tree `3df755a3` (see the implementation report).
-- C3/C4/C5: implemented and tested at the evidence levels stated in the report.
+- C1/C6: qualified locally on the exact runtime tree `8a3bb406` (series
+  0001–0012) with real dispatcher, CLI and workers
+  (`hermes-runtime/tests/rhoai3_outcome_board`, fake provider). No runtime
+  patch was needed.
+- C3/C4/C5: implemented and tested synthetically
+  (`lib/planner/outcome_board.test.py`). The M2 release continuation is also
+  tested on the real dispatcher tick.
+- Publication dependencies (Stage 050 managed config, before any run selects
+  the protocol): the `pre_tool_call` matcher must add
+  `kanban_block|kanban_request_review|request_review`, and
+  `on_kanban_dispatch_tick` must register `kernel/outcome_reconcile.py`.
+  Outcome decisions are measured well under the 5 s hook timeout.
+- `k4_graph.py publish --plan-file` exists for the runtime qualification.
+  It is honoured in `qualification` mode only, which no factory run can
+  enter.
+- Found while qualifying (not changed here): the golden `decisions.yaml`
+  parses with the harness's `yamlite`, but PyYAML rejects it. `load_yaml`
+  prefers PyYAML when importable, so a `python3` with PyYAML on its path
+  refuses the file.
 
 ## 9. Rollback
 
