@@ -5,6 +5,11 @@
 # NOT applied. workspace-images/ is gitignored and the image bake and push
 # happen outside this repo. Apply by hand, from the repo root:
 #
+#   The build context excludes out/*; workspace-images/.dockerignore must
+#   re-include the series (after the MTA CLI line):
+#     !out/hermes-runtime-patches/
+#     !out/hermes-runtime-patches/**
+#
 #   mkdir -p workspace-images/out/hermes-runtime-patches
 #   rm -f workspace-images/out/hermes-runtime-patches/*.patch
 #   cp stages/080-ai-autonomous-migration/hermes-runtime/patches/0*.patch \
