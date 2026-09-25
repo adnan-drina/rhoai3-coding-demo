@@ -9,6 +9,7 @@ Parallel M3 execution stays deferred.
 """
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -250,3 +251,317 @@ def compose_serial_roadmap(root: Path) -> dict[str, Any]:
         raise ValueError("serial roadmap admits at most one executable task")
     write_canonical(root / SERIAL_ROADMAP, doc)
     return doc
+
+
+_OUTCOME_ACCOUNTS_SCHEMA = "rhoai3.outcome-accounts-preview/v1"
+_SNAPSHOT_KINDS = ("late-remainder", "synthetic")
+
+
+def _oa_nonempty(value: object, label: str) -> str:
+    if not isinstance(value, str) or value == "" or value != value.strip():
+        raise ValueError("%s must be a nonempty string" % label)
+    return value
+
+
+def _oa_text(value: object, label: str) -> str:
+    """Accept a string, including empty scenario text. Do not invent a value."""
+    if not isinstance(value, str) or value != value.strip():
+        raise ValueError("%s must be a string" % label)
+    return value
+
+
+def _oa_declaring_type(entry_point: object, item_id: str) -> str:
+    def _bad() -> ValueError:
+        return ValueError(
+            "item %s entry point %r is not ep:<declaring type>#<member>:http" % (item_id, entry_point)
+        )
+
+    prefix = "ep:"
+    suffix = ":http"
+    if not isinstance(entry_point, str) or not entry_point.startswith(prefix) or not entry_point.endswith(suffix):
+        raise _bad()
+    body = entry_point[len(prefix):-len(suffix)]
+    split = body.find("#")
+    if split <= 0 or split >= len(body) - 1:
+        raise _bad()
+    declaring = body[:split]
+    member = body[split + 1:]
+    if not declaring or not member or declaring != declaring.strip() or member != member.strip():
+        raise _bad()
+    return declaring
+
+
+def _oa_json(value: object, label: str) -> None:
+    if value is None or isinstance(value, str):
+        return
+    if isinstance(value, bool):
+        return
+    if isinstance(value, int):
+        return
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError("%s is not JSON-compatible" % label)
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _oa_json(item, "%s[%d]" % (label, index))
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("%s has a non-string key" % label)
+            _oa_json(item, "%s.%s" % (label, key))
+        return
+    raise ValueError("%s is not JSON-compatible" % label)
+
+
+def _oa_provenance(provenance: dict) -> None:
+    kind = provenance.get("snapshot_kind")
+    if kind not in _SNAPSHOT_KINDS:
+        raise ValueError("provenance.snapshot_kind must be late-remainder or synthetic")
+    note = provenance.get("scope_note")
+    if not isinstance(note, str) or note.strip() == "":
+        raise ValueError("provenance.scope_note must be a nonempty string")
+    if kind == "synthetic":
+        construction = provenance.get("construction")
+        if not isinstance(construction, str) or construction.strip() == "":
+            raise ValueError("synthetic provenance requires a nonempty construction explanation")
+        if provenance.get("observed_migration_event") is not False:
+            raise ValueError("synthetic provenance requires observed_migration_event false")
+
+
+def _oa_unresolved(rows: list) -> None:
+    seen: set[str] = set()
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError("unresolved[%d] must be an object" % index)
+        label = "unresolved[%d]" % index
+        row_id = _oa_nonempty(row.get("id"), "%s id" % label)
+        if row_id in seen:
+            raise ValueError("duplicate unresolved id %s" % row_id)
+        seen.add(row_id)
+        reason = row.get("reason")
+        if not isinstance(reason, str) or reason.strip() == "":
+            raise ValueError("unresolved %s needs a nonempty reason" % row_id)
+
+
+def _oa_items(items: list) -> dict[str, dict[str, str]]:
+    by_id: dict[str, dict[str, str]] = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError("worklist.items[%d] must be an object" % index)
+        label = "worklist.items[%d]" % index
+        if "id" not in item:
+            raise ValueError("%s is missing id" % label)
+        item_id = _oa_nonempty(item.get("id"), "%s id" % label)
+        label = "item %s" % item_id
+        if item_id in by_id:
+            raise ValueError("duplicate item id %s" % item_id)
+        for key in ("entry_point", "path", "kind", "category", "scenario", "security_mode"):
+            if key not in item:
+                raise ValueError("%s is missing %s" % (label, key))
+        declaring = _oa_declaring_type(item.get("entry_point"), item_id)
+        path = _oa_nonempty(item.get("path"), "%s path" % label)
+        kind = _oa_nonempty(item.get("kind"), "%s kind" % label)
+        if kind != "parity":
+            raise ValueError("item %s kind %r is not supported mandatory HTTP parity" % (item_id, kind))
+        category = _oa_nonempty(item.get("category"), "%s category" % label)
+        if category != "mandatory":
+            raise ValueError("item %s category %r is not mandatory" % (item_id, category))
+        _oa_text(item.get("scenario"), "%s scenario" % label)
+        _oa_nonempty(item.get("security_mode"), "%s security_mode" % label)
+        by_id[item_id] = {"id": item_id, "path": path, "declaring_type": declaring}
+    return by_id
+
+
+def _oa_clusters(clusters: list, items_by_id: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
+    validated: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_members: dict[str, str] = {}
+    for index, cluster in enumerate(clusters):
+        if not isinstance(cluster, dict):
+            raise ValueError("worklist.clusters[%d] must be an object" % index)
+        label = "worklist.clusters[%d]" % index
+        if "id" not in cluster:
+            raise ValueError("%s is missing id" % label)
+        cluster_id = _oa_nonempty(cluster.get("id"), "%s id" % label)
+        if cluster_id in seen_ids:
+            raise ValueError("duplicate cluster id %s" % cluster_id)
+        seen_ids.add(cluster_id)
+        kind = cluster.get("kind")
+        if kind != "parity":
+            raise ValueError("cluster %s kind %r is not supported HTTP parity" % (cluster_id, kind))
+        status = cluster.get("status")
+        if status != "open":
+            raise ValueError("cluster %s status %r is not open" % (cluster_id, status))
+        if "path" not in cluster:
+            raise ValueError("cluster %s is missing path" % cluster_id)
+        path = _oa_nonempty(cluster.get("path"), "cluster %s path" % cluster_id)
+        write_set = cluster.get("write_set")
+        if not isinstance(write_set, list):
+            raise ValueError("cluster %s write_set must be a list" % cluster_id)
+        copied_writes: list[str] = []
+        for write_index, write_path in enumerate(write_set):
+            copied_writes.append(_oa_nonempty(
+                write_path, "cluster %s write_set[%d]" % (cluster_id, write_index),
+            ))
+        members = cluster.get("items")
+        if not isinstance(members, list):
+            raise ValueError("cluster %s items must be a list" % cluster_id)
+        if not members:
+            raise ValueError("cluster %s has no member obligations" % cluster_id)
+        copied_members: list[str] = []
+        seen_here: set[str] = set()
+        for member in members:
+            member_id = _oa_nonempty(member, "cluster %s member" % cluster_id)
+            if member_id in seen_here:
+                raise ValueError("duplicate membership of %s in cluster %s" % (member_id, cluster_id))
+            seen_here.add(member_id)
+            if member_id not in items_by_id:
+                raise ValueError("cluster %s references unknown obligation %s" % (cluster_id, member_id))
+            if member_id in seen_members:
+                raise ValueError(
+                    "duplicate membership of %s in cluster %s and cluster %s"
+                    % (member_id, seen_members[member_id], cluster_id)
+                )
+            seen_members[member_id] = cluster_id
+            copied_members.append(member_id)
+        validated.append({
+            "id": cluster_id,
+            "path": path,
+            "items": copied_members,
+            "write_set": copied_writes,
+        })
+    for item_id in items_by_id:
+        if item_id not in seen_members:
+            raise ValueError("orphan obligation %s is not referenced by any cluster" % item_id)
+    return validated
+
+
+def _oa_group(items_by_id: dict[str, dict[str, str]], clusters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, list[str]]] = {}
+    for cluster in clusters:
+        types = sorted({items_by_id[item_id]["declaring_type"] for item_id in cluster["items"]})
+        if len(types) != 1:
+            raise ValueError(
+                "cluster %s spans declaring types %s; refusing to divide it" % (cluster["id"], ", ".join(types))
+            )
+        outcome_id = "http-type:" + types[0]
+        bucket = grouped.setdefault(outcome_id, {"obligation_ids": [], "cluster_ids": [], "paths": []})
+        bucket["cluster_ids"].append(cluster["id"])
+        for item_id in cluster["items"]:
+            bucket["obligation_ids"].append(item_id)
+            bucket["paths"].append(items_by_id[item_id]["path"])
+        bucket["paths"].append(cluster["path"])
+        bucket["paths"].extend(cluster["write_set"])
+    outcomes: list[dict[str, Any]] = []
+    for outcome_id in sorted(grouped):
+        bucket = grouped[outcome_id]
+        outcomes.append({
+            "outcome_id": outcome_id,
+            "obligation_ids": sorted(set(bucket["obligation_ids"])),
+            "cluster_ids": sorted(set(bucket["cluster_ids"])),
+            # Descriptive plan scope for this outcome. Not an edit grant.
+            "plan_paths": sorted(set(bucket["paths"])),
+            "parents": ["control:m2"],
+            "assignee": "implementer",
+        })
+    return outcomes
+
+
+def _oa_lineage(rows: list, outcomes: list[dict[str, Any]]) -> None:
+    clusters_of = {row["outcome_id"]: set(row["cluster_ids"]) for row in outcomes}
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError("lineage[%d] must be an object" % index)
+        label = "lineage[%d]" % index
+        for key in ("outcome_id", "cluster_id", "card_ids", "counts_as_addition"):
+            if key not in row:
+                raise ValueError("%s is missing %s" % (label, key))
+        outcome_id = _oa_nonempty(row.get("outcome_id"), "%s outcome_id" % label)
+        cluster_id = _oa_nonempty(row.get("cluster_id"), "%s cluster_id" % label)
+        if outcome_id not in clusters_of:
+            raise ValueError("lineage outcome %s is not a derived outcome" % outcome_id)
+        if cluster_id not in clusters_of[outcome_id]:
+            raise ValueError("lineage cluster %s is not a cluster of %s" % (cluster_id, outcome_id))
+        card_ids = row.get("card_ids")
+        if not isinstance(card_ids, list) or not card_ids:
+            raise ValueError("lineage %s card_ids must list historical card ids" % outcome_id)
+        for card_index, card_id in enumerate(card_ids):
+            _oa_nonempty(card_id, "lineage %s card_ids[%d]" % (outcome_id, card_index))
+        if row.get("counts_as_addition") is not False:
+            raise ValueError(
+                "lineage counts_as_addition must be false; this snapshot does not record an addition or an acceptance"
+            )
+
+
+def _oa_milestones(outcome_ids: list[str]) -> list[dict[str, Any]]:
+    return [
+        {"milestone_id": "assess:m4", "parents": list(outcome_ids), "assignee": "implementer"},
+        {"milestone_id": "deliver:prepare", "parents": ["assess:m4"], "assignee": None},
+        {"milestone_id": "deliver:push", "parents": ["deliver:prepare"], "assignee": None},
+        {"milestone_id": "deliver:accept", "parents": ["deliver:push"], "assignee": None},
+    ]
+
+
+def _oa_counts(outcome_count: int) -> dict[str, int]:
+    return {
+        "baseline_behavior_outcomes": outcome_count,
+        "measured_additions": 0,
+        "accepted_current_outcomes": 0,
+        "remaining_behavior_outcomes": outcome_count,
+    }
+
+
+def derive_outcome_accounts(
+    worklist: dict,
+    unresolved: list[dict],
+    *,
+    provenance: dict,
+    lineage: list[dict],
+) -> dict:
+    """Project one supplied HTTP-parity remainder into an offline outcome account.
+
+    Planning preview only: no board, mint, publication, or execution. The
+    function reads its arguments and does not grant edits. Counts are the
+    first snapshot of the obligations supplied here. Additions and accepted
+    outcomes stay zero because this call has no prior plan and no acceptance
+    ledger. Zero outcomes means nothing was supplied, not that a migration
+    is complete.
+    """
+    if not isinstance(worklist, dict):
+        raise ValueError("worklist must be an object")
+    if "items" not in worklist or not isinstance(worklist.get("items"), list):
+        raise ValueError("worklist.items must be a list")
+    if "clusters" not in worklist or not isinstance(worklist.get("clusters"), list):
+        raise ValueError("worklist.clusters must be a list")
+    if not isinstance(unresolved, list):
+        raise ValueError("unresolved must be a list")
+    if not isinstance(lineage, list):
+        raise ValueError("lineage must be a list")
+    if not isinstance(provenance, dict):
+        raise ValueError("provenance must be an object")
+    worklist = copy.deepcopy(worklist)
+    unresolved = copy.deepcopy(unresolved)
+    provenance = copy.deepcopy(provenance)
+    lineage = copy.deepcopy(lineage)
+    _oa_provenance(provenance)
+    _oa_unresolved(unresolved)
+    items_by_id = _oa_items(worklist["items"])
+    clusters = _oa_clusters(worklist["clusters"], items_by_id)
+    outcomes = _oa_group(items_by_id, clusters)
+    _oa_lineage(lineage, outcomes)
+    _oa_json(unresolved, "unresolved")
+    _oa_json(lineage, "lineage")
+    _oa_json(provenance, "provenance")
+    return {
+        "schema": _OUTCOME_ACCOUNTS_SCHEMA,
+        "planning_only": True,
+        "coverage_scope": "provided-obligations-only",
+        "outcomes": outcomes,
+        "counts": _oa_counts(len(outcomes)),
+        "unresolved": unresolved,
+        "milestones": _oa_milestones([row["outcome_id"] for row in outcomes]),
+        "lineage": lineage,
+        "provenance": provenance,
+    }

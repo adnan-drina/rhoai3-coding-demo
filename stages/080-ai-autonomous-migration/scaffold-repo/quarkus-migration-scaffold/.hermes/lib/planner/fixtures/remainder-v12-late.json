@@ -1,0 +1,189 @@
+{
+  "worklist": {
+    "items": [
+      {
+        "id": "parity:2c8c0206f70fc504",
+        "entry_point": "ep:org.springframework.samples.petclinic.rest.PetRestController#getPets():http",
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+        "kind": "parity",
+        "category": "mandatory",
+        "scenario": "",
+        "security_mode": "disabled"
+      },
+      {
+        "id": "parity:87ef093c5a26a264",
+        "entry_point": "ep:org.springframework.samples.petclinic.rest.PetTypeRestController#deletePetType(int):http",
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+        "kind": "parity",
+        "category": "mandatory",
+        "scenario": "sc:delete-referenced-pettypes-1",
+        "security_mode": "disabled"
+      },
+      {
+        "id": "parity:89dd7f8e4ba620f1",
+        "entry_point": "ep:org.springframework.samples.petclinic.rest.VisitRestController#deleteVisit(int):http",
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+        "kind": "parity",
+        "category": "mandatory",
+        "scenario": "sc:delete-visits-1",
+        "security_mode": "disabled"
+      },
+      {
+        "id": "parity:f55ae9ac55731703",
+        "entry_point": "ep:org.springframework.samples.petclinic.rest.PetRestController#deletePet(int):http",
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+        "kind": "parity",
+        "category": "mandatory",
+        "scenario": "sc:delete-pets-1",
+        "security_mode": "disabled"
+      },
+      {
+        "id": "parity:fad5dafbf8f70b85",
+        "entry_point": "ep:org.springframework.samples.petclinic.rest.SpecialtyRestController#deleteSpecialty(int):http",
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+        "kind": "parity",
+        "category": "mandatory",
+        "scenario": "sc:delete-referenced-specialties-1",
+        "security_mode": "disabled"
+      },
+      {
+        "id": "parity:fd0b32ed739b54b5",
+        "entry_point": "ep:org.springframework.samples.petclinic.rest.RootRestController#redirectToSwagger(HttpServletResponse):http",
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java",
+        "kind": "parity",
+        "category": "mandatory",
+        "scenario": "sc:read-root",
+        "security_mode": "disabled"
+      }
+    ],
+    "clusters": [
+      {
+        "id": "c:67bfc8d7483e",
+        "status": "open",
+        "items": [
+          "parity:2c8c0206f70fc504",
+          "parity:f55ae9ac55731703"
+        ],
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+        "write_set": [
+          "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java"
+        ],
+        "kind": "parity"
+      },
+      {
+        "id": "c:b0afd88b763b",
+        "status": "open",
+        "items": [
+          "parity:87ef093c5a26a264"
+        ],
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+        "write_set": [
+          "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java"
+        ],
+        "kind": "parity"
+      },
+      {
+        "id": "c:488e7e2d2ac4",
+        "status": "open",
+        "items": [
+          "parity:fd0b32ed739b54b5"
+        ],
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java",
+        "write_set": [
+          "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java"
+        ],
+        "kind": "parity"
+      },
+      {
+        "id": "c:90f0b647d099",
+        "status": "open",
+        "items": [
+          "parity:fad5dafbf8f70b85"
+        ],
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+        "write_set": [
+          "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java"
+        ],
+        "kind": "parity"
+      },
+      {
+        "id": "c:996178ac5ebe",
+        "status": "open",
+        "items": [
+          "parity:89dd7f8e4ba620f1"
+        ],
+        "path": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+        "write_set": [
+          "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java"
+        ],
+        "kind": "parity"
+      }
+    ]
+  },
+  "unresolved": [
+    {
+      "id": "unresolved:entry-point-coverage",
+      "kind": "unresolved",
+      "reason": "Admission-time work list, type inventory, and entry-point inventory are unavailable, so this snapshot cannot establish full initial coverage."
+    },
+    {
+      "id": "unresolved:security-modes",
+      "kind": "unresolved",
+      "reason": "Enabled-mode evidence is unavailable in this fixture. The supplied parity obligations record security_mode disabled, and that does not establish enabled-mode behavior."
+    }
+  ],
+  "lineage": [
+    {
+      "outcome_id": "http-type:org.springframework.samples.petclinic.rest.RootRestController",
+      "cluster_id": "c:488e7e2d2ac4",
+      "card_ids": [
+        "t_b2510378",
+        "t_9a001ded"
+      ],
+      "counts_as_addition": false
+    }
+  ],
+  "provenance": {
+    "snapshot_kind": "late-remainder",
+    "scope_note": "Late v12 open mandatory HTTP-parity remainder. First snapshot of the supplied obligations only. Not an admission-time inventory and not a completed migration.",
+    "source_path": "tmp/v12-run-20260924/freeze/worklist.json",
+    "source_sha256": "14369b1433b1d899bd4dd472ff2cc64a1b34231aa1936eea8326917c0974f9aa",
+    "observed_migration_event": true,
+    "authority_note": "Caller-supplied fixture metadata. Derivation does not authenticate the source hash and does not treat this object as an authorization.",
+    "field_projection": {
+      "item_fields": [
+        "id",
+        "entry_point",
+        "path",
+        "kind",
+        "category",
+        "scenario",
+        "security_mode"
+      ],
+      "cluster_fields": [
+        "id",
+        "status",
+        "items",
+        "path",
+        "write_set",
+        "kind"
+      ],
+      "omitted": "Bulky advice, stack traces, command prose, verdict files, and other item or cluster fields not used for grouping."
+    },
+    "excluded_not_counted": [
+      {
+        "id": "inc:jakarta-jaxrs-to-quarkus-00010:2a3cac51b5769b79",
+        "rule_id": "jakarta-jaxrs-to-quarkus-00010",
+        "path": "pom.xml",
+        "category": "superseded"
+      },
+      {
+        "id": "inc:springboot-web-to-quarkus-00010:0adc8f1f7b42e3ca",
+        "rule_id": "springboot-web-to-quarkus-00010",
+        "path": "pom.xml",
+        "category": "superseded"
+      }
+    ],
+    "exclusion_note": "The two source not_counted incidents in excluded_not_counted are superseded and are excluded from items. They are not mandatory obligations, not outcomes, and not native prerequisites."
+  }
+}
