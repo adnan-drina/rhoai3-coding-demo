@@ -239,6 +239,15 @@ New: `planner.worklist`, `planner.cards`, `bootstrap-destination`, `compat-mappi
 
 ---
 
+### 10.1 Outcome board (new runs, disabled by default)
+
+The approved native outcome-board design is implemented behind a protocol
+selection that no existing run makes (`OUTCOME-BOARD-CONTRACT.md`). After M2
+the board shows the known outcomes, their prerequisites and their acceptance.
+A repair attempt stays within the outcome that owns it. Continuations run on
+the dispatcher's own tick. Execution is disabled until a protected writer
+principal exists (architect F1). The current workspace has none.
+
 ## 11. Maturity
 
 | Area | Maturity |

@@ -630,3 +630,214 @@ PASSED tests/rhoai3_b3b4/test_v15_token_accounting.py::test_default_hold_follows
 === Broad regression on 32be3bd0 ===
 174 failed, 6704 passed, 30 skipped, 1 warning in 599.21s (0:09:59)
 Same failing ids as before (comm diff empty).
+
+=== V16-3 (patch 0011) ===
+Date: 2026-09-25. Fake loopback provider only; no real model, no cluster, no image.
+Before = 32be3bd0 (0001-0010), after = 3df755a3 (0001-0011).
+
+--- Tree: all eleven patches (git apply --index) on a fresh fcbd1076 checkout ---
+git write-tree -> 3df755a36ed0ff8b7fdadf30d664a212fe4dfa8f
+
+--- New V16-3 tests on 32be3bd0 (before) ---
+tests/rhoai3_b3b4/test_v16_read_family.py::test_recorded_expanding_grep_sequence_halts_within_bound FAILED [ 11%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_family_ignores_only_context_options_and_halts_on_the_fifth_redundant_read FAILED [ 22%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_reads_that_show_new_content_are_not_collapsed PASSED [ 33%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_different_semantic_numbers_are_different_families PASSED [ 44%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_an_evidence_change_starts_a_new_phase PASSED [ 55%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_interleaved_reads_do_not_reset_the_family FAILED [ 66%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_exact_call_guard_is_kept PASSED [ 77%]
+tests/rhoai3_b3b4/test_v16_pending_stop.py::test_pending_blocks_once_keeps_candidate_and_is_not_retried FAILED [ 88%]
+tests/rhoai3_b3b4/test_v16_pending_stop.py::test_operator_recovery_allows_restore_verify_advance FAILED [100%]
+E           assert 28 == (1 + 5)
+E       AssertionError: assert ('allow' == 'halt'
+E       AssertionError: assert ('allow' == 'halt'
+E           assert 20 == 1
+E           AssertionError: assert 'ready' == 'blocked'
+=================== 5 failed, 4 passed in 101.52s (0:01:41) ====================
+
+--- tests/rhoai3_b11 + tests/rhoai3_b3b4 on 3df755a3 (after) ---
+tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion PASSED [  1%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five PASSED [  3%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call PASSED [  4%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop PASSED [  6%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded PASSED [  7%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress PASSED [  9%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable PASSED [ 11%]
+tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected PASSED [ 12%]
+tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff PASSED [ 14%]
+tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal PASSED [ 15%]
+tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes PASSED [ 17%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile PASSED [ 19%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body PASSED [ 20%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling PASSED [ 22%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config PASSED [ 23%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile PASSED [ 25%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_auxiliary_cannot_consume_main_reservation_and_deadline_holds PASSED [ 26%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream PASSED [ 28%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_use_its_reservation PASSED [ 30%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async PASSED [ 31%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_gateway_process_calls_are_paced_from_managed_env PASSED [ 33%]
+tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_auxiliary_call_waits_in_hook_past_its_timeout PASSED [ 34%]
+tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_cancelled_wait_sends_nothing PASSED [ 36%]
+tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_stream_reconnect_waits_in_hook_without_stale_kill PASSED [ 38%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary PASSED [ 39%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes PASSED [ 41%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart PASSED [ 42%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot PASSED [ 44%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing PASSED [ 46%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged PASSED [ 47%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes PASSED [ 49%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker PASSED [ 50%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_total_wait_bound_under_contention PASSED [ 52%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_first_slot_beyond_wait_stops_immediately PASSED [ 53%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_v15_regression_neutral_deferral_then_same_card_resumes PASSED [ 55%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_genuine_failure_then_deferral_keeps_the_failure_count PASSED [ 57%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_reviewer_origin_deferral_returns_to_review PASSED [ 58%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_dispatcher_restart_during_deferral_and_stop_prevents_dispatch PASSED [ 60%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_candidate_edits_survive_the_pause PASSED [ 61%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_two_deferrals_consume_no_retry_but_a_crash_does PASSED [ 63%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference PASSED [ 65%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge PASSED [ 66%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling PASSED [ 68%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry PASSED [ 69%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends PASSED [ 71%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately PASSED [ 73%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes PASSED [ 74%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending PASSED [ 76%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes PASSED [ 77%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_counts_through_window PASSED [ 79%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_ends_after_hold_plus_window PASSED [ 80%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_many_dropped_streams_do_not_exhaust_permanently PASSED [ 82%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_hold_shorter_than_request_timeout_is_refused PASSED [ 84%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_default_hold_follows_the_longest_client_timeout PASSED [ 85%]
+tests/rhoai3_b3b4/test_v16_pending_stop.py::test_pending_blocks_once_keeps_candidate_and_is_not_retried PASSED [ 87%]
+tests/rhoai3_b3b4/test_v16_pending_stop.py::test_operator_recovery_allows_restore_verify_advance PASSED [ 88%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_recorded_expanding_grep_sequence_halts_within_bound PASSED [ 90%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_family_ignores_only_context_options_and_halts_on_the_fifth_redundant_read PASSED [ 92%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_reads_that_show_new_content_are_not_collapsed PASSED [ 93%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_different_semantic_numbers_are_different_families PASSED [ 95%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_an_evidence_change_starts_a_new_phase PASSED [ 96%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_interleaved_reads_do_not_reset_the_family PASSED [ 98%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_exact_call_guard_is_kept PASSED [100%]
+======================== 63 passed in 170.40s (0:02:50) ========================
+
+--- Existing related upstream tests + tests/agent/test_auxiliary_client.py on 3df755a3 ---
+340 passed, 1 skipped in 37.17s
+
+--- All tests/hermes_cli/test_kanban*.py, before vs after ---
+32be3bd0: 15 failed, 278 passed, 2 skipped, 1 warning in 42.56s
+3df755a3: 15 failed, 278 passed, 2 skipped, 1 warning in 45.51s
+Same 15 failing ids on both (pre-existing at the pin; diff empty).
+
+--- Broad regression on 3df755a3 (tests/run_agent tests/agent + kanban core/sticky) ---
+174 failed, 6704 passed, 28 skipped, 2 deselected, 1 warning in 664.83s (0:11:04)
+Same 174 failing ids as on 32be3bd0 (sorted diff empty apart from one line of interleaved log noise).
+
+=== V16-7 / V16-9 (patch 0012) ===
+Date: 2026-09-25. Fake loopback provider only; no real model, no cluster, no image.
+Before = 3df755a3 (0001-0011), after = 8a3bb406 (0001-0012).
+
+--- Tree: all twelve patches (git apply --index) on a fresh fcbd1076 checkout ---
+git write-tree -> 8a3bb406be0cfcb587fb90903da287e3805c297e
+
+--- New tests on 3df755a3 (before) ---
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_recorded_eleven_file_cycle_halts_within_bound FAILED [ 12%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_legitimate_read_of_eleven_new_files_does_not_halt PASSED [ 25%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_refusal_replay_halts_at_three FAILED [ 37%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_refused_call_then_changed_does_not_halt PASSED [ 50%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_cycle_of_two_in_any_order_halts_and_an_edit_resets FAILED [ 62%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_reading_many_new_files_never_halts PASSED [ 75%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_refusals_feed_the_same_tool_failure_family FAILED [ 87%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_executed_calls_keep_their_thresholds PASSED [100%]
+E           AssertionError: worker made 60 agent model requests
+E           assert 60 == (11 * 4)
+E           AssertionError: worker made 60 agent model requests
+E           assert 60 == 3
+        assert ctl.after_call("write_file", {"path": "A.java", "content": "y"}, '{"ok": true}', failed=False).action == "allow"
+E       AssertionError: assert ('allow' == 'halt'
+E           AttributeError: 'ToolCallGuardrailController' object has no attribute 'after_refusal'
+========================= 4 failed, 4 passed in 26.02s =========================
+
+--- tests/rhoai3_b11 + tests/rhoai3_b3b4 on 8a3bb406 (after) ---
+tests/rhoai3_b11/test_b11_kanban_worker_halt.py::test_halt_ends_process_without_false_completion PASSED [  1%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_empty_terminal_halts_at_five PASSED [  2%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_successful_large_terminal_halts_before_next_llm_call PASSED [  4%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_terminal_transport_timing_does_not_hide_loop PASSED [  5%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_polling_with_deadline_is_bounded PASSED [  7%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_edit_then_reverify_is_progress PASSED [  8%]
+tests/rhoai3_b11/test_b11_loop_halt.py::test_compression_keeps_referenced_result_retrievable PASSED [  9%]
+tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_retry_after_respected PASSED [ 11%]
+tests/rhoai3_b3b4/test_b3_rate_limit.py::test_429_without_retry_after_bounded_backoff PASSED [ 12%]
+tests/rhoai3_b3b4/test_b3_rate_limit.py::test_persistent_429_named_terminal PASSED [ 14%]
+tests/rhoai3_b3b4/test_b4_truncation.py::test_truncated_tool_call_never_executes PASSED [ 15%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_wire_payload_matches_nonthinking_profile PASSED [ 16%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_profile_check_detects_dropped_extra_body PASSED [ 18%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_extra_body_wins_over_top_level_sampling PASSED [ 19%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_auxiliary_compression_request_matches_profile_producer_config PASSED [ 21%]
+tests/rhoai3_b3b4/test_b4_wire_payload.py::test_every_auto_auxiliary_slot_carries_the_profile PASSED [ 22%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_auxiliary_cannot_consume_main_reservation_and_deadline_holds PASSED [ 23%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_queued_auxiliary_does_not_pause_stale_watchdog_of_main_stream PASSED [ 25%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_use_its_reservation PASSED [ 26%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_cancelled_attempt_cannot_pass_after_waiting_sync_and_async PASSED [ 28%]
+tests/rhoai3_b3b4/test_r2_pacer_request_ownership.py::test_gateway_process_calls_are_paced_from_managed_env PASSED [ 29%]
+tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_auxiliary_call_waits_in_hook_past_its_timeout PASSED [ 30%]
+tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_cancelled_wait_sends_nothing PASSED [ 32%]
+tests/rhoai3_b3b4/test_r2_pacer_waits_in_transport.py::test_stream_reconnect_waits_in_hook_without_stale_kill PASSED [ 33%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_counts_main_retries_and_auxiliary PASSED [ 35%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_shared_across_two_processes PASSED [ 36%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_persists_across_restart PASSED [ 38%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_waits_for_oldest_slot PASSED [ 39%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_exhaustion_is_named_and_sends_nothing PASSED [ 40%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_unset_is_unchanged PASSED [ 42%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_main_path_waits_for_slot_and_completes PASSED [ 43%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_from_managed_env_reaches_worker PASSED [ 45%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_total_wait_bound_under_contention PASSED [ 46%]
+tests/rhoai3_b3b4/test_r2_request_pacer.py::test_budget_first_slot_beyond_wait_stops_immediately PASSED [ 47%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_v15_regression_neutral_deferral_then_same_card_resumes PASSED [ 49%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_genuine_failure_then_deferral_keeps_the_failure_count PASSED [ 50%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_reviewer_origin_deferral_returns_to_review PASSED [ 52%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_dispatcher_restart_during_deferral_and_stop_prevents_dispatch PASSED [ 53%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_candidate_edits_survive_the_pause PASSED [ 54%]
+tests/rhoai3_b3b4/test_v15_quota_recovery.py::test_two_deferrals_consume_no_retry_but_a_crash_does PASSED [ 56%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_usage_reconciliation_releases_only_the_difference PASSED [ 57%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_streaming_cumulative_frames_do_not_undercharge PASSED [ 59%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_throughput_without_a_request_ceiling PASSED [ 60%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_worst_case_194_fit_and_the_195th_waits_for_expiry PASSED [ 61%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_missing_usage_and_uncertain_ends PASSED [ 63%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_every_physical_attempt_reserves_separately PASSED [ 64%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_reservation_concurrency_across_processes PASSED [ 66%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_governed_process_without_accounting_refuses_before_sending PASSED [ 67%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_token_mode_deferral_is_neutral_and_resumes PASSED [ 69%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_counts_through_window PASSED [ 70%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_open_reservation_retention_ends_after_hold_plus_window PASSED [ 71%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_many_dropped_streams_do_not_exhaust_permanently PASSED [ 73%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_hold_shorter_than_request_timeout_is_refused PASSED [ 74%]
+tests/rhoai3_b3b4/test_v15_token_accounting.py::test_default_hold_follows_the_longest_client_timeout PASSED [ 76%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_recorded_eleven_file_cycle_halts_within_bound PASSED [ 77%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_legitimate_read_of_eleven_new_files_does_not_halt PASSED [ 78%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_refusal_replay_halts_at_three PASSED [ 80%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_refused_call_then_changed_does_not_halt PASSED [ 81%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_cycle_of_two_in_any_order_halts_and_an_edit_resets PASSED [ 83%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_reading_many_new_files_never_halts PASSED [ 84%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_refusals_feed_the_same_tool_failure_family PASSED [ 85%]
+tests/rhoai3_b3b4/test_v16_cycle_and_refusal.py::test_executed_calls_keep_their_thresholds PASSED [ 87%]
+tests/rhoai3_b3b4/test_v16_pending_stop.py::test_pending_blocks_once_keeps_candidate_and_is_not_retried PASSED [ 88%]
+tests/rhoai3_b3b4/test_v16_pending_stop.py::test_operator_recovery_allows_restore_verify_advance PASSED [ 90%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_recorded_expanding_grep_sequence_halts_within_bound PASSED [ 91%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_family_ignores_only_context_options_and_halts_on_the_fifth_redundant_read PASSED [ 92%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_reads_that_show_new_content_are_not_collapsed PASSED [ 94%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_different_semantic_numbers_are_different_families PASSED [ 95%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_an_evidence_change_starts_a_new_phase PASSED [ 97%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_interleaved_reads_do_not_reset_the_family PASSED [ 98%]
+tests/rhoai3_b3b4/test_v16_read_family.py::test_exact_call_guard_is_kept PASSED [100%]
+======================== 71 passed in 189.60s (0:03:09) ========================
+
+--- Existing related upstream tests + tests/agent/test_auxiliary_client.py on 8a3bb406 ---
+340 passed, 1 skipped in 35.39s
+
+--- All tests/hermes_cli/test_kanban*.py on 8a3bb406 ---
+15 failed, 278 passed, 2 skipped, 1 warning in 52.69s; same 15 failing ids as on 32be3bd0 and 3df755a3.
+
+--- Broad regression on 8a3bb406 (tests/run_agent tests/agent + kanban core/sticky) ---
+174 failed, 6704 passed, 28 skipped, 2 deselected, 1 warning in 612.77s (0:10:12)
+Same 174 failing ids as on 3df755a3 (sorted diff empty).

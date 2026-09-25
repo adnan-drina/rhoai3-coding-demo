@@ -12,6 +12,11 @@ forever. Steps:
   ("drop",)                                  200 + SSE headers, then close: a dropped stream
   ("stall", seconds)                         200 + SSE headers, silence, then close: a stalled stream
 
+``script`` may instead be a callable ``responder(body) -> step``: it decides
+each main-agent request (a request that carries tools) from the request body,
+e.g. from the tool results the model has seen; requests without tools
+(auxiliary title/summary calls) get ("text", "ok").
+
 A trailing dict on a tool/text step may carry: prompt_tokens / completion_tokens
 (reported usage), no_usage=True (terminal response without usage), and
 usage_frames=[{prompt_tokens, completion_tokens}, ...] (cumulative usage
@@ -34,7 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class FakeProvider:
     def __init__(self, script):
-        self.script = list(script)
+        self.script = script if callable(script) else list(script)
         self.requests: list[dict] = []
         self._lock = threading.Lock()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._make_handler())
@@ -99,7 +104,10 @@ class FakeProvider:
                 if not self.path.rstrip("/").endswith("/chat/completions"):
                     self._send_json({"error": "unsupported"}, 404)
                     return
-                step = provider.script[min(n - 1, len(provider.script) - 1)]
+                if callable(provider.script):
+                    step = provider.script(body) if body.get("tools") else ("text", "ok")
+                else:
+                    step = provider.script[min(n - 1, len(provider.script) - 1)]
                 if step[0] == "stall":
                     # 200 + SSE headers, then silence for step[1] seconds, then
                     # close: an already-sent request whose stream stalls.

@@ -10,7 +10,9 @@ This directory qualifies three worker behaviours: the non-thinking sampling prof
 | Series 0001–0007 | tree `6d6efd1992525da692f2f0f7f23881cf65f3999a` (0007 with request ownership; the earlier `433f0c6f…` and `82b70bae…` are superseded) |
 | Series 0001–0008 | tree `101ca3d1da753267ffcb7f9b280f09258085256a` (the v15 runtime). |
 | Series 0001–0009 | tree `3e219090f61deb3a2676e86c73571f502a886970`. |
-| **Series 0001–0010 (final)** | **tree `32be3bd0617936952a1ed7a4d8718accd8c4661c`** (0010 with the retention amendment; supersedes `9a00357c…`). This was verified by applying all eight patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer, 0008 is auxiliary per-call precedence, 0009 is the V15-1 neutral local-budget deferral and 0010 is V15-1 token accounting; see `../README.md`. |
+| Series 0001–0010 | tree `32be3bd0617936952a1ed7a4d8718accd8c4661c` (0010 with the retention amendment; supersedes `9a00357c…`; the v16 runtime). |
+| Series 0001–0011 | tree `3df755a36ed0ff8b7fdadf30d664a212fe4dfa8f`. |
+| **Series 0001–0012 (final)** | **tree `8a3bb406be0cfcb587fb90903da287e3805c297e`**. This was verified by applying all twelve patches with `git apply --index` to a clean `fcbd1076` checkout and running `git write-tree`. 0007 is the R2 request pacer, 0008 is auxiliary per-call precedence, 0009 is the V15-1 neutral local-budget deferral, 0010 is V15-1 token accounting 0011 is V16-3 (worker stop request, read-loop family) and 0012 is V16-7/V16-9 (read cycle, refused calls); see `../README.md`. |
 | Worker config under test | Rendered from the Stage 050 producer by `render_worker_config.py`. It executes only the `cfg = {...}` prefix of the `HERMESEOF` block in `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`. Snapshot: `tests/rhoai3_b3b4/worker_config.json`. |
 | Provider | The scripted fake OpenAI-compatible server in `tests/rhoai3_b3b4/fake_openai_server.py`, on loopback. No real model is called. |
 
@@ -204,6 +206,60 @@ What this means for the v15 figure: 11.29M from `session_model_usage` **undercou
    - The golden's run deadline check ends a card held past the deadline through the existing deadline outcome.
 6. **Brief.** The resumed worker's context already carries `LOCAL_BUDGET_WAIT … the previous run's work stays on the tree`. The golden brief should add the usual `candidate_on_tree` checkpoint and the next legal action for a resumed card.
 
+## V16-3: pending ends the run; a bounded read-loop family (patch 0011)
+
+The binding design is the "V16-3" section of `tmp/v16-run-20260925/architect-decision-v16-2-3-4.md`. Before = `32be3bd0` (0001–0010), after = `3df755a3` (0001–0011). The end-to-end tests use the real kanban dispatcher, real `hermes -p implementer chat -q` workers, the real `terminal` tool and the fake provider. The provider now accepts a responder that decides each main-agent request from what the model has seen. The controller tests drive the pinned guardrail controller directly.
+
+| Test | Before (`32be3bd0`) | After (`3df755a3`) |
+|---|---|---|
+| `test_v16_read_family::test_recorded_expanding_grep_sequence_halts_within_bound`: the recorded `cat … package.log \| grep -B N "Building spring-petclinic"` with N = 10 … 2e9, against a 146-line log whose match is on line 4 | **FAIL**: 28 agent model requests. The whole sequence ran, and only the repeated last value ended it through the exact-call guard. | pass: 6 requests (1 read that shows the log, 5 that show nothing new), then `STOP WORKER_TOOL_LOOP: tool terminal, guardrail read_family_no_new_content_halt, count 5, args_sha256 08fe0b4cff3b1275, family terminal grep 'Building spring-petclinic' in verification/build/package.log; working tree and any retained candidate left as they are — …`; log untouched |
+| `…::test_family_ignores_only_context_options_and_halts_on_the_fifth_redundant_read` (`-B 10`, `-B20`, `--before-context=30`, `--before-context 40`, `-C 50`, `-60`) | **FAIL**: no halt | pass: halt on the sixth read, count 5 |
+| `…::test_reads_that_show_new_content_are_not_collapsed` (`grep -A N` widening over a 2,000-line log, 8 reads) | pass | pass: no halt |
+| `…::test_different_semantic_numbers_are_different_families` (`-m 1…8`, ports 8080–8085 in the pattern, 8 files, 8 workdirs) | pass | pass: no halt |
+| `…::test_an_evidence_change_starts_a_new_phase` (4 redundant reads, `run-verify.sh`, 4 more) | pass | pass: no halt |
+| `…::test_interleaved_reads_do_not_reset_the_family` (`wc -l` and `pwd` between redundant reads) | **FAIL**: no halt | pass: halt |
+| `…::test_exact_call_guard_is_kept` | pass | pass: `identical_call_streak_halt` |
+| `test_v16_pending_stop::test_pending_blocks_once_keeps_candidate_and_is_not_retried` | **FAIL**: 20 agent model requests after the pending verdict (the expanding grep), task back in `ready` for a respawn | pass: 1 request. `advance.py` ran once, then the native block: `blocked`/`needs_input`, run outcome `blocked`, exactly one `blocked` and one `worker_stop_request` event, `consecutive_failures` 0, no `crashed`/`gave_up`/`protocol_violation`. The candidate is retained byte for byte under `verification/loop/pending-files/…`, the accepted file is on the tree, and the pending row in `steps.json` is intact. Three `dispatch_once` ticks spawn nothing. |
+| `test_v16_pending_stop::test_operator_recovery_allows_restore_verify_advance` (Operator prerequisite, one `unblock`) | **FAIL**: the card was never blocked | pass: run 2 ran `restore-pending.py`, `run-verify.sh` and `advance.py` (ACCEPTED), then `kanban_complete`. Runs: `blocked`, `completed`. The candidate is on the tree, the pending row is cleared, and the second run's own stop-request path stopped nothing. |
+| The 54 existing qualification tests (B11 7 + B3/B4/R2/V15-1 47) | pass | pass (63/63 with the 9 new) |
+
+**Golden changes needed for part 1 (not made here).** The runtime only offers the signal. The golden must raise it:
+
+1. **`advance.py` `_pending()`** (`scripts/advance.py`, every `VERIFICATION_PENDING` return goes through it).
+   - After `save_steps(root, steps)`, `publish_loop_state(...)` and the `VERIFICATION_PENDING` line, write the stop request. At that point the pending row, with the candidate under `verification/loop/pending-files/`, is persisted in `verification/loop/steps.json`.
+   - Only do this when `HERMES_KANBAN_STOP_REQUEST` is set and `card == HERMES_KANBAN_TASK`.
+   - Write it atomically: a temporary file in the same directory, then `os.replace`. The content is `{"kind": "needs_input", "reason": "VERIFICATION_PENDING <cluster> cause=<cause> card=<card>: <reason>; candidate retained (sha256 <candidate_sha256[:16]>) under verification/loop/pending-files/<c_…>; after the prerequisite: restore-pending.py, run-verify.sh --mode acceptance, advance.py", "task": "<card>"}`.
+   - When the variable is absent (an older runtime, a manual run), keep today's terminator: `kanban_block` with `needs_input`.
+2. **`SKILL.md` terminator table** (`fix-until-green`, the `VERIFICATION_PENDING` row).
+   - The terminator becomes "none: the runtime records the `needs_input` block naming the cluster and ends the run".
+   - The resume sequence is unchanged: `restore-pending.py`, then `run-verify.sh --mode acceptance`, then `advance.py`, in the run after the Operator's unblock.
+   - Optionally, the `DEFERRED` and the `ACCEPTED` then `LOOP_ADMISSION`/`LOOP_NO_SUCCESSOR` rows can raise the same signal from their scripts. The design asks only for pending.
+3. **K2** (`kernel/pre_tool_call.sh`).
+   - No rule is needed to end the worker; the runtime does that.
+   - K2 must not require a worker-issued `kanban_block` after a pending verdict. The card is already blocked, and a second `kanban_block` finds nothing running.
+   - Optional hardening: refuse model-issued writes to the board's `stop-requests/` directory. A self-written request only blocks the model's own card, so this is not a safety requirement.
+   - The existing `impl_complete_loop_pending_refused` rule stays.
+4. **Pins.** Runtime tree `3df755a3` (or `8a3bb406` with 0012) in `pins.json` / `patched_tree` and in the golden's runtime declaration.
+5. **Operator.** Unchanged: `operator-step.py` beside the pending card, then one `hermes kanban unblock`. A second pending on the resumed card routes it to `triage` through the native unblock-loop breaker (`BLOCK_RECURRENCE_LIMIT` = 2).
+
+## V16-7 and V16-9: read cycles and refused calls (patch 0012)
+
+The evidence is `tmp/v16-run-20260925/blockers.md`, sections V16-7 and V16-9. Before = `3df755a3` (0001–0011), after = `8a3bb406` (0001–0012). The end-to-end tests (`test_v16_cycle_and_refusal.py`) use the real dispatcher, real workers and the real `terminal` tool. The refusal tests also use a real shell `pre_tool_call` hook that answers like K2: any `sed` pipeline is refused with `path / resolves outside allow root` (the V16-10 misparse). `agent.max_turns` is 60 in these tests, so an unpatched worker ends at the budget.
+
+| Test | Before (`3df755a3`) | After (`8a3bb406`) |
+|---|---|---|
+| `test_recorded_eleven_file_cycle_halts_within_bound`: `grep -n "required\|@NotNull" <dto>.java` over 11 generated DTOs, round-robin | **FAIL**: 60 agent model requests; ran to the iteration budget | pass: 44 requests (one round that shows the DTOs plus 3 rounds with nothing new), then `STOP WORKER_TOOL_LOOP: tool terminal, guardrail read_cycle_no_new_content_halt, count 3, args_sha256 6d1564a2180a9611, family 11 read-only calls: grep -n "required\|@NotNull" target/…/OwnerDto.java; …` |
+| `test_legitimate_read_of_eleven_new_files_does_not_halt` | pass | pass: completed |
+| `test_refusal_replay_halts_at_three`: the same refused call, forever | **FAIL**: 60 requests, every one refused by the hook | pass: 3 requests, then `STOP WORKER_TOOL_LOOP: tool terminal, guardrail identical_refusal_halt, count 3, args_sha256 6ce294ca8b37f79a, family terminal refused: path / resolves outside allow root; …` |
+| `test_refused_call_then_changed_does_not_halt` (refused twice, then an allowed command, then complete) | pass | pass: completed |
+| `test_cycle_of_two_in_any_order_halts_and_an_edit_resets` (controller) | **FAIL**: no halt | pass |
+| `test_reading_many_new_files_never_halts` (200 new reads, controller) | pass | pass |
+| `test_refusals_feed_the_same_tool_failure_family` (8 different refusals, never 3 identical: `same_tool_failure_halt` at 8) | **FAIL**: `after_refusal` does not exist | pass |
+| `test_executed_calls_keep_their_thresholds` (identical executed calls still halt at 5) | pass | pass |
+| The 63 existing qualification tests | pass | pass (71/71 with the 8 new) |
+
+No golden change is needed. The K2 misparse behind the incident refusal (V16-10) is a golden fix of its own. With 0012, a model that keeps hitting it stops after three identical refusals instead of 488.
+
 ## Run
 
 ```bash
@@ -215,7 +271,7 @@ python <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/render_wor
   <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4/worker_config.json
 ```
 
-The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (10 patches, tree `32be3bd0…`, relative to the Dockerfile with the 8-patch hunk applied), checked with `patch --dry-run` only.
+The 429 tests use small real delays; the whole B3/B4/R2 suite takes about 90 s. Image build: the single authoritative hunk is `../Dockerfile.hunk.txt` (12 patches, tree `8a3bb406…`, relative to the Dockerfile with the 10-patch hunk applied), checked with `patch --dry-run` only.
 
 ## Not covered
 

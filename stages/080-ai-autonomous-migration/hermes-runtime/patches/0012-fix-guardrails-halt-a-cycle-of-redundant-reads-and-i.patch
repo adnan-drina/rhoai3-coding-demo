@@ -1,0 +1,347 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 25 Sep 2026 23:42:41 +0200
+Subject: [PATCH 12/12] fix(guardrails): halt a cycle of redundant reads and
+ identical pre-execution refusals
+
+Two local additions (RHOAI3 V16-7, V16-9).
+
+Read cycle. Every read-only call (a terminal read-only pipeline or an
+idempotent read tool) is checked for new output: a line no read has
+shown since the last evidence-changing call. A new read clears the
+history. Reads that show nothing new are kept by exact identity (tool,
+workdir, canonical arguments; nothing is normalised). When the trailing
+3*L of them are exactly L distinct calls (2 <= L <= 32), each made 3
+times in any order, the turn halts with read_cycle_no_new_content_halt,
+naming the cycle. An evidence-changing call (write, patch, code
+execution, a non-read-only command) starts a new phase. A single
+repeated call stays with the identical-call guard. The read-only
+parser now accepts quoted patterns that contain operator characters.
+
+Refusals. A call refused before execution (a pre_tool_call hook or a
+scope denial) never reached the guardrails. It now counts as a failed
+call of that tool (exact-failure and same-tool-failure families), and
+the 3rd consecutive refusal of the identical call with the identical
+refusal text halts with identical_refusal_halt, naming the tool and the
+refusal. Executed calls keep their thresholds.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015F1AH7itXf3TGfe5dfF7mk
+---
+ agent/tool_executor.py   |  27 ++++++
+ agent/tool_guardrails.py | 201 +++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 221 insertions(+), 7 deletions(-)
+
+diff --git a/agent/tool_executor.py b/agent/tool_executor.py
+index c4d6249838..688291d787 100644
+--- a/agent/tool_executor.py
++++ b/agent/tool_executor.py
+@@ -559,6 +559,32 @@ def _run_tool_activity_heartbeat(
+         pass
+ 
+ 
++
++def _observe_refusal(agent, function_name, function_args, block_message, result):
++    """Feed a pre-execution refusal to the tool-loop guardrails (RHOAI3 V16-9).
++
++    A refused call never reaches ``_append_guardrail_observation``; without
++    this, an identical call refused hundreds of times is never halted.
++    """
++    try:
++        from agent.tool_guardrails import (
++            ToolCallGuardrailController,
++            append_toolguard_guidance,
++        )
++
++        controller = getattr(agent, "_tool_guardrails", None)
++        if not isinstance(controller, ToolCallGuardrailController):
++            return result
++        decision = controller.after_refusal(function_name, function_args, str(block_message))
++        if decision.should_halt:
++            setter = getattr(type(agent), "_set_tool_guardrail_halt", None)
++            if callable(setter):
++                setter(agent, decision)
++            result = append_toolguard_guidance(result, decision)
++    except Exception:
++        logger.debug("refusal guardrail observation failed", exc_info=True)
++    return result
++
+ def _run_agent_tool_execution_middleware(
+     agent,
+     *,
+@@ -665,6 +691,7 @@ def _run_agent_tool_execution_middleware(
+                 result = json.dumps({"error": block_message}, ensure_ascii=False)
+                 error_type = block_error_type
+                 error_message = block_message
++                result = _observe_refusal(agent, function_name, final_args, block_message, result)
+             else:
+                 result = agent._guardrail_block_result(guardrail_decision)
+                 error_type = "guardrail_block"
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index ac145b6750..1c360d89a3 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -381,6 +381,16 @@ class ToolCallGuardrailController:
+         # family key -> _ReadFamily. Per turn, reset by any evidence-changing
+         # call (a phase change).
+         self._read_families: dict[str, _ReadFamily] = {}
++        # Read-only cycle state (see _observe_read_cycle): output lines shown
++        # by any read this phase, and the keys of the reads since the last
++        # read that showed something new.
++        self._phase_seen: set = set()
++        self._redundant_reads: list = []
++        self._read_descriptions: dict[str, str] = {}
++        # Consecutive identical pre-execution refusals (see after_refusal).
++        self._refusal_sig: ToolCallSignature | None = None
++        self._refusal_text: str = ""
++        self._refusal_count: int = 0
+         # Set by request_turn_stop(): every later call this turn is refused.
+         self._turn_stop: ToolGuardrailDecision | None = None
+ 
+@@ -477,6 +487,10 @@ class ToolCallGuardrailController:
+         if failed is None:
+             failed, _ = classify_tool_failure(tool_name, result)
+ 
++        # An executed call ends any streak of identical refusals.
++        self._refusal_sig = None
++        self._refusal_count = 0
++
+         family_halt = self._observe_read_family(tool_name, args, result)
+         if family_halt is not None:
+             return family_halt
+@@ -584,22 +598,27 @@ class ToolCallGuardrailController:
+         terminal command that is not a plain read-only pipeline).
+         """
+         if tool_name in _PHASE_CHANGING_TOOLS:
+-            self._read_families.clear()
++            self._new_phase()
+             return None
+         if tool_name != "terminal":
++            if self._is_idempotent(tool_name):
++                return self._observe_read_cycle(tool_name, args, result, _describe_call(tool_name, args))
+             return None
+         command = args.get("command")
+         if not isinstance(command, str) or args.get("background"):
+-            self._read_families.clear()
++            self._new_phase()
+             return None
+         parsed = _parse_read_command(command)
+         if parsed is None:
+             # Not a recognisable read-only pipeline: treat as a phase change.
+-            self._read_families.clear()
++            self._new_phase()
+             return None
+-        if not parsed.is_search:
+-            return None  # read-only but not a grep search: neutral
+         cwd = str(args.get("workdir") or "")
++        cycle_halt = self._observe_read_cycle(tool_name, args, result, _describe_call(tool_name, args))
++        if cycle_halt is not None:
++            return cycle_halt
++        if not parsed.is_search:
++            return None  # read-only but not a grep search: no family
+         key = _sha256(json.dumps(["terminal", cwd, parsed.family_tokens], ensure_ascii=False))
+         fam = self._read_families.get(key)
+         if fam is None:
+@@ -640,6 +659,152 @@ class ToolCallGuardrailController:
+             return decision
+         return None
+ 
++    def _new_phase(self) -> None:
++        """An evidence-changing call: reads before it prove nothing about after."""
++        self._read_families.clear()
++        self._phase_seen.clear()
++        self._redundant_reads.clear()
++        self._read_descriptions.clear()
++
++    def _observe_read_cycle(
++        self,
++        tool_name: str,
++        args: Mapping[str, Any],
++        result: str | None,
++        description: str,
++    ) -> ToolGuardrailDecision | None:
++        """Bounded cycle guard over read-only calls (RHOAI3 V16-7).
++
++        A read is new when it shows an output line no read has shown since the
++        last evidence-changing call; any new read clears the history. Reads
++        that show nothing new are kept by their exact identity (tool, workdir,
++        canonical arguments -- nothing is normalised). When the trailing
++        ``READ_CYCLE_ROUNDS * L`` of them consist of exactly ``L`` distinct
++        calls (2 <= L <= ``READ_CYCLE_MAX_LENGTH``), each made
++        ``READ_CYCLE_ROUNDS`` times, in any order, the model is cycling over
++        the same set of reads and the turn halts, naming the cycle.
++        A single call repeated is left to the identical-call guard (L >= 2).
++        """
++        key = ToolCallSignature.from_call(tool_name, args).args_hash + ":" + tool_name
++        new = False
++        for line in _result_content_lines(result):
++            digest = hashlib.sha256(line.encode("utf-8", "surrogatepass")).digest()[:16]
++            if digest not in self._phase_seen:
++                self._phase_seen.add(digest)
++                new = True
++        if new:
++            self._redundant_reads.clear()
++            return None
++        self._read_descriptions.setdefault(key, description)
++        self._redundant_reads.append(key)
++        cap = READ_CYCLE_ROUNDS * READ_CYCLE_MAX_LENGTH
++        if len(self._redundant_reads) > cap:
++            del self._redundant_reads[:-cap]
++        if not self.config.hard_stop_enabled or self._halt_decision is not None:
++            return None
++        history = self._redundant_reads
++        for length in range(2, READ_CYCLE_MAX_LENGTH + 1):
++            span = READ_CYCLE_ROUNDS * length
++            if len(history) < span:
++                break
++            tail = history[-span:]
++            counts: dict[str, int] = {}
++            for k in tail:
++                counts[k] = counts.get(k, 0) + 1
++            if len(counts) != length or any(c != READ_CYCLE_ROUNDS for c in counts.values()):
++                continue
++            members = list(dict.fromkeys(tail))
++            shown = "; ".join(self._read_descriptions.get(k, "?") for k in members[:4])
++            more = f"; and {len(members) - 4} more" if len(members) > 4 else ""
++            cycle = f"{length} read-only calls: {shown}{more}"
++            decision = ToolGuardrailDecision(
++                action="halt",
++                code=READ_CYCLE_HALT_CODE,
++                message=(
++                    f"Stopped {tool_name}: the same {length} read-only calls were repeated "
++                    f"{READ_CYCLE_ROUNDS} more times with no new output line and no change "
++                    f"in between ({cycle}). Nothing on disk was changed by this stop: the "
++                    "working tree and any retained candidate stay as they are. Use the "
++                    "content already shown, make the change, or end the run with the "
++                    "card's stated terminator."
++                ),
++                tool_name=tool_name,
++                count=READ_CYCLE_ROUNDS,
++                signature=ToolCallSignature(
++                    tool_name=tool_name, args_hash=_sha256(json.dumps(sorted(members)))
++                ),
++                family=cycle,
++            )
++            self._halt_decision = decision
++            return decision
++        return None
++
++    def after_refusal(
++        self,
++        tool_name: str,
++        args: Mapping[str, Any] | None,
++        refusal: str,
++    ) -> ToolGuardrailDecision:
++        """Count a call refused before execution (a pre_tool_call hook or
++        scope denial) (RHOAI3 V16-9).
++
++        A refusal is a failed call of that tool: it feeds the exact-failure
++        and same-tool-failure counts like an executed failure. Consecutive
++        refusals of the identical call with the identical refusal text halt
++        at ``REFUSED_CALL_HALT_AFTER`` (hard stops only), naming the tool and
++        the refusal. Executed calls keep their own thresholds.
++        """
++        args = _coerce_args(args)
++        signature = ToolCallSignature.from_call(tool_name, args)
++        text = str(refusal or "")
++        if self._refusal_sig == signature and self._refusal_text == text:
++            self._refusal_count += 1
++        else:
++            self._refusal_sig = signature
++            self._refusal_text = text
++            self._refusal_count = 1
++        # The identical-call streak (executed calls) is broken by a refusal.
++        self._identical_streak_sig = None
++        self._identical_streak_count = 0
++        self._exact_failure_counts[signature] = self._exact_failure_counts.get(signature, 0) + 1
++        same_count = self._same_tool_failure_counts.get(tool_name, 0) + 1
++        self._same_tool_failure_counts[tool_name] = same_count
++        if not self.config.hard_stop_enabled or self._halt_decision is not None:
++            return ToolGuardrailDecision(tool_name=tool_name, count=self._refusal_count, signature=signature)
++        if self._refusal_count >= REFUSED_CALL_HALT_AFTER:
++            decision = ToolGuardrailDecision(
++                action="halt",
++                code=REFUSED_CALL_HALT_CODE,
++                message=(
++                    f"Stopped {tool_name}: the identical call was refused before execution "
++                    f"{self._refusal_count} times in a row with the same refusal: "
++                    f"{text[:300]}. Repeating it cannot succeed; change the call or end "
++                    "the run with the card's stated terminator."
++                ),
++                tool_name=tool_name,
++                count=self._refusal_count,
++                signature=signature,
++                family=f"{tool_name} refused: {text[:200]}",
++            )
++            self._halt_decision = decision
++            return decision
++        if same_count >= self.config.same_tool_failure_halt_after:
++            decision = ToolGuardrailDecision(
++                action="halt",
++                code="same_tool_failure_halt",
++                message=(
++                    f"Stopped {tool_name}: it failed {same_count} times this turn "
++                    f"(the last was refused before execution: {text[:200]}). "
++                    "Stop retrying the same failing tool path and choose a different approach."
++                ),
++                tool_name=tool_name,
++                count=same_count,
++                signature=signature,
++            )
++            self._halt_decision = decision
++            return decision
++        return ToolGuardrailDecision(tool_name=tool_name, count=self._refusal_count, signature=signature)
++
+     def _is_idempotent(self, tool_name: str) -> bool:
+         if tool_name in self.config.mutating_tools:
+             return False
+@@ -1012,6 +1177,13 @@ def _streak_identity_hash(tool_name: str, result: str | None) -> str:
+ # ── Read-only log context search families (_observe_read_family) ─────────
+ 
+ READ_FAMILY_HALT_CODE = "read_family_no_new_content_halt"
++READ_CYCLE_HALT_CODE = "read_cycle_no_new_content_halt"
++# A cycle of L distinct reads halts after this many rounds that showed
++# nothing new (the round that first showed the content is not counted).
++READ_CYCLE_ROUNDS = 3
++READ_CYCLE_MAX_LENGTH = 32
++REFUSED_CALL_HALT_CODE = "identical_refusal_halt"
++REFUSED_CALL_HALT_AFTER = 3
+ _READ_FAMILY_MAX = 32
+ # Tool calls that can change what a later read shows.
+ _PHASE_CHANGING_TOOLS = frozenset(
+@@ -1077,6 +1249,21 @@ class _ParsedRead:
+         return f"terminal grep {pat} in {files}{where}"
+ 
+ 
++def _describe_call(tool_name: str, args: Mapping[str, Any]) -> str:
++    """Short human-readable identity of one call (for halt messages)."""
++    if tool_name == "terminal":
++        text = str(args.get("command") or "")
++        if args.get("workdir"):
++            text += f" (workdir {args.get('workdir')})"
++    else:
++        try:
++            text = f"{tool_name} {canonical_tool_args(args)}"
++        except TypeError:
++            text = tool_name
++    # Keep both ends: the program and pattern lead, the file name trails.
++    return text if len(text) <= 100 else text[:36] + "…" + text[-63:]
++
++
+ def _strip_grep_context(args: list) -> tuple[list, list, list, list]:
+     """Remove grep's context-size options from ``args``.
+ 
+@@ -1237,8 +1424,8 @@ def _parse_read_command(command: str) -> _ParsedRead | None:
+                     args.pop()  # the descriptor number of ``2>``
+                 m += 2
+                 continue
+-            if any(ch in tok for ch in "()&<>|;"):
+-                return None
++            # Unquoted operators are separate tokens (punctuation_chars); a
++            # quoted pattern such as "required\\|@NotNull" is an argument.
+             args.append(tok)
+             m += 1
+         if program in _GREP_PROGRAMS:
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,5 +1,74 @@
 # Backlog
 
+## Native outcome board (Stage 080, new runs only) — 2026-09-26
+
+The architect approved the outcome-board design with conditions
+(`tmp/kanban-native-alignment-2026-09-25/reports/architect-review.md`, F1–F5).
+The implementation is in the golden, disabled by default. The contract is
+`stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md`.
+
+- [x] Protocol, initial graph, K4 graph publication, run-bound authority,
+  same-outcome repair, continuations (M2 release, M4 REFUSE → repairs →
+  successor assessment, ordered M5 grants), stage predicates and effect
+  serialization. Synthetic suite: `lib/planner/outcome_board.test.py`.
+  Exact runtime and real workers:
+  `hermes-runtime/tests/rhoai3_outcome_board` (tree 8a3bb406).
+- [ ] **Blocked (F1/C2): no protected writer.** Gateway, dispatcher, hooks
+  and workers share one UID in one container, so the authority store is
+  cooperative. `execution: enabled` refuses `AUTHORITY_UNPROTECTED` until a
+  separate principal owns the store: a sidecar with its own UID and a
+  read-only mount into the worker, or a platform service. This is a
+  platform decision; it is not substituted by a weaker check.
+- [ ] Publication dependencies for any run that selects the protocol, all
+  in Stage 050 `maas-api-key-provisioning.yaml`:
+  - add `kanban_block|kanban_request_review|request_review` to the
+    `pre_tool_call` matcher;
+  - register `on_kanban_dispatch_tick` →
+    `python3 /projects/modernized/.hermes/kernel/outcome_reconcile.py --root /projects/modernized`.
+  Nothing selects the protocol today, so the golden publishes safely without
+  them.
+
+## Destination declared references and package-leaf isolation — 2026-09-25
+
+The rgctl offline evaluation (`tmp/rgctl-offline-evaluation-20260925/`,
+`ARCHITECT_REVIEW.md`) measured a destination-model defect. A holder that
+names a package's type only inside a generic argument, an array component
+or a wildcard (`java.util.List<inside.A>`, `inside.B[]`) left no edge the
+planner could read. `inside` was then minted as an isolated
+`unit/package-leaf/v1` (G03G/G03A/G03N). A single partial file with nothing
+outside it also became a leaf (G09). rgctl is not adopted.
+
+- [x] Authored for a future golden, not published. `DestModel.java` writes a
+  bounded declaration walk on each type row: `type_refs`,
+  `type_refs_complete` and `type_refs_incomplete`. Its bounds are depth 32 and
+  20000 nodes. Type variables are keyed by their declaration, so
+  `T extends Comparable<T>` terminates. The experimental patch's walk
+  overflowed the stack on that fixture, measured offline.
+  `package_leaf_units` now requires named, complete inside rows and
+  complete, fully resolved outside rows. It also requires every failed
+  in-root file to have a row. `assess_unit` no longer proves a retired
+  symbol absent from an incomplete walk; the parse proof still can. Writable
+  scope, the 20/160/8 bounds (16 for the fragment set), ordering,
+  amendments and admission are unchanged. Classification can change: G03
+  and v16's `@CrossOrigin` controllers (with an unresolved declared type) form a
+  diagnostic family, with the same files, instead of a leaf. G09 falls to
+  its per-file cluster. Regressions: `dest_model.test.py`,
+  `worklist.test.py`, `amend-scope.test.py`.
+- [ ] Publish producer and consumer together in the next golden. A frozen
+  run keeps its pinned planner and its issued scopes.
+- [ ] Not validated against a live cluster or a migration run; offline
+  fixtures only. Fewer leaves (more family/per-file cards) are possible on
+  partially attributed trees. That has not been measured on a specimen.
+- [ ] Separate follow-ups, out of this change:
+  - dynamic entry points (JMS/MDB, listeners, schedulers, CDI events;
+    G08). A zero-caller graph is not isolation;
+  - reflection, JNDI, `Class.forName` and configuration registrations;
+  - annotation class literals and body-only references outside the
+    declaration walk;
+  - generated roots, tests and other modules as modeled roots (G11);
+  - source-extractor type-variable and intersection coverage, which
+    `file_depths` ordering reads.
+
 ## v13 reliability release (v12 blockers B1–B13) — 2026-09-24
 
 v12 stopped at a safe checkpoint (`tmp/v12-run-20260924/V12-FREEZE.md`). The

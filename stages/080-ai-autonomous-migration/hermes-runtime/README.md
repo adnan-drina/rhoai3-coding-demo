@@ -1,12 +1,12 @@
-# Stage 080 Hermes runtime patch series (B11, B3/B4, R2)
+# Stage 080 Hermes runtime patch series (B11, B3/B4, R2, V15-1, V16-3, V16-7/9)
 
-This directory holds a small patch series for the pinned Hermes runtime in the Stage 080 workspace image, together with its qualification tests and evidence. Patches 0001–0004 fix design item B11 in `tmp/v12-run-20260924/architect-durable-fixes-design.md`: a worker that repeats the same successful tool call is never stopped by the pinned runtime. Patches 0005–0006 turn incomplete model output (B4) and a persistent HTTP 429 (B3) into named failed runs; `b3-b4/README.md` documents them. Patch 0007 enforces the run's declared request allowance, item R2 in `tmp/v12-run-20260924/V13-ARCHITECT-RELEASE-REVIEW.md`, corrected per `tmp/v12-run-20260924/V13-PACER-FINAL-REVIEW.md`; see the section on the request pacer below. Patch 0008 keeps explicit per-call auxiliary values (the short micro-summary's temperature and output cap) from being overridden by a task's configured `extra_body`.
+This directory holds a small patch series for the pinned Hermes runtime in the Stage 080 workspace image, together with its qualification tests and evidence. Patches 0001–0004 fix design item B11 in `tmp/v12-run-20260924/architect-durable-fixes-design.md`: a worker that repeats the same successful tool call is never stopped by the pinned runtime. Patches 0005–0006 turn incomplete model output (B4) and a persistent HTTP 429 (B3) into named failed runs; `b3-b4/README.md` documents them. Patch 0007 enforces the run's declared request allowance, item R2 in `tmp/v12-run-20260924/V13-ARCHITECT-RELEASE-REVIEW.md`, corrected per `tmp/v12-run-20260924/V13-PACER-FINAL-REVIEW.md`; see the section on the request pacer below. Patch 0008 keeps explicit per-call auxiliary values (the short micro-summary's temperature and output cap) from being overridden by a task's configured `extra_body`. Patches 0009–0010 implement V15-1. Patch 0011 implements V16-3 (`tmp/v16-run-20260925/architect-decision-v16-2-3-4.md`): a worker stop request that ends a run as one native block, and a bounded repetition family for read-only log context searches; see the section on 0011 below. Patch 0012 implements V16-7 and V16-9 (`tmp/v16-run-20260925/blockers.md`): a bounded cycle guard over read-only calls, and a halt on identical calls refused before execution; see the section on 0012 below.
 
 | | |
 |---|---|
 | Base runtime | `NousResearch/hermes-agent` tag `v2026.8.19`, commit `fcbd1076a93841fa88855acce810e342a5b78101`, version 0.20.5 |
-| Patched runtime identity | git tree **`32be3bd0617936952a1ed7a4d8718accd8c4661c`** for the full series 0001–0010 (run `git write-tree` after applying the series to a clean checkout of the base). Intermediate trees: 0001–0004 `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48`; 0001–0006 `87a39dca63bca478e1ab93e9ce24ad757de25f8f`; 0001–0007 `6d6efd1992525da692f2f0f7f23881cf65f3999a`; 0001–0008 `101ca3d1da753267ffcb7f9b280f09258085256a` (the v15 runtime); 0001–0009 `3e219090f61deb3a2676e86c73571f502a886970`. Tree `9a00357c…` (0010 before the retention amendment) is superseded. These trees are superseded: `433f0c6f…` (0001–0007 before the final pacing review) and `374562df…` (0001–0008 before the request-ownership correction). |
-| Files touched | `agent/tool_guardrails.py`, `run_agent.py`, `agent/tool_executor.py`, `agent/turn_finalizer.py`, `agent/conversation_loop.py`, `agent/agent_runtime_helpers.py`, `agent/auxiliary_client.py`, `agent/chat_completion_helpers.py`, `cli.py`, `hermes_cli/kanban_db.py`, new `agent/request_pacer.py`, `tests/agent/test_tool_guardrails.py` |
+| Patched runtime identity | git tree **`8a3bb406be0cfcb587fb90903da287e3805c297e`** for the full series 0001–0012 (run `git write-tree` after applying the series to a clean checkout of the base). Intermediate trees: 0001–0011 `3df755a36ed0ff8b7fdadf30d664a212fe4dfa8f`; 0001–0010 `32be3bd0617936952a1ed7a4d8718accd8c4661c` (the v16 runtime); 0001–0004 `a09b3b45fe2fb0f98665cc2bb3bbf874ca2b4d48`; 0001–0006 `87a39dca63bca478e1ab93e9ce24ad757de25f8f`; 0001–0007 `6d6efd1992525da692f2f0f7f23881cf65f3999a`; 0001–0008 `101ca3d1da753267ffcb7f9b280f09258085256a` (the v15 runtime); 0001–0009 `3e219090f61deb3a2676e86c73571f502a886970`. Tree `9a00357c…` (0010 before the retention amendment) is superseded. These trees are superseded: `433f0c6f…` (0001–0007 before the final pacing review) and `374562df…` (0001–0008 before the request-ownership correction). |
+| Files touched | `agent/tool_guardrails.py`, `run_agent.py`, `agent/tool_executor.py`, `agent/turn_finalizer.py`, `agent/conversation_loop.py`, `agent/agent_runtime_helpers.py`, `agent/auxiliary_client.py`, `agent/chat_completion_helpers.py`, `cli.py`, `hermes_cli/kanban_db.py`, new `agent/request_pacer.py`, new `agent/kanban_stop_request.py`, `tests/agent/test_tool_guardrails.py` |
 | Upstream source | `76648a7faf7822cdd6c0e147c35857e15780c1af` ("identical-call streaks hard-stop any tool on unattended platforms"), which is an ancestor of `ee5ee84a345204a3b1d6ef6ba1ab747e602867b9` |
 
 ## The problem at the pin
@@ -19,7 +19,7 @@ The pinned runtime never stops this loop. In the live v12 run, one worker repeat
 
 ## What the series does
 
-Apply the ten patches in order. Patch 0001 is the upstream backport. Patches 0002 to 0004 are small local additions that the B11 design requires. Patches 0005 to 0008 are local additions for B3/B4 and R2. Patches 0009 and 0010 implement V15-1 (`tmp/v15-run-20260925/V15-1-DURABLE-QUOTA-DESIGN.md`): change 1 and change 2, as separate patches.
+Apply the twelve patches in order. Patch 0001 is the upstream backport. Patches 0002 to 0004 are small local additions that the B11 design requires. Patches 0005 to 0008 are local additions for B3/B4 and R2. Patches 0009 and 0010 implement V15-1 (`tmp/v15-run-20260925/V15-1-DURABLE-QUOTA-DESIGN.md`): change 1 and change 2, as separate patches. Patch 0011 implements V16-3; patch 0012 implements V16-7 and V16-9.
 
 | Patch | Origin | Functions changed | Effect |
 |---|---|---|---|
@@ -33,6 +33,8 @@ Apply the ten patches in order. Patch 0001 is the upstream backport. Patches 000
 | `0008-fix-auxiliary-explicit-per-call-sampling-and-output-.patch` | Local | `auxiliary_client._build_call_kwargs` | A task's configured `extra_body` supplies only what the call did not set. An explicit `temperature` wins. An explicit `max_tokens` is sent as `min(explicit, configured)`, so it never raises a configured bound. Without this, the OpenAI SDK merges `extra_body` over the top-level body. |
 | `0009-fix-kanban-a-local-request-allowance-stop-is-a-neutr.patch` | Local (V15-1 change 1) | `RequestBudgetExhausted.deferral`; the budget result in `conversation_loop.py`; `turn_finalizer._record_kanban_local_deferral` and `kanban_worker_exit_code`; `cli.py` (quiet and non-quiet `chat -q` exit); `kanban_db.record_local_budget_deferral`, `detect_crashed_workers`, `check_respawn_guard` | A local allowance stop is a **neutral deferral on the pinned native temporary-rate-limit path**, not a failed run. The worker persists a structured `local_budget_deferral` bound to its run, then exits with `KANBAN_RATE_LIMIT_EXIT_CODE` (75). The reaper ends the run as `rate_limited` whatever the exit status: source-phase requeue, no `_record_task_failure`, no counter increment or reset. The respawn guard holds the same card until `retry_not_before` **and** a free slot in the shared ledger. See below. |
 | `0010-feat-transport-reserved-and-settled-token-accounting.patch` | Local (V15-1 change 2) | `agent/request_pacer.py` (token mode: reservation, settlement, settlement wrapper, mode-aware capacity peek); `kanban_db._request_capacity` | Token mode: every physical HTTP attempt reserves `C`; admission is `settled_in_window + open_reservations + C <= B`; settlement to validated usage happens exactly once at the terminal response. There is **no request-count ceiling**. See below. |
+| `0011-fix-kanban-a-worker-stop-request-ends-the-run-as-one.patch` | Local (V16-3) | new `agent/kanban_stop_request.py`; `kanban_db._default_spawn` (per-run `HERMES_KANBAN_STOP_REQUEST`), new `kanban_db.worker_stop_request_path`; `AIAgent._append_guardrail_observation` and new `AIAgent._honour_kanban_stop_request`; controller `request_turn_stop`, `before_call`, `after_call`, new `_observe_read_family` and the read-only pipeline parser; `turn_finalizer.finalize_turn` and `_record_kanban_guardrail_halt` | (1) A tool may end the worker's run by creating the run's stop-request file: the runtime records the native block once, bound to the run, refuses the rest of the batch and ends the turn before another model request. (2) Read-only `grep` searches that differ only in grep's context size form one family; five reads in a row that show no new output line halt with `read_family_no_new_content_halt`, naming the family. See below. |
+| `0012-fix-guardrails-halt-a-cycle-of-redundant-reads-and-i.patch` | Local (V16-7, V16-9) | controller `after_call`, `_observe_read_family` (phase handling), new `_observe_read_cycle`, `_new_phase`, `after_refusal`, `_describe_call`; read-only parser (quoted operator characters); new `tool_executor._observe_refusal` at the pre-execution refusal branch of `_run_agent_tool_execution_middleware` | (1) The same set of 2–32 read-only calls repeated 3 more rounds with no new output line and no evidence-changing call halts with `read_cycle_no_new_content_halt`, naming the cycle. (2) A call refused before execution counts as a failed call of that tool; the 3rd consecutive identical refusal halts with `identical_refusal_halt`, naming the tool and the refusal. See below. |
 
 Every change is gated on `tool_loop_guardrails.hard_stop_enabled` (and `agent.stall_guards`, which defaults to true). Interactive sessions that only warn behave as before.
 
@@ -66,7 +68,7 @@ git checkout --detach fcbd1076a93841fa88855acce810e342a5b78101
 for p in <repo>/stages/080-ai-autonomous-migration/hermes-runtime/patches/0*.patch; do
   git apply --index "$p"
 done
-test "$(git write-tree)" = 32be3bd0617936952a1ed7a4d8718accd8c4661c
+test "$(git write-tree)" = 8a3bb406be0cfcb587fb90903da287e3805c297e
 
 # 3. Test environment (Python 3.11, the same as the image)
 python3.11 -m venv ../hermes-venv
@@ -95,7 +97,7 @@ To reproduce the failing baseline, skip step 2 and run step 4. `test_halt_ends_p
 
 - The operator copies `patches/*.patch` into `workspace-images/out/hermes-runtime-patches/`, which is in the build context.
 - After the clone, the SHA check and `assert-hermes-source-pin.py`, the stage runs `git apply --index` on each patch.
-- The build fails unless exactly 10 patches are present and `git write-tree` equals `HERMES_PATCHED_TREE` (`32be3bd0…`). The hunk is relative to `workspace-images/Dockerfile` as it stands now, with the 8-patch hunk already applied.
+- The build fails unless exactly 12 patches are present and `git write-tree` equals `HERMES_PATCHED_TREE` (`8a3bb406…`). The hunk is relative to `workspace-images/Dockerfile` as it stands now, with the 10-patch hunk applied (the 11-patch hunk was not applied; this one replaces it).
 - The stage records the patch checksums in `/opt/rhoai3/hermes-runtime-patches.sha256` and adds `hermes.source_sha` and `hermes.patched_tree` to `/opt/rhoai3/080.pins`.
 
 `hermes --version` still reports 0.20.5, because the version constants are not touched. Use the tree hash in `080.pins` to tell a patched image from an unpatched one. The hunk has not been applied or built.
@@ -241,10 +243,97 @@ Configuration comes from the environment, which the platform sets for migration 
 
 **Recommendation.** No client timeout bounds a streamed request end to end. The platform should set `RHOAI3_TOKEN_RESERVATION_HOLD_SECONDS` explicitly, to at least `max(1800, stale_timeout + 32768 / slowest generation rate)`. At ~18 tok/s that is ≈ 900 + 1,820 s, so **3,600** is a safe round value. It must never be below the longest client timeout (1800 here), and the runtime enforces that part. Whether MaaS still counts a request the client dropped, and when, is part of the design's live qualification.
 
+## Worker stop request and read-loop family (0011, V16-3)
+
+**Incident.** In v16 card `t_d3f89ded`, `advance.py` returned `VERIFICATION_PENDING`. The worker should then have blocked the card. Instead it made about 250 calls of `cat verification/build/package.log | grep -B <N> "Building spring-petclinic"` over 35 minutes, with N from 10 to 2e10. The match is on line 4 of the log, so every N ≥ 3 printed the same four lines. Each call had different arguments, so the exact-call guard (0001) never fired.
+
+### Part 1: a stop request ends the run as one native block
+
+**The signal (runtime contract).**
+- The dispatcher gives every worker run the environment variable `HERMES_KANBAN_STOP_REQUEST`. It is a per-run path, `<board>/stop-requests/<task>.run<run_id>.json`, next to the board's `logs/`. The file does not exist when the run starts.
+- A tool the worker runs (a skill script) may create it with `{"kind": "needs_input", "reason": "<what the board shows>", "task": "<HERMES_KANBAN_TASK>"}`.
+  - `kind` is `needs_input` (the default) or `capability`.
+  - `reason` is required. A file without a reason, or one that cannot be read, still stops the run, with `needs_input` and a reason that says so.
+  - A `task` that names another card is ignored.
+- The runtime reads the file after every tool result. It only does this in a dispatcher-spawned worker, because only those have the variable.
+
+**What the runtime does when the file is present.**
+- It calls the native `kanban_db.block_task(kind, reason, expected_run_id=<this run>)` once. It then appends a `worker_stop_request` event with the kind, the reason and the file name.
+- The run ends with outcome `blocked`. The task goes to `blocked` (`block_kind`), and the claim and pid are released.
+- No failure is counted and `consecutive_failures` is untouched. No `crashed`, `gave_up` or `protocol_violation` is recorded.
+- Every later tool call in the same batch is refused (`turn_stopped`). The turn ends before another model request. The process exits 0, and the dispatcher finds the task no longer `running`.
+- No file is touched. The candidate, the pending record and the tree stay exactly as the tool left them.
+- If the task is no longer running under this run (for example, the model had already called `kanban_block`), nothing is recorded again. If the board cannot be written, the stop is recorded as a failed run (`STOP WORKER_STOP_REQUEST: …`), so the exit is never read as a clean one.
+
+**Resume.** A blocked card is not respawned. After the Operator's prerequisite, one native `unblock` returns it to `ready`, and the dispatcher starts a new run. The new run has a new run id and so a new, absent stop-request path. A request from an earlier run can never stop a later one. Restore, verify and advance then run normally. Upstream behaviour is unchanged: if a resumed run is blocked again for the same kind, the native unblock-loop breaker (`BLOCK_RECURRENCE_LIMIT` = 2) routes the card to `triage`, not `blocked`.
+
+**Why a file and not K2 denials.** Repeated K2 denials still cost one model request each and do not end the worker. The stop request ends it after the one tool result that established the pending state, whatever the model would have done next.
+
+**Who may write it.** The runtime does not check which process wrote the file. A model that writes it itself can only block its own card, which then waits for the Operator. K2 may refuse model writes under `stop-requests/`; that is listed with the golden changes.
+
+### Part 2: read-only log context search family
+
+- **Family.** The tool is `terminal`, the `workdir` is the same, and the command is the same once only grep's context-size options are removed. Those options are `-A`/`-B`/`-C` (with a separate or attached value, also inside a short-option cluster such as `-nB5`), `-NUM`, and `--after-context`/`--before-context`/`--context`.
+  - No other number is normalised. `-m 3`, a port in the pattern, and a different file or `workdir` are different families.
+- **Which commands count.** The command must be a read-only pipeline. Its segments are joined by `|`, `||`, `&&` or `;`, and every program is one of `grep egrep fgrep zgrep cat zcat head tail wc sort uniq cut nl tr ls pwd echo printf stat file du df true cd`. It may not contain command substitution, subshells or background `&`, and may only redirect to `/dev/null` or a descriptor. Only commands that contain a grep form a family.
+- **New content.** A read is progress when it shows at least one output line that the family has not shown before. grep's `--` group separators and the runtime's truncation notice are ignored. Progress resets the count.
+- **Halt.** Five reads in a row that show nothing new halt with `read_family_no_new_content_halt`. This uses the existing `hard_stop_after.idempotent_no_progress` threshold and requires `hard_stop_enabled`.
+  - The halt message names the family and the first and last context options.
+  - The kanban record reads `STOP WORKER_TOOL_LOOP: tool terminal, guardrail read_family_no_new_content_halt, count 5, args_sha256 <family hash>, family terminal grep '<pattern>' in <file>; working tree and any retained candidate left as they are — …`. Words that match the dispatcher's respawn-blocker pattern are masked in that text. The respawn and breaker behaviour is B11's.
+- **Phase.** The family state is per turn. Any call that can change the evidence resets it: `write_file`, `patch`, `execute_code`, `delegate_task`, `skill_manage`, or a terminal command that is not a read-only pipeline (a new `run-verify.sh`, for example). Read-only commands in between (`wc -l`, `pwd`) do not reset it.
+- **Unchanged.** The exact-call guard is unchanged. There is no limit on the number of calls between verifications.
+
+**What the golden must do to use part 1.** The runtime cannot tell a `VERIFICATION_PENDING` from other output. The list of golden changes is in `b3-b4/README.md` under V16-3.
+
+## Read cycles and refused calls (0012, V16-7 and V16-9)
+
+**Incidents.**
+- V16-7 (card `t_ace5e152`): the worker cycled 11 distinct read-only calls, `grep -n "required\|@NotNull" <generated DTO>`, one per file, about 40 rounds each, with no edit and no new output. That was 454 requests and 50.4M tokens. The exact-call streak only sees consecutive repeats, and the 0011 family needs the same file and pattern.
+- V16-9 (card `t_7ebb5deb`): the same terminal call was refused before execution 488 times by the K2 `pre_tool_call` hook (`{"error": "path / resolves outside allow root"}`), about 50M tokens. A refused call never reached the guardrails, so nothing counted it.
+
+### Read cycle guard
+
+- **Which calls count.** Read-only calls: a terminal read-only pipeline (the 0011 parser) or an idempotent read tool (`read_file`, `search_files`, …).
+- **New output.** A read is new when it shows an output line that no read has shown since the last evidence-changing call. A new read clears the history. Legitimate multi-file reading that keeps showing new lines never accumulates any.
+- **Redundant reads** are recorded by exact identity: tool, `workdir` and canonical arguments. Nothing is normalised.
+- **Halt.** When the last `3·L` redundant reads are exactly `L` distinct calls (2 ≤ `L` ≤ 32), each made 3 times in any order, the turn halts with `read_cycle_no_new_content_halt`. So the same set is repeated three more rounds after the round that showed its content.
+  - The message and the kanban record name the cycle: `family 11 read-only calls: grep -n "required\|@NotNull" target/…/OwnerDto.java; …`.
+  - A single repeated call (`L` = 1) stays with the identical-call guard (5).
+- **Phase.** The same rule as 0011: `write_file`, `patch`, `execute_code`, `delegate_task`, `skill_manage` or a terminal command that is not read-only resets the history and the seen output. Other tools (kanban tools, `todo`) neither count nor reset.
+- **No blanket limit.** Any number of reads that keep showing new output is allowed.
+- **Parser change.** The 0011 read-only parser rejected a quoted pattern that contained an operator character, such as `"required\|@NotNull"`. Unquoted operators are already separate tokens, so quoted ones are now accepted as arguments.
+
+### Refused calls
+
+- **Where refusals are counted.** A refusal before execution comes from a `pre_tool_call` hook (K2 is one) or a tool-scope denial. It is now passed to the controller (`after_refusal`) at the refusal branch of `_run_agent_tool_execution_middleware`, which both the sequential and the concurrent paths use. Guardrail blocks are not counted twice.
+- **How it counts.** A refusal is a failed call of that tool. It feeds the exact-failure count and the same-tool-failure count, whose halt stays at 8. It also breaks the executed identical-call streak.
+- **Halt.** The 3rd consecutive refusal of the identical call with the identical refusal text halts with `identical_refusal_halt`, naming the tool and the refusal text, for example `family terminal refused: path / resolves outside allow root`. Any executed call ends the refusal streak.
+- **Thresholds.** Executed calls keep theirs: identical successful calls 5, same-tool failures 8.
+- **Recording.** Both halts are recorded like B11's (`STOP WORKER_TOOL_LOOP …`, a failed run, a native respawn and then the breaker). Hard stops must be enabled (`hard_stop_enabled`).
+
+## Outcome-board qualification (no runtime patch)
+
+`tests/rhoai3_outcome_board` qualifies the outcome board
+(`../OUTCOME-BOARD-CONTRACT.md`) on the exact runtime with the real CLI,
+dispatcher and workers. It uses the fake provider. No runtime change was
+needed. The board uses the pinned `on_kanban_dispatch_tick` observer, native
+idempotency keys, attachments and the worker's `HERMES_KANBAN_RUN_ID`.
+
+```bash
+cp -R <repo>/stages/080-ai-autonomous-migration/hermes-runtime/b3-b4/tests/rhoai3_b3b4 tests/
+cp -R <repo>/stages/080-ai-autonomous-migration/hermes-runtime/tests/rhoai3_outcome_board tests/
+RHOAI3_GOLDEN_HERMES=<repo>/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes \
+  PYTHONPATH=$PWD ../hermes-venv/bin/python -m pytest -p no:cacheprovider -q tests/rhoai3_outcome_board
+```
+
+This was qualified on tree `8a3bb406` (series 0001–0012): 5 passed. The
+tests are not part of the B11/B3/B4 release run, so run them separately.
+
 ## What this does not cover
 
 - **Worker recovery policy** is golden-side (commit "a halted worker gets one automatic recovery ..."): K4 mints loop cards with `max_retries` 2 (`k4_schema.LOOP_MAX_RETRIES`), so the first guard halt respawns the card once and the second blocks it with the `gave_up` guardrail metadata; `brief.py` hands the respawned run its unaccepted candidate (`candidate_on_tree`) and the one next action. The count lives in the kanban database, outside product Git. Not covered anywhere yet: a named `WORKER_RECOVERY_EXHAUSTED` code (the native `gave_up` event carries the halt metadata instead).
-- **Multi-call cycles** such as A, B, A, B. Upstream detects these with a later `identical_cycle_halt`, which this series does not include. A worker that alternates two identical calls is still bounded only by the iteration budget.
+- **Other read loops.** The 0011 family covers `grep` context searches through `terminal` only. `search_files` (its `context` argument), `read_file` offset paging, `sed -n`, and `awk` are not grouped. A loop that alternates two different searches is still bounded only by the iteration budget.
+- **Multi-call cycles of calls that are not reads**, such as A, B, A, B over mutating or unparsed commands. 0012 covers cycles of read-only calls only. Upstream's later `identical_cycle_halt` is not included. A worker that alternates two such calls is still bounded only by the iteration budget.
 - **Pollers.** `process` and `*_get_result` / `*_poll` stay exempt from the streak halt, with no per-operation deadline. They are bounded only by the turn's iteration budget, as the test shows. Polling through `terminal` is not exempt.
 - **Persisted-path existence.** The stub fix trusts a recorded persisted path and does not check that the file still exists.
 - **Live compressor summary.** The compression regression uses the pinned compressor's deterministic prune pass (`ContextCompressor._prune_old_tool_results`). It does not use the LLM summary path.

@@ -1,0 +1,819 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 25 Sep 2026 21:12:55 +0200
+Subject: [PATCH 11/11] fix(kanban): a worker stop request ends the run as one
+ native block; read-loop family halt
+
+Two local additions (RHOAI3 V16-3).
+
+Worker stop request. The dispatcher gives every worker run a per-run,
+initially absent path in HERMES_KANBAN_STOP_REQUEST
+(<board>/stop-requests/<task>.run<id>.json). A tool the worker runs may
+create it with {"kind": "needs_input"|"capability", "reason": ...}. After
+that tool result the runtime records the native block once, bound to the
+run (kanban_db.block_task with expected_run_id, plus a
+worker_stop_request event), refuses every later tool call in the batch
+and ends the turn before another model request. Files on disk are not
+touched. A resumed run (after unblock) has a new run id and path.
+
+Read-only log context search family. Same tool, same workdir and the
+same read-only command once only grep's context-size options (-A/-B/-C,
+-NUM and the long forms) are removed form one family. A read that shows
+an output line the family has not shown is progress; five reads in a
+row that show nothing new halt with read_family_no_new_content_halt,
+naming the family. Any other number, pattern, file or option is a
+different family; an evidence-changing call (write, patch, code
+execution, a non-read-only command) resets the families. The
+identical-call guard is unchanged.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015F1AH7itXf3TGfe5dfF7mk
+---
+ agent/kanban_stop_request.py | 152 ++++++++++++++
+ agent/tool_guardrails.py     | 386 +++++++++++++++++++++++++++++++++++
+ agent/turn_finalizer.py      |  45 +++-
+ hermes_cli/kanban_db.py      |  17 ++
+ run_agent.py                 |  48 +++++
+ 5 files changed, 645 insertions(+), 3 deletions(-)
+ create mode 100644 agent/kanban_stop_request.py
+
+diff --git a/agent/kanban_stop_request.py b/agent/kanban_stop_request.py
+new file mode 100644
+index 0000000000..6d2cc4759a
+--- /dev/null
++++ b/agent/kanban_stop_request.py
+@@ -0,0 +1,152 @@
++"""Worker stop requests: a documented signal that ends a kanban worker's run.
++
++A dispatcher-spawned worker gets ``HERMES_KANBAN_STOP_REQUEST`` in its
++environment: a per-run file path (``<board>/stop-requests/<task>.run<id>.json``)
++that does not exist when the run starts. A tool the worker runs (a skill
++script, a verification step) may create it to say that this run's work phase
++is over and the card needs something only a human or another actor can
++supply::
++
++    {"kind": "needs_input", "reason": "VERIFICATION_PENDING c:488e7e2d ..."}
++
++``kind`` is ``needs_input`` (default) or ``capability``; ``reason`` is required
++and is what the board shows. An optional ``task`` must equal the worker's task.
++
++After every tool result the runtime checks the file. When it is present and
++valid, the runtime blocks the task natively (``kanban_db.block_task`` with that
++kind, bound to this run) exactly once, refuses any further tool call in the
++batch, and ends the turn without another model request. The candidate and
++every file on disk stay as they are. The card stays ``blocked`` until an
++``unblock``; the resumed run gets a new run id and therefore a new, absent
++request path, so a request from an earlier run can never stop a later one.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import os
++from dataclasses import dataclass, field
++from typing import Any
++
++logger = logging.getLogger(__name__)
++
++ENV_VAR = "HERMES_KANBAN_STOP_REQUEST"
++_ALLOWED_KINDS = ("needs_input", "capability")
++_MAX_REASON = 2000
++_MAX_BYTES = 64 * 1024
++
++
++@dataclass
++class StopRequest:
++    path: str
++    kind: str
++    reason: str
++    raw: dict = field(default_factory=dict)
++    error: str = ""  # set when the file exists but is not a valid request
++
++    @property
++    def valid(self) -> bool:
++        return not self.error
++
++
++def request_path() -> str:
++    return (os.environ.get(ENV_VAR) or "").strip()
++
++
++def read_stop_request() -> StopRequest | None:
++    """Return the pending stop request for this worker run, or None.
++
++    A file that exists but is malformed still stops the run (it was meant to),
++    with ``needs_input`` and a reason that says the request was unreadable.
++    """
++    path = request_path()
++    if not path or not os.environ.get("HERMES_KANBAN_TASK"):
++        return None
++    try:
++        if not os.path.isfile(path):
++            return None
++        with open(path, "rb") as fh:
++            data = fh.read(_MAX_BYTES + 1)
++    except OSError:
++        return None
++    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
++    try:
++        raw: Any = json.loads(data[:_MAX_BYTES].decode("utf-8", "replace"))
++    except ValueError:
++        raw = None
++    if not isinstance(raw, dict):
++        return StopRequest(path, "needs_input",
++                           f"STOP WORKER_STOP_REQUEST: unreadable request at {path}",
++                           {}, error="unreadable")
++    other_task = raw.get("task")
++    if other_task not in (None, "") and str(other_task) != task:
++        # Addressed to another card: not ours to honour.
++        return None
++    kind = str(raw.get("kind") or "needs_input")
++    if kind not in _ALLOWED_KINDS:
++        kind = "needs_input"
++    reason = str(raw.get("reason") or "").strip()
++    if not reason:
++        return StopRequest(path, kind,
++                           f"STOP WORKER_STOP_REQUEST: request without a reason at {path}",
++                           raw, error="no-reason")
++    if len(reason) > _MAX_REASON:
++        reason = reason[:_MAX_REASON] + " …"
++    return StopRequest(path, kind, reason, raw)
++
++
++def honour_stop_request(req: StopRequest) -> str:
++    """Block this worker's task natively for ``req``; return what happened.
++
++    ``blocked``   the block was recorded for this run (the one native block);
++    ``not-live``  the task is no longer running under this run (already
++                  blocked, completed or reclaimed): nothing recorded again;
++    ``error``     the board could not be written; the caller still ends the
++                  turn and the finaliser records the stop as a failed run.
++    """
++    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
++    try:
++        from agent.delegation_context import is_dispatcher_owned_worker_context
++
++        if not task or not is_dispatcher_owned_worker_context():
++            return "not-live"
++        from hermes_cli import kanban_db as kb
++
++        conn = kb.connect()
++        try:
++            row = conn.execute(
++                "SELECT status, current_run_id FROM tasks WHERE id = ?", (task,)
++            ).fetchone()
++            if row is None or row["status"] != "running":
++                return "not-live"
++            expected = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
++            run_id = row["current_run_id"]
++            if expected and str(run_id) != expected:
++                return "not-live"
++            ok = kb.block_task(
++                conn, task, reason=req.reason, kind=req.kind,
++                expected_run_id=int(run_id) if run_id is not None else None,
++            )
++            if not ok:
++                return "not-live"
++            with kb.write_txn(conn):
++                kb._append_event(
++                    conn, task, "worker_stop_request",
++                    {
++                        "kind": req.kind,
++                        "reason": req.reason,
++                        "request": os.path.basename(req.path),
++                        "error": req.error or None,
++                    },
++                    run_id=int(run_id) if run_id is not None else None,
++                )
++            return "blocked"
++        finally:
++            try:
++                conn.close()
++            except Exception:
++                pass
++    except Exception:
++        logger.warning("Failed to honour worker stop request for %s", task, exc_info=True)
++        return "error"
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index 630770cd65..ac145b6750 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -10,6 +10,8 @@ from __future__ import annotations
+ 
+ import hashlib
+ import json
++import re
++import shlex
+ from dataclasses import dataclass, field
+ from typing import Any, Mapping
+ 
+@@ -261,6 +263,8 @@ class ToolGuardrailDecision:
+     tool_name: str = ""
+     count: int = 0
+     signature: ToolCallSignature | None = None
++    # Human-readable identity of a repetition family (read-family halt only).
++    family: str = ""
+ 
+     @property
+     def allows_execution(self) -> bool:
+@@ -280,6 +284,8 @@ class ToolGuardrailDecision:
+         }
+         if self.signature is not None:
+             data["signature"] = self.signature.to_metadata()
++        if self.family:
++            data["family"] = self.family
+         return data
+ 
+ 
+@@ -371,14 +377,41 @@ class ToolCallGuardrailController:
+         # single agent loop rather than accumulating across the session.
+         self._turn_web_search_count = 0
+         self._turn_subagent_count = 0
++        # Read-only log context search families (see _observe_read_family):
++        # family key -> _ReadFamily. Per turn, reset by any evidence-changing
++        # call (a phase change).
++        self._read_families: dict[str, _ReadFamily] = {}
++        # Set by request_turn_stop(): every later call this turn is refused.
++        self._turn_stop: ToolGuardrailDecision | None = None
+ 
+     @property
+     def halt_decision(self) -> ToolGuardrailDecision | None:
+         return self._halt_decision
+ 
++    def request_turn_stop(self, decision: ToolGuardrailDecision) -> None:
++        """End this turn: record ``decision`` as the halt and refuse every
++        later tool call in the turn (e.g. the rest of a parallel batch)."""
++        if self._turn_stop is None:
++            self._turn_stop = decision
++        if self._halt_decision is None:
++            self._halt_decision = decision
++
+     def before_call(self, tool_name: str, args: Mapping[str, Any] | None) -> ToolGuardrailDecision:
+         signature = ToolCallSignature.from_call(tool_name, _coerce_args(args))
+ 
++        if self._turn_stop is not None:
++            return ToolGuardrailDecision(
++                action="block",
++                code="turn_stopped",
++                message=(
++                    f"Not run: this turn was stopped ({self._turn_stop.code}). "
++                    f"{self._turn_stop.message}"
++                ),
++                tool_name=tool_name,
++                count=0,
++                signature=signature,
++            )
++
+         # ── Per-turn runaway-loop caps ──────────────────────────────────
+         # These are hard ceilings on how many times a runaway-prone tool may
+         # be called within a single agent loop (turn). They apply regardless
+@@ -444,6 +477,10 @@ class ToolCallGuardrailController:
+         if failed is None:
+             failed, _ = classify_tool_failure(tool_name, result)
+ 
++        family_halt = self._observe_read_family(tool_name, args, result)
++        if family_halt is not None:
++            return family_halt
++
+         if failed:
+             exact_count = self._exact_failure_counts.get(signature, 0) + 1
+             self._exact_failure_counts[signature] = exact_count
+@@ -523,6 +560,86 @@ class ToolCallGuardrailController:
+ 
+         return ToolGuardrailDecision(tool_name=tool_name, count=repeat_count, signature=signature)
+ 
++    def _observe_read_family(
++        self,
++        tool_name: str,
++        args: Mapping[str, Any],
++        result: str | None,
++    ) -> ToolGuardrailDecision | None:
++        """Bounded repetition family for read-only log context searches.
++
++        The identical-call guard keys on exact arguments, so a model that
++        re-reads the same log with only grep's context size changed
++        (``grep -B 10``, ``-B 20`` … ``-B 20000000000``) never trips it. Such
++        calls form one family: same tool, same working directory, and the
++        same command once grep's context-size options (``-A``/``-B``/``-C``,
++        ``-NUM`` and their long forms) are removed; nothing else is
++        normalised, so any other number, pattern, file or option is a
++        different family. A read that shows at least one output line the
++        family has not shown before is progress and resets the count; five
++        reads in a row that show nothing new halt the turn.
++
++        The family state is per turn and is dropped by any call that can
++        change the evidence (a file write/patch, code execution, or a
++        terminal command that is not a plain read-only pipeline).
++        """
++        if tool_name in _PHASE_CHANGING_TOOLS:
++            self._read_families.clear()
++            return None
++        if tool_name != "terminal":
++            return None
++        command = args.get("command")
++        if not isinstance(command, str) or args.get("background"):
++            self._read_families.clear()
++            return None
++        parsed = _parse_read_command(command)
++        if parsed is None:
++            # Not a recognisable read-only pipeline: treat as a phase change.
++            self._read_families.clear()
++            return None
++        if not parsed.is_search:
++            return None  # read-only but not a grep search: neutral
++        cwd = str(args.get("workdir") or "")
++        key = _sha256(json.dumps(["terminal", cwd, parsed.family_tokens], ensure_ascii=False))
++        fam = self._read_families.get(key)
++        if fam is None:
++            if len(self._read_families) >= _READ_FAMILY_MAX:
++                self._read_families.pop(next(iter(self._read_families)))
++            fam = _ReadFamily(description=parsed.describe(cwd))
++            self._read_families[key] = fam
++        fam.note_context(parsed.context_options)
++        new = False
++        for line in _result_content_lines(result):
++            digest = hashlib.sha256(line.encode("utf-8", "surrogatepass")).digest()[:16]
++            if digest not in fam.seen:
++                fam.seen.add(digest)
++                new = True
++        fam.redundant = 0 if new else fam.redundant + 1
++        if (
++            self.config.hard_stop_enabled
++            and fam.redundant >= self.config.no_progress_block_after
++            and self._halt_decision is None
++        ):
++            decision = ToolGuardrailDecision(
++                action="halt",
++                code=READ_FAMILY_HALT_CODE,
++                message=(
++                    f"Stopped {tool_name}: {fam.redundant} reads in a row of the same "
++                    f"log context search showed no new content ({fam.description}; "
++                    f"only grep's context size changed: {fam.context_summary()}). "
++                    "Nothing on disk was changed by this stop: the working tree and "
++                    "any retained candidate stay as they are. Use the content already "
++                    "shown, or end the run with the card's stated terminator."
++                ),
++                tool_name=tool_name,
++                count=fam.redundant,
++                signature=ToolCallSignature(tool_name=tool_name, args_hash=key),
++                family=fam.description,
++            )
++            self._halt_decision = decision
++            return decision
++        return None
++
+     def _is_idempotent(self, tool_name: str) -> bool:
+         if tool_name in self.config.mutating_tools:
+             return False
+@@ -892,6 +1009,275 @@ def _streak_identity_hash(tool_name: str, result: str | None) -> str:
+     return _result_hash(result)
+ 
+ 
++# ── Read-only log context search families (_observe_read_family) ─────────
++
++READ_FAMILY_HALT_CODE = "read_family_no_new_content_halt"
++_READ_FAMILY_MAX = 32
++# Tool calls that can change what a later read shows.
++_PHASE_CHANGING_TOOLS = frozenset(
++    {"write_file", "patch", "execute_code", "delegate_task", "skill_manage"}
++)
++_GREP_PROGRAMS = frozenset({"grep", "egrep", "fgrep", "zgrep"})
++# Programs whose pipelines only read. ``cd`` only moves the shell.
++_READ_ONLY_PROGRAMS = _GREP_PROGRAMS | frozenset(
++    {"cat", "zcat", "head", "tail", "wc", "sort", "uniq", "cut", "nl", "tr",
++     "ls", "pwd", "echo", "printf", "stat", "file", "du", "df", "true", "cd"}
++)
++_SEGMENT_OPERATORS = frozenset({"|", "||", "&&", ";"})
++_FD_REDIRECTS = frozenset({">", ">>", ">&", "&>"})
++_REDIRECT_SINKS = frozenset({"/dev/null", "1", "2"})
++# GNU grep context-size options (the ONLY options a family ignores).
++_GREP_CONTEXT_SHORT = "ABC"
++_GREP_CONTEXT_LONG = frozenset({"--after-context", "--before-context", "--context"})
++# Other grep options that take an argument (kept verbatim with it).
++_GREP_SHORT_WITH_ARG = "Ddefm"
++_GREP_LONG_WITH_ARG = frozenset(
++    {"--regexp", "--file", "--max-count", "--label", "--include", "--exclude",
++     "--exclude-from", "--exclude-dir", "--devices", "--directories",
++     "--binary-files", "--group-separator"}
++)
++_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
++_TRUNCATION_NOTICE = re.compile(
++    r"^\.\.\. \[OUTPUT TRUNCATED - [\d,]+ chars omitted out of [\d,]+ total\] \.\.\.$"
++)
++
++
++@dataclass
++class _ReadFamily:
++    description: str
++    seen: set = field(default_factory=set)
++    redundant: int = 0
++    first_context: str = ""
++    last_context: str = ""
++
++    def note_context(self, options: list[str]) -> None:
++        text = " ".join(options) or "none"
++        if not self.first_context:
++            self.first_context = text
++        self.last_context = text
++
++    def context_summary(self) -> str:
++        if self.first_context == self.last_context:
++            return self.first_context
++        return f"{self.first_context} … {self.last_context}"
++
++
++@dataclass
++class _ParsedRead:
++    family_tokens: list
++    is_search: bool
++    context_options: list
++    patterns: list
++    files: list
++
++    def describe(self, cwd: str) -> str:
++        pat = ", ".join(repr(p) for p in self.patterns) or "?"
++        files = ", ".join(self.files) or "stdin"
++        where = f" (workdir {cwd})" if cwd else ""
++        return f"terminal grep {pat} in {files}{where}"
++
++
++def _strip_grep_context(args: list) -> tuple[list, list, list, list]:
++    """Remove grep's context-size options from ``args``.
++
++    Returns (kept_args, removed_context_options, patterns, operands).
++    Only -A/-B/-C (separate or attached value, also inside a short-option
++    cluster), -NUM and --after-context/--before-context/--context are removed.
++    """
++    kept: list = []
++    removed: list = []
++    patterns: list = []
++    operands: list = []
++    i = 0
++    options_done = False
++    while i < len(args):
++        a = args[i]
++        if options_done or a == "-" or not a.startswith("-"):
++            kept.append(a)
++            operands.append(a)
++            i += 1
++            continue
++        if a == "--":
++            kept.append(a)
++            options_done = True
++            i += 1
++            continue
++        if a.startswith("--"):
++            name, eq, value = a.partition("=")
++            if name in _GREP_CONTEXT_LONG:
++                if eq:
++                    removed.append(a)
++                    i += 1
++                else:
++                    removed.append(" ".join(args[i:i + 2]))
++                    i += 2
++                continue
++            kept.append(a)
++            if name in _GREP_LONG_WITH_ARG:
++                if eq:
++                    if name in ("--regexp",):
++                        patterns.append(value)
++                    i += 1
++                elif i + 1 < len(args):
++                    kept.append(args[i + 1])
++                    if name == "--regexp":
++                        patterns.append(args[i + 1])
++                    i += 2
++                else:
++                    i += 1
++                continue
++            i += 1
++            continue
++        body = a[1:]
++        out = ""
++        j = 0
++        skip_next = False
++        keep_next = False
++        next_is_pattern = False
++        while j < len(body):
++            c = body[j]
++            if c.isdigit():
++                k = j
++                while k < len(body) and body[k].isdigit():
++                    k += 1
++                removed.append("-" + body[j:k])
++                j = k
++                continue
++            if c in _GREP_CONTEXT_SHORT:
++                value = body[j + 1:]
++                if value:
++                    removed.append(f"-{c}{value}")
++                else:
++                    removed.append(" ".join([f"-{c}"] + args[i + 1:i + 2]))
++                    skip_next = True
++                j = len(body)
++                break
++            if c in _GREP_SHORT_WITH_ARG:
++                out += body[j:]
++                value = body[j + 1:]
++                if value:
++                    if c == "e":
++                        patterns.append(value)
++                else:
++                    keep_next = True
++                    next_is_pattern = c == "e"
++                j = len(body)
++                break
++            out += c
++            j += 1
++        if out:
++            kept.append("-" + out)
++        i += 1
++        if skip_next:
++            i += 1
++        elif keep_next and i < len(args):
++            kept.append(args[i])
++            if next_is_pattern:
++                patterns.append(args[i])
++            i += 1
++    if not patterns and operands:
++        patterns.append(operands[0])
++        operands = operands[1:]
++    return kept, removed, patterns, operands
++
++
++def _parse_read_command(command: str) -> _ParsedRead | None:
++    """Parse a read-only pipeline; None when it is anything else.
++
++    Accepted: segments joined by ``|``, ``||``, ``&&`` or ``;`` whose programs
++    are all in ``_READ_ONLY_PROGRAMS`` (optionally after ``VAR=value``
++    prefixes), with no subshells, command substitution, background ``&`` or
++    output redirection other than to ``/dev/null`` or another descriptor.
++    """
++    if "`" in command or "$(" in command or "\n" in command.strip():
++        return None
++    try:
++        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
++        lexer.whitespace_split = True
++        tokens = list(lexer)
++    except ValueError:
++        return None
++    if not tokens:
++        return None
++    segments: list = [[]]
++    for tok in tokens:
++        if tok in _SEGMENT_OPERATORS:
++            segments.append([])
++        else:
++            segments[-1].append(tok)
++    family_tokens: list = []
++    context: list = []
++    patterns: list = []
++    files: list = []
++    is_search = False
++    for seg in segments:
++        if not seg:
++            return None
++        k = 0
++        while k < len(seg) and _ENV_ASSIGNMENT.match(seg[k]):
++            k += 1
++        if k >= len(seg):
++            return None
++        program = seg[k].rsplit("/", 1)[-1]
++        if program not in _READ_ONLY_PROGRAMS:
++            return None
++        args: list = []
++        m = k + 1
++        while m < len(seg):
++            tok = seg[m]
++            if tok in ("(", ")", "&", "<<", "<<<", ">|"):
++                return None
++            if tok in _FD_REDIRECTS or tok == "<":
++                if m + 1 >= len(seg):
++                    return None
++                target = seg[m + 1]
++                if tok != "<" and target not in _REDIRECT_SINKS:
++                    return None
++                if args and args[-1] in ("1", "2") and tok != "<":
++                    args.pop()  # the descriptor number of ``2>``
++                m += 2
++                continue
++            if any(ch in tok for ch in "()&<>|;"):
++                return None
++            args.append(tok)
++            m += 1
++        if program in _GREP_PROGRAMS:
++            is_search = True
++            kept, removed, pats, operands = _strip_grep_context(args)
++            context.extend(removed)
++            patterns.extend(pats)
++            files.extend(operands)
++            family_tokens.append([seg[:k], program, kept])
++        else:
++            if program in ("cat", "zcat", "head", "tail"):
++                skip = False
++                for a in args:
++                    if skip:
++                        skip = False
++                    elif a in ("-n", "-c", "--lines", "--bytes"):
++                        skip = True
++                    elif not a.startswith("-"):
++                        files.append(a)
++            family_tokens.append([seg[:k], program, args])
++    return _ParsedRead(family_tokens, is_search, context, patterns, files)
++
++
++def _result_content_lines(result: str | None) -> list:
++    """Output lines a read showed (terminal envelope ``output``), minus grep
++    group separators and the runtime's truncation notice."""
++    text = result or ""
++    parsed = safe_json_loads(text)
++    if isinstance(parsed, dict) and isinstance(parsed.get("output"), str):
++        text = parsed["output"]
++    lines = []
++    for raw in text.splitlines():
++        line = raw.rstrip()
++        if not line or line == "--" or _TRUNCATION_NOTICE.match(line.strip()):
++            continue
++        lines.append(line)
++    return lines
++
++
+ def _as_bool(value: Any, default: bool) -> bool:
+     if value is None:
+         return default
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index 40e070a1da..18de803b5a 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -247,12 +247,33 @@ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Lo
+     """
+     signature = getattr(decision, "signature", None)
+     args_hash = getattr(signature, "args_hash", "") or ""
++    family = getattr(decision, "family", "") or ""
++    if family:
++        # A repetition family is named (tool, pattern, file, workdir), redacted
++        # like any board text; the raw argv is still not recorded.
++        try:
++            from agent.redact import redact_sensitive_text
++
++            from hermes_cli.kanban_db import _RESPAWN_BLOCKER_RE
++
++            family = redact_sensitive_text(family, force=True)
++            # The error text is last_failure_error: a word the dispatcher reads
++            # as a quota/auth blocker (e.g. a grep pattern "403") would park
++            # the card on every tick. Such words are masked here; the event
++            # payload (guardrail.family) keeps the family as searched.
++            family = _RESPAWN_BLOCKER_RE.sub("<masked>", family)
++        except Exception:
++            family = ""
++    family_part = (
++        f", family {family[:300]}; working tree and any retained candidate left as they are"
++        if family else ""
++    )
+     _record_kanban_worker_stop(
+         kanban_task,
+         (
+             f"STOP WORKER_TOOL_LOOP: tool {decision.tool_name}, "
+             f"guardrail {decision.code}, count {decision.count}, "
+-            f"args_sha256 {args_hash[:16]} — the worker was halted "
++            f"args_sha256 {args_hash[:16]}{family_part} — the worker was halted "
+             "before another model request; this run did not "
+             "complete the task"
+         ),
+@@ -460,9 +481,27 @@ def finalize_turn(
+         # kanban run (see _record_kanban_guardrail_halt) instead of leaving a
+         # clean exit for the dispatcher to read as a protocol violation.
+         _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
+-        if _kanban_task:
++        _halt = agent._tool_guardrail_halt_decision
++        if _kanban_task and getattr(_halt, "code", "") == "kanban_stop_request":
++            # A honoured stop request already recorded the one native block
++            # for this run (agent/kanban_stop_request.py); nothing else is
++            # written. Only when the board could not be written is the stop
++            # recorded as a failed run, so the exit is never read as a clean
++            # completion.
++            if getattr(agent, "_kanban_stop_outcome", "") == "error":
++                _record_kanban_worker_stop(
++                    _kanban_task,
++                    (
++                        "STOP WORKER_STOP_REQUEST: a tool asked to end this run "
++                        f"({_halt.message[:300]}) but the block could not be "
++                        "recorded; the worker stopped before another model request"
++                    ),
++                    logger,
++                    event_payload_extra={"guardrail": _halt.to_metadata()},
++                )
++        elif _kanban_task:
+             _record_kanban_guardrail_halt(
+-                _kanban_task, agent._tool_guardrail_halt_decision, logger,
++                _kanban_task, _halt, logger,
+             )
+ 
+     # Determine if conversation completed successfully
+diff --git a/hermes_cli/kanban_db.py b/hermes_cli/kanban_db.py
+index e9146610d0..80cc7f59e3 100644
+--- a/hermes_cli/kanban_db.py
++++ b/hermes_cli/kanban_db.py
+@@ -10887,6 +10887,17 @@ def _default_spawn(
+         env["HERMES_KANBAN_BRANCH"] = task.branch_name
+     if task.current_run_id is not None:
+         env["HERMES_KANBAN_RUN_ID"] = str(task.current_run_id)
++        # Per-run stop-request path (agent/kanban_stop_request.py): a tool the
++        # worker runs may create this file to end the run with one native
++        # block. It is absent at spawn, and a resumed run gets a new run id and
++        # so a new path: a request from an earlier run never stops a later one.
++        try:
++            _stop_path = worker_stop_request_path(task.id, task.current_run_id, board=board)
++            _stop_path.parent.mkdir(parents=True, exist_ok=True)
++            _stop_path.unlink(missing_ok=True)
++            env["HERMES_KANBAN_STOP_REQUEST"] = str(_stop_path)
++        except OSError as exc:
++            _log.warning("kanban worker: stop-request path unavailable for %s (%s)", task.id, exc)
+     if task.claim_lock:
+         env["HERMES_KANBAN_CLAIM_LOCK"] = task.claim_lock
+     # Goal-loop mode: the worker reads these and wraps its run in the
+@@ -12018,6 +12029,12 @@ def worker_log_path(task_id: str, *, board: Optional[str] = None) -> Path:
+     return worker_logs_dir(board=board) / f"{task_id}.log"
+ 
+ 
++def worker_stop_request_path(task_id: str, run_id: int, *, board: Optional[str] = None) -> Path:
++    """Per-run stop-request file a worker's tools may create (see
++    ``agent/kanban_stop_request.py``); sits beside the board's worker logs."""
++    return worker_logs_dir(board=board).parent / "stop-requests" / f"{task_id}.run{int(run_id)}.json"
++
++
+ def read_worker_log(
+     task_id: str, *, tail_bytes: Optional[int] = None,
+     board: Optional[str] = None,
+diff --git a/run_agent.py b/run_agent.py
+index a03cf95eb7..d54323db1b 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -8242,6 +8242,12 @@ class AIAgent:
+ 
+     def _toolguard_controlled_halt_response(self, decision: ToolGuardrailDecision) -> str:
+         tool = decision.tool_name or "a tool"
++        if decision.code == "kanban_stop_request":
++            return (
++                "I stopped: a tool asked to end this kanban run "
++                f"({decision.message}). No further tool call or model request "
++                "was made; files on disk are unchanged by the stop."
++            )
+         return (
+             f"I stopped retrying {tool} because it hit the tool-call guardrail "
+             f"({decision.code}) after {decision.count} repeated non-progressing "
+@@ -8321,8 +8327,50 @@ class AIAgent:
+                 self._set_tool_guardrail_halt(streak_halt)
+         if stall_notice:
+             function_result = (function_result or "") + "\n\n" + stall_notice
++        if os.environ.get("HERMES_KANBAN_STOP_REQUEST"):
++            # Only dispatcher-spawned kanban workers carry the path.
++            stop_note = AIAgent._honour_kanban_stop_request(self, tool_name)
++            if stop_note:
++                function_result = (function_result or "") + "\n\n" + stop_note
+         return function_result
+ 
++    def _honour_kanban_stop_request(self, tool_name: str) -> str:
++        """End the turn when a tool created this worker run's stop request.
++
++        See agent/kanban_stop_request.py. Checked after every tool result of
++        a dispatcher-spawned kanban worker; the native block is recorded once
++        (bound to this run), later calls in the batch are refused, and the
++        turn ends before another model request.
++        """
++        if getattr(self._tool_guardrails, "_turn_stop", None) is not None:
++            return ""
++        try:
++            from agent.kanban_stop_request import honour_stop_request, read_stop_request
++
++            req = read_stop_request()
++            if req is None:
++                return ""
++            outcome = honour_stop_request(req)
++        except Exception as exc:
++            logger.warning("kanban stop request check failed: %s", exc)
++            return ""
++        decision = ToolGuardrailDecision(
++            action="halt",
++            code="kanban_stop_request",
++            message=f"{req.kind}: {req.reason}",
++            tool_name=tool_name,
++            count=1,
++        )
++        self._kanban_stop_outcome = outcome
++        self._tool_guardrails.request_turn_stop(decision)
++        # A stop request supersedes any loop halt raised in the same batch:
++        # the run ends as the requested native block, not as a failure.
++        self._tool_guardrail_halt_decision = decision
++        return (
++            f"[Kanban stop request honoured ({outcome}): {req.kind} — {req.reason}. "
++            "This run ends here; no further tool call or model request.]"
++        )
++
+     def _result_reference_retrievable(self, messages: list, payload: str) -> bool:
+         """Whether the streak's reference result can still be read by the model."""
+         guardrails = self._tool_guardrails
+-- 
+2.54.0 (Apple Git-157)
+
