@@ -780,6 +780,18 @@ class AdvanceBridge(unittest.TestCase):
         self.assertEqual(len([t for t in r.native.tasks.values() if t.get("idempotency_key", "").startswith("outcome:")]),
                          len([n for n in r.plan["nodes"] if n["role"] == "repair"]))  # no card was minted per attempt
 
+    def test_serial_only_continuations_refuse_on_an_outcome_run(self):
+        r = self.r
+        script = LIB.parent / "skills" / "migration" / "fix-until-green" / "scripts" / "resume-after-m4.py"
+        p = subprocess.run([sys.executable, str(script), "--root", str(r.root)], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("PROTOCOL_NOT_SERIAL", p.stderr)
+        import m5_delivery
+        out = m5_delivery.start_delivery(r.root, runner=lambda argv: (1, "", "not called"))
+        self.assertTrue(out["blocked"])
+        self.assertIn("PROTOCOL_NOT_SERIAL", out["reason"])
+        self.assertEqual(out["created"], [])
+
     def test_serial_root_is_untouched(self):
         tmp = Path(tempfile.mkdtemp(prefix="ob-serial-"))
         try:

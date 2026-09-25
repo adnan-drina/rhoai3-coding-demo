@@ -549,6 +549,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--operator", default="", help="who ran this, recorded on the close row and in release-blockers.json")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    from planner.outcome_protocol import select_protocol
+    if select_protocol(root).outcome:
+        # the outcome board continues after M4 through its dispatcher-tick reconciler
+        # (kernel/outcome_reconcile.py): bounded repairs and a successor assessment
+        return _refuse("PROTOCOL_NOT_SERIAL: this run uses outcome-board/v1; the continuation after M4 is the "
+                       "reconciler on the dispatcher tick, never this serial resume")
 
     # --- the verdict, and that it is THIS run's -------------------------------
     vp = root / M4_VERDICT

@@ -1141,6 +1141,13 @@ def start_delivery(root: Path, *, runner: Runner, hermes: str = "hermes",
                    execute: bool = False, workspace: str = "dir:/projects/modernized") -> dict[str, Any]:
     """Mint the three M5 cards or return the existing set. Never duplicates."""
     root = Path(root)
+    from planner.outcome_protocol import select_protocol
+    if select_protocol(root).outcome:
+        # outcome-board runs pre-create the M5 stages at publication; a stage is GRANTED
+        # (assigned) by the reconciler after its predicate, never minted here
+        return {"ok": False, "blocked": True, "eligibility": {}, "created": [], "reused": [],
+                "reason": "PROTOCOL_NOT_SERIAL: outcome-board/v1 grants the pre-created M5 stages",
+                "failed_stage": STAGE_LABELS["prepare"]}
     eligibility = assess_eligibility(root, runner=runner)
     record_eligibility(root, eligibility)
     budget_p = root / DELIVERY_BUDGET
