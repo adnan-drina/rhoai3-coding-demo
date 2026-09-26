@@ -497,7 +497,10 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
         # amendments granted earlier to this cluster survive a restart (never renewed, never lost)
         allowed = sorted(set(allowed) | set(amended_paths(store, oid, cluster)))
     unit_grant: dict[str, Any] = {}
-    if node["role"] == "repair" and not cluster and node.get("planned_units"):
+    if node["role"] == "repair" and not cluster and node.get("repair_paths"):
+        # an owner repair (automatic owner recovery): the owner's recorded write set, bounded
+        allowed = sorted(node["repair_paths"])[:AMEND_MAX_FILES]
+    elif node["role"] == "repair" and not cluster and node.get("planned_units"):
         # a REQUIREMENT-ONLY outcome: its planned unit's bounded grant, computed from the
         # frozen plan (outcome_graph.planned_unit_grant); granted only without a refusal,
         # under the same writer generation, budget and baseline checks as a cluster
@@ -537,7 +540,7 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
             "retained_candidate": bool(pending), "generation": gen, "claimed_control": False,
             "planned_unit": ({"refusal": unit_grant.get("refusal") or "", "owed": unit_grant.get("owed") or [],
                               "bounds": unit_grant.get("bounds") or {}} if unit_grant else None),
-            "run": store.meta("run_id"),
+            "run": store.meta("run_id"), "baseline_commit": head,
             "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
                            for a in amends]}
 
@@ -830,6 +833,142 @@ def _m2_release(ctx: Ctx) -> dict[str, Any]:
 # T6: attempts on the SAME outcome
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Automatic owner recovery (user decision 2026-09-26): a runtime failure the
+# pure classifier proves pre-existing on the baseline and owned by an ACCEPTED
+# outcome is repaired on that owner, once, before the dependent is judged.
+# ---------------------------------------------------------------------------
+
+OWNER_DEFECT = "pre-existing-owner-defect"
+CAUSE_CLASSES = (OWNER_DEFECT, "candidate-regression", "ambiguous")
+HOLD_MAX_BYTES = 2 << 20
+
+
+def _classify(ctx: Ctx, iss: dict[str, Any]) -> dict[str, Any] | None:
+    """planner.runtime_cause.classify on the AUTHORITY's inputs: its own issue
+    and baseline, and the measured work list and loop steps of the tree. None
+    when the classifier is absent or fails (the ordinary rejection applies)."""
+    try:
+        from planner import runtime_cause
+    except ImportError:
+        return None
+    from planner.paths import LOOP_STEPS
+    issued = {k: iss.get(k) for k in ("issue_id", "task_id", "run_id", "outcome_id", "cluster", "allowed_paths",
+                                      "baseline_commit", "baseline_tree", "rev")}
+    cur, _why = load_worklist(ctx.root)
+    steps = _read_json(ctx.root / LOOP_STEPS) or {}
+    baseline = {"commit": iss.get("baseline_commit") or "", "tree": iss.get("baseline_tree") or ""}
+    try:
+        out = runtime_cause.classify(ctx.root, issued, cur, steps, baseline)
+    except Exception as exc:  # a classifier failure is no evidence of anything
+        return {"class": "ambiguous", "owner": "", "evidence": {}, "reason": "classifier failed: %s" % type(exc).__name__}
+    return out if isinstance(out, dict) else None
+
+
+def _hold_candidate(ctx: Ctx, iss: dict[str, Any]) -> dict[str, str] | None:
+    """The dependent's candidate, captured by the authority from the tree: the
+    changed product paths since the issued baseline, all inside the issue's
+    allowed paths, base64 content ('' = deleted). None when it cannot be held."""
+    import base64
+    changed = changed_product_paths(ctx.root, str(iss.get("baseline_commit") or ""))
+    if changed is None or not set(changed) <= set(iss.get("allowed_paths") or []):
+        return None
+    out: dict[str, str] = {}
+    size = 0
+    for rel in changed:
+        p = ctx.root / rel
+        data = p.read_bytes() if p.is_file() and not p.is_symlink() else b""
+        size += len(data)
+        out[rel] = base64.b64encode(data).decode("ascii") if p.exists() else ""
+    return out if size <= HOLD_MAX_BYTES else None
+
+
+def _owner_recovery(ctx: Ctx, iss: dict[str, Any], orow: dict[str, Any], *, task_id: str, run_id: int, candidate: str,
+                    key: str, reason: str) -> dict[str, Any] | None:
+    """None = the ordinary rejection applies (candidate regression, ambiguous,
+    no classifier, or a claim the authority cannot validate). A validated
+    owner defect: the candidate is HELD (captured, no attempt spent), and ONE
+    bounded repair of the owner is scheduled as a durable intent the
+    reconciler publishes (sharing the owner's budget key)."""
+    store = ctx.store
+    oid = iss["outcome_id"]
+    res = _classify(ctx, iss)
+    if res is None:
+        return None
+    cls = str(res.get("class") or "")
+    why = ""
+    if cls not in CAUSE_CLASSES:
+        why = "classifier answered %r" % cls
+    elif cls != OWNER_DEFECT:
+        why = "%s: %s" % (cls, str(res.get("reason") or "")[:200])
+    owner = str(res.get("owner") or "")
+    evidence = res.get("evidence")
+    if not why:
+        orow_owner = _outcome(store, owner) if owner else None
+        if not orow_owner or owner == oid or orow_owner["role"] != "repair" or orow_owner["status"] not in ("accepted", "done"):
+            why = "owner %r is not another accepted repair outcome" % owner
+        elif not evidence:
+            why = "no evidence names the failure on the baseline"
+        elif isinstance(evidence, dict) and evidence.get("baseline") and evidence.get("baseline") not in (
+                iss.get("baseline_commit"), iss.get("baseline_tree")):
+            why = "the evidence names another baseline"
+        elif orow_owner["budget_limit"] and store.spent(orow_owner["budget_key"]) >= orow_owner["budget_limit"]:
+            why = "the owner's budget %s is exhausted" % orow_owner["budget_key"]
+        elif store.conn.execute("SELECT 1 FROM intents WHERE intent_id=?", ("owner-repair:%s:%s" % (owner, oid),)).fetchone():
+            why = "the one bounded repair of %s for %s was already scheduled" % (owner, oid)
+    held = _hold_candidate(ctx, iss) if not why else None
+    if not why and held is None:
+        why = "the candidate cannot be held (outside the issue, unmeasurable or too large)"
+    if why:
+        if cls in CAUSE_CLASSES and cls != "candidate-regression":
+            try:  # visible report; no blame transfer, no scope grant
+                ctx.native.comment(task_id, "%s runtime cause not transferred (%s)" % (MARKER, why[:300]))
+            except Exception:
+                pass
+            with store.txn() as c:
+                store.append(c, oid, "cause-report", {"class": cls, "owner": owner, "why": why[:500], "run_id": run_id},
+                             attempt_key="%s:cause" % key)
+        return None
+    owner_row = _outcome(store, owner)
+    last = store.conn.execute("SELECT allowed_paths FROM issues WHERE outcome_id=? ORDER BY issue_id DESC LIMIT 1",
+                              (owner,)).fetchone()
+    doc = {"owner": owner, "dependent": oid, "dependent_task": task_id, "evidence": evidence,
+           "reason": str(res.get("reason") or "")[:500], "repair_paths": json.loads(last[0]) if last else [],
+           "budget": {"key": owner_row["budget_key"], "limit": owner_row["budget_limit"]}}
+    with store.txn() as c:
+        store.append(c, oid, "owner-hold", {"owner": owner, "candidate": candidate, "files": held,
+                                            "baseline_commit": iss.get("baseline_commit"), "run_id": run_id},
+                     attempt_key="%s:hold" % key)
+        c.execute("INSERT OR IGNORE INTO intents(intent_id, kind, source_task, doc, state, created_at) VALUES(?,?,?,?,?,?)",
+                  ("owner-repair:%s:%s" % (owner, oid), "owner-repair", task_id, canonical(doc), "pending", time.time()))
+    try:
+        ctx.native.comment(task_id, "%s runtime failure proven on the baseline and owned by %s: candidate held, one repair "
+                                    "of %s scheduled; this card waits on it (no attempt spent)" % (MARKER, owner, owner))
+    except Exception:
+        pass
+    return {"verdict": "OWNER_RECOVERY", "outcome_id": oid, "owner": owner, "spent": store.spent(orow["budget_key"]),
+            "limit": orow["budget_limit"], "exhausted": False, "held_paths": sorted(held),
+            "card": "stays open; revert the tree and end this run with kanban_block kind=dependency"}
+
+
+@transition
+def restore_held(ctx: Ctx, *, task_id: str, run_id: int) -> dict[str, Any]:
+    """The held candidate of this outcome (after its owner's repair), for the
+    caller to write back and re-verify on the repaired baseline. Only paths
+    the CURRENT issue allows; the candidate is judged afresh (no acceptance
+    carried over)."""
+    iss = active_issue(ctx, task_id, run_id)
+    rows = [r for r in ctx.store.ledger(iss["outcome_id"]) if r["kind"] == "owner-hold"]
+    if not rows:
+        raise Refusal("RESTORE_NO_HOLD", "no held candidate on %s" % iss["outcome_id"])
+    files = rows[-1]["doc"].get("files") or {}
+    outside = sorted(set(files) - set(iss["allowed_paths"]))
+    if outside:
+        raise Refusal("RESTORE_OUTSIDE_ISSUE", "held paths %s are outside the current issue" % ", ".join(outside[:3]))
+    return {"outcome_id": iss["outcome_id"], "files": files, "owner": rows[-1]["doc"].get("owner"),
+            "baseline_then": rows[-1]["doc"].get("baseline_commit"), "baseline_now": iss.get("baseline_commit")}
+
+
 @transition
 def record_verdict(ctx: Ctx, *, task_id: str, run_id: int, verdict: str, candidate: str, attempt: str,
                    reason: str = "", retained: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -840,6 +979,10 @@ def record_verdict(ctx: Ctx, *, task_id: str, run_id: int, verdict: str, candida
     orow = _outcome(ctx.store, oid)
     key = "%s:%s" % (run_id, attempt)
     if verdict == "REVERTED":
+        recovered = _owner_recovery(ctx, iss, orow, task_id=task_id, run_id=run_id, candidate=candidate, key=key,
+                                    reason=reason)
+        if recovered is not None:
+            return recovered
         with ctx.store.txn() as c:
             seq, new = ctx.store.append(c, oid, "reject", {"cluster": iss["cluster"], "candidate": candidate,
                                                            "run_id": run_id, "reason": reason[:500]},
@@ -1348,6 +1491,59 @@ def plan_after_refuse(store: Store, plan: dict[str, Any], intent: dict[str, Any]
     }
     doc["digest"] = plan_digest(doc)
     return doc
+
+
+def owner_repair_id(owner: str, dependent: str) -> str:
+    return "repair:%s:for:%s" % (owner, dependent)
+
+
+def plan_owner_repair(store: Store, plan: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any] | Refusal | None:
+    """The revision adding ONE bounded repair of an accepted owner (automatic
+    owner recovery): a new outcome with lineage to the owner, the owner's budget
+    key (no fresh budget) and the owner's recorded write set; it becomes a
+    PARENT of the dependent (and of every open assessment), so the dependent
+    waits on the repair, never the reverse. None when the revision already
+    carries it (replay)."""
+    owner, dep = doc["owner"], doc["dependent"]
+    fid = owner_repair_id(owner, dep)
+    by_id = {n["outcome_id"]: dict(n) for n in plan["nodes"]}
+    if fid in by_id:
+        return None
+    on, dn = by_id.get(owner), by_id.get(dep)
+    if not on or not dn:
+        return Refusal("OWNER_REPAIR_FOREIGN", "%s or %s is not in the current revision" % (owner, dep))
+    node = {"outcome_id": fid, "role": "repair", "class": on.get("class"), "subject": on.get("subject"), "natural_key": "",
+            "obligations": [], "clusters": [], "plan_paths": sorted(doc.get("repair_paths") or []),
+            "repair_paths": sorted(doc.get("repair_paths") or []), "entry_points": [], "scenarios": [], "parents": [],
+            "assignee": IMPL, "skills": [REPAIR_SKILL], "budget": dict(doc["budget"]),
+            "lineage": [{"repairs": owner, "for": dep, "cause": OWNER_DEFECT, "reason": doc.get("reason") or "",
+                         "evidence": doc.get("evidence")}],
+            "acceptance": {"checks": ["measure:compile", "measure:tests", "gate:runtime"]}}
+    node["title"] = "Repair %s (found by %s)" % (on.get("subject") or owner, dn.get("subject") or dep)
+    node["description"] = ("Repair the runtime defect in %s that the work on %s exposed: the failure is proven on the "
+                           "accepted baseline and belongs to %s. Complete when the owner's checks pass again on the "
+                           "repaired candidate; %s then resumes and is re-verified on this repair. The attached brief "
+                           "lists the evidence." % (on.get("subject") or owner, dn.get("subject") or dep, owner, dep))
+    by_id[fid] = node
+    by_id[dep] = dict(dn, parents=sorted(set(dn.get("parents") or []) | {fid}))
+    for oid, n in list(by_id.items()):
+        if n.get("role") == "assess" and (_outcome(store, oid) or {}).get("status") not in ("assessed", "done"):
+            by_id[oid] = dict(n, parents=sorted(set(n.get("parents") or []) | {fid}))
+    counts = dict(plan.get("counts") or {})
+    counts["additions"] = int(counts.get("additions") or 0) + 1
+    new = {
+        "schema": plan["schema"], "run_id": plan["run_id"], "revision": int(plan["revision"]) + 1,
+        "parent_revision": int(plan["revision"]), "kind": "owner-repair", "provenance": plan.get("provenance"),
+        "trigger": {"intent": "owner-repair:%s:%s" % (owner, dep)},
+        "nodes": [by_id[k] for k in sorted(by_id)], "ownership": dict(plan.get("ownership") or {}),
+        "dispositions": list(plan.get("dispositions") or []), "unresolved": list(plan.get("unresolved") or []),
+        "counts": counts, "additions": sorted(set(plan.get("additions") or []) | {fid}), "claimed_control": False,
+    }
+    for k in ("requirements", "requirement_ownership"):
+        if k in plan:
+            new[k] = plan[k]
+    new["digest"] = plan_digest(new)
+    return new
 
 
 def plan_split(store: Store, plan: dict[str, Any], oid: str, groups: dict[str, list[str]], *, evidence: str) -> dict[str, Any]:

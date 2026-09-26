@@ -69,6 +69,14 @@ def record(root: Path, verdict: str, candidate: str, reason: str = "") -> int | 
                                attempt=candidate[:16], reason=reason)
     except (L.Refusal, Exception) as exc:  # the ledger must accept the verdict before anything else moves
         return _refuse(exc)
+    if out.get("verdict") == "OWNER_RECOVERY":
+        # automatic owner recovery: the authority HELD this candidate (no attempt spent) and
+        # scheduled one repair of the accepted owner as this card's prerequisite
+        print("OWNER_RECOVERY %s: the runtime failure belongs to %s (proven on the baseline). The candidate is held by "
+              "the authority; the tree is reverted as usual. End this run with kanban_block kind=dependency; after the "
+              "repair this card resumes and outcome_gate.py restore-held puts the candidate back for re-verification."
+              % (out["outcome_id"], out["owner"]), file=sys.stderr)
+        return 0
     if out.get("exhausted"):
         print("OUTCOME_BUDGET_EXHAUSTED %s: %d of %d rejected attempts spent (cumulative across runs). "
               "kanban_block kind=needs_input naming the outcome." % (out["outcome_id"], out["spent"], out["limit"]),

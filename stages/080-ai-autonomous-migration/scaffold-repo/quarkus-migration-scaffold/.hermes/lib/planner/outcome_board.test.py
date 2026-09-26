@@ -204,6 +204,157 @@ class Run:
 
 
 # ===========================================================================
+class OwnerRecovery(unittest.TestCase):
+    """Automatic owner recovery: a runtime failure the classifier proves on
+    the baseline and assigns to an ACCEPTED owner holds the dependent's
+    candidate (no spend), publishes ONE repair of the owner as the dependent's
+    prerequisite (owner's budget key, idempotent across interruption), and the
+    dependent is re-verified on the repaired baseline. Candidate regressions and
+    ambiguous causes are ordinary rejections (ambiguous is reported, no blame
+    transfer). The classifier is a stub with the agreed interface
+    planner.runtime_cause.classify(root, issued, cur, steps, baseline)."""
+
+    DEP, OWNER, PROPS = "config:rk:cfg", "build:rk:pom", "src/main/resources/application.properties"
+
+    def setUp(self):
+        import types
+        self.calls = []
+        self.answer = {}
+        mod = types.ModuleType("planner.runtime_cause")
+
+        def classify(root, issued, cur, steps, baseline):
+            self.calls.append({"issued": issued, "baseline": baseline, "cur": bool(cur)})
+            return dict(self.answer)
+        mod.classify = classify
+        sys.modules["planner.runtime_cause"] = mod
+        self.r = Run()
+        self.r.release()
+        self.r.accept(self.OWNER, classes=("build",))
+
+    def tearDown(self):
+        sys.modules.pop("planner.runtime_cause", None)
+        os.environ.pop("OB_FAULT", None)
+        os.environ.pop("OB_FAULT_MODE", None)
+        self.r.close()
+
+    def fail_dependent(self, answer, attempt="1"):
+        r = self.r
+        tid, run, iss = r.issue(self.DEP)
+        r.edit(self.PROPS, "server.port=8080  # attempt %s\n" % attempt)
+        self.answer = dict(answer)
+        if "evidence" in answer and answer["evidence"] == "BASELINE":
+            self.answer["evidence"] = {"baseline": iss["baseline_commit"], "failure": "application does not start"}
+        ctx = r.ctx()
+        out = L.record_verdict(ctx, task_id=tid, run_id=run, verdict="REVERTED", candidate=ctx.product_tree(),
+                               attempt=attempt, reason="startup failed")
+        git(r.root, "checkout", "--", self.PROPS)
+        return tid, run, iss, out
+
+    def owner_defect(self):
+        return {"class": L.OWNER_DEFECT, "owner": self.OWNER, "evidence": "BASELINE", "reason": "pom lacks the runtime artifact"}
+
+    def test_complete_sequence_with_interruption_and_no_duplicates(self):
+        r = self.r
+        tid, run, iss, out = self.fail_dependent(self.owner_defect())
+        self.assertEqual((out["verdict"], out["owner"], out["spent"]), ("OWNER_RECOVERY", self.OWNER, 0))
+        self.assertEqual(out["held_paths"], [self.PROPS])
+        self.assertEqual(self.calls[-1]["baseline"]["commit"], iss["baseline_commit"])   # the authority's own inputs
+        fid = L.owner_repair_id(self.OWNER, self.DEP)
+        # interrupted twice inside the continuation, then replayed: one repair card, linked, assigned
+        for point in ("reconcile-after-revision", "reconcile-after-publish"):
+            os.environ.update(OB_FAULT=point, OB_FAULT_MODE="raise")
+            with self.assertRaises(Crash):
+                R.tick(r.root, r.native)
+        os.environ.pop("OB_FAULT")
+        R.tick(r.root, r.native)
+        R.tick(r.root, r.native)
+        store = Store(r.root)
+        node = L._node(store.current_revision(), fid)
+        key = G.native_key("r1", node)
+        self.assertEqual(len(r.native.by_key(key)), 1)
+        ftid = r.native.by_key(key)[0]["id"]
+        self.assertIn(ftid, r.native.task(tid)["parents"])                      # the dependent waits on the repair
+        self.assertNotIn(tid, r.native.task(ftid)["parents"])                   # never the reverse
+        self.assertEqual(r.native.task(ftid)["assignee"], "implementer")
+        orow, owner = L._outcome(store, fid), L._outcome(store, self.OWNER)
+        self.assertEqual(orow["budget_key"], owner["budget_key"])               # no fresh budget
+        self.assertEqual(store.conn.execute("SELECT state FROM intents WHERE intent_id=?",
+                                            ("owner-repair:%s:%s" % (self.OWNER, self.DEP),)).fetchone()[0], "done")
+        self.assertEqual(G.readback(store, r.native), [])
+        # the dependent's old issue is stale; it cannot be re-issued before the repair is accepted
+        with self.assertRaises(L.Refusal) as cm:
+            L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=[self.PROPS])
+        self.assertEqual(cm.exception.code, "ISSUE_STALE_REVISION")
+        r.native.end_run(tid, "todo")                                          # kanban_block kind=dependency
+        run2, lock2 = r.native.claim(tid, pid=dead_pid())
+        with self.assertRaises(L.Refusal) as cm:
+            L.issue(r.ctx(), task_id=tid, run_id=run2, claim_lock=lock2, pid=dead_pid(), pgid=0)
+        self.assertEqual(cm.exception.code, "ISSUE_PARENT_UNACCEPTED")
+        r.native.end_run(tid, "todo")
+        # the repair: scoped to the owner's recorded write set, accepted on its own measurement
+        _t, _r, _i = r.issue(fid)
+        self.assertEqual(_i["allowed_paths"], ["pom.xml"])
+        r.native.end_run(_t, "ready")
+        r.accept(fid, classes=("build",))
+        self.assertEqual(L._outcome(Store(r.root), fid)["status"], "accepted")
+        # the dependent resumes on the repaired baseline with its held candidate, re-verified
+        run3, lock3 = r.native.claim(tid, pid=dead_pid())
+        iss3 = L.issue(r.ctx(), task_id=tid, run_id=run3, claim_lock=lock3, pid=dead_pid(), pgid=0)
+        self.assertNotEqual(iss3["baseline_commit"], iss["baseline_commit"])
+        held = L.restore_held(r.ctx(), task_id=tid, run_id=run3)
+        import base64
+        for rel, b64 in held["files"].items():
+            (r.root / rel).write_bytes(base64.b64decode(b64))
+        self.assertIn("attempt 1", (r.root / self.PROPS).read_text())
+        ctx = r.ctx()
+        L.record_verdict(ctx, task_id=tid, run_id=run3, verdict="ACCEPTED", candidate=ctx.product_tree(), attempt="2")
+        git(r.root, "commit", "-qam", "accept dependent")
+        r.drop("inc:cfg:server-port")
+        out = L.accept_commit(r.ctx(), task_id=tid, run_id=run3, attempt="2", commit=git(r.root, "rev-parse", "HEAD"),
+                              measurement={"classes": ["build"]})
+        self.assertTrue(out["outcome_accepted"])
+        self.assertEqual(Store(r.root).spent(L._outcome(Store(r.root), self.DEP)["budget_key"]), 0)
+
+    def test_one_bounded_repair_and_ordinary_rejections(self):
+        r = self.r
+        tid, run, iss, out = self.fail_dependent(self.owner_defect())
+        self.assertEqual(out["verdict"], "OWNER_RECOVERY")
+        # a second owner-defect claim for the same pair is an ordinary, reported rejection
+        _t, _r, _i, out = self.fail_dependent(self.owner_defect(), attempt="2")
+        self.assertEqual((out.get("verdict"), out["spent"]), ("REVERTED", 1))
+        n = sum(1 for row in Store(r.root).ledger(self.DEP) if row["kind"] == "cause-report")
+        self.assertEqual(n, 1)
+        # candidate regression: ordinary rejection, nothing reported, nothing scheduled
+        _t, _r, _i, out = self.fail_dependent({"class": "candidate-regression", "owner": "", "evidence": {}, "reason": "x"}, "3")
+        self.assertEqual((out.get("verdict"), out["spent"]), ("REVERTED", 2))
+        self.assertEqual(sum(1 for row in Store(r.root).ledger(self.DEP) if row["kind"] == "cause-report"), 1)
+        # ambiguous: visible report, no blame transfer, ordinary rejection
+        _t, _r, _i, out = self.fail_dependent({"class": "ambiguous", "owner": self.OWNER, "evidence": {}, "reason": "two causes"}, "4")
+        self.assertEqual((out.get("verdict"), out["spent"]), ("REVERTED", 3))
+        self.assertTrue(any("not transferred" in c for c in r.native.comments(tid)))
+        self.assertEqual(Store(r.root).conn.execute("SELECT COUNT(*) FROM intents WHERE kind='owner-repair'").fetchone()[0], 1)
+
+    INVALID = ({"class": L.OWNER_DEFECT, "owner": "source:rk:item", "evidence": "BASELINE"},       # owner not accepted
+               {"class": L.OWNER_DEFECT, "owner": DEP, "evidence": "BASELINE"},                    # itself
+               {"class": L.OWNER_DEFECT, "owner": OWNER, "evidence": {}},                          # no evidence
+               {"class": L.OWNER_DEFECT, "owner": OWNER, "evidence": {"baseline": "0" * 40}},      # another baseline
+               {"class": "blame-everyone", "owner": OWNER, "evidence": "BASELINE"})                # unknown class
+
+    def _invalid(self, cases):
+        # each is an ordinary rejection (the budget limit is 3: at most three per run)
+        for i, ans in enumerate(cases):
+            _t, _r, _i, out = self.fail_dependent(ans, attempt=str(i + 1))
+            self.assertEqual(out.get("verdict"), "REVERTED", ans)
+        self.assertEqual(Store(self.r.root).conn.execute("SELECT COUNT(*) FROM intents WHERE kind='owner-repair'").fetchone()[0], 0)
+
+    def test_invalid_owner_claims_are_not_honoured(self):
+        self._invalid(self.INVALID[:3])
+
+    def test_invalid_evidence_and_class_are_not_honoured(self):
+        self._invalid(self.INVALID[3:])
+
+
+# ===========================================================================
 class PlannedUnitIssue(unittest.TestCase):
     """T5 for a REQUIREMENT-ONLY outcome: the authority grants exactly the
     planned unit's bounded paths (outcome_graph.planned_unit_grant), and

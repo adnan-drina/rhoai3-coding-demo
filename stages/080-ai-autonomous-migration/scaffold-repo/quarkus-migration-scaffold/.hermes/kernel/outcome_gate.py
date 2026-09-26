@@ -5,6 +5,7 @@
     outcome_gate.py --root . verdict --verdict REVERTED|VERIFICATION_PENDING|ACCEPTED --attempt N [--reason ..]
     outcome_gate.py --root . accept-commit --attempt N --commit SHA --classes compile,tests [--scenarios a,b]
     outcome_gate.py --root . restore-pending
+    outcome_gate.py --root . restore-held
     outcome_gate.py --root . assessment-record [--verdict-file evidence/verdicts/m4-verdict.json]
     outcome_gate.py --root . stage-result --result-file PATH
     outcome_gate.py --root . effect-admit --kind push --operation-id ID --revision N
@@ -135,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--classes", default="compile,tests")
     a.add_argument("--scenarios", default="")
     sub.add_parser("restore-pending")
+    sub.add_parser("restore-held")
     r = sub.add_parser("assessment-record")
     r.add_argument("--verdict-file", default=str(L.VERDICT))
     sub.add_parser("stage-result")
@@ -179,6 +181,19 @@ def main(argv: list[str] | None = None) -> int:
                                                "scenarios": [s for s in ns.scenarios.split(",") if s]})
         elif ns.cmd == "restore-pending":
             out = L.restore_pending(ctx, task_id=task, run_id=run_id, candidate_now=ctx.product_tree())
+        elif ns.cmd == "restore-held":
+            # the held candidate of this outcome, back on the repaired baseline; the
+            # authority names only paths the current issue allows; it is re-verified
+            import base64
+            out = L.restore_held(ctx, task_id=task, run_id=run_id)
+            for rel, b64 in sorted((out.get("files") or {}).items()):
+                p = root / rel
+                if b64:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(base64.b64decode(b64))
+                elif p.exists():
+                    p.unlink()
+            out = dict(out, files=sorted(out.get("files") or {}))
         elif ns.cmd == "assessment-record":
             doc = json.loads((root / ns.verdict_file).read_text(encoding="utf-8"))
             out = L.record_assessment(ctx, task_id=task, run_id=run_id, verdict_doc=doc)
