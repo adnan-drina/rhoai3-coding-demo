@@ -22,7 +22,15 @@ Proof levels:
                     determinism for fixed evidence, never live source
                     behaviour or a successful migration.
 
-Usage: qualify-repeatability.py [--out FILE] [--keep DIR]
+  preserved         --specimen DIR: the same consumers on PRESERVED M1
+                    evidence of a real run (structure, entry points, corpus,
+                    admission-time work list), two reordered copies; no
+                    producer is re-run on it
+
+  --source DIR      the M1 structure producer (JdkModelExtract) re-run on two
+                    clean copies of a FROZEN source with an offline classpath
+
+Usage: qualify-repeatability.py [--out FILE] [--keep DIR] [--specimen DIR] [--source DIR] [--no-producers]
 Exit 0 when no case FAILED (NOT-RUN cases are listed, with their reason).
 """
 from __future__ import annotations
@@ -67,8 +75,10 @@ def decisions(**kw) -> dict:
 
 
 class Q:
-    def __init__(self, tmp: Path):
+    def __init__(self, tmp: Path, specimen: Path | None = None, source: Path | None = None):
         self.tmp = tmp
+        self.specimen = specimen
+        self.source = source
         self.cases: list[dict] = []
         self.evidence: dict = {}
 
@@ -303,6 +313,206 @@ def run_cases(q: Q) -> None:
 
     q.case("raw receipt tampering / wrong candidate", "recorded-evidence", tamper)
 
+    # --- WP8 matrix rows the first delivery left uncovered (2026-09-26) ---
+
+    def source_profile_generator_deltas():
+        """A meaningful source, profile or generator change is an EXPLAINED
+        plan delta (its class and first divergent producer), never a false
+        equivalence."""
+        out = []
+        # decided build profile
+        dec = decisions()
+        dec["build_profiles"] = {"adr": "ADR-001", "active": ["jdbc"]}
+        d1 = q.dest("delta-profile", dec=dec)
+        c1 = PS.compare(sem(a), sem(d1))
+        if c1["equal"] or c1["first_divergent_producer"] != "decisions":
+            return FAIL, "a profile change must diverge at decisions: %s" % c1["first_divergent_producer"]
+        out.append("profile -> %s (%s)" % (c1["first_divergent_producer"], ",".join(sorted({x["class"] for x in c1["differences"]}))))
+        # source: one more handler asking a BindingResult
+        d2 = q.tmp / "delta-source"
+        shutil.copytree(a, d2)
+        bundle = load_json(d2 / "evidence/planning/evidence-bundle.json")
+        ctrl = next(t for t in bundle["structure"]["types"] if t["fqn"].endswith("RestController"))
+        extra = copy.deepcopy(next(m for m in ctrl["methods"] if any(p.get("type", "").endswith("BindingResult") for p in m.get("params") or [])))
+        extra["name"] = extra["name"] + "Again"
+        extra["signature"] = extra["name"] + extra["signature"][extra["signature"].index("("):]
+        ctrl["methods"].append(extra)
+        ep = copy.deepcopy(next(e for e in bundle["entry_points"] if e.get("type") == ctrl["fqn"]
+                                and e.get("member", "").split("(", 1)[0] == extra["name"][:-len("Again")]))
+        ep["member"] = extra["signature"]
+        ep["id"] = ep["id"].replace(ep["id"].split("#", 1)[1].split(":", 1)[0], extra["signature"])
+        bundle["entry_points"].append(ep)
+        write_canonical(d2 / "evidence/planning/evidence-bundle.json", bundle)
+        c2 = PS.compare(sem(a), PS.from_root(d2))
+        added = [x for x in c2["differences"] if "added" in x["class"]]
+        if c2["equal"] or not added:
+            return FAIL, "an added BindingResult handler must ADD planned work: %s" % [x["class"] for x in c2["differences"]]
+        out.append("source -> %s (%s)" % (c2["first_divergent_producer"], ",".join(sorted({x["class"] for x in c2["differences"]}))))
+        # generator pin: the destination plugin version
+        d3 = q.tmp / "delta-generator"
+        shutil.copytree(a, d3)
+        pom = (d3 / "pom.xml").read_text(encoding="utf-8")
+        gen = SR.for_root(a)
+        gver = next((r["facts"].get("plugin_version") for r in gen["requirements"] if r["rule"] == "generator-configuration/v1"), "")
+        if not gver or gver not in pom:
+            return FAIL, "the specimen's generator version is not in its pom (%r)" % gver
+        (d3 / "pom.xml").write_text(pom.replace(gver, "9.9.9", 1), encoding="utf-8")
+        c3 = PS.compare(sem(a), PS.from_root(d3))
+        if c3["equal"]:
+            return FAIL, "a generator pin change must change the plan"
+        out.append("generator -> %s (%s)" % (c3["first_divergent_producer"], ",".join(sorted({x["class"] for x in c3["differences"]}))))
+        return PASS, "; ".join(out)
+
+    q.case("different source / profile / generator pin", "recorded-evidence", source_profile_generator_deltas)
+
+    def cycle_and_ambiguity():
+        """A requirement dependency cycle is a TYPED refusal, the same every
+        time (never an arbitrary file order); a requirement two clusters could
+        own resolves to the same owner whatever the cluster order."""
+        g = L.initial_plan_from_root(a)
+        base = [r for r in g["requirements"] if r["status"] == "applicable" and r["rule"] in ("request-validation/v1", "handler-parameter-binding/v1")]
+        r1, r2 = copy.deepcopy(base[0]), copy.deepcopy(base[0])
+        r1["id"], r2["id"] = r1["id"] + "#c1", r1["id"] + "#c2"
+        r1["subject"], r2["subject"] = r1["subject"] + "#c1", r2["subject"] + "#c2"
+        r1["paths"], r2["paths"] = ["src/main/java/q/C1.java"], ["src/main/java/q/C2.java"]
+        r1["dependencies"], r2["dependencies"] = [r2["id"]], [r1["id"]]
+        wl = load_json(a / "evidence/planning/worklist.json")
+        codes = []
+        for _ in range(2):
+            try:
+                OG.derive_initial_graph(run_id="q", worklist=wl, entry_points=[], oracles=None, references=None,
+                                        provenance={"snapshot_kind": "synthetic", "scope_note": "cycle", "construction": "qualify",
+                                                    "observed_migration_event": False}, requirements=[r1, r2])
+                codes.append("none")
+            except OG.PlanError as exc:
+                codes.append("%s: %s" % (exc.code, exc.detail))
+        if codes[0] != codes[1] or not codes[0].startswith("GRAPH_CYCLE"):
+            return FAIL, "a dependency cycle must be the same typed refusal every time: %s" % codes
+        # ambiguous shared ownership: the requirement's file is in two clusters
+        amb = copy.deepcopy(base[0])
+        owners = set()
+        for order in (1, -1):
+            w = copy.deepcopy(wl)
+            path = amb["paths"][0]
+            holders = [c for c in w["clusters"] if path in (c.get("write_set") or [])]
+            if not holders:
+                return FAIL, "the specimen has no cluster holding %s" % path
+            twin = copy.deepcopy(holders[0])
+            twin["id"] = twin["id"] + ":twin"
+            first = next(i for i in w["items"] if i["id"] in holders[0]["items"])
+            item = dict(copy.deepcopy(first), id=first["id"] + ":twin")
+            w["items"] = (w["items"] + [item])[::order]
+            twin["items"] = [item["id"]]
+            w["clusters"] = (w["clusters"] + [twin])[::order]
+            g2 = OG.derive_initial_graph(run_id="q", worklist=w, entry_points=[], oracles=None, references=None,
+                                         provenance={"snapshot_kind": "synthetic", "scope_note": "ambiguity", "construction": "qualify",
+                                                     "observed_migration_event": False}, requirements=[amb])
+            owners.add(g2["requirement_ownership"][amb["id"]])
+        if len(owners) != 1:
+            return FAIL, "shared ownership resolved to different owners by cluster order: %s" % owners
+        return PASS, "cycle -> %s (twice); two candidate owners -> %s under both cluster orders" % (codes[0][:60], owners.pop())
+
+    q.case("cyclic dependencies / ambiguous shared ownership", "recorded-evidence", cycle_and_ambiguity)
+
+    def mixed_protocol():
+        from planner import outcome_protocol as P
+        d = q.tmp / "mixed"
+        d.mkdir()
+        (d / P.STORE_FILE).parent.mkdir(parents=True, exist_ok=True)
+        (d / P.STORE_FILE).write_bytes(b"")
+        serial = P.mixed_state(d)
+        e = q.tmp / "mixed-outcome"
+        e.mkdir()
+        (e / "run-defaults.json").write_text(json.dumps({"schema": "rhoai3.run-defaults/v1", "budget": {},
+                                                        "configuration": {"board_protocol": P.OUTCOME}}), encoding="utf-8")
+        write_canonical(e / "verification/loop/issued.json", {"idempotency_key": "k4:c:1:0000", "task_id": "t_x"})
+        outcome = P.mixed_state(e)
+        if not serial or serial[0][0] != "PROTOCOL_MIXED" or not outcome or outcome[0][0] != "PROTOCOL_MIXED":
+            return FAIL, "mixed state must refuse both ways: %s / %s" % (serial, outcome)
+        return PASS, "serial run with an outcome store and outcome run with a K4 serial record both refuse PROTOCOL_MIXED"
+
+    q.case("mixed protocol state", "recorded-evidence", mixed_protocol)
+
+
+def specimen_cases(q: Q, specimen: Path) -> None:
+    """Recorded-evidence replay on PRESERVED PetClinic M1 evidence (not
+    synthetic): the frozen structural model, entry points, captured corpus
+    and admission-time work list a real run produced. Two disposable copies
+    (other paths, other run ids, every producer set in reverse order) must
+    derive the same requirements and the same logical initial graph with the
+    golden's decisions and catalogs; the V17 rows are recorded in the
+    inventory. It re-runs no producer: it proves planning determinism for
+    this recorded evidence only."""
+    def load_copy(name: str, reverse: bool) -> Path:
+        d = q.tmp / name
+        shutil.copytree(specimen, d)
+        shutil.copy(HERMES.parent / "decisions.yaml", d / "decisions.yaml")
+        (d / ".hermes").mkdir(exist_ok=True)
+        shutil.copytree(HERMES / "planning", d / ".hermes/planning", dirs_exist_ok=True)
+        if reverse:
+            b = load_json(d / "evidence/planning/evidence-bundle.json")
+            b["structure"]["types"] = list(reversed(b["structure"]["types"]))
+            for t in b["structure"]["types"]:
+                t["methods"] = list(reversed(t.get("methods") or []))
+            b["entry_points"] = list(reversed(b["entry_points"]))
+            write_canonical(d / "evidence/planning/evidence-bundle.json", b)
+            for rel in ("verification/scenarios/corpus.json",):
+                p = d / rel
+                if p.is_file():
+                    c = load_json(p)
+                    c["scenarios"] = list(reversed(c.get("scenarios") or []))
+                    write_canonical(p, c)
+        return d
+
+    def graph_of(d: Path, run_id: str) -> dict:
+        reqs = SR.for_root(d, oracles=L._oracles(d))
+        wl = load_json(d / "evidence/planning/worklist.json")
+        inv = load_json(d / "evidence/entry-point-inventory.json")
+        g = OG.derive_initial_graph(run_id=run_id, worklist=wl, entry_points=inv["entry_points"], oracles=L._oracles(d),
+                                    references=None, provenance={"snapshot_kind": "admission", "scope_note": "preserved specimen replay",
+                                                                  "construction": "qualify-repeatability"},
+                                    requirements=reqs["requirements"])
+        return {"requirements": reqs, "graph": g}
+
+    def replay():
+        a = load_copy("specimen-a", False)
+        b = load_copy("specimen-b", True)
+        ga, gb = graph_of(a, "run-specimen-a"), graph_of(b, "run-specimen-b")
+        from planner.canonical import digest
+        ra, rb = digest(ga["requirements"]["requirements"]), digest(gb["requirements"]["requirements"])
+        pa, pb = PS.graph_projection(ga["graph"]), PS.graph_projection(gb["graph"])
+        q.evidence["specimen_comparison"] = {
+            "specimen": str(specimen), "a": str(a), "b": str(b), "requirements_digest": [ra, rb],
+            "logical_graph_digest": [digest(pa), digest(pb)], "run_bound_revision_digest": [ga["graph"]["digest"], gb["graph"]["digest"]],
+            "equal": ra == rb and pa == pb}
+        reqs = ga["requirements"]["requirements"]
+        q.evidence["specimen_inventory"] = {
+            "note": "logical M3 inventory derived from PRESERVED PetClinic M1 evidence with the golden decisions and catalogs "
+                    "(recorded-evidence replay; no producer re-run)",
+            "requirements": [{k: r.get(k) for k in ("id", "rule", "status", "recipe", "acceptance", "dependencies", "paths", "unknowns")}
+                             for r in reqs],
+            "repository_behaviour": {r["facts"]["fragment"]: {"owed_implementation": r["facts"].get("owed_implementation"),
+                                                               "members": [(m["signature"], m["kind"], m.get("source"),
+                                                                            [t["id"] for t in m.get("translations") or []])
+                                                                           for m in (r["facts"].get("behaviour") or {}).get("members") or []],
+                                                               "not_behaviour_sources": [n["type"] for n in (r["facts"].get("behaviour") or {}).get("not_behaviour_sources") or []],
+                                                               "verification": r["facts"].get("verification")}
+                                     for r in reqs if r["rule"] == "repository-architecture/v1"},
+            "graph": {"nodes": [{k: n.get(k) for k in ("outcome_id", "role", "class", "parents", "requirements", "planned_units", "clusters")}
+                                for n in ga["graph"]["nodes"]],
+                      "unresolved": ga["graph"]["unresolved"], "requirement_ownership": ga["graph"].get("requirement_ownership")},
+            "unknowns": ga["requirements"]["unknowns"]}
+        if ra != rb or pa != pb:
+            return FAIL, "the preserved evidence derived different plans under reordering: requirements %s/%s" % (ra[:12], rb[:12])
+        if ga["graph"]["digest"] == gb["graph"]["digest"]:
+            return FAIL, "the run-bound revisions must differ in their run binding"
+        flush = [m for r in reqs if r["rule"] == "repository-architecture/v1"
+                 for m in (r["facts"].get("behaviour") or {}).get("members") or [] if m.get("translations")]
+        return PASS, ("%d requirements, %d outcomes, %d unresolved, identical across reordered copies with distinct run bindings; "
+                      "%d member(s) carry a persistence translation" % (len(reqs), len(ga["graph"]["nodes"]), len(ga["graph"]["unresolved"]), len(flush)))
+
+    q.case("preserved PetClinic M1 evidence: two reordered copies", "recorded-evidence (preserved, not synthetic)", replay)
+
 
 # ---------------------------------------------------------------------------
 # producer replay
@@ -327,9 +537,141 @@ def producer_cases(q: Q) -> None:
            lambda: run_test("skills/migration/fix-until-green/scripts/prepare-initial-analysis.test.py"))
     q.case("bootstrap recipe twice; wrong transformation that still parses", "producer-replay",
            lambda: run_test("skills/migration/bootstrap-destination/scripts/retire-annotation.test.py"))
-    q.case("MTA / structure / build producers on the preserved pinned PetClinic specimen", "producer-replay",
-           lambda: (NOT_RUN, "no preserved, pinned PetClinic source+M1 evidence specimen exists in this worktree; the MTA, "
-                             "jdk-model and build producers were not executed on independent clean copies"))
+    def run_fns(rel: str, names: list[str]):
+        """Named cases of an existing suite, run through its own module (the
+        real JDK producers they call run here)."""
+        import importlib.util
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        path = HERMES / rel
+        sys.path.insert(0, str(path.parent))
+        spec = importlib.util.spec_from_file_location("q_" + path.stem.replace(".", "_").replace("-", "_"), path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        done = []
+        for n in names:
+            err = io.StringIO()
+            with redirect_stderr(err), redirect_stdout(io.StringIO()):
+                rc = getattr(mod, n)()
+            if rc:
+                return FAIL, "%s.%s: %s" % (path.name, n, err.getvalue().strip()[-300:])
+            done.append(n)
+        return PASS, "%s: %s" % (path.name, ", ".join(done))
+
+    q.case("recursive / declared references: no false isolation", "producer-replay",
+           lambda: run_fns("lib/planner/worklist.test.py", ["_real_generic_leaf_case", "_real_partial_leaf_case", "_leaf_evidence_case"]))
+    def wrong_but_compiles():
+        first = run_test("skills/migration/fix-until-green/scripts/fragment-behaviour.test.py")
+        if first[0] != PASS:
+            return first
+        second = run_fns("lib/planner/worklist.test.py", ["_real_location_null_argument_case", "_static_generated_body_case"])
+        return second[0], "fragment-behaviour.test.py OK; " + second[1]
+
+    q.case("wrong semantic transformation that still compiles (stub delegates V17-3, null Location V17-5, generated body V17-4)",
+           "producer-replay", wrong_but_compiles)
+    q.case("issued briefs carry the applicable repair actions (V17-2 package unit, V17-4 generated body, V17-5 Location)",
+           "producer-replay",
+           lambda: run_fns("skills/migration/fix-until-green/scripts/brief.test.py",
+                           ["_package_unit_production_brief_case", "_planned_generated_body_brief_case",
+                            "_location_obligation_production_brief_case"]))
+    if q.source is not None:
+        q.case("M1 structure producer (JdkModelExtract) on the frozen source: two independent clean copies", "producer-replay",
+               lambda: m1_structure_replay(q, q.source))
+    if q.specimen is None:
+        q.case("MTA / structure / build producers on a preserved pinned PetClinic specimen", "producer-replay",
+               lambda: (NOT_RUN, "no --specimen given; the preserved evidence replay and producer replay did not run"))
+    else:
+        q.case("MTA / structure / build producers on the preserved PetClinic specimen", "producer-replay",
+               lambda: (NOT_RUN, "the preserved specimen (%s) holds M1 EVIDENCE, not a pinned toolchain workspace: the MTA CLI "
+                                 "8.2, jdk-model and Maven build producers were not re-executed on it here (recorded-evidence "
+                                 "replay above only)" % q.specimen))
+
+
+def m1_structure_replay(q: Q, source: Path):
+    """The pinned M1 structure producer (inventory-legacy-surface
+    run-jdk-model-extract.sh: JdkModelExtract on the toolchain JDK, then
+    normalize-structure.py) executed on two independent clean copies of the
+    frozen source, each with its own offline Maven classpath and its own
+    offline `mvn compile` (the build producer's generated sources and
+    target/classes, which the extractor reads); then the source requirements
+    derived from each. Equal structure and equal requirements, or
+    FAIL. A missing JDK/Maven or an offline resolution failure is NOT-RUN."""
+    from planner.canonical import digest
+    from planner.decisions import load_decisions
+    from planner.evidence import derive_entry_points, load_catalogs
+    if not (shutil.which("javac") and shutil.which("mvn")):
+        return NOT_RUN, "javac or mvn is not on PATH"
+    script = HERMES / "skills/analysis/inventory-legacy-surface/scripts/run-jdk-model-extract.sh"
+    outs = {}
+    for label in ("a", "b"):
+        base = q.tmp / ("m1-%s" % label)
+        src, root = base / "frozen", base / "root"
+        shutil.copytree(source, src, ignore=shutil.ignore_patterns("target", ".git"))
+        (root / ".hermes").mkdir(parents=True)
+        shutil.copy(HERMES / "pins.json", root / ".hermes/pins.json")
+        shutil.copytree(HERMES / "planning", root / ".hermes/planning")
+        (root / "evidence/build").mkdir(parents=True)
+        mv = subprocess.run(["mvn", "-o", "-q", "dependency:build-classpath", "-Dmdep.outputFile=%s" % (root / "evidence/build/classpath.txt")],
+                            cwd=str(src), capture_output=True, text=True, timeout=600)
+        if mv.returncode != 0:
+            return NOT_RUN, "offline Maven classpath resolution failed on copy %s: %s" % (label, (mv.stdout + mv.stderr)[-200:])
+        # the M1 build producer's compile: generated sources and target/classes,
+        # which the extractor puts on its classpath (JdkModelExtract)
+        cc = subprocess.run(["mvn", "-o", "-q", "-DskipTests", "compile"], cwd=str(src), capture_output=True, text=True, timeout=900)
+        if cc.returncode != 0:
+            return NOT_RUN, "offline Maven compile of the frozen source failed on copy %s: %s" % (label, (cc.stdout + cc.stderr)[-200:])
+        write_canonical(root / "evidence/producers/freeze.json", {"schema": "rhoai3.producer-receipt/v1", "producer": "freeze",
+                                                                  "status": "ok", "analysis_copy": str(src)})
+        write_canonical(root / "evidence/producers/build.json", {"schema": "rhoai3.producer-receipt/v1", "producer": "build",
+                                                                 "status": "ok", "classpath_available": True})
+        p = subprocess.run(["bash", str(script), "--root", str(root)], capture_output=True, text=True, timeout=900)
+        st = root / "evidence/structure/structure.json"
+        if p.returncode != 0 or not st.is_file():
+            return FAIL, "copy %s: the structure producer failed: %s" % (label, (p.stdout + p.stderr)[-300:])
+        outs[label] = (root, load_json(st))
+    ta = outs["a"][1].get("types") or []
+    tb = outs["b"][1].get("types") or []
+    if digest(ta) != digest(tb):
+        diff = sorted({t["fqn"] for t in ta} ^ {t["fqn"] for t in tb})
+        return FAIL, "the two clean copies produced different structure (%d vs %d types; %s)" % (len(ta), len(tb), diff[:3])
+    catalogs = load_catalogs(HERMES.parent)
+    dec = load_decisions(HERMES.parent)
+    cat = load_json(HERMES / "planning/catalogs/compat-mapping.json")
+    reqs = {}
+    for label, (root, doc) in outs.items():
+        eps = derive_entry_points({"types": doc["types"]}, catalogs)
+        oracles, facts = (None, None)
+        if q.specimen is not None:
+            from planner.worklist import corpus_scenario_facts
+            oracles, facts = corpus_scenario_facts(q.specimen)
+        reqs[label] = SR.derive(types=doc["types"], entry_points=eps, catalog=cat, decisions=dec, oracles=oracles,
+                                structure_complete=True, generator=None, scenario_facts=facts)
+    if digest(reqs["a"]) != digest(reqs["b"]):
+        return FAIL, "equal structure derived different requirements"
+    partial = sum(1 for t in ta if str(t.get("resolution") or "full") != "full")
+    vs_preserved = ""
+    if q.specimen is not None:
+        # the same derivation over the PRESERVED run's M1 evidence: equal
+        # requirements mean the re-run producer reproduces the recorded plan
+        pb = load_json(q.specimen / "evidence/planning/evidence-bundle.json")
+        from planner.worklist import corpus_scenario_facts
+        oracles, facts = corpus_scenario_facts(q.specimen)
+        pres = SR.derive(types=pb["structure"]["types"], entry_points=pb["entry_points"], catalog=cat, decisions=dec, oracles=oracles,
+                         structure_complete=True, generator=None, scenario_facts=facts)
+        ids_f = {(r["id"], r["status"]) for r in reqs["a"]["requirements"]}
+        ids_p = {(r["id"], r["status"]) for r in pres["requirements"]}
+        vs_preserved = ("; vs the preserved run's M1 evidence: requirements %s (%d only fresh, %d only preserved)"
+                        % ("IDENTICAL" if digest(pres) == digest(reqs["a"]) else "differ", len(ids_f - ids_p), len(ids_p - ids_f)))
+        q.evidence.setdefault("m1_structure_replay", {})["vs_preserved"] = {
+            "identical": digest(pres) == digest(reqs["a"]), "only_fresh": sorted("%s %s" % x for x in ids_f - ids_p)[:40],
+            "only_preserved": sorted("%s %s" % x for x in ids_p - ids_f)[:40]}
+    q.evidence.setdefault("m1_structure_replay", {}).update({
+        "types": len(ta), "partial_types": partial, "structure_digest": digest(ta), "requirements_digest": digest(reqs["a"]),
+        "requirements": sorted("%s %s" % (r["rule"], r["status"]) for r in reqs["a"]["requirements"])})
+    rows = sum(1 for r in reqs["a"]["requirements"] if r["rule"] == "repository-architecture/v1")
+    return PASS, ("JdkModelExtract + normalize-structure on two clean copies (own offline classpath and compile): %d types (%d partial) "
+                  "identical; %d requirements (%d repository) identical%s" % (len(ta), partial, len(reqs["a"]["requirements"]), rows,
+                                                                            vs_preserved))
 
 
 def tools() -> dict:
@@ -349,19 +691,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--keep", default="")
     ap.add_argument("--no-producers", action="store_true", help="recorded-evidence level only")
+    ap.add_argument("--specimen", default="", help="a PRESERVED M1 evidence tree (evidence/, verification/) to replay")
+    ap.add_argument("--source", default="", help="a FROZEN source tree to run the M1 structure producer on (two clean copies)")
     a = ap.parse_args(argv)
     tmp = Path(a.keep) if a.keep else Path(tempfile.mkdtemp(prefix="qualify-repeatability-"))
     tmp.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    q = Q(tmp)
+    q = Q(tmp, Path(a.specimen) if a.specimen else None, Path(a.source) if a.source else None)
     try:
         run_cases(q)
+        if q.specimen is not None:
+            specimen_cases(q, q.specimen)
         if not a.no_producers:
             producer_cases(q)
     finally:
         if not a.keep:
             shutil.rmtree(tmp, ignore_errors=True)
     report = {"schema": "rhoai3.repeatability-qualification/v1", "synthetic_evidence": True,
+              "preserved_evidence": str(q.specimen) if q.specimen is not None else "",
               "claim_boundary": "planning determinism for fixed evidence and the producers listed; not live source behaviour, "
                                 "not a successful migration, not native outcome execution readiness",
               "tools": tools(), "seconds": round(time.time() - t0, 1), "cases": q.cases, **q.evidence}

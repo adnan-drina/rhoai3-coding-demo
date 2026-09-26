@@ -2,9 +2,11 @@
 
 ## Repeatable initial M3 plan (plan semantics v1) — 2026-09-26
 
-Plan: `tmp/m2-repeatability-20260926/IMPLEMENTATION-PLAN.md`. Opt-in per run
-through `decisions.yaml` `loop.plan_semantics: v1`; absent keeps every
-identity and plan unchanged. See Stage 080 SOLUTION-ARCHITECTURE §7.1.
+Plan: `tmp/m2-repeatability-20260926/IMPLEMENTATION-PLAN.md`. Selected by the
+golden `decisions.yaml` (`loop.plan_semantics: v1`) for NEW runs; a run keeps
+the value its destination was created with (admission refuses a later flip,
+`PLAN_SEMANTICS_REPINNED`), so earlier runs stay off. See Stage 080
+SOLUTION-ARCHITECTURE §7.1.
 
 - [x] Stable producer identity (pinned-locale diagnostics, structured
   arguments, per-site occurrence), controlled initial analysis
@@ -15,14 +17,33 @@ identity and plan unchanged. See Stage 080 SOLUTION-ARCHITECTURE §7.1.
   (PetClinic-shaped, renamed twin, non-HTTP) and producer replay of the JDK
   diagnostics, initial-analysis boundary and decided-repairs producers
   (`skills/planning/build-worklist/scripts/qualify-repeatability.py`).
-- [ ] Producer replay of MTA, JDK model and build producers on a preserved,
-  pinned PetClinic source + M1 evidence specimen (none exists in the tree).
-- [ ] The measurement path records no `requirement_checks`, so an outcome
-  owning requirements cannot be accepted on the outcome board (fail closed).
-  Requirement-only outcomes need a planned-unit write grant from the protected
-  authority (F1). Both are activation dependencies, not planning gaps.
-- [ ] A migration run has not yet decided `plan_semantics: v1`; the next golden
-  must be published and a run created through the normal release process.
+- [x] 2026-09-26 (workstream A): the JDK-model structure producer re-run on
+  two clean copies of the frozen PetClinic source (offline classpath and
+  compile) gives identical structure and requirements identical to the
+  preserved run's M1 evidence; the preserved evidence replays to the same
+  requirements and logical graph under reordering (`qualify-repeatability.py
+  --specimen --source`; artifacts under `tmp/next-golden-20260926/ws-a/`).
+- [ ] Producer replay of the MTA CLI and the Maven build/test producers on
+  that specimen (not run).
+- [x] The outcome board's acceptance recomputes an owner's requirement checks
+  on the committed tree (`planner/requirement_checks.py`).
+- [ ] Requirement checks with no producer yet stay unknown, so their owners
+  cannot be accepted (fail closed): `unit:handler-validation-guards`,
+  `unit:handler-parameter-sites`, `adapter:*`, `parity:*-mode:*`,
+  `config:decided-keys`, `build:clean-generation`,
+  `parity:request-body-positive-negative`. Requirement-only outcomes still need
+  a bounded planned-unit write grant from the authority (workstream B / F1).
+- [x] The golden selects `plan_semantics: v1` for new runs (run-pinned); the
+  next golden must still be published and a run created through the normal
+  release process.
+- [ ] V17 follow-ups: a separator glued on BOTH sides of an allowed path
+  (`ls /projects/modernized;echo ok`) is still refused by K2 (fail-closed;
+  the hook is owned by the integration branch); the serial loop records a
+  fragment unit's functional debt and charges a runtime failure to its owner,
+  but nothing yet re-opens the owner automatically (Operator prerequisite);
+  the V17-4 source generator is qualified only at openapi-generator 5.2.1 /
+  7.25.0; runtime (Quarkus) proof of the null-Location and body cases was not
+  run.
 
 ## Native outcome board (Stage 080, new runs only) — 2026-09-26
 

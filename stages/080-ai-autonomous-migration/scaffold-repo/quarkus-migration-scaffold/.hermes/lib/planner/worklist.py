@@ -2832,6 +2832,367 @@ def generated_body_text(gb: dict[str, Any], item_id: str) -> str:
         head, ", ".join(gb.get("required") or []) or "no property")
 
 
+# --- V17-4: the generated-body obligation, decided STATICALLY ---------------
+#
+# v17: the V16-8 rule existed and never fired, because its trigger was a
+# create scenario FAILING, and every parity run was INCONCLUSIVE behind
+# another card. Everything the condition needs is on disk at M2: the
+# destination plugin (generator, library, version, effective
+# generateJsonCreator), the SOURCE build's generator (the frozen legacy pom),
+# the spec's `required` list of each request-body model, and the corpus's
+# recorded source bodies. Nothing here waits for a destination failure, and
+# nothing is universal: the pair of generators must be qualified by the
+# recipe (compat-mapping migration_recipes generated-body-binding.qualified).
+
+PLAN_GATE = "plan"
+
+
+def pom_properties(pom: Path) -> dict[str, str]:
+    """<project><properties> of one pom, structurally (expat). {} when unreadable."""
+    import xml.parsers.expat
+
+    if not Path(pom).is_file():
+        return {}
+    parser = xml.parsers.expat.ParserCreate()
+    stack: list[str] = []
+    text: list[str] = []
+    out: dict[str, str] = {}
+
+    def start(name: str, _a: dict) -> None:
+        stack.append(name)
+        text.clear()
+
+    def end(name: str) -> None:
+        if len(stack) == 3 and stack[:2] == ["project", "properties"]:
+            out[name] = "".join(text).strip()
+        stack.pop()
+        text.clear()
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = lambda data: text.append(data)
+    try:
+        parser.Parse(Path(pom).read_bytes(), True)
+    except xml.parsers.expat.ExpatError:
+        return {}
+    return out
+
+
+def resolved_plugin_version(plugin: dict[str, Any], pom: Path) -> str:
+    """The plugin's version with one level of ${property} resolved from the
+    same pom; '' when it names a property the pom does not define."""
+    v = str((plugin or {}).get("version") or "").strip()
+    if v.startswith("${") and v.endswith("}"):
+        return pom_properties(pom).get(v[2:-1], "")
+    return v
+
+
+def source_generator_config(root: Path | None) -> dict[str, Any]:
+    """The SOURCE build's generator, from the frozen legacy pom
+    (.derived/frozen-input/pom.xml, M1's freeze): {known, plugin, version,
+    build_file}. known=False when the frozen pom is not in this tree -- the
+    source's binding is then unknown, never assumed."""
+    if root is None:
+        return {"known": False, "reason": "no destination root"}
+    base = Path(root) / FROZEN_INPUT
+    pom = base / "pom.xml"
+    if not pom.is_file():
+        return {"known": False, "reason": "the frozen source build (%s) is not in this tree" % (FROZEN_INPUT / "pom.xml").as_posix()}
+    plugin = generator_plugin_config(base)
+    return {"known": True, "plugin": plugin, "version": resolved_plugin_version(plugin, pom) if plugin else "",
+            "build_file": (FROZEN_INPUT / "pom.xml").as_posix()}
+
+
+def _generated_body_recipe(root: Path | None) -> dict[str, Any]:
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    try:
+        doc = load_json(p) if p.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+    for rid, r in ((doc or {}).get("migration_recipes") or {}).items():
+        if isinstance(r, dict) and r.get("rule") == "generator-configuration":
+            return dict(r, id=rid)
+    return {}
+
+
+def generator_qualification(root: Path | None, dest: dict[str, Any] | None = None,
+                            source: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Is THIS pair of generators one whose request-body semantics differ in a
+    documented, qualified way? {status, reasons, dest, source, option}:
+
+      not-applicable  no destination generator, a destination generator that
+                      does not bind through a required-args @JsonCreator, or
+                      a pom that already stops it (the option at its stopping
+                      value)
+      applicable      the destination binds through the creator and the source
+                      binds through setters, both at generator, library and
+                      version the recipe qualifies
+      unresolved      anything else: an unqualified generator, library or
+                      version, or a source build this tree does not hold"""
+    dest = generator_plugin_config(root) if dest is None else dest
+    out: dict[str, Any] = {"status": "not-applicable", "reasons": [], "dest": {}, "source": {}, "option": {}}
+    if not dest:
+        out["reasons"].append("the destination build declares no %s" % OPENAPI_GENERATOR_ARTIFACT)
+        return out
+    cfg = dest.get("configuration") or {}
+    dgen, dlib = str(cfg.get("generatorName") or ""), str(cfg.get("library") or "")
+    dver = resolved_plugin_version(dest, Path(root) / "pom.xml") if root is not None else str(dest.get("version") or "")
+    out["dest"] = {"generator": dgen, "library": dlib, "version": dver}
+    catalog = _build_plugins_catalog(root)
+    row = catalog.get("%s:%s" % (dest.get("groupId") or "org.openapitools", dest.get("artifactId"))) or \
+        catalog.get("org.openapitools:" + OPENAPI_GENERATOR_ARTIFACT) or {}
+    gens = row.get("generators") or {}
+    grow = gens.get(dgen) or {}
+    opt = grow.get("required_args_constructor") or {}
+    binding = str((grow.get("binding") or {}).get("kind") or "")
+    if not grow:
+        out["status"] = "unresolved"
+        out["reasons"].append("the destination generator %r has no build_plugins row: its body binding is unknown" % dgen)
+        return out
+    if binding != "creator" or not opt:
+        out["reasons"].append("the destination generator %r does not bind through a required-args @JsonCreator" % dgen)
+        return out
+    state = str((dest.get("configOptions") or {}).get(str(opt.get("option") or "")) or "").strip().lower()
+    stopped = state == str(opt.get("value_that_stops_it") or "").lower() and bool(state)
+    out["option"] = {"name": str(opt.get("option") or ""), "set_to": state, "default": str(opt.get("default") or ""),
+                     "stopped": stopped}
+    if stopped:
+        out["reasons"].append("pom.xml already sets %s=%s: the generated models bind through their setters"
+                              % (opt.get("option"), state))
+        return out
+    src = source_generator_config(root) if source is None else source
+    sp = src.get("plugin") or {}
+    scfg = sp.get("configuration") or {}
+    sgen, slib, sver = str(scfg.get("generatorName") or ""), str(scfg.get("library") or ""), str(src.get("version") or "")
+    out["source"] = {"known": bool(src.get("known")), "generator": sgen, "library": slib, "version": sver,
+                     "build_file": str(src.get("build_file") or "")}
+    q = ((_generated_body_recipe(root).get("qualified") or {}).get(dgen)) or {}
+    reasons = []
+    if not src.get("known"):
+        reasons.append(str(src.get("reason") or "the source build is unknown"))
+    elif not sp:
+        reasons.append("the frozen source build declares no %s: the source's request bodies were not generated models"
+                       % OPENAPI_GENERATOR_ARTIFACT)
+    if not q:
+        reasons.append("no recipe qualifies the destination generator %r" % dgen)
+    else:
+        if dver not in (q.get("plugin_versions") or []):
+            reasons.append("destination plugin version %r is not qualified (%s)" % (dver, ", ".join(q.get("plugin_versions") or [])))
+        if q.get("libraries") and dlib not in q["libraries"]:
+            reasons.append("destination library %r is not qualified (%s)" % (dlib, ", ".join(q["libraries"])))
+        if sp:
+            if sgen != str(q.get("source_generator") or ""):
+                reasons.append("source generator %r is not the qualified %r" % (sgen, q.get("source_generator")))
+            elif str(((gens.get(sgen) or {}).get("binding") or {}).get("kind") or "") != "setters":
+                reasons.append("the catalog does not document the source generator %r as binding through setters" % sgen)
+            if q.get("source_libraries") and slib not in q["source_libraries"]:
+                reasons.append("source library %r is not qualified (%s)" % (slib, ", ".join(q["source_libraries"])))
+            if q.get("source_plugin_versions") and sver not in q["source_plugin_versions"]:
+                reasons.append("source plugin version %r is not qualified (%s)" % (sver, ", ".join(q["source_plugin_versions"])))
+    if reasons:
+        out["status"] = "unresolved"
+        out["reasons"].extend(reasons)
+        return out
+    out["status"] = "applicable"
+    out["reasons"].append("%s/%s %s binds a request body through its required-args @JsonCreator; the source's %s/%s %s bound it "
+                          "through setters" % (dgen, dlib, dver, sgen, slib, sver))
+    return out
+
+
+def _body_type_of(bundle: dict[str, Any], ep_id: str) -> str:
+    """The @RequestBody parameter type of the handler behind one entry point,
+    from M1's structural model; '' when there is none or it is ambiguous."""
+    st = (bundle or {}).get("structure") or {}
+    types = {str(t.get("fqn") or ""): t for t in st.get("types") or [] if isinstance(t, dict)}
+    ep = next((e for e in (bundle or {}).get("entry_points") or [] if isinstance(e, dict) and str(e.get("id") or "") == ep_id), None)
+    if ep is None:
+        return ""
+    t = types.get(str(ep.get("type") or ""))
+    ms = [m for m in (t or {}).get("methods") or [] if isinstance(m, dict) and str(m.get("signature") or "") == str(ep.get("member") or "")]
+    if len(ms) != 1:
+        return ""
+    body = [str(p.get("type") or "") for p in ms[0].get("params") or [] if isinstance(p, dict)
+            and _REQUEST_BODY_ANN in [str(a.get("fqn") or "") for a in p.get("annotations") or [] if isinstance(a, dict)]]
+    return body[0] if len(body) == 1 else ""
+
+
+def _corpus_rows(root: Path | None) -> list[dict[str, Any]]:
+    out = []
+    for doc in _iter_corpus_docs(root) if root is not None else []:
+        out.extend(sc for sc in doc.get("scenarios") or [] if isinstance(sc, dict))
+    return out
+
+
+def _corpus_body(root: Path, sc: dict[str, Any]) -> dict[str, Any] | None:
+    bf = str(sc.get("body_file") or "")
+    if not bf:
+        return None
+    bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
+    try:
+        body = json.loads(bp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _accepted(sc: dict[str, Any]) -> bool | None:
+    """True for a capture the source ACCEPTED (its expected statuses all 2xx),
+    False for one it refused (all 4xx), None when the corpus does not say."""
+    exp = [int(x) for x in ((sc.get("qualify") or {}).get("expect_status") or []) if str(x).isdigit()]
+    if exp and all(200 <= s < 300 for s in exp):
+        return True
+    if exp and all(400 <= s < 500 for s in exp):
+        return False
+    return None
+
+
+BODY_CASES = ("omitted", "null", "empty", "invalid")
+
+
+def request_body_cases(root: Path | None, bundle: dict[str, Any], plugin: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per request-body model and REQUIRED property (the spec's `required`,
+    which is what the destination's @JsonCreator enforces), the four cases a
+    source may distinguish, each bound to the corpus captures that send it:
+
+      omitted  the key is absent
+      null     the key carries null
+      empty    an empty string, array or object
+      invalid  a capture the source REFUSED (4xx) that differs from every
+               accepted capture of the same model in this property ALONE
+
+    A case no capture sends is UNRESOLVED: the source's answer is unknown and
+    is never invented. `omitted_by_accepted` names the accepted captures that
+    omit the property -- the V16-8 condition, decided from disk."""
+    out: list[dict[str, Any]] = []
+    if root is None or not plugin:
+        return out
+    rows = _corpus_rows(root)
+    by_ep: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for sc in rows:
+        by_ep[str(sc.get("entry_point") or "")].append(sc)
+    models: dict[str, list[str]] = defaultdict(list)
+    for e in sorted((bundle or {}).get("entry_points") or [], key=lambda e: str(e.get("id") or "")):
+        if not isinstance(e, dict) or str(e.get("kind") or "") != "http":
+            continue
+        bt = _body_type_of(bundle, str(e.get("id") or ""))
+        if bt:
+            models[bt].append(str(e["id"]))
+    for model in sorted(models):
+        spec = spec_required_properties(root, plugin, model)
+        req = spec.get("required")
+        if req is None:
+            out.append({"model": model, "property": "*", "case": "*", "status": "unresolved", "scenarios": [],
+                        "entry_points": sorted(models[model]), "reason": str(spec.get("reason") or "the spec could not be read")})
+            continue
+        bodies = [(sc, _corpus_body(root, sc)) for ep in models[model] for sc in by_ep.get(ep, [])]
+        bodies = [(sc, b) for sc, b in bodies if b is not None]
+        accepted = [b for sc, b in bodies if _accepted(sc) is True]
+
+        def varied(b: dict[str, Any]) -> list[str]:
+            # the properties a refused capture changes against EVERY accepted one
+            return sorted(k for k in b if not any(k in a and a[k] == b[k] for a in accepted))
+
+        for prop in req:
+            seen: dict[str, list[str]] = {c: [] for c in BODY_CASES}
+            omitted_ok: list[str] = []
+            for sc, b in bodies:
+                sid = str(sc.get("id") or "")
+                if prop not in b:
+                    seen["omitted"].append(sid)
+                    if _accepted(sc) is True:
+                        omitted_ok.append(sid)
+                elif b[prop] is None:
+                    seen["null"].append(sid)
+                elif b[prop] in ("", [], {}):
+                    seen["empty"].append(sid)
+                elif _accepted(sc) is False and accepted and varied(b) == [prop]:
+                    # a refused capture that differs from the accepted ones in
+                    # THIS property alone is the source's invalid case for it
+                    seen["invalid"].append(sid)
+            for case in BODY_CASES:
+                sids = sorted(set(seen[case]))
+                out.append({"model": model, "property": prop, "case": case, "scenarios": sids,
+                            "entry_points": sorted(models[model]), "status": "covered" if sids else "unresolved",
+                            **({"omitted_by_accepted": sorted(set(omitted_ok))} if case == "omitted" and omitted_ok else {}),
+                            **({} if sids else {"reason": "no capture sends %s.%s %s: the source's answer is unknown, never "
+                                                          "invented" % (model.rsplit(".", 1)[-1], prop, case)})})
+    return out
+
+
+def static_generated_body_facts(root: Path | None, bundle: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Everything V17-4 decides at M2, from disk: the qualification of the
+    generator pair and the body cases. Pure reads; never raises for a missing
+    input (it is recorded as unresolved)."""
+    if root is None:
+        return {"qualification": {"status": "unresolved", "reasons": ["no destination root"]}, "cases": []}
+    if bundle is None:
+        try:
+            bundle = load_json(Path(root) / EVIDENCE_BUNDLE)
+        except (OSError, ValueError):
+            bundle = {}
+    plugin = generator_plugin_config(root)
+    qual = generator_qualification(root, plugin)
+    cases = request_body_cases(root, bundle or {}, plugin) if qual["status"] != "not-applicable" else []
+    return {"qualification": qual, "cases": cases}
+
+
+def static_generated_body_items(root: Path, bundle: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The V16-8 PARITY_GENERATED_BODY obligation on pom.xml, planned from
+    the static condition (plan semantics v1): a qualified creator/setter pair,
+    the option not stopped, and a required property an ACCEPTED source capture
+    omits. One item per generator (the edit is one option in one pom), gate
+    `plan`: it is discharged when the condition, re-evaluated on the
+    candidate, no longer holds -- never by a scenario that did not run. The
+    second value names what could not be decided (never an item)."""
+    facts = static_generated_body_facts(root, bundle)
+    qual = facts["qualification"]
+    notes: list[str] = []
+    if qual["status"] == "unresolved":
+        notes.append("generated-body binding UNRESOLVED: %s" % "; ".join(qual["reasons"]))
+        return [], notes
+    if qual["status"] != "applicable":
+        return [], notes
+    omitted = [c for c in facts["cases"] if c.get("omitted_by_accepted")]
+    if not omitted:
+        return [], notes
+    plugin = generator_plugin_config(root)
+    first = omitted[0]
+    gb = generated_body_binding(root, first["model"], first["omitted_by_accepted"][0])
+    if not gb:
+        # the model's generated file is not on disk: the spec's `required` and the
+        # recorded body still decide the condition, stated from the plugin row
+        catalog = _build_plugins_catalog(root)
+        row = (catalog.get("org.openapitools:" + OPENAPI_GENERATOR_ARTIFACT) or {})
+        gen = str((plugin.get("configuration") or {}).get("generatorName") or "")
+        grow = (row.get("generators") or {}).get(gen) or {}
+        body = corpus_body_keys(root, first["omitted_by_accepted"][0])
+        gb = {"type": first["model"], "generated_path": "(not generated yet)", "plugin": plugin, "creator_seen": False,
+              "required_from": "the spec's `required` list", "body_file": str(body.get("file") or ""),
+              "body_keys": body.get("keys"),
+              "catalog_row": dict(grow, generator=gen, plugin_docs=str(row.get("docs") or ""),
+                                  option_location=str(row.get("option_location") or "")) if grow else {}}
+    gb = dict(gb, missing_required=sorted({c["property"] for c in omitted if c["model"] == first["model"]}))
+    models = sorted({c["model"] for c in omitted})
+    key = "%s|%s|%s" % (plugin.get("artifactId"), (plugin.get("configuration") or {}).get("generatorName"), ",".join(models))
+    iid = "plan:gb:%s" % sha256_bytes(key.encode("utf-8"))[:12]
+    detail = generated_body_text(gb, iid)
+    return [{"id": iid, "source": "plan", "kind": "build", "category": "mandatory", "gate": PLAN_GATE,
+             "rule_id": RULE_PARITY_GENERATED_BODY, "cause": GENERATED_BODY_CAUSE, "path": "pom.xml",
+             "line": int(plugin.get("configuration_line") or plugin.get("line") or 0),
+             "message": "a request body the source accepted is refused by the generated @JsonCreator (%s)"
+                        % ", ".join("%s.%s" % (c["model"].rsplit(".", 1)[-1], c["property"]) for c in omitted[:4]),
+             "detail": detail, "message_sha256": sha256_bytes(detail.encode("utf-8")),
+             "planned": {"trigger": "static (plan semantics v1)", "qualification": qual,
+                         "omitted_by_accepted": [{"model": c["model"], "property": c["property"],
+                                                  "scenarios": c["omitted_by_accepted"]} for c in omitted],
+                         "models": models},
+             "advice": {"generated_body": {k: gb.get(k) for k in ("type", "generated_path", "missing_required", "required_from",
+                                                                   "body_file", "body_keys")},
+                        "first_action": detail}}], notes
+
+
 VERDICT_REQUEST_BODY = "request body"
 VERDICT_SUPPORTED_ANNOTATION = "supported annotation"
 VERDICT_SUPPORTED_TYPE = "supported type"
@@ -4628,6 +4989,8 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
                 out.append(dict({"from": used, "to": "", "handler_parameter": True, "action": str(urow.get("action") or ""),
                                  "sites": (handler_sites or {})[used],
                                  **({"translation": dict(urow["translation"])} if isinstance(urow.get("translation"), dict) else {}),
+                                 **({"location_translation": dict(urow["location_translation"])}
+                                    if isinstance(urow.get("location_translation"), dict) else {}),
                                  "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
                                                  "key": used, "kind": str(urow.get("kind") or ""),
                                                  "source": str(urow.get("source") or "")}}, **via))
@@ -4642,6 +5005,8 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
         if sites and hrow is not None:
             out.append({"from": fqn, "to": "", "handler_parameter": True, "action": str(hrow.get("action") or ""),
                         "sites": sites, **({"translation": dict(hrow["translation"])} if isinstance(hrow.get("translation"), dict) else {}),
+                        **({"location_translation": dict(hrow["location_translation"])}
+                           if isinstance(hrow.get("location_translation"), dict) else {}),
                         "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
                                         "key": fqn, "kind": str(hrow.get("kind") or ""), "source": str(hrow.get("source") or "")}})
         own = (owned or {}).get(fqn)
@@ -5426,7 +5791,7 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
         # authorize a path the model cannot yet have a type for. It is in the
         # write set from the start, because the file seal is what acceptance
         # enforces and a repair that may not write its own adapter is no repair.
-        owed = unit_implementation_obligations(parents)
+        owed = fragment_behaviour_rows(root, unit_implementation_obligations(parents))
         for row in owed:
             files.append(row["path"])
             evidence.append({"kind": "catalog", "ref": "%s: %s implements %s at %s (%s)"
@@ -5611,6 +5976,133 @@ def _implements(typ: dict[str, Any], parent: str) -> bool:
     return bool(parent) and parent in [_erased(s) for s in (typ.get("supertypes") or [])]
 
 
+# V17-3 (v17 t_eca28a3c): the seven fragment delegates compiled, packaged and
+# carried the owed CDI exposure, and every body was a stub -- query members
+# threw UnsupportedOperationException, save/delete did nothing. Compilation and
+# the package gate cannot see a body's SHAPE; the dest model can
+# (DestModel.bodyShape, from the attributed tree).
+STUB_SHAPES = {
+    "throw": "its whole body is one throw",
+    "empty": "its body is empty (a no-op)",
+    "placeholder-return": "it only returns a placeholder (null, a literal, an empty collection or Optional)",
+}
+
+
+def owed_member_body(typ: dict[str, Any], sig: str) -> tuple[str, str]:
+    """(verdict, detail) for the body of owed member `sig` of `typ`: 'ok',
+    'stub' or 'inconclusive'. A body that only delegates to another method of
+    the SAME type is judged by that method (a private helper cannot hide a
+    stub; a delegation to a real implementation -- another owed member
+    included -- is fine); a delegation cycle is a stub (it never returns a
+    computed answer). A body the model did not shape is inconclusive, never
+    a pass."""
+    declared = {str(m.get("signature") or ""): m for m in (typ.get("declared") or []) if isinstance(m, dict)}
+    chain: list[str] = []
+    cur = sig
+    while True:
+        m = declared.get(cur)
+        if m is None:
+            if chain:
+                return "ok", "%s delegates to %s, which this type inherits" % (sig, cur)
+            return "inconclusive", "the model declares no %s" % cur
+        shape = m.get("body_shape")
+        if not isinstance(shape, dict):
+            return "inconclusive", "the model recorded no body shape for %s" % cur
+        kind = str(shape.get("kind") or "")
+        if kind in STUB_SHAPES:
+            via = (" (through %s)" % " -> ".join(chain + [cur])) if chain else ""
+            what = STUB_SHAPES[kind] + ((" of %s" % shape.get("exception")) if kind == "throw" and shape.get("exception") else "")
+            return "stub", "%s%s: %s" % (sig, via, what)
+        if kind == "delegate":
+            nxt = str(shape.get("delegate") or "")
+            chain.append(cur)
+            if nxt in chain or nxt == sig:
+                return "stub", "%s only delegates in a cycle (%s): it never computes an answer" % (sig, " -> ".join(chain + [nxt]))
+            cur = nxt
+            continue
+        return "ok", "%s has a substantive body%s" % (sig, (" (through %s)" % " -> ".join(chain + [cur])) if chain else "")
+
+
+def fragment_behaviour_rows(root: Path | None, owed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """V17-3: each owed fragment implementation, annotated with the SELECTED
+    source behaviour of every member (source_requirements.repository_behaviour:
+    decided build profiles; override fragment, @Query, CRUD default, derived
+    query; never an inactive-profile implementation) and the functional
+    verification that proves it (repository_verification: reads, and writes
+    by a committed read-back; a member no captured scenario reaches stays
+    unresolved). Sealed with the unit, so the brief renders it and acceptance
+    judges against it. Missing evidence is an unknown on the row, never an
+    empty behaviour."""
+    from planner.source_requirements import repository_behaviour, repository_verification
+    if not owed:
+        return owed
+    bundle = None
+    decisions: dict[str, Any] | None = None
+    catalog: dict[str, Any] = {}
+    if root is not None:
+        try:
+            bundle = load_json(Path(root) / EVIDENCE_BUNDLE)
+        except (OSError, ValueError):
+            bundle = None
+        try:
+            from planner.decisions import load_decisions
+            decisions = load_decisions(Path(root))
+        except (OSError, ValueError):
+            decisions = None
+        try:
+            catalog = load_json(Path(root) / CATALOGS_DIR / "compat-mapping.json")
+        except (OSError, ValueError):
+            catalog = {}
+    types = ((bundle or {}).get("structure") or {}).get("types") if isinstance(bundle, dict) else None
+    oracles, facts = corpus_scenario_facts(root)
+    out = []
+    for row in owed:
+        row = dict(row)
+        if row.get("contract") != FRAGMENT_IMPL_CONTRACT:
+            out.append(row)
+            continue
+        if not isinstance(types, list) or decisions is None:
+            row["behaviour"] = {"parent": row.get("parent"), "repository": "", "members": [], "not_behaviour_sources": [],
+                                "unknowns": ["the frozen structural model or decisions.yaml is unreadable: the selected source "
+                                             "behaviour of %s is unknown" % row.get("parent")]}
+            row["verification"] = []
+            out.append(row)
+            continue
+        # every member of the parent, not only the ones the platform cannot
+        # derive: the <Parent>Impl implements the whole interface, and the
+        # generated repository delegates to it for each of them (v17: the
+        # derivable findById / findByLastName threw from the delegate too)
+        src_parent = next((t for t in types if isinstance(t, dict) and str(t.get("fqn") or "") == str(row.get("parent") or "")), {})
+        every = sort_unique([str(s) for s in row.get("members") or []]
+                            + [str(m.get("signature") or "") for m in (src_parent.get("methods") or []) if isinstance(m, dict)])
+        beh = repository_behaviour(types, parent=str(row.get("parent") or ""), members=every,
+                                   decisions=decisions, catalog=catalog)
+        row["behaviour"] = beh
+        row["verification"] = repository_verification(beh, entry_points=list((bundle or {}).get("entry_points") or []),
+                                                      types=types, oracles=oracles, scenarios=facts)
+        out.append(row)
+    return out
+
+
+def corpus_scenario_facts(root: Path | None) -> tuple[dict[str, list[str]] | None, dict[str, dict[str, Any]] | None]:
+    """(entry point -> scenario ids, scenario id -> {method, path, effects})
+    from the captured corpus; (None, None) when there is none."""
+    if root is None:
+        return None, None
+    oracles: dict[str, list[str]] = {}
+    facts: dict[str, dict[str, Any]] = {}
+    seen = False
+    for doc in _iter_corpus_docs(Path(root)):
+        seen = True
+        for sc in doc.get("scenarios") or []:
+            if isinstance(sc, dict) and sc.get("id"):
+                facts[str(sc["id"])] = {"method": str(sc.get("method") or ""), "path": str(sc.get("path") or ""),
+                                        "effects": [dict(e) for e in (sc.get("effects") or []) if isinstance(e, dict)]}
+                if sc.get("entry_point"):
+                    oracles.setdefault(str(sc["entry_point"]), []).append(str(sc["id"]))
+    return (oracles, facts) if seen else (None, None)
+
+
 def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, Any] | None,
                             by_path: dict[str, list[dict[str, Any]]], rule: str) -> list[dict[str, Any]]:
     """The recorded implementation obligations, verified from the model AFTER
@@ -5652,6 +6144,31 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
             out.append(dict(base, verdict="violates",
                             detail="%s implements %s but declares no body for %s; an abstract answer answers nothing"
                                    % (typ.get("fqn"), parent, ", ".join(missing[:3]))))
+            continue
+        # V17-3: a body is not an implementation because it compiles
+        # every member the delegate declares that the parent owes or the
+        # sealed behaviour covers: the generated repository calls them all
+        mine = {str(m.get("signature") or "") for m in (typ.get("declared") or []) if isinstance(m, dict)}
+        judged = sort_unique([str(s) for s in row.get("members") or []]
+                             + [str(b.get("signature") or "") for b in ((row.get("behaviour") or {}).get("members") or [])
+                                if isinstance(b, dict) and str(b.get("signature") or "") in mine])
+        bodies = [(s, owed_member_body(typ, str(s))) for s in judged]
+        stubs = [d for _s, (v, d) in bodies if v == "stub"]
+        if stubs:
+            beh = {str(b.get("signature") or ""): b for b in ((row.get("behaviour") or {}).get("members") or [])
+                   if isinstance(b, dict)}
+            owed_src = ["%s <- %s" % (s, beh[s].get("source") or beh[s].get("kind")) for s, (v, _d) in bodies
+                        if v == "stub" and s in beh]
+            out.append(dict(base, verdict="violates",
+                            detail="%s implements %s with STUB bodies, which answer nothing the source answered: %s. Each "
+                                   "owed member must carry its SELECTED source behaviour%s (spring-data-fragment-impl/v1, "
+                                   "V17-3)" % (typ.get("fqn"), parent, "; ".join(stubs[:4]),
+                                               (": " + "; ".join(owed_src[:4])) if owed_src else "")))
+            continue
+        unshaped = [d for _s, (v, d) in bodies if v == "inconclusive"]
+        if unshaped:
+            out.append(dict(base, verdict="inconclusive",
+                            detail="the bodies of %s cannot be judged: %s" % (typ.get("fqn"), "; ".join(unshaped[:3]))))
             continue
         if isinstance(row.get("cdi"), dict):
             verdict, detail = fragment_cdi_exposure(typ, row["cdi"])
@@ -5909,6 +6426,121 @@ def _negated(g: str) -> str:
         return g[1:]
     return ("!" + g) if g.startswith("(") or " " not in g else "!(%s)" % g
 
+LOCATION_DECISION = "location_arguments"
+
+
+def location_substitutions(root: Path | None) -> set[tuple[str, str, int, str]]:
+    """decisions.yaml `location_arguments.substitutions` (V17-5): each
+    {handler: "<type fqn>#<member>", argument: <index>, expression: "<the
+    candidate's base expression>", adr: <an ACCEPTED ADR>} authorizes the
+    candidate to expand a different value than the source did at that
+    argument (typically the saved entity's id for the request DTO's). A row
+    without an accepted ADR authorizes nothing; absent means none."""
+    if root is None:
+        return set()
+    try:
+        from planner.decisions import accepted_adrs, load_decisions
+
+        doc = load_decisions(Path(root))
+    except (OSError, ValueError):
+        return set()
+    block = doc.get(LOCATION_DECISION) if isinstance(doc, dict) else None
+    rows = (block or {}).get("substitutions") if isinstance(block, dict) else None
+    ok = accepted_adrs(doc)
+    out: set[tuple[str, str, int, str]] = set()
+    for r in rows or []:
+        if not isinstance(r, dict) or str(r.get("adr") or "") not in ok:
+            continue
+        handler = str(r.get("handler") or "")
+        if "#" not in handler:
+            continue
+        typ, member = handler.split("#", 1)
+        try:
+            idx = int(r.get("argument"))
+        except (TypeError, ValueError):
+            continue
+        out.add((typ, member, idx, " ".join(str(r.get("expression") or "").split())))
+    return out
+
+
+def _same_expansion_base(src: dict[str, Any], dst: dict[str, Any]) -> bool:
+    """Is the candidate's argument the source's own value? The same kind of
+    root (a handler parameter, or a local) of the same declared type with the
+    same accessors after it -- a renamed variable is the same value, another
+    variable (the saved entity where the source expanded the request DTO) is
+    not. A root the model cannot classify compares by its text."""
+    kind = str(src.get("root_kind") or "")
+    if kind in ("parameter", "local"):
+        return (str(dst.get("root_kind") or "") == kind and str(dst.get("root_type") or "") == str(src.get("root_type") or "")
+                and str(dst.get("selectors") or "") == str(src.get("selectors") or ""))
+    return " ".join(str(dst.get("base") or "").split()) == " ".join(str(src.get("base") or "").split())
+
+
+def _location_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], source: dict[str, Any] | None,
+                      source_gap: str, frozen_present: bool,
+                      authorized: set[tuple[str, str, int, str]]) -> dict[str, Any] | None:
+    """V17-5: the Location the source built is the Location the candidate
+    builds. Every argument of the frozen source handler's
+    UriComponentsBuilder.buildAndExpand(...) that is not a non-null literal
+    must reach the candidate's JAX-RS UriBuilder.build(...) as the SAME value
+    (the same parameter or local, the same accessors) and NULL-TOLERANTLY
+    (`a == null ? "" : a`, Objects.toString(a, ""), Objects.requireNonNullElse(a,
+    "")): Spring expands null as an empty segment and JAX-RS throws for it
+    (v17 addPetType: 500 after the row was committed). A different value is a
+    behaviour change unless decisions.yaml location_arguments authorizes it
+    (location_substitutions). No frozen source in this tree: no claim (as the
+    guard translation); a frozen source that cannot be modelled: inconclusive."""
+    if source is None:
+        if frozen_present:
+            return {"verdict": "inconclusive",
+                    "detail": "the frozen source could not be modelled (%s), so the source's Location arguments for %s.%s are "
+                              "unknown" % (source_gap or "no model", typ_fqn, name)}
+        return None
+    members = [m for t in _unit_types(source) if str(t.get("fqn") or "") == typ_fqn for m in (t.get("declared") or [])
+               if isinstance(m, dict) and str(m.get("name") or "") == name]
+    src = [e for m in members for e in (m.get("uri_expansions") or []) if isinstance(e, dict) and e.get("api") == "spring"]
+    if not src:
+        return None
+    dst = [e for m in handlers for e in (m.get("uri_expansions") or []) if isinstance(e, dict) and e.get("api") == "jaxrs"]
+    problems: list[str] = []
+    used: set[int] = set()
+    for se in src:
+        tpl = list(se.get("templates") or [])
+        de_i = next((k for k, e in enumerate(dst) if k not in used and tpl and list(e.get("templates") or []) == tpl), None)
+        if de_i is None:
+            de_i = next((k for k in range(len(dst)) if k not in used), None)
+        if de_i is None:
+            problems.append("the source expands %s with %d argument(s) and the candidate builds no JAX-RS UriBuilder expansion "
+                            "for it" % ("/".join(tpl) or "its template", len(se.get("args") or [])))
+            continue
+        used.add(de_i)
+        dargs = list(dst[de_i].get("args") or [])
+        for j, sa in enumerate(se.get("args") or []):
+            if sa.get("non_null"):
+                continue
+            da = dargs[j] if j < len(dargs) else None
+            if da is None:
+                problems.append("argument %d (%s) of the source's expansion is missing from build(...)" % (j, sa.get("text")))
+                continue
+            if not _same_expansion_base(sa, da):
+                if (typ_fqn, name, j, " ".join(str(da.get("base") or "").split())) in authorized:
+                    continue
+                problems.append("argument %d is %s where the source expanded %s: another value is a behaviour change (the "
+                                "source's Location, a null included, is the contract) unless decisions.yaml %s.substitutions "
+                                "records it with an accepted ADR" % (j, da.get("text"), sa.get("text"), LOCATION_DECISION))
+                continue
+            if not da.get("null_tolerant"):
+                problems.append("argument %d (%s) is passed bare: the source's buildAndExpand(%s) expands a null value as an "
+                                "empty segment and UriBuilder.build throws IllegalArgumentException for it -- write %s == null "
+                                "? \"\" : %s or Objects.toString(%s, \"\")"
+                                % (j, da.get("text"), sa.get("text"), da.get("base"), da.get("base"), da.get("base")))
+    if not problems:
+        return None
+    return {"verdict": "violates",
+            "detail": "the Location of %s.%s is not the source's (compat-mapping handler_parameters UriComponentsBuilder "
+                      "location_translation): %s" % (typ_fqn, name, "; ".join(problems[:3]))}
+
+
 def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[dict[str, Any]]],
                                rule: str, *, root: Path | None = None) -> list[dict[str, Any]]:
     """V16-5: every handler site a handler_parameters row sealed, after the
@@ -5921,8 +6553,11 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
                if isinstance(t, dict) and t.get("to")}
     source: dict[str, Any] | None = None
     source_gap = ""
-    if root is not None and any(isinstance(t, dict) and t.get("translation") for t in (scope.get("target_symbols") or [])):
+    if root is not None and any(isinstance(t, dict) and (t.get("translation") or t.get("location_translation"))
+                                for t in (scope.get("target_symbols") or [])):
         source, source_gap = frozen_source_model(root)
+    frozen_present = root is not None and (Path(root) / FROZEN_INPUT).is_dir()
+    authorized = location_substitutions(root) if root is not None else set()
     out: list[dict[str, Any]] = []
     for row in scope.get("target_symbols") or []:
         if not isinstance(row, dict) or not row.get("handler_parameter"):
@@ -5960,6 +6595,11 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
                 continue
             if row.get("translation"):
                 verdict = _translation_verdict(typ_fqn, name, handlers, bound, source, source_gap)
+                if verdict:
+                    out.append(dict(base, **verdict))
+                    continue
+            if row.get("location_translation"):
+                verdict = _location_verdict(typ_fqn, name, handlers, source, source_gap, frozen_present, authorized)
                 if verdict:
                     out.append(dict(base, **verdict))
                     continue
@@ -6427,6 +7067,23 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
             return True, ("the parity comparison discharges %s: %s came back PASS in %s with the measure unchanged at %s"
                           % (",".join(sorted(issued_par)[:3]), ", ".join(named[:3]), PARITY_RECEIPT.as_posix(), b))
         return True, "the parity comparison reports no obligation for this card and no scenario regressed (measure %s)" % b
+    if gate == PLAN_GATE:
+        # V17-4: an obligation planned from files on disk (plan semantics v1)
+        # is discharged when its static condition, re-evaluated on the
+        # candidate, no longer holds -- and nothing else may go backwards
+        if b > a:
+            return False, "measure %s regressed from %s; a planned repair may not make compilation or tests worse" % (b, a)
+        for name in ("package", "boot"):
+            if _gate_passing(prev_runtime or {}, name) and not _gate_passing(cur_runtime or {}, name):
+                return False, "the %s gate was passing and is not any more; a planned repair may not break it" % name
+        issued_plan = {str(i) for i in (issued_items or []) if str(i).startswith("plan:")}
+        still = sorted(issued_plan & (cur_item_ids or set()))
+        if still:
+            return False, ("the planned obligation %s still holds: its condition is re-evaluated on the candidate from the "
+                           "files on disk (pom.xml, the spec, the recorded source bodies)" % ",".join(still[:2]))
+        if not issued_plan:
+            return False, "a plan-gate card was issued without a planned obligation"
+        return True, "the planned obligation(s) %s no longer hold on the candidate (measure %s)" % (",".join(sorted(issued_plan)[:3]), b)
     if gate in ("package", "boot"):
         prev_rt = prev_runtime or {}
         cur_rt = cur_runtime or {}
@@ -6651,7 +7308,15 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         blocked.append("runtime gate blocked by the environment: %s" % b)
         unlocatable.append({"id": "fx:environment:%s" % sha256_bytes(str(b).encode("utf-8"))[:12],
                             "kind": "environment", "gate": "", "cause": "environment", "detail": str(b)[:400]})
-    items = sorted(mandatory + comp + tst + par + rt, key=lambda i: i["id"])
+    # V17-4 (plan semantics v1 only): obligations decided from files on disk
+    # before any destination failure -- the generated-body binding of a
+    # qualified generator pair whose source accepted a body the generated
+    # @JsonCreator refuses. Absent the decision the list is what it was.
+    planned: list[dict[str, Any]] = []
+    planned_notes: list[str] = []
+    if semantics == IDENTITY_V1:
+        planned, planned_notes = static_generated_body_items(root, bundle)
+    items = sorted(mandatory + comp + tst + par + rt + planned, key=lambda i: i["id"])
     # ADR-015/ADR-019: nothing a worker could be issued may land in a
     # harness-owned generated root. Such findings stay VISIBLE -- recorded
     # here, owned by the generator -- and are never an obligation.
@@ -6787,6 +7452,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         # present only under v1, so a list formed without it is byte-for-byte
         # what it always was
         doc["plan_semantics"] = IDENTITY_V1
+        doc["planned_unresolved"] = sorted(planned_notes)
     if write:
         from planner.canonical import write_canonical
 

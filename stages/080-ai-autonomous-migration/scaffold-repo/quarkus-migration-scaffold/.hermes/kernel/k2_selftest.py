@@ -1757,5 +1757,44 @@ def scratch_removal_checks() -> int:
     return fails
 
 
+def v17_1_qualification() -> int:
+    """V17-1 qualification (2353a4d4): trimming a separator written against a
+    path must not weaken path or command enforcement. An outside path glued to
+    each of ; && || | & is refused; an allowed path glued to each (followed by
+    a space) is allowed; a second outside command, an opaque decode, a git
+    mutation or a traversal behind a separator is still refused. A separator
+    glued on BOTH sides of an allowed path (`ls /x;echo ok`) is still refused
+    by this hook (fail-closed; recorded as an open item, not asserted here)."""
+    fails = 0
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "mod"
+        (dest / "src").mkdir(parents=True)
+        roots = [str(dest)]
+        cwd = str(dest)
+        wk = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+
+        def expect(cmd: str, name: str, block: bool, needle: str = "", **kw) -> None:
+            nonlocal fails
+            r = run(cmd, roots, cwd=cwd, **kw)
+            got = r.get("action") == "block" and needle in (r.get("message") or "")
+            if got != block or (not block and r.get("action") == "block"):
+                print("FAIL", name, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok", name)
+
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect("cat /etc/passwd%s echo x" % sep, "v17_1_q_outside_glued_%d" % i, True, "/etc/passwd")
+            expect("ls %s%s echo ok" % (dest, sep), "v17_1_q_allowed_glued_%d" % i, False)
+        expect("ls %s; cat /etc/shadow" % dest, "v17_1_q_second_command_outside", True, "/etc/shadow")
+        expect("ls %s;cat /etc/shadow" % dest, "v17_1_q_second_command_outside_nospace", True, "outside allow root")
+        expect("ls %s|cat /etc/shadow" % dest, "v17_1_q_outside_after_glued_pipe", True, "outside allow root")
+        expect("ls %s; echo L2V0Yy9wYXNzd2Q= | base64 -d | xargs cat" % dest, "v17_1_q_opaque_after_separator", True, "opaque")
+        expect("ls %s; git checkout -- .hermes/pins.json" % dest, "v17_1_q_git_mutation_after_separator", True, "refused",
+               extra_env=wk)
+        expect("cat %s/../../etc/passwd; echo x" % dest, "v17_1_q_traversal_then_separator", True, "outside allow root")
+    return fails
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main() + v17_1_qualification())

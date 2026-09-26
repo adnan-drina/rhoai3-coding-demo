@@ -93,7 +93,12 @@ When `decisions.yaml` decides `loop.plan_semantics: v1`, the wrapper passes
 `target/` before the first baseline (and refuses after one), the warm-up
 regenerates every generated root, and `VERIFY_INITIAL_STALE_OUTPUT` names a
 generated root older than the verification. Do not clean or regenerate by
-hand; report that refusal.
+hand; report that refusal. The golden selects v1 for new runs; a run keeps the
+value its destination was created with, and admission refuses
+`PLAN_SEMANTICS_REPINNED` when `decisions.yaml` has flipped it since. Do not
+edit the key: report the refusal. Under v1 the work list may carry `plan:gb:*`
+items (gate `plan`, V17-4): obligations decided from files on disk before any
+destination failure.
 
 Run once in the foreground with terminal `timeout: 600`. The wrapper
 prints `WORKLIST_PHASE` for verification and baseline. On nonzero exit,

@@ -491,6 +491,38 @@ def plan_semantics(doc: dict[str, Any] | None) -> str:
     return loop_modes(doc or {})["plan_semantics"]
 
 
+def plan_semantics_pin_gap(root: Path, doc: dict[str, Any] | None) -> str:
+    """Why the decided plan semantics is not the RUN's; '' when it is.
+
+    The semantics a run plans with is the one its destination was CREATED
+    with: decisions.yaml as the initial (scaffolding) commit introduced it --
+    the golden's value for a new run, absent (off) for every earlier run.
+    decisions.yaml stays editable by an accepted Operator step (a new ADR),
+    so a later edit that flips loop.plan_semantics is refused here instead of
+    silently re-planning the run under other identities. No git history, a
+    shallow clone or no decisions.yaml in the initial commit (a local fixture,
+    a pre-factory tree) has no pin to compare against: ''."""
+    from planner.run_declaration import _blob, _history
+    from planner.yamlite import YamlLiteError, loads
+
+    hist = _history(Path(root))
+    if not isinstance(hist, tuple):
+        return ""
+    blob = _blob(Path(root), hist[0], DECISIONS)
+    if blob is None:
+        return ""
+    try:
+        first = loads(blob.decode("utf-8"))
+    except (UnicodeDecodeError, YamlLiteError):
+        return "the initial commit's %s cannot be read, so the run's plan semantics is unknown" % DECISIONS
+    pinned = plan_semantics(first if isinstance(first, dict) else {})
+    now = plan_semantics(doc)
+    if pinned != now:
+        return ("loop.plan_semantics is %s now but %s in the initial commit %s: a run keeps the plan semantics it was "
+                "created with (a new golden selects it for NEW runs only)" % (now, pinned, hist[0][:12]))
+    return ""
+
+
 def unit_formation(doc: dict[str, Any]) -> str:
     """decisions.loop.unit_formation: "v1" or "off"."""
     return loop_modes(doc)["unit_formation"]

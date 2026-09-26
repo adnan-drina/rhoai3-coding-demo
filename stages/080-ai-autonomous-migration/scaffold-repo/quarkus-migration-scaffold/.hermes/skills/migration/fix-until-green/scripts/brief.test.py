@@ -929,6 +929,226 @@ def _package_validation_brief_case() -> int:
     return 0
 
 
+def _run_brief(root: Path, task: str) -> tuple[int, str]:
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+    prev = os.environ.get("HERMES_KANBAN_TASK")
+    os.environ["HERMES_KANBAN_TASK"] = task
+    try:
+        err, out = io.StringIO(), io.StringIO()
+        with redirect_stderr(err), redirect_stdout(out):
+            rc = __import__("brief").main(["--root", str(root)])
+    finally:
+        if prev is None:
+            os.environ.pop("HERMES_KANBAN_TASK", None)
+        else:
+            os.environ["HERMES_KANBAN_TASK"] = prev
+    return rc, err.getvalue()
+
+
+def _seal_and_issue(root: Path, cl: dict, items: list, task: str, label: str) -> str:
+    """The production seal (worklist.build_unit_scope) of a formed unit, the
+    work list naming it as head, and the issue record: what K4 leaves behind."""
+    from planner.paths import LOOP_ISSUED, WORKLIST
+    from planner.worklist import build_unit_scope
+    scope = build_unit_scope(root, cl, items, {"candidate_sha256": "c0"})
+    if not scope:
+        raise AssertionError("build_unit_scope sealed nothing for %s" % cl.get("id"))
+    cid = str(cl["id"])
+    sp = Path("evidence/planning/batch-scope") / cid.replace(":", "-") / ("%s.json" % scope["digest"][:32])
+    write_canonical(root / sp, scope)
+    write_set = sorted(scope["writable_paths"])
+    cluster = {"id": cid, "kind": str(cl.get("kind") or "compile"), "path": write_set[0], "write_set": write_set,
+               "items": [str(i["id"]) for i in items if str(i["id"]) in set(cl.get("items") or [])], "label": label,
+               "retry_key": "rk:unit:%s" % cid,
+               "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                               "kind": "unit", "unit_id": scope["unit_id"], "members": len(scope["members"])}}
+    write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": cid, "unit_formation": "v1",
+                                      "measure": {"tuple": [0, len(items), 0], "known": True, "blocked": []},
+                                      "clusters": [cluster], "not_counted": [], "items": items})
+    write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": cid, "task_id": task,
+                                         "write_set": write_set})
+    return cid
+
+
+def _package_unit_production_brief_case() -> int:
+    """V17-2 through the PRODUCTION path, nothing hand-built: real javac
+    sources -> the JDK dest model -> worklist.form_units -> the sealed
+    build_unit_scope -> brief.py. The unit is sealed on the PACKAGE
+    org.springframework.validation ("package ... does not exist"), and the
+    rendered brief must lead with the type-level handler_parameters
+    BindingResult action at the handlers that actually take it (one through a
+    single-type import, one through a wildcard import), then the
+    validation_helpers rows for the helper that takes BindingResult and
+    FieldError. Twice, under renamed packages and renamed members."""
+    if not shutil.which("javac"):
+        print("SKIP _package_unit_production_brief_case: no javac (not run)")
+        return 0
+    from planner.canonical import load_json
+    from planner.dest_model import dest_model
+    from planner.paths import LOOP_DIR
+    from planner.worklist import form_units, handler_parameters
+
+    pkg = "org.springframework.validation"
+    action = handler_parameters(GOLDEN)["undocumented"][pkg + ".BindingResult"]["action"]
+    for base, ctl_a, ctl_b, hmember, helper_cls in (("org.acme.clinic", "OwnerController", "VisitController", "addError", "ErrorsBody"),
+                                                    ("com.example.depot", "CrateEndpoint", "PalletEndpoint", "record", "Violations")):
+        src = "src/main/java/%s/rest/" % base.replace(".", "/")
+        a, b, h = src + ctl_a + ".java", src + ctl_b + ".java", src + helper_cls + ".java"
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\n" % base)
+        files = {
+            ".hermes/pins.json": '{"pins":{"quarkus_platform":{"java_release":21}}}',
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            a: head + "import %s.BindingResult;\npublic class %s {\n"
+                      '    @PostMapping("/a")\n    public String add(@RequestBody String dto, BindingResult result) {\n'
+                      '        if (result.hasErrors()) { return new %s(result).toString(); }\n        return "201";\n    }\n}\n'
+                      % (pkg, ctl_a, helper_cls),
+            b: head + "import %s.*;\npublic class %s {\n"
+                      '    @PostMapping("/b")\n    public String put(@RequestBody String dto, BindingResult errors) {\n'
+                      '        return errors.hasErrors() ? "400" : "201";\n    }\n}\n' % (pkg, ctl_b),
+            h: "package %s.rest;\nimport %s.BindingResult;\nimport %s.FieldError;\npublic class %s {\n"
+               "    public %s(BindingResult r) { }\n    void %s(FieldError e) { }\n}\n" % (base, pkg, pkg, helper_cls, helper_cls, hmember),
+        }
+        with tempfile.TemporaryDirectory(prefix="pkg-prod-brief-") as td:
+            root = Path(td)
+            for rel, text in files.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text, encoding="utf-8")
+            items = [{"id": "err:%d" % n, "source": "javac", "kind": "compile", "identity": "diag:%s|pkg|%d" % (f, n),
+                      "category": "mandatory", "path": f, "line": 2, "rule_id": "compiler.err.doesnt.exist",
+                      "message": "package %s does not exist" % pkg} for n, f in enumerate((a, b, h), 1)]
+            units, _ = form_units(items, {}, set(), model=dest_model(root), root=GOLDEN)
+            cl = next((c for c in units if any(s["fqn"] == pkg and s["kind"] == "package" for s in c["unit"]["symbols"])), None)
+            if cl is None:
+                return _fail("[%s] the package family forms a unit" % base)
+            cid = _seal_and_issue(root, cl, items, "t_pkprod1", pkg)
+            rc, err = _run_brief(root, "t_pkprod1")
+            if rc != 0:
+                return _fail("[%s] brief.py serves the sealed package unit: rc=%s %s" % (base, rc, err[:400]))
+            unit = load_json(root / LOOP_DIR / ("brief-%s.json" % cid.replace(":", "-"))).get("unit") or {}
+            first = str(unit.get("first_action") or "")
+            want_sites = ("%s.add(result)" % ctl_a, "%s.put(errors)" % ctl_b)
+            if not first.startswith(action) or not all(w in first for w in want_sites):
+                return _fail("[%s] the first action is the catalogued BindingResult action at both handlers: %r" % (base, first[:400]))
+            if ("then, where a helper takes %s.BindingResult (%s.<init>(r))" % (pkg, helper_cls) not in first
+                    or "then, where a helper takes %s.FieldError (%s.%s(e))" % (pkg, helper_cls, hmember) not in first):
+                return _fail("[%s] then the validation_helpers rows of the members that use them: %r" % (base, first))
+            ts = unit.get("target_symbols") or []
+            if not ts or ts[0].get("from") != pkg + ".BindingResult" or ts[0].get("via_package") != pkg or not ts[0].get("translation"):
+                return _fail("[%s] the rendered target rows lead with the type-level row and its translation: %s" % (base, ts[:1]))
+    return 0
+
+
+def _location_obligation_production_brief_case() -> int:
+    """V17-5 through the production path: real javac sources -> the JDK dest
+    model -> worklist.form_units -> build_unit_scope -> brief.py. A unit
+    sealed on UriComponentsBuilder at two create handlers renders the
+    catalogue's Location obligation beside its first action (the null
+    argument expands as an empty segment; no substituted value without a
+    decisions.yaml authorization) and carries the location_translation on
+    its target row. Twice under renamed packages and members."""
+    if not shutil.which("javac"):
+        print("SKIP _location_obligation_production_brief_case: no javac (not run)")
+        return 0
+    from planner.canonical import load_json
+    from planner.dest_model import dest_model
+    from planner.paths import LOOP_DIR
+    from planner.worklist import form_units
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    for base, a_cls, b_cls, member in (("org.acme.clinic", "PetTypeController", "OwnerController", "addPetType"),
+                                       ("com.example.depot", "CrateEndpoint", "PalletEndpoint", "register")):
+        src = "src/main/java/%s/rest/" % base.replace(".", "/")
+        a, b = src + a_cls + ".java", src + b_cls + ".java"
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\nimport %s;\n" % (base, retired))
+
+        def ctl(cls: str, name: str) -> str:
+            return (head + "public class %s {\n    @PostMapping(\"/x\")\n"
+                    "    public String %s(@RequestBody String body, UriComponentsBuilder ucBuilder) {\n"
+                    '        return ucBuilder.path("/x/{id}").buildAndExpand(body.length()).toUri().toString();\n    }\n}\n' % (cls, name))
+
+        files = {
+            ".hermes/pins.json": '{"pins":{"quarkus_platform":{"java_release":21}}}',
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            a: ctl(a_cls, member), b: ctl(b_cls, "add"),
+        }
+        with tempfile.TemporaryDirectory(prefix="loc-brief-") as td:
+            root = Path(td)
+            for rel, text in files.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text, encoding="utf-8")
+            items = [{"id": "err:%d" % n, "source": "javac", "kind": "compile", "identity": "diag:%s|ucb|%d" % (f, n),
+                      "category": "mandatory", "path": f, "line": 4, "rule_id": "compiler.err.cant.resolve.location",
+                      "message": "cannot find symbol\n  symbol:   class UriComponentsBuilder\n  location: class X"}
+                     for n, f in enumerate((a, b), 1)]
+            units, _ = form_units(items, {}, set(), model=dest_model(root), root=GOLDEN)
+            cl = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            if cl is None:
+                return _fail("[%s] the UriComponentsBuilder family forms a unit" % base)
+            cid = _seal_and_issue(root, cl, items, "t_locprod1", retired)
+            rc, err = _run_brief(root, "t_locprod1")
+            if rc != 0:
+                return _fail("[%s] brief.py serves the sealed unit: rc=%s %s" % (base, rc, err[:400]))
+            unit = load_json(root / LOOP_DIR / ("brief-%s.json" % cid.replace(":", "-"))).get("unit") or {}
+            first = str(unit.get("first_action") or "")
+            obligation = first[first.find("Location obligation (%s, at " % retired):]
+            if (not obligation or "%s.%s" % (a_cls, member) not in obligation.split(")", 1)[0]
+                    or "%s.add" % b_cls not in obligation.split(")", 1)[0]
+                    or "empty segment" not in first or "location_arguments" not in first):
+                return _fail("[%s] the Location obligation is rendered beside the first action: %r" % (base, first[-900:]))
+            ts = unit.get("target_symbols") or []
+            if not ts or not isinstance(ts[0].get("location_translation"), dict):
+                return _fail("[%s] the rendered handler row carries its location_translation: %s" % (base, ts[:1]))
+    return 0
+
+
+def _planned_generated_body_brief_case() -> int:
+    """V17-4 through the production path: the V16-8 obligation planned from
+    files on disk (worklist.static_generated_body_items), clustered by
+    worklist.cluster_items, issued, and rendered by brief.py: the pom card's
+    item carries the catalogue's generateJsonCreator action as its first
+    action before any create scenario has run."""
+    import importlib.util
+
+    from planner.canonical import load_json
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+    from planner.worklist import cluster_items, static_generated_body_items
+
+    spec = importlib.util.spec_from_file_location("wl_test", GOLDEN / ".hermes/lib/planner/worklist.test.py")
+    wt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wt)  # type: ignore[union-attr]
+    for pkg, model in (("org.acme.clinic", "Owner"), ("com.example.depot", "Crate")):
+        with tempfile.TemporaryDirectory(prefix="gb-brief-") as td:
+            root = wt._static_generated_body_root(td, pkg=pkg, model=model)
+            items, notes = static_generated_body_items(root, load_json(root / "evidence/planning/evidence-bundle.json"))
+            if len(items) != 1:
+                return _fail("[%s] one planned obligation: %s %s" % (pkg, items, notes))
+            cl = cluster_items(items, {}, set())[0]
+            write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": cl["id"], "plan_semantics": "v1",
+                                              "measure": {"tuple": [0, 0, 0], "known": True, "blocked": []},
+                                              "clusters": [cl], "not_counted": [], "items": items})
+            write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": cl["id"], "task_id": "t_gbplan1",
+                                                 "write_set": cl["write_set"], "items": cl["items"]})
+            rc, err = _run_brief(root, "t_gbplan1")
+            if rc != 0:
+                return _fail("[%s] brief.py serves the planned pom card: rc=%s %s" % (pkg, rc, err[:400]))
+            brief = load_json(root / LOOP_DIR / ("brief-%s.json" % cl["id"].replace(":", "-")))
+            rows = [r for r in brief.get("items") or [] if r.get("id") == items[0]["id"]]
+            act = str(((rows[0] if rows else {}).get("advice") or {}).get("first_action") or "")
+            if cl["write_set"] != ["pom.xml"] or "<generateJsonCreator>false</generateJsonCreator>" not in act or "items" not in act:
+                return _fail("[%s] the pom card's first action is the V16-8 option, naming the omitted property: %s %r"
+                             % (pkg, cl["write_set"], act[:400]))
+    return 0
+
+
 def main() -> int:
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):
         return 1
@@ -951,6 +1171,12 @@ def main() -> int:
     if _handler_parameter_brief_case():
         return 1
     if _package_validation_brief_case():
+        return 1
+    if _package_unit_production_brief_case():
+        return 1
+    if _location_obligation_production_brief_case():
+        return 1
+    if _planned_generated_body_brief_case():
         return 1
     if _runtime_advice_case():
         return 1

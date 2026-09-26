@@ -75,6 +75,13 @@ RULE_CLASS = {"repository-architecture": "source", "request-validation": "source
               "annotation-retirement": "source", "adapter-behavior": "behavior", "generator-configuration": "build",
               "configuration-decision": "config", "behavior-verification": "behavior"}
 APPLICABLE, NOT_APPLICABLE, UNRESOLVED, SATISFIED = "applicable", "not-applicable", "unresolved", "satisfied"
+# The rules whose work is a source REPAIR and so needs a qualified recipe
+# (compat-mapping migration_recipes) before admission. Verification
+# (behaviour, adapter behaviour) is judged by its named checks, and decided
+# configuration by the decision and the bootstrap that applies it: neither has
+# a recipe, and requiring one would refuse every run that captured an oracle.
+RECIPE_RULES = ("repository-architecture", "request-validation", "handler-parameter-binding", "annotation-retirement",
+                "generator-configuration")
 
 
 def _s(v: Any) -> str:
@@ -141,6 +148,43 @@ def _sel(*parts: str) -> dict[str, str]:
     return {"artifact": BUNDLE, "selector": ".".join(parts)}
 
 
+def generator_body_semantics(facts: dict[str, Any], status: str) -> tuple[str, list[str], list[str], dict[str, Any]]:
+    """V17-4: the generator requirement from the static facts
+    (worklist.static_generated_body_facts). (status, acceptance, unknowns,
+    facts). The qualification decides the status -- a pom that already stops
+    the creator, or a generator that binds by setters, is not-applicable; an
+    unqualified pair or an unreadable source build is unresolved -- and every
+    required property of every request-body model contributes its four cases
+    (omitted, null, empty, invalid), each bound to the captures that send it.
+    A case no capture sends is an unknown, never an invented expectation."""
+    q = facts.get("qualification") or {}
+    qs = _s(q.get("status"))
+    cases = [c for c in facts.get("cases") or [] if isinstance(c, dict)]
+    if qs == NOT_APPLICABLE:
+        new_status = NOT_APPLICABLE
+    elif qs == APPLICABLE:
+        new_status = status
+    else:
+        new_status = UNRESOLVED
+    acceptance = ["build:clean-generation"]
+    unknowns: list[str] = []
+    if new_status != NOT_APPLICABLE:
+        acceptance.append("parity:request-body-positive-negative")
+        for c in sorted(cases, key=lambda c: (_s(c.get("model")), _s(c.get("property")), _s(c.get("case")))):
+            if c.get("status") == "covered":
+                acceptance.extend("parity:%s" % sid for sid in c.get("scenarios") or [])
+            else:
+                unknowns.append(_s(c.get("reason")) or "%s.%s %s: no capture" % (_s(c.get("model")), _s(c.get("property")), _s(c.get("case"))))
+    if qs == UNRESOLVED:
+        unknowns.extend("generator pair: %s" % r for r in q.get("reasons") or [])
+    extra = {"qualification": {k: q.get(k) for k in ("status", "reasons", "dest", "source", "option")},
+             "body_cases": [{k: c.get(k) for k in ("model", "property", "case", "status", "scenarios", "omitted_by_accepted") if k in c}
+                            for c in cases],
+             "omitted_by_accepted": sorted({"%s.%s" % (_s(c.get("model")), _s(c.get("property")))
+                                            for c in cases if c.get("omitted_by_accepted")})}
+    return new_status, list(dict.fromkeys(acceptance)), sorted(set(unknowns)), extra
+
+
 # ---------------------------------------------------------------------------
 # the derivation
 # ---------------------------------------------------------------------------
@@ -148,8 +192,19 @@ def _sel(*parts: str) -> dict[str, str]:
 def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], catalog: dict[str, Any],
            decisions: dict[str, Any] | None, oracles: dict[str, list[str]] | None, structure_complete: bool,
            generator: dict[str, Any] | None = None, generator_known: bool = True,
-           decided_rows: list[dict[str, Any]] | None = None, bootstrap: dict[str, Any] | None = None) -> dict[str, Any]:
-    """{"schema", "requirements": [...], "unknowns": [...]}. Pure."""
+           decided_rows: list[dict[str, Any]] | None = None, bootstrap: dict[str, Any] | None = None,
+           scenario_facts: dict[str, dict[str, Any]] | None = None,
+           generator_facts: dict[str, Any] | None = None) -> dict[str, Any]:
+    """{"schema", "requirements": [...], "unknowns": [...]}. Pure.
+
+    ``scenario_facts``: scenario id -> {method, effects} from the captured
+    corpus (a write is covered only by a scenario that reads its committed
+    effect back); None when the corpus is unreadable.
+    ``generator_facts`` (V17-4, worklist.static_generated_body_facts): the
+    qualification of the destination/source generator pair and the request
+    body cases bound to the corpus captures; None keeps the generator
+    requirement exactly as before (a destination generator qualified by name
+    only)."""
     types = sorted((t for t in types or [] if isinstance(t, dict) and _s(t.get("fqn"))), key=lambda t: t["fqn"])
     by_fqn = {t["fqn"]: t for t in types}
     recipes = recipes_of(catalog)
@@ -193,6 +248,7 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
 
     validation = 0
     binding = 0
+    location_eps: set[str] = set()  # V17-5: handlers that build a Location from a catalogued builder
     for t, m, ep in handlers:
         sig = _s(m.get("signature"))
         subject = "%s#%s" % (t["fqn"], sig)
@@ -227,12 +283,19 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             else:
                 binding += 1
                 rec = _recipe_for(recipes, "handler-parameter-binding", ptype)
+                loc = row.get("location_translation") if isinstance(row.get("location_translation"), dict) else None
+                if loc:
+                    location_eps.add(ep)
                 out.append(_req("handler-parameter-binding", "%s|%s" % (subject, _s(p.get("name"))), APPLICABLE if rec else UNRESOLVED,
                                 evidence=sel, paths=[_s(t.get("path"))], recipe=rec, consumers=[ep],
-                                acceptance=["unit:handler-parameter-sites", "gate:package", "gate:augmentation"] + ["parity:%s" % s for s in scen],
+                                acceptance=["unit:handler-parameter-sites", "gate:package", "gate:augmentation"]
+                                + (["unit:location-null-arguments"] if loc else []) + ["parity:%s" % s for s in scen],
                                 unknowns=unk + ([] if rec else ["no qualified recipe for %s" % ptype]),
-                                facts={"parameter": _s(p.get("name")), "parameter_type": ptype,
-                                       "precedes": ["symbol_renames:%s" % ptype]}))
+                                facts=dict({"parameter": _s(p.get("name")), "parameter_type": ptype,
+                                            "precedes": ["symbol_renames:%s" % ptype]},
+                                           **({"location": {"null_argument": _s(loc.get("null_argument")),
+                                                            "substitution": _s(loc.get("substitution")),
+                                                            "checked_by": _s(loc.get("checked_by"))}} if loc else {}))))
     if not validation:
         none_found("request-validation", "handler asking a catalogued validation-result parameter")
     if not binding:
@@ -280,15 +343,23 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
                         facts={"contract": ad["contract"], "security_modes": modes, "policy_source": "M1 structural model (source policy)"}))
 
     # -- repository fragments and single injectable implementations -------
+    # V17-3: every fragment member also carries its SELECTED source behaviour
+    # (repository_behaviour) and the functional verification that proves it
+    # (repository_verification); an inactive-profile implementation is named
+    # only as what the behaviour must NOT be copied from
     repos = [t for t in types if _s(t.get("kind")) == "interface" and set(t.get("supertypes") or []) & set(REPOSITORY_SUPERTYPES)]
     impls_of: dict[str, list[dict[str, Any]]] = {}
     for t in types:
         if _s(t.get("kind")) in ("class", "record"):
             for st in t.get("supertypes") or []:
                 impls_of.setdefault(str(st), []).append(t)
-    active = [str(p) for p in ((decisions.get("build_profiles") or {}).get("active") or [])] if isinstance(decisions.get("build_profiles"), dict) else []
+    bp = decisions.get("build_profiles") if isinstance(decisions.get("build_profiles"), dict) else {}
+    active = [str(p) for p in (bp.get("active") or [])]
+    decided = active if active else None
     frags = 0
     for r in repos:
+        if _selected(r, decided) is False:
+            continue  # a repository the decided profiles do not select owes nothing
         for f in sorted(str(s) for s in r.get("supertypes") or []):
             if f in REPOSITORY_SUPERTYPES or f not in by_fqn or _s(by_fqn[f].get("kind")) != "interface":
                 continue
@@ -297,26 +368,65 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             impls = sorted(impls_of.get(f, []), key=lambda x: x["fqn"])
             named = [i for i in impls if i["fqn"] == f + FRAGMENT_SUFFIX]
             profiled = {i["fqn"]: _ann_values(i.get("annotations"), PROFILE_ANNOTATION) for i in impls}
-            selected = [i for i in impls if not profiled[i["fqn"]] or set(profiled[i["fqn"]]) & set(active)]
+            selected = [i for i in impls if _selected(i, decided) is True]
+            undecided = [i for i in impls if _selected(i, decided) is None] + ([r] if _selected(r, decided) is None else [])
+            members = sorted(_s(m.get("signature")) for m in ft.get("methods") or [] if isinstance(m, dict))
             unk: list[str] = []
             status = APPLICABLE
-            if not named:
-                status, unk = UNRESOLVED, ["no %s%s implements fragment %s in the source (the naming contract Spring Data resolves by)" % (f.rsplit(".", 1)[-1], FRAGMENT_SUFFIX, f)]
-            elif len(selected) != 1 and any(profiled.values()) and not active:
+            owed_path = ""
+            if undecided and not selected:
                 status, unk = UNRESOLVED, ["fragment %s has %d profile-gated implementations and no decided build profile" % (f, len(impls))]
             elif len(selected) > 1:
                 status, unk = UNRESOLVED, ["fragment %s has %d implementations in the selected profile: the intended injectable one is ambiguous" % (f, len(selected))]
-            members = sorted(_s(m.get("signature")) for m in ft.get("methods") or [] if isinstance(m, dict))
+            if status == APPLICABLE and selected:
+                # the source's own selected implementation is carried: its
+                # methods ARE the behaviour of each member
+                impl = selected[0]
+                ms = [x for x in impl.get("methods") or [] if isinstance(x, dict)]
+                wc = ((catalog or {}).get("repository_behaviour") or {}).get("write_calls") or {}
+                rows = []
+                for sig in members:
+                    m = _match(ms, sig)
+                    if m is None:
+                        rows.append({"signature": sig, "kind": "unresolved", "source": "", "path": _s(impl.get("path")),
+                                     "why": "%s declares no method answering %s" % (impl["fqn"], sig)})
+                        continue
+                    rows.append({"signature": sig, "kind": "source-override", "source": "%s#%s" % (impl["fqn"], _s(m.get("signature"))),
+                                 "path": _s(impl.get("path")), "translations": persistence_translations(m, catalog),
+                                 "effect": "write" if any(_calls_match(wc, c) for c in m.get("calls") or [] if isinstance(c, dict)) else "read",
+                                 "why": "the selected source implementation of the fragment"})
+                behaviour = {"parent": f, "repository": r["fqn"], "members": rows, "not_behaviour_sources": [
+                    {"type": i["fqn"], "path": _s(i.get("path")), "profiles": profiled[i["fqn"]],
+                     "why": "gated by @Profile(%s), which the decided build profiles do not select" % ",".join(profiled[i["fqn"]])}
+                    for i in impls if _selected(i, decided) is False], "unknowns": []}
+                unk.extend("member %s: %s" % (x["signature"], x["why"]) for x in rows if x["kind"] == "unresolved")
+            elif status == APPLICABLE:
+                # no implementation in the decided profiles: Spring Data served the
+                # members in the source; the destination's generator needs a
+                # <Fragment>Impl (FRAGMENT_IMPL_CONTRACT), owed with that behaviour
+                behaviour = repository_behaviour(types, parent=f, members=members, decisions=decisions, catalog=catalog)
+                owed_path = "%s/%s%s.java" % (_s(ft.get("path")).rsplit("/", 1)[0], f.rsplit(".", 1)[-1], FRAGMENT_SUFFIX)
+                unk.extend(behaviour["unknowns"])
+            else:
+                behaviour = {"parent": f, "repository": r["fqn"], "members": [], "not_behaviour_sources": [], "unknowns": list(unk)}
+            verification = repository_verification(behaviour, entry_points=eps, types=types, oracles=oracles,
+                                                   scenarios=scenario_facts) if status == APPLICABLE else []
+            unk.extend(u for v in verification for u in v["unknowns"])
             rec = _recipe_for(recipes, "repository-architecture")
             out.append(_req("repository-architecture", "%s<-%s" % (r["fqn"], f), status if rec else UNRESOLVED,
                             evidence=[_sel("structure", "types[%s]" % r["fqn"], "supertypes"), _sel("structure", "types[%s]" % f, "methods")]
                             + [_sel("structure", "types[%s]" % i["fqn"], "supertypes") for i in impls],
-                            paths=[_s(x.get("path")) for x in [r, ft] + (named or [])], recipe=rec,
-                            acceptance=["unit:fragment-implementation", "structure:single-injectable-implementation", "gate:package", "gate:startup"],
+                            paths=[_s(x.get("path")) for x in [r, ft] + (named or selected[:1])] + ([owed_path] if owed_path else []),
+                            recipe=rec,
+                            acceptance=["unit:fragment-implementation", "unit:fragment-behaviour-bodies",
+                                        "structure:single-injectable-implementation", "gate:package", "gate:startup",
+                                        "behavior:repository-effects:%s" % f]
+                            + ["parity:%s" % x for v in verification for x in v["scenarios"]],
                             unknowns=unk + ([] if rec else ["no qualified repository recipe"]),
                             facts={"repository": r["fqn"], "fragment": f, "members": members,
                                    "implementations": [i["fqn"] for i in impls], "selected": [i["fqn"] for i in selected],
-                                   "profiles": {k: sorted(v) for k, v in profiled.items() if v}, "decided_profiles": active}))
+                                   "profiles": {k: sorted(v) for k, v in profiled.items() if v}, "decided_profiles": active,
+                                   "owed_implementation": owed_path, "behaviour": behaviour, "verification": verification}))
     if not frags:
         none_found("repository-architecture", "Spring Data repository extending a project fragment")
 
@@ -341,12 +451,21 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             unk.append("generator %s of %s is not qualified by the catalog (build_plugins)" % (gname or "(unnamed)", ga))
         if not rec:
             unk.append("no qualified generator recipe for %s" % ga)
-        out.append(_req("generator-configuration", "%s|%s" % (ga, gname), APPLICABLE if (qualified and rec) else UNRESOLVED,
-                        evidence=[{"artifact": "pom.xml", "selector": "build.plugins[%s].configuration" % ga}],
+        status = APPLICABLE if (qualified and rec) else UNRESOLVED
+        acceptance = ["build:clean-generation", "parity:request-body-positive-negative"]
+        facts = {"plugin_version": _s(generator.get("version")), "generator": gname,
+                 "model_package": generated_pkg, "options": dict(generator.get("configOptions") or {})}
+        if generator_facts is not None:
+            status, acceptance, extra_unk, extra = generator_body_semantics(generator_facts, status)
+            unk.extend(extra_unk)
+            facts.update(extra)
+        out.append(_req("generator-configuration", "%s|%s" % (ga, gname), status,
+                        evidence=[{"artifact": "pom.xml", "selector": "build.plugins[%s].configuration" % ga}]
+                        + ([{"artifact": _s(((generator_facts or {}).get("qualification") or {}).get("source", {}).get("build_file")),
+                             "selector": "build.plugins[%s].configuration" % ga}]
+                           if _s(((generator_facts or {}).get("qualification") or {}).get("source", {}).get("build_file")) else []),
                         paths=["pom.xml"], recipe=rec, consumers=consumers,
-                        acceptance=["build:clean-generation", "parity:request-body-positive-negative"],
-                        unknowns=unk, facts={"plugin_version": _s(generator.get("version")), "generator": gname,
-                                             "model_package": generated_pkg, "options": dict(generator.get("configOptions") or {})}))
+                        acceptance=acceptance, unknowns=unk, facts=facts))
     else:
         out.append(_req("generator-configuration", "*", NOT_APPLICABLE, evidence=[{"artifact": "pom.xml", "selector": "build.plugins"}],
                         paths=[], acceptance=[], facts={"reason": "the destination build declares no catalogued source generator"}))
@@ -366,11 +485,16 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
     # -- behaviour verification of every entry point -----------------------
     for e in eps:
         scen = sorted(set((oracles or {}).get(e["id"]) or []))
+        loc = e["id"] in location_eps
         out.append(_req("behavior-verification", e["id"], APPLICABLE if scen else UNRESOLVED,
                         evidence=[_sel("entry_points[%s]" % e["id"])], paths=[], consumers=[e["id"]],
-                        acceptance=["parity:%s" % s for s in scen] or ["coverage:unresolved"],
-                        unknowns=[] if scen else ["no captured oracle for %s (%s): behaviour is unverified, never PASS" % (e["id"], _s(e.get("kind")))],
-                        facts={"kind": _s(e.get("kind")), "type": _s(e.get("type"))}))
+                        acceptance=(["parity:%s" % s for s in scen] or ["coverage:unresolved"])
+                        + (["location:%s" % e["id"]] if loc and scen else []),
+                        unknowns=([] if scen else ["no captured oracle for %s (%s): behaviour is unverified, never PASS" % (e["id"], _s(e.get("kind")))])
+                        + (["no capture of the source's create/Location behaviour for %s: the Location it builds, a null "
+                            "expansion argument included, is unverified, never PASS" % e["id"]] if loc and not scen else []),
+                        facts=dict({"kind": _s(e.get("kind")), "type": _s(e.get("type"))},
+                                   **({"location": {"builds_location": True, "coverage": scen or "unresolved"}} if loc else {}))))
     if not eps:
         unknowns.append("no entry point was discovered; behaviour verification has nothing to cover")
 
@@ -387,8 +511,255 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
 
 
 # ---------------------------------------------------------------------------
+# V17-3: the SELECTED source behaviour of an owed fragment member
+# ---------------------------------------------------------------------------
+
+def _profiles_of(t: dict[str, Any]) -> list[str]:
+    return _ann_values(t.get("annotations"), PROFILE_ANNOTATION)
+
+
+def _selected(t: dict[str, Any], active: list[str] | None) -> bool | None:
+    """True/False by the decided build profiles; None when a profile gate
+    exists and no profile was decided (unknown, never guessed)."""
+    prof = _profiles_of(t)
+    if not prof:
+        return True
+    if active is None:
+        return None
+    return bool(set(prof) & set(active))
+
+
+def _arity(sig: str) -> int:
+    inner = sig[sig.find("(") + 1:sig.rfind(")")] if "(" in sig else ""
+    if not inner.strip():
+        return 0
+    depth, n = 0, 1
+    for ch in inner:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            n += 1
+    return n
+
+
+def _match(methods: list[dict[str, Any]], sig: str) -> dict[str, Any] | None:
+    """The source method answering `sig`: the exact signature, else the one
+    method with the same name and arity; None when absent or ambiguous."""
+    exact = [m for m in methods if _s(m.get("signature")) == sig]
+    if len(exact) == 1:
+        return exact[0]
+    name = sig.split("(", 1)[0]
+    same = [m for m in methods if _s(m.get("name")) == name and _arity(_s(m.get("signature"))) == _arity(sig)]
+    return same[0] if len(same) == 1 else None
+
+
+def _calls_match(spec: dict[str, Any], call: dict[str, Any]) -> bool:
+    return (_s(call.get("owner")) in set(spec.get("owners") or []) and _s(call.get("name")) in set(spec.get("names") or []))
+
+
+def persistence_translations(method: dict[str, Any], catalog: dict[str, Any]) -> list[dict[str, str]]:
+    """compat-mapping persistence_behaviour_translations rows whose ordered
+    call condition the source method meets (a pre-order call list from the
+    frozen structural model)."""
+    rows = ((catalog or {}).get("persistence_behaviour_translations") or {})
+    calls = [c for c in method.get("calls") or [] if isinstance(c, dict)]
+    out = []
+    for rid_ in sorted(k for k in rows if k != "note" and isinstance(rows[k], dict)):
+        row = rows[rid_]
+        when = row.get("when") or {}
+        first = next((i for i, c in enumerate(calls) if _calls_match(when.get("first") or {}, c)), None)
+        if first is None:
+            continue
+        later = [c for c in calls[first + 1:] if _calls_match(when.get("then_any") or {}, c)]
+        if later:
+            out.append({"id": rid_, "obligation": _s(row.get("obligation")), "evidence": _s(row.get("evidence")),
+                        "source": _s(row.get("source")),
+                        "calls": ["%s.%s" % (_s(c.get("owner")).rsplit(".", 1)[-1], _s(c.get("name")))
+                                  for c in [calls[first]] + later[:3]]})
+    return out
+
+
+def repository_behaviour(types: list[dict[str, Any]], *, parent: str, members: list[str], decisions: dict[str, Any] | None,
+                         catalog: dict[str, Any]) -> dict[str, Any]:
+    """Where each owed member of fragment parent `parent` gets its behaviour
+    in the SOURCE, under the decided build profiles (V17-3). Pure.
+
+    {"parent", "repository", "members": [{signature, kind, source, path, ...}],
+     "not_behaviour_sources": [{type, path, profiles, why}], "unknowns"}
+
+    kind: source-override (a custom fragment implementation the selected
+    repository extends), query (@Query on the selected repository),
+    crud-default (the base repository method the name and arity select),
+    derived-query (a query derived from the method name), unresolved."""
+    by_fqn = {_s(t.get("fqn")): t for t in types or [] if isinstance(t, dict) and _s(t.get("fqn"))}
+    sem = (catalog or {}).get("repository_behaviour") or {}
+    q_anns = set(sem.get("query_annotations") or [])
+    mod_anns = set(sem.get("modifying_annotations") or [])
+    crud = {k: v for k, v in (sem.get("crud_defaults") or {}).items() if isinstance(v, dict)}
+    prefixes = [str(p) for p in sem.get("derived_query_prefixes") or []]
+    bp = (decisions or {}).get("build_profiles")
+    active = [str(p) for p in (bp.get("active") or [])] if isinstance(bp, dict) and bp.get("active") else None
+    retired = {_s(r.get("path")): _s(r.get("adr")) for r in ((decisions or {}).get("retired_sources") or []) if isinstance(r, dict)}
+    out: dict[str, Any] = {"parent": parent, "repository": "", "members": [], "not_behaviour_sources": [], "unknowns": []}
+    # implementations of the parent the decided profiles do NOT select: never the behaviour source
+    for t in sorted(by_fqn.values(), key=lambda x: _s(x.get("fqn"))):
+        if _s(t.get("kind")) in ("class", "record") and parent in (t.get("supertypes") or []) and _selected(t, active) is False:
+            why = "gated by @Profile(%s), which the decided build profiles (%s) do not select" % (
+                ",".join(_profiles_of(t)), ",".join(active or []))
+            if retired.get(_s(t.get("path"))):
+                why += "; retired by %s" % retired[_s(t.get("path"))]
+            out["not_behaviour_sources"].append({"type": _s(t.get("fqn")), "path": _s(t.get("path")),
+                                                 "profiles": _profiles_of(t), "why": why})
+    repos = [t for t in by_fqn.values() if _s(t.get("kind")) == "interface" and parent in (t.get("supertypes") or [])
+             and set(t.get("supertypes") or []) & set(REPOSITORY_SUPERTYPES)]
+    sel = [t for t in repos if _selected(t, active) is True]
+    undecided = [t for t in repos if _selected(t, active) is None]
+    if undecided and not sel:
+        out["unknowns"].append("the Spring Data repositories extending %s are profile-gated and no build profile is decided" % parent)
+    elif len(sel) != 1:
+        out["unknowns"].append("%d Spring Data repositories extending %s in the decided profiles: the behaviour source is %s"
+                               % (len(sel), parent, "absent" if not sel else "ambiguous"))
+    repo = sel[0] if len(sel) == 1 else None
+    overrides: list[tuple[dict[str, Any], dict[str, Any]]] = []  # (override impl, override interface)
+    if repo is not None:
+        out["repository"] = _s(repo.get("fqn"))
+        for f in sorted(str(s) for s in repo.get("supertypes") or []):
+            ft = by_fqn.get(f)
+            if f == parent or f in REPOSITORY_SUPERTYPES or ft is None or _s(ft.get("kind")) != "interface":
+                continue
+            for impl in sorted(by_fqn.values(), key=lambda x: _s(x.get("fqn"))):
+                if _s(impl.get("kind")) in ("class", "record") and f in (impl.get("supertypes") or []) and _selected(impl, active) is True:
+                    overrides.append((impl, ft))
+    for sig in sorted(set(members)):
+        row: dict[str, Any] = {"signature": sig, "kind": "unresolved", "source": "", "path": ""}
+        name = sig.split("(", 1)[0]
+        if repo is None:
+            row["why"] = out["unknowns"][0] if out["unknowns"] else "no selected repository"
+            out["members"].append(row)
+            continue
+        hit = next(((impl, m) for impl, _ft in overrides
+                    for m in [_match([x for x in impl.get("methods") or [] if isinstance(x, dict)], sig)] if m is not None), None)
+        declared = _match([x for x in repo.get("methods") or [] if isinstance(x, dict)], sig)
+        if hit is not None:
+            impl, m = hit
+            row.update(kind="source-override", source="%s#%s" % (_s(impl.get("fqn")), _s(m.get("signature"))),
+                       path=_s(impl.get("path")), translations=persistence_translations(m, catalog),
+                       why="a custom implementation fragment of the selected repository: Spring Data calls it ahead of the "
+                           "base repository and query derivation; port its BEHAVIOUR")
+        elif declared is not None and set(_ann(declared.get("annotations"))) & q_anns:
+            qs = [v for a in sorted(q_anns) for v in _ann_values(declared.get("annotations"), a)]
+            row.update(kind="query", source="%s#%s" % (_s(repo.get("fqn")), _s(declared.get("signature"))),
+                       path=_s(repo.get("path")), query=qs, modifying=bool(set(_ann(declared.get("annotations"))) & mod_anns),
+                       why="the selected repository declares this @Query; run exactly that query")
+        elif "%s/%d" % (name, _arity(sig)) in crud:
+            c = crud["%s/%d" % (name, _arity(sig))]
+            row.update(kind="crud-default", source="%s (Spring Data base repository)" % "%s/%d" % (name, _arity(sig)),
+                       path=_s(repo.get("path")), effect=_s(c.get("kind")), semantics=_s(c.get("semantics")),
+                       why="no override and no @Query: the base repository method the name and arity select")
+        elif any(name.startswith(p) and ("By" in name[len(p):] or name == p) for p in prefixes):
+            row.update(kind="derived-query", source="%s#%s (derived from the method name)" % (_s(repo.get("fqn")), sig),
+                       path=_s(repo.get("path")), why="a query Spring Data derives from the method name")
+        else:
+            row["why"] = "no override, @Query, CRUD method or derivable name answers %s in %s" % (sig, _s(repo.get("fqn")))
+        if row["kind"] == "source-override":
+            wc = sem.get("write_calls") or {}
+            row["effect"] = "write" if any(_calls_match(wc, c) for c in (hit[1].get("calls") or []) if isinstance(c, dict)) else "read"
+        elif row["kind"] == "query":
+            row["effect"] = "write" if row.get("modifying") else "read"
+        elif row["kind"] == "derived-query":
+            row["effect"] = "write" if name.startswith(("delete", "remove")) else "read"
+        out["members"].append(row)
+    if any(r["kind"] == "unresolved" for r in out["members"]):
+        out["unknowns"].append("members with no selected source behaviour: %s"
+                               % ", ".join(r["signature"] for r in out["members"] if r["kind"] == "unresolved"))
+    return out
+
+
+def repository_verification(behaviour: dict[str, Any], *, entry_points: list[dict[str, Any]], types: list[dict[str, Any]],
+                            oracles: dict[str, list[str]] | None,
+                            scenarios: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """The functional verification one owed fragment implementation needs
+    (V17-3): per owed member, a READ is proven by a scenario that reads through
+    it, a WRITE by a committed effect read back across a request boundary
+    (create -> independent read, update -> read, delete -> read proving the
+    removal and the related records). The entry points that reach the member
+    are found through the frozen call graph (handler -> ... -> the repository
+    member, by the calls the structural model records); their captured
+    scenarios are the coverage. A member no captured scenario reaches is
+    UNRESOLVED -- the responsibility stays open, the expected response is
+    never invented. Pure."""
+    by_fqn = {_s(t.get("fqn")): t for t in types or [] if isinstance(t, dict)}
+    parent = _s(behaviour.get("parent"))
+    names_of_parent = {parent, _s(behaviour.get("repository"))}
+    # who calls a member of the parent, transitively: type#method -> callers
+    callers: dict[str, set[str]] = {}
+    field_types: dict[str, dict[str, str]] = {}
+    for t in by_fqn.values():
+        field_types[_s(t.get("fqn"))] = {_s(f.get("name")): _s(f.get("type")) for f in t.get("fields") or [] if isinstance(f, dict)}
+    for t in by_fqn.values():
+        for m in t.get("methods") or []:
+            if not isinstance(m, dict):
+                continue
+            me = "%s#%s" % (_s(t.get("fqn")), _s(m.get("name")))
+            for c in m.get("calls") or []:
+                if isinstance(c, dict) and _s(c.get("owner")) and _s(c.get("name")):
+                    callers.setdefault("%s#%s" % (_s(c.get("owner")), _s(c.get("name"))), set()).add(me)
+    # an interface call resolves to its implementations too (service interfaces)
+    ep_by_member = {"%s#%s" % (_s(e.get("type")), _s(e.get("member")).split("(", 1)[0]): _s(e.get("id"))
+                    for e in entry_points or [] if isinstance(e, dict)}
+    out = []
+    for row in behaviour.get("members") or []:
+        name = _s(row.get("signature")).split("(", 1)[0]
+        frontier = ["%s#%s" % (p, name) for p in names_of_parent if p]
+        seen: set[str] = set(frontier)
+        reach: set[str] = set()
+        while frontier:
+            cur = frontier.pop()
+            if cur in ep_by_member:
+                reach.add(ep_by_member[cur])
+            owner, meth = cur.split("#", 1)
+            keys = {cur} | {"%s#%s" % (sup, meth) for t in [by_fqn.get(owner) or {}] for sup in t.get("supertypes") or []}
+            for k in sorted(keys):
+                for caller in sorted(callers.get(k, set())):
+                    if caller not in seen:
+                        seen.add(caller)
+                        frontier.append(caller)
+        effect = _s(row.get("effect")) or "read"
+        scen_all = sorted({s for ep in reach for s in (oracles or {}).get(ep) or []})
+        unknown_facts = [x for x in scen_all if scenarios is None or x not in scenarios]
+        if effect == "write":
+            # a write is proven only by a scenario that WRITES and then reads
+            # the committed effect back in another request (corpus `effects`)
+            scen = sorted(x for x in scen_all if scenarios is not None and x in scenarios
+                          and _s((scenarios[x] or {}).get("method")).upper() not in ("", "GET", "HEAD", "OPTIONS")
+                          and (scenarios[x] or {}).get("effects"))
+        else:
+            scen = scen_all
+        need = ("a committed effect read back across a request boundary: the write, then an independent read that "
+                "proves it (create -> read, update -> read, delete -> read proving the removal and the related records)"
+                if effect == "write" else "a read through the generated repository returning the source's records")
+        out.append({"member": "%s#%s" % (parent, _s(row.get("signature"))), "effect": effect, "behaviour": _s(row.get("kind")),
+                    "entry_points": sorted(reach), "scenarios": scen, "needs": need,
+                    "status": APPLICABLE if scen else UNRESOLVED,
+                    "unknowns": ([] if scen else ["no captured scenario reaches %s through %s%s: %s coverage is unresolved "
+                                                  "(never invented)" % (row.get("signature"), parent,
+                                                                        " with a committed read-back" if effect == "write" else "",
+                                                                        effect)])
+                    + (["scenario facts unreadable for %s: whether it proves the effect is unknown" % ", ".join(unknown_facts[:3])]
+                       if (effect == "write" and unknown_facts) else [])})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # reading a destination root (I/O lives here, never in derive)
 # ---------------------------------------------------------------------------
+
+def _scenario_facts(root: Path) -> dict[str, dict[str, Any]] | None:
+    from planner.worklist import corpus_scenario_facts
+    return corpus_scenario_facts(root)[1]
+
 
 def for_root(root: Path, *, oracles: dict[str, list[str]] | None = None) -> dict[str, Any]:
     from planner.decisions import load_decisions
@@ -412,16 +783,18 @@ def for_root(root: Path, *, oracles: dict[str, list[str]] | None = None) -> dict
         decisions = None
     catalog = read(root / CATALOGS_DIR / "compat-mapping.json") or {}
     try:
-        from planner.worklist import generator_plugin_config
+        from planner.worklist import generator_plugin_config, static_generated_body_facts
         generator = generator_plugin_config(root) or None
         gen_known = True
+        gen_facts = static_generated_body_facts(root, bundle) if generator else None
     except Exception:  # an unreadable build is unknown, not generator-free
-        generator, gen_known = None, False
+        generator, gen_known, gen_facts = None, False, None
     dr = read(root / DECIDED_REPAIRS_RECEIPT)
     rows = list(dr.get("rows") or []) if isinstance(dr, dict) else []
     doc = derive(types=st.get("types") or [], entry_points=bundle.get("entry_points") or [], catalog=catalog,
                  decisions=decisions, oracles=oracles, structure_complete=bool(st.get("available")) and str(st.get("mode")) == "full",
-                 generator=generator, generator_known=gen_known, decided_rows=rows, bootstrap=read(root / BOOTSTRAP_RECEIPT))
+                 generator=generator, generator_known=gen_known, decided_rows=rows, bootstrap=read(root / BOOTSTRAP_RECEIPT),
+                 scenario_facts=_scenario_facts(root), generator_facts=gen_facts)
     if decisions is None:
         doc["unknowns"] = sorted(set(doc["unknowns"]) | {"decisions.yaml missing or invalid: decided configuration is unknown"})
     return doc

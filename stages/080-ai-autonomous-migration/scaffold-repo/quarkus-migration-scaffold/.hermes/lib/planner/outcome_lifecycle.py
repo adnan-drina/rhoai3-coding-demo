@@ -682,10 +682,12 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
     open_now = sorted(open_obligations(wl))
+    plan = _plan(ctx.store)
+    node = _node(plan, oid) or {}
     rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
-                             scenarios=list(measurement.get("scenarios") or []), open_ids=open_now, source="accept:%s" % key)
+                             scenarios=list(measurement.get("scenarios") or []), open_ids=open_now, source="accept:%s" % key,
+                             checks=requirement_measurement(ctx.root, plan, node, wl, list(measurement.get("scenarios") or [])))
     owned = _owned(ctx.store, oid)
-    node = _node(_plan(ctx.store), oid) or {}
     covered = _covers(node, rec)
     done = not (owned & set(open_now)) and covered
     with ctx.store.txn() as c:
@@ -718,11 +720,13 @@ def evaluate_recovered(ctx: Ctx, *, task_id: str, run_id: int, measurement: dict
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
     open_now = sorted(open_obligations(wl))
+    plan = _plan(ctx.store)
+    node = _node(plan, oid) or {}
     rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
                              scenarios=list(measurement.get("scenarios") or []), open_ids=open_now,
-                             source="recovered:%s" % last["attempt_key"])
+                             source="recovered:%s" % last["attempt_key"],
+                             checks=requirement_measurement(ctx.root, plan, node, wl, list(measurement.get("scenarios") or [])))
     owned = _owned(ctx.store, oid)
-    node = _node(_plan(ctx.store), oid) or {}
     covered = _covers(node, rec)
     done = not (owned & set(open_now)) and covered
     with ctx.store.txn() as c:
@@ -825,12 +829,31 @@ def restore_pending(ctx: Ctx, *, task_id: str, run_id: int, candidate_now: str) 
 # ---------------------------------------------------------------------------
 
 def record_measurement(ctx: Ctx, *, tree: str, classes: list[str], scenarios: list[str], open_ids: list[str],
-                       source: str) -> dict[str, Any]:
+                       source: str, checks: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
     doc = {"tree": tree, "classes": sorted(set(classes)), "scenarios": sorted(set(scenarios)),
            "open": sorted(set(open_ids)), "source": source}
+    if checks:
+        # plan semantics v1: the requirement checks RECOMPUTED on this tree
+        # (planner.requirement_checks), never supplied by the caller; only the
+        # passing ones cover (_covers), the rest stay recorded as evidence
+        from planner.requirement_checks import passed
+        doc["checks"] = passed(checks)
+        doc["check_status"] = {k: dict(v) for k, v in sorted(checks.items())}
     with ctx.store.txn() as c:
         ctx.store.append(c, "_measure", "measurement", doc, attempt_key="%s:%s" % (source, tree))
     return doc
+
+
+def requirement_measurement(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
+                            scenarios: list[str]) -> dict[str, dict[str, str]] | None:
+    """The requirement checks of `node` measured on the tree `worklist`
+    describes (plan semantics v1); None for an outcome that owns none."""
+    if not ((node.get("acceptance") or {}).get("requirement_checks")):
+        return None
+    from planner.requirement_checks import measure
+    owned = set(node.get("requirements") or [])
+    reqs = [r for r in plan.get("requirements") or [] if isinstance(r, dict) and r.get("id") in owned]
+    return measure(root, reqs, worklist=worklist, scenarios=scenarios)
 
 
 def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:

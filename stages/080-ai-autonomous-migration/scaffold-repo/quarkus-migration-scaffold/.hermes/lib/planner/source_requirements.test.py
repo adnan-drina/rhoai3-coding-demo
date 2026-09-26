@@ -201,6 +201,9 @@ def recipes_case() -> int:
             if name.startswith("planner.worklist."):
                 if not callable(getattr(W, name.rsplit(".", 1)[-1], None)):
                     return _fail("%s cites %s, which does not exist" % (rid, name))
+            elif name.startswith("planner.source_requirements."):
+                if not callable(getattr(SR, name.rsplit(".", 1)[-1], None)):
+                    return _fail("%s cites %s, which does not exist" % (rid, name))
             elif name.startswith("skills/"):
                 if not (HERMES / name).is_file():
                     return _fail("%s cites %s, which does not exist" % (rid, name))
@@ -275,8 +278,190 @@ def graph_case() -> int:
     return 0
 
 
+def repository_behaviour_case() -> int:
+    """V17-3: a fragment parent with NO implementation in the decided profiles
+    (Spring Data served it in the source; the destination's generator needs a
+    <Parent>Impl) is planned as an owed implementation whose every member
+    carries the SELECTED source behaviour -- never the inactive-profile
+    implementation -- and whose functional acceptance needs reads and
+    committed write effects. A read scenario never covers a write ("reads
+    pass, writes do nothing"); an undecided profile is unresolved. Twice,
+    renamed, with another profile name."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fbt", HERMES / "skills/migration/fix-until-green/scripts/fragment-behaviour.test.py")
+    fbt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fbt)  # type: ignore[union-attr]
+    for n in (fbt.A, fbt.B):
+        types, eps = fbt.source_types(n)
+        parent = "%s.%s.%s" % (n["base"], n["repo_pkg"], n["parent"])
+        e = n["entity"].lower()
+        facts = {"sc:del-%s" % e: {"method": "DELETE", "effects": [{"method": "GET", "path": "/x/1"}]},
+                 "sc:get-%s" % e: {"method": "GET", "effects": []}}
+        dec = {"build_profiles": {"adr": "ADR-X", "active": [n["profile"]]}}
+        for oracles, want_delete in (({eps[0]["id"]: ["sc:del-%s" % e], eps[1]["id"]: ["sc:get-%s" % e]}, "applicable"),
+                                     # the only scenario through the delete path READS: a write stays unproven
+                                     ({eps[0]["id"]: ["sc:get-%s" % e], eps[1]["id"]: ["sc:get-%s" % e]}, "unresolved")):
+            doc = SR.derive(types=types, entry_points=eps, catalog=CATALOG, decisions=dec, oracles=oracles, structure_complete=True,
+                            generator=None, scenario_facts=facts)
+            reqs = [r for r in by_rule(doc, "repository-architecture") if r["facts"]["fragment"] == parent]
+            if len(reqs) != 1 or reqs[0]["status"] != "applicable":
+                return _fail("[%s] the parent with no selected implementation is an owed implementation: %s" % (n["base"], reqs))
+            r = reqs[0]
+            if not r["facts"]["owed_implementation"].endswith("/%sImpl.java" % n["parent"]):
+                return _fail("[%s] the owed file follows the naming contract: %s" % (n["base"], r["facts"]["owed_implementation"]))
+            kinds = {m["signature"].split("(", 1)[0]: m["kind"] for m in r["facts"]["behaviour"]["members"]}
+            if kinds != {n["q"]: "query", n["q2"]: "crud-default", n["id"]: "crud-default", n["save"]: "crud-default",
+                         n["delete"]: "source-override"}:
+                return _fail("[%s] each member's selected behaviour: %s" % (n["base"], kinds))
+            if any("jpa.Jpa" in str(m.get("source")) for m in r["facts"]["behaviour"]["members"]) or \
+                    [x["type"].rsplit(".", 1)[-1] for x in r["facts"]["behaviour"]["not_behaviour_sources"]] != ["Jpa%sImpl" % n["parent"]]:
+                return _fail("[%s] the inactive-profile implementation is never the behaviour source" % n["base"])
+            for chk in ("unit:fragment-behaviour-bodies", "behavior:repository-effects:%s" % parent):
+                if chk not in r["acceptance"]:
+                    return _fail("[%s] the requirement names %s: %s" % (n["base"], chk, r["acceptance"]))
+            ver = {v["member"].rsplit("#", 1)[-1].split("(", 1)[0]: v for v in r["facts"]["verification"]}
+            if ver[n["delete"]]["status"] != want_delete or ver[n["save"]]["status"] != "unresolved":
+                return _fail("[%s] write coverage needs a committed read-back (%s): %s" % (n["base"], want_delete, ver))
+            if want_delete == "unresolved" and not any("committed read-back" in u for u in r["unknowns"]):
+                return _fail("[%s] the uncovered write is a named unknown: %s" % (n["base"], r["unknowns"]))
+        undecided = SR.derive(types=types, entry_points=eps, catalog=CATALOG, decisions={}, oracles=None, structure_complete=True,
+                              generator=None)
+        u = [r for r in by_rule(undecided, "repository-architecture") if r["facts"]["fragment"] == parent]
+        if not u or u[0]["status"] != "unresolved":
+            return _fail("[%s] a profile-gated repository with no decided profile is unresolved: %s" % (n["base"], u))
+    return 0
+
+
+def bounds_case() -> int:
+    """ADR-024 bounds on a requirement-only unit: only a fragment
+    (repository-architecture) unit may carry 16 symbols; every other rule
+    keeps 20 files / 160 sites / 8 symbols."""
+    doc = derive("org.acme.clinic", S.PETCLINIC_NAMES)
+    wl = {"items": [], "clusters": [], "unlocatable": [], "not_counted": [], "measure": {"known": True, "tuple": [0, 0, 0]}}
+    repo = copy.deepcopy(by_rule(doc, "repository-architecture")[0])
+    val = copy.deepcopy(by_rule(doc, "annotation-retirement")[0])
+    val["status"] = "applicable"
+    cases = []
+    for n_members, want in ((12, False), (16, False), (17, True)):
+        r = copy.deepcopy(repo)
+        r["facts"]["members"] = ["m%02d()" % i for i in range(n_members)]
+        cases.append(("fragment %d symbols" % n_members, r, want))
+    for n_members, want in ((8, False), (9, True)):
+        r = copy.deepcopy(val)
+        r["facts"]["members"] = ["m%02d()" % i for i in range(n_members)]
+        cases.append(("ordinary %d symbols" % n_members, r, want))
+    for sites, want in ((160, False), (161, True)):
+        r = copy.deepcopy(val)
+        r["facts"]["sites"] = sites
+        cases.append(("ordinary %d sites" % sites, r, want))
+    for why, r, oversize in cases:
+        g = _graph([r], wl)
+        blocked = any(r["id"] in (u.get("requirements") or []) and "UNIT_OVERSIZE" in u["reason"] for u in g["unresolved"])
+        if blocked != oversize:
+            return _fail("%s: UNIT_OVERSIZE %s, expected %s" % (why, blocked, oversize))
+def v17_body_location_case() -> int:
+    """V17-4 and V17-5 at M2, from the source and the static facts alone.
+
+    V17-4: the generator requirement takes its status from the QUALIFIED
+    generator pair (worklist.static_generated_body_facts) -- applicable with
+    each covered body case bound to its capture and each uncovered case an
+    unknown; not-applicable when the pom already stops the creator;
+    unresolved (with the reasons) for an unqualified pair -- never a
+    universal generateJsonCreator=false.
+    V17-5: the handler that builds a Location from a catalogued builder
+    carries the null-argument check, and its entry point's verification
+    responsibility names the create/Location behaviour: covered by its
+    captures, or unresolved without one (never invented). A renamed twin
+    derives the same."""
+    for base, names in (("org.acme.clinic", S.PETCLINIC_NAMES), ("com.example.ledger", S.LEDGER_NAMES)):
+        types = S.migration_types(base, names)
+        eps = derive_entry_points({"types": types}, CATALOGS)
+        gen = copy.deepcopy(GENERATOR)
+        gen["configuration"]["modelPackage"] = "%s.%s.%s" % (base, names["rest"], names["dtopkg"])
+        model = "%s.%s.%s.Model" % (base, names["rest"], names["dtopkg"])
+        cases = [{"model": model, "property": "items", "case": "omitted", "status": "covered", "scenarios": ["sc:create"],
+                  "omitted_by_accepted": ["sc:create"]},
+                 {"model": model, "property": "items", "case": "null", "status": "unresolved", "scenarios": [],
+                  "reason": "no capture sends Model.items null: the source's answer is unknown, never invented"}]
+
+        def run(qual: dict, oracles=None) -> dict:
+            return SR.derive(types=types, entry_points=eps, catalog=CATALOG, decisions=DECISIONS, oracles=oracles,
+                             structure_complete=True, generator=gen, decided_rows=None, bootstrap={"status": "ok", "blocks": []},
+                             generator_facts={"qualification": qual, "cases": cases})
+
+        doc = run({"status": "applicable", "reasons": ["jaxrs-spec creator vs spring setters"]})
+        g = by_rule(doc, "generator-configuration")[0]
+        if (g["status"] != "applicable" or "parity:sc:create" not in g["acceptance"]
+                or not any("never invented" in u for u in g["unknowns"]) or g["facts"]["omitted_by_accepted"] != [model + ".items"]):
+            return _fail("[%s] a qualified pair plans the body cases, covered and unresolved: %s" % (base, g))
+        g = by_rule(run({"status": "not-applicable", "reasons": ["pom.xml already sets generateJsonCreator=false"]}), "generator-configuration")[0]
+        if g["status"] != "not-applicable" or "parity:request-body-positive-negative" in g["acceptance"]:
+            return _fail("[%s] a stopped creator is not applicable: %s" % (base, g))
+        g = by_rule(run({"status": "unresolved", "reasons": ["destination plugin version '7.0.0' is not qualified"]}), "generator-configuration")[0]
+        if g["status"] != "unresolved" or not any("7.0.0" in u for u in g["unknowns"]):
+            return _fail("[%s] an unqualified pair is unresolved with its reason: %s" % (base, g))
+        # V17-5
+        ucb = by_rule(doc, "handler-parameter-binding")[0]
+        if "unit:location-null-arguments" not in ucb["acceptance"] or "empty segment" not in ucb["facts"]["location"]["null_argument"]:
+            return _fail("[%s] the Location-building handler carries the null-argument check: %s" % (base, ucb))
+        ep = ucb["consumers"][0]
+        vb = next(r for r in by_rule(doc, "behavior-verification") if r["subject"] == ep)
+        if (vb["status"] != "unresolved" or (vb["facts"].get("location") or {}).get("coverage") != "unresolved"
+                or not any("create/Location" in u for u in vb["unknowns"])):
+            return _fail("[%s] a create endpoint with no capture keeps its Location behaviour unresolved: %s" % (base, vb))
+        vb = next(r for r in by_rule(run({"status": "applicable", "reasons": []}, oracles={ep: ["sc:create-x"]}), "behavior-verification")
+                  if r["subject"] == ep)
+        if vb["status"] != "applicable" or "location:%s" % ep not in vb["acceptance"] or any("create/Location" in u for u in vb["unknowns"]):
+            return _fail("[%s] a captured create names its Location check: %s" % (base, vb))
+        others = [r for r in by_rule(doc, "behavior-verification") if r["subject"] != ep]
+        if any(r["facts"].get("location") for r in others):
+            return _fail("[%s] only a handler that builds a Location gets the Location facet" % base)
+    return 0
+
+
+def planned_grant_case() -> int:
+    """The bounded grant a requirement-only outcome's planned unit would carry
+    (outcome_graph.planned_unit_grant, the planner's side of issuance): the
+    owed implementation is authorized by its contract only; a non-owed missing
+    file, a test path or an oversize unit refuses; a finding-owned outcome is
+    granted through its cluster instead."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fbt2", HERMES / "skills/migration/fix-until-green/scripts/fragment-behaviour.test.py")
+    fbt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fbt)  # type: ignore[union-attr]
+    n = fbt.A
+    types, eps = fbt.source_types(n)
+    doc = SR.derive(types=types, entry_points=eps, catalog=CATALOG, decisions={"build_profiles": {"adr": "x", "active": [n["profile"]]}},
+                    oracles=None, structure_complete=True, generator=None)
+    parent = "%s.%s.%s" % (n["base"], n["repo_pkg"], n["parent"])
+    req = next(r for r in doc["requirements"] if r["rule"] == "repository-architecture/v1" and r["facts"]["fragment"] == parent)
+    wl = {"items": [], "clusters": [], "unlocatable": [], "not_counted": [], "measure": {"known": True, "tuple": [0, 0, 0]}}
+    g = _graph([req], wl)
+    node = next(x for x in g["nodes"] if req["id"] in (x.get("requirements") or []))
+    owed = req["facts"]["owed_implementation"]
+    got = OG.planned_unit_grant(node, g["requirements"], exists=lambda p: p != owed)
+    if got["refusal"] or owed not in got["paths"] or got["owed"] != [owed]:
+        return _fail("the owed implementation is granted on its contract: %s" % got)
+    bogus = copy.deepcopy(node)
+    bogus["planned_units"][0]["paths"] = sorted(bogus["planned_units"][0]["paths"] + ["src/main/java/q/Invented.java"])
+    if not OG.planned_unit_grant(bogus, g["requirements"], exists=lambda p: p not in (owed, "src/main/java/q/Invented.java"))["refusal"].startswith("PATH_UNAUTHORIZED"):
+        return _fail("a missing file no contract owes is never granted")
+    test = copy.deepcopy(node)
+    test["planned_units"][0]["paths"] = ["src/test/java/q/XTest.java"]
+    if not OG.planned_unit_grant(test, g["requirements"])["refusal"].startswith("PATH_NOT_PRODUCT"):
+        return _fail("a test path is never in a grant")
+    big = copy.deepcopy(node)
+    big["planned_units"][0]["symbols"] = 17
+    if OG.planned_unit_grant(big, g["requirements"])["refusal"] != "UNIT_OVERSIZE":
+        return _fail("17 symbols exceed even the fragment exception")
+    if OG.planned_unit_grant(dict(node, clusters=["c:1"]), g["requirements"])["refusal"] != "NOT_REQUIREMENT_ONLY":
+        return _fail("a finding-owned outcome is granted through its cluster")
+    return 0
+
+
 def main() -> int:
-    for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case):
+    for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
+                 repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "
