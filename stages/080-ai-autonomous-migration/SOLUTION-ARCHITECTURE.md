@@ -307,10 +307,19 @@ verification and decided configuration are judged by their checks.
 
 Proof levels actually run are recorded by
 `skills/planning/build-worklist/scripts/qualify-repeatability.py`:
-recorded-evidence replay on SYNTHETIC specimens and producer replay of the
-JDK diagnostics and decided-repairs producers. The MTA, JDK-model and build
-producers on a preserved pinned PetClinic specimen have not been replayed.
-Planning equality does not authorize execution or establish behavioural PASS.
+recorded-evidence replay on SYNTHETIC specimens (every WP8 matrix row,
+including source/profile/generator deltas, dependency cycles, ambiguous
+shared ownership and mixed protocol state); with `--specimen` the same
+consumers on PRESERVED PetClinic M1 evidence (two reordered copies: identical
+requirements and logical graph, distinct run bindings); with `--source` the
+M1 structure producer (JdkModelExtract after an offline `mvn compile`)
+re-executed on two clean copies of the frozen PetClinic source -- identical
+structure, and requirements identical to those derived from the preserved
+run's evidence (2026-09-26). Producer replay also covers the JDK diagnostics,
+initial-analysis boundary, decided-repairs, declared-reference, V17-3/4/5
+checkpoint and brief cases. The MTA CLI and the Maven build/test producers
+were not re-executed on the specimen. Planning equality does not authorize
+execution or establish behavioural PASS.
 
 ---
 
