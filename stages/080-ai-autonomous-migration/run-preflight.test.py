@@ -124,7 +124,7 @@ class HookRegistrations(unittest.TestCase):
             root = Path(d)
             if ships_post:
                 (root / '.hermes/kernel').mkdir(parents=True)
-                (root / '.hermes/kernel/post_tool_call.sh').write_text('#!/bin/bash\n')
+                (root / '.hermes/kernel/post_tool_call.py').write_text('#!/usr/bin/env python3\n')
 
             def require(cond, msg):
                 if not cond:
@@ -134,13 +134,13 @@ class HookRegistrations(unittest.TestCase):
     def test_registrations(self):
         k2 = {'matcher': 'write|terminal|kanban_complete|complete_task', 'command': '/m/agent-hooks/pre_tool_call.sh',
               'timeout': 5, 'fail_closed': True}
-        post = {'matcher': 'terminal', 'command': '/m/agent-hooks/post_tool_call.sh', 'timeout': 5}
-        self.check({'pre_tool_call': [k2]}, False)
+        post = {'matcher': 'terminal', 'command': '/m/agent-hooks/post_tool_call.py', 'timeout': 5}
         self.check({'pre_tool_call': [k2], 'post_tool_call': [post]}, True)
-        for hooks, ships, text in (({'pre_tool_call': [dict(k2, fail_closed=False)]}, False, 'fail-closed'),
-                                   ({'pre_tool_call': [dict(k2, timeout=60)]}, False, 'fail-closed'),
-                                   ({}, False, 'fail-closed'),
-                                   ({'pre_tool_call': [k2]}, True, 'post_tool_call observer')):
+        for hooks, ships, text in (({'pre_tool_call': [dict(k2, fail_closed=False)], 'post_tool_call': [post]}, True, 'fail-closed'),
+                                   ({'pre_tool_call': [dict(k2, timeout=60)], 'post_tool_call': [post]}, True, 'fail-closed'),
+                                   ({}, True, 'fail-closed'),
+                                   ({'pre_tool_call': [k2]}, True, 'post_tool_call observer'),
+                                   ({'pre_tool_call': [k2], 'post_tool_call': [post]}, False, 'post_tool_call observer')):
             with self.assertRaises(AssertionError) as cm:
                 self.check(hooks, ships)
             self.assertIn(text, str(cm.exception))

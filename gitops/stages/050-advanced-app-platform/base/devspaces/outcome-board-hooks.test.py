@@ -82,7 +82,7 @@ def governed(td: Path, *, request=None, has_request=True, selected=None, default
 
 def post_hook_cases(base: dict) -> list:
     """V17-6b: the terminal post_tool_call observer is registered exactly when
-    the destination ships .hermes/kernel/post_tool_call.sh; the K2
+    the destination ships .hermes/kernel/post_tool_call.py; the K2
     pre_tool_call registrations keep fail_closed: true (honoured by the pinned
     runtime for pre_tool_call only)."""
     import os
@@ -98,7 +98,7 @@ def post_hook_cases(base: dict) -> list:
             root, hooks = Path(tmp) / "dest", Path(tmp) / "managed" / "agent-hooks"
             (root / ".hermes" / "kernel").mkdir(parents=True)
             if ships:
-                (root / ".hermes" / "kernel" / "post_tool_call.sh").write_text("#!/bin/bash\ncat >/dev/null\n")
+                (root / ".hermes" / "kernel" / "post_tool_call.py").write_text("#!/usr/bin/env python3\nimport sys\nsys.stdin.read()\n")
             ns = {"os": os, "shutil": shutil, "safe_root": str(root), "hooks_dir": str(hooks),
                   "cfg": copy.deepcopy(base), "print": lambda *a: None}
             exec(block("post-tool-call observer"), ns)
@@ -106,8 +106,8 @@ def post_hook_cases(base: dict) -> list:
             if not ships and got is not None:
                 fails.append("post_tool_call registered without the script: %s" % got)
             if ships:
-                want = [{"matcher": "terminal", "command": str(hooks / "post_tool_call.sh"), "timeout": 5}]
-                if got != want or not os.access(str(hooks / "post_tool_call.sh"), os.X_OK):
+                want = [{"matcher": "terminal", "command": str(hooks / "post_tool_call.py"), "timeout": 5}]
+                if got != want or not os.access(str(hooks / "post_tool_call.py"), os.X_OK):
                     fails.append("post_tool_call registration %s, want %s" % (got, want))
                 if ns["cfg"]["hooks"]["pre_tool_call"] != base["hooks"]["pre_tool_call"]:
                     fails.append("the post block changed the K2 registration")

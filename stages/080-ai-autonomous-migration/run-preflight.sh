@@ -240,16 +240,16 @@ require(config, 'managed Hermes config missing')
 c = load_yaml(config)
 # The effective hook registrations (Stage 050 producer): K2 fail-closed with the
 # complete terminator in its matcher and a 5 s timeout; the terminal
-# post_tool_call observer when the harness ships it (V17-6b).
+# post_tool_call observer the harness ships (V17-6b), never fail-closed.
 hooks = c.get('hooks') or {}
 k2 = [h for h in hooks.get('pre_tool_call') or [] if str(h.get('command', '')).endswith('pre_tool_call.sh')]
 require(len(k2) == 1 and k2[0].get('fail_closed') is True and k2[0].get('timeout') == 5
         and 'kanban_complete' in str(k2[0].get('matcher', '')).split('|'),
         'the K2 pre_tool_call hook is not registered fail-closed with a 5 s timeout')
-if (root / '.hermes/kernel/post_tool_call.sh').is_file():
-    require(any(h.get('matcher') == 'terminal' and str(h.get('command', '')).endswith('post_tool_call.sh')
-                for h in hooks.get('post_tool_call') or []),
-            'the terminal post_tool_call observer is not registered')
+require((root / '.hermes/kernel/post_tool_call.py').is_file()
+        and any(h.get('matcher') == 'terminal' and str(h.get('command', '')).endswith('post_tool_call.py')
+                and not h.get('fail_closed') for h in hooks.get('post_tool_call') or []),
+        'the terminal post_tool_call observer is not shipped or not registered')
 require(c.get('model', {}).get('default') == MODEL, 'worker model mismatch')
 import socket
 from urllib.parse import urlsplit
