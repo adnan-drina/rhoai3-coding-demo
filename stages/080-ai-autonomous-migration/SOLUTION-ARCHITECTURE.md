@@ -417,6 +417,13 @@ mounts read-only. Execution stays disabled until that layout is qualified on
 Dev Spaces and the platform records its measurement-trust decision
 (`OUTCOME-BOARD-CONTRACT.md` sections 3, 8a, 8b).
 
+On this protocol a runtime failure the authority proves on the accepted
+baseline and attributes to an accepted outcome (`planner.runtime_cause`, on
+inputs the authority builds; the scenario records stay worker receipts) is not
+charged to the outcome that met it: its candidate is held, one repair of the
+owner becomes its prerequisite, and it is re-verified afterwards (contract
+§5.2). Requirement-only outcomes are issued their planned unit (§5.1).
+
 ## 11. Maturity
 
 | Area | Maturity |

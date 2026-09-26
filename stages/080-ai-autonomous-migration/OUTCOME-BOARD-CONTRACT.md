@@ -232,39 +232,76 @@ passes the source requirements (`planner/source_requirements.py`) to the same
   still fails, its owned requirements' paths), a missing file only when a
   requirement's contract owes it, never a test or harness path,
   `UNIT_OVERSIZE` past the bounds, `NOT_REQUIREMENT_ONLY` while a cluster is
-  open. Issuing it through the authority's issue path (T5) is the open
-  integration item for the authority: when `_allowed_paths` finds no open
-  cluster and the outcome has planned units or owns requirements, grant
-  `planned_unit_grant(..., cluster_open=False)["paths"]` under cluster
-  `planned:<outcome_id>:1` when its refusal is empty, nothing otherwise.
-  `planned_units_e2e.test.py` exercises exactly that through a test seam.
+  open. The authority's issue path (T5, `outcome_lifecycle.issue`) grants
+  it: when no open finding cluster grants an outcome that has planned units
+  or owns requirements, `planned_unit_grant(..., cluster_open=False)` paths
+  under cluster `planned:<outcome_id>:1` when its refusal is empty, nothing
+  otherwise (the refusal is reported in the issue result), under the same
+  writer generation, budget, parent, baseline and amendment rules as a
+  cluster; `outcome_gate.py issue` writes the `issued.json` projection for it
+  (`outcome_board.test.py PlannedUnitIssue`; `planned_units_e2e.test.py` now
+  runs on this production path, its seam removed).
 - `owner_of_finding` maps a later finding to the frozen owner (obligation,
   then the requirement scope; a behaviour finding prefers the handler-level
   requirement) or returns a typed revision class: `previously-unknown-behavior`,
-  `evidence-gap`, `missing-planning-rule`, `ambiguous-ownership`.
+  `evidence-gap`, `missing-planning-rule`, `ambiguous-ownership`. The REFUSE
+  revision (`plan_after_refuse`) uses it: a later finding with a frozen owner
+  goes to that owner (a follow-up with its budget when it is accepted);
+  `ambiguous-ownership` / `evidence-gap` become unresolved rows (a
+  REFUSE with nothing else repairable stops naming them); the other classes
+  fall through to the bounded follow-up rules.
+- M4 (`record_assessment`) records the requirement checks of every owner
+  node, recomputed on the assessed tree (`requirement_measurement`), with the
+  measurement.
 - Without the decision the revision, its digest and its briefs are unchanged.
   Enabling execution still requires the protected writer (section 8a).
 
 ### 5.2 Automatic owner recovery
 
-A rejected attempt (`record_verdict REVERTED`) is first classified by
-`planner.runtime_cause.classify(root, issued, cur, steps, baseline)`
-(workstream A) on the AUTHORITY's inputs: its own issue and baseline, the
-measured work list and the loop steps. Only `pre-existing-owner-defect` acts,
-and only after the authority validates it: the owner is another ACCEPTED
-repair outcome, the evidence names this baseline, the owner's budget is not
-exhausted, and no repair was scheduled for this (owner, dependent) pair
-before. Then, in one transaction and without spending the dependent's
+A rejected attempt (`record_verdict REVERTED`) that reports runtime failures
+is first classified by `planner.runtime_cause.classify(root, issued, cur,
+steps, baseline)` (pure). The AUTHORITY builds its inputs
+(`outcome_lifecycle.cause_inputs`):
+
+| Input | Source | Trust |
+|---|---|---|
+| `issued` | its own issue (cluster, allowed paths) + the issued cluster's items from the work list | issue: protected; items: worker receipt |
+| `cur.changed` | changed product paths since the issued baseline, measured by the authority | protected |
+| `cur.failures` | the work list's parity/runtime items for the cluster, each with the server error of its LIVE scenario record (`runtime_cause.failures_of`) | worker receipts |
+| `steps` | every committed acceptance in its own ledger, with the paths that commit changed (`diff-tree commit^1..commit`) | protected |
+| `baseline.tree` | the issue's baseline tree digest | protected |
+| `baseline.records` | the ACCEPTED parity snapshot's scenario records (`verification/loop/accepted/parity`) | worker receipts |
+
+The runtime failures and the baseline records are worker-produced parity
+receipts: the classification is exactly as authentic as the declared
+measurement trust (`cooperative-receipts`, section 8b) and no more. The serial
+loop's `advance.inputs_from_root` shares the parsing, not the trust. Only
+`pre-existing-owner-defect` acts, and only after the authority validates it:
+the owner (the classifier's owner step's `outcome_id`, from the authority's own
+steps) is another ACCEPTED repair outcome, the evidence carries a baseline
+record AND a baseline failure bound to the issued baseline tree, a failing
+scenario is named, the owner's budget is not exhausted, and no repair was
+scheduled for this (owner, dependent) pair before. Then, in one transaction and without spending the dependent's
 attempt: the dependent's candidate is HELD in the store (its changed paths,
 all inside its issue) and a durable `owner-repair` intent is written. The
 reconciler publishes ONE repair outcome `repair:<owner>:for:<dependent>`
-(lineage to the owner, the owner's budget key, the owner's recorded write
-set) as a PARENT of the dependent and of every open assessment — the
+(lineage to the owner and the evidence, the owner's budget key, the owner's
+recorded write set plus the throwing file, issued as unit
+`planned:<repair>:1`) as a PARENT of the dependent and of every open assessment — the
 dependent waits on the repair (`kanban_block kind=dependency`), never the
 reverse. Every step is keyed and recorded; interruption replays lookups, not
 effects. The dependent's old issue goes stale with the revision; its next issue
-requires the repair accepted, and `outcome_gate.py restore-held` returns the
-held candidate for re-verification on the repaired baseline.
+requires the repair accepted (`OWNER_REPAIR_PENDING` until then; K2 refuses
+`kanban_complete` naming `kanban_block kind=dependency`, and advance's reissue
+prints the same terminator), and `outcome_gate.py restore-held` returns the
+held candidate for re-verification on the repaired baseline. The repair's
+acceptance is tied to the classifier's evidence: every failing scenario must
+PASS in a live scenario record bound to the repair's own tree
+(`repair_evidence_gaps`), besides its check class.
+Evidence: `outcome_board.test.py OwnerRecovery` (synthetic board, real
+classifier) and `hermes-runtime/tests/rhoai3_outcome_board/test_owner_recovery_service.py`
+(exact runtime, through the service, the service crashed after the revision
+and after the publication: one repair card).
 `candidate-regression` is the ordinary rejection; `ambiguous` (and any claim
 the authority cannot validate, or a second claim for the same pair) is an
 ordinary rejection with a visible report and no blame transfer or scope grant.
