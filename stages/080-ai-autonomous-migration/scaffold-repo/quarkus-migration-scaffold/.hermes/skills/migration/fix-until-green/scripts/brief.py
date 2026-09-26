@@ -1160,10 +1160,14 @@ def main(argv: list[str] | None = None) -> int:
             # only the other uses and says which handlers it is NOT for
             handler = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("handler_parameter")]
             scoped = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("not_for")]
+            helpers = [t for t in (scope.get("target_symbols") or []) if isinstance(t, dict) and t.get("helper_parameter")]
             first = (["%s (%s, at %s)" % (t.get("action"), (t.get("catalog_row") or {}).get("key"),
                                          ", ".join("%s.%s(%s)" % (str(x.get("type") or "").rsplit(".", 1)[-1], x.get("member"),
                                                                  x.get("parameter")) for x in (t.get("sites") or [])))
                       for t in handler]
+                     + ["then, where a helper takes %s (%s): %s" % (t.get("from"), ", ".join("%s.%s(%s)" % (
+                         str(x.get("type") or "").rsplit(".", 1)[-1], x.get("member"), x.get("parameter")) for x in (t.get("sites") or [])),
+                         t.get("action")) for t in helpers]
                      + ["everywhere else %s is used (not those handler parameters), move to %s (compat-mapping symbol_renames)"
                         % (t.get("from"), t.get("to")) for t in scoped]
                      + ["%s (%s)" % (t.get("action"), (t.get("catalog_row") or {}).get("key")) for t in retire])
@@ -1181,6 +1185,9 @@ def main(argv: list[str] | None = None) -> int:
                                         **({"handler_parameter": True, "action": t.get("action"), "sites": t.get("sites")}
                                            if t.get("handler_parameter") else {}),
                                         **({"translation": t.get("translation")} if t.get("translation") else {}),
+                                        **({"helper_parameter": True, "action": t.get("action"), "when": t.get("when"),
+                                            "sites": t.get("sites")} if t.get("helper_parameter") else {}),
+                                        **({"via_package": t.get("via_package")} if t.get("via_package") else {}),
                                         **({"applies_to": t.get("applies_to"), "not_for": t.get("not_for")}
                                            if t.get("not_for") else {}))
                                    for t in (scope.get("target_symbols") or [])],

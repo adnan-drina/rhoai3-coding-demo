@@ -5076,6 +5076,88 @@ def _real_binding_result_translation_case() -> int:
     return 0
 
 
+def _real_package_validation_unit_case() -> int:
+    """V17-2 (v17 t_c67c0185): a unit sealed on the PACKAGE
+    org.springframework.validation ("package ... does not exist") names no
+    type, and the BindingResult translation is keyed on the type, so the brief
+    had no first action. The unit now resolves the types its members use from
+    that package -- through a single-type import and through a wildcard import
+    -- and renders their rows: the handler_parameters BindingResult row with
+    its translation at the handlers, and the validation_helpers rows at the
+    error-response helper that takes BindingResult and FieldError. An
+    unrelated package-level unit gets nothing extra. Real javac, twice under
+    renamed packages."""
+    import tempfile
+
+    pkg = "org.springframework.validation"
+    for base in ("org.acme.clinic", "com.example.depot"):
+        src = "src/main/java/%s/rest/" % base.replace(".", "/")
+        owner, visit, helper = src + "OwnerController.java", src + "VisitController.java", src + "BindingErrorsResponse.java"
+        util = src + "Names.java"
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\n" % base)
+        files = {
+            **stubs,
+            owner: head + "import %s.BindingResult;\npublic class OwnerController {\n"
+                          '    @PostMapping("/owners")\n    public String addOwner(@RequestBody String dto, BindingResult bindingResult) {\n'
+                          '        if (bindingResult.hasErrors()) { return new BindingErrorsResponse(bindingResult).toString(); }\n'
+                          '        return "201";\n    }\n}\n' % pkg,
+            visit: head + "import %s.*;\npublic class VisitController {\n"
+                          '    @PostMapping("/visits")\n    public String addVisit(@RequestBody String dto, BindingResult errors) {\n'
+                          '        return errors.hasErrors() ? "400" : "201";\n    }\n}\n' % pkg,
+            helper: "package %s.rest;\nimport %s.BindingResult;\nimport %s.FieldError;\n"
+                    "public class BindingErrorsResponse {\n    public BindingErrorsResponse(BindingResult result) { }\n"
+                    "    void addError(FieldError error) { }\n}\n" % (base, pkg, pkg),
+            util: "package %s.rest;\nimport org.springframework.util.StringUtils;\npublic class Names {\n"
+                  "    static boolean blank(String s) { return !StringUtils.hasText(s); }\n}\n" % base,
+        }
+
+        def pkg_item(path: str, n: int, package: str) -> dict:
+            return {"id": "err:%s:%d" % (path.rsplit("/", 1)[-1], n), "source": "javac", "kind": "compile",
+                    "identity": "diag:%s|pkg|%d" % (path, n), "category": "mandatory", "path": path, "line": 2,
+                    "rule_id": "compiler.err.doesnt.exist", "message": "package %s does not exist" % package}
+
+        with tempfile.TemporaryDirectory(prefix="wl-v172-") as d:
+            root = _jdk_root(d, files)
+            model = dest_model(root)
+            items = [pkg_item(owner, 1, pkg), pkg_item(visit, 2, pkg), pkg_item(helper, 3, pkg)]
+            units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == pkg and s["kind"] == "package" for s in c["unit"]["symbols"])), None)
+            if unit is None:
+                return _fail("[%s] the package family forms a unit: %s" % (base, [(c["unit"]["family_key"], c["unit"]["symbols"]) for c in units]))
+            ts = unit["unit"]["target_symbols"]
+            first = ts[0] if ts else {}
+            sites = sorted((x["type"].rsplit(".", 1)[-1], x["member"]) for x in first.get("sites") or [])
+            if (first.get("from") != pkg + ".BindingResult" or not first.get("handler_parameter") or first.get("via_package") != pkg
+                    or not isinstance(first.get("translation"), dict)
+                    or sites != [("OwnerController", "addOwner"), ("VisitController", "addVisit")]):
+                return _fail("[%s] the package unit leads with the BindingResult handler row and its translation, at both "
+                             "handlers (single-type and wildcard import): %s" % (base, ts[:1]))
+            helpers = {t["from"].rsplit(".", 1)[-1]: sorted((x["type"].rsplit(".", 1)[-1], x["member"]) for x in t["sites"])
+                       for t in ts if t.get("helper_parameter")}
+            if helpers != {"BindingResult": [("BindingErrorsResponse", "<init>")], "FieldError": [("BindingErrorsResponse", "addError")]}:
+                return _fail("[%s] the helper that takes BindingResult and FieldError gets the validation_helpers rows: %s" % (base, helpers))
+            if any(t.get("helper_parameter") and "ConstraintViolation" not in t["action"] for t in ts):
+                return _fail("[%s] a helper row says how to replace the type: %s" % (base, ts))
+            if not any("used from sealed package %s" % pkg in e["ref"] for e in unit["unit"]["evidence"]):
+                return _fail("[%s] the evidence records where the types came from: %s" % (base, unit["unit"]["evidence"]))
+            # an unrelated package-level unit gets nothing extra
+            other = [pkg_item(util, 4, "org.springframework.util"), pkg_item(owner, 5, "org.springframework.util")]
+            units2, _ = form_units(other, {}, set(), model=model, root=GOLDEN)
+            if not any(s["fqn"] == "org.springframework.util" for c in units2 for s in c["unit"]["symbols"]):
+                return _fail("[%s] the control needs the unrelated package unit to form: %s" % (base, units2))
+            extra = [t for c in units2 for t in c["unit"]["target_symbols"]]
+            if extra:
+                return _fail("[%s] an unrelated package unit gets no validation rows: %s" % (base, extra))
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
@@ -5087,7 +5169,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case() or _real_package_validation_unit_case():
             return 1
         if (_real_generic_leaf_case() or _real_partial_leaf_case() or _real_leaf_bound_case()
                 or _real_generic_retirement_case()):

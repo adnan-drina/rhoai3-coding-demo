@@ -4490,41 +4490,103 @@ def _is_handler(member: dict[str, Any], bound: dict[str, str]) -> bool:
     return False
 
 
-def _param_identity(param: dict[str, Any], bound: dict[str, str]) -> str:
+def _param_identity(param: dict[str, Any], bound: dict[str, str], wildcard: str = "") -> str:
     """A parameter's QUALIFIED type: the compiler's, or what the declaring
     file's imports bind a simple spelling to; '' when nothing binds it. An
     unrelated type spelled the same way is its own qualified name, never this
-    one (the same rule as symbol_renames)."""
+    one (the same rule as symbol_renames). `wildcard` is a package the file
+    imports with `.*` and a unit SEALED (V17-2): the compiler said the package
+    does not exist, so an unbound simple name there is read as that package's."""
     t = _erased(str(param.get("type") or ""))
-    return t if "." in t else bound.get(t, "")
+    if "." in t:
+        return t
+    return bound.get(t, "") or ("%s.%s" % (wildcard, t) if wildcard and t else "")
 
 
-def handler_parameter_sites(model: dict[str, Any] | None, paths: list[str], fqn: str) -> list[dict[str, Any]]:
+def _wildcard_of(typ: dict[str, Any], pkg: str) -> str:
+    return pkg if pkg and "%s.*" % pkg in [str(i) for i in (typ.get("imports") or [])] else ""
+
+
+def handler_parameter_sites(model: dict[str, Any] | None, paths: list[str], fqn: str, *,
+                            handlers: bool = True) -> list[dict[str, Any]]:
     """Every HTTP handler parameter in `paths` whose resolved type is `fqn`:
     [{path, type, member, parameter}]. A handler is a declared member with a
     mapping annotation or a JAX-RS method designator; a helper method, a
-    field or a local that uses the same type is not a handler parameter."""
+    field or a local that uses the same type is not a handler parameter.
+    `handlers=False` asks the opposite: the members that are NOT handlers --
+    a helper's constructor or method -- taking `fqn` (V17-2)."""
     want = set(paths)
+    pkg = fqn.rsplit(".", 1)[0] if "." in fqn else ""
     out: list[dict[str, Any]] = []
     for t in _unit_types(model):
         if _unit_path(t) not in want:
             continue
         bound = unit_bound_imports(t)
+        wildcard = _wildcard_of(t, pkg)
         for m in t.get("declared") or []:
-            if not isinstance(m, dict) or not _is_handler(m, bound):
+            if not isinstance(m, dict) or _is_handler(m, bound) != handlers:
                 continue
             for p in m.get("params") or []:
-                if isinstance(p, dict) and _param_identity(p, bound) == fqn:
+                if isinstance(p, dict) and _param_identity(p, bound, wildcard) == fqn:
                     out.append({"path": _unit_path(t), "type": str(t.get("fqn") or ""), "member": str(m.get("name") or ""),
                                 "signature": str(m.get("signature") or ""), "parameter": str(p.get("name") or "")})
     return sorted(out, key=lambda r: (r["path"], r["member"], r["parameter"]))
+
+
+def package_types_used(model: dict[str, Any] | None, paths: list[str], pkg: str, known: set[str]) -> list[str]:
+    """The types of package `pkg` the members of `paths` actually use (V17-2):
+    every single-type import from `pkg`, and -- in a file that imports `pkg.*`
+    -- every simple name a parameter, field or declared member names that is a
+    catalogued type of `pkg` (`known`). A package a unit seals is the
+    compiler's word that it does not exist, so nothing is resolved through it;
+    the imports and the catalog are the evidence."""
+    want = set(paths)
+    out: set[str] = set()
+    for t in _unit_types(model):
+        if _unit_path(t) not in want:
+            continue
+        for i in t.get("imports") or []:
+            s = str(i)
+            if s.startswith(pkg + ".") and "." not in s[len(pkg) + 1:] and not s.endswith(".*"):
+                out.add(s)
+        if not _wildcard_of(t, pkg):
+            continue
+        names: set[str] = set()
+        for m in t.get("declared") or []:
+            if isinstance(m, dict):
+                names.update(_erased(str(p.get("type") or "")) for p in (m.get("params") or []) if isinstance(p, dict))
+                names.update(_erased(str(r)) for r in (m.get("type_refs") or []))
+        names.update(_erased(str(f.get("type") or "")) for f in (t.get("fields") or []) if isinstance(f, dict))
+        out.update("%s.%s" % (pkg, n) for n in names if n and "." not in n and "%s.%s" % (pkg, n) in known)
+    return sorted(out)
+
+
+def validation_helpers(root: Path | None) -> dict[str, dict[str, Any]]:
+    """compat-mapping.json `validation_helpers`: the documented replacement of
+    a Spring validation type a NON-handler member takes (V17-2). Qualified keys
+    with an action only."""
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("validation_helpers") or {}
+    return {str(k): dict(v) for k, v in rows.items()
+            if k != "note" and isinstance(v, dict) and "." in str(k) and str(v.get("action") or "")}
 
 
 def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[str, Any]],
                         packages: dict[str, str],
                         owned: dict[str, dict[str, Any]] | None = None,
                         handler_sites: dict[str, list[dict[str, Any]]] | None = None,
-                        handler_rows: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+                        handler_rows: dict[str, dict[str, Any]] | None = None,
+                        package_types: dict[str, list[str]] | None = None,
+                        helper_sites: dict[str, list[dict[str, Any]]] | None = None,
+                        helper_rows: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """[{from, to, catalog_row}] — the documented replacement of each sealed
     symbol, when a catalog row records one. A symbol with no row contributes
     nothing: the unit then has no documented target, and the checkpoint has
@@ -4546,12 +4608,35 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
     UriBuilder the platform read as a second body. The symbol_renames row then
     covers only the OTHER uses -- a helper's builder, a local -- and says so
     (`not_for`: the handler sites); a symbol no handler takes keeps its row
-    exactly as it was."""
+    exactly as it was.
+
+    V17-2 (v17 t_c67c0185): a PACKAGE symbol names no type, so its rows come
+    from the types of that package the unit's members use (`package_types`,
+    from their imports): each one's handler_parameters row at its handler
+    sites and its validation_helpers row at the helpers that take it, marked
+    `via_package`. A non-handler member taking a catalogued type gets that
+    helper row the same way when the unit sealed the type itself."""
     out: list[dict[str, Any]] = []
     for s in symbols:
         fqn = str(s.get("fqn") or "")
         if not fqn:
             continue
+        for used in [fqn] + [u for u in (package_types or {}).get(fqn, []) if u != fqn]:
+            via = {"via_package": fqn} if used != fqn else {}
+            if used != fqn and (handler_sites or {}).get(used) and (handler_rows or {}).get(used) is not None:
+                urow = (handler_rows or {})[used]
+                out.append(dict({"from": used, "to": "", "handler_parameter": True, "action": str(urow.get("action") or ""),
+                                 "sites": (handler_sites or {})[used],
+                                 **({"translation": dict(urow["translation"])} if isinstance(urow.get("translation"), dict) else {}),
+                                 "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
+                                                 "key": used, "kind": str(urow.get("kind") or ""),
+                                                 "source": str(urow.get("source") or "")}}, **via))
+            hsites, hlp = (helper_sites or {}).get(used) or [], (helper_rows or {}).get(used)
+            if hsites and hlp is not None:
+                out.append(dict({"from": used, "to": "", "helper_parameter": True, "action": str(hlp.get("action") or ""),
+                                 "when": str(hlp.get("when") or ""), "sites": hsites,
+                                 "catalog_row": {"catalog": "compat-mapping.json", "block": "validation_helpers", "key": used,
+                                                 "kind": str(hlp.get("kind") or ""), "source": str(hlp.get("source") or "")}}, **via))
         sites = (handler_sites or {}).get(fqn) or []
         hrow = (handler_rows or {}).get(fqn)
         if sites and hrow is not None:
@@ -4583,8 +4668,9 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
                             "catalog_row": {"catalog": "compat-mapping.json", "block": "package_renames", "key": old,
                                             "kind": "package", "source": ""}})
                 break
-    # a handler-parameter row leads its symbol: it is the first action
-    return sorted(out, key=lambda r: (r["from"], not r.get("handler_parameter"), r["to"]))
+    # a handler-parameter row leads, then a helper row: the first actions.
+    # sorted() is stable, so rows of one type keep their order
+    return sorted(out, key=lambda r: (not r.get("handler_parameter"), not r.get("helper_parameter"), r["from"], r["to"]))
 
 
 # --- the four rules --------------------------------------------------------
@@ -5220,6 +5306,8 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
     groups."""
     renames, packages, owned = symbol_renames(root), package_renames_of(root), adapter_owned_annotations(root)
     handler_rows = handler_parameters(root).get("undocumented", {})
+    helper_rows = validation_helpers(root)
+    known = set(handler_rows) | set(helper_rows) | set(renames)
     compile_rows = [i for i in items if str(i.get("source") or "") == "javac"]
     families = diagnostic_families(compile_rows, model)
     claimed: set[str] = set()
@@ -5227,10 +5315,22 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
 
     def take(unit: dict[str, Any]) -> None:
         unit["symbols"] = sorted(unit["symbols"], key=lambda s: (str(s.get("kind")), str(s.get("fqn")), str(s.get("signature") or "")))
-        sites = {str(sym.get("fqn") or ""): handler_parameter_sites(model, list(unit["files"]), str(sym.get("fqn") or ""))
-                 for sym in unit["symbols"] if str(sym.get("fqn") or "") in handler_rows}
-        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages, owned, sites, handler_rows)
+        files = list(unit["files"])
+        pkg_types = {str(sym.get("fqn") or ""): package_types_used(model, files, str(sym.get("fqn") or ""), known)
+                     for sym in unit["symbols"] if str(sym.get("kind") or "") == "package"}
+        wanted = sort_unique([str(sym.get("fqn") or "") for sym in unit["symbols"]] + [u for us in pkg_types.values() for u in us])
+        sites = {f: handler_parameter_sites(model, files, f) for f in wanted if f in handler_rows}
+        hsites = {f: handler_parameter_sites(model, files, f, handlers=False) for f in wanted if f in helper_rows}
+        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages, owned, sites, handler_rows,
+                                                     pkg_types, hsites, helper_rows)
         for t in unit["target_symbols"]:
+            if t.get("helper_parameter"):
+                unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s taken by %d helper member(s) (%s)%s"
+                                                                   % (t["catalog_row"]["block"], t["from"], len(t["sites"]),
+                                                                      ", ".join("%s.%s" % (x["type"].rsplit(".", 1)[-1], x["member"])
+                                                                                for x in t["sites"][:3]),
+                                                                      (", used from sealed package %s" % t["via_package"]) if t.get("via_package") else "")})
+                continue
             if t.get("handler_parameter"):
                 unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s at %d handler parameter(s) (%s); "
                                                                    "its action precedes any rename"
@@ -5846,7 +5946,7 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
             bad = []
             for m in handlers:
                 for p in m.get("params") or []:
-                    if not isinstance(p, dict) or _param_identity(p, bound) not in banned:
+                    if not isinstance(p, dict) or _param_identity(p, bound, _wildcard_of(typ, str(row.get("from") or "").rsplit(".", 1)[0])) not in banned:
                         continue
                     ctx = any((str(a.get("fqn") or "") if "." in str(a.get("fqn") or "")
                                else bound.get(str(a.get("simple") or a.get("fqn") or ""), "")) == _JAXRS_CONTEXT

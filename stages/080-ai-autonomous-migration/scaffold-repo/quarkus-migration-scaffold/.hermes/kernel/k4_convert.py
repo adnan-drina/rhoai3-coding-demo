@@ -198,9 +198,11 @@ def _target_ref(t: Any) -> Any:
     row = {k: t[k] for k in ("from", "to") if k in t}
     cat = t.get("catalog_row") if isinstance(t.get("catalog_row"), dict) else {}
     row["catalog_row"] = {k: cat[k] for k in ("catalog", "block", "key", "kind") if k in cat}
-    for flag in ("retire", "handler_parameter"):
+    for flag in ("retire", "handler_parameter", "helper_parameter"):
         if t.get(flag):
             row[flag] = True
+    if t.get("via_package"):
+        row["via_package"] = str(t["via_package"])
     if t.get("sites"):
         row["sites"] = len(t["sites"])
     if t.get("not_for"):

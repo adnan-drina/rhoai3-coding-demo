@@ -448,6 +448,45 @@
       }
     }
   },
+  "validation_helpers": {
+    "note": "Spring validation types used OUTSIDE a handler's parameter list -- a helper such as an error-response class whose constructor or method takes the BindingResult, Errors or FieldError the handler used to pass (V17-2). The compat layer has none of these types, and after the handler_parameters BindingResult translation the handler holds a Set<ConstraintViolation<T>> instead. Each row is conditional: `when` says which member it applies to; `action` is the documented replacement, derived from the Bean Validation and Spring javadoc the row cites and from nothing specific to a specimen. KEYS ARE QUALIFIED IDENTITIES (a helper's parameter type resolved through the file's imports, or through a wildcard import of the package a unit seals); the planner renders a row only at a member that actually takes the type.",
+    "org.springframework.validation.BindingResult": {
+      "kind": "type",
+      "when": "a constructor or method that is NOT an HTTP handler takes a BindingResult or Errors (an error-response helper the handler fed with its BindingResult)",
+      "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> getRootBeanClass().getSimpleName()); keep the helper's output (the header or body it renders) exactly as it was",
+      "mapping": {
+        "getField()": "getPropertyPath().toString()",
+        "getDefaultMessage()": "getMessage()",
+        "getRejectedValue()": "getInvalidValue()",
+        "getObjectName()": "getRootBeanClass().getSimpleName()"
+      },
+      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation (a violation carries its property path, message, invalid value and root bean class); https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html"
+    },
+    "org.springframework.validation.FieldError": {
+      "kind": "type",
+      "when": "a constructor or method that is NOT an HTTP handler takes a FieldError (one row of an error response)",
+      "action": "change that parameter to ConstraintViolation<?> (jakarta.validation.ConstraintViolation) and read FieldError.getField() as violation.getPropertyPath().toString(), getDefaultMessage() as getMessage(), getRejectedValue() as getInvalidValue(), getObjectName() as getRootBeanClass().getSimpleName(); keep the output the helper renders exactly as it was",
+      "mapping": {
+        "getField()": "getPropertyPath().toString()",
+        "getDefaultMessage()": "getMessage()",
+        "getRejectedValue()": "getInvalidValue()",
+        "getObjectName()": "getRootBeanClass().getSimpleName()"
+      },
+      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation; https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html"
+    },
+    "org.springframework.validation.Errors": {
+      "kind": "type",
+      "when": "a constructor or method that is NOT an HTTP handler takes a BindingResult or Errors (an error-response helper the handler fed with its BindingResult)",
+      "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> getRootBeanClass().getSimpleName()); keep the helper's output (the header or body it renders) exactly as it was",
+      "mapping": {
+        "getField()": "getPropertyPath().toString()",
+        "getDefaultMessage()": "getMessage()",
+        "getRejectedValue()": "getInvalidValue()",
+        "getObjectName()": "getRootBeanClass().getSimpleName()"
+      },
+      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation (a violation carries its property path, message, invalid value and root bean class); https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html"
+    }
+  },
   "build_plugins": {
     "note": "Build plugins that GENERATE the destination's sources, and what their documented generators do to a request body (H7). A request body type that lives under target/generated-sources is owned by its generator's configuration in pom.xml, never by the controller: the planner (worklist.generated_body_binding) reads the generated type's constructor from the compiler model, compares the properties it requires with the recorded request body, and cites the row here. Rows are documentation from the generator's official reference; each option is quoted with its documented description and default. Nothing here is inferred from a specimen.",
     "org.openapitools:openapi-generator-maven-plugin": {

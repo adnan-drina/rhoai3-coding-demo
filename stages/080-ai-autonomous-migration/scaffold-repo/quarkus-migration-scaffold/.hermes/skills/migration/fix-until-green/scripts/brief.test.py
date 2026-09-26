@@ -848,6 +848,87 @@ def _handler_parameter_brief_case() -> int:
     return 0
 
 
+def _package_validation_brief_case() -> int:
+    """V17-2 (v17 t_c67c0185): a unit sealed on the PACKAGE
+    org.springframework.validation gets the BindingResult translation as its
+    first action (from the types its members use), then the helper rows; an
+    unrelated package unit gets none."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from planner.canonical import load_json
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+    from planner.worklist import (batch_scope_digest, handler_parameters, symbol_renames, unit_target_symbols,
+                                  validation_helpers)
+
+    pkg = "org.springframework.validation"
+    rel, hel = "src/main/java/q/web/LedgerController.java", "src/main/java/q/web/ErrorsResponse.java"
+    br, fe = pkg + ".BindingResult", pkg + ".FieldError"
+    hsites = {br: [{"path": rel, "type": "q.web.LedgerController", "member": "addEntry", "signature": "", "parameter": "bindingResult"}]}
+    helper = {br: [{"path": hel, "type": "q.web.ErrorsResponse", "member": "<init>", "signature": "", "parameter": "result"}],
+              fe: [{"path": hel, "type": "q.web.ErrorsResponse", "member": "add", "signature": "", "parameter": "error"}]}
+    rows, helpers = handler_parameters(GOLDEN)["undocumented"], validation_helpers(GOLDEN)
+    targets = unit_target_symbols([{"kind": "package", "fqn": pkg, "path": rel}], symbol_renames(GOLDEN), {}, None,
+                                  hsites, rows, {pkg: [br, fe]}, helper, helpers)
+    unrelated = unit_target_symbols([{"kind": "package", "fqn": "org.springframework.util", "path": rel}], symbol_renames(GOLDEN), {},
+                                    None, {}, rows, {"org.springframework.util": []}, {}, helpers)
+    if unrelated:
+        return _fail("an unrelated package unit gets nothing extra: %s" % unrelated)
+    with tempfile.TemporaryDirectory(prefix="pkg-brief-") as td:
+        root = Path(td)
+        for f in (rel, hel):
+            (root / f).parent.mkdir(parents=True, exist_ok=True)
+            (root / f).write_text("package q.web;\npublic class %s { }\n" % Path(f).stem, encoding="utf-8")
+        scope = {"schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/diagnostic-family/v1",
+                 "cluster": "u:pk1", "unit_id": "u:pk1", "family_key": pkg, "writable_paths": [hel, rel],
+                 "symbols": [{"kind": "package", "fqn": pkg, "path": rel}], "target_symbols": targets,
+                 "members": [{"path": rel, "type": "q.web.LedgerController", "member_id": "", "occurrence": 0,
+                              "state": "reported", "identity": "diag:1"}],
+                 "evidence": [], "completion": [], "bounds": {"files": 2, "sites": 1, "symbols": 1},
+                 "measured": ["err:1"], "inputs": {"candidate_sha256": "c0"}}
+        scope["digest"] = batch_scope_digest(scope)
+        sp = Path("evidence/planning/batch-scope/u-pk1") / ("%s.json" % scope["digest"][:32])
+        write_canonical(root / sp, scope)
+        cluster = {"id": "u:pk1", "kind": "compile", "path": rel, "write_set": [hel, rel], "items": ["err:1"], "label": pkg,
+                   "retry_key": "rk:unit:u:pk1",
+                   "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                                   "kind": "unit", "unit_id": "u:pk1", "members": 1}}
+        write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "u:pk1", "unit_formation": "v1",
+                                          "measure": {"tuple": [0, 1, 0], "known": True, "blocked": []},
+                                          "clusters": [cluster], "not_counted": [],
+                                          "items": [{"id": "err:1", "source": "javac", "kind": "compile", "category": "mandatory",
+                                                     "path": rel, "line": 2, "identity": "diag:1",
+                                                     "rule_id": "compiler.err.doesnt.exist",
+                                                     "message": "package org.springframework.validation does not exist"}]})
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:pk1", "task_id": "t_pk0001",
+                                             "write_set": [hel, rel]})
+        prev = os.environ.get("HERMES_KANBAN_TASK")
+        os.environ["HERMES_KANBAN_TASK"] = "t_pk0001"
+        try:
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+        finally:
+            if prev is None:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+            else:
+                os.environ["HERMES_KANBAN_TASK"] = prev
+        if rc != 0:
+            return _fail("brief.py must serve the package unit: rc=%s %s" % (rc, err.getvalue()[:400]))
+        unit = load_json(root / LOOP_DIR / "brief-u-pk1.json").get("unit") or {}
+        first = str(unit.get("first_action") or "")
+        if not first.startswith(rows[br]["action"]) or "LedgerController.addEntry(bindingResult)" not in first:
+            return _fail("the package unit's first action is the BindingResult translation at its handler: %r" % first[:300])
+        if ("then, where a helper takes %s (ErrorsResponse.<init>(result))" % br not in first
+                or "then, where a helper takes %s (ErrorsResponse.add(error))" % fe not in first or "ConstraintViolation" not in first):
+            return _fail("then the helper rows: %r" % first)
+        ts = unit.get("target_symbols") or []
+        if (not ts or ts[0].get("from") != br or not ts[0].get("translation") or ts[0].get("via_package") != pkg
+                or sorted(t["from"] for t in ts if t.get("helper_parameter")) != [br, fe]):
+            return _fail("target_symbols carry the handler row with its translation and the helper rows: %s" % ts)
+    return 0
+
+
 def main() -> int:
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):
         return 1
@@ -868,6 +949,8 @@ def main() -> int:
     if _fragment_brief_case():
         return 1
     if _handler_parameter_brief_case():
+        return 1
+    if _package_validation_brief_case():
         return 1
     if _runtime_advice_case():
         return 1
