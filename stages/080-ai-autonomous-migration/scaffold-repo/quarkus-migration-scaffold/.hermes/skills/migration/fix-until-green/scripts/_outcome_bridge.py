@@ -32,10 +32,11 @@ for _p in (_HERMES / "lib", _HERMES / "kernel"):
 def active(root: Path) -> bool:
     try:
         from planner.outcome_hook import active as maybe
-        from planner.outcome_protocol import STORE_FILE, select_protocol
+        from planner.outcome_protocol import select_protocol, store_present
     except ImportError:
         return False
-    return maybe(str(root)) and (Path(root) / STORE_FILE).exists() and select_protocol(Path(root)).outcome
+    # the store may live in the protected authority service, not in the tree
+    return maybe(str(root)) and select_protocol(Path(root)).outcome and store_present(Path(root))
 
 
 def _ids() -> tuple[str, int]:

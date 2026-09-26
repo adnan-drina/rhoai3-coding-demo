@@ -342,6 +342,26 @@ from planner import run_declaration
 d = run_declaration.load(root, expected_run=WORKSPACE_NAME)
 require(d.code == run_declaration.OK, str(d))
 require(d.budget.get('max_wall_hours') == EXPECTED_HOURS, 'declared wall budget differs from the golden defaults')
+# The board protocol: the run request in its initial commit, agreed by the
+# read-only run control (outcome_protocol.launch_gaps). A request the installed
+# harness cannot honour, a disagreement, a missing selection or a disabled
+# outcome board refuses here; the serial loop is never launched instead.
+initial = subprocess.check_output(['git', '-C', str(root), 'rev-list', '--max-parents=0', 'HEAD'], text=True).split()
+declared = json.loads(subprocess.check_output(['git', '-C', str(root), 'show', initial[0] + ':run-budget.json'], text=True))
+try:
+    from planner import outcome_protocol
+    launch = getattr(outcome_protocol, 'launch_gaps', None)
+except ImportError:
+    launch = None
+if launch is None:
+    require(declared.get('board_protocol') in (None, 'serial-loop/v1'),
+            'BOARD_PROTOCOL: the run requests %s and the installed harness cannot select it' % declared.get('board_protocol'))
+    protocol = 'serial-loop/v1'
+else:
+    sel, gaps = launch(root)
+    require(not gaps, 'BOARD_PROTOCOL: %s' % (outcome_protocol.describe(gaps).splitlines()[0] if gaps else ''))
+    protocol = sel.protocol
+print('PASS: board protocol %s (requested %s)' % (protocol, declared.get('board_protocol', 'nothing')))
 print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
 '''.replace('EXPECTED_HOURS',repr(expected_hours)).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker')).replace('WORKSPACE_NAME',repr(workspace)).replace('MAASHOSTVAL',repr(maas_host)).replace('MAASIPVAL',repr(maas_ip)).replace('QLIMITVAL',str(quota_limit)).replace('QWINVAL',repr(quota_window)).replace('QOTHERSVAL',str(quota_others))
 subprocess.run(['oc','--request-timeout=60s','exec','-i','-n',ns,pod,'-c',os.environ['CONTAINER'],'--','python3','-'],input=remote,text=True,check=True,timeout=75)

@@ -40,13 +40,11 @@ for _p in (_KERNEL, _LIB):
         sys.path.insert(0, str(_p))
 
 from planner.outcome_graph import CONTROL_M2, brief_document, topo_order  # noqa: E402
-from planner.outcome_protocol import STORE_DIR  # noqa: E402
 from planner.outcome_store import Store, StoreError, canonical, fault, sha  # noqa: E402
 
 KEY_VERSION = "v1"
 MAX_RETRIES = 2
 WORKSPACE = "dir:/projects/modernized"
-BRIEFS = STORE_DIR / "briefs"
 
 
 class PublishError(RuntimeError):
@@ -85,8 +83,12 @@ def _safe(oid: str) -> str:
 
 
 def _brief_path(root: Path, oid: str, rev: int) -> tuple[Path, str]:
+    """The brief file the attachment is made from: beside the authority store
+    (in-tree for a qualification fixture, the service's own directory under the
+    protected authority), never a worker-supplied path."""
+    from planner.outcome_store import data_dir
     name = "%s.r%d.json" % (_safe(oid), rev)
-    return Path(root) / BRIEFS / name, name
+    return data_dir(root) / "briefs" / name, name
 
 
 def init_store(root: Path, *, run_id: str, m2_task: str, native_db: str, protocol: str,
@@ -331,10 +333,48 @@ def complete_generation(store: Store, native: Any) -> list[str]:
     return gaps
 
 
+def publish_initial(root: Path, native: Any, *, m2: str, plan_file: str = "") -> dict[str, Any]:
+    """T1-T3 for the open M2 card: derive (or read the qualification plan),
+    persist, publish every node, read back. Runs wherever the authority runs:
+    in-process for a qualification fixture, inside the protected service for
+    enabled execution (its native is the service's own, never the caller's)."""
+    from planner.outcome_protocol import OUTCOME, describe, execution_gate, select_protocol
+    root = Path(root)
+    sel = select_protocol(root)
+    gate = execution_gate(root, sel)
+    if gate:
+        raise PublishError(gate[0][0], describe(gate).splitlines()[0])
+    if not m2.startswith("t_"):
+        raise PublishError("K4_GRAPH_CALLER", "publication runs from the open M2 card (HERMES_KANBAN_TASK unset); "
+                                              "the worker identity is retained, never scrubbed")
+    t = native.task(m2)
+    if t is None or t.get("status") in ("done", "archived"):
+        raise PublishError("PUBLICATION_M2_CLOSED", "M2 %s is %s; publication happens under the open M2"
+                           % (m2, (t or {}).get("status", "absent")))
+    if plan_file:
+        # the runtime qualification publishes a plan derived from a fixture; a real run
+        # (factory declaration, run control) can never be in qualification mode
+        if sel.execution != "qualification":
+            raise PublishError("PLAN_FILE_REFUSED", "--plan-file is honoured in qualification mode only")
+        plan = json.loads(Path(plan_file).read_text(encoding="utf-8"))
+    else:
+        from planner.outcome_lifecycle import initial_plan_from_root
+        plan = initial_plan_from_root(root)
+    store = init_store(root, run_id=plan["run_id"], m2_task=m2, native_db=native.db_path, protocol=OUTCOME,
+                       workspace=workspace_for(root, sel.execution))
+    try:
+        persist_plan(store, plan)
+        publish_plan(root, store, native, plan, m2_task=m2)
+        gaps = complete_generation(store, native)
+    finally:
+        store.close()
+    return {"nodes": len(plan["nodes"]), "revision": plan["revision"], "gaps": gaps}
+
+
 def main(argv: list[str] | None = None) -> int:
     """k4_graph.py --root PATH (publish|readback) -- normally reached through k4_mint.py."""
     import argparse
-    from planner.outcome_protocol import OUTCOME, describe, execution_gate, select_protocol
+    from planner.outcome_protocol import authority_endpoint, describe, execution_gate, select_protocol
     from planner.outcome_native import KanbanNative, default_db_path
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True)
@@ -361,48 +401,41 @@ def main(argv: list[str] | None = None) -> int:
         print(describe(gate), file=sys.stderr)
         print("K4 graph REFUSED before any native operation.", file=sys.stderr)
         return 1
+    endpoint = authority_endpoint(sel)
     if ns.action == "readback":
         # read-only, from the board recorded at publication; any caller
         try:
-            store = Store(root)
-            gaps = readback(store, KanbanNative(store.meta("native_db"), hermes=ns.hermes.split()))
-        except (StoreError, RuntimeError) as exc:
+            if endpoint:
+                from planner.outcome_authority import call
+                out = call(endpoint, "readback", {})
+                gaps, state = out["gaps"], out["publication_state"]
+            else:
+                store = Store(root)
+                gaps = readback(store, KanbanNative(store.meta("native_db"), hermes=ns.hermes.split()))
+                state = store.meta("publication_state")
+        except Exception as exc:  # StoreError, AuthorityError, RuntimeError
             print(str(exc), file=sys.stderr)
             return 1
-        print(json.dumps({"gaps": gaps, "publication_state": store.meta("publication_state")}, indent=2))
+        print(json.dumps({"gaps": gaps, "publication_state": state}, indent=2))
         return 0 if not gaps else 1
     m2 = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
-    if not m2.startswith("t_"):
-        print("K4_GRAPH_CALLER: publication runs from the open M2 card (HERMES_KANBAN_TASK unset); "
-              "the worker identity is retained, never scrubbed", file=sys.stderr)
-        return 1
-    native = KanbanNative(default_db_path(), hermes=ns.hermes.split())
     try:
-        t = native.task(m2)
-        if t is None or t.get("status") in ("done", "archived"):
-            raise PublishError("PUBLICATION_M2_CLOSED", "M2 %s is %s; publication happens under the open M2" % (m2, (t or {}).get("status", "absent")))
-        if ns.plan_file:
-            # the runtime qualification publishes a plan derived from a fixture; a real run
-            # (factory declaration, run control) can never be in qualification mode
-            if sel.execution != "qualification":
-                raise PublishError("PLAN_FILE_REFUSED", "--plan-file is honoured in qualification mode only")
-            plan = json.loads(Path(ns.plan_file).read_text(encoding="utf-8"))
+        if endpoint:
+            # the protected authority publishes with ITS board access and records; the
+            # caller only names the open M2 card, which the service re-reads itself
+            from planner.outcome_authority import call
+            out = call(endpoint, "publish", {"m2_task": m2, "plan_file": ns.plan_file}, timeout=1800.0)
         else:
-            from planner.outcome_lifecycle import initial_plan_from_root
-            plan = initial_plan_from_root(root)
-        store = init_store(root, run_id=plan["run_id"], m2_task=m2, native_db=native.db_path, protocol=OUTCOME,
-                           workspace=workspace_for(root, sel.execution))
-        persist_plan(store, plan)
-        publish_plan(root, store, native, plan, m2_task=m2)
-        gaps = complete_generation(store, native)
-    except (PublishError, StoreError, ValueError) as exc:
+            out = publish_initial(root, KanbanNative(default_db_path(), hermes=ns.hermes.split()), m2=m2,
+                                  plan_file=ns.plan_file)
+    except Exception as exc:  # PublishError, StoreError, ValueError, AuthorityError
         print(str(exc), file=sys.stderr)
         print("K4 graph publication STOPPED (resume with the same command; nothing is duplicated).", file=sys.stderr)
         return 1
-    if gaps:
-        print("K4 graph read-back mismatch:\n  " + "\n  ".join(gaps), file=sys.stderr)
+    if out["gaps"]:
+        print("K4 graph read-back mismatch:\n  " + "\n  ".join(out["gaps"]), file=sys.stderr)
         return 1
-    print("OK: K4 graph published (%d nodes, revision %s, generation complete)" % (len(plan["nodes"]), plan["revision"]))
+    print("OK: K4 graph published (%d nodes, revision %s, generation complete)" % (out["nodes"], out["revision"]))
     return 0
 
 if __name__ == "__main__":

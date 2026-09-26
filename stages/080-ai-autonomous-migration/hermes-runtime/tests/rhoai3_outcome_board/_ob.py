@@ -105,15 +105,36 @@ def task_of(dest: Path, oid: str) -> str:
         con.close()
 
 
+PRODUCER = GOLDEN.parents[4] / "gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
+
+
+def _producer_block() -> str:
+    import re
+    text = PRODUCER.read_text()
+    m = re.search(r"\n( *)# >>> outcome-board hooks.*?\n(.*?)\n *# <<< outcome-board hooks", text, re.S)
+    assert m, "the producer's outcome-board hooks block is missing"
+    return "\n".join(line[len(m.group(1)):] for line in m.group(2).splitlines())
+
+
 def hook_config(cfg: dict, dest: Path, *, tick: bool) -> dict:
+    """The hook configuration the Stage 050 producer GENERATES for this
+    destination: its K2 registration (matcher and 5 s timeout, asserted against
+    the producer text) plus the output of its own `outcome-board hooks` block,
+    executed on this destination (the same select_protocol rule a workspace
+    start applies)."""
     cfg = dict(cfg)
     cfg["hooks_auto_accept"] = True
-    # exactly what the Stage 050 producer registers for a run that selects the protocol
-    # (maas-api-key-provisioning.yaml "outcome-board hooks"), including its 5 s hook timeout
-    hooks = {"pre_tool_call": [{"matcher": OUTCOME_MATCHER, "command": "bash %s" % (GOLDEN / "kernel" / "pre_tool_call.sh"),
-                                "timeout": 5, "fail_closed": True}]}
-    if tick:
-        hooks["on_kanban_dispatch_tick"] = [{"command": "python3 %s --root %s" % (dest / ".hermes" / "kernel" / "outcome_reconcile.py", dest),
-                                             "timeout": 120}]
+    text = PRODUCER.read_text() if PRODUCER.is_file() else ""
+    assert '"matcher": "%s"' % PRODUCTION_MATCHER in text and '"timeout": 5,' in text, "the producer's K2 registration changed"
+    base = {"hooks": {"pre_tool_call": [{"matcher": PRODUCTION_MATCHER,
+                                         "command": "bash %s" % (GOLDEN / "kernel" / "pre_tool_call.sh"),
+                                         "timeout": 5, "fail_closed": True}]}}
+    ns = {"os": os, "_pjson": json, "safe_root": str(dest), "cfg": base, "print": lambda *a: None}
+    exec(_producer_block(), ns)
+    hooks = ns["cfg"]["hooks"]
+    assert hooks["pre_tool_call"][0]["matcher"] == OUTCOME_MATCHER, hooks
+    assert hooks.get("on_kanban_dispatch_tick"), "the producer did not register the reconciler for %s" % dest
+    if not tick:
+        hooks.pop("on_kanban_dispatch_tick", None)
     cfg["hooks"] = hooks
     return cfg

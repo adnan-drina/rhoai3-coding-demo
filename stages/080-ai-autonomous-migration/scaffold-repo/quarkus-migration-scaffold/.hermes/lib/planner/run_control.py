@@ -18,7 +18,9 @@ The contract is now:
   validated scaffolding event and mounts READ-ONLY into this one workspace
   (`<run>-run-control`, mount-on-start). The coding worker's identity has no
   write access to it. It carries:
-    contract.json  run id, scaffolding commit, activation and its authorization
+    contract.json  run id, scaffolding commit, activation and its authorization;
+                   board_protocol + outcome_board.execution when the run's
+                   declaration requested a board protocol (outcome_protocol)
     profile.json   the model profile pinned for this run
     release-rebase.json (optional)  an Operator-recorded assisted harness change
 * The state directory holds the one narrow operation left to the harness: the
@@ -77,6 +79,13 @@ def declared(root: Path) -> dict[str, Any] | None:
     if rc is None:
         return None
     out: dict[str, Any] = {"initial_commit": shas[0], "run_id": str(doc.get("run_id") or "")}
+    # The board protocol this run REQUESTED at creation (the app-migration
+    # template's boardProtocol parameter, stamped into this same initial
+    # commit). Absent on every run created before the parameter existed:
+    # those keep the serial loop. Classified by outcome_protocol.select_protocol,
+    # never here, so an unknown value is a typed refusal there.
+    out["board_protocol_requested"] = "board_protocol" in doc
+    out["board_protocol"] = doc.get("board_protocol")
     if not isinstance(rc, dict) or rc.get("contract") != CONTRACT_SCHEMA:
         return dict(out, error="the initial commit's %s declares run_control %r, not %s" % (DECLARATION, rc, CONTRACT_SCHEMA))
     for key in ("root", "state"):

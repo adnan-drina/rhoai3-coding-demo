@@ -15,8 +15,12 @@ Integrity: the ledger is hash-chained (each row's hash covers the previous
 hash and the row). ``meta.ledger_head`` / ``meta.ledger_count`` name the head,
 and a mismatch refuses STORE_TAMPERED. That rejects inconsistent edits and
 truncation. It does NOT reject a consistent rewrite of the whole database by
-the same UID: this store is cooperative (outcome_protocol.authority_protected).
-``claimed_control`` stays false.
+the same UID when it lives in the tree (in-process mode: qualification
+fixtures). Under the protected authority service (outcome_authority.py) the
+store lives in the SERVICE's own directory, bound once at service start by
+``bind_service``; the worker container has no mount of it, so it cannot be
+rewritten, deleted, redirected or rolled back from there. ``claimed_control``
+stays false.
 """
 from __future__ import annotations
 
@@ -109,12 +113,56 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+_SERVICE_DIR: Path | None = None
+
+
+def bind_service(store_dir: Path, root: Path) -> Path:
+    """The authority service binds its private store directory ONCE, at
+    start. Only the service entry point calls this; there is no environment
+    or file override, so a worker process can never move its store. The
+    directory must be absolute, real (no symlink component) and outside the
+    destination tree."""
+    global _SERVICE_DIR
+    d = Path(store_dir)
+    if not d.is_absolute():
+        raise StoreError("STORE_REDIRECTED", "the service store %s is not absolute" % d)
+    if os.path.realpath(d) != str(d):
+        raise StoreError("STORE_REDIRECTED", "the service store %s resolves elsewhere (%s)" % (d, os.path.realpath(d)))
+    r = os.path.realpath(root)
+    if str(d) == r or str(d).startswith(r + os.sep):
+        raise StoreError("STORE_REDIRECTED", "the service store %s lies inside the destination tree %s" % (d, r))
+    if _SERVICE_DIR is not None and _SERVICE_DIR != d:
+        raise StoreError("STORE_REDIRECTED", "the service store is already bound to %s" % _SERVICE_DIR)
+    _SERVICE_DIR = d
+    return d
+
+
+def service_binding() -> Path | None:
+    return _SERVICE_DIR
+
+
 def store_path(root: Path) -> Path:
+    if _SERVICE_DIR is not None:
+        return _SERVICE_DIR / STORE_FILE.name
     return Path(root) / STORE_FILE
+
+
+def data_dir(root: Path) -> Path:
+    """Where the authority keeps derived files it writes itself (briefs):
+    beside the store, never in a tree the other principal can rewrite."""
+    return store_path(root).parent
 
 
 def _redirected(root: Path) -> str:
     root = Path(root)
+    if _SERVICE_DIR is not None:
+        cur = Path("/")
+        for part in _SERVICE_DIR.parts[1:]:
+            cur = cur / part
+            if cur.is_symlink():
+                return "%s is a symlink" % cur
+        f = _SERVICE_DIR / STORE_FILE.name
+        return "%s is a symlink" % f if f.is_symlink() else ""
     cur = root
     for part in STORE_FILE.parts:
         cur = cur / part
@@ -140,7 +188,7 @@ class Store:
         if not self.path.is_file():
             if not create:
                 raise StoreError("STORE_MISSING", "%s is absent: nothing was published under the outcome protocol" % STORE_FILE)
-            (self.root / STORE_DIR).mkdir(parents=True, exist_ok=True)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.path), timeout=60, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout=60000")

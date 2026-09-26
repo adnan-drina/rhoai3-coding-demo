@@ -383,8 +383,8 @@ class Protocol(unittest.TestCase):
         r = self.root(P.OUTCOME, "enabled")
         (r / P.STORE_DIR).mkdir(parents=True)
         code, why = P.execution_gate(r)[0]
-        self.assertEqual(code, "AUTHORITY_UNPROTECTED")                     # F1: no protected writer exists
-        self.assertIn("owned by the calling uid", why)
+        self.assertEqual(code, "AUTHORITY_UNPROTECTED")                     # F1: no protected service answers
+        self.assertIn("no authority service answers", why)
         self.assertEqual(P.execution_gate(self.root("board/v9", "qualification"))[0][0], "PROTOCOL_UNKNOWN")
 
     def test_mixed_state_refuses_both_ways(self):
@@ -587,8 +587,11 @@ class Authority(unittest.TestCase):
 
     def test_consistent_restamp_is_the_documented_cooperative_limit(self):
         """F1: a same-UID consistent rewrite of the issue AND its sealed ledger
-        row is not detectable by this store. That is why 'enabled' refuses
-        AUTHORITY_UNPROTECTED; the claim is recorded, not hidden."""
+        row is not detectable by an IN-TREE store. That is why 'enabled' never
+        runs on one: with a cooperative store in the tree it refuses
+        PROTOCOL_MIXED (a store beside the service), and without the service
+        AUTHORITY_UNPROTECTED. The protected path is the service
+        (outcome_authority.test.py)."""
         r = self.r
         tid, run, iss = r.issue("build:rk:pom")
         store = Store(r.root)
@@ -612,7 +615,9 @@ class Authority(unittest.TestCase):
         (r.root / ".hermes" / "pins.json").write_text(json.dumps({"pins": {"planner": {"outcome_board": {"execution": "enabled"}}}}))
         with self.assertRaises(L.Refusal) as cm:
             L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=["pom.xml"])
-        self.assertEqual(cm.exception.code, "AUTHORITY_UNPROTECTED")
+        self.assertEqual(cm.exception.code, "PROTOCOL_MIXED")
+        os.rename(r.root / P.STORE_FILE, r.tmp / "moved.sqlite3")
+        self.assertEqual(P.execution_gate(r.root)[0][0], "AUTHORITY_UNPROTECTED")
         del store
 
     def test_older_budget_restore_is_detected_from_the_board(self):

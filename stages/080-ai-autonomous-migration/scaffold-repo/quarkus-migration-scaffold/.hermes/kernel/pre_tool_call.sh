@@ -527,11 +527,19 @@ for _c in [(os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()] + [x.strip(
         break
 OB = None
 if OB_ROOT:
-    try:
-        _ob_hit = os.path.exists(os.path.join(OB_ROOT, "verification", "outcome-board", "authority.sqlite3")) or \
-            b"outcome-board/v1" in open(os.path.join(OB_ROOT, "run-defaults.json"), "rb").read()
-    except OSError:
-        _ob_hit = False
+    # any record that can select the protocol: the golden defaults, the run
+    # request in run-budget.json, the platform run-control contract
+    _ob_hit = os.path.exists(os.path.join(OB_ROOT, "verification", "outcome-board", "authority.sqlite3"))
+    for _ob_f in (os.path.join(OB_ROOT, "run-defaults.json"), os.path.join(OB_ROOT, "run-budget.json"),
+                  "/etc/rhoai3/run-control/contract.json"):
+        if _ob_hit:
+            break
+        try:
+            with open(_ob_f, "rb") as _ob_fh:
+                _ob_d = _ob_fh.read()
+            _ob_hit = b"outcome-board/v1" in _ob_d or b"\x22outcome_board\x22" in _ob_d
+        except OSError:
+            pass
     if _ob_hit:
         for _d in (os.path.join(OB_ROOT, ".hermes", "kernel"), os.path.join(OB_ROOT, ".hermes", "lib")):
             if _d and os.path.isdir(_d) and _d not in sys.path:

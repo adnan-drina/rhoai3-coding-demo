@@ -3,9 +3,16 @@
 Every function here validates a transition REQUEST against the records and
 the native board and then writes, in one short transaction, only what it
 recomputed itself. None of them accepts a worker-supplied PASS, scope or budget
-(architect F1: a protected writer validates, it never merely signs). The
-store is cooperative in the current architecture (outcome_protocol.
-authority_protected); see OUTCOME-BOARD-CONTRACT.md section 3.
+(architect F1: a protected writer validates, it never merely signs).
+
+Each public transition is registered with ``@transition``. Called with an
+in-process ``Ctx`` it runs here, against the in-tree store (qualification
+fixtures: cooperative). Called with a ``RemoteCtx`` (enabled execution) it is
+sent as a REQUEST to the protected authority service
+(planner/outcome_authority.py), which runs the same function in its own
+principal, against its own store, and replaces every value it can measure
+itself (candidate tree, worker process, git state) before deciding. See
+OUTCOME-BOARD-CONTRACT.md sections 3 and 8a.
 
 Transitions (contract section 4): issue (T5), record_verdict (T6a-c),
 check_complete (T4, T7, T8 and the M5 stage terminator), record_assessment
@@ -14,6 +21,7 @@ admit_effect / record_effect / recover_effect (T11), progress_account (F3).
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import subprocess
@@ -53,6 +61,14 @@ class Ctx:
     native: Any
     tree: Callable[[Path], str] | None = None
     head: Callable[[Path], str] | None = None
+    # liveness of a worker process as the CALLER's container sees it
+    # ((pid, pgid) -> alive). The authority service has no view of the worker's
+    # processes; it answers from the snapshot the request carried.
+    alive: Callable[[int | None, int | None], bool] | None = None
+    # the in-process authority writes the derived observer views (account.json)
+    # into the tree; the service never writes the other principal's tree
+    observer_writes: bool = True
+    remote: Any = None
 
     def product_tree(self) -> str:
         if self.tree:
@@ -65,6 +81,48 @@ class Ctx:
             return self.head(self.root)
         p = subprocess.run(["git", "-C", str(self.root), "rev-parse", "HEAD"], capture_output=True, text=True)
         return p.stdout.strip() if p.returncode == 0 else ""
+
+
+class RemoteCtx:
+    """The caller side of the protected authority: every ``@transition`` called
+    with it becomes a request on the service socket. ``native`` is the local,
+    read-only view of the board (lifecycle data, cooperative by design); the
+    decision records live only in the service."""
+
+    def __init__(self, root: Path, endpoint: str, native: Any = None):
+        self.root = Path(root)
+        self.endpoint = endpoint
+        self.native = native
+        self.remote = self
+
+    def call(self, op: str, kwargs: dict[str, Any]) -> Any:
+        from planner.outcome_authority import AuthorityError, call
+        try:
+            return call(self.endpoint, "transition", {"name": op, "kwargs": kwargs})
+        except AuthorityError as exc:
+            raise Refusal(exc.code, exc.detail) from exc
+
+    def product_tree(self) -> str:
+        from planner.canonical import product_tree_sha256
+        return product_tree_sha256(self.root)   # informational: the service measures its own
+
+
+TRANSITIONS: dict[str, Callable[..., Any]] = {}
+
+
+def transition(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Register a public authority transition (ctx, **kwargs). With a RemoteCtx
+    the call is a request to the service; the service calls ``TRANSITIONS``."""
+    TRANSITIONS[fn.__name__] = fn
+
+    @functools.wraps(fn)
+    def wrapper(ctx: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(ctx, "remote", None) is not None:
+            if args:
+                raise TypeError("%s takes keyword arguments only through the authority" % fn.__name__)
+            return ctx.remote.call(fn.__name__, kwargs)
+        return fn(ctx, *args, **kwargs)
+    return wrapper
 
 
 def _read_json(path: Path) -> Any:
@@ -234,10 +292,107 @@ def _pgid_alive(pgid: int | None) -> bool:
     return True
 
 
-def quiescent(pid: int | None, pgid: int | None) -> bool:
+def quiescent(pid: int | None, pgid: int | None, ctx: Ctx | None = None) -> bool:
     """The previous writer and every process in its group are gone. Elapsed
-    time alone is never quiescence."""
+    time alone is never quiescence. Under the service the answer comes from
+    the caller's process snapshot (ctx.alive): the authority shares no process
+    namespace with the worker."""
+    if ctx is not None and ctx.alive is not None:
+        return not ctx.alive(pid, pgid)
     return not _pid_alive(pid) and not _pgid_alive(pgid)
+
+
+def _git(root: Path, *args: str, binary: bool = False) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=not binary)
+
+
+def _tree_blobs(root: Path, commit: str) -> dict[str, tuple[str, str]] | None:
+    """{rel: (mode, blob id)} of a committed tree's product paths (ls-tree: object
+    data only; no working tree, no filter)."""
+    from planner.paths import is_product_path
+    ls = _git(root, "ls-tree", "-r", "-z", "--full-tree", commit, binary=True)
+    if ls.returncode != 0:
+        return None
+    out: dict[str, tuple[str, str]] = {}
+    for rec in ls.stdout.split(b"\0"):
+        if not rec:
+            continue
+        meta, _, name = rec.partition(b"\t")
+        mode, kind, oid = meta.split()
+        rel = name.decode("utf-8", "surrogateescape")
+        if kind == b"blob" and is_product_path(rel):
+            out[rel] = (mode.decode(), oid.decode())
+    return out
+
+
+def _blob_id(data: bytes, algo: str) -> str:
+    import hashlib
+    h = hashlib.new(algo)
+    h.update(b"blob %d\0" % len(data))
+    h.update(data)
+    return h.hexdigest()
+
+
+def changed_product_paths(root: Path, base: str, commit: str = "", only: list[str] | None = None) -> list[str] | None:
+    """Product paths that differ between the baseline commit and ``commit``, or
+    the working tree (untracked, not ignored, included) when ``commit`` is
+    empty. The working tree is compared IN PYTHON against the baseline's raw
+    blob ids: git never reads a worktree file here, so no repository-configured
+    clean filter, fsmonitor or diff driver can run (in the authority's
+    principal). None when git cannot answer: unknown is never 'nothing changed'."""
+    from planner.paths import is_product_path
+    if not base:
+        return None
+    if commit:
+        p = _git(root, "diff-tree", "-r", "--no-renames", "--name-only", "-z", base, commit)
+        if p.returncode != 0:
+            return None
+        return sorted({n for n in p.stdout.split("\0") if n and is_product_path(n)})
+    fmt = _git(root, "rev-parse", "--show-object-format").stdout.strip() or "sha1"
+    blobs = _tree_blobs(root, base)
+    ign = _git(root, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
+    if blobs is None or ign.returncode != 0 or fmt not in ("sha1", "sha256"):
+        return None
+    ignored = [n for n in ign.stdout.split("\0") if n]
+    root = Path(root)
+    changed: set[str] = set()
+    seen: set[str] = set()
+    names = list(only) if only is not None else None
+    if names is None:
+        names = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d != ".git"]
+            for fn in filenames:
+                names.append(os.path.relpath(os.path.join(dirpath, fn), root).replace(os.sep, "/"))
+    for rel in names:
+        if not is_product_path(rel) or any(rel == i.rstrip("/") or (i.endswith("/") and rel.startswith(i)) for i in ignored):
+            continue
+        p = root / rel
+        if p.is_symlink():
+            data, mode = os.readlink(p).encode("utf-8", "surrogateescape"), "120000"
+        elif p.is_file():
+            data, mode = p.read_bytes(), "100755" if os.access(p, os.X_OK) else "100644"
+        else:
+            continue
+        seen.add(rel)
+        want = blobs.get(rel)
+        if want is None or want[1] != _blob_id(data, fmt) or (want[0] == "120000") != (mode == "120000"):
+            changed.add(rel)
+    for rel in blobs:
+        if (only is None or rel in only) and rel not in seen:
+            changed.add(rel)          # deleted since the baseline
+    return sorted(changed)
+
+
+def _scope_gaps(ctx: Ctx, iss: dict[str, Any], commit: str = "") -> list[str]:
+    """The authority's own scope measurement: every product path the attempt
+    changed since the issued baseline is in the issue's allowed paths
+    (amendments included). Measured from git, never from a worker list."""
+    changed = changed_product_paths(ctx.root, str(iss.get("baseline_commit") or ""), commit)
+    if changed is None:
+        return ["the changed paths since baseline %s could not be measured" % str(iss.get("baseline_commit") or "none")[:12]]
+    allowed = set(iss.get("allowed_paths") or [])
+    return ["%s is outside the issued scope" % c for c in changed if c not in allowed]
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +415,7 @@ def _allowed_paths(root: Path, node: dict[str, Any], worklist: dict[str, Any] | 
     return "", []
 
 
+@transition
 def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgid: int) -> dict[str, Any]:
     _gate(ctx)
     _integrity(ctx)
@@ -321,7 +477,7 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
     # an acceptance begun and committed by a worker that died before recording it is
     # recovered here, from Git history, before anything is judged (review R5)
     w0 = store.conn.execute("SELECT * FROM writer WHERE slot='product-tree'").fetchone()
-    if not w0 or (w0["task_id"] == task_id and w0["run_id"] == run_id) or quiescent(w0["pid"], w0["pgid"]):
+    if not w0 or (w0["task_id"] == task_id and w0["run_id"] == run_id) or quiescent(w0["pid"], w0["pgid"], ctx):
         # never while the previous writer may still be committing; never this run's own
         recover_accept(ctx, oid=oid, commits=git_commits_after(ctx.root), skip_run=run_id)
     head, tree = ctx.git_head(), ctx.product_tree()
@@ -348,7 +504,7 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
         w = c.execute("SELECT * FROM writer WHERE slot='product-tree'").fetchone()
         gen = int(store.meta("generation", "0") or 0)
         if w and not (w["task_id"] == task_id and w["run_id"] == run_id):
-            if not quiescent(w["pid"], w["pgid"]):
+            if not quiescent(w["pid"], w["pgid"], ctx):
                 raise Refusal("WRITER_BUSY", "the shared tree is owned by %s run %s (pid %s still alive)" % (w["task_id"], w["run_id"], w["pid"]))
         if not w or not (w["task_id"] == task_id and w["run_id"] == run_id):
             gen += 1
@@ -365,10 +521,14 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
         iid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
         store.append(c, oid, "issue", _issue_seal(iid, task_id, run_id, plan["revision"], cluster, allowed, gen, head, tree),
                      attempt_key="issue:%d" % iid)
+    amends = [r["doc"] for r in store.ledger(oid) if r["kind"] == "amend" and r["doc"].get("cluster") == cluster] if cluster else []
     return {"issue_id": iid, "task_id": task_id, "run_id": run_id, "outcome_id": oid, "role": node["role"],
             "cluster": cluster, "allowed_paths": allowed, "budget": {"key": orow["budget_key"], "spent": spent,
                                                                       "limit": orow["budget_limit"]},
-            "retained_candidate": bool(pending), "generation": gen, "claimed_control": False}
+            "retained_candidate": bool(pending), "generation": gen, "claimed_control": False,
+            "run": store.meta("run_id"),
+            "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
+                           for a in amends]}
 
 
 def _issue_seal(iid: int, task_id: str, run_id: int, rev: int, cluster: str, allowed: list[str], gen: int,
@@ -386,6 +546,7 @@ def amended_paths(store: Store, oid: str, cluster: str) -> list[str]:
                    if r["kind"] == "amend" and r["doc"].get("cluster") == cluster})
 
 
+@transition
 def amend_issue(ctx: Ctx, *, task_id: str, run_id: int, cluster: str, rel: str, row: dict[str, Any]) -> dict[str, Any]:
     """The authority's scope-amendment transition (review R6). amend-scope.py has
     validated the evidence and the locus; this transition re-checks the bounds
@@ -404,8 +565,8 @@ def amend_issue(ctx: Ctx, *, task_id: str, run_id: int, cluster: str, rel: str, 
         raise Refusal("AMEND_PATH", "%s is not a path an amendment may reach" % rel)
     if len(str(row.get("reason") or "").strip()) < 12 or not str(row.get("locus") or "").strip():
         raise Refusal("AMEND_UNEVIDENCED", "an amendment carries a reason and the locus the validator established")
-    p = subprocess.run(["git", "-C", str(ctx.root), "status", "--porcelain", "--", rel], capture_output=True, text=True)
-    if p.stdout.strip():
+    changed = changed_product_paths(ctx.root, str(iss.get("baseline_commit") or ""), only=[rel])
+    if changed is None or changed:
         raise Refusal("AMEND_ALREADY_EDITED", "%s has already been edited; an amendment authorizes a change before it happens" % rel)
     oid = iss["outcome_id"]
     prior = [r for r in ctx.store.ledger(oid) if r["kind"] == "amend" and r["doc"].get("cluster") == cluster]
@@ -495,6 +656,7 @@ def _is_product(rel: str) -> bool:
     return is_product_path(rel)
 
 
+@transition
 def check_write(ctx: Ctx, *, task_id: str, run_id: int, rel_paths: list[str]) -> None:
     """Refuse a product write outside the issued cluster, and every direct write
     to the authority store. Body text and environment never widen this."""
@@ -513,6 +675,7 @@ def check_write(ctx: Ctx, *, task_id: str, run_id: int, rel_paths: list[str]) ->
                           % (r, iss["cluster"] or "(none)", ", ".join(sorted(allowed)) or "no product edits"))
 
 
+@transition
 def check_complete(ctx: Ctx, *, task_id: str, run_id: int, profile: str, audit_green: bool) -> dict[str, Any]:
     """Allow a native completion only when the domain record says so; record
     the continuation intent BEFORE allowing it (F2)."""
@@ -577,6 +740,40 @@ def check_complete(ctx: Ctx, *, task_id: str, run_id: int, profile: str, audit_g
     raise Refusal("COMPLETE_FOREIGN_TASK", "role %s" % node["role"])
 
 
+@transition
+def check_review(ctx: Ctx, *, task_id: str, run_id: int) -> dict[str, Any]:
+    """Who may hand a card to review: M2 only after a green publication
+    read-back; an assessment's implementer; a granted delivery stage under its
+    own issue. A repair outcome has no review lane: it completes on its
+    recorded acceptance."""
+    _gate(ctx)
+    _integrity(ctx)
+    store = ctx.store
+    if task_id == store.meta("m2_task"):
+        from k4_graph import readback
+        gaps = readback(store, ctx.native)
+        if store.meta("publication_state") not in ("complete", "released") or gaps:
+            raise Refusal("M2_PUBLICATION_INCOMPLETE", "; ".join(gaps[:3]) or store.meta("publication_state") or "unpublished")
+        return {"code": "M2_REVIEW_ALLOWED"}
+    pub = _pub_by_task(store, task_id)
+    if pub and pub["outcome_id"].startswith("assess:"):
+        return {"code": "ASSESS_REVIEW_ALLOWED"}
+    if pub and pub["outcome_id"].startswith("deliver:"):
+        # paved-road-m5: the implementer hands every stage to the reviewer, who completes it
+        # after the stage audit on the stage's own receipts (check_complete)
+        active_issue(ctx, task_id, run_id)
+        return {"code": "DELIVER_REVIEW_ALLOWED"}
+    raise Refusal("OUTCOME_NO_REVIEW_LANE", "an outcome card completes on its recorded acceptance; "
+                                            "kanban_block if it cannot be accepted")
+
+
+@transition
+def status(ctx: Ctx) -> dict[str, Any]:
+    """What an observer (hook fast path, launch check) may know without a task."""
+    return {"published": bool(ctx.store.meta("publication_state")), "publication_state": ctx.store.meta("publication_state"),
+            "revision": int(ctx.store.meta("revision", "0") or 0), "run_id": ctx.store.meta("run_id")}
+
+
 def _owned(store: Store, oid: str) -> set[str]:
     rows = store.conn.execute("SELECT obligation_id, outcome_id, rev FROM ownership ORDER BY rev").fetchall()
     cur: dict[str, str] = {}
@@ -622,6 +819,7 @@ def _m2_release(ctx: Ctx) -> dict[str, Any]:
 # T6: attempts on the SAME outcome
 # ---------------------------------------------------------------------------
 
+@transition
 def record_verdict(ctx: Ctx, *, task_id: str, run_id: int, verdict: str, candidate: str, attempt: str,
                    reason: str = "", retained: dict[str, Any] | None = None) -> dict[str, Any]:
     """REVERTED / VERIFICATION_PENDING / ACCEPTED for the issued cluster. The
@@ -656,6 +854,9 @@ def record_verdict(ctx: Ctx, *, task_id: str, run_id: int, verdict: str, candida
                              attempt_key=key)
         return {"verdict": verdict, "outcome_id": oid, "spent": ctx.store.spent(orow["budget_key"])}
     if verdict == "ACCEPTED":
+        out_of_scope = _scope_gaps(ctx, iss)
+        if out_of_scope:
+            raise Refusal("ACCEPT_OUT_OF_SCOPE", "; ".join(out_of_scope[:4]))
         with ctx.store.txn() as c:
             ctx.store.append(c, oid, "accept-begin", {"cluster": iss["cluster"], "candidate": candidate,
                                                       "baseline_commit": iss["baseline_commit"], "run_id": run_id},
@@ -664,6 +865,7 @@ def record_verdict(ctx: Ctx, *, task_id: str, run_id: int, verdict: str, candida
     raise Refusal("VERDICT_UNKNOWN", verdict)
 
 
+@transition
 def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: str,
                   measurement: dict[str, Any]) -> dict[str, Any]:
     """Record the committed acceptance of the issued cluster and decide whether
@@ -678,12 +880,24 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
     tree = ctx.product_tree()
     if tree != begin[-1]["doc"]["candidate"]:
         raise Refusal("ACCEPT_TREE_DRIFT", "the committed tree is not the verified candidate")
+    # the commit IS the working tree's HEAD, sits directly on the issued baseline,
+    # and changes nothing outside the issued scope: measured here, from git
+    if ctx.git_head() != commit:
+        raise Refusal("ACCEPT_COMMIT_MISMATCH", "HEAD is not the named commit %s" % commit[:12])
+    parent = _git(ctx.root, "rev-parse", "--verify", "-q", "%s^1" % commit).stdout.strip()
+    if not iss.get("baseline_commit") or parent != iss["baseline_commit"]:
+        raise Refusal("ACCEPT_BASELINE_ANCESTRY", "commit %s is not a child of the issued baseline %s"
+                      % (commit[:12], str(iss.get("baseline_commit") or "none")[:12]))
+    out_of_scope = _scope_gaps(ctx, iss, commit)
+    if out_of_scope:
+        raise Refusal("ACCEPT_OUT_OF_SCOPE", "; ".join(out_of_scope[:4]))
     wl, why = load_worklist(ctx.root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
     open_now = sorted(open_obligations(wl))
     rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
-                             scenarios=list(measurement.get("scenarios") or []), open_ids=open_now, source="accept:%s" % key)
+                             scenarios=list(measurement.get("scenarios") or []), open_ids=open_now, source="accept:%s" % key,
+                             asserted_by=_asserted_by(ctx))
     owned = _owned(ctx.store, oid)
     node = _node(_plan(ctx.store), oid) or {}
     covered = _covers(node, rec)
@@ -700,6 +914,7 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
             "covered": covered}
 
 
+@transition
 def evaluate_recovered(ctx: Ctx, *, task_id: str, run_id: int, measurement: dict[str, Any]) -> dict[str, Any] | None:
     """Finish an acceptance that recovery recorded (review R5): the recovered
     commit is the current tree, the worker re-measured it, and the OUTCOME is
@@ -720,7 +935,7 @@ def evaluate_recovered(ctx: Ctx, *, task_id: str, run_id: int, measurement: dict
     open_now = sorted(open_obligations(wl))
     rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
                              scenarios=list(measurement.get("scenarios") or []), open_ids=open_now,
-                             source="recovered:%s" % last["attempt_key"])
+                             source="recovered:%s" % last["attempt_key"], asserted_by=_asserted_by(ctx))
     owned = _owned(ctx.store, oid)
     node = _node(_plan(ctx.store), oid) or {}
     covered = _covers(node, rec)
@@ -783,25 +998,50 @@ def git_commits_after(root: Path) -> Callable[[str], list[tuple[str, str, str]]]
         if p.returncode != 0:
             return []
         out = []
-        import tarfile
-        import tempfile
-        from planner.canonical import product_tree_sha256
         for line in p.stdout.splitlines():
             parts = line.split()
             if len(parts) < 2 or parts[1] != baseline:
                 continue
-            with tempfile.TemporaryDirectory(prefix="ob-commit-") as tmp:
-                arc = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", parts[0]], capture_output=True)
-                if arc.returncode != 0:
-                    continue
-                import io
-                with tarfile.open(fileobj=io.BytesIO(arc.stdout)) as tf:
-                    tf.extractall(tmp, filter="data") if hasattr(tarfile, "data_filter") else tf.extractall(tmp)
-                out.append((parts[0], parts[1], product_tree_sha256(Path(tmp))))
+            digest = commit_product_tree(root, parts[0])
+            if digest:
+                out.append((parts[0], parts[1], digest))
         return out
     return commits
 
 
+def commit_product_tree(root: Path, commit: str) -> str:
+    """The product-tree digest (canonical.product_tree_sha256's algorithm) of a
+    COMMITTED tree, from raw blobs: ls-tree and cat-file only, so no checkout,
+    archive conversion or repository-configured filter runs. '' when git
+    cannot answer."""
+    import hashlib
+    tree = _tree_blobs(root, commit)
+    if tree is None:
+        return ""
+    entries = [(rel, oid) for rel, (_mode, oid) in tree.items()]
+    h = hashlib.sha256()
+    if entries:
+        batch = subprocess.run(["git", "-C", str(root), "cat-file", "--batch"], input=b"".join(e[1].encode() + b"\n" for e in sorted(entries)),
+                               capture_output=True)
+        if batch.returncode != 0:
+            return ""
+        data, pos = batch.stdout, 0
+        blobs = {}
+        for rel, oid in sorted(entries):
+            eol = data.index(b"\n", pos)
+            size = int(data[pos:eol].split()[2])
+            blobs[rel] = data[eol + 1:eol + 1 + size]
+            pos = eol + 1 + size + 1
+        # the working-tree digest walks sorted Paths: component-wise order, not string order
+        for rel in sorted(blobs, key=lambda r: tuple(r.split("/"))):
+            h.update(rel.encode("utf-8", "surrogateescape"))
+            h.update(b"\0")
+            h.update(blobs[rel])
+            h.update(b"\0")
+    return h.hexdigest()
+
+
+@transition
 def restore_pending(ctx: Ctx, *, task_id: str, run_id: int, candidate_now: str) -> dict[str, Any]:
     """A new run adopts a retained candidate only when its digest is the one
     recorded and the accepted baseline did not move underneath it."""
@@ -824,10 +1064,20 @@ def restore_pending(ctx: Ctx, *, task_id: str, run_id: int, candidate_now: str) 
 # F3: measurements and proof applicability
 # ---------------------------------------------------------------------------
 
+def _asserted_by(ctx: Ctx) -> str:
+    """Who stands behind a measurement's check classes. The authority measures
+    tree identity, scope and ancestry itself; the build, test and parity
+    classes are the worker's receipts (cooperative: OUTCOME-BOARD-CONTRACT 8a,
+    the open measurement-trust decision). Recorded, never hidden."""
+    return "worker-receipts"
+
+
 def record_measurement(ctx: Ctx, *, tree: str, classes: list[str], scenarios: list[str], open_ids: list[str],
-                       source: str) -> dict[str, Any]:
+                       source: str, asserted_by: str = "") -> dict[str, Any]:
     doc = {"tree": tree, "classes": sorted(set(classes)), "scenarios": sorted(set(scenarios)),
            "open": sorted(set(open_ids)), "source": source}
+    if asserted_by:
+        doc["classes_asserted_by"] = asserted_by
     with ctx.store.txn() as c:
         ctx.store.append(c, "_measure", "measurement", doc, attempt_key="%s:%s" % (source, tree))
     return doc
@@ -909,6 +1159,7 @@ def _assessment(store: Store, oid: str) -> dict[str, Any] | None:
     return rows[-1] if rows else None
 
 
+@transition
 def record_assessment(ctx: Ctx, *, task_id: str, run_id: int, verdict_doc: dict[str, Any]) -> dict[str, Any]:
     iss = active_issue(ctx, task_id, run_id)
     if iss["outcome_id"].split(":g")[0] != ASSESS_PREFIX:
@@ -1306,6 +1557,7 @@ def _record_stage_evidence(ctx: Ctx, node: dict[str, Any], run_id: int) -> dict[
     return doc
 
 
+@transition
 def record_stage_result(ctx: Ctx, *, task_id: str, run_id: int, result: dict[str, Any] | None = None) -> dict[str, Any]:
     """Record the stage's derived evidence (the reviewer's completion does the same).
     A caller-supplied result is refused: the deciding facts are the receipts."""
@@ -1323,22 +1575,32 @@ def m4_closure(root: Path) -> dict[str, Any] | None:
     """The M4 closure an outcome-board run delivers from: the assessment the M5
     stages are bound to, completed (assessed) with its recorded verdict. Read
     from the authority, never from the serial loop's steps.json."""
+    from planner.outcome_protocol import authority_endpoint, select_protocol
+    from planner.outcome_store import service_binding
+    if service_binding() is None:
+        ep = authority_endpoint(select_protocol(Path(root)))
+        if ep:
+            return m4_closure_view(RemoteCtx(Path(root), ep))
     try:
         store = Store(Path(root))
     except StoreError:
         return None
     try:
-        plan = store.current_revision() or {}
-        node = next((n for n in plan.get("nodes") or [] if n["outcome_id"] == "deliver:prepare:c1"), {})
-        bind = (node.get("binding") or {}).get("assessment") or ""
-        orow = _outcome(store, bind) if bind else None
-        rec = _assessment(store, bind) if bind else None
-        if not orow or orow["status"] not in ("assessed", "done") or not rec:
-            return None
-        return {"closed": True, "card": _stage_assessment_task(store), "verdict": rec["doc"]["verdict"],
-                "assessment": bind}
+        return _m4_closure(store)
     finally:
         store.close()
+
+
+def _m4_closure(store: Store) -> dict[str, Any] | None:
+    plan = store.current_revision() or {}
+    node = next((n for n in plan.get("nodes") or [] if n["outcome_id"] == "deliver:prepare:c1"), {})
+    bind = (node.get("binding") or {}).get("assessment") or ""
+    orow = _outcome(store, bind) if bind else None
+    rec = _assessment(store, bind) if bind else None
+    if not orow or orow["status"] not in ("assessed", "done") or not rec:
+        return None
+    return {"closed": True, "card": _stage_assessment_task(store), "verdict": rec["doc"]["verdict"],
+            "assessment": bind}
 
 
 # ---------------------------------------------------------------------------
@@ -1376,6 +1638,7 @@ def admit_effect(store: Store, *, kind: str, candidate: str, operation_id: str, 
 EFFECT_STAGE = {"push": "push", "deploy": "push"}
 
 
+@transition
 def admit_delivery_effect(ctx: Ctx, *, task_id: str, run_id: int, kind: str, operation_id: str) -> str:
     """Only the GRANTED M5 stage that owns the effect may admit it, for the
     current Git candidate that its preflight evidence admitted, under the one
@@ -1406,6 +1669,53 @@ def admit_delivery_effect(ctx: Ctx, *, task_id: str, run_id: int, kind: str, ope
                              "task_id": task_id, "run_id": run_id, "stage": oid})
 
 
+@transition
+def admit_effect_checked(ctx: Ctx, *, task_id: str, run_id: int, kind: str, operation_id: str, revision: int) -> str:
+    """outcome_gate.py effect-admit: the revision the caller checked must still
+    be current, then the ordinary delivery-effect admission."""
+    if int(ctx.store.meta("revision", "0") or 0) != int(revision):
+        raise Refusal("EFFECT_STALE_REVISION", "checked revision %d is not current" % int(revision))
+    return admit_delivery_effect(ctx, task_id=task_id, run_id=run_id, kind=kind, operation_id=operation_id)
+
+
+@transition
+def record_delivery_effect(ctx: Ctx, *, task_id: str, run_id: int, effect_id: str, state: str,
+                           detail: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The effect's owner reports progress on its OWN admitted effect. The
+    state machine (record_effect) refuses a regression; the result of a push
+    is the caller's report of an external system (cooperative, recorded as
+    such), never an admission."""
+    active_issue(ctx, task_id, run_id)
+    row = ctx.store.conn.execute("SELECT doc FROM effects WHERE effect_id=?", (effect_id,)).fetchone()
+    if not row:
+        raise Refusal("EFFECT_UNKNOWN", effect_id)
+    doc = json.loads(row[0] or "{}")
+    if doc.get("task_id") and doc.get("task_id") != task_id:
+        raise Refusal("EFFECT_FOREIGN", "%s was admitted for %s, not %s" % (effect_id, doc.get("task_id"), task_id))
+    record_effect(ctx.store, effect_id, state, dict(doc, reported=dict(detail or {}, by="effect-owner")))
+    return {"effect_id": effect_id, "state": state}
+
+
+@transition
+def push_admit(ctx: Ctx, *, task_id: str, run_id: int, remote: str, ref: str) -> dict[str, Any]:
+    """The admission half of push_candidate, for a caller that performs the push
+    itself (the service holds no push credential): an already recorded push is
+    reported and never admitted twice."""
+    head = _git_head(ctx.root)
+    op = "%s:%s@%s" % (remote, ref, head)
+    eid = "push:%s" % op
+    row = ctx.store.conn.execute("SELECT state FROM effects WHERE effect_id=?", (eid,)).fetchone()
+    if row:
+        return {"effect_id": eid, "operation_id": op, "head": head, "state": row[0], "already": True}
+    admit_delivery_effect(ctx, task_id=task_id, run_id=run_id, kind="push", operation_id=op)
+    return {"effect_id": eid, "operation_id": op, "head": head, "state": "admitted", "already": False}
+
+
+@transition
+def m4_closure_view(ctx: Ctx) -> dict[str, Any] | None:
+    return _m4_closure(ctx.store)
+
+
 def push_candidate(ctx: Ctx, *, task_id: str, run_id: int, remote: str, ref: str) -> dict[str, Any]:
     """The M5 DEPLOY publication step under the outcome protocol: admit the push
     effect (recorded BEFORE it starts), push exactly HEAD to <remote> <ref>,
@@ -1431,7 +1741,8 @@ def push_candidate(ctx: Ctx, *, task_id: str, run_id: int, remote: str, ref: str
     return {"effect_id": eid, "state": state, "already": False}
 
 
-def recover_dead_effects(store: Store, root: Path, native: Any = None) -> list[dict[str, Any]]:
+def recover_dead_effects(store: Store, root: Path, native: Any = None,
+                         alive: Callable[[int | None, int | None], bool] | None = None) -> list[dict[str, Any]]:
     """The dispatcher's recovery: an unresolved effect whose admitting worker run
     is over (its native run is no longer current, or its worker process is gone)
     is established by identity and never re-sent. A live run keeps its own
@@ -1442,7 +1753,8 @@ def recover_dead_effects(store: Store, root: Path, native: Any = None) -> list[d
         doc = json.loads(e.get("doc") or "{}")
         t = native.task(str(doc.get("task_id") or "")) if native is not None and doc.get("task_id") else None
         run_live = bool(t and t.get("current_run_id") == doc.get("run_id") and t.get("status") == "running")
-        if e["state"] in ("admitted", "sent") and run_live and _pid_alive(doc.get("worker_pid")):
+        pid_alive = alive(doc.get("worker_pid"), None) if alive is not None else _pid_alive(doc.get("worker_pid"))
+        if e["state"] in ("admitted", "sent") and run_live and pid_alive:
             continue
         seen = probe(e)
         state = seen if seen in ("landed", "failed") else "uncertain"
@@ -1499,8 +1811,11 @@ def recover_effects(store: Store, probe: Callable[[dict[str, Any]], str | None])
     return out
 
 
+@transition
 def write_account(ctx: Ctx) -> dict[str, Any]:
     acc = progress_account(ctx.store, ctx.product_tree())
+    if not ctx.observer_writes:
+        return acc
     path = ctx.root / ACCOUNT
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(acc, indent=2, sort_keys=True) + "\n", encoding="utf-8")

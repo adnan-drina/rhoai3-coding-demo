@@ -16,7 +16,10 @@ reads whether it already happened. A crash anywhere re-runs the lookup and never
 the effect: no duplicate card, grant, budget or effect.
 
 Does nothing (exit 0, no output) unless the root runs the outcome protocol with
-execution not disabled and a store exists.
+execution not disabled and a store exists. Under enabled execution the tick is
+a REQUEST to the protected authority service, which runs this same function in
+its own principal against its own store (outcome_authority.py); the hook
+process only forwards it and writes the observer view the service returns.
 """
 from __future__ import annotations
 
@@ -37,8 +40,8 @@ from k4_graph import complete_generation, publish_plan, readback, sync_ownership
 from planner.outcome_graph import DELIVER_STAGES  # noqa: E402
 from planner.outcome_lifecycle import (DELIVERY_OK_VERDICTS, Ctx, Refusal, delivery_facts, plan_after_refuse,  # noqa: E402
                                        stage_admission, write_account)
-from planner.outcome_protocol import STORE_FILE, execution_gate  # noqa: E402
-from planner.outcome_store import Store, StoreError, canonical, fault  # noqa: E402
+from planner.outcome_protocol import authority_endpoint, execution_gate, select_protocol  # noqa: E402
+from planner.outcome_store import Store, StoreError, canonical, fault, store_path  # noqa: E402
 
 IMPL = "implementer"
 
@@ -216,9 +219,10 @@ HANDLERS = {"m2-release": _m2_release, "m4-assessed": _m4_assessed, "m5-stage-do
             "m3-accepted": _m3_accepted}
 
 
-def tick(root: Path, native: Any | None = None) -> list[dict[str, Any]]:
+def tick(root: Path, native: Any | None = None, *, alive: Any = None,
+         observer_writes: bool = True) -> list[dict[str, Any]]:
     root = Path(root)
-    if not (root / STORE_FILE).exists() or execution_gate(root):
+    if not store_path(root).exists() or execution_gate(root):
         return []
     store = Store(root)
     if native is None:
@@ -226,12 +230,12 @@ def tick(root: Path, native: Any | None = None) -> list[dict[str, Any]]:
         db = store.meta("native_db")
         env = dict(os.environ, HERMES_KANBAN_DB=db)
         native = KanbanNative(db, hermes=(os.environ.get("HERMES_BIN") or "hermes").split(), env=env)
-    ctx = Ctx(root, store, native)
+    ctx = Ctx(root, store, native, alive=alive, observer_writes=observer_writes)
     out = []
     if store.meta("publication_state") == "incomplete":
         complete_generation(store, native)
     from planner.outcome_lifecycle import recover_dead_effects
-    for row in recover_dead_effects(store, root, native):
+    for row in recover_dead_effects(store, root, native, alive=alive):
         out.append({"effect": row["effect_id"], "state": row["state"]})
     for row in store.conn.execute("SELECT * FROM intents WHERE state='pending' ORDER BY created_at, intent_id").fetchall():
         intent = dict(row)
@@ -262,7 +266,13 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             pass
     try:
-        out = tick(root)
+        endpoint = authority_endpoint(select_protocol(root))
+        if endpoint:
+            # the protected authority reconciles; this observer only asks it to
+            from planner.outcome_authority import call
+            out = call(endpoint, "tick", {}) or []
+        else:
+            out = tick(root)
     except Exception as exc:  # an observer never breaks dispatch; the intent stays pending
         print(json.dumps({"reconcile_error": str(exc)}), file=sys.stderr)
         return 0

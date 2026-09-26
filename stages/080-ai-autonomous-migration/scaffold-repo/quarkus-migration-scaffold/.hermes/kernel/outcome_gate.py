@@ -16,6 +16,13 @@ worker (HERMES_KANBAN_TASK / HERMES_KANBAN_RUN_ID / HERMES_KANBAN_CLAIM_LOCK),
 and every one is re-checked against the board recorded at publication. Nothing
 here trusts an argument for scope, acceptance or budget. Output is JSON. The
 exit code is 0 for an allowed transition and 1 for a typed refusal.
+
+Under enabled execution every command is a REQUEST to the protected authority
+service (planner/outcome_authority.py): this process holds no authority record
+and the service re-derives each decision (the candidate, the scope, the
+baseline, the budget) itself. The only local effects are the projection
+(issued.json), the observer view (account.json) and, for ``push``, the git push
+the service admitted -- whose result is this caller's report.
 """
 from __future__ import annotations
 
@@ -36,7 +43,14 @@ from planner.outcome_native import KanbanNative  # noqa: E402
 from planner.outcome_store import Store, StoreError  # noqa: E402
 
 
-def _ctx(root: Path) -> L.Ctx:
+def _ctx(root: Path):
+    """The authority context for this root: the protected service when the
+    run's selection names one, else the in-process (cooperative) store."""
+    from planner.outcome_protocol import authority_endpoint, select_protocol
+    endpoint = authority_endpoint(select_protocol(root))
+    if endpoint:
+        from planner.outcome_native import default_db_path
+        return L.RemoteCtx(root, endpoint, KanbanNative(default_db_path()))
     store = Store(root)
     return L.Ctx(root, store, KanbanNative(store.meta("native_db"),
                                            hermes=(os.environ.get("HERMES_BIN") or "hermes").split(),
@@ -59,11 +73,11 @@ def write_issued_record(root: Path, ctx: L.Ctx, issued: dict) -> str:
     row = next(c for c in wl["clusters"] if c["id"] == issued["cluster"])
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}
     receipt = load_json(root / ADMISSION_RECEIPT) if (root / ADMISSION_RECEIPT).is_file() else {}
-    key = "outcome:v1:%s:%s:%s:issue%d" % (ctx.store.meta("run_id"), issued["outcome_id"], issued["cluster"], issued["issue_id"])
+    key = "outcome:v1:%s:%s:%s:issue%d" % (issued.get("run") or "", issued["outcome_id"], issued["cluster"], issued["issue_id"])
     card = cluster_card(row, steps)
     card["write_set"] = sorted(set(card["write_set"]) | set(issued.get("allowed_paths") or []))
     write_issued(root, wl, card, str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
-    amends = [r["doc"] for r in ctx.store.ledger(issued["outcome_id"]) if r["kind"] == "amend" and r["doc"].get("cluster") == issued["cluster"]]
+    amends = list(issued.get("amendments") or [])
     if amends:
         from planner.canonical import load_json as _lj, write_canonical as _wc
         from planner.paths import LOOP_ISSUED
@@ -72,6 +86,38 @@ def write_issued_record(root: Path, ctx: L.Ctx, issued: dict) -> str:
                              for a in amends]
         _wc(root / LOOP_ISSUED, doc)
     return key
+
+
+def _write_view(root: Path, acc: dict) -> None:
+    """The observer view the service returned, written by the caller (the
+    service never writes the other principal's tree). Derived; never read back
+    as authority."""
+    path = root / L.ACCOUNT
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(acc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _remote_push(root: Path, ctx, task: str, run_id: int, remote: str, ref: str) -> dict:
+    """The admitted push under the service: admission (and the refusal of any
+    second admission) is the authority's; the push and its observed result are
+    this caller's, recorded as its report. An already recorded push is never
+    repeated: it is reported or probed by identity."""
+    import subprocess
+    adm = L.push_admit(ctx, task_id=task, run_id=run_id, remote=remote, ref=ref)
+    eid, op = adm["effect_id"], adm["operation_id"]
+    if adm.get("already"):
+        if adm["state"] in ("landed", "failed"):
+            return {"effect_id": eid, "state": adm["state"], "already": True}
+        state = L.push_probe(root)(dict(kind="push", operation_id=op)) or "uncertain"
+        L.record_delivery_effect(ctx, task_id=task, run_id=run_id, effect_id=eid, state=state, detail={"recovered": True})
+        return {"effect_id": eid, "state": state, "already": True}
+    p = subprocess.run(["git", "-C", str(root), "push", remote, "%s:%s" % (adm["head"], ref)], capture_output=True,
+                       text=True, timeout=600)
+    L.record_delivery_effect(ctx, task_id=task, run_id=run_id, effect_id=eid, state="sent",
+                             detail={"rc": p.returncode, "stderr": (p.stderr or "")[-400:]})
+    state = L.push_probe(root)(dict(kind="push", operation_id=op)) or "uncertain"
+    L.record_delivery_effect(ctx, task_id=task, run_id=run_id, effect_id=eid, state=state, detail={"rc": p.returncode})
+    return {"effect_id": eid, "state": state, "already": False}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,11 +156,13 @@ def main(argv: list[str] | None = None) -> int:
         run_id = int((os.environ.get("HERMES_KANBAN_RUN_ID") or "0").strip() or 0)
     except ValueError:
         run_id = 0
+    ctx = None
     try:
         ctx = _ctx(root)
+        remote = getattr(ctx, "remote", None) is not None
         if ns.cmd == "issue":
-            t = ctx.native.task(task) or {}
-            pid = int(t.get("worker_pid") or 0)
+            t = (ctx.native.task(task) if not remote else None) or {}
+            pid = int(t.get("worker_pid") or 0)   # the service reads the worker pid itself
             try:
                 pgid = os.getpgid(pid) if pid else 0
             except OSError:
@@ -137,21 +185,25 @@ def main(argv: list[str] | None = None) -> int:
         elif ns.cmd == "stage-result":
             out = L.record_stage_result(ctx, task_id=task, run_id=run_id)
         elif ns.cmd == "push":
-            out = L.push_candidate(ctx, task_id=task, run_id=run_id, remote=ns.remote, ref=ns.ref)
+            if remote:
+                out = _remote_push(root, ctx, task, run_id, ns.remote, ns.ref)
+            else:
+                out = L.push_candidate(ctx, task_id=task, run_id=run_id, remote=ns.remote, ref=ns.ref)
         elif ns.cmd == "effect-admit":
-            if int(ctx.store.meta("revision", "0") or 0) != ns.revision:
-                raise L.Refusal("EFFECT_STALE_REVISION", "checked revision %d is not current" % ns.revision)
-            out = {"effect_id": L.admit_delivery_effect(ctx, task_id=task, run_id=run_id, kind=ns.kind,
-                                                         operation_id=ns.operation_id)}
+            out = {"effect_id": L.admit_effect_checked(ctx, task_id=task, run_id=run_id, kind=ns.kind,
+                                                        operation_id=ns.operation_id, revision=ns.revision)}
         elif ns.cmd == "effect-record":
-            L.active_issue(ctx, task, run_id)
-            L.record_effect(ctx.store, ns.effect_id, ns.state)
-            out = {"effect_id": ns.effect_id, "state": ns.state}
+            out = L.record_delivery_effect(ctx, task_id=task, run_id=run_id, effect_id=ns.effect_id, state=ns.state)
         else:
             out = L.write_account(ctx)
+            if remote:
+                _write_view(root, out)
     except (L.Refusal, StoreError) as exc:
         print(json.dumps({"refused": exc.code, "detail": exc.detail}))
         return 1
+    finally:
+        if ctx is not None and getattr(ctx, "store", None) is not None:
+            ctx.store.close()
     print(json.dumps(out, indent=2, sort_keys=True, default=str))
     return 0
 
