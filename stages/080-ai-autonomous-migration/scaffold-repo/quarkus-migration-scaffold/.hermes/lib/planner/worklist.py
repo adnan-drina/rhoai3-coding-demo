@@ -291,15 +291,58 @@ def incidents_from_bundle(bundle: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
+IDENTITY_LEGACY = "legacy"
+IDENTITY_V1 = "v1"
+
+
+def diagnostic_key(diags: dict[str, Any], d: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Plan semantics v1: the facts a compile obligation's identity is made of,
+    and how much they can be trusted.
+
+    ``structured``   the compiler's own diagnostic arguments (symbol kinds and
+                     names) at the site (file, line, column) with the code:
+                     no prose, whatever language rendered it
+    ``pinned-text``  the producer rendered the text in its pinned ROOT locale;
+                     the text is the compiler's base bundle, not a translation
+    ``message-text`` neither is known (an older producer, a hand-made
+                     document): the finding is kept, with the lower-confidence
+                     identity named -- never merged with another, never dropped
+    """
+    path = str(d.get("path") or "") or GLOBAL
+    base = {"path": path, "line": int(d.get("line") or 0), "column": int(d.get("column") or 0), "code": str(d.get("code") or "")}
+    if diags.get("args_available") is True and isinstance(d.get("args"), list):
+        return dict(base, args=[str(a) for a in d["args"]]), "structured"
+    text = re.sub(r"\s+", " ", str(d.get("message") or "")).strip()
+    if str(diags.get("rendering_locale") or "") == "root":
+        return dict(base, message=text), "pinned-text"
+    return dict(base, message=text), "message-text"
+
+
+def compile_items(diags: dict[str, Any], *, identity: str = IDENTITY_LEGACY) -> list[dict[str, Any]]:
+    """Compile obligations from a rhoai3.diagnostics/v1 document.
+
+    ``identity`` is the run's decided plan semantics. legacy (the default, and
+    every run admitted before v1) hashes path, line, code and the message
+    text exactly as before. v1 hashes diagnostic_key, and gives the n-th
+    repetition of an identical key its own occurrence, so two diagnostics the
+    compiler reports at one site stay two obligations (conservation) instead
+    of one id twice."""
     out: list[dict[str, Any]] = []
+    seen: dict[str, int] = {}
     for d in diags.get("diagnostics") or []:
         if str(d.get("kind") or "").upper() != "ERROR":
             continue
         path = str(d.get("path") or "") or GLOBAL
         line = int(d.get("line") or 0)
         message = str(d.get("message") or "")
-        ident = sha256_bytes(canonical_bytes({"path": path, "line": line, "code": d.get("code"), "message": message}))[:16]
+        confidence = ""
+        if identity == IDENTITY_V1:
+            key, confidence = diagnostic_key(diags, d)
+            base_ident = sha256_bytes(canonical_bytes(key))[:16]
+            seen[base_ident] = seen.get(base_ident, 0) + 1
+            ident = base_ident if seen[base_ident] == 1 else sha256_bytes(("%s#%d" % (base_ident, seen[base_ident])).encode("utf-8"))[:16]
+        else:
+            ident = sha256_bytes(canonical_bytes({"path": path, "line": line, "code": d.get("code"), "message": message}))[:16]
         if path.startswith("target/generated-sources/"):
             # generated code is owned by its generator's configuration in the
             # pom: the item's locus is pom.xml (a build item), the generated
@@ -307,8 +350,12 @@ def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
             out.append({"id": "err:%s" % ident, "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0,
                         "rule_id": "GENERATED_SOURCE_ERROR", "message_sha256": sha256_bytes(message.encode("utf-8")),
                         "detail": ("%s:%d: %s" % (path, line, message))[:200], "message": ("%s:%d: %s" % (path, line, message))[:600], "generated_path": path})
+            if confidence:
+                out[-1].update({"column": int(d.get("column") or 0), "identity_confidence": confidence})
             continue
         out.append({"id": "err:%s" % ident, "source": "javac", "kind": "build" if path == GLOBAL or path_class(path) == "build" else "compile", "category": "mandatory", "path": path, "line": line, "rule_id": str(d.get("code") or ""), "message_sha256": sha256_bytes(message.encode("utf-8")), "detail": message[:200], "message": message[:600]})
+        if confidence:
+            out[-1].update({"column": int(d.get("column") or 0), "identity_confidence": confidence})
     if diags.get("build_unresolvable"):
         out.append({"id": "err:build-unresolvable", "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "BUILD_UNRESOLVABLE", "message_sha256": sha256_bytes(str(diags.get("reason") or "").encode("utf-8")), "detail": str(diags.get("reason") or "")[:200], "message": str(diags.get("reason") or "")[:600]})
     return out
@@ -6418,6 +6465,11 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         decisions_doc = load_decisions(root)
     except (OSError, ValueError):
         decisions_doc = {}
+    from planner.decisions import plan_semantics as _plan_semantics
+
+    # the decided plan semantics (decisions.loop.plan_semantics, sealed by the
+    # admission receipt): absent keeps every identity exactly as it was
+    semantics = IDENTITY_V1 if _plan_semantics(decisions_doc) == "v1" else IDENTITY_LEGACY
     platform_id = str((decisions_doc.get("destination_platform") or {}).get("id") or "")
     apply_supersessions(incidents, superseded_rules(decisions_doc, root) if decisions_doc else {}, _waivers(decisions_doc) if decisions_doc else [], pom_dependency_ids(root), platform=platform_id)
     mandatory = [i for i in incidents if i["category"] == "mandatory"]
@@ -6425,7 +6477,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     diag_run = run.get("diagnostics") or {}
     diags = load_json(diag_path) if diag_path.is_file() else None
     compile_known = isinstance(diags, dict) and bool(diag_run.get("ran")) and not diags.get("build_unresolvable")
-    comp_probe = compile_items(diags) if isinstance(diags, dict) else []
+    comp_probe = compile_items(diags, identity=semantics) if isinstance(diags, dict) else []
     disagreed = False
     maven_compile = run.get("maven_compile") or {}
     if compile_known and maven_compile.get("failed") and not comp_probe:
@@ -6445,7 +6497,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             blocked.append("build unresolvable: %s" % str(diags.get("reason") or "no classpath")[:300])
         else:
             blocked.append("compiler diagnostics did not run in this verification")
-    comp = compile_items(diags) if isinstance(diags, dict) else []
+    comp = compile_items(diags, identity=semantics) if isinstance(diags, dict) else []
     tests_run = run.get("tests") or {}
     sure = load_json(sure_path) if sure_path.is_file() else None
     tst = test_items(sure) if isinstance(sure, dict) else []
@@ -6631,6 +6683,10 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         "measure": measure_of(items, incidents_known=incidents_known, compile_known=compile_known, tests_known=tests_known, parity_known=parity_known, blocked=blocked),
         "order_policy": "build → config → compile (leaf types first) → incident → test → parity; within a rank by dependency depth then path; tests are never in a write set. Packaging and startup obligations enter as build/config items carrying their gate; the closing card needs an empty list AND both gates passing on the same packaged artifact.",
     }
+    if semantics == IDENTITY_V1:
+        # present only under v1, so a list formed without it is byte-for-byte
+        # what it always was
+        doc["plan_semantics"] = IDENTITY_V1
     if write:
         from planner.canonical import write_canonical
 

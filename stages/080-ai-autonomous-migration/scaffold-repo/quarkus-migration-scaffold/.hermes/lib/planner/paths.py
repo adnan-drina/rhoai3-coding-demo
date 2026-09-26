@@ -29,6 +29,11 @@ EVIDENCE_BUNDLE = PLANNING_OUT / "evidence-bundle.json"
 WORKLIST = PLANNING_OUT / "worklist.json"
 ADMISSION_RECEIPT = PLANNING_OUT / "admission-receipt.json"
 SERIAL_ROADMAP = PLANNING_OUT / "serial-roadmap.json"
+# plan semantics v1 (decisions.loop.plan_semantics): the semantic identity of
+# the initial plan, sealed by admission BESIDE the exact digests (never
+# instead of them), and its derived human-readable view (no authority)
+PLAN_SEMANTICS = PLANNING_OUT / "plan-semantics.json"
+PLAN_VIEW = PLANNING_OUT / "plan-view.json"
 BOOTSTRAP_RECEIPT = PRODUCERS_DIR / "bootstrap.json"
 # decided repairs applied by the bootstrap (ADR-019): one row per transformation
 DECIDED_REPAIRS_RECEIPT = PRODUCERS_DIR / "decided-repairs.json"

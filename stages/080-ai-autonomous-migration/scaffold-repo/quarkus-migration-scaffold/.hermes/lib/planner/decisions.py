@@ -20,7 +20,10 @@ Four things and nothing else:
                               former, absent keeps today's per-file
                               clustering; ``runtime_feedback: v1`` runs the
                               full scenario comparison once the destination
-                              boots, absent leaves it to the parity cards
+                              boots, absent leaves it to the parity cards;
+                              ``plan_semantics: v1`` turns on the repeatable
+                              initial plan (planner.plan_semantics), absent
+                              keeps today's identities
 
 The planner reads decisions; it never writes or infers them. A required
 decision that is null/empty is admission BLOCK ``MISSING_DECISION``; a
@@ -459,6 +462,15 @@ UNIT_FORMATION_OFF = "off"
 # mismatch.
 RUNTIME_FEEDBACK_V1 = "v1"
 RUNTIME_FEEDBACK_OFF = "off"
+# Plan semantics (M2 repeatability, 2026-09-26): v1 derives compile-obligation
+# identity from the compiler's structured diagnostic (code, site, arguments)
+# rendered in a pinned locale, runs the initial analysis on a controlled clean
+# build tree, derives known migration responsibilities from the frozen source
+# (planner.source_requirements), and seals a semantic plan fingerprint beside
+# the exact evidence digests (planner.plan_semantics). Absent is off: every
+# existing run keeps the identities and the plan it was admitted with.
+PLAN_SEMANTICS_V1 = "v1"
+PLAN_SEMANTICS_OFF = "off"
 
 
 def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
@@ -468,8 +480,15 @@ def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
     section = section if isinstance(section, dict) else {}
     formation = str(section.get("unit_formation") or "").strip()
     feedback = str(section.get("runtime_feedback") or "").strip()
+    semantics = str(section.get("plan_semantics") or "").strip()
     return {"unit_formation": UNIT_FORMATION_V1 if formation == UNIT_FORMATION_V1 else UNIT_FORMATION_OFF,
-            "runtime_feedback": RUNTIME_FEEDBACK_V1 if feedback == RUNTIME_FEEDBACK_V1 else RUNTIME_FEEDBACK_OFF}
+            "runtime_feedback": RUNTIME_FEEDBACK_V1 if feedback == RUNTIME_FEEDBACK_V1 else RUNTIME_FEEDBACK_OFF,
+            "plan_semantics": PLAN_SEMANTICS_V1 if semantics == PLAN_SEMANTICS_V1 else PLAN_SEMANTICS_OFF}
+
+
+def plan_semantics(doc: dict[str, Any] | None) -> str:
+    """decisions.loop.plan_semantics: "v1" or "off" (absent, unknown)."""
+    return loop_modes(doc or {})["plan_semantics"]
 
 
 def unit_formation(doc: dict[str, Any]) -> str:

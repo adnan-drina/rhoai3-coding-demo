@@ -552,6 +552,18 @@
           ],
           "description": "v1 runs the FULL scenario comparison (paved-road-m4/run-parity.py, unscoped) after a successful startup gate on any card whose acceptance verification reached boot, bound to that card's candidate, so a behavioural failure enters the next work-list rebuild as a parity obligation immediately instead of only at M4. It is skipped when the tree's parity receipt is already bound to this candidate digest. off (or absent) keeps the v9 behaviour: the comparison runs only for a card whose own obligation is a parity mismatch, scoped to that card's scenarios."
         },
+        "plan_semantics": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "v1",
+            "off",
+            null
+          ],
+          "description": "v1 makes the initial M3 plan repeatable (lib/planner/plan_semantics.py): compile-obligation identity from the compiler's structured diagnostic in a pinned locale (not localized text), a controlled clean initial analysis (no stale target/ outputs), source-derived migration responsibilities (lib/planner/source_requirements.py) owned by the initial outcome graph, and a semantic plan fingerprint sealed by admission beside the exact evidence digests. off (or absent) keeps today's identities and plan: a run already admitted keeps the semantics it was admitted with (decisions.yaml is sealed by the receipt)."
+        },
         "adr": {
           "type": [
             "string",

@@ -442,7 +442,7 @@ def decisions_yaml(doc: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None) -> dict[str, Any]:
+def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None, *, producer: dict[str, Any] | None = None) -> dict[str, Any]:
     if unresolvable:
         return {"schema": "rhoai3.diagnostics/v1", "files": 0, "classpath_entries": 0, "success": False, "errors": 0, "diagnostics": [], "build_unresolvable": True, "reason": unresolvable}
     rows = []
@@ -450,7 +450,25 @@ def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None) -> dic
         path, line, message = err[0], err[1], err[2]
         code = err[3] if len(err) > 3 else "compiler.err.cant.resolve"
         rows.append({"kind": "ERROR", "path": path, "line": line, "code": code, "message": message})
-    return {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": rows}
+        if producer:
+            # the current producer's per-diagnostic facts: a column (a 5th
+            # tuple member, else 1) and structured args when it says it has them
+            rows[-1]["column"] = int(err[4]) if len(err) > 4 else 1
+            if producer.get("args_available"):
+                rows[-1]["args"] = list(err[5]) if len(err) > 5 else [code, message.split("symbol:", 1)[-1].split("\n", 1)[0].strip()]
+    doc = {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": rows}
+    if producer:
+        # simulator of the current JdkDiagnostics (pinned ROOT rendering,
+        # provenance of generated roots and of the output classes)
+        doc.update({"rendering_locale": "root", "jvm_locale": "en", "output_classes_on_classpath": False,
+                    "generated_roots": [], "args_available": False})
+        doc.update(producer)
+    return doc
+
+
+# What the current JdkDiagnostics records beside its diagnostics; a fixture
+# passes it to prepare_loop(diag_producer=...) to simulate that producer.
+CURRENT_DIAG_PRODUCER = {"rendering_locale": "root", "args_available": True}
 
 
 def surefire_doc(failures: list[tuple[str, str]]) -> dict[str, Any]:
@@ -460,14 +478,14 @@ def surefire_doc(failures: list[tuple[str, str]]) -> dict[str, Any]:
 SIM = Path("verification") / "loop" / "sim"
 
 
-def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, findings: dict[str, Any] | None = None, unresolvable: str | None = None, test_rc: int | None = None) -> dict[str, str]:
+def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, findings: dict[str, Any] | None = None, unresolvable: str | None = None, test_rc: int | None = None, diag_producer: dict[str, Any] | None = None) -> dict[str, str]:
     """Simulate the tools' raw outputs under verification/loop/sim/ and return
     the verify.py arguments that consume them (never written into the
     verification/build/ reports directly — verify.py owns those)."""
     root = Path(root)
     sim = root / SIM
     sim.mkdir(parents=True, exist_ok=True)
-    write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or [], unresolvable))
+    write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or [], unresolvable, producer=diag_producer))
     write_canonical(sim / "surefire.json", surefire_doc(failures or []))
     # the simulator stands in for a full run-verify pass, and says so: an
     # unstated mode is diagnostic and cannot promote (verify.py)
@@ -504,7 +522,7 @@ def issue(root: Path) -> dict[str, Any]:
     return result["payloads"][0]
 
 
-def prepare_loop(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None) -> None:
+def prepare_loop(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, diag_producer: dict[str, Any] | None = None) -> None:
     """bundle → git baseline → bootstrap → simulated verification → work list → step 0 → admission.
 
     Test support only: what paved-road-m2 does on a card, with the tool
@@ -523,7 +541,7 @@ def prepare_loop(root: Path, *, errors: list[tuple[str, int, str]] | None = None
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "scaffold"], check=True)
     subprocess.run([sys.executable, str(skills / "migration" / "bootstrap-destination" / "scripts" / "bootstrap-destination.py"), "--root", str(root)], check=True, capture_output=True)
-    p = verify(root, errors=errors or [], failures=failures or [], findings=load_json(root / MTA_FINDINGS))
+    p = verify(root, errors=errors or [], failures=failures or [], findings=load_json(root / MTA_FINDINGS), diag_producer=diag_producer)
     if p.returncode != 0:
         raise RuntimeError("verify: %s%s" % (p.stdout, p.stderr))
     loop = skills / "migration" / "fix-until-green" / "scripts"
