@@ -19,14 +19,15 @@ The implementation is in the golden, disabled by default. The contract is
   separate principal owns the store: a sidecar with its own UID and a
   read-only mount into the worker, or a platform service. This is a
   platform decision; it is not substituted by a weaker check.
-- [ ] Publication dependencies for any run that selects the protocol, all
-  in Stage 050 `maas-api-key-provisioning.yaml`:
-  - add `kanban_block|kanban_request_review|request_review` to the
-    `pre_tool_call` matcher;
-  - register `on_kanban_dispatch_tick` →
-    `python3 /projects/modernized/.hermes/kernel/outcome_reconcile.py --root /projects/modernized`.
-  Nothing selects the protocol today, so the golden publishes safely without
-  them.
+- [x] Implementation review 2026-09-26, R1–R6: corrected, each with a
+  regression reproduced first. The real-worker delivery test runs an accepted
+  repair with a worker killed after its commit, REFUSE → reassessment, and M5
+  PREFLIGHT → DEPLOY → VALIDATE with the actual producers and audits.
+- [x] Production hooks in the Stage 050 producer, gated on the destination
+  selecting `outcome-board/v1` (registers nothing today). This needs the normal
+  Stage 050 publication before any run selects the protocol.
+- [ ] F1 platform component: the authority sidecar with a separate UID
+  (design in the contract, section 8a).
 
 ## Destination declared references and package-leaf isolation — 2026-09-25
 

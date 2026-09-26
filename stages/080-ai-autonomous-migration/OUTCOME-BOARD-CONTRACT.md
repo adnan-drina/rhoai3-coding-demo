@@ -85,12 +85,14 @@ made against a compromised administrator, the kernel or arbitrary subprocesses.
 | T5 | Claim → execution issue | worker `outcome_gate.py issue` | validate native run (current run id, claim lock, status, assignee) → validate prior baseline and retained candidate → supersede the prior issue → grant writer (generation+1) → write issue | none | a stale or foreign run, a manual claim of an unadmitted card, a missing grant or an unaccepted parent refuses; read-only diagnosis continues | none; spent budget carried |
 | T6a | Attempt rejected | `advance.py` in outcome mode via gate | ledger `reject` (spent+1 on the outcome budget key) → restore baseline → clear candidate | none; the card stays open | a replayed reject for the same attempt sequence is a no-op | +1, never reset |
 | T6b | Attempt pending | same | ledger `pending` with candidate digest, original baseline and retained paths | runtime 0011 stop request (unchanged) | restart restores the candidate only if its digest and baseline match | none |
-| T6c | Attempt accepted (cluster) | same | ledger `accept-begin` → git commit → ledger `accept-commit` (commit, tree) → outcome `accepted` when every owned obligation is discharged | none | `accept-begin` without commit: find a commit with that tree and the baseline as parent, else `accept-aborted` and the candidate stays pending. Never spends twice | none |
+| T6c | Attempt accepted (cluster) | same | ledger `accept-begin` → git commit → ledger `accept-commit` (commit, tree) → outcome `accepted` when every owned obligation is discharged | none | the NEXT issue (T5) first recovers an `accept-begin` without a commit record from Git history: a unique commit whose parent is the baseline and whose product tree is the candidate is recorded (`recovered`), ambiguity refuses, no match aborts to pending. advance.py (`resume_recovered`) then finishes THAT acceptance on the re-measured tree (`accept-evaluated`). Never while the previous writer may be alive; never spends twice | none |
+| T6d | Scope amendment | `amend-scope.py` via the bridge | amend-scope validates evidence and locus → authority `amend_issue` re-checks issue, cluster, path class, dirtiness, count (4) and file bound (20) → new issue (same run, outcome, baseline, generation, budget) + sealed `amend` row → only then the `issued.json` projection | none | amendments are carried into every later issue of the cluster (restart keeps them) | none |
 | T7 | Outcome completion | worker `kanban_complete`; hook | require an `accepted` outcome row whose tree is the current product tree and no owned obligation open | native complete | refused completion leaves the card open | none |
 | T8 | M4 assessment completion | reviewer `kanban_complete`; hook | require the existing M4 audit green and a verdict bound to this assessment generation → intent `m4-assessed` (verdict, digest, candidate) → allow | native complete | intent without native done: nothing happens; native done without follow-up: reconciler executes the intent | none |
 | T9 | REFUSE → repair → successor | reconciler (`on_kanban_dispatch_tick`) | revision (owners for new obligations, follow-ups with lineage, successor assessment `g+1`, M5 rebinding) → create unassigned → read back → assign → mark intent done | create, attach, assign, link (successor → M5 PREFLIGHT, visibility only) | every step keyed and recorded; a crash repeats the lookup, never the effect | follow-ups share the parent budget key |
-| T10 | M5 stage grant | reconciler | stage predicate (section 6) → intent step `granted` → assign → record grant | `hermes kanban assign <stage> implementer` | an assignment already on the board is recorded, not repeated | M5 budget unchanged (run-defaults) |
-| T11 | External effect | M5 stage via gate | admission transaction (revision current, no revision in flight, candidate current, predicate) → `admitted` → effect → `sent` → result `landed`/`failed` | git push / pipeline (existing M5 scripts) | probe by recorded identity (commit sha, remote ref, operation id); unknown result → `uncertain`, visible, never repeated automatically | none |
+| T10 | M5 stage grant | reconciler | stage predicate (section 6) from DERIVED facts → intent step `granted` → assign → record grant | `hermes kanban assign <stage> implementer` | an assignment already on the board is recorded, not repeated | M5 budget unchanged (run-defaults) |
+| T10b | M5 stage completion | implementer `kanban_request_review reviewer=reviewer`; reviewer `kanban_complete`; hook | grant held → reviewer only → stage audit green → stage evidence DERIVED from the stage's own receipts, bound to HEAD and the bound assessment → `stage-result` (receipt digests) → intent | native review, complete | a supplied result refuses `STAGE_RESULT_ASSERTED`; missing/failed/contradictory receipts refuse | none |
+| T11 | External effect (push) | granted M5 DEPLOY via `outcome_gate.py push` | admission transaction (the granted DEPLOY stage only; HEAD = the candidate its recorded preflight admitted; revision current; none in flight) → `admitted` → `git push` → `sent` → result by `ls-remote` identity | git push to the configured remote | the dispatcher tick probes an unresolved push of a finished run by identity: `landed` / `failed` / `uncertain`; `push` again reports or probes, never re-pushes | none |
 
 A revision commit refuses while any effect is `admitted`, `sent` or
 `uncertain` (`REVISION_BLOCKED_BY_EFFECT`). An effect admission refuses when
@@ -140,8 +142,9 @@ fires it once per tick, after it releases its lock. It also runs on
 `kanban_task_completed` in the worker, as an accelerator. It is idempotent and
 does nothing unless the root runs the outcome protocol with execution not
 disabled. No new scheduler, daemon or polling agent. The registration lives in
-the Stage 050 managed config and is a publication dependency, not part of this
-change.
+the Stage 050 managed config. It is gated on the run selecting the protocol,
+and the tick also recovers unresolved push effects of finished runs by
+identity.
 
 ## 8. Conditions and blockers
 
@@ -159,11 +162,14 @@ change.
 - C3/C4/C5: implemented and tested synthetically
   (`lib/planner/outcome_board.test.py`). The M2 release continuation is also
   tested on the real dispatcher tick.
-- Publication dependencies (Stage 050 managed config, before any run selects
-  the protocol): the `pre_tool_call` matcher must add
-  `kanban_block|kanban_request_review|request_review`, and
-  `on_kanban_dispatch_tick` must register `kernel/outcome_reconcile.py`.
-  Outcome decisions are measured well under the 5 s hook timeout.
+- Production hooks: the Stage 050 producer (`maas-api-key-provisioning.yaml`,
+  block `outcome-board hooks`) adds `kanban_block|kanban_request_review|request_review`
+  to the K2 matcher and registers `on_kanban_dispatch_tick` → the destination's
+  `kernel/outcome_reconcile.py`. It does so ONLY when the destination's
+  `run-defaults.json` selects `outcome-board/v1`, so it registers nothing today
+  (`gitops/.../devspaces/outcome-board-hooks.test.py`). The real-worker tests run
+  with exactly that configuration and the producer's 5 s hook timeout. It
+  reaches a workspace only through the normal Stage 050 publication.
 - `k4_graph.py publish --plan-file` exists for the runtime qualification.
   It is honoured in `qualification` mode only, which no factory run can
   enter.
@@ -171,6 +177,34 @@ change.
   parses with the harness's `yamlite`, but PyYAML rejects it. `load_yaml`
   prefers PyYAML when importable, so a `python3` with PyYAML on its path
   refuses the file.
+
+## 8a. F1: the protected writer the platform must supply (design; not built)
+
+The authority's validation code is complete. What is missing is a principal
+the worker cannot replace. The smallest design that fits the existing
+workspace:
+
+| Element | What the platform provides | Why |
+|---|---|---|
+| Authority sidecar | a second container in the migration workspace pod (devfile component, the same ws-080 image, command `python3 /opt/rhoai3/outcome_authority.py serve`) with `securityContext.runAsUser` = a DIFFERENT UID inside the namespace range (restricted SCC permits a per-container UID in range) | a principal the worker UID cannot impersonate |
+| State volume | an `emptyDir` (or dedicated PVC) mounted read-write ONLY in the sidecar; mounted `readOnly: true` (or not at all) in the worker container | the kernel enforces the read-only mount; fsGroup group-write does not help the worker across a read-only mount |
+| Code | `.hermes/lib/planner/outcome_*.py` and the kernel entry points baked into the image under `/opt/rhoai3` (root-owned), never read from the worker-writable `/projects/modernized/.hermes` | the checker cannot be rewritten by the worker |
+| Interface | a unix socket in a shared `emptyDir` (`/run/outcome-authority/sock`); `outcome_gate.py`, the K2 hook and the reconciler become clients that send transition REQUESTS (issue, verdict, amend, stage completion, effect admission); the sidecar recomputes every decision itself | the writer validates transitions; it never signs worker-supplied PASS/scope/budget data |
+| Inputs the sidecar reads | the destination tree and `kanban.db` mounted read-only; the Git remote with its own read credential; for M5, `oc get` with its own read-only ServiceAccount token (not the worker's) | decisions re-derived from sources the worker cannot forge through the authority |
+| Hook placement | `pre_tool_call.sh` and the reconciler from `/etc/hermes` (root-owned image path), `HERMES_MANAGED_DIR` baked into the image/unit | the rule in `.agents/rules/managed-scope-enforcement.md` |
+
+What stays cooperative even then, and must be stated with any claim:
+`kanban.db` is native lifecycle data and remains worker-writable. The worker
+still runs the heavy measurements (Maven build/test, parity, MTA), and their
+receipts remain worker-produced unless the sidecar re-runs them. The protected
+claim covers authorization, scope, baseline, budget and effect admission. It
+does not cover measurement authenticity.
+
+`authority_protected()` becomes true only when the sidecar answers on the
+socket, its store path is not writable by the calling UID, and its owner is
+another UID. Until the platform qualifies this layout, including DWO
+container overrides for `runAsUser` on the chosen Dev Spaces version,
+`enabled` keeps refusing `AUTHORITY_UNPROTECTED`.
 
 ## 9. Rollback
 
