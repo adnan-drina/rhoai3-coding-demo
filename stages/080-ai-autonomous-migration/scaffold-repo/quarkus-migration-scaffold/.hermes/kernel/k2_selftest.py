@@ -664,6 +664,14 @@ def main() -> int:
         (profile_root / "kanban" / "logs" / "t_ok.log").write_text(
             audit_ok, encoding="utf-8"
         )
+
+        def audit_receipt(logs, task, rc, profile="reviewer", run_id=""):
+            # what paved_road.write_audit_receipt writes beside the official log
+            (logs / ("%s.audit.json" % task)).write_text(json.dumps(
+                {"schema": "rhoai3.paved-road-audit-receipt/v1", "task": task, "rc": rc,
+                 "run": run_id, "profile": profile}), encoding="utf-8")
+
+        audit_receipt(profile_root / "kanban" / "logs", "t_ok", 0)
         r = run(
             "hermes kanban complete t_ok",
             roots,
@@ -710,6 +718,7 @@ def main() -> int:
         (profile_root / "kanban" / "logs" / "t_red.log").write_text(
             audit_red, encoding="utf-8"
         )
+        audit_receipt(profile_root / "kanban" / "logs", "t_red", 1)
         r = run(
             "hermes kanban complete t_red",
             roots,
@@ -731,6 +740,37 @@ def main() -> int:
         (default_home / "kanban" / "logs" / "t_def.log").write_text(
             audit_ok.replace("t_ok.log", "t_def.log"), encoding="utf-8"
         )
+        audit_receipt(default_home / "kanban" / "logs", "t_def", 0)
+        # V17-6 (v17 M4 t_4c09775b): an unmarked audit line is not a pass, and
+        # only the CURRENT reviewer run's own audit latches the fence.
+        v17_logs = profile_root / "kanban" / "logs"
+        (v17_logs / "t_v17.log").write_text(audit_ok.replace("t_ok.log", "t_v17.log"), encoding="utf-8")
+        v17_env = {"HERMES_PROFILE": "reviewer", "HERMES_HOME": str(profile_home), "HERMES_KANBAN_TASK": "t_v17",
+                   "HERMES_KANBAN_RUN_ID": "32", "K2_BOUND_GATE_EXIT": "0"}
+        for label, receipt in (("no_receipt_unmarked_line", None),
+                               ("implementer_self_audit", ("implementer", "28", 0)),
+                               ("earlier_reviewer_run", ("reviewer", "30", 0)),
+                               ("current_run_red", ("reviewer", "32", 1))):
+            rp = v17_logs / "t_v17.audit.json"
+            if rp.exists():
+                rp.unlink()
+            if receipt:
+                audit_receipt(v17_logs, "t_v17", receipt[2], profile=receipt[0], run_id=receipt[1])
+            r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
+            r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+            if (r.get("action") == "block" and "already exited 0" in (r.get("message") or "")) or r2.get("action") != "block":
+                print("FAIL v17_6_%s (fence must stay open, complete refused)" % label, r, r2, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok v17_6_%s" % label)
+        audit_receipt(v17_logs, "t_v17", 0, profile="reviewer", run_id="32")
+        r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        if r.get("action") != "block" or "already exited 0" not in (r.get("message") or "") or r2.get("action") == "block":
+            print("FAIL v17_6_current_reviewer_green (fence latches, complete allowed)", r, r2, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v17_6_current_reviewer_green")
         r = run(
             "hermes kanban complete t_def",
             roots,

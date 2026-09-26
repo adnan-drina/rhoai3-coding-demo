@@ -266,32 +266,33 @@ def paved_road_audit_green():
     home = kanban_root_home()
     if not task or not home:
         return False
-    log = os.path.join(home, "kanban", "logs", "%s.log" % task)
+    # V17-6 (v17 M4 t_4c09775b): green is read from the receipt the audit
+    # writes itself (paved_road.write_audit_receipt), bound to the native run
+    # and profile that ran it -- never from the official log. The log reading
+    # (an unmarked invocation line = exit 0) was false twice over: the runtime
+    # stamps "[exit N]" only when the terminal result parses as JSON with a
+    # non-zero exit_code, so the run 30 reviewer audit exited 1 twice with
+    # unmarked lines; and the log holds every run of the card, so the
+    # implementer self-audit of run 28 latched this fence for reviewer runs 29
+    # and 32 against a candidate the reviewer had found red. Run 29 crashed on
+    # the identical-refusal halt; run 32 could not even echo. Only the current
+    # reviewer run and its own audit count; a receipt from another run, another
+    # profile, or none at all is "not green": the fence stays open (the
+    # reviewer may investigate) and kanban_complete stays refused.
+    # (No apostrophes in this block: the hook body is a single-quoted -c.)
+    receipt = os.path.join(home, "kanban", "logs", "%s.audit.json" % task)
     try:
-        text = open(log, encoding="utf-8", errors="replace").read()
-    except OSError:
+        doc = json.load(open(receipt, encoding="utf-8"))
+    except (OSError, ValueError):
         return False
-    # Same convention as .hermes/lib/paved_road.py: the dispatcher stamps
-    # "[exit N]" on failure only, so an omitted marker on a terminal line is
-    # a PASS, not "no information". Reading it as no-information latched this
-    # gate closed on v18 t_6320c956: the first invocation used a wrong --log
-    # path and stamped [exit 1]; every later green run emitted no marker,
-    # matched no branch, and left last_rc at 1 forever. Neither seat could
-    # then terminate -- the implementer is refused kanban_complete and the
-    # reviewer was refused here. SOUL says correcting your own invocation and
-    # re-running green is legal; the old reading made it permanently fatal.
-    #
-    # Only a real invocation counts. Prose that names the script, and other
-    # commands that merely reference the path (find -newer .../audit.py,
-    # head -80 .../audit.py), are not runs of it.
-    last_rc = None
-    invoke = re.compile(r"python3\s+\S*assert-paved-road-audit\.py")
-    for line in text.splitlines():
-        if "$" not in line or not invoke.search(line):
-            continue
-        m = re.search(r"\[exit (\d+)\]", line)
-        last_rc = int(m.group(1)) if m else 0
-    return last_rc == 0
+    if not isinstance(doc, dict) or str(doc.get("task") or "") != task:
+        return False
+    if str(doc.get("profile") or "") != profile:
+        return False
+    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    if str(doc.get("run") or "") != run:
+        return False
+    return doc.get("rc") == 0
 
 LOOP_VERDICTS = ("OK: ACCEPTED", "REVERTED ", "DEFERRED ")
 
