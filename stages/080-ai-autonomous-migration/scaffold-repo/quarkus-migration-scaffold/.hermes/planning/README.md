@@ -20,6 +20,9 @@ invalidates the receipt.
 | `catalogs/destination-platforms.json` | platform ids (`decisions.destination_platform.id`) → BOM pin key, compat mapping |
 | `catalogs/framework-generated.json` | generated-source markers |
 | `catalogs/cross-cutting.json` | cross-cutting annotation/supertype catalog (retained for the entry-point derivation) |
+| `catalogs/compat-mapping.json` `migration_recipes` | plan semantics v1: qualified recipes for source-derived requirements (fixed architecture, the existing checks that refuse the broken forms, refusal conditions); `planner/source_requirements.py` cites them |
+| `evidence/planning/plan-semantics.json` (written, not a contract) | plan semantics v1 only: input fingerprint per producer, the projected work list, requirements and initial graph; frozen by the first ADMITTED receipt and sealed as `seals.plan_semantics` beside the exact digests |
+| `evidence/planning/plan-view.json` (written, not a contract) | derived human view of the initial plan; grants nothing; observational on a serial-loop run |
 | `mta-rules/ruleset.yaml`, `mta-rules/rhoai3-canary.yaml` | custom rules + the canary that proves the effective ruleset |
 | `decisions.example.yaml` | fail-closed template for the project-root `decisions.yaml` |
 

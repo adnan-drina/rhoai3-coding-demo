@@ -1,5 +1,29 @@
 # Backlog
 
+## Repeatable initial M3 plan (plan semantics v1) — 2026-09-26
+
+Plan: `tmp/m2-repeatability-20260926/IMPLEMENTATION-PLAN.md`. Opt-in per run
+through `decisions.yaml` `loop.plan_semantics: v1`; absent keeps every
+identity and plan unchanged. See Stage 080 SOLUTION-ARCHITECTURE §7.1.
+
+- [x] Stable producer identity (pinned-locale diagnostics, structured
+  arguments, per-site occurrence), controlled initial analysis
+  (`run-verify.sh --initial`), source-derived requirements and recipes, one
+  graph builder owning every requirement, admission seal of the frozen
+  initial plan, plan view, bounded qualification driver.
+- [x] Locally demonstrated: recorded-evidence replay on SYNTHETIC specimens
+  (PetClinic-shaped, renamed twin, non-HTTP) and producer replay of the JDK
+  diagnostics, initial-analysis boundary and decided-repairs producers
+  (`skills/planning/build-worklist/scripts/qualify-repeatability.py`).
+- [ ] Producer replay of MTA, JDK model and build producers on a preserved,
+  pinned PetClinic source + M1 evidence specimen (none exists in the tree).
+- [ ] The measurement path records no `requirement_checks`, so an outcome
+  owning requirements cannot be accepted on the outcome board (fail closed).
+  Requirement-only outcomes need a planned-unit write grant from the protected
+  authority (F1). Both are activation dependencies, not planning gaps.
+- [ ] A migration run has not yet decided `plan_semantics: v1`; the next golden
+  must be published and a run created through the normal release process.
+
 ## Native outcome board (Stage 080, new runs only) — 2026-09-26
 
 The architect approved the outcome-board design with conditions

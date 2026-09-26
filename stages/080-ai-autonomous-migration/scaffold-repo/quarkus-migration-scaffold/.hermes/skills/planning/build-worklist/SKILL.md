@@ -88,6 +88,13 @@ Runs `fix-until-green/scripts/run-verify.sh` (the real tools) and then
 re-seals admission). A measure that is not fully known is admission
 BLOCK `MEASURE_UNKNOWN`.
 
+When `decisions.yaml` decides `loop.plan_semantics: v1`, the wrapper passes
+`run-verify.sh --initial`: `prepare-initial-analysis.py` removes the stale
+`target/` before the first baseline (and refuses after one), the warm-up
+regenerates every generated root, and `VERIFY_INITIAL_STALE_OUTPUT` names a
+generated root older than the verification. Do not clean or regenerate by
+hand; report that refusal.
+
 Run once in the foreground with terminal `timeout: 600`. The wrapper
 prints `WORKLIST_PHASE` for verification and baseline. On nonzero exit,
 report the failing phase and read that invocation's output plus
@@ -108,5 +115,6 @@ diagnostics are measurements; a failed verifier process is a tool failure.
 
 ## Scripts
 
-- `scripts/build-worklist.sh` — verifier + baseline
+- `scripts/build-worklist.sh` — verifier + baseline (`--initial` verification under plan semantics v1)
+- `scripts/qualify-repeatability.py` — Operator/maintainer tool, not a card step: bounded local qualification of the repeatable initial plan in disposable directories (recorded-evidence and producer replay, SYNTHETIC specimens, FakeNative); never against a live run
 - `scripts/rehearse-legacy.sh` — isolated rehearsal without dispatch (`--legacy <checkout> --root <fresh dir>`): M1 producers → bootstrap → first verification → work-list head; SAD v3 §9 exit 5

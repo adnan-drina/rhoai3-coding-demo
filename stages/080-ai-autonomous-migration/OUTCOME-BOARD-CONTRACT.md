@@ -120,6 +120,28 @@ participating processes.
   Unresolved responsibilities and milestones are listed beside it, never inside
   it.
 
+### 5.1 Source requirements (plan semantics v1)
+
+When the run decides `loop.plan_semantics: v1`, `initial_plan_from_root`
+passes the source requirements (`planner/source_requirements.py`) to the same
+`derive_initial_graph`. The revision then carries `requirements` and
+`requirement_ownership`; each owning node carries `requirements`, `recipes`,
+`acceptance.requirement_checks` and, for a requirement-only outcome,
+`planned_units` (a planned responsibility, not a write grant). Rules:
+
+- An outcome owning requirements is covered (`_covers`) only by a measurement
+  that records every requirement check; an empty work list never discharges
+  it. The current measurement path records no such checks, so these outcomes
+  cannot be accepted until it does (fail closed).
+- A requirement-only outcome has no cluster; `issue` grants it no paths until a
+  finding cluster attaches or the protected authority issues its planned unit.
+- `owner_of_finding` maps a later finding to the frozen owner (obligation,
+  then the requirement scope; a behaviour finding prefers the handler-level
+  requirement) or returns a typed revision class: `previously-unknown-behavior`,
+  `evidence-gap`, `missing-planning-rule`, `ambiguous-ownership`.
+- Without the decision the revision, its digest and its briefs are unchanged.
+  Enabling execution still requires the protected writer (section 8a).
+
 ## 6. M4 and M5 predicates
 
 | Transition | Required at that point | Refuses on |

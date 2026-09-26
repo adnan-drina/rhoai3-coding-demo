@@ -211,6 +211,58 @@ Fail-closed boundaries, each with a permanent negative test:
 
 `ADMITTED` means "the loop may run its next step from this exact state". `COMPAT_FAIL` means the bundle or the work list fails its schema: a planner defect. The receipt digest binds every idempotency key and every K1 body.
 
+### 7.1 Repeatable initial plan (plan semantics v1, opt-in per run)
+
+`decisions.yaml` `loop.plan_semantics: v1` (sealed with `decisions.yaml`;
+absent means off, so every existing run keeps its identities and plan) makes
+the same frozen application, decisions and pinned toolchain produce the same
+initial logical M3 plan:
+
+- **Stable producer identity.** `JdkDiagnostics` renders in the ROOT locale
+  (the JVM-locale text is kept as `message_jvm_locale`), emits the column and
+  the compiler's structured arguments, and records generated-root and
+  output-class provenance. A v1 compile obligation id is derived from code,
+  site and arguments; an identical key repeated at one site gets its own
+  occurrence, so two diagnostics stay two obligations.
+- **Controlled initial analysis.** `build-worklist` runs `run-verify.sh
+  --initial`: `prepare-initial-analysis.py` removes `target/` before the first
+  baseline only (never after a baseline or an issued card), the warm-up
+  regenerates every generated root, the analysis never reads `target/classes`,
+  and a stale generated root refuses (`VERIFY_INITIAL_STALE_OUTPUT`).
+- **Source-derived responsibilities.** `planner/source_requirements.py` plans
+  the known work from the frozen structural model before any destination
+  failure: repository fragment architecture, BindingResult/Errors validation,
+  unbound handler parameters, adapter-owned annotation retirement and the
+  separate adapter behaviour, generator configuration and its consumers,
+  decided configuration, and a verification responsibility per entry point.
+  Partial evidence is unresolved, never absent. Each requirement names a
+  qualified recipe (`compat-mapping.json` `migration_recipes`) and the
+  existing checks that refuse its broken forms.
+- **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
+  gives every requirement exactly one account: joined to the finding outcome
+  that already owns the same file, a bounded requirement outcome (planned
+  units, no grant; `UNIT_OVERSIZE` otherwise), a satisfied disposition with its
+  receipt, or an explicit unresolved responsibility. The owner's
+  `requirement_checks` are not met by an empty work list.
+- **Admission.** The receipt seals `seals.plan_semantics` (input and plan
+  fingerprints) beside the exact digests and adds `PLAN_CONTRACT`,
+  `PLAN_ACCEPTANCE_MISSING` and `PLAN_RECIPE_MISSING`. The first ADMITTED
+  receipt freezes `evidence/planning/plan-semantics.json`; re-seals never
+  rewrite it. `plan-view.json` is the derived human view; on a serial-loop run
+  it is observational.
+- **Comparison.** `planner/plan_semantics.py` compares two documents by class
+  (input-version, input, evidence-quality, outcome/obligation/requirement
+  added or removed, membership, scope, recipe, dependencies, acceptance,
+  budget; audit-only never makes plans unequal) and names the first divergent
+  producer.
+
+Proof levels actually run are recorded by
+`skills/planning/build-worklist/scripts/qualify-repeatability.py`:
+recorded-evidence replay on SYNTHETIC specimens and producer replay of the
+JDK diagnostics and decided-repairs producers. The MTA, JDK-model and build
+producers on a preserved pinned PetClinic specimen have not been replayed.
+Planning equality does not authorize execution or establish behavioural PASS.
+
 ---
 
 ## 8. Hermes execution model (K1–K4)
