@@ -620,48 +620,61 @@ def attach_requirements(outcomes: dict[str, dict[str, Any]], requirements: list[
 
 
 def planned_unit_grant(node: dict[str, Any], requirements: list[dict[str, Any]], *,
-                       exists: Any = None) -> dict[str, Any]:
-    """The bounded write grant a REQUIREMENT-ONLY outcome's planned unit would
-    carry, computed from the frozen plan alone (pure; the authority's issue
-    path decides whether to grant it). {"paths", "owed", "bounds", "refusal"}.
+                       exists: Any = None, cluster_open: bool | None = None) -> dict[str, Any]:
+    """The bounded write grant of an outcome's PLANNED work when no finding
+    cluster grants it, computed from the frozen plan alone (pure; the
+    authority's issue path decides whether to grant it).
+    {"paths", "owed", "bounds", "refusal", "basis"}.
 
-    paths  the unit's planned paths (planned_units[0].paths): every existing
-           file the requirement names plus the file its naming contract OWES
-           (facts.owed_implementation), never a test path, never a harness
-           path (planner.paths.is_product_path)
-    owed   the subset that does not exist yet (`exists(rel) -> bool`; unknown
-           when not given): authorized only by the requirement's contract
+    Two cases, one rule:
+      * a requirement-only outcome: its planned unit (planned_units[0]);
+      * an outcome that owns finding clusters AND requirements, whose clusters
+        are all closed (`cluster_open=False`) while a requirement check still
+        fails -- the findings are gone, the planned work is not: the union of
+        its owned requirements' paths. While a cluster is open (or the caller
+        does not know, `cluster_open=None`) the cluster is the grant:
+        NOT_REQUIREMENT_ONLY.
+
+    paths  every existing file the unit names plus the file a requirement's
+           naming contract OWES (facts.owed_implementation); never a test or
+           harness path (planner.paths.is_product_path)
+    owed   the subset that does not exist yet (`exists(rel) -> bool`)
     refusal ''; UNIT_OVERSIZE past 20 files / 160 sites / 8 symbols (16 for a
-           repository-architecture fragment unit, ADR-024);
-           NOT_REQUIREMENT_ONLY for an outcome that owns a finding cluster (its
-           cluster is the grant); PATH_NOT_PRODUCT for a test or harness path;
-           NO_PLANNED_UNIT when the plan recorded none"""
+           repository-architecture fragment unit, ADR-024); NOT_REQUIREMENT_ONLY;
+           NO_PLANNED_UNIT; PATH_NOT_PRODUCT; PATH_UNAUTHORIZED (a missing file
+           no contract owes)"""
     from planner.paths import is_product_path
-    if node.get("clusters"):
-        return {"paths": [], "owed": [], "bounds": {}, "refusal": "NOT_REQUIREMENT_ONLY"}
-    units = [u for u in node.get("planned_units") or [] if isinstance(u, dict)]
-    if not units:
-        return {"paths": [], "owed": [], "bounds": {}, "refusal": "NO_PLANNED_UNIT"}
     owned = set(node.get("requirements") or [])
     reqs = [r for r in requirements or [] if isinstance(r, dict) and r.get("id") in owned]
-    paths = sorted(set(str(p) for p in units[0].get("paths") or []))
+    if node.get("clusters") and cluster_open is not False:
+        return {"paths": [], "owed": [], "bounds": {}, "refusal": "NOT_REQUIREMENT_ONLY", "basis": "finding cluster"}
+    units = [u for u in node.get("planned_units") or [] if isinstance(u, dict)]
+    if units:
+        basis = "planned unit"
+        paths = sorted(set(str(p) for p in units[0].get("paths") or []))
+        symbols = int(units[0].get("symbols") or 0)
+    elif reqs:
+        basis = "owned requirements (finding clusters closed)"
+        paths = sorted({str(p) for r in reqs for p in r.get("paths") or []})
+        symbols = sum(len((r.get("facts") or {}).get("members") or []) for r in reqs) or len(paths)
+    else:
+        return {"paths": [], "owed": [], "bounds": {}, "refusal": "NO_PLANNED_UNIT", "basis": ""}
     bad = [p for p in paths if not is_product_path(p) or "/src/test/" in "/" + p or p.startswith("src/test/")]
     rules = {str(r.get("rule") or "").split("/", 1)[0] for r in reqs}
     max_symbols = REQ_UNIT_MAX_FRAGMENT_SYMBOLS if rules == {"repository-architecture"} else REQ_UNIT_MAX_SYMBOLS
-    symbols = int(units[0].get("symbols") or 0)
     sites = sum(int((r.get("facts") or {}).get("sites") or 0) for r in reqs if isinstance((r.get("facts") or {}).get("sites"), int))
     bounds = {"files": len(paths), "symbols": symbols, "sites": sites,
               "limits": {"files": REQ_UNIT_MAX_FILES, "symbols": max_symbols, "sites": REQ_UNIT_MAX_SITES}}
     owed = sorted(p for p in paths if exists is not None and not exists(p))
     contract_owed = {str((r.get("facts") or {}).get("owed_implementation") or "") for r in reqs} - {""}
     if bad:
-        return {"paths": [], "owed": [], "bounds": bounds, "refusal": "PATH_NOT_PRODUCT: %s" % ", ".join(bad[:3])}
+        return {"paths": [], "owed": [], "bounds": bounds, "refusal": "PATH_NOT_PRODUCT: %s" % ", ".join(bad[:3]), "basis": basis}
     if set(owed) - contract_owed:
-        return {"paths": [], "owed": owed, "bounds": bounds,
+        return {"paths": [], "owed": owed, "bounds": bounds, "basis": basis,
                 "refusal": "PATH_UNAUTHORIZED: %s does not exist and no requirement's contract owes it" % ", ".join(sorted(set(owed) - contract_owed)[:3])}
     if len(paths) > REQ_UNIT_MAX_FILES or symbols > max_symbols or sites > REQ_UNIT_MAX_SITES:
-        return {"paths": [], "owed": owed, "bounds": bounds, "refusal": "UNIT_OVERSIZE"}
-    return {"paths": paths, "owed": owed, "bounds": bounds, "refusal": ""}
+        return {"paths": [], "owed": owed, "bounds": bounds, "refusal": "UNIT_OVERSIZE", "basis": basis}
+    return {"paths": paths, "owed": owed, "bounds": bounds, "refusal": "", "basis": basis}
 
 
 def _scc(edges: dict[str, set[str]]) -> dict[str, int]:

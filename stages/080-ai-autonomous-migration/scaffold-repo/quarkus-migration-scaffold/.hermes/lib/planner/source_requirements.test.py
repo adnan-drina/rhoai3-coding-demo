@@ -456,6 +456,10 @@ def planned_grant_case() -> int:
         return _fail("17 symbols exceed even the fragment exception")
     if OG.planned_unit_grant(dict(node, clusters=["c:1"]), g["requirements"])["refusal"] != "NOT_REQUIREMENT_ONLY":
         return _fail("a finding-owned outcome is granted through its cluster")
+    closed = OG.planned_unit_grant(dict(node, clusters=["c:1"], planned_units=[]), g["requirements"],
+                                   exists=lambda p: p != owed, cluster_open=False)
+    if closed["refusal"] or sorted(closed["paths"]) != sorted(req["paths"]) or closed["basis"].startswith("planned"):
+        return _fail("a requirement owner whose finding clusters closed is granted its requirements' paths: %s" % closed)
     return 0
 
 

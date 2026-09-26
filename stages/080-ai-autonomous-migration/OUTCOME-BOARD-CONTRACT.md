@@ -144,11 +144,22 @@ passes the source requirements (`planner/source_requirements.py`) to the same
   concrete-only CDI exposure), `parity:<scenario>` (measured on this tree and
   discharged) and `behavior:repository-effects:<fragment>` (every planned
   read/committed-write row covered and discharged; an unresolved row is an
-  owned verification debt). Not measured yet, so an owner of one is never
-  accepted (fail closed): `unit:handler-validation-guards`,
-  `unit:handler-parameter-sites`, `adapter:*`, `parity:*-mode:*`,
-  `config:decided-keys`, `build:clean-generation`,
-  `parity:request-body-positive-negative`, `coverage:unresolved`.
+  owned verification debt), `unit:handler-validation-guards` /
+  `unit:handler-parameter-sites` / `unit:location-null-arguments`
+  (`worklist._assess_handler_parameters` on the handler site, guards and
+  Location arguments against the FROZEN source; no frozen source = unknown),
+  `adapter:<contract>` (`response_adapters.verify` against the rows rendered
+  from the source policy), `parity:<adapter>-mode:<mode>` (that mode's
+  receipt, bound to this tree, records the consumers PASS),
+  `config:decided-keys` (datasource: `check-datasource-decision.check`;
+  build profiles: the decided list in application.properties and
+  .mvn/maven.config; security: the decided switch key and value),
+  `build:clean-generation` (the compiler producer recorded every generated
+  root with files; no generated-source or unresolvable-build error) and
+  `parity:request-body-positive-negative` (the static generated-body
+  condition no longer holds and every captured case passes). Only missing
+  SOURCE coverage stays unknown: a body case no capture sends, and
+  `coverage:unresolved`.
 - A requirement-only outcome has no cluster; `issue` grants it no paths until a
   finding cluster attaches or the protected authority issues its planned unit.
   An empty work list never discharges it either (its checks above are
@@ -156,12 +167,18 @@ passes the source requirements (`planner/source_requirements.py`) to the same
   8 symbols; 16 only for a repository-architecture fragment unit, ADR-024)
   and names its owed paths (`planned_units`, `facts.owed_implementation`).
   The planner computes the grant such a unit may carry,
-  `outcome_graph.planned_unit_grant(node, requirements, exists=…)`: the
-  planned paths, a missing file only when a requirement's contract owes it,
-  never a test or harness path, `UNIT_OVERSIZE` past the bounds,
-  `NOT_REQUIREMENT_ONLY` for a finding-owned outcome. Issuing it through the
-  authority's issue path (T5) is an open integration item; it is not issued
-  by this revision.
+  `outcome_graph.planned_unit_grant(node, requirements, exists=…,
+  cluster_open=…)`: the planned paths (or, for an outcome that owns finding
+  clusters AND requirements whose clusters are all closed while a check
+  still fails, its owned requirements' paths), a missing file only when a
+  requirement's contract owes it, never a test or harness path,
+  `UNIT_OVERSIZE` past the bounds, `NOT_REQUIREMENT_ONLY` while a cluster is
+  open. Issuing it through the authority's issue path (T5) is the open
+  integration item for the authority: when `_allowed_paths` finds no open
+  cluster and the outcome has planned units or owns requirements, grant
+  `planned_unit_grant(..., cluster_open=False)["paths"]` under cluster
+  `planned:<outcome_id>:1` when its refusal is empty, nothing otherwise.
+  `planned_units_e2e.test.py` exercises exactly that through a test seam.
 - `owner_of_finding` maps a later finding to the frozen owner (obligation,
   then the requirement scope; a behaviour finding prefers the handler-level
   requirement) or returns a typed revision class: `previously-unknown-behavior`,

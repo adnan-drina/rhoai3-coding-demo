@@ -478,7 +478,7 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             continue
         out.append(_req("configuration-decision", key, SATISFIED if (bs_ok and key != "security") else APPLICABLE,
                         evidence=[{"artifact": "decisions.yaml", "selector": key}] + ([{"artifact": "evidence/producers/bootstrap.json", "selector": "status"}] if bs_ok else []),
-                        paths=["src/main/resources/application.properties"] if key != "build_profiles" else ["pom.xml", "src/main/resources/application.properties"],
+                        paths=["src/main/resources/application.properties"] if key != "build_profiles" else [".mvn/maven.config", "pom.xml", "src/main/resources/application.properties"],
                         acceptance=["config:decided-keys", "gate:startup"],
                         facts={"adr": _s(fact.get("adr")), "applied_by_bootstrap": bs_ok and key != "security"}))
 
