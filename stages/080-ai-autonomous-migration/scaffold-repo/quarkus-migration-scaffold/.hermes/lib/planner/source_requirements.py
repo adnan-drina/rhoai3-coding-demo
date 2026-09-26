@@ -832,13 +832,14 @@ def application_paths(source_config: dict[str, Any] | None, catalog: dict[str, A
     return out
 
 
-def source_configuration(root: Path) -> dict[str, Any] | None:
-    """The frozen source's configuration files (.derived/frozen-input
-    src/main/resources/application*.properties), parsed as properties;
-    None when the frozen input is absent."""
+def source_configuration(root: Path, *, frozen_dir: Path | None = None) -> dict[str, Any] | None:
+    """The frozen source's configuration files (.derived/frozen-input, or
+    `frozen_dir`, src/main/resources/application*.properties), parsed as
+    properties; None when the frozen input is absent."""
     from response_adapters import read_properties
-    res = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "resources"
-    if not (Path(root) / ".derived" / "frozen-input").is_dir():
+    frozen = Path(frozen_dir) if frozen_dir is not None else Path(root) / ".derived" / "frozen-input"
+    res = frozen / "src" / "main" / "resources"
+    if not frozen.is_dir():
         return None
     files: dict[str, dict[str, str]] = {}
     unread: list[str] = []
