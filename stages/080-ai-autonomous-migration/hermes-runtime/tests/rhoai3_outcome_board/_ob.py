@@ -108,11 +108,11 @@ def task_of(dest: Path, oid: str) -> str:
 PRODUCER = GOLDEN.parents[4] / "gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
 
 
-def _producer_block() -> str:
+def _producer_block(name: str = "outcome-board hooks") -> str:
     import re
     text = PRODUCER.read_text()
-    m = re.search(r"\n( *)# >>> outcome-board hooks.*?\n(.*?)\n *# <<< outcome-board hooks", text, re.S)
-    assert m, "the producer's outcome-board hooks block is missing"
+    m = re.search(r"\n( *)# >>> %s.*?\n(.*?)\n *# <<< %s" % (re.escape(name), re.escape(name)), text, re.S)
+    assert m, "the producer's %s block is missing" % name
     return "\n".join(line[len(m.group(1)):] for line in m.group(2).splitlines())
 
 
@@ -129,9 +129,14 @@ def hook_config(cfg: dict, dest: Path, *, tick: bool) -> dict:
     base = {"hooks": {"pre_tool_call": [{"matcher": PRODUCTION_MATCHER,
                                          "command": "bash %s" % (GOLDEN / "kernel" / "pre_tool_call.sh"),
                                          "timeout": 5, "fail_closed": True}]}}
-    ns = {"os": os, "_pjson": json, "safe_root": str(dest), "cfg": base, "print": lambda *a: None}
+    import shutil
+    ns = {"os": os, "shutil": shutil, "_pjson": json, "safe_root": str(dest), "cfg": base, "print": lambda *a: None,
+          "hooks_dir": str(Path(dest).parent / "managed-agent-hooks")}
+    exec(_producer_block("post-tool-call observer"), ns)     # V17-6b terminal observer, when the tree ships it
     exec(_producer_block(), ns)
     hooks = ns["cfg"]["hooks"]
+    if (Path(dest) / ".hermes" / "kernel" / "post_tool_call.py").is_file():
+        assert hooks.get("post_tool_call"), "the producer did not register the post_tool_call observer"
     assert hooks["pre_tool_call"][0]["matcher"] == OUTCOME_MATCHER, hooks
     assert hooks.get("on_kanban_dispatch_tick"), "the producer did not register the reconciler for %s" % dest
     if not tick:

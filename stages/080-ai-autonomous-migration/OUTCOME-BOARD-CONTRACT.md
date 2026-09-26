@@ -228,6 +228,31 @@ passes the source requirements (`planner/source_requirements.py`) to the same
 - Without the decision the revision, its digest and its briefs are unchanged.
   Enabling execution still requires the protected writer (section 8a).
 
+### 5.2 Automatic owner recovery
+
+A rejected attempt (`record_verdict REVERTED`) is first classified by
+`planner.runtime_cause.classify(root, issued, cur, steps, baseline)`
+(workstream A) on the AUTHORITY's inputs: its own issue and baseline, the
+measured work list and the loop steps. Only `pre-existing-owner-defect` acts,
+and only after the authority validates it: the owner is another ACCEPTED
+repair outcome, the evidence names this baseline, the owner's budget is not
+exhausted, and no repair was scheduled for this (owner, dependent) pair
+before. Then, in one transaction and without spending the dependent's
+attempt: the dependent's candidate is HELD in the store (its changed paths,
+all inside its issue) and a durable `owner-repair` intent is written. The
+reconciler publishes ONE repair outcome `repair:<owner>:for:<dependent>`
+(lineage to the owner, the owner's budget key, the owner's recorded write
+set) as a PARENT of the dependent and of every open assessment — the
+dependent waits on the repair (`kanban_block kind=dependency`), never the
+reverse. Every step is keyed and recorded; interruption replays lookups, not
+effects. The dependent's old issue goes stale with the revision; its next issue
+requires the repair accepted, and `outcome_gate.py restore-held` returns the
+held candidate for re-verification on the repaired baseline.
+`candidate-regression` is the ordinary rejection; `ambiguous` (and any claim
+the authority cannot validate, or a second claim for the same pair) is an
+ordinary rejection with a visible report and no blame transfer or scope grant.
+`owner-debts.json` is diagnostic only. No second scheduler.
+
 ## 6. M4 and M5 predicates
 
 | Transition | Required at that point | Refuses on |
@@ -278,9 +303,14 @@ unresolved push effects of finished runs by identity.
   - Exact runtime (`hermes-runtime/tests/rhoai3_outcome_board/test_outcome_authority_service.py`,
     tree 8a3bb406): the service publishes the graph with the real CLI under a
     private home; attachments land where the worker reads them; read-back green.
-  - NOT established (live Dev Spaces qualification, section 8a): the DWO
+  - Supporting evidence only (NOT qualification): the per-run worker
+    ServiceAccount's declared RBAC (`WORKER-IDENTITY-REPAIR.md`, no pod
+    create) and a server-side dry-run that admitted the sidecar DevWorkspace
+    on DWO 0.43.0 (2026-09-26).
+  - NOT established — an explicit release prerequisite (live Dev Spaces
+    qualification, section 8a): the DWO
     controller applying `container-overrides.securityContext.runAsUser` to the
-    pod (server-side dry-run admitted it on DWO 0.43.0, 2026-09-26); SCC
+    pod; SCC
     `container-build` admitting the second in-range uid; the per-workspace PVC
     subPath and fsGroup behaviour for the store and the socket; the run-control
     ConfigMap automount reaching the sidecar; the sidecar reading and writing
