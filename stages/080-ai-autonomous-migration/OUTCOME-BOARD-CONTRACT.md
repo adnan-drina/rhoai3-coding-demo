@@ -154,9 +154,14 @@ passes the source requirements (`planner/source_requirements.py`) to the same
   An empty work list never discharges it either (its checks above are
   required). Its planned unit is bounded like any unit (20 files, 160 sites,
   8 symbols; 16 only for a repository-architecture fragment unit, ADR-024)
-  and names its owed paths (`planned_units`, `facts.owed_implementation`);
-  issuing it through the existing issue path's bounds is an open integration
-  item of the authority (it is not issued by this revision).
+  and names its owed paths (`planned_units`, `facts.owed_implementation`).
+  The planner computes the grant such a unit may carry,
+  `outcome_graph.planned_unit_grant(node, requirements, exists=…)`: the
+  planned paths, a missing file only when a requirement's contract owes it,
+  never a test or harness path, `UNIT_OVERSIZE` past the bounds,
+  `NOT_REQUIREMENT_ONLY` for a finding-owned outcome. Issuing it through the
+  authority's issue path (T5) is an open integration item; it is not issued
+  by this revision.
 - `owner_of_finding` maps a later finding to the frozen owner (obligation,
   then the requirement scope; a behaviour finding prefers the handler-level
   requirement) or returns a typed revision class: `previously-unknown-behavior`,

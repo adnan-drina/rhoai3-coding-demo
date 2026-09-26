@@ -419,9 +419,49 @@ def v17_body_location_case() -> int:
     return 0
 
 
+def planned_grant_case() -> int:
+    """The bounded grant a requirement-only outcome's planned unit would carry
+    (outcome_graph.planned_unit_grant, the planner's side of issuance): the
+    owed implementation is authorized by its contract only; a non-owed missing
+    file, a test path or an oversize unit refuses; a finding-owned outcome is
+    granted through its cluster instead."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fbt2", HERMES / "skills/migration/fix-until-green/scripts/fragment-behaviour.test.py")
+    fbt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fbt)  # type: ignore[union-attr]
+    n = fbt.A
+    types, eps = fbt.source_types(n)
+    doc = SR.derive(types=types, entry_points=eps, catalog=CATALOG, decisions={"build_profiles": {"adr": "x", "active": [n["profile"]]}},
+                    oracles=None, structure_complete=True, generator=None)
+    parent = "%s.%s.%s" % (n["base"], n["repo_pkg"], n["parent"])
+    req = next(r for r in doc["requirements"] if r["rule"] == "repository-architecture/v1" and r["facts"]["fragment"] == parent)
+    wl = {"items": [], "clusters": [], "unlocatable": [], "not_counted": [], "measure": {"known": True, "tuple": [0, 0, 0]}}
+    g = _graph([req], wl)
+    node = next(x for x in g["nodes"] if req["id"] in (x.get("requirements") or []))
+    owed = req["facts"]["owed_implementation"]
+    got = OG.planned_unit_grant(node, g["requirements"], exists=lambda p: p != owed)
+    if got["refusal"] or owed not in got["paths"] or got["owed"] != [owed]:
+        return _fail("the owed implementation is granted on its contract: %s" % got)
+    bogus = copy.deepcopy(node)
+    bogus["planned_units"][0]["paths"] = sorted(bogus["planned_units"][0]["paths"] + ["src/main/java/q/Invented.java"])
+    if not OG.planned_unit_grant(bogus, g["requirements"], exists=lambda p: p not in (owed, "src/main/java/q/Invented.java"))["refusal"].startswith("PATH_UNAUTHORIZED"):
+        return _fail("a missing file no contract owes is never granted")
+    test = copy.deepcopy(node)
+    test["planned_units"][0]["paths"] = ["src/test/java/q/XTest.java"]
+    if not OG.planned_unit_grant(test, g["requirements"])["refusal"].startswith("PATH_NOT_PRODUCT"):
+        return _fail("a test path is never in a grant")
+    big = copy.deepcopy(node)
+    big["planned_units"][0]["symbols"] = 17
+    if OG.planned_unit_grant(big, g["requirements"])["refusal"] != "UNIT_OVERSIZE":
+        return _fail("17 symbols exceed even the fragment exception")
+    if OG.planned_unit_grant(dict(node, clusters=["c:1"]), g["requirements"])["refusal"] != "NOT_REQUIREMENT_ONLY":
+        return _fail("a finding-owned outcome is granted through its cluster")
+    return 0
+
+
 def main() -> int:
     for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
-                 repository_behaviour_case, bounds_case, v17_body_location_case):
+                 repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "
