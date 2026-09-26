@@ -1089,14 +1089,13 @@ def main(argv: list[str] | None = None) -> int:
         if handoff is None:
             if not (cur.get("measure") or {}).get("known"):
                 return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
-            # V17-3 (v17 u:f2fd979369f1): a runtime failure whose cause is inside
-            # ANOTHER owner's accepted scope is charged to that owner, never
-            # spent from this card's attempts
-            owned = _runtime_owner_attribution(issued, cur, changed, steps, args.cluster)
-            if owned is not None:
-                _record_owner_debt(root, owned["debt"])
-                return _pending(root, steps, args.cluster, args.card, cur, owned["reason"], changed, on_disk,
-                                cause="runtime-cause-owned-elsewhere", outside_scope=owned["record"])
+            # V17-3: WHO caused a runtime failure is classified from the
+            # baseline's own measurement (planner.runtime_cause) and shown --
+            # diagnosis only on the serial loop: the rejection and its attempt
+            # accounting are unchanged whatever the class (no recovery path here)
+            diag = _runtime_cause_diagnosis(root, issued, cur, changed, steps, args.cluster)
+            if diag:
+                reason = "%s [runtime cause: %s -- %s]" % (reason, diag["class"], diag["reason"][:300])
             clear_pending(steps, args.cluster, why="rejected")
             return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
     if scope_ref and family and bad:
@@ -1505,8 +1504,8 @@ def _functional_debt(scope_doc: dict, cluster: str, card: str, commit: str) -> d
 
 
 def _record_owner_debt(root: Path, debt: dict) -> None:
-    """Append one owner debt to verification/loop/owner-debts.json (derived,
-    observational: nothing reads it back as authority; the run report and the
+    """Append one diagnostic row to verification/loop/owner-debts.json
+    (observational: nothing reads it back as authority; the run report and the
     Operator read it). A row with the same key replaces the older one."""
     from planner.paths import LOOP_OWNER_DEBTS
     p = root / LOOP_OWNER_DEBTS
@@ -1518,64 +1517,25 @@ def _record_owner_debt(root: Path, debt: dict) -> None:
     write_canonical(p, doc)
 
 
-def _runtime_owner_attribution(issued: dict, cur: dict, changed: list[str], steps: dict, cluster: str) -> dict | None:
-    """V17-3 (v17 u:f2fd979369f1): the CORS card spent 3 attempts on GET
-    /api/owners -> 500 thrown from OwnerRepositoryImpl.findAll, a stub another
-    card had written and had accepted. When every one of this card's still
-    open runtime/parity obligations fails with a server error whose FIRST
-    product frame is a file this candidate did not change, outside this card's
-    scope, and committed by an earlier accepted step of ANOTHER cluster, the
-    failure is that owner's: {reason, record, debt}. None otherwise -- a
-    failure with no stack, a frame inside this card's scope or this
-    candidate's changes, or a file no accepted step owns is judged as before
-    (a location alone is never independence: the owner must be recorded)."""
-    issued_ids = {str(i) for i in (issued.get("items") or [])} | {str(i) for i in (issued.get("gate_items") or [])}
-    plan = issued_parity_plan(issued)
-    sids, eps = set(plan.get("scenarios") or []), set(plan.get("entry_points") or [])
-    # this card's own obligations, and what its sealed scenarios / entry points
-    # report now (a 500 re-types a CORS difference as a response difference)
-    failing = [i for i in (cur.get("items") or []) if str(i.get("source") or "") in ("parity", "runtime")
-               and (str(i.get("id")) in issued_ids or (i.get("scenario") and str(i.get("scenario")) in sids)
-                    or (not i.get("scenario") and i.get("entry_point") and str(i.get("entry_point")) in eps))]
-    if not failing:
+def _runtime_cause_diagnosis(root: Path, issued: dict, cur: dict, changed: list[str], steps: dict, cluster: str) -> dict | None:
+    """V17-3, diagnosis only: planner.runtime_cause.classify over the loop's
+    own records (the candidate's scenario records, the accepted parity
+    snapshot bound to the baseline tree, the accepted steps). The class is
+    printed, put on the rejection reason and written to owner-debts.json
+    (observational: nothing reads it back). It never changes the verdict, the
+    attempt accounting or anyone's scope. None when the card met no runtime
+    failure."""
+    from planner import runtime_cause as RC
+    c, st, base = RC.inputs_from_root(root, issued, cur, changed, steps)
+    if not c["failures"]:
         return None
-    scope = {str(p) for p in (issued.get("write_set") or [])} | {str(a.get("path") or "") for a in (issued.get("amendments") or [])
-                                                                   if isinstance(a, dict)}
-    changed_set = {str(p) for p in changed}
-    owners: dict[str, dict] = {}
-    for st in steps.get("steps") or []:
-        if st.get("verdict") != "accepted" or str(st.get("cluster") or "") == cluster:
-            continue
-        for p in st.get("changed") or []:
-            owners[str(p)] = st  # the latest accepted step that committed the file owns it
-    rows = []
-    for it in failing:
-        se = ((it.get("advice") or {}).get("server_error") or {})
-        hints = [h for h in (se.get("locus_hints") or []) if isinstance(h, dict) and h.get("path")]
-        if not hints:
-            return None
-        top = str(hints[0]["path"])
-        if top in scope or top in changed_set or top not in owners:
-            return None
-        st = owners[top]
-        rows.append({"obligation": str(it.get("id")), "scenario": str(it.get("scenario") or ""),
-                     "entry_point": str(it.get("entry_point") or ""), "exception": str(se.get("exception") or ""),
-                     "frame": "%s.%s:%s" % (hints[0].get("type"), hints[0].get("member"), hints[0].get("line")),
-                     "path": top, "owner_cluster": str(st.get("cluster") or ""), "owner_card": str(st.get("card") or ""),
-                     "owner_commit": str(st.get("commit") or "")[:12], "stack_sha256": str(se.get("stack_sha256") or "")})
-    owner_clusters = sorted({r["owner_cluster"] for r in rows})
-    reason = ("RUNTIME_CAUSE_OWNED_ELSEWHERE: %s fail(s) with %s thrown from %s, a file this candidate did not change and "
-              "which the accepted step of %s committed; the failure is charged to that owner, not to this card (no attempt "
-              "spent). Required prerequisite: repair %s under its owner (its structural acceptance is not functional "
-              "completion), then restore-pending.py, run-verify.sh --mode acceptance and advance.py on this card"
-              % (", ".join(r["obligation"] for r in rows[:3]), ", ".join(sorted({r["exception"] for r in rows if r["exception"]})) or "an exception",
-                 ", ".join(sorted({r["frame"] for r in rows}))[:300], ", ".join(owner_clusters), ", ".join(sorted({r["path"] for r in rows}))))
-    debt = {"kind": "runtime-failure-charged", "owner_cluster": owner_clusters[0] if len(owner_clusters) == 1 else ",".join(owner_clusters),
-            "charged_from_cluster": cluster, "charged_from_card": str(issued.get("task_id") or ""), "rows": rows,
-            "evidence": ",".join(sorted({r["stack_sha256"] for r in rows}))}
-    return {"reason": reason, "debt": debt,
-            "record": {"gate": "runtime", "scope": sorted(scope), "failures": rows, "caused_by_candidate": [],
-                       "owners": owner_clusters, "prerequisite": "repair under the owner %s" % ", ".join(owner_clusters)}}
+    out = RC.classify(root, issued, c, st, base)
+    _record_owner_debt(root, {"kind": "runtime-cause-diagnosis", "owner_cluster": (out.get("owner") or {}).get("cluster", ""),
+                              "charged_from_cluster": cluster, "charged_from_card": str(issued.get("task_id") or ""),
+                              "class": out["class"], "reason": out["reason"], "evidence": out["evidence"],
+                              "authority": "none: diagnosis only; the rejection and its attempt stand"})
+    print("RUNTIME_CAUSE %s: %s" % (out["class"], out["reason"]), file=sys.stderr)
+    return out
 
 
 def _mint(root: Path, hermes: str) -> int:

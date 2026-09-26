@@ -26,11 +26,26 @@ never from a worker's claim -- and records the ones that PASS.
   behavior:repository-effects:<fragment>
       every planned repository verification row of the requirement is
       covered (none unresolved) and each of its scenarios passes as above
-  anything else (unit:handler-validation-guards, unit:handler-parameter-sites,
-  adapter:*, parity:*-mode:*, config:decided-keys, build:clean-generation,
-  parity:request-body-positive-negative, coverage:unresolved)
-      NOT measured here yet: recorded as unknown, so an outcome that owns one
-      cannot be accepted (fail closed). ``coverage:unresolved`` is never met.
+  unit:handler-validation-guards / unit:handler-parameter-sites /
+  unit:location-null-arguments
+      worklist._assess_handler_parameters on the handler site, the guards and
+      Location arguments against the FROZEN source's (no frozen source: unknown)
+  adapter:<contract>
+      response_adapters.verify against the rows rendered from the source policy
+  parity:<adapter>-mode:<mode>
+      that mode's receipt, bound to this tree, records the consumers PASS
+  config:decided-keys
+      datasource: check-datasource-decision.check; build_profiles: the decided
+      list in application.properties and .mvn/maven.config; security: the
+      decided switch key with a decided value
+  build:clean-generation
+      the compiler producer recorded every generated root with files, and no
+      generated-source or unresolvable-build error is open
+  parity:request-body-positive-negative
+      the static generated-body condition no longer holds and every captured
+      case scenario passes; a case with no source capture is unknown
+  coverage:unresolved
+      never met: missing SOURCE coverage stays unresolved
 
 Pure over its inputs except for reading the destination model.
 """
@@ -80,11 +95,17 @@ def _fragment_rows(requirement: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[str, Any], scenarios: list[str],
-            model: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:
+            model: dict[str, Any] | None = None, tree: str = "", receipts: dict[str, dict[str, Any]] | None = None,
+            diagnostics: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:
     """{check: {"status": pass|fail|unknown, "detail"}} for every check the
     given requirements name, on the tree `worklist` measures. `scenarios` are
     the parity scenarios this measurement ran; `model` the destination model
-    (read on demand when a structural check needs it)."""
+    (read on demand when a structural check needs it); `tree` the product-tree
+    digest measured; `receipts` the parity receipt per security mode
+    ({"disabled": doc, "enabled": doc}) -- a receipt counts only when it is
+    bound to `tree`; `diagnostics` the compiler producer's document of this
+    measurement (generated-root provenance). An authority passes what it
+    measured itself; nothing here trusts a caller's PASS."""
     from planner.dest_model import DestModelUnavailable, dest_model
     from planner.worklist import _assess_implementations, _unit_path, _unit_types
     out: dict[str, dict[str, str]] = {}
@@ -177,7 +198,19 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
                         status, detail = UNKNOWN, "; ".join(r[1] for r in res if r[0] == UNKNOWN)[:300]
                     else:
                         status, detail = PASS, "every read and committed write effect measured and discharged"
-            elif chk.startswith("parity:") and "-mode:" not in chk and chk != "parity:request-body-positive-negative":
+            elif chk in ("unit:handler-validation-guards", "unit:handler-parameter-sites", "unit:location-null-arguments"):
+                status, detail = _handler_check(root, req, chk, get_model())
+            elif chk.startswith("adapter:"):
+                status, detail = _adapter_check(root, chk.split(":", 1)[1])
+            elif chk.startswith("parity:") and "-mode:" in chk:
+                status, detail = _mode_check(req, chk.rsplit(":", 1)[1], receipts or {}, tree)
+            elif chk == "config:decided-keys":
+                status, detail = _config_check(root, req)
+            elif chk == "build:clean-generation":
+                status, detail = _generation_check(worklist, diagnostics)
+            elif chk == "parity:request-body-positive-negative":
+                status, detail = _body_check(root, req, scen)
+            elif chk.startswith("parity:"):
                 status, detail = scen(chk[len("parity:"):])
             elif chk == "coverage:unresolved":
                 status, detail = UNKNOWN, "unresolved coverage is never met"
@@ -187,3 +220,213 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
 
 def passed(measured: dict[str, dict[str, str]]) -> list[str]:
     return sorted(k for k, v in measured.items() if v.get("status") == PASS)
+
+
+# ---------------------------------------------------------------------------
+# the check classes whose implementation is ours (round 2): each asks the
+# existing producer or checker, and an input it cannot read is UNKNOWN
+# ---------------------------------------------------------------------------
+
+def _site_of(req: dict[str, Any]) -> tuple[str, str, str, str]:
+    """(path, type fqn, member name, parameter) of a handler requirement."""
+    subject = str(req.get("subject") or "").split("|", 1)[0]
+    typ, _, sig = subject.partition("#")
+    facts = req.get("facts") or {}
+    return (sorted(req.get("paths") or [""])[0], typ, sig.split("(", 1)[0], str(facts.get("parameter") or ""))
+
+
+def _handler_check(root: Path, req: dict[str, Any], chk: str, model: dict[str, Any] | None) -> tuple[str, str]:
+    """worklist._assess_handler_parameters on the requirement's handler site:
+    the guard translation against the FROZEN source handler's guards
+    (unit:handler-validation-guards), the parameter binding
+    (unit:handler-parameter-sites), the Location arguments against the frozen
+    source's buildAndExpand (unit:location-null-arguments). A comparison that
+    needs the frozen source and cannot model it is UNKNOWN -- never the
+    checker's silent "no claim"."""
+    from planner.worklist import FROZEN_INPUT, _assess_handler_parameters, _unit_path, _unit_types, frozen_source_model
+    facts = req.get("facts") or {}
+    path, typ, name, param = _site_of(req)
+    ptype = str(facts.get("parameter_type") or "")
+    if not (path and typ and name and ptype):
+        return UNKNOWN, "the requirement does not name its handler site"
+    if model is None:
+        return UNKNOWN, "the destination model is unavailable"
+    row: dict[str, Any] = {"from": ptype, "to": "", "handler_parameter": True,
+                           "sites": [{"path": path, "type": typ, "member": name, "signature": "", "parameter": param}]}
+    if chk == "unit:handler-validation-guards":
+        if not isinstance(facts.get("translation"), dict):
+            return UNKNOWN, "the requirement carries no guard translation"
+        row["translation"] = dict(facts["translation"])
+    if chk == "unit:location-null-arguments":
+        if not isinstance(facts.get("location"), dict):
+            return UNKNOWN, "the requirement carries no Location obligation"
+        row["location_translation"] = dict(facts["location"])
+    if chk != "unit:handler-parameter-sites":
+        if not (Path(root) / FROZEN_INPUT).is_dir():
+            return UNKNOWN, "no frozen source (%s) to compare the handler with" % FROZEN_INPUT
+        src, gap = frozen_source_model(Path(root))
+        if src is None:
+            return UNKNOWN, "the frozen source could not be modelled: %s" % gap
+    by_path: dict[str, list[dict[str, Any]]] = {}
+    for t in _unit_types(model):
+        by_path.setdefault(_unit_path(t), []).append(t)
+    verdicts = _assess_handler_parameters({"target_symbols": [row]}, by_path, "requirement:" + chk, root=Path(root))
+    if not verdicts:
+        return UNKNOWN, "the checker assessed nothing at %s.%s" % (typ, name)
+    bad = [v for v in verdicts if v.get("verdict") != "ok"]
+    if any(v.get("verdict") == "violates" for v in bad):
+        return FAIL, "; ".join(str(v.get("detail")) for v in bad)[:400]
+    if bad:
+        return UNKNOWN, "; ".join(str(v.get("detail")) for v in bad)[:400]
+    return PASS, "; ".join(str(v.get("detail")) for v in verdicts)[:300]
+
+
+def _adapter_check(root: Path, contract: str) -> tuple[str, str]:
+    """response_adapters.verify: the adapter file is the contract's template
+    byte for byte and the configuration carries exactly the rows rendered from
+    the SOURCE policy. A contract whose rendering needs a decision this tree
+    does not record is UNKNOWN."""
+    import response_adapters as ra
+    kind = next((k for k, c in ra.CONTRACTS.items() if c.get("contract") == contract), "")
+    if not kind:
+        return UNKNOWN, "no registered adapter implements %s" % contract
+    try:
+        rows, _basis = ra.rows_for(Path(root), kind)
+    except Exception as exc:  # noqa: BLE001 - an unrenderable policy is unknown, never a pass
+        return UNKNOWN, "the %s rendering cannot be derived here: %s" % (contract, str(exc)[:200])
+    problems = ra.verify(Path(root), kind, rows)
+    if problems:
+        return FAIL, "; ".join(problems)[:400]
+    return PASS, "%s installed as rendered (%d row(s))" % (contract, len(rows))
+
+
+def _mode_check(req: dict[str, Any], mode: str, receipts: dict[str, dict[str, Any]], tree: str) -> tuple[str, str]:
+    """The security mode's composed receipt, bound to THIS tree, records every
+    consumer entry point of the requirement PASS."""
+    from planner.worklist import parity_state
+    rec = receipts.get(mode) if isinstance(receipts.get(mode), dict) else None
+    if not rec:
+        return UNKNOWN, "no %s-mode receipt for this tree" % mode
+    bound = str(((rec.get("binding") or {}) if isinstance(rec.get("binding"), dict) else {}).get("candidate_sha256") or "")
+    if not tree or bound != tree:
+        return UNKNOWN, "the %s-mode receipt is bound to %s, not to this tree" % (mode, bound[:12] or "nothing")
+    st = parity_state(rec)
+    if not st["known"]:
+        return UNKNOWN, "the %s-mode receipt measured nothing" % mode
+    eps = [str(e) for e in req.get("consumers") or []]
+    if not eps:
+        return UNKNOWN, "the requirement names no entry point to judge in %s mode" % mode
+    verdicts = {ep: st["entry_points"].get(ep, "") for ep in eps}
+    if any(v == "FAIL" for v in verdicts.values()):
+        return FAIL, "%s mode: %s" % (mode, ", ".join("%s %s" % (k, v) for k, v in sorted(verdicts.items()) if v == "FAIL")[:300])
+    if any(v != "PASS" for v in verdicts.values()):
+        return UNKNOWN, "%s mode: %s not measured PASS" % (mode, ", ".join(k for k, v in sorted(verdicts.items()) if v != "PASS")[:300])
+    return PASS, "%s mode: %d entry point(s) PASS on this tree" % (mode, len(eps))
+
+
+def _config_check(root: Path, req: dict[str, Any]) -> tuple[str, str]:
+    """The decided configuration the requirement names, as the destination
+    renders it: datasource -> check-datasource-decision.check (the M2
+    checker); build_profiles -> quarkus.profile in application.properties and
+    -Dquarkus.profile in .mvn/maven.config, both the decided list; security ->
+    the source's switch key present with one of its two decided values (its
+    behaviour in each mode is the adapter/parity checks' question)."""
+    import importlib.util
+    from planner.decisions import load_decisions
+    subject = str(req.get("subject") or "")
+    try:
+        doc = load_decisions(Path(root))
+    except (OSError, ValueError) as exc:
+        return UNKNOWN, "decisions.yaml unreadable: %s" % str(exc)[:200]
+    props_p = Path(root) / "src/main/resources/application.properties"
+    props = props_p.read_text(encoding="utf-8", errors="replace").splitlines() if props_p.is_file() else []
+    values: dict[str, str] = {}
+    for ln in props:
+        t = ln.strip()
+        if t and not t.startswith(("#", "!")) and "=" in t:
+            k, v = t.split("=", 1)
+            values[k.strip()] = v.strip()
+    if subject == "datasource":
+        chk = Path(__file__).resolve().parents[2] / "skills/migration/bootstrap-destination/scripts/check-datasource-decision.py"
+        spec = importlib.util.spec_from_file_location("check_datasource_decision", chk)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        findings = mod.check(Path(root))
+        return (FAIL, "; ".join(findings)[:400]) if findings else (PASS, "the rendered datasource is the decided one")
+    if subject == "build_profiles":
+        active = [str(x) for x in ((doc.get("build_profiles") or {}).get("active") or [])]
+        if not active:
+            return UNKNOWN, "no build profile is decided"
+        want = ",".join(active)
+        cfg = Path(root) / ".mvn/maven.config"
+        mvn = cfg.read_text(encoding="utf-8").split() if cfg.is_file() else []
+        gaps = []
+        if values.get("quarkus.profile") != want:
+            gaps.append("application.properties quarkus.profile=%s, decided %s" % (values.get("quarkus.profile"), want))
+        if "-Dquarkus.profile=%s" % want not in mvn:
+            gaps.append(".mvn/maven.config lacks -Dquarkus.profile=%s" % want)
+        return (FAIL, "; ".join(gaps)) if gaps else (PASS, "the decided build profiles %s reach the build and the runtime" % want)
+    if subject == "security":
+        sw = ((doc.get("security") or {}).get("switch") or {}) if isinstance(doc.get("security"), dict) else {}
+        key = str(sw.get("key") or "")
+        if not key:
+            return UNKNOWN, "the security decision names no switch key"
+        allowed = {str(sw.get("disabled_value") or ""), str(sw.get("enabled_value") or "")} - {""}
+        got = values.get(key)
+        if got is None:
+            return FAIL, "the decided security switch %s is not in application.properties" % key
+        if got not in allowed and not got.startswith("${"):
+            return FAIL, "%s=%s is neither decided value (%s)" % (key, got, ", ".join(sorted(allowed)))
+        return PASS, "the decided security switch %s is present (%s)" % (key, got)
+    return UNKNOWN, "no checker for decided configuration %r" % subject
+
+
+def _generation_check(worklist: dict[str, Any], diagnostics: dict[str, Any] | None) -> tuple[str, str]:
+    """The generator ran cleanly in THIS measurement: the compiler producer
+    recorded every registered generated root with files, and the work list
+    holds no generated-source error or unresolvable build."""
+    if not isinstance(diagnostics, dict):
+        return UNKNOWN, "no compiler diagnostics document for this measurement"
+    roots = [r for r in diagnostics.get("generated_roots") or [] if isinstance(r, dict)]
+    if not roots:
+        return UNKNOWN, "the measurement recorded no generated root: generation is unproven"
+    empty = [str(r.get("root") or r.get("path") or "?") for r in roots if not int(r.get("files") or 0)]
+    bad = [str(i.get("id")) for i in worklist.get("items") or [] if isinstance(i, dict)
+           and str(i.get("rule_id") or "") in ("GENERATED_SOURCE_ERROR", "BUILD_UNRESOLVABLE")]
+    if bad:
+        return FAIL, "generated-source / build errors: %s" % ", ".join(bad[:4])
+    if empty:
+        return FAIL, "generated root(s) with no files: %s" % ", ".join(empty)
+    return PASS, "%d generated root(s) regenerated and compiled without error" % len(roots)
+
+
+def _body_check(root: Path, req: dict[str, Any], scen: Any) -> tuple[str, str]:
+    """The generated-body contract: the static condition (a qualified
+    creator/setter pair refusing a body an ACCEPTED source capture sends)
+    no longer holds on this tree (worklist.static_generated_body_items), and
+    every omitted/null/empty/invalid case bound to a capture was measured and
+    discharged. A case no capture sends is missing SOURCE coverage: UNKNOWN."""
+    from planner.canonical import load_json
+    from planner.paths import EVIDENCE_BUNDLE
+    from planner.worklist import static_generated_body_items
+    try:
+        bundle = load_json(Path(root) / EVIDENCE_BUNDLE)
+    except (OSError, ValueError):
+        return UNKNOWN, "the evidence bundle is unreadable"
+    items, notes = static_generated_body_items(Path(root), bundle)
+    if items:
+        return FAIL, "the generated-body condition still holds: %s" % items[0].get("message", "")[:300]
+    if notes:
+        return UNKNOWN, "; ".join(notes)[:300]
+    cases = [c for c in ((req.get("facts") or {}).get("body_cases") or []) if isinstance(c, dict)]
+    if not cases:
+        return UNKNOWN, "the requirement names no request-body case"
+    uncovered = ["%s.%s %s" % (c.get("model"), c.get("property"), c.get("case")) for c in cases if c.get("status") != "covered"]
+    res = [scen(str(sid)) for c in cases if c.get("status") == "covered" for sid in c.get("scenarios") or []]
+    if any(r[0] == FAIL for r in res):
+        return FAIL, "; ".join(r[1] for r in res if r[0] == FAIL)[:300]
+    if uncovered:
+        return UNKNOWN, "no source capture for %s: the source's behaviour there is unknown" % ", ".join(uncovered[:6])
+    if any(r[0] == UNKNOWN for r in res):
+        return UNKNOWN, "; ".join(r[1] for r in res if r[0] == UNKNOWN)[:300]
+    return PASS, "the static condition no longer holds and %d captured case scenario(s) pass" % len(res)

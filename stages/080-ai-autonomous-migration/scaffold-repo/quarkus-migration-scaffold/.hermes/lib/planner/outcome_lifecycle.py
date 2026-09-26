@@ -1053,7 +1053,7 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
     node = _node(plan, oid) or {}
     rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
                              scenarios=list(measurement.get("scenarios") or []), open_ids=open_now, source="accept:%s" % key,
-                             checks=requirement_measurement(ctx.root, plan, node, wl, list(measurement.get("scenarios") or [])),
+                             checks=requirement_measurement(ctx.root, plan, node, wl, list(measurement.get("scenarios") or []), tree),
                              asserted_by=_asserted_by(ctx))
     owned = _owned(ctx.store, oid)
     covered = _covers(node, rec)
@@ -1094,7 +1094,7 @@ def evaluate_recovered(ctx: Ctx, *, task_id: str, run_id: int, measurement: dict
     rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
                              scenarios=list(measurement.get("scenarios") or []), open_ids=open_now,
                              source="recovered:%s" % last["attempt_key"],
-                             checks=requirement_measurement(ctx.root, plan, node, wl, list(measurement.get("scenarios") or [])),
+                             checks=requirement_measurement(ctx.root, plan, node, wl, list(measurement.get("scenarios") or []), tree),
                              asserted_by=_asserted_by(ctx))
     owned = _owned(ctx.store, oid)
     covered = _covers(node, rec)
@@ -1251,15 +1251,23 @@ def record_measurement(ctx: Ctx, *, tree: str, classes: list[str], scenarios: li
 
 
 def requirement_measurement(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
-                            scenarios: list[str]) -> dict[str, dict[str, str]] | None:
+                            scenarios: list[str], tree: str = "") -> dict[str, dict[str, str]] | None:
     """The requirement checks of `node` measured on the tree `worklist`
-    describes (plan semantics v1); None for an outcome that owns none."""
+    describes (plan semantics v1); None for an outcome that owns none. The
+    mode receipts and the compiler document are this root's own records;
+    requirement_checks trusts a receipt only when it is bound to `tree`."""
     if not ((node.get("acceptance") or {}).get("requirement_checks")):
         return None
+    from planner.paths import VERIFY_DIAGNOSTICS
     from planner.requirement_checks import measure
+    from planner.worklist import parity_receipt_file
     owned = set(node.get("requirements") or [])
     reqs = [r for r in plan.get("requirements") or [] if isinstance(r, dict) and r.get("id") in owned]
-    return measure(root, reqs, worklist=worklist, scenarios=scenarios)
+    receipts = {m: _read_json(Path(root) / parity_receipt_file(m)) for m in ("disabled", "enabled")}
+    diags = _read_json(Path(root) / VERIFY_DIAGNOSTICS)
+    return measure(root, reqs, worklist=worklist, scenarios=scenarios, tree=tree,
+                   receipts={m: r for m, r in receipts.items() if isinstance(r, dict)},
+                   diagnostics=diags if isinstance(diags, dict) else None)
 
 
 def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:

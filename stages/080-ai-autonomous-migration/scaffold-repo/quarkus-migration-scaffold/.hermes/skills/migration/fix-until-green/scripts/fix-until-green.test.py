@@ -639,21 +639,22 @@ def _parity_card_case() -> int:
 
 
 def _runtime_owner_attribution_case() -> int:
-    """V17-3 (v17 u:f2fd979369f1): the CORS card's scenario GET /owners came
-    back 500 -- UnsupportedOperationException thrown from a repository
-    delegate ANOTHER card had written and had accepted -- and the card spent 3
-    attempts on it. Through the production advance.py: the same failure, with
-    the frame's file committed by an earlier accepted step of another cluster,
-    is charged to that owner (VERIFICATION_PENDING
-    runtime-cause-owned-elsewhere, no attempt spent, an owner-debts row). The
-    control, the same failure with no owner on record, is judged exactly as
-    before (REVERTED, one attempt)."""
-    from planner.paths import MTA_FINDINGS, PARITY_DIR, STRUCTURE, VERIFY_DIR  # noqa: E402
+    """V17-3 on the serial loop is DIAGNOSIS ONLY (round 2): the runtime cause
+    is classified from the BASELINE's own recorded measurement
+    (planner.runtime_cause) and printed / recorded, and the card is REVERTED
+    with its attempt spent whatever the class -- no charge moves, no pending,
+    no scope. Three baselines through the production advance.py:
+      * the v17 shape: the accepted snapshot, bound to the baseline tree,
+        already failed the scenario identically in the owner's stub ->
+        RUNTIME_CAUSE pre-existing-owner-defect naming the owner;
+      * the counterexample: the baseline PASSED it -> candidate-regression;
+      * no baseline record of the scenario -> ambiguous."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, PARITY_DIR, STRUCTURE, VERIFY_DIR  # noqa: E402
     from planner.worklist import item_ids, obligation_keys, parity_receipt_file  # noqa: E402
-    import response_adapters as ra  # noqa: E402
 
     impl = "src/main/java/org/acme/repo/OwnerStoreImpl.java"
-    for label, with_owner in (("owned elsewhere", True), ("no owner (control)", False)):
+    frames = [{"class": "org.acme.repo.OwnerStoreImpl", "method": "findAll", "line": 3, "file": impl}]
+    for label, baseline in (("pre-existing", "FAIL"), ("regression", "PASS"), ("ambiguous", None)):
         with tempfile.TemporaryDirectory(prefix="owner-attr-") as td:
             root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
                                         decisions=specimens.admitted_decisions(max_attempts=3))
@@ -678,33 +679,37 @@ def _runtime_owner_attribution_case() -> int:
             pipeline.admit(root)
             cur = load_json(root / WORKLIST)
             steps = load_json(root / LOOP_STEPS)
+            base_tree = load_json(root / LOOP_STATE)["candidate_sha256"]
             steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
                                       obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
-                                      candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
-            if with_owner:
-                # the earlier accepted step of ANOTHER cluster that committed the delegate
-                steps["steps"].append(dict(steps["steps"][-1], cluster="u:repo-fragments", card="t_frag0", verdict="accepted",
-                                           changed=[impl], commit=_git(root, "rev-parse", "HEAD").strip()))
+                                      candidate_sha256=base_tree)
+            # the earlier accepted step of ANOTHER cluster that committed the delegate
+            steps["steps"].append(dict(steps["steps"][-1], cluster="u:repo-fragments", card="t_frag0", verdict="accepted",
+                                       changed=[impl], commit=_git(root, "rev-parse", "HEAD").strip()))
             write_canonical(root / LOOP_STEPS, steps)
             pipeline.admit(root)
             cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["status"] == "open")
             specimens.issue(root)
+            # the BASELINE's own recorded measurement: the accepted parity snapshot
+            snap = root / LOOP_ACCEPTED / "parity" / "scenarios" / "sc_cors.json"
+            if baseline is not None:
+                write_canonical(snap, {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP, "scenario": _PARITY_SID,
+                                       "verdict": baseline, "reason": "status 500 vs 200" if baseline == "FAIL" else "",
+                                       "security_mode": "disabled", "binding": {"mode": "candidate", "candidate_sha256": base_tree},
+                                       **({"server_error": {"exception": "java.lang.UnsupportedOperationException",
+                                                            "stack_sha256": "ab" * 32, "frames": frames}} if baseline == "FAIL" else {})})
+            elif snap.exists():
+                snap.unlink()
             _run([sys.executable, str(HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"),
                   "--root", str(root), "--adapter", "cors"])
             shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
-            # the comparison ran on the candidate and the scenario answered 500:
-            # the runner put the destination's exception block on the verdict
+            # the comparison ran on the candidate and the scenario answered 500
             reason = "status 500 vs 200; body type object vs array"
-            sub = root / PARITY_DIR / "scenarios"
-            write_canonical(sub / "sc_cors.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP,
-                                                   "scenario": _PARITY_SID, "verdict": "FAIL", "reason": reason,
-                                                   "security_mode": "disabled",
-                                                   "server_error": {"status": 500, "expected_status": 200,
-                                                                    "exception": "java.lang.UnsupportedOperationException",
-                                                                    "message": "", "stack_sha256": "ab" * 32,
-                                                                    "frames": [{"class": "org.acme.repo.OwnerStoreImpl",
-                                                                                "method": "findAll", "line": 3,
-                                                                                "file": "OwnerStoreImpl.java"}]}})
+            write_canonical(root / PARITY_DIR / "scenarios" / "sc_cors.json",
+                            {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP, "scenario": _PARITY_SID,
+                             "verdict": "FAIL", "reason": reason, "security_mode": "disabled",
+                             "server_error": {"status": 500, "expected_status": 200, "exception": "java.lang.UnsupportedOperationException",
+                                              "message": "", "stack_sha256": "ab" * 32, "frames": frames}})
             write_canonical(root / parity_receipt_file("disabled"),
                             {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL", "total": 1, "not_passed": 1,
                              "security_mode": "disabled",
@@ -715,23 +720,19 @@ def _runtime_owner_attribution_case() -> int:
             p = _advance(root, cluster["id"], "t_cors1")
             blob = p.stdout + p.stderr
             after = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
-            debts = root / "verification/loop/owner-debts.json"
-            if with_owner:
-                if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "cause=runtime-cause-owned-elsewhere" not in blob:
-                    return _fail("[%s] a runtime cause inside another owner's accepted file is charged to it: %s" % (label, blob[-800:]))
-                if after != spent:
-                    return _fail("[%s] no attempt of this card is spent on another owner's failure: %s -> %s" % (label, spent, after))
-                rows = [d for d in (load_json(debts).get("debts") if debts.is_file() else []) if d.get("kind") == "runtime-failure-charged"]
-                if not rows or rows[0]["owner_cluster"] != "u:repo-fragments" or rows[0]["charged_from_cluster"] != cluster["id"]:
-                    return _fail("[%s] the owner debt names the owner and the card it was charged from: %s" % (label, rows))
-                if "u:repo-fragments" not in blob or impl not in blob:
-                    return _fail("[%s] the message names the owner and the file: %s" % (label, blob[-500:]))
-            else:
-                if "runtime-cause-owned-elsewhere" in blob:
-                    return _fail("[%s] a file no accepted step owns is never attributed: %s" % (label, blob[-500:]))
-                if p.returncode == 0 or "REVERTED" not in blob or after == spent:
-                    return _fail("[%s] with no owner on record the failure is judged as before (reverted, attempt spent): %s"
-                                 % (label, blob[-600:]))
+            want = {"pre-existing": "pre-existing-owner-defect", "regression": "candidate-regression", "ambiguous": "ambiguous"}[label]
+            if p.returncode == 0 or "REVERTED" not in blob or after == spent or "VERIFICATION_PENDING" in blob:
+                return _fail("[%s] the serial loop rejects and spends the attempt whatever the cause: %s" % (label, blob[-700:]))
+            if "RUNTIME_CAUSE %s" % want not in blob:
+                return _fail("[%s] the runtime cause is classified %s and shown: %s" % (label, want, blob[-700:]))
+            rows = [d for d in load_json(root / "verification/loop/owner-debts.json").get("debts") or []
+                    if d.get("kind") == "runtime-cause-diagnosis"]
+            if not rows or rows[-1]["class"] != want or not rows[-1]["authority"].startswith("none"):
+                return _fail("[%s] the diagnosis is recorded as observational only: %s" % (label, rows))
+            if label == "pre-existing" and rows[-1]["owner_cluster"] != "u:repo-fragments":
+                return _fail("[%s] the diagnosis names the owner: %s" % (label, rows[-1]))
+            if label != "pre-existing" and rows[-1]["owner_cluster"]:
+                return _fail("[%s] no owner is named without proof: %s" % (label, rows[-1]))
     return 0
 
 

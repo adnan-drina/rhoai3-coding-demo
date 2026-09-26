@@ -65,9 +65,9 @@ PARITY_DIR = VERIFICATION_DIR / "parity"
 LOOP_DIR = VERIFICATION_DIR / "loop"
 LOOP_STEPS = LOOP_DIR / "steps.json"
 LOOP_DEFERRED = LOOP_DIR / "deferred.json"
-# V17-3: verification debt per OWNER (derived, observational): functional
-# completion a unit owes after its structural acceptance, and runtime failures
-# another card met whose cause lies in that owner's accepted scope
+# V17-3: diagnostics per OWNER (observational, never read back as authority):
+# functional completion a unit owes after its structural acceptance, and the
+# runtime-cause classification (planner.runtime_cause) of failures a card met
 LOOP_OWNER_DEBTS = LOOP_DIR / "owner-debts.json"
 LOOP_STATE = LOOP_DIR / "state.json"
 LOOP_PENDING_FILES = LOOP_DIR / "pending-files"

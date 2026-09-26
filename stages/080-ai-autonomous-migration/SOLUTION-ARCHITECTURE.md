@@ -266,10 +266,14 @@ verification and decided configuration are judged by their checks.
   rows are sealed on the serial loop's fragment unit
   (`worklist.fragment_behaviour_rows`), rendered by the brief, and recorded
   on acceptance as `acceptance: structural`, `functional: owed`
-  (`verification/loop/owner-debts.json`). A runtime failure a later card
-  meets whose first product frame is in that owner's accepted file is
-  charged to the owner (`VERIFICATION_PENDING runtime-cause-owned-elsewhere`,
-  no attempt spent), never to the card that saw it.
+  (`verification/loop/owner-debts.json`, observational). Who caused a
+  runtime failure a later card meets is a CLASSIFICATION, not a location
+  (`planner/runtime_cause.py`, pure over its inputs): pre-existing-owner-defect
+  only when the baseline tree's own bound measurement failed the same scenario
+  identically in another cluster's accepted file; candidate-regression when
+  the baseline passed or failed differently; ambiguous otherwise. The serial
+  loop only shows the class (the rejection and its attempt stand); an
+  authority may act on it only with inputs it measured itself.
 - **Statically decided repairs (V17-4, V17-5).** The generated-body
   obligation (V16-8) no longer waits for a create scenario to fail: the
   destination and source generators are qualified as a pair
@@ -283,6 +287,22 @@ verification and decided configuration are judged by their checks.
   `uri_expansions`, `worklist._location_verdict`) and its create entry
   point a Location verification responsibility, unresolved without a
   capture.
+- **Runtime proof of the V17 repairs (local, offline, pinned platform).**
+  Three packaged-jar tests under `fix-until-green/scripts` boot Quarkus and
+  speak HTTP: `repository-effects-runtime.test.py` (PostgreSQL 16 in podman;
+  `@Typed` fragment delegates behind the generated repositories; create,
+  update, delete and related-record effects each read back by an
+  independent request after its transaction; a "reads pass, writes do
+  nothing" delegate fails every write check; a remove-first delete fails on
+  Hibernate 6's flush while the dependents-first port passes),
+  `request-body-runtime.test.py` (openapi-generator 7.25.0 jaxrs-spec:
+  omitted/null/empty/invalid per required collection and scalar under
+  `generateJsonCreator` false and true; only the captured and recipe-stated
+  cells are asserted) and `location-null-runtime.test.py` (a bare
+  `build(dto.id)` answers 500 after the row committed; the null-tolerant
+  build answers 201 with the empty segment Spring's `buildAndExpand(null)`,
+  measured offline, produces). They prove the repair shapes on fixtures, not
+  on the migrated application.
 - **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
   gives every requirement exactly one account: joined to the finding outcome
   that already owns the same file, a bounded requirement outcome (planned
