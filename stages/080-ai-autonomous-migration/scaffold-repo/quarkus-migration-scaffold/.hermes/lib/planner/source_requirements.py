@@ -141,6 +141,43 @@ def _sel(*parts: str) -> dict[str, str]:
     return {"artifact": BUNDLE, "selector": ".".join(parts)}
 
 
+def generator_body_semantics(facts: dict[str, Any], status: str) -> tuple[str, list[str], list[str], dict[str, Any]]:
+    """V17-4: the generator requirement from the static facts
+    (worklist.static_generated_body_facts). (status, acceptance, unknowns,
+    facts). The qualification decides the status -- a pom that already stops
+    the creator, or a generator that binds by setters, is not-applicable; an
+    unqualified pair or an unreadable source build is unresolved -- and every
+    required property of every request-body model contributes its four cases
+    (omitted, null, empty, invalid), each bound to the captures that send it.
+    A case no capture sends is an unknown, never an invented expectation."""
+    q = facts.get("qualification") or {}
+    qs = _s(q.get("status"))
+    cases = [c for c in facts.get("cases") or [] if isinstance(c, dict)]
+    if qs == NOT_APPLICABLE:
+        new_status = NOT_APPLICABLE
+    elif qs == APPLICABLE:
+        new_status = status
+    else:
+        new_status = UNRESOLVED
+    acceptance = ["build:clean-generation"]
+    unknowns: list[str] = []
+    if new_status != NOT_APPLICABLE:
+        acceptance.append("parity:request-body-positive-negative")
+        for c in sorted(cases, key=lambda c: (_s(c.get("model")), _s(c.get("property")), _s(c.get("case")))):
+            if c.get("status") == "covered":
+                acceptance.extend("parity:%s" % sid for sid in c.get("scenarios") or [])
+            else:
+                unknowns.append(_s(c.get("reason")) or "%s.%s %s: no capture" % (_s(c.get("model")), _s(c.get("property")), _s(c.get("case"))))
+    if qs == UNRESOLVED:
+        unknowns.extend("generator pair: %s" % r for r in q.get("reasons") or [])
+    extra = {"qualification": {k: q.get(k) for k in ("status", "reasons", "dest", "source", "option")},
+             "body_cases": [{k: c.get(k) for k in ("model", "property", "case", "status", "scenarios", "omitted_by_accepted") if k in c}
+                            for c in cases],
+             "omitted_by_accepted": sorted({"%s.%s" % (_s(c.get("model")), _s(c.get("property")))
+                                            for c in cases if c.get("omitted_by_accepted")})}
+    return new_status, list(dict.fromkeys(acceptance)), sorted(set(unknowns)), extra
+
+
 # ---------------------------------------------------------------------------
 # the derivation
 # ---------------------------------------------------------------------------
@@ -149,11 +186,18 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
            decisions: dict[str, Any] | None, oracles: dict[str, list[str]] | None, structure_complete: bool,
            generator: dict[str, Any] | None = None, generator_known: bool = True,
            decided_rows: list[dict[str, Any]] | None = None, bootstrap: dict[str, Any] | None = None,
-           scenario_facts: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+           scenario_facts: dict[str, dict[str, Any]] | None = None,
+           generator_facts: dict[str, Any] | None = None) -> dict[str, Any]:
     """{"schema", "requirements": [...], "unknowns": [...]}. Pure.
+
     ``scenario_facts``: scenario id -> {method, effects} from the captured
     corpus (a write is covered only by a scenario that reads its committed
-    effect back); None when the corpus is unreadable."""
+    effect back); None when the corpus is unreadable.
+    ``generator_facts`` (V17-4, worklist.static_generated_body_facts): the
+    qualification of the destination/source generator pair and the request
+    body cases bound to the corpus captures; None keeps the generator
+    requirement exactly as before (a destination generator qualified by name
+    only)."""
     types = sorted((t for t in types or [] if isinstance(t, dict) and _s(t.get("fqn"))), key=lambda t: t["fqn"])
     by_fqn = {t["fqn"]: t for t in types}
     recipes = recipes_of(catalog)
@@ -197,6 +241,7 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
 
     validation = 0
     binding = 0
+    location_eps: set[str] = set()  # V17-5: handlers that build a Location from a catalogued builder
     for t, m, ep in handlers:
         sig = _s(m.get("signature"))
         subject = "%s#%s" % (t["fqn"], sig)
@@ -231,12 +276,19 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             else:
                 binding += 1
                 rec = _recipe_for(recipes, "handler-parameter-binding", ptype)
+                loc = row.get("location_translation") if isinstance(row.get("location_translation"), dict) else None
+                if loc:
+                    location_eps.add(ep)
                 out.append(_req("handler-parameter-binding", "%s|%s" % (subject, _s(p.get("name"))), APPLICABLE if rec else UNRESOLVED,
                                 evidence=sel, paths=[_s(t.get("path"))], recipe=rec, consumers=[ep],
-                                acceptance=["unit:handler-parameter-sites", "gate:package", "gate:augmentation"] + ["parity:%s" % s for s in scen],
+                                acceptance=["unit:handler-parameter-sites", "gate:package", "gate:augmentation"]
+                                + (["unit:location-null-arguments"] if loc else []) + ["parity:%s" % s for s in scen],
                                 unknowns=unk + ([] if rec else ["no qualified recipe for %s" % ptype]),
-                                facts={"parameter": _s(p.get("name")), "parameter_type": ptype,
-                                       "precedes": ["symbol_renames:%s" % ptype]}))
+                                facts=dict({"parameter": _s(p.get("name")), "parameter_type": ptype,
+                                            "precedes": ["symbol_renames:%s" % ptype]},
+                                           **({"location": {"null_argument": _s(loc.get("null_argument")),
+                                                            "substitution": _s(loc.get("substitution")),
+                                                            "checked_by": _s(loc.get("checked_by"))}} if loc else {}))))
     if not validation:
         none_found("request-validation", "handler asking a catalogued validation-result parameter")
     if not binding:
@@ -392,12 +444,21 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             unk.append("generator %s of %s is not qualified by the catalog (build_plugins)" % (gname or "(unnamed)", ga))
         if not rec:
             unk.append("no qualified generator recipe for %s" % ga)
-        out.append(_req("generator-configuration", "%s|%s" % (ga, gname), APPLICABLE if (qualified and rec) else UNRESOLVED,
-                        evidence=[{"artifact": "pom.xml", "selector": "build.plugins[%s].configuration" % ga}],
+        status = APPLICABLE if (qualified and rec) else UNRESOLVED
+        acceptance = ["build:clean-generation", "parity:request-body-positive-negative"]
+        facts = {"plugin_version": _s(generator.get("version")), "generator": gname,
+                 "model_package": generated_pkg, "options": dict(generator.get("configOptions") or {})}
+        if generator_facts is not None:
+            status, acceptance, extra_unk, extra = generator_body_semantics(generator_facts, status)
+            unk.extend(extra_unk)
+            facts.update(extra)
+        out.append(_req("generator-configuration", "%s|%s" % (ga, gname), status,
+                        evidence=[{"artifact": "pom.xml", "selector": "build.plugins[%s].configuration" % ga}]
+                        + ([{"artifact": _s(((generator_facts or {}).get("qualification") or {}).get("source", {}).get("build_file")),
+                             "selector": "build.plugins[%s].configuration" % ga}]
+                           if _s(((generator_facts or {}).get("qualification") or {}).get("source", {}).get("build_file")) else []),
                         paths=["pom.xml"], recipe=rec, consumers=consumers,
-                        acceptance=["build:clean-generation", "parity:request-body-positive-negative"],
-                        unknowns=unk, facts={"plugin_version": _s(generator.get("version")), "generator": gname,
-                                             "model_package": generated_pkg, "options": dict(generator.get("configOptions") or {})}))
+                        acceptance=acceptance, unknowns=unk, facts=facts))
     else:
         out.append(_req("generator-configuration", "*", NOT_APPLICABLE, evidence=[{"artifact": "pom.xml", "selector": "build.plugins"}],
                         paths=[], acceptance=[], facts={"reason": "the destination build declares no catalogued source generator"}))
@@ -417,11 +478,16 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
     # -- behaviour verification of every entry point -----------------------
     for e in eps:
         scen = sorted(set((oracles or {}).get(e["id"]) or []))
+        loc = e["id"] in location_eps
         out.append(_req("behavior-verification", e["id"], APPLICABLE if scen else UNRESOLVED,
                         evidence=[_sel("entry_points[%s]" % e["id"])], paths=[], consumers=[e["id"]],
-                        acceptance=["parity:%s" % s for s in scen] or ["coverage:unresolved"],
-                        unknowns=[] if scen else ["no captured oracle for %s (%s): behaviour is unverified, never PASS" % (e["id"], _s(e.get("kind")))],
-                        facts={"kind": _s(e.get("kind")), "type": _s(e.get("type"))}))
+                        acceptance=(["parity:%s" % s for s in scen] or ["coverage:unresolved"])
+                        + (["location:%s" % e["id"]] if loc and scen else []),
+                        unknowns=([] if scen else ["no captured oracle for %s (%s): behaviour is unverified, never PASS" % (e["id"], _s(e.get("kind")))])
+                        + (["no capture of the source's create/Location behaviour for %s: the Location it builds, a null "
+                            "expansion argument included, is unverified, never PASS" % e["id"]] if loc and not scen else []),
+                        facts=dict({"kind": _s(e.get("kind")), "type": _s(e.get("type"))},
+                                   **({"location": {"builds_location": True, "coverage": scen or "unresolved"}} if loc else {}))))
     if not eps:
         unknowns.append("no entry point was discovered; behaviour verification has nothing to cover")
 
@@ -710,17 +776,18 @@ def for_root(root: Path, *, oracles: dict[str, list[str]] | None = None) -> dict
         decisions = None
     catalog = read(root / CATALOGS_DIR / "compat-mapping.json") or {}
     try:
-        from planner.worklist import generator_plugin_config
+        from planner.worklist import generator_plugin_config, static_generated_body_facts
         generator = generator_plugin_config(root) or None
         gen_known = True
+        gen_facts = static_generated_body_facts(root, bundle) if generator else None
     except Exception:  # an unreadable build is unknown, not generator-free
-        generator, gen_known = None, False
+        generator, gen_known, gen_facts = None, False, None
     dr = read(root / DECIDED_REPAIRS_RECEIPT)
     rows = list(dr.get("rows") or []) if isinstance(dr, dict) else []
     doc = derive(types=st.get("types") or [], entry_points=bundle.get("entry_points") or [], catalog=catalog,
                  decisions=decisions, oracles=oracles, structure_complete=bool(st.get("available")) and str(st.get("mode")) == "full",
                  generator=generator, generator_known=gen_known, decided_rows=rows, bootstrap=read(root / BOOTSTRAP_RECEIPT),
-                 scenario_facts=_scenario_facts(root))
+                 scenario_facts=_scenario_facts(root), generator_facts=gen_facts)
     if decisions is None:
         doc["unknowns"] = sorted(set(doc["unknowns"]) | {"decisions.yaml missing or invalid: decided configuration is unknown"})
     return doc

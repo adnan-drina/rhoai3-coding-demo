@@ -614,6 +614,28 @@
           "type": "string"
         }
       }
+    },
+    "location_arguments": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "V17-5: a create handler's Location is built from the source's own expansion arguments, null-tolerantly (compat-mapping handler_parameters UriComponentsBuilder location_translation). A substitution of another value at one argument (e.g. the saved entity's id where the source expanded the request DTO's) is a behaviour change the loop refuses unless a row here records it with an ACCEPTED ADR (planner.worklist.location_substitutions). Absent means no substitution is authorized.",
+      "properties": {
+        "substitutions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["handler", "argument", "expression", "adr"],
+            "properties": {
+              "handler": {"type": "string", "pattern": "^[^#]+#[^#]+$", "description": "<handler type fqn>#<member name>"},
+              "argument": {"type": "integer", "minimum": 0},
+              "expression": {"type": "string", "minLength": 1, "description": "the candidate's base expression at that argument"},
+              "adr": {"type": "string", "minLength": 1},
+              "reason": {"type": "string"}
+            }
+          }
+        }
+      }
     }
   }
 }

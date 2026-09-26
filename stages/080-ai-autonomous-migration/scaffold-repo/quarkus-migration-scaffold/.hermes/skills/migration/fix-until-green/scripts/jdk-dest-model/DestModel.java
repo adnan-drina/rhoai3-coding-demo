@@ -408,6 +408,9 @@ public final class DestModel {
                         List<String> guards = m.getBody() == null ? List.of()
                                 : validationGuards(task, trees, unit, new TreePath(mp, m.getBody()));
                         if (!guards.isEmpty()) { mrow.put("validation_guards", guards); }
+                        List<Map<String, Object>> expansions = m.getBody() == null ? List.of()
+                                : uriExpansions(task, trees, unit, new TreePath(mp, m.getBody()), m);
+                        if (!expansions.isEmpty()) { mrow.put("uri_expansions", expansions); }
                         declared.add(mrow);
                     }
                     row.put("declared", declared);
@@ -828,6 +831,202 @@ public final class DestModel {
                     default:
                         return "{" + t.toString().replaceAll("\\s+", " ") + "}";
                 }
+            }
+        }.scan(body, null);
+        return out;
+    }
+
+    private static final java.util.Set<String> SPRING_URI_OWNERS = new java.util.HashSet<>(Arrays.asList(
+            "org.springframework.web.util.UriComponentsBuilder", "org.springframework.web.util.UriComponents",
+            "org.springframework.web.util.UriBuilder",
+            "org.springframework.web.servlet.support.ServletUriComponentsBuilder"));
+    private static final java.util.Set<String> JAXRS_URI_OWNERS = new java.util.HashSet<>(Arrays.asList(
+            "jakarta.ws.rs.core.UriBuilder", "javax.ws.rs.core.UriBuilder"));
+    private static final java.util.Set<String> JAXRS_BUILDER_FACTORIES = new java.util.HashSet<>(Arrays.asList(
+            "getBaseUriBuilder", "getAbsolutePathBuilder", "getRequestUriBuilder", "fromUri", "fromPath", "fromResource"));
+
+    /**
+     * V17-5: the URI TEMPLATE EXPANSIONS of one member body, so the Location a
+     * create handler builds can be compared between the frozen source and the
+     * candidate. Spring's UriComponentsBuilder.buildAndExpand(args...) expands a
+     * null argument as an EMPTY segment; JAX-RS UriBuilder.build(args...) throws
+     * IllegalArgumentException for it (v17: 500 after the row was committed).
+     *
+     * Per call: api (spring | jaxrs), the method, whether the compiler resolved
+     * its owner, the literal templates the receiver chain passes to path(...),
+     * and per argument its text, whether it is a non-null literal, whether a
+     * null value is expanded as "" (`a == null ? "" : a`, `a != null ? a : ""`,
+     * `Objects.toString(a, "")`, `Objects.requireNonNullElse(a, "")`), and the
+     * guarded BASE expression described by its root (a parameter, with its
+     * declared type's simple name; a local; anything else) and the selector
+     * text after the root. A Spring type the tree was modelled without is named
+     * through the file's own single-type imports, as validationGuards does.
+     */
+    private static List<Map<String, Object>> uriExpansions(JavacTask task, Trees trees, CompilationUnitTree unit,
+                                                           TreePath body, MethodTree method) {
+        Map<String, String> imports = new LinkedHashMap<>();
+        for (com.sun.source.tree.ImportTree it : unit.getImports()) {
+            if (it.isStatic()) { continue; }
+            String q = it.getQualifiedIdentifier().toString();
+            if (!q.endsWith(".*")) { imports.put(q.substring(q.lastIndexOf('.') + 1), q); }
+        }
+        final Map<String, String> paramTypes = new LinkedHashMap<>();
+        for (com.sun.source.tree.VariableTree pv : method.getParameters()) {
+            String t = pv.getType() == null ? "" : pv.getType().toString();
+            int lt = t.indexOf('<');
+            if (lt >= 0) { t = t.substring(0, lt); }
+            paramTypes.put(pv.getName().toString(), t.substring(t.lastIndexOf('.') + 1));
+        }
+        final Map<String, String> localTypes = new LinkedHashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+        new TreePathScanner<Void, Void>() {
+            @Override public Void visitClass(ClassTree n, Void v) { return null; }
+            @Override public Void visitVariable(com.sun.source.tree.VariableTree v, Void x) {
+                String t = v.getType() == null ? "" : v.getType().toString();
+                int lt = t.indexOf('<');
+                if (lt >= 0) { t = t.substring(0, lt); }
+                localTypes.put(v.getName().toString(), t.substring(t.lastIndexOf('.') + 1));
+                return super.visitVariable(v, x);
+            }
+            private ExpressionTree strip(ExpressionTree e) {
+                while (e instanceof com.sun.source.tree.ParenthesizedTree) {
+                    e = ((com.sun.source.tree.ParenthesizedTree) e).getExpression();
+                }
+                return e;
+            }
+            private String ownerOf(TreePath p) {
+                // an unresolved type attributes to an error class spelled by its
+                // simple name: that is no owner at all
+                Element el = trees.getElement(p);
+                if (el == null || !(el.getEnclosingElement() instanceof TypeElement)
+                        || el.getEnclosingElement().asType().getKind() == TypeKind.ERROR) { return ""; }
+                String q = ((TypeElement) el.getEnclosingElement()).getQualifiedName().toString();
+                return q.contains(".") ? q : "";
+            }
+            private boolean emptyString(ExpressionTree e) {
+                e = strip(e);
+                return e.getKind() == Tree.Kind.STRING_LITERAL && "".equals(((LiteralTree) e).getValue());
+            }
+            private String rootName(ExpressionTree e) {
+                e = strip(e);
+                while (true) {
+                    if (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                        e = strip(((com.sun.source.tree.MethodInvocationTree) e).getMethodSelect());
+                    } else if (e instanceof com.sun.source.tree.MemberSelectTree) {
+                        e = strip(((com.sun.source.tree.MemberSelectTree) e).getExpression());
+                    } else if (e instanceof com.sun.source.tree.IdentifierTree) {
+                        return ((com.sun.source.tree.IdentifierTree) e).getName().toString();
+                    } else {
+                        return "";
+                    }
+                }
+            }
+            private String rootType(String root) {
+                String simple = paramTypes.containsKey(root) ? paramTypes.get(root)
+                        : localTypes.containsKey(root) ? localTypes.get(root) : root;
+                return imports.getOrDefault(simple, simple);
+            }
+            private Map<String, Object> skeleton(ExpressionTree a) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                ExpressionTree e = strip(a);
+                row.put("text", a.toString().replaceAll("\\s+", " "));
+                boolean nonNull = e instanceof LiteralTree && e.getKind() != Tree.Kind.NULL_LITERAL;
+                boolean tolerant = nonNull;
+                ExpressionTree base = e;
+                if (e instanceof com.sun.source.tree.ConditionalExpressionTree) {
+                    com.sun.source.tree.ConditionalExpressionTree c = (com.sun.source.tree.ConditionalExpressionTree) e;
+                    ExpressionTree cond = strip(c.getCondition());
+                    if (cond instanceof com.sun.source.tree.BinaryTree
+                            && (cond.getKind() == Tree.Kind.EQUAL_TO || cond.getKind() == Tree.Kind.NOT_EQUAL_TO)) {
+                        com.sun.source.tree.BinaryTree b = (com.sun.source.tree.BinaryTree) cond;
+                        ExpressionTree l = strip(b.getLeftOperand()), r = strip(b.getRightOperand());
+                        ExpressionTree tested = l.getKind() == Tree.Kind.NULL_LITERAL ? r
+                                : (r.getKind() == Tree.Kind.NULL_LITERAL ? l : null);
+                        if (tested != null) {
+                            ExpressionTree whenNull = cond.getKind() == Tree.Kind.EQUAL_TO ? c.getTrueExpression() : c.getFalseExpression();
+                            ExpressionTree whenSet = cond.getKind() == Tree.Kind.EQUAL_TO ? c.getFalseExpression() : c.getTrueExpression();
+                            if (emptyString(whenNull) && strip(whenSet).toString().equals(tested.toString())) {
+                                tolerant = true;
+                                base = tested;
+                            }
+                        }
+                    }
+                } else if (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                    com.sun.source.tree.MethodInvocationTree mi = (com.sun.source.tree.MethodInvocationTree) e;
+                    ExpressionTree sel = mi.getMethodSelect();
+                    if (sel instanceof com.sun.source.tree.MemberSelectTree && mi.getArguments().size() == 2
+                            && emptyString(mi.getArguments().get(1))) {
+                        String name = ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().toString();
+                        String recv = strip(((com.sun.source.tree.MemberSelectTree) sel).getExpression()).toString();
+                        String owner = ownerOf(new TreePath(body, mi));
+                        boolean objects = "java.util.Objects".equals(owner) || (owner.isEmpty()
+                                && ("java.util.Objects".equals(recv) || ("Objects".equals(recv)
+                                    && "java.util.Objects".equals(imports.getOrDefault("Objects", "java.util.Objects")))));
+                        if (objects && ("toString".equals(name) || "requireNonNullElse".equals(name))) {
+                            tolerant = true;
+                            base = strip(mi.getArguments().get(0));
+                        }
+                    }
+                }
+                String baseText = base.toString().replaceAll("\\s+", " ");
+                String root = rootName(base);
+                row.put("non_null", nonNull);
+                row.put("null_tolerant", tolerant);
+                row.put("base", baseText);
+                row.put("root_kind", root.isEmpty() ? "other" : paramTypes.containsKey(root) ? "parameter"
+                        : localTypes.containsKey(root) ? "local" : "other");
+                row.put("root_type", paramTypes.containsKey(root) ? paramTypes.get(root)
+                        : localTypes.containsKey(root) ? localTypes.get(root) : "");
+                row.put("selectors", !root.isEmpty() && baseText.startsWith(root) ? baseText.substring(root.length()) : baseText);
+                return row;
+            }
+            @Override public Void visitMethodInvocation(com.sun.source.tree.MethodInvocationTree n, Void v) {
+                ExpressionTree sel = n.getMethodSelect();
+                if (sel instanceof com.sun.source.tree.MemberSelectTree) {
+                    String name = ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().toString();
+                    if ("buildAndExpand".equals(name) || "build".equals(name) || "buildFromMap".equals(name)) {
+                        String owner = ownerOf(getCurrentPath());
+                        List<String> templates = new ArrayList<>();
+                        List<String> chain = new ArrayList<>();
+                        ExpressionTree e = strip(((com.sun.source.tree.MemberSelectTree) sel).getExpression());
+                        while (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                            com.sun.source.tree.MethodInvocationTree mi = (com.sun.source.tree.MethodInvocationTree) e;
+                            ExpressionTree s = mi.getMethodSelect();
+                            String id = s instanceof com.sun.source.tree.MemberSelectTree
+                                    ? ((com.sun.source.tree.MemberSelectTree) s).getIdentifier().toString() : s.toString();
+                            chain.add(0, id);
+                            if ("path".equals(id) && mi.getArguments().size() == 1
+                                    && strip(mi.getArguments().get(0)).getKind() == Tree.Kind.STRING_LITERAL) {
+                                templates.add(0, String.valueOf(((LiteralTree) strip(mi.getArguments().get(0))).getValue()));
+                            }
+                            e = s instanceof com.sun.source.tree.MemberSelectTree
+                                    ? strip(((com.sun.source.tree.MemberSelectTree) s).getExpression()) : null;
+                            if (e == null) { break; }
+                        }
+                        String rootT = e == null ? "" : rootType(rootName(e));
+                        String api = "";
+                        if ("buildAndExpand".equals(name)
+                                && (SPRING_URI_OWNERS.contains(owner) || (owner.isEmpty() && rootT.startsWith("org.springframework.web.")))) {
+                            api = "spring";
+                        } else if (("build".equals(name) || "buildFromMap".equals(name))
+                                && (JAXRS_URI_OWNERS.contains(owner) || (owner.isEmpty() && (rootT.startsWith("jakarta.ws.rs.")
+                                    || rootT.startsWith("javax.ws.rs.") || chain.stream().anyMatch(JAXRS_BUILDER_FACTORIES::contains))))) {
+                            api = "jaxrs";
+                        }
+                        if (!api.isEmpty()) {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            row.put("api", api);
+                            row.put("method", name);
+                            row.put("resolved", !owner.isEmpty());
+                            row.put("templates", templates);
+                            List<Map<String, Object>> args = new ArrayList<>();
+                            for (ExpressionTree a : n.getArguments()) { args.add(skeleton(a)); }
+                            row.put("args", args);
+                            out.add(row);
+                        }
+                    }
+                }
+                return super.visitMethodInvocation(n, v);
             }
         }.scan(body, null);
         return out;

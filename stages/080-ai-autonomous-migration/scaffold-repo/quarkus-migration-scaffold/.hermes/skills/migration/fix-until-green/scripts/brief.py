@@ -973,6 +973,24 @@ def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tu
         % (extra, terminator))
 
 
+def location_obligation_lines(handler_rows: list) -> list:
+    """V17-5: the Location obligation of a handler-parameter row that carries
+    a location_translation, rendered beside its first action: every argument
+    of the source's buildAndExpand reaches build(...) as the same value and
+    null-tolerantly, and a different value needs a decisions.yaml
+    authorization. The row is the catalogue's; nothing here is a specimen's."""
+    out = []
+    for t in handler_rows:
+        lt = t.get("location_translation") if isinstance(t, dict) else None
+        if not isinstance(lt, dict):
+            continue
+        sites = ", ".join("%s.%s" % (str(x.get("type") or "").rsplit(".", 1)[-1], x.get("member")) for x in (t.get("sites") or []))
+        out.append("Location obligation (%s, at %s): %s %s %s (checked by %s)"
+                   % (t.get("from"), sites or "its handlers", lt.get("null_argument") or "", lt.get("substitution") or "",
+                      "; source: %s" % lt.get("source") if lt.get("source") else "", lt.get("checked_by") or "the unit checkpoint"))
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
@@ -1165,6 +1183,7 @@ def main(argv: list[str] | None = None) -> int:
                                          ", ".join("%s.%s(%s)" % (str(x.get("type") or "").rsplit(".", 1)[-1], x.get("member"),
                                                                  x.get("parameter")) for x in (t.get("sites") or [])))
                       for t in handler]
+                     + location_obligation_lines(handler)
                      + ["then, where a helper takes %s (%s): %s" % (t.get("from"), ", ".join("%s.%s(%s)" % (
                          str(x.get("type") or "").rsplit(".", 1)[-1], x.get("member"), x.get("parameter")) for x in (t.get("sites") or [])),
                          t.get("action")) for t in helpers]
@@ -1185,6 +1204,8 @@ def main(argv: list[str] | None = None) -> int:
                                         **({"handler_parameter": True, "action": t.get("action"), "sites": t.get("sites")}
                                            if t.get("handler_parameter") else {}),
                                         **({"translation": t.get("translation")} if t.get("translation") else {}),
+                                        **({"location_translation": t.get("location_translation")}
+                                           if t.get("location_translation") else {}),
                                         **({"helper_parameter": True, "action": t.get("action"), "when": t.get("when"),
                                             "sites": t.get("sites")} if t.get("helper_parameter") else {}),
                                         **({"via_package": t.get("via_package")} if t.get("via_package") else {}),

@@ -262,6 +262,19 @@ initial logical M3 plan:
   meets whose first product frame is in that owner's accepted file is
   charged to the owner (`VERIFICATION_PENDING runtime-cause-owned-elsewhere`,
   no attempt spent), never to the card that saw it.
+- **Statically decided repairs (V17-4, V17-5).** The generated-body
+  obligation (V16-8) no longer waits for a create scenario to fail: the
+  destination and source generators are qualified as a pair
+  (`worklist.generator_qualification`: generator, library and plugin
+  version on both sides, the source read from the frozen legacy pom), and a
+  required property an accepted source capture omits plans the pom card at
+  gate `plan` before the first loop step. Each required property's
+  omitted/null/empty/invalid cases are bound to the captures that send them;
+  a case none sends is unresolved. A handler that built its Location with
+  `buildAndExpand` carries a null-argument check (`DestModel`
+  `uri_expansions`, `worklist._location_verdict`) and its create entry
+  point a Location verification responsibility, unresolved without a
+  capture.
 - **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
   gives every requirement exactly one account: joined to the finding outcome
   that already owns the same file, a bounded requirement outcome (planned

@@ -359,12 +359,69 @@ def bounds_case() -> int:
         blocked = any(r["id"] in (u.get("requirements") or []) and "UNIT_OVERSIZE" in u["reason"] for u in g["unresolved"])
         if blocked != oversize:
             return _fail("%s: UNIT_OVERSIZE %s, expected %s" % (why, blocked, oversize))
+def v17_body_location_case() -> int:
+    """V17-4 and V17-5 at M2, from the source and the static facts alone.
+
+    V17-4: the generator requirement takes its status from the QUALIFIED
+    generator pair (worklist.static_generated_body_facts) -- applicable with
+    each covered body case bound to its capture and each uncovered case an
+    unknown; not-applicable when the pom already stops the creator;
+    unresolved (with the reasons) for an unqualified pair -- never a
+    universal generateJsonCreator=false.
+    V17-5: the handler that builds a Location from a catalogued builder
+    carries the null-argument check, and its entry point's verification
+    responsibility names the create/Location behaviour: covered by its
+    captures, or unresolved without one (never invented). A renamed twin
+    derives the same."""
+    for base, names in (("org.acme.clinic", S.PETCLINIC_NAMES), ("com.example.ledger", S.LEDGER_NAMES)):
+        types = S.migration_types(base, names)
+        eps = derive_entry_points({"types": types}, CATALOGS)
+        gen = copy.deepcopy(GENERATOR)
+        gen["configuration"]["modelPackage"] = "%s.%s.%s" % (base, names["rest"], names["dtopkg"])
+        model = "%s.%s.%s.Model" % (base, names["rest"], names["dtopkg"])
+        cases = [{"model": model, "property": "items", "case": "omitted", "status": "covered", "scenarios": ["sc:create"],
+                  "omitted_by_accepted": ["sc:create"]},
+                 {"model": model, "property": "items", "case": "null", "status": "unresolved", "scenarios": [],
+                  "reason": "no capture sends Model.items null: the source's answer is unknown, never invented"}]
+
+        def run(qual: dict, oracles=None) -> dict:
+            return SR.derive(types=types, entry_points=eps, catalog=CATALOG, decisions=DECISIONS, oracles=oracles,
+                             structure_complete=True, generator=gen, decided_rows=None, bootstrap={"status": "ok", "blocks": []},
+                             generator_facts={"qualification": qual, "cases": cases})
+
+        doc = run({"status": "applicable", "reasons": ["jaxrs-spec creator vs spring setters"]})
+        g = by_rule(doc, "generator-configuration")[0]
+        if (g["status"] != "applicable" or "parity:sc:create" not in g["acceptance"]
+                or not any("never invented" in u for u in g["unknowns"]) or g["facts"]["omitted_by_accepted"] != [model + ".items"]):
+            return _fail("[%s] a qualified pair plans the body cases, covered and unresolved: %s" % (base, g))
+        g = by_rule(run({"status": "not-applicable", "reasons": ["pom.xml already sets generateJsonCreator=false"]}), "generator-configuration")[0]
+        if g["status"] != "not-applicable" or "parity:request-body-positive-negative" in g["acceptance"]:
+            return _fail("[%s] a stopped creator is not applicable: %s" % (base, g))
+        g = by_rule(run({"status": "unresolved", "reasons": ["destination plugin version '7.0.0' is not qualified"]}), "generator-configuration")[0]
+        if g["status"] != "unresolved" or not any("7.0.0" in u for u in g["unknowns"]):
+            return _fail("[%s] an unqualified pair is unresolved with its reason: %s" % (base, g))
+        # V17-5
+        ucb = by_rule(doc, "handler-parameter-binding")[0]
+        if "unit:location-null-arguments" not in ucb["acceptance"] or "empty segment" not in ucb["facts"]["location"]["null_argument"]:
+            return _fail("[%s] the Location-building handler carries the null-argument check: %s" % (base, ucb))
+        ep = ucb["consumers"][0]
+        vb = next(r for r in by_rule(doc, "behavior-verification") if r["subject"] == ep)
+        if (vb["status"] != "unresolved" or (vb["facts"].get("location") or {}).get("coverage") != "unresolved"
+                or not any("create/Location" in u for u in vb["unknowns"])):
+            return _fail("[%s] a create endpoint with no capture keeps its Location behaviour unresolved: %s" % (base, vb))
+        vb = next(r for r in by_rule(run({"status": "applicable", "reasons": []}, oracles={ep: ["sc:create-x"]}), "behavior-verification")
+                  if r["subject"] == ep)
+        if vb["status"] != "applicable" or "location:%s" % ep not in vb["acceptance"] or any("create/Location" in u for u in vb["unknowns"]):
+            return _fail("[%s] a captured create names its Location check: %s" % (base, vb))
+        others = [r for r in by_rule(doc, "behavior-verification") if r["subject"] != ep]
+        if any(r["facts"].get("location") for r in others):
+            return _fail("[%s] only a handler that builds a Location gets the Location facet" % base)
     return 0
 
 
 def main() -> int:
     for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
-                 repository_behaviour_case, bounds_case):
+                 repository_behaviour_case, bounds_case, v17_body_location_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "

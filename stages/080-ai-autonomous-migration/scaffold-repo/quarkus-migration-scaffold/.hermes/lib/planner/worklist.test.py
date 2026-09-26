@@ -5158,7 +5158,275 @@ def _real_package_validation_unit_case() -> int:
     return 0
 
 
+def _real_location_null_argument_case() -> int:
+    """V17-5 (v17 PetTypeRestController.addPetType): the source built the
+    Location with ucBuilder.path(...).buildAndExpand(dto.getId()) on the
+    REQUEST DTO, whose id is null on a create -- Spring expands it as an empty
+    segment (201); the migrated uriInfo.getBaseUriBuilder().path(...)
+    .build(dto.getId()) throws IllegalArgumentException (500 after the row was
+    committed). The handler-parameter unit carries the catalogue's
+    location_translation, and its checkpoint compares the candidate's JAX-RS
+    expansion arguments with the frozen source handler's: a bare argument and
+    a substituted value (the saved entity's id) violate; the null guard and
+    Objects.toString(x, "") are clean; String.valueOf is not null-tolerant; an
+    ACCEPTED-ADR substitution in decisions.yaml is honoured. Real javac, the
+    frozen source modelled without its classpath, twice under renamed
+    packages and members."""
+    import tempfile
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    for base, ctl, dto_cls, member, var in (("org.acme.clinic", "PetTypeController", "PetTypeDto", "addPetType", "petType"),
+                                            ("com.example.depot", "CrateEndpoint", "CrateForm", "register", "form")):
+        pkg = base.replace(".", "/")
+        ctl_path = "src/main/java/%s/rest/%s.java" % (pkg, ctl)
+        dto_path = "src/main/java/%s/dto/%s.java" % (pkg, dto_cls)
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            dto_path: "package %s.dto;\npublic class %s { public Integer getId() { return null; } }\n" % (base, dto_cls),
+        }
+        jaxrs = {
+            "src/main/java/jakarta/ws/rs/core/Context.java": "package jakarta.ws.rs.core;\npublic @interface Context { }\n",
+            "src/main/java/jakarta/ws/rs/core/UriBuilder.java":
+                "package jakarta.ws.rs.core;\npublic abstract class UriBuilder {\n"
+                "    public abstract UriBuilder path(String p);\n    public abstract java.net.URI build(Object... v);\n}\n",
+            "src/main/java/jakarta/ws/rs/core/UriInfo.java":
+                "package jakarta.ws.rs.core;\npublic interface UriInfo { UriBuilder getBaseUriBuilder(); }\n",
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\nimport %s.dto.%s;\n" % (base, base, dto_cls))
+        spring = (head + "import %s;\npublic class %s {\n"
+                  '    @PostMapping("/api/things")\n'
+                  "    public String %s(@RequestBody %s %s, UriComponentsBuilder ucBuilder) {\n"
+                  '        return ucBuilder.path("/api/things/{id}").buildAndExpand(%s.getId()).toUri().toString();\n'
+                  "    }\n}\n" % (retired, ctl, member, dto_cls, var, var))
+
+        def dst(arg: str) -> str:
+            return (head + "import jakarta.ws.rs.core.Context;\nimport jakarta.ws.rs.core.UriInfo;\nimport java.util.Objects;\n"
+                    "public class %s {\n"
+                    '    @PostMapping("/api/things")\n'
+                    "    public String %s(@RequestBody %s %s, @Context UriInfo uriInfo) {\n"
+                    "        %s saved = %s;\n"
+                    '        return uriInfo.getBaseUriBuilder().path("/api/things/{id}").build(%s).toString();\n'
+                    "    }\n}\n" % (ctl, member, dto_cls, var, dto_cls, var, arg))
+
+        # a second create handler (a unit spans more than one file): its source
+        # expands a LOCAL, which is not provably non-null either
+        other_path = "src/main/java/%s/rest/Other%s.java" % (pkg, ctl)
+        other_src = (head + "import %s;\npublic class Other%s {\n"
+                     '    @PostMapping("/api/others")\n'
+                     "    public String add(@RequestBody %s body, UriComponentsBuilder b) {\n"
+                     "        %s kept = body;\n"
+                     '        return b.path("/api/others/{id}").buildAndExpand(kept.getId()).toUri().toString();\n'
+                     "    }\n}\n" % (retired, ctl, dto_cls, dto_cls))
+        other_dst = (head + "import jakarta.ws.rs.core.Context;\nimport jakarta.ws.rs.core.UriInfo;\npublic class Other%s {\n"
+                     '    @PostMapping("/api/others")\n'
+                     "    public String add(@RequestBody %s body, @Context UriInfo info) {\n"
+                     "        %s kept = body;\n"
+                     '        return info.getBaseUriBuilder().path("/api/others/{id}").build(kept.getId() == null ? "" : kept.getId()).toString();\n'
+                     "    }\n}\n" % (ctl, dto_cls, dto_cls))
+        frozen = {".derived/frozen-input/" + rel: text for rel, text in {**stubs, ctl_path: spring, other_path: other_src}.items()}
+        with tempfile.TemporaryDirectory(prefix="wl-v175-") as d:
+            root = _jdk_root(d, {**stubs, **jaxrs, **frozen, ctl_path: spring, other_path: other_src})
+            items = [_javac(ctl_path, "UriComponentsBuilder", 1), _javac(other_path, "UriComponentsBuilder", 2)]
+            units, _ = form_units(items, {}, set(), model=dest_model(root), root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            first = (unit or {}).get("unit", {}).get("target_symbols", [{}])[0]
+            if not first.get("handler_parameter") or not isinstance(first.get("location_translation"), dict):
+                return _fail("[%s] the UriComponentsBuilder unit leads with the handler row and its location_translation: %s" % (base, first))
+            if "null-tolerantly" not in str(first.get("action")):
+                return _fail("[%s] the action states the null-tolerant Location: %s" % (base, first.get("action")))
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+
+            def assess(arg: str) -> dict:
+                (root / ctl_path).write_text(dst(arg), encoding="utf-8")
+                (root / other_path).write_text(other_dst, encoding="utf-8")
+                rows = {r["member"].split("#", 1)[1].split("(")[0]: r for r in assess_unit(root, scope)
+                        if r.get("state") == "handler-parameter"}
+                if (rows.get("add") or {}).get("verdict") != "ok":
+                    raise AssertionError("the null-guarded local expansion is clean: %s" % rows.get("add"))
+                return rows.get(member) or {}
+
+            src_arg = "%s.getId()" % var
+            for label, arg in (("the null guard", '%s == null ? "" : %s' % (src_arg, src_arg)),
+                               ("the inverted null guard", '%s != null ? %s : ""' % (src_arg, src_arg)),
+                               ("Objects.toString", 'Objects.toString(%s, "")' % src_arg),
+                               ("Objects.requireNonNullElse", 'Objects.requireNonNullElse(%s, "")' % src_arg)):
+                r = assess(arg)
+                if r.get("verdict") != "ok":
+                    return _fail("[%s] %s keeps the source's Location: %s" % (base, label, r))
+            for label, arg, token in (("the bare argument (v17 addPetType)", src_arg, "passed bare"),
+                                      ("the saved entity substituted", "saved.getId()", "behaviour change"),
+                                      ("String.valueOf", "String.valueOf(%s)" % src_arg, "behaviour change")):
+                r = assess(arg)
+                if r.get("verdict") != "violates" or token not in r.get("detail", ""):
+                    return _fail("[%s] %s is refused (%s): %s" % (base, label, token, r))
+            # an accepted-ADR substitution is honoured; an unaccepted one is not
+            (root / ".hermes/planning/schemas").mkdir(parents=True, exist_ok=True)
+            shutil.copy(GOLDEN / ".hermes/planning/schemas/decisions.schema.json", root / ".hermes/planning/schemas/decisions.schema.json")
+            golden_dec = (GOLDEN / "decisions.yaml").read_text(encoding="utf-8")
+            for status, want in (("accepted", "ok"), ("proposed", "violates")):
+                text = golden_dec.replace("\nadrs:\n", "\nadrs:\n  - id: ADR-900\n    status: %s\n    title: t\n" % status, 1)
+                text += ("\nlocation_arguments:\n  substitutions:\n    - handler: %s.rest.%s#%s\n      argument: 0\n"
+                         "      expression: saved.getId()\n      adr: ADR-900\n" % (base, ctl, member))
+                (root / "decisions.yaml").write_text(text, encoding="utf-8")
+                r = assess("saved.getId()")
+                if r.get("verdict") != want:
+                    return _fail("[%s] a %s ADR substitution gives %s: %s" % (base, status, want, r))
+            (root / "decisions.yaml").unlink()
+            # no frozen source in this tree: no Location claim, as the guard translation
+            shutil.rmtree(root / ".derived")
+            r = assess(src_arg)
+            if r.get("verdict") != "ok":
+                return _fail("[%s] without a frozen source no Location claim is made: %s" % (base, r))
+    return 0
+
+
+def _static_generated_body_root(d: str, *, pkg: str, model: str, dest_version: str = "7.25.0",
+                                creator_option: str | None = None, frozen: bool = True, accepted_omits: bool = True) -> Path:
+    """A destination at M2 for V17-4, from files alone: the bootstrapped pom
+    (jaxrs-spec/quarkus), the frozen legacy pom (spring/spring-boot, its
+    version through a property), the spec, the corpus with the source's
+    recorded bodies, the evidence bundle's handler and the catalogue."""
+    import json as _json
+
+    root = Path(d)
+    (root / ".hermes/planning/catalogs").mkdir(parents=True)
+    shutil.copy(GOLDEN / ".hermes/planning/catalogs/compat-mapping.json", root / ".hermes/planning/catalogs/compat-mapping.json")
+    opts = "<useJakartaEe>true</useJakartaEe><useBeanValidation>true</useBeanValidation>"
+    if creator_option is not None:
+        opts += "<generateJsonCreator>%s</generateJsonCreator>" % creator_option
+    (root / "pom.xml").write_text(
+        "<project><build><plugins><plugin><groupId>org.openapitools</groupId><artifactId>openapi-generator-maven-plugin</artifactId>"
+        "<version>%s</version><executions><execution><configuration><inputSpec>${project.basedir}/src/main/resources/api.yml</inputSpec>"
+        "<modelPackage>%s.dto</modelPackage><generatorName>jaxrs-spec</generatorName><library>quarkus</library>"
+        "<modelNameSuffix>Dto</modelNameSuffix><configOptions>%s</configOptions></configuration></execution></executions>"
+        "</plugin></plugins></build></project>\n" % (dest_version, pkg, opts), encoding="utf-8")
+    if frozen:
+        fp = root / ".derived/frozen-input/pom.xml"
+        fp.parent.mkdir(parents=True)
+        fp.write_text(
+            "<project><properties><gen.version>5.2.1</gen.version></properties><build><plugins><plugin>"
+            "<groupId>org.openapitools</groupId><artifactId>openapi-generator-maven-plugin</artifactId><version>${gen.version}</version>"
+            "<executions><execution><configuration><inputSpec>${project.basedir}/src/main/resources/api.yml</inputSpec>"
+            "<modelPackage>%s.dto</modelPackage><generatorName>spring</generatorName><library>spring-boot</library>"
+            "<modelNameSuffix>Dto</modelNameSuffix><configOptions><performBeanValidation>true</performBeanValidation></configOptions>"
+            "</configuration></execution></executions></plugin></plugins></build></project>\n" % pkg, encoding="utf-8")
+    (root / "src/main/resources").mkdir(parents=True)
+    (root / "src/main/resources/api.yml").write_text(_json.dumps({"openapi": "3.0.1", "components": {"schemas": {model: {
+        "type": "object", "required": ["name", "items"],
+        "properties": {"id": {"type": "integer"}, "name": {"type": "string"}, "items": {"type": "array", "items": {"type": "string"}}}}}}}),
+        encoding="utf-8")
+    ep = "ep:%s.rest.%sController#add%s(%s.dto.%sDto):http" % (pkg, model, model, pkg, model)
+    bodies = root / "verification/scenarios/bodies"
+    bodies.mkdir(parents=True)
+    ok_body = {"name": "n"} if accepted_omits else {"name": "n", "items": ["a"]}
+    (bodies / "create.json").write_text(_json.dumps(ok_body), encoding="utf-8")
+    (bodies / "create-invalid-name.json").write_text(_json.dumps({"name": "", "items": ["a"]}), encoding="utf-8")
+    (bodies / "create-invalid-items.json").write_text(_json.dumps({"name": "n", "items": ["way too long"]}), encoding="utf-8")
+    (root / "verification/scenarios/corpus.json").write_text(_json.dumps({"schema": "rhoai3.scenario-corpus/v1", "scenarios": [
+        {"id": "sc:create", "entry_point": ep, "method": "POST", "path": "/x", "body_file": "verification/scenarios/bodies/create.json",
+         "qualify": {"expect_status": [201], "intent": "positive"}},
+        {"id": "sc:create-invalid-name", "entry_point": ep, "method": "POST", "path": "/x",
+         "body_file": "verification/scenarios/bodies/create-invalid-name.json", "qualify": {"expect_status": [400], "intent": "negative"}},
+        {"id": "sc:create-invalid-items", "entry_point": ep, "method": "POST", "path": "/x",
+         "body_file": "verification/scenarios/bodies/create-invalid-items.json", "qualify": {"expect_status": [400], "intent": "negative"}},
+    ]}), encoding="utf-8")
+    ctl = "%s.rest.%sController" % (pkg, model)
+    bundle = {"entry_points": [{"id": ep, "kind": "http", "type": ctl, "member": "add%s(%s.dto.%sDto)" % (model, pkg, model)}],
+              "structure": {"available": True, "mode": "full", "types": [{"fqn": ctl, "kind": "class", "path": "src/main/java/x.java",
+                            "methods": [{"signature": "add%s(%s.dto.%sDto)" % (model, pkg, model), "resolution": "full",
+                                         "params": [{"name": "b", "type": "%s.dto.%sDto" % (pkg, model),
+                                                     "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}]}]}]}]}}
+    (root / "evidence/planning").mkdir(parents=True)
+    (root / "evidence/planning/evidence-bundle.json").write_text(_json.dumps(bundle), encoding="utf-8")
+    return root
+
+
+def _static_generated_body_case() -> int:
+    """V17-4 (v17: the V16-8 rule existed and never fired, its trigger was a
+    create scenario FAILING behind another card): the PARITY_GENERATED_BODY
+    obligation on pom.xml is planned from files on disk -- the qualified
+    jaxrs-spec/quarkus 7.25.0 destination creator against the frozen
+    spring/spring-boot 5.2.1 source's setters, and a required property the
+    source's ACCEPTED capture omits. The option already false: not planned
+    (not-applicable). A foreign destination version or a missing frozen
+    source build: not planned, the pair UNRESOLVED and named. The source
+    sending every required property: the pair applies, no obligation. The
+    four body cases are bound to the captures that send them; a case none
+    sends is unresolved. The plan gate discharges only when the condition no
+    longer holds. Twice under renamed packages and models."""
+    import tempfile
+
+    from planner.worklist import (GENERATED_BODY_CAUSE, PLAN_GATE, RULE_PARITY_GENERATED_BODY, generator_qualification,
+                                  load_json as _lj, static_generated_body_facts, static_generated_body_items)
+
+    for pkg, model in (("org.acme.clinic", "Owner"), ("com.example.depot", "Crate")):
+        with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+            root = _static_generated_body_root(d, pkg=pkg, model=model)
+            bundle = _lj(root / "evidence/planning/evidence-bundle.json")
+            items, notes = static_generated_body_items(root, bundle)
+            if len(items) != 1 or notes:
+                return _fail("[%s] the broken form plans exactly one pom obligation: %s %s" % (pkg, items, notes))
+            it = items[0]
+            if (it["rule_id"] != RULE_PARITY_GENERATED_BODY or it["cause"] != GENERATED_BODY_CAUSE or it["gate"] != PLAN_GATE
+                    or it["path"] != "pom.xml" or it["kind"] != "build" or not it["id"].startswith("plan:gb:")):
+                return _fail("[%s] the planned item is the V16-8 obligation on pom.xml at the plan gate: %s" % (pkg, it))
+            if "generateJsonCreator" not in it["detail"] or "items" not in it["detail"] or "No controller edit" not in it["detail"]:
+                return _fail("[%s] its first action is the V16-8 catalogue action naming the omitted property: %s" % (pkg, it["detail"][:400]))
+            if it["planned"]["omitted_by_accepted"] != [{"model": "%s.dto.%sDto" % (pkg, model), "property": "items", "scenarios": ["sc:create"]}]:
+                return _fail("[%s] the trigger is the accepted capture that omits the property: %s" % (pkg, it["planned"]))
+            facts = static_generated_body_facts(root, bundle)
+            cases = {(c["property"], c["case"]): c for c in facts["cases"]}
+            want = {("items", "omitted"): ["sc:create"], ("items", "invalid"): ["sc:create-invalid-items"],
+                    ("name", "empty"): ["sc:create-invalid-name"], ("items", "null"): [], ("name", "omitted"): [],
+                    ("name", "null"): [], ("items", "empty"): [], ("name", "invalid"): []}
+            got = {k: cases[k]["scenarios"] for k in want if k in cases}
+            if got != want or any(cases[k]["status"] != ("covered" if v else "unresolved") for k, v in want.items()):
+                return _fail("[%s] the four cases per required property are bound to the captures that send them: %s" % (pkg, got))
+            if not all("never invented" in cases[k].get("reason", "") for k, v in want.items() if not v):
+                return _fail("[%s] a case no capture sends is unresolved, never invented: %s" % (pkg, cases))
+            # the plan gate: discharged only when the condition no longer holds
+            prev = {"known": True, "tuple": [0, 5, 0]}
+            ok, why = progress(prev, dict(prev), set(), set(), gate=PLAN_GATE, issued_items=[it["id"]], cur_item_ids={it["id"]})
+            if ok:
+                return _fail("[%s] the plan gate refuses while the condition holds: %s" % (pkg, why))
+            ok, why = progress(prev, dict(prev), set(), set(), gate=PLAN_GATE, issued_items=[it["id"]], cur_item_ids=set())
+            if not ok:
+                return _fail("[%s] the plan gate accepts when the condition no longer holds: %s" % (pkg, why))
+            ok, why = progress(prev, {"known": True, "tuple": [0, 6, 0]}, set(), set(), gate=PLAN_GATE, issued_items=[it["id"]],
+                               cur_item_ids=set())
+            if ok:
+                return _fail("[%s] a planned repair may not make compilation worse: %s" % (pkg, why))
+        # correct form: the option is already false -> not applicable, nothing planned
+        with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+            root = _static_generated_body_root(d, pkg=pkg, model=model, creator_option="false")
+            items, notes = static_generated_body_items(root, _lj(root / "evidence/planning/evidence-bundle.json"))
+            q = generator_qualification(root)
+            if items or notes or q["status"] != "not-applicable" or not q["option"]["stopped"]:
+                return _fail("[%s] generateJsonCreator=false is not applicable: %s %s %s" % (pkg, items, notes, q))
+        # a foreign destination version, and a missing frozen source build: UNRESOLVED, never assumed
+        for kw, token in (({"dest_version": "7.0.0"}, "destination plugin version '7.0.0' is not qualified"),
+                          ({"frozen": False}, "frozen source build")):
+            with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+                root = _static_generated_body_root(d, pkg=pkg, model=model, **kw)
+                items, notes = static_generated_body_items(root, _lj(root / "evidence/planning/evidence-bundle.json"))
+                if items or not notes or token not in notes[0] or "UNRESOLVED" not in notes[0]:
+                    return _fail("[%s] %s: nothing planned, the pair unresolved and named: %s %s" % (pkg, kw, items, notes))
+        # the source sends every required property: the pair applies, no obligation
+        with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+            root = _static_generated_body_root(d, pkg=pkg, model=model, accepted_omits=False)
+            items, notes = static_generated_body_items(root, _lj(root / "evidence/planning/evidence-bundle.json"))
+            if items or notes or generator_qualification(root)["status"] != "applicable":
+                return _fail("[%s] no accepted capture omits a required property: nothing planned: %s %s" % (pkg, items, notes))
+    return 0
+
+
 def main() -> int:
+    if _static_generated_body_case():
+        return 1
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
             or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
@@ -5169,7 +5437,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case() or _real_package_validation_unit_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case() or _real_package_validation_unit_case() or _real_location_null_argument_case():
             return 1
         if (_real_generic_leaf_case() or _real_partial_leaf_case() or _real_leaf_bound_case()
                 or _real_generic_retirement_case()):
