@@ -1220,9 +1220,44 @@ def main(argv: list[str] | None = None) -> int:
                     "still reported, or a sealed member that violates its rule all refuse the card. So repair the whole "
                     "unit in one candidate; do not stop half way to make the count fall."),
             }
+    planned = planned_requirements(root, write_set)
+    if planned:
+        brief["planned_requirements"] = planned
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
     print(json.dumps(brief, indent=2, sort_keys=True))
     return 0
+
+
+def planned_requirements(root: Path, write_set: list[str]) -> list[dict]:
+    """Plan semantics v1: the source requirements admission planned for these
+    files (evidence/planning/plan-semantics.json), each with its qualified
+    recipe -- the fixed architecture and the mechanical checks that will judge
+    it. Descriptive: the write set above is the only grant, and a run admitted
+    without the decision has no such file, so its brief is unchanged."""
+    from planner.paths import PLAN_SEMANTICS
+    from planner.source_requirements import recipes_of
+
+    p = root / PLAN_SEMANTICS
+    if not p.is_file() or not write_set:
+        return []
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return []
+    recipes = recipes_of(catalog(root))
+    out = []
+    for r in ((doc.get("plan") or {}).get("requirements") or []):
+        if not isinstance(r, dict) or r.get("status") not in ("applicable", "unresolved") or not set(r.get("paths") or []) & set(write_set):
+            continue
+        rec = recipes.get(str((r.get("recipe") or {}).get("id") or ""))
+        out.append({"id": r["id"], "status": r["status"], "subject": r.get("subject"),
+                    "recipe": ({"id": (r.get("recipe") or {}).get("id"), "version": rec.get("version"),
+                                "architecture": (rec.get("implementation") or {}).get("architecture"),
+                                "refuse_when": rec.get("refuse") or []} if rec else None),
+                    "acceptance": list(r.get("acceptance") or []), "unknowns": list(r.get("unknowns") or []),
+                    "note": "planned from the frozen source before any failure; judged by the checks named here, not by the "
+                            "diagnostic disappearing"})
+    return out
 
 
 if __name__ == "__main__":
