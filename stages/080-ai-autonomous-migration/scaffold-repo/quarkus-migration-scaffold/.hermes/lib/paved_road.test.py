@@ -18,6 +18,7 @@ from paved_road import (
     HERMES_DIR,
     audit_bytes,
     audit_paths,
+    load_exec_ledger,
     coverage,
     evaluate_audit,
     generate_audit,
@@ -41,10 +42,25 @@ M2_SKILLS = "  ┊ 📚 skill  bootstrap-destination\n  ┊ 📚 skill  build-wo
 M2_MINT = "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s\n"
 
 
+def intent_ledger(text: str) -> list[dict]:
+    """The execution ledger a log line's AUTHOR intended (its marker's code,
+    else 0), for tests of OTHER audit semantics. V17-6b tests pass explicit
+    ledgers instead: in production an unmarked line proves nothing."""
+    import re as _re
+    rows = []
+    for ln in text.splitlines():
+        m = _re.search(r"\$\s+(?P<cmd>.*?)\s+\d+(?:\.\d+)?s(?:\s+\[(?P<tag>[^\]]*)\])?\s*$", ln)
+        if "$" not in ln or not m:
+            continue
+        em = _re.fullmatch(r"exit (\d+)", m.group("tag") or "")
+        rows.append({"command": m.group("cmd"), "exit_code": int(em.group(1)) if em else (0 if m.group("tag") is None else 1)})
+    return rows
+
+
 def _eval_msg(text: str, doc: dict, root: Path) -> tuple[int, str]:
     buf = io.StringIO()
     with redirect_stderr(buf):
-        rc = evaluate_audit(text, doc, root)
+        rc = evaluate_audit(text, doc, root, intent_ledger(text))
     return rc, buf.getvalue()
 
 
@@ -215,18 +231,46 @@ class TestAuditSemantics(unittest.TestCase):
 
     def test_green_passes(self):
         text = (self.keep / "official.log").read_text(encoding="utf-8")
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 0)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, load_exec_ledger(self.keep / "official.log")), 0)
 
     def test_green_fixtures_match_dispatcher_success_format(self):
         for path in (M1 / "fixtures" / "green-m1" / "official.log", M2 / "fixtures" / "green-m2" / "official.log"):
             self.assertNotIn("[exit 0]", path.read_text(encoding="utf-8"))
 
-    def test_omitted_exit_marker_is_success(self):
-        self.assertEqual(evaluate_audit(GATE + M2_SKILLS + M2_MINT, self.doc, self.keep), 0)
+    def test_omitted_exit_marker_is_unknown_without_a_ledger(self):
+        # V17-6b: the runtime omits the marker whenever a result is not JSON
+        # with a non-zero exit_code; an unmarked line alone proves nothing
+        text = GATE + M2_SKILLS + M2_MINT
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 0)
+
+    def test_unmarked_failed_command_refuses(self):
+        # V17-6b, the v17 shape: the log line is unmarked, the command exited 1
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-1]["exit_code"] = 1
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_unknown_exit_code_refuses(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-1]["exit_code"] = None
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_red_then_recorded_clean_passes(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger.insert(1, dict(ledger[-1], exit_code=1))
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 0)
+
+    def test_read_of_the_script_is_not_an_execution(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)[:-1] + [{"command": "cat .hermes/kernel/k4_mint.py", "exit_code": 0}]
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
 
     def test_explicit_exit_2_refuses(self):
         text = GATE + M2_SKILLS + M2_MINT.replace("  1.2s\n", "  1.2s [exit 2]\n")
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 1)
 
     def test_silence_refuses(self):
         self.assertEqual(evaluate_audit("no mandated needles\n", self.doc, self.keep), 1)
@@ -239,7 +283,7 @@ class TestAuditSemantics(unittest.TestCase):
 
     def test_exit1_not_cleared_by_other_needle(self):
         text = GATE.replace("  0.1s\n", "  0.1s [exit 1]\n") + M2_SKILLS + M2_MINT
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 1)
 
     def test_same_needle_later_success_clears_exit1(self):
         text = GATE + M2_SKILLS + M2_MINT.replace("  1.2s\n", "  1.2s [exit 1]\n") + M2_MINT
@@ -254,7 +298,7 @@ class TestAuditSemantics(unittest.TestCase):
 
     def test_path_mention_is_not_skill_view(self):
         text = GATE + "load .hermes/skills/migration/bootstrap-destination/SKILL.md\n  ┊ 📚 skill  build-worklist\n  ┊ 📚 skill  admit-migration-plan\n  ┊ 📚 skill  verify-live-kanban-loop\n" + M2_MINT
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 1)
 
     def test_worker_receipt_is_not_proof(self):
         with tempfile.TemporaryDirectory(prefix="paved-forge-") as tmp:
@@ -383,6 +427,8 @@ class TestAuditReceipt(unittest.TestCase):
     def _audit_into(self, logs: Path, fixture: str, env: dict) -> tuple[int, dict]:
         log = logs / "t_rcpt0001.log"
         log.write_text((M2 / "fixtures" / fixture / "official.log").read_text(encoding="utf-8"), encoding="utf-8")
+        (logs / "t_rcpt0001.exec.jsonl").write_text(
+            (M2 / "fixtures" / fixture / "official.exec.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
         with patch.dict(os.environ, env, clear=False):
             with redirect_stderr(io.StringIO()):
                 rc = audit_paths(log, M2 / "fixtures" / fixture, M2 / "steps.json")
@@ -406,6 +452,80 @@ class TestAuditReceipt(unittest.TestCase):
             rc, doc = self._audit_into(logs, red[0], {"HERMES_KANBAN_RUN_ID": "30", "HERMES_PROFILE": "reviewer"})
             self.assertNotEqual(rc, 0)
             self.assertEqual(doc["rc"], rc)
+
+    def _receipt(self, logs: Path) -> dict:
+        return json.loads((logs / "t_rcpt0001.audit.json").read_text(encoding="utf-8"))
+
+    def _cli(self, env: dict, *extra) -> int:
+        cli = M2 / "scripts" / "assert-paved-road-audit.py"
+        return subprocess.run([sys.executable, str(cli), "t_rcpt0001", "--root", str(M2 / "fixtures" / "green-m2"), *extra],
+                              env=dict(os.environ, **env), capture_output=True, text=True).returncode
+
+    def test_green_then_red_replaces_the_receipt(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "32", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            rc, doc = self._audit_into(logs, "red-no-rerun", env)
+            self.assertNotEqual(rc, 0)
+            self.assertEqual((doc["rc"], doc["state"]), (rc, "done"))
+
+    def test_green_then_missing_log_is_not_green(self):
+        # the user's counterexample: first audit 0, second audit (log gone) 1,
+        # the stored same-run receipt must not still say 0
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            (logs / "t_rcpt0001.log").unlink()
+            self.assertNotEqual(self._cli(env), 0)
+            self.assertNotEqual(self._receipt(logs)["rc"], 0)
+
+    def test_green_then_missing_ledger_is_not_green(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            (logs / "t_rcpt0001.exec.jsonl").unlink()
+            self.assertNotEqual(self._cli(env), 0)
+            self.assertNotEqual(self._receipt(logs)["rc"], 0)
+
+    def test_green_then_malformed_steps_is_not_green(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            bad = Path(td) / "steps.json"
+            bad.write_text("{not json", encoding="utf-8")
+            with patch.dict(os.environ, env, clear=False), redirect_stderr(io.StringIO()):
+                self.assertNotEqual(audit_paths(logs / "t_rcpt0001.log", M2 / "fixtures" / "green-m2", bad), 0)
+            self.assertNotEqual(self._receipt(logs)["rc"], 0)
+
+    def test_interrupted_audit_leaves_running_not_green(self):
+        from paved_road import write_audit_receipt
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            with patch.dict(os.environ, env, clear=False):
+                write_audit_receipt(logs / "t_rcpt0001.log", None)  # the first thing a new audit does
+            doc = self._receipt(logs)
+            self.assertEqual((doc["rc"], doc["state"]), (None, "running"))
+
+    def test_receipt_binds_the_audited_inputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            _, doc = self._audit_into(logs, "green-m2", {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer"})
+            log_bytes = (logs / "t_rcpt0001.log").read_bytes()
+            import hashlib
+            self.assertEqual(doc["log"], {"bytes": len(log_bytes), "sha256": hashlib.sha256(log_bytes).hexdigest()})
+            self.assertTrue(doc["ledger"]["sha256"] and doc["steps_sha256"])
 
     def test_fixture_log_gets_no_receipt(self):
         audit_paths(M2 / "fixtures" / "green-m2" / "official.log", M2 / "fixtures" / "green-m2", M2 / "steps.json")
@@ -489,7 +609,8 @@ class TestM1Green(unittest.TestCase):
     def test_m1_green_passes(self):
         doc = load_steps(M1 / "steps.json")
         root = M1 / "fixtures" / "green-m1"
-        self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root), 0)
+        self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root,
+                                        load_exec_ledger(root / "official.log")), 0)
 
 
 if __name__ == "__main__":

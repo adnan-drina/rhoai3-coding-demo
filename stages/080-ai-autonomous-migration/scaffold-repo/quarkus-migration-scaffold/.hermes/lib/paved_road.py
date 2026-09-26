@@ -8,7 +8,13 @@ boundary (never a parent directory).
 
 Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails: a
 later clean invocation of the *same* needle clears an earlier red
-(SOUL self-correction). Last-wins across different needles stays refused.
+(SOUL self-correction). "Clean" is POSITIVE evidence (V17-6b): the last
+recorded execution in the execution ledger (``<task>.exec.jsonl``, written
+by the K2 post_tool_call observer) exited 0. The runtime omits ``[exit N]``
+whenever a result is not JSON with a non-zero exit_code, so an unmarked log
+line alone is unknown, never success. Every audit writes its receipt
+``<task>.audit.json`` (run, profile, graded log/ledger prefixes; ``running``
+first, so an interrupted or failed audit never leaves an old success). Last-wins across different needles stays refused.
 A run of a mandated step is a ``$`` line whose EXECUTABLE is the step's
 script (``run_executables``); a ``grep``/``cat``/``sed`` that names the
 script is a read, not a run, and its exit code is not the step's.
@@ -589,7 +595,16 @@ def m1_handoff_gaps(root: Path, task_id: str) -> list[str]:
         return ["PHASE_HANDOFF: unreadable continuation status or activation evidence"]
 
 
-def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
+def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict[str, Any]] | None = None) -> int:
+    """Grade the official log + KEEP against steps.json.
+
+    ``ledger`` is the execution ledger (``<task>.exec.jsonl``, written by the
+    K2 post_tool_call observer): the positive evidence of what a terminal
+    command exited with. V17-6b: the runtime stamps ``[exit N]`` only when a
+    terminal result parses as JSON with a non-zero exit_code, so an unmarked
+    log line is UNKNOWN; a mandated command passes only on a recorded
+    exit_code 0 for its last execution. None (no ledger) grades every
+    mandated command as unknown."""
     failures: list[str] = []
     task_id = log_task_id(text)
     for step in doc["steps"]:
@@ -635,9 +650,21 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
             failures.append("unmatched [exit 1] on mandated needle %r (step %s, count=%d)" % (needle, sid, len(reds)))
             continue
         last_rc = runs[-1][1]
-        # Hermes stamps ``[exit N]`` on failure and omits the marker on success.
         if last_rc not in (0, None):
             failures.append("last matching line for needle %r is not success (step %s rc=%s)" % (needle, sid, last_rc))
+            continue
+        # V17-6b: an unmarked line is not a success; the last recorded
+        # execution of this command must have exited 0
+        executed = executions_of(ledger, needle)
+        if not executed:
+            failures.append("no positive execution evidence for step %s needle %r: the official log shows %d invocation(s) "
+                            "and the execution ledger records none (an unmarked line is unknown, not success)"
+                            % (sid, needle, len(runs)))
+            continue
+        last_exit = executed[-1].get("exit_code")
+        if last_exit != 0:
+            failures.append("last recorded execution of needle %r did not exit 0 (step %s exit_code=%s)"
+                            % (needle, sid, "unknown" if last_exit is None else last_exit))
             continue
         missing = keep_missing(root, keep)
         if missing:
@@ -653,7 +680,117 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
     return 0
 
 
+EXEC_LEDGER_SUFFIX = ".exec.jsonl"
+AUDIT_RECEIPT_SUFFIX = ".audit.json"
+
+
+def exec_ledger_path(log: Path) -> Path:
+    """<logs>/<task>.exec.jsonl beside <logs>/<task>.log (fixtures: official.exec.jsonl)."""
+    return log.with_name(log.stem + EXEC_LEDGER_SUFFIX)
+
+
+def load_exec_ledger(log: Path) -> list[dict[str, Any]] | None:
+    """The execution ledger rows, in order; None when there is no ledger. A
+    malformed row is kept as an execution of nothing (it cannot vouch)."""
+    p = exec_ledger_path(log)
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    rows: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            row = None
+        rows.append(row if isinstance(row, dict) else {"malformed": True})
+    return rows
+
+
+def executions_of(ledger: list[dict[str, Any]] | None, needle: str) -> list[dict[str, Any]]:
+    """Recorded executions whose command RUNS ``needle`` (same executable rule
+    as the log lines: a grep/cat that names the script is not a run)."""
+    out = []
+    for row in ledger or []:
+        cmd = str(row.get("command") or "")
+        if "--help" in cmd or not cmd:
+            continue
+        if is_run_of(cmd, needle):
+            out.append(row)
+    return out
+
+
+def audit_receipt_path(log: Path) -> Path:
+    """<logs>/<task>.audit.json beside <logs>/<task>.log."""
+    return log.with_name(log.stem + AUDIT_RECEIPT_SUFFIX)
+
+
+def _sha256_prefix(path: Path) -> tuple[int, str]:
+    import hashlib
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return 0, ""
+    return len(data), hashlib.sha256(data).hexdigest()
+
+
+def write_audit_receipt(log: Path, rc: int | None, *, steps_path: Path | None = None, root: Path | None = None) -> None:
+    """V17-6: the audit's own result, bound to the native run and profile that
+    ran it AND to the inputs it read (the official log and execution ledger
+    prefixes it graded, the steps file, the root). ``rc`` None is the
+    in-progress/invalidated state written BEFORE anything is read, so an
+    audit that is interrupted, or fails on a missing, unreadable or
+    malformed input, can never leave an earlier success standing. K2's
+    reviewer fence and complete gate read this receipt, never an absent
+    marker. Official logs only: a land-time fixture gets no receipt."""
+    if not _OFFICIAL_KANBAN_LOG.search(str(log).replace("\\", "/")):
+        return
+    log_bytes, log_sha = _sha256_prefix(log)
+    ledger_bytes, ledger_sha = _sha256_prefix(exec_ledger_path(log))
+    doc = {
+        "schema": "rhoai3.paved-road-audit-receipt/v2",
+        "task": log.stem,
+        "rc": None if rc is None else int(rc),
+        "state": "running" if rc is None else "done",
+        "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(),
+        "profile": (os.environ.get("HERMES_PROFILE") or "").strip().lower(),
+        "log": {"bytes": log_bytes, "sha256": log_sha},
+        "ledger": {"bytes": ledger_bytes, "sha256": ledger_sha},
+        "steps_sha256": _sha256_prefix(steps_path)[1] if steps_path else "",
+        "root": str(root.resolve()) if root else "",
+    }
+    target = audit_receipt_path(log)
+    try:
+        tmp = target.with_name(target.name + ".tmp")
+        tmp.write_text(json.dumps(doc, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        # cannot record: remove any earlier receipt so nothing stale stays green
+        try:
+            target.unlink()
+        except OSError:
+            pass
+
+
+def invalidate_audit_receipt(task_id: str | None) -> None:
+    """The audit could not even resolve its log: whatever this task's receipt
+    said before no longer stands."""
+    log = _official_log(task_id)
+    if log is not None:
+        write_audit_receipt(log, 2)
+
+
 def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
+    # invalidate first: an interrupted audit leaves "running", never green
+    write_audit_receipt(log, None, steps_path=steps_path, root=root)
+    rc = _audit_paths(log, root, steps_path)
+    write_audit_receipt(log, rc, steps_path=steps_path, root=root)
+    return rc
+
+
+def _audit_paths(log: Path, root: Path, steps_path: Path) -> int:
     if not is_allowed_audit_log(log):
         return _fail("--log is not an official kanban log (%s); refuse implementer cache/terminal-output" % log)
     if not log.is_file():
@@ -666,43 +803,7 @@ def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
         doc = load_steps(steps_path)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return _fail("steps.json: %s" % exc)
-    rc = evaluate_audit(text, doc, root)
-    write_audit_receipt(log, rc)
-    return rc
-
-
-AUDIT_RECEIPT_SUFFIX = ".audit.json"
-
-
-def audit_receipt_path(log: Path) -> Path:
-    """<logs>/<task>.audit.json beside <logs>/<task>.log."""
-    return log.with_name(log.stem + AUDIT_RECEIPT_SUFFIX)
-
-
-def write_audit_receipt(log: Path, rc: int) -> None:
-    """V17-6: the audit's own result, bound to the native run and profile that
-    ran it. The official log cannot say an audit passed: the runtime stamps
-    ``[exit N]`` only when the terminal result parses as JSON with a non-zero
-    exit_code (agent/display.py _detect_tool_failure), so v17 M4 run 30's
-    reviewer audit exited 1 twice and its lines carry no marker. K2's reviewer
-    fence and complete gate read this receipt, never an absent marker."""
-    doc = {
-        "schema": "rhoai3.paved-road-audit-receipt/v1",
-        "task": log.stem,
-        "rc": int(rc),
-        "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(),
-        "profile": (os.environ.get("HERMES_PROFILE") or "").strip().lower(),
-    }
-    if not _OFFICIAL_KANBAN_LOG.search(str(log).replace("\\", "/")):
-        return  # a land-time fixture log gets no receipt (and dirties no tree)
-    target = audit_receipt_path(log)
-    try:
-        tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(json.dumps(doc, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, target)
-    except OSError:
-        # no receipt means "not green": the fence stays open, never latched
-        pass
+    return evaluate_audit(text, doc, root, load_exec_ledger(log))
 
 
 def dest_skill_mds(skills_root: Path) -> list[Path]:
@@ -852,6 +953,7 @@ def _cmd_audit(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     log = resolve_log(args.task_id, args.log)
     if log is None:
+        invalidate_audit_receipt(args.task_id or os.environ.get("HERMES_KANBAN_TASK"))
         print("FAIL: pass a t_* id, $HERMES_KANBAN_TASK, or --log to an existing official kanban log", file=sys.stderr)
         return 2
     return audit_paths(log, args.root, args.steps)
