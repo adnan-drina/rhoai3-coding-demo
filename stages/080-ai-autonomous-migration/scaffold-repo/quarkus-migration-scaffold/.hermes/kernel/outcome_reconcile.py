@@ -16,7 +16,10 @@ reads whether it already happened. A crash anywhere re-runs the lookup and never
 the effect: no duplicate card, grant, budget or effect.
 
 Does nothing (exit 0, no output) unless the root runs the outcome protocol with
-execution not disabled and a store exists.
+execution not disabled and a store exists. Under enabled execution the tick is
+a REQUEST to the protected authority service, which runs this same function in
+its own principal against its own store (outcome_authority.py); the hook
+process only forwards it and writes the observer view the service returns.
 """
 from __future__ import annotations
 
@@ -37,8 +40,8 @@ from k4_graph import complete_generation, publish_plan, readback, sync_ownership
 from planner.outcome_graph import DELIVER_STAGES  # noqa: E402
 from planner.outcome_lifecycle import (DELIVERY_OK_VERDICTS, Ctx, Refusal, delivery_facts, plan_after_refuse,  # noqa: E402
                                        stage_admission, write_account)
-from planner.outcome_protocol import STORE_FILE, execution_gate  # noqa: E402
-from planner.outcome_store import Store, StoreError, canonical, fault  # noqa: E402
+from planner.outcome_protocol import authority_endpoint, execution_gate, select_protocol  # noqa: E402
+from planner.outcome_store import Store, StoreError, canonical, fault, store_path  # noqa: E402
 
 IMPL = "implementer"
 
@@ -212,13 +215,62 @@ def _m3_accepted(ctx: Ctx, intent: dict[str, Any]) -> str:
     _finish(ctx.store, intent["intent_id"], "done", {})
     return "done"
 
+def _owner_repair(ctx: Ctx, intent: dict[str, Any]) -> str:
+    """Automatic owner recovery: publish the ONE repair of the owner as the
+    dependent's prerequisite. Every step is recorded; a crash replays the
+    lookups (keyed card, existing link, existing assignment), never the effect."""
+    from planner.outcome_lifecycle import owner_repair_id, plan_owner_repair
+    store = ctx.store
+    doc = json.loads(intent["doc"])
+    iid = intent["intent_id"]
+    fid = owner_repair_id(doc["owner"], doc["dependent"])
+    if "revision" not in _steps(store, iid):
+        plan = store.current_revision()
+        nxt = plan_owner_repair(store, plan, doc)
+        if isinstance(nxt, Refusal):
+            _finish(store, iid, "stopped", {"code": nxt.code, "detail": nxt.detail})
+            return "stopped"
+        if nxt is not None:
+            try:
+                store.commit_revision(nxt, kind="owner-repair", parent=int(plan["revision"]))
+            except StoreError as exc:
+                if exc.code in ("REVISION_BLOCKED_BY_EFFECT", "REVISION_BLOCKED_BY_RELEASE", "REVISION_STALE"):
+                    return "pending"
+                raise
+            sync_ownership(store, nxt)
+        _step(store, iid, "revision", int(store.meta("revision", "0") or 0))
+        fault("reconcile-after-revision")
+    plan = store.current_revision()
+    node = next(n for n in plan["nodes"] if n["outcome_id"] == fid)
+    publish_plan(ctx.root, store, ctx.native, plan, m2_task=store.meta("m2_task"), nodes=[node], hold=True)
+    fault("reconcile-after-publish")
+    ftid = _task_of(store, fid)
+    for n in plan["nodes"]:
+        if fid in (n.get("parents") or []):
+            tid = _task_of(store, n["outcome_id"])
+            t = ctx.native.task(tid) if tid else None
+            if t is not None and ftid not in (t.get("parents") or []):
+                ctx.native.link(ftid, tid)
+    gaps = readback(store, ctx.native, plan)
+    if gaps:
+        _step(store, iid, "readback", gaps[:8])
+        return "pending"
+    t = ctx.native.task(ftid)
+    if t and t.get("assignee") != IMPL:
+        ctx.native.assign(ftid, IMPL)
+        fault("reconcile-after-assign")
+    _finish(store, iid, "done", {"revision": plan["revision"], "repair": fid, "task": ftid})
+    return "done"
+
+
 HANDLERS = {"m2-release": _m2_release, "m4-assessed": _m4_assessed, "m5-stage-done": _m5_stage_done,
-            "m3-accepted": _m3_accepted}
+            "m3-accepted": _m3_accepted, "owner-repair": _owner_repair}
 
 
-def tick(root: Path, native: Any | None = None) -> list[dict[str, Any]]:
+def tick(root: Path, native: Any | None = None, *, alive: Any = None,
+         observer_writes: bool = True) -> list[dict[str, Any]]:
     root = Path(root)
-    if not (root / STORE_FILE).exists() or execution_gate(root):
+    if not store_path(root).exists() or execution_gate(root):
         return []
     store = Store(root)
     if native is None:
@@ -226,12 +278,12 @@ def tick(root: Path, native: Any | None = None) -> list[dict[str, Any]]:
         db = store.meta("native_db")
         env = dict(os.environ, HERMES_KANBAN_DB=db)
         native = KanbanNative(db, hermes=(os.environ.get("HERMES_BIN") or "hermes").split(), env=env)
-    ctx = Ctx(root, store, native)
+    ctx = Ctx(root, store, native, alive=alive, observer_writes=observer_writes)
     out = []
     if store.meta("publication_state") == "incomplete":
         complete_generation(store, native)
     from planner.outcome_lifecycle import recover_dead_effects
-    for row in recover_dead_effects(store, root, native):
+    for row in recover_dead_effects(store, root, native, alive=alive):
         out.append({"effect": row["effect_id"], "state": row["state"]})
     for row in store.conn.execute("SELECT * FROM intents WHERE state='pending' ORDER BY created_at, intent_id").fetchall():
         intent = dict(row)
@@ -262,7 +314,13 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             pass
     try:
-        out = tick(root)
+        endpoint = authority_endpoint(select_protocol(root))
+        if endpoint:
+            # the protected authority reconciles; this observer only asks it to
+            from planner.outcome_authority import call
+            out = call(endpoint, "tick", {}) or []
+        else:
+            out = tick(root)
     except Exception as exc:  # an observer never breaks dispatch; the intent stays pending
         print(json.dumps({"reconcile_error": str(exc)}), file=sys.stderr)
         return 0

@@ -1602,18 +1602,60 @@ data:
             f"missing k2={not k2_present}"
         )
         cfg["hooks"]["pre_tool_call"] = []
+    # >>> post-tool-call observer (V17-6b)
+    # A destination whose harness ships .hermes/kernel/post_tool_call.py gets
+    # it registered as a post_tool_call observer for terminal calls, copied
+    # into the managed hooks directory like the K2 hook, with the same 5 s
+    # timeout. It records terminal exit codes as positive execution evidence.
+    # fail_closed applies to pre_tool_call only on the pinned runtime
+    # (agent/shell_hooks.py), so the observer carries none; the K2 entry above
+    # keeps fail_closed: true.
+    _post_src = os.path.join(safe_root, ".hermes", "kernel", "post_tool_call.py")
+    if os.path.isfile(_post_src):
+        _post_dst = os.path.join(hooks_dir, "post_tool_call.py")
+        os.makedirs(hooks_dir, exist_ok=True)
+        shutil.copy2(_post_src, _post_dst)
+        os.chmod(_post_dst, 0o755)
+        cfg["hooks"]["post_tool_call"] = [{"matcher": "terminal", "command": _post_dst, "timeout": 5}]
+        print("POST-TOOL-CALL: terminal observer registered from .hermes/kernel/post_tool_call.py")
+    # <<< post-tool-call observer
     # >>> outcome-board hooks (stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md)
-    # ONLY for a run whose destination run-defaults.json (bound by its initial
-    # commit) selects outcome-board/v1. No existing run and no current golden
-    # selects it, so this registers nothing today. When selected: the K2 hook
-    # also decides the review/block terminators, and the gateway-embedded
+    # ONLY for a run whose EFFECTIVE selection is outcome-board/v1, decided by
+    # the one rule every harness reader uses (outcome_protocol.select_protocol):
+    # a governed run's request in its initial commit, agreed by the read-only
+    # run control at /etc/rhoai3/run-control; a local fixture's run-defaults.json.
+    # Never a mutable file alone. An inconsistent selection registers nothing
+    # and says why (the launch check refuses the run). A destination whose
+    # harness predates the selection module keeps the previous rule
+    # (run-defaults.json), which no such golden sets. When selected: the K2
+    # hook also decides the review/block terminators, and the gateway-embedded
     # dispatcher runs the continuation reconciler on its own tick (no new
-    # scheduler). Execution itself stays refused until a protected writer exists.
+    # scheduler). Execution itself stays refused until the protected authority
+    # answers.
+    _ob_protocol, _ob_why = None, ""
     try:
-        with open(os.path.join(safe_root, "run-defaults.json"), encoding="utf-8") as _obf:
-            _ob_protocol = ((_pjson.load(_obf) or {}).get("configuration") or {}).get("board_protocol")
-    except (OSError, ValueError, AttributeError):
-        _ob_protocol = None
+        import sys as _ob_sys
+        _ob_lib = os.path.join(safe_root, ".hermes", "lib")
+        if _ob_lib not in _ob_sys.path:
+            _ob_sys.path.insert(0, _ob_lib)
+        from planner.outcome_protocol import select_protocol as _ob_select
+    except Exception:
+        _ob_select = None
+    if _ob_select is not None:
+        try:
+            _ob_sel = _ob_select(safe_root)
+            if _ob_sel.errors:
+                _ob_why = "%s: %s" % (_ob_sel.errors[0][0], _ob_sel.errors[0][1])
+            else:
+                _ob_protocol = _ob_sel.protocol
+        except Exception as _ob_exc:
+            _ob_why = "selection unreadable (%s)" % type(_ob_exc).__name__
+    else:
+        try:
+            with open(os.path.join(safe_root, "run-defaults.json"), encoding="utf-8") as _obf:
+                _ob_protocol = ((_pjson.load(_obf) or {}).get("configuration") or {}).get("board_protocol")
+        except (OSError, ValueError, AttributeError):
+            _ob_protocol = None
     if _ob_protocol == "outcome-board/v1" and cfg["hooks"].get("pre_tool_call"):
         cfg["hooks"]["pre_tool_call"][0]["matcher"] += "|kanban_block|kanban_request_review|request_review"
         cfg["hooks"]["on_kanban_dispatch_tick"] = [{
@@ -1621,6 +1663,8 @@ data:
             "timeout": 120,
         }]
         print("OUTCOME-BOARD: review/block matcher + on_kanban_dispatch_tick reconciler registered")
+    elif _ob_why:
+        print("OUTCOME-BOARD: hooks NOT registered: %s" % _ob_why)
     # <<< outcome-board hooks
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:

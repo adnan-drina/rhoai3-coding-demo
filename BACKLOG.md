@@ -58,12 +58,28 @@ The implementation is in the golden, disabled by default. The contract is
   serialization. Synthetic suite: `lib/planner/outcome_board.test.py`.
   Exact runtime and real workers:
   `hermes-runtime/tests/rhoai3_outcome_board` (tree 8a3bb406).
-- [ ] **Blocked (F1/C2): no protected writer.** Gateway, dispatcher, hooks
-  and workers share one UID in one container, so the authority store is
-  cooperative. `execution: enabled` refuses `AUTHORITY_UNPROTECTED` until a
-  separate principal owns the store: a sidecar with its own UID and a
-  read-only mount into the worker, or a platform service. This is a
-  platform decision; it is not substituted by a weaker check.
+- [x] One protocol selection (2026-09-26): the run's request
+  (`boardProtocol` → initial-commit `run-budget.json`) agreed by the
+  provisioner's read-only run control; `PROTOCOL_UNBOUND` / `_DOWNGRADED` /
+  `_UNREQUESTED` / `_UNKNOWN` refuse in K2, K4, autostart and run-preflight and
+  never fall back to the serial loop; the Stage 050 hook producer registers from
+  the same selection. v12–v17 (no request) unchanged.
+- [x] F1 protected writer BUILT (2026-09-26): authority service
+  (`planner/outcome_authority.py`) in a sidecar with a different uid, store on a
+  volume only the sidecar mounts, socket read-only in the worker; every
+  worker-side entry point is a client; the service re-measures candidate,
+  scope and baseline ancestry and runs no repository-configured git code.
+  Two-uid kernel check passed locally (podman, ws-080 image).
+- [ ] **Live Dev Spaces qualification of the sidecar** (container-overrides
+  runAsUser applied, SCC admission of the second uid, store unreachable,
+  socket read-only, kanban.db access, run-control mount) and the image build
+  that bakes `/opt/rhoai3/outcome-authority` + `outcome_authority.code_sha256`.
+  Until then `enabled` refuses `AUTHORITY_UNPROTECTED`.
+- [ ] **Architect decision: measurement trust.** Heavy receipts (build, tests,
+  parity, MTA, work list) stay worker-produced; `enabled` also refuses
+  `MEASUREMENT_TRUST_UNDECIDED` until the run control declares
+  `measurement_trust: cooperative-receipts` or an independent measurement
+  principal is funded (contract 8b).
 - [x] Implementation review 2026-09-26, R1–R6: corrected, each with a
   regression reproduced first. The real-worker delivery test runs an accepted
   repair with a worker killed after its commit, REFUSE → reassessment, and M5
@@ -71,8 +87,6 @@ The implementation is in the golden, disabled by default. The contract is
 - [x] Production hooks in the Stage 050 producer, gated on the destination
   selecting `outcome-board/v1` (registers nothing today). This needs the normal
   Stage 050 publication before any run selects the protocol.
-- [ ] F1 platform component: the authority sidecar with a separate UID
-  (design in the contract, section 8a).
 
 ## Destination declared references and package-leaf isolation — 2026-09-25
 

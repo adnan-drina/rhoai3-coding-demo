@@ -113,6 +113,15 @@ fi
 if ! RUNTIME_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -c 'import sys; from planner.run_control import runtime_gaps; g = runtime_gaps(sys.argv[1]); print(g[0] if g else "hermes runtime: ok or not declared"); raise SystemExit(1 if g else 0)' "${ROOT}" 2>&1)"; then
   fail_status "${RUNTIME_OUT}"
 fi
+# The board protocol (planner.outcome_protocol.launch_gaps): a run that
+# requested the outcome board starts only when its initial-commit request and
+# the read-only run control agree and its execution gate is open. A missing,
+# inconsistent or downgraded selection refuses here; the serial loop is never
+# started instead. A run that requested nothing (v12-v17) or the serial loop
+# passes unchanged.
+if ! PROTOCOL_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.outcome_protocol --root "${ROOT}" launch-check 2>&1)"; then
+  fail_status "$(printf '%s\n' "${PROTOCOL_OUT}" | grep -m1 '^REFUSE' || printf '%s' "${PROTOCOL_OUT}" | tail -1)"
+fi
 
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"

@@ -1,18 +1,19 @@
 """The K2 hook's outcome-board branch (called in-process by kernel/pre_tool_call.sh).
 
 Serial-loop runs return None immediately and the hook behaves exactly as
-before. The fast path reads two files and never runs git: no authority store,
-and ``run-defaults.json`` does not name outcome-board/v1. For an outcome-board
-run the phase, the write set and the completion rule come from the authority
-records and the native board. They never come from the card body or from K2_*
-environment overrides.
+before. The fast path reads a few small files and never runs git: no authority
+store in the tree, and neither ``run-defaults.json``, the initial declaration
+``run-budget.json`` nor the platform contract names outcome-board/v1. For an
+outcome-board run the phase, the write set and the completion rule come from the
+authority (in-process for a qualification fixture, the protected service under
+enabled execution) and the native board. They never come from the card body or
+from K2_* environment overrides.
 
 Decisions:
-  kanban_block        always allowed (escalation is a legal result)
+  kanban_block        allowed on a consistent selection (escalation is a legal
+                      result); an inconsistent selection refuses everything
   kanban_complete     outcome_lifecycle.check_complete (records the intent first)
-  request_review      M2: publication read-back must be green; assessment:
-                      the implementer's terminator; repair outcome: refused
-                      (an outcome completes on its acceptance, no review lane)
+  request_review      outcome_lifecycle.check_review
   product writes      outcome_lifecycle.check_write against the run-bound issue;
                       the authority store and harness state are never tool-written
 """
@@ -21,25 +22,46 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from planner.outcome_protocol import DEFAULTS, OUTCOME, STORE_FILE, describe, execution_gate, select_protocol
+from planner.outcome_protocol import (DECLARATION, DEFAULTS, OUTCOME, SELECTION_REFUSALS, STORE_FILE, authority_endpoint,
+                                      describe, execution_gate, select_protocol, store_present)
+
+CONTRACT_HINT = Path("/etc/rhoai3/run-control/contract.json")
 
 
 def active(root: str) -> bool:
-    """Cheap: is this root possibly an outcome-board run?"""
+    """Cheap: is this root possibly an outcome-board run? Any record that could
+    select the protocol counts, so a governed run whose request and contract
+    disagree still reaches the refusal instead of the serial road."""
     if not root:
         return False
     r = Path(root)
     if (r / STORE_FILE).exists():
         return True
+    hints = [r / DEFAULTS, r / DECLARATION, CONTRACT_HINT]
     try:
-        return OUTCOME.encode() in (r / DEFAULTS).read_bytes()
-    except OSError:
-        return False
+        import json
+        rc = (json.loads((r / DECLARATION).read_text(encoding="utf-8")) or {}).get("run_control") or {}
+        if isinstance(rc, dict) and str(rc.get("root") or "").startswith("/"):
+            hints.append(Path(str(rc["root"])) / "contract.json")
+    except (OSError, ValueError, AttributeError):
+        pass
+    for p in hints:
+        try:
+            data = p.read_bytes()
+            # the protocol named anywhere, or an outcome_board block in a contract
+            if OUTCOME.encode() in data or b'"outcome_board"' in data:
+                return True
+        except OSError:
+            continue
+    return False
 
 
-def _ctx(root: str):
-    from planner.outcome_lifecycle import Ctx
-    from planner.outcome_native import KanbanNative
+def _ctx(root: str, sel=None):
+    from planner.outcome_lifecycle import Ctx, RemoteCtx
+    from planner.outcome_native import KanbanNative, default_db_path
+    endpoint = authority_endpoint(sel or select_protocol(Path(root)))
+    if endpoint:
+        return RemoteCtx(Path(root), endpoint, KanbanNative(default_db_path()))
     from planner.outcome_store import Store
     store = Store(Path(root))
     native = KanbanNative(store.meta("native_db"))
@@ -50,12 +72,24 @@ def _block(code: str, detail: str) -> dict[str, Any]:
     return {"action": "block", "code": code, "message": "%s: %s" % (code, detail)}
 
 
+def _ids(env: dict[str, str]) -> tuple[str, int]:
+    task = (env.get("HERMES_KANBAN_TASK") or "").strip()
+    try:
+        run_id = int((env.get("HERMES_KANBAN_RUN_ID") or "0").strip() or 0)
+    except ValueError:
+        run_id = 0
+    return task, run_id
+
+
 def terminator(root: str, *, kind: str, profile: str, env: dict[str, str],
                audit_green: Callable[[], bool]) -> dict[str, Any] | None:
     """kind in {complete, block, request_review}. None = not an outcome run."""
     if not active(root):
         return None
     sel = select_protocol(Path(root))
+    if any(code in SELECTION_REFUSALS for code, _ in sel.errors):
+        # the run's request and its platform record disagree: nothing proceeds
+        return _block(sel.errors[0][0], describe(sel.errors).splitlines()[0])
     if not sel.outcome:
         if (Path(root) / STORE_FILE).exists():
             return _block("PROTOCOL_MIXED", "serial-loop run carries an outcome-board store")
@@ -65,42 +99,27 @@ def terminator(root: str, *, kind: str, profile: str, env: dict[str, str],
     gate = execution_gate(Path(root), sel)
     if gate:
         return _block(gate[0][0], describe(gate).splitlines()[0])
-    task = (env.get("HERMES_KANBAN_TASK") or "").strip()
-    try:
-        run_id = int((env.get("HERMES_KANBAN_RUN_ID") or "0").strip() or 0)
-    except ValueError:
-        run_id = 0
-    if not (Path(root) / STORE_FILE).exists():
+    task, run_id = _ids(env)
+    if not store_present(Path(root), sel):
         # before publication: the serial M1/M2 road governs (its audit requires publication)
         return None
-    from planner.outcome_lifecycle import Refusal, _pub_by_task, check_complete
+    from planner.outcome_lifecycle import Refusal, check_complete, check_review
+    ctx = None
     try:
-        ctx = _ctx(root)
+        ctx = _ctx(root, sel)
         if kind == "complete":
             out = check_complete(ctx, task_id=task, run_id=run_id, profile=profile, audit_green=audit_green())
             return {"action": "allow", "code": "COMPLETE_ALLOWED", "intent": out.get("intent")}
         if kind == "request_review":
-            if task == ctx.store.meta("m2_task"):
-                from k4_graph import readback
-                gaps = readback(ctx.store, ctx.native)
-                if ctx.store.meta("publication_state") not in ("complete", "released") or gaps:
-                    return _block("M2_PUBLICATION_INCOMPLETE", "; ".join(gaps[:3]) or ctx.store.meta("publication_state"))
-                return {"action": "allow", "code": "M2_REVIEW_ALLOWED"}
-            pub = _pub_by_task(ctx.store, task)
-            if pub and pub["outcome_id"].startswith("assess:"):
-                return {"action": "allow", "code": "ASSESS_REVIEW_ALLOWED"}
-            if pub and pub["outcome_id"].startswith("deliver:"):
-                # paved-road-m5: the implementer hands every stage to the reviewer, who completes it
-                # after the stage audit on the stage's own receipts (check_complete)
-                from planner.outcome_lifecycle import active_issue
-                active_issue(ctx, task, run_id)
-                return {"action": "allow", "code": "DELIVER_REVIEW_ALLOWED"}
-            return _block("OUTCOME_NO_REVIEW_LANE", "an outcome card completes on its recorded acceptance; "
-                                                    "kanban_block if it cannot be accepted")
+            out = check_review(ctx, task_id=task, run_id=run_id)
+            return {"action": "allow", "code": out.get("code") or "REVIEW_ALLOWED"}
     except Refusal as exc:
         return _block(exc.code, exc.detail)
     except Exception as exc:  # fail closed on an outcome run
         return _block("OUTCOME_HOOK_ERROR", "%s: %s" % (type(exc).__name__, exc))
+    finally:
+        if ctx is not None and getattr(ctx, "store", None) is not None:
+            ctx.store.close()
     return None
 
 
@@ -109,6 +128,8 @@ def writes(root: str, *, rel_paths: list[str], env: dict[str, str]) -> dict[str,
     if not active(root):
         return None
     sel = select_protocol(Path(root))
+    if any(code in SELECTION_REFUSALS for code, _ in sel.errors):
+        return _block(sel.errors[0][0], describe(sel.errors).splitlines()[0])
     if not sel.outcome:
         return None
     rels = [r for r in rel_paths if r]
@@ -122,18 +143,18 @@ def writes(root: str, *, rel_paths: list[str], env: dict[str, str]) -> dict[str,
     gate = execution_gate(Path(root), sel)
     if gate:
         return _block(gate[0][0], describe(gate).splitlines()[0])
-    if not (Path(root) / STORE_FILE).exists():
+    if not store_present(Path(root), sel):
         return None
-    task = (env.get("HERMES_KANBAN_TASK") or "").strip()
+    task, run_id = _ids(env)
+    ctx = None
     try:
-        run_id = int((env.get("HERMES_KANBAN_RUN_ID") or "0").strip() or 0)
-    except ValueError:
-        run_id = 0
-    try:
-        ctx = _ctx(root)
+        ctx = _ctx(root, sel)
         check_write(ctx, task_id=task, run_id=run_id, rel_paths=rels)
     except Refusal as exc:
         return _block(exc.code, exc.detail)
     except Exception as exc:
         return _block("OUTCOME_HOOK_ERROR", "%s: %s" % (type(exc).__name__, exc))
+    finally:
+        if ctx is not None and getattr(ctx, "store", None) is not None:
+            ctx.store.close()
     return {"action": "allow", "code": "WRITE_IN_ISSUE"}
