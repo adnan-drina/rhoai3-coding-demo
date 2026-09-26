@@ -266,10 +266,14 @@ verification and decided configuration are judged by their checks.
   rows are sealed on the serial loop's fragment unit
   (`worklist.fragment_behaviour_rows`), rendered by the brief, and recorded
   on acceptance as `acceptance: structural`, `functional: owed`
-  (`verification/loop/owner-debts.json`). A runtime failure a later card
-  meets whose first product frame is in that owner's accepted file is
-  charged to the owner (`VERIFICATION_PENDING runtime-cause-owned-elsewhere`,
-  no attempt spent), never to the card that saw it.
+  (`verification/loop/owner-debts.json`, observational). Who caused a
+  runtime failure a later card meets is a CLASSIFICATION, not a location
+  (`planner/runtime_cause.py`, pure over its inputs): pre-existing-owner-defect
+  only when the baseline tree's own bound measurement failed the same scenario
+  identically in another cluster's accepted file; candidate-regression when
+  the baseline passed or failed differently; ambiguous otherwise. The serial
+  loop only shows the class (the rejection and its attempt stand); an
+  authority may act on it only with inputs it measured itself.
 - **Statically decided repairs (V17-4, V17-5).** The generated-body
   obligation (V16-8) no longer waits for a create scenario to fail: the
   destination and source generators are qualified as a pair
