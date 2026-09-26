@@ -890,6 +890,9 @@ for _expr in expression_args(cmd):
     cmd_for_paths = cmd_for_paths.replace(_expr, " ", 1)
 if cmd_for_paths:
     for tok in cmd_for_paths.split():
+        # V17-1: a separator written against the path (`--root /x; echo`,
+        # `ls /x&& …`) is shell syntax, not part of the name
+        tok = tok.rstrip(";&|")
         if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
             if not looks_like_http_route(tok):
                 paths.append(tok)
@@ -897,7 +900,7 @@ if cmd_for_paths:
     for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}()]+", cmd_scan):
         span = m.group(0)
         span = span.split(",")[0]
-        while span and span[-1] in ".,;:" + chr(39) + chr(34):
+        while span and span[-1] in ".,;:&|" + chr(39) + chr(34):
             span = span[:-1]
         if span.startswith("~"):
             span = os.path.expanduser(span)

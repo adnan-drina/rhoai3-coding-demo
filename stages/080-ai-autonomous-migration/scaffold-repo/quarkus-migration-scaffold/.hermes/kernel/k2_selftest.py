@@ -110,6 +110,13 @@ def main() -> int:
         expect_block("awk -f /etc/prog.awk src/a.txt", "v16_10_awk_program_file_refused", "/etc/prog.awk", cwd=cwd)
         expect_block("echo '<set>' > /etc/k2probe", "v16_10_unquoted_redirect_refused", "/etc/k2probe", cwd=cwd)
 
+        # V17-1 (v17 M2 t_e4751e37): a path followed directly by a shell
+        # separator (`--root /x; echo`) kept the ; and resolved outside the root
+        expect_allow("python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root %s; echo \"EXIT=$?\"" % dest,
+                     "v17_1_path_then_semicolon_allowed", cwd=cwd)
+        expect_allow("ls %s&& echo ok" % dest, "v17_1_path_then_and_allowed", cwd=cwd)
+        expect_block("cat /etc/passwd; echo x", "v17_1_outside_path_then_semicolon_refused", "/etc/passwd", cwd=cwd)
+
         expect_allow("export JAVA_HOME=/usr/lib/jvm/java-21-openjdk", "java_home")
         expect_allow("export PATH=/bin:$PATH", "path_concat")
         expect_allow("export PATH=/bin:$PATH; ls", "pathless_ls_cwd", cwd=cwd)
