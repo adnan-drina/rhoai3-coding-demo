@@ -204,6 +204,7 @@ Fail-closed boundaries, each with a permanent negative test:
 | `STRUCTURE_MISSING` / `ZERO_ENTRY_POINTS` | no admitted structural evidence, or nothing to verify parity against |
 | `PLANNER_NOT_ACTIVATED` / `PLANNER_PILOT_SEAL` | the activation gate (§9) |
 | `MISSING_DECISION` / `ADR_NOT_ACCEPTED` / `PLATFORM_UNKNOWN` | `decisions.yaml` incomplete or citing an unaccepted ADR |
+| `PLAN_SEMANTICS_REPINNED` | `decisions.yaml` `loop.plan_semantics` differs from the value the destination's initial commit carried (§7.1): a run keeps the plan semantics it was created with |
 | `BOOTSTRAP_MISSING` / `BOOTSTRAP_STALE` | no deterministic baseline, or one bound to another bundle |
 | `MEASURE_UNKNOWN` / `WORKLIST_STALE` | a tool did not run in this verification, or the list belongs to another bundle |
 | `BOOTSTRAP_BLOCKED` | the bootstrap recorded a non-trivial launcher or an unmapped dependency |
@@ -211,12 +212,19 @@ Fail-closed boundaries, each with a permanent negative test:
 
 `ADMITTED` means "the loop may run its next step from this exact state". `COMPAT_FAIL` means the bundle or the work list fails its schema: a planner defect. The receipt digest binds every idempotency key and every K1 body.
 
-### 7.1 Repeatable initial plan (plan semantics v1, opt-in per run)
+### 7.1 Repeatable initial plan (plan semantics v1, run-pinned)
 
-`decisions.yaml` `loop.plan_semantics: v1` (sealed with `decisions.yaml`;
-absent means off, so every existing run keeps its identities and plan) makes
-the same frozen application, decisions and pinned toolchain produce the same
-initial logical M3 plan:
+`decisions.yaml` `loop.plan_semantics: v1` makes the same frozen
+application, decisions and pinned toolchain produce the same initial logical
+M3 plan. The golden `decisions.yaml` selects it, so every NEW run's
+destination is created with it; a run keeps the value its destination's
+initial (scaffolding) commit carried -- every earlier run was created without
+the key and stays off -- and admission refuses a later edit that flips it
+(`PLAN_SEMANTICS_REPINNED`, `decisions.plan_semantics_pin_gap`), so the
+selection is immutable per run and never an environment fallback.
+`run-preflight.sh` requires it for a new run. `PLAN_RECIPE_MISSING` applies
+to repair requirements only (`source_requirements.RECIPE_RULES`); behaviour
+verification and decided configuration are judged by their checks.
 
 - **Stable producer identity.** `JdkDiagnostics` renders in the ROOT locale
   (the JVM-locale text is kept as `message_jvm_locale`), emits the column and

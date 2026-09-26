@@ -562,7 +562,7 @@
             "off",
             null
           ],
-          "description": "v1 makes the initial M3 plan repeatable (lib/planner/plan_semantics.py): compile-obligation identity from the compiler's structured diagnostic in a pinned locale (not localized text), a controlled clean initial analysis (no stale target/ outputs), source-derived migration responsibilities (lib/planner/source_requirements.py) owned by the initial outcome graph, and a semantic plan fingerprint sealed by admission beside the exact evidence digests. off (or absent) keeps today's identities and plan: a run already admitted keeps the semantics it was admitted with (decisions.yaml is sealed by the receipt)."
+          "description": "v1 makes the initial M3 plan repeatable (lib/planner/plan_semantics.py): compile-obligation identity from the compiler's structured diagnostic in a pinned locale (not localized text), a controlled clean initial analysis (no stale target/ outputs), source-derived migration responsibilities (lib/planner/source_requirements.py) owned by the initial outcome graph, and a semantic plan fingerprint sealed by admission beside the exact evidence digests. off (or absent) keeps today's identities and plan. The golden selects v1 for NEW runs; a run keeps the value its destination's initial commit carried and admission refuses a later flip (PLAN_SEMANTICS_REPINNED), so every earlier run stays off."
         },
         "adr": {
           "type": [

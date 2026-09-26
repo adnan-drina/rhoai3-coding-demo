@@ -75,6 +75,13 @@ RULE_CLASS = {"repository-architecture": "source", "request-validation": "source
               "annotation-retirement": "source", "adapter-behavior": "behavior", "generator-configuration": "build",
               "configuration-decision": "config", "behavior-verification": "behavior"}
 APPLICABLE, NOT_APPLICABLE, UNRESOLVED, SATISFIED = "applicable", "not-applicable", "unresolved", "satisfied"
+# The rules whose work is a source REPAIR and so needs a qualified recipe
+# (compat-mapping migration_recipes) before admission. Verification
+# (behaviour, adapter behaviour) is judged by its named checks, and decided
+# configuration by the decision and the bootstrap that applies it: neither has
+# a recipe, and requiring one would refuse every run that captured an oracle.
+RECIPE_RULES = ("repository-architecture", "request-validation", "handler-parameter-binding", "annotation-retirement",
+                "generator-configuration")
 
 
 def _s(v: Any) -> str:

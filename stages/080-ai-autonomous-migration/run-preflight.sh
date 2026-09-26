@@ -232,7 +232,7 @@ require(not issued.exists() or not json.loads(issued.read_text()).get('task_id')
 require(not (root / 'evidence/producers/bootstrap.json').exists(), 'preflight requires a fresh destination before bootstrap')
 require(not (root / 'src/main/java').exists(), 'product sources present before bootstrap')
 d = load_yaml(root / 'decisions.yaml')
-require(d.get('loop', {}).get('unit_formation') == 'v1' and d.get('loop', {}).get('runtime_feedback') == 'v1', 'loop flags')
+require(d.get('loop', {}).get('unit_formation') == 'v1' and d.get('loop', {}).get('runtime_feedback') == 'v1' and d.get('loop', {}).get('plan_semantics') == 'v1', 'loop flags (unit_formation, runtime_feedback, plan_semantics v1)')
 r = d['decided_repairs']
 require(hashlib.sha256((root / r['manifest']).read_bytes()).hexdigest() == r['manifest_sha256'], 'repair manifest mismatch')
 config = next((p for p in (Path('/etc/hermes/config.yaml'), Path('/projects/.platform/hermes/config.yaml')) if p.is_file()), None)

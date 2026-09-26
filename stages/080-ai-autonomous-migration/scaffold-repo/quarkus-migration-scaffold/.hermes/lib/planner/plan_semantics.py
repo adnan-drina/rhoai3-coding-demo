@@ -390,10 +390,13 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
                                   (conservation, scope bound, cycle, lost
                                   requirement, ...): its own code is kept
       PLAN_ACCEPTANCE_MISSING     an applicable requirement names no check
-      PLAN_RECIPE_MISSING         an applicable requirement has no qualified
-                                  recipe
+      PLAN_RECIPE_MISSING         an applicable REPAIR requirement
+                                  (source_requirements.RECIPE_RULES) has no
+                                  qualified recipe; verification and decided
+                                  configuration are judged by their checks
     Unresolved requirements are not blocks here: like a missing oracle they
     are named responsibilities that block delivery, never an empty plan."""
+    from planner.source_requirements import RECIPE_RULES
     blocks: list[dict[str, str]] = []
     try:
         doc = from_root(root)
@@ -408,8 +411,8 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
             continue
         if not r.get("acceptance"):
             blocks.append({"class": "PLAN_ACCEPTANCE_MISSING", "subject": r["id"], "detail": "an applicable requirement names no completion check"})
-        if not r.get("recipe"):
-            blocks.append({"class": "PLAN_RECIPE_MISSING", "subject": r["id"], "detail": "an applicable requirement has no qualified recipe"})
+        if not r.get("recipe") and str(r.get("rule") or "").split("/", 1)[0] in RECIPE_RULES:
+            blocks.append({"class": "PLAN_RECIPE_MISSING", "subject": r["id"], "detail": "an applicable repair requirement has no qualified recipe"})
     return doc, blocks
 
 
