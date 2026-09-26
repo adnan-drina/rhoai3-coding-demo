@@ -183,10 +183,22 @@ PYEOF
 } | sha256sum | cut -c1-64)"
 fi
 T0="$(now_ms)"
+# The INITIAL analysis never reuses a warm-up (round 3, approved bound): the
+# stamp's key covers the build inputs, the toolchain and the generator specs
+# but not the resolved dependency graph, so a reused warm-up could plan from
+# outputs of another resolution. The initial M2 analysis always rebuilds; the
+# stamp is discarded first so nothing of an earlier warm-up is read as this
+# one's. Routine verification keeps the reuse unchanged.
+WARM_CACHE="rebuilt"
+if [[ "${INITIAL}" -eq 1 ]]; then
+  rm -f "${WARM_STAMP}"
+  WARM_CACHE="not-reused-initial-analysis"
+fi
 if [[ "${INITIAL}" -eq 0 && -f "${WARM_STAMP}" && "$(cat "${WARM_STAMP}")" == "${WARM_KEY}" ]]; then
   echo "warm-up skipped: build inputs unchanged since the last successful warm-up (${WARM_KEY:0:12})" >"${WORK}/warmup.log"
   WARM_RC=0
   WARM_SKIPPED=true
+  WARM_CACHE="reused"
 else
   ( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.warmup.txt" && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
   WARM_RC=$?
@@ -294,7 +306,7 @@ for L in "${WORK}/test.log" "${WORK}/warmup.log"; do
 done
 
 TOTAL_MS="$(( $(now_ms) - T_ALL ))"
-export VERIFY_MODE="${MODE}" WARM_RC CP_RC DIAG_RC TEST_RAN TEST_RC RESCAN_RAN RESCAN_RC WARM_SKIPPED
+export VERIFY_MODE="${MODE}" WARM_RC CP_RC DIAG_RC TEST_RAN TEST_RC RESCAN_RAN RESCAN_RC WARM_SKIPPED WARM_CACHE INITIAL
 export WARM_MS CP_MS DIAG_MS TEST_MS RESCAN_MS TOTAL_MS INITIAL_BEFORE INITIAL_AFTER
 python3 - "${RUN}" "${MVN_COMPILE_FAILED}" "${MVN_COMPILE_DETAIL}" <<'PYEOF'
 import json, os, sys
@@ -308,7 +320,8 @@ def ms(k):
         return 0
 doc = {"schema": "rhoai3.verify-run/v1",
        "mode": os.environ.get("VERIFY_MODE") or "acceptance",
-       "warmup": {"ran": True, "rc": rc(os.environ.get("WARM_RC")), "skipped": os.environ.get("WARM_SKIPPED") == "true", "ms": ms("WARM_MS")},
+       "warmup": {"ran": True, "rc": rc(os.environ.get("WARM_RC")), "skipped": os.environ.get("WARM_SKIPPED") == "true", "ms": ms("WARM_MS"),
+                  "cache": os.environ.get("WARM_CACHE") or "rebuilt", "initial": os.environ.get("INITIAL") == "1"},
        "classpath": {"ran": True, "rc": rc(os.environ.get("CP_RC")), "ms": ms("CP_MS")},
        "diagnostics": {"ran": True, "rc": rc(os.environ.get("DIAG_RC")), "ms": ms("DIAG_MS")},
        "tests": {"ran": os.environ.get("TEST_RAN") == "true", "rc": rc(os.environ.get("TEST_RC")), "ms": ms("TEST_MS")},
