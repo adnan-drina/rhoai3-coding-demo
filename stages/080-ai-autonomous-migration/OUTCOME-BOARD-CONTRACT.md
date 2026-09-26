@@ -6,28 +6,45 @@ Applies to **new runs only**. Every existing run, board, deadline and evidence
 record keeps the serial loop protocol. Execution stays **disabled** until the
 conditions in section 8 are demonstrated.
 
-Code: `.hermes/lib/planner/outcome_{protocol,graph,store,lifecycle}.py`,
-`.hermes/kernel/{k4_graph,outcome_gate,outcome_reconcile}.py`, and a guarded
-branch at the top of `.hermes/kernel/pre_tool_call.sh`. Paths below are
+Code: `.hermes/lib/planner/outcome_{protocol,graph,store,lifecycle,authority}.py`,
+`.hermes/kernel/{k4_graph,outcome_gate,outcome_reconcile,outcome_authority}.py`,
+and a guarded branch at the top of `.hermes/kernel/pre_tool_call.sh`. Paths below are
 relative to the destination root unless they start with `.hermes/`.
 
 ## 1. Selection and gating
 
+One rule, `outcome_protocol.select_protocol`, is used by every reader: the K2
+hook, K4 (`k4_mint.py` / `k4_graph.py`), the reconciler, the Stage 050 hook
+producer, `autostart-migration.sh` and `run-preflight.sh`
+(`outcome_protocol.launch_gaps`).
+
 | Question | Answer | Where |
 |---|---|---|
-| Which protocol does a run use? | `configuration.board_protocol` in `run-defaults.json`. Absent means `serial-loop/v1`. The value is bound by the destination's root commit through `run_declaration.py`, so a run cannot switch it | `outcome_protocol.select_protocol` |
-| Is execution allowed? | `.hermes/pins.json` `pins.planner.outcome_board.execution` ∈ `disabled` (default when absent), `qualification`, `enabled` | `outcome_protocol.execution_gate` |
-| `qualification` | Honoured only when no factory run declaration exists (`RUN_DECLARATION_MISSING`): a disposable local fixture. A factory-stamped run can never enter it | same |
-| `enabled` | Requires a protected authority backend (section 3). None exists in the current architecture, so `enabled` refuses with `AUTHORITY_UNPROTECTED` | same |
-| Mixed state | Outcome protocol with serial-loop records (`verification/loop/issued.json` naming a K4 loop card, `k4:` mint receipts, a K1 JSON fence in an outcome card body), or serial protocol with an outcome store, refuses `PROTOCOL_MIXED` on every path | `outcome_protocol.mixed_state` |
+| Who requests a protocol? | The run, once, at creation: the app-migration template parameter `boardProtocol` (default `serial-loop/v1`) stamped as `board_protocol` into the factory's `run-budget.json` in the destination's INITIAL commit. It is read from that commit only, never from the working tree | template.yaml, skeleton `run-budget.json`, `run_control.declared` |
+| Who selects it? | The platform: the migration-run provisioner reads `board_protocol` from `run-budget.json` AT the validated scaffolding commit (content-addressed) and writes `board_protocol`, and for `outcome-board/v1` `outcome_board.execution` (a Task parameter, default `disabled`; never a template or event value; `qualification` refused) and the optional `outcome_board.measurement_trust`, into the read-only `contract.json` | `task-provision-migration-run.yaml` |
+| Which protocol does a governed run use? | The request and the selection must agree. Nothing requested and nothing selected keeps `serial-loop/v1` (every run created before the request existed: v12–v17) | `outcome_protocol._governed` |
+| Disagreement | `PROTOCOL_UNBOUND` (outcome requested, nothing selected or no platform record: v17's live shape), `PROTOCOL_DOWNGRADED` (outcome requested, serial selected), `PROTOCOL_UNREQUESTED` (outcome selected or its execution set without a request; or the shared `run-defaults.json` naming a protocol), `PROTOCOL_UNKNOWN`. Each routes to the outcome paths, which refuse; the serial loop is never started instead | same; K2, K4, launch checks |
+| Legacy / local run (no run control) | `run-defaults.json` `configuration.board_protocol` and `.hermes/pins.json` `pins.planner.outcome_board.execution`, as before | same |
+| Is execution allowed? | `outcome_board.execution` ∈ `disabled` (default), `qualification`, `enabled` | `outcome_protocol.execution_gate` |
+| `qualification` | Honoured only without a factory declaration and run control: a disposable local fixture. Such a fixture may name a local authority socket (`authority_socket`) to exercise the service path | same |
+| `enabled` | Requires the protected authority service (section 3) — `authority_protected()` true — AND the platform's measurement-trust decision (`MEASUREMENT_TRUST_UNDECIDED` otherwise, section 8b) | same |
+| Mixed state | Outcome protocol with serial-loop records, serial protocol with an outcome store, or a cooperative in-tree store beside the service, refuses `PROTOCOL_MIXED` on every path | `outcome_protocol.mixed_state` |
+| Launch | `autostart-migration.sh` and `run-preflight.sh` refuse any selection refusal, a mixed state, or a closed outcome execution gate (`python3 -m planner.outcome_protocol --root R launch-check`) | `outcome_protocol.launch_gaps` |
 
-The golden ships neither key, so the next golden behaves exactly as today.
+The golden ships no `board_protocol` and the template defaults to the serial
+loop, so the next golden behaves exactly as today unless a run requests the
+outcome board AND the platform enables it.
 
 ## 2. Records and storage
 
-One SQLite database, `verification/outcome-board/authority.sqlite3`, holds every
-deciding record. JSON files beside it (`account.json`, `briefs/`) are derived
-observer views; nothing reads them back as authority.
+One SQLite database holds every deciding record: in qualification mode
+`verification/outcome-board/authority.sqlite3` in the tree; under the
+protected authority `<store-dir>/authority.sqlite3` in the service's own volume
+(`/var/lib/outcome-authority/store`), bound once at service start with no
+environment or file override, and never inside the destination tree. The brief
+files the attachments are made from sit beside the store. `account.json` is a
+derived observer view written into the tree by the caller; nothing reads it
+back as authority.
 
 | Table | Content | Written by (transition) | Read by |
 |---|---|---|---|
@@ -50,28 +67,70 @@ native state by the recorded identity before repeating anything.
 
 ## 3. Writer principal and trust boundary (C2, F1)
 
-**Concrete writer.** `OutcomeAuthority` in `outcome_store.py`. Its only
-mutation surface is a fixed set of transition methods; each validates the
-request against the current records and the native board (run identity,
-revision, baseline, budget, ownership) and refuses anything else. It never
-accepts worker-supplied PASS, scope or budget values: it recomputes them.
+**Concrete writer.** The authority service (`planner/outcome_authority.py`,
+entry `kernel/outcome_authority.py serve`). Its only mutation surface is the
+set of `@transition` functions in `outcome_lifecycle.py`; each validates the
+request against the current records and the native board and refuses anything
+else. Under `enabled` execution every worker-side entry point (`outcome_gate.py`,
+the K2 hook branch, `k4_graph.py publish/readback`, `outcome_reconcile.py`,
+`_outcome_bridge.py`, `m5_delivery` via `m4_closure`) sends a REQUEST over the
+socket; the service runs the same function in its own principal, against its
+own store, and REPLACES every value it can measure itself:
 
-**Serialization.** SQLite's database lock (`BEGIN IMMEDIATE`) is the one
-cross-process exclusion mechanism for revision commit, writer-grant ownership
-and external-effect admission. A process that dies releases it; its durable rows
-say what it had decided.
+| Value | The service's own source |
+|---|---|
+| candidate tree, attempt key | its product-tree digest of the tree (`safe_tree`: a product symlink leaving the tree refuses `TREE_UNSAFE`) |
+| scope at accept-begin | the changed product paths since the issued baseline, compared in Python against the baseline's raw blob ids (git never reads a worktree file, so no repository-configured filter, fsmonitor or diff driver can run) ⊂ the issue's allowed paths (amendments included): else `ACCEPT_OUT_OF_SCOPE` |
+| scope and ancestry at accept-commit | HEAD is the named commit (`ACCEPT_COMMIT_MISMATCH`), its first parent is the issued baseline (`ACCEPT_BASELINE_ANCESTRY`), `diff-tree` baseline..commit ⊂ allowed paths |
+| writer process group | the native board's `worker_pid` and the caller's process snapshot |
+| recovered commit trees | `ls-tree` + `cat-file` raw blobs (no checkout, no archive conversion) |
+| issue scope, plan revision, baseline, cumulative budget, acceptance, grants, effects | its own hash-chained store |
 
-**Principal.** In the current architecture the authority runs in the calling
-process, which is the worker, the dispatcher or a hook, all under the workspace
-UID in one container. The database is worker-writable. This is a
-**cooperative** boundary. It refuses missing, inconsistent, stale, foreign,
-redirected and older-budget records through every supported path. It
-**cannot** refuse a consistent rewrite of the whole store by the worker UID.
-That is the F1 blocker, reported in section 8. `enabled` execution requires
-`authority_protected()` to be true: the store directory must be owned by another
-UID and not writable by the calling process. It is false in every current
-workspace, so execution cannot be enabled. The claim is exactly that. No claim is
-made against a compromised administrator, the kernel or arbitrary subprocesses.
+**Principal and storage.** A sidecar container of the workspace pod (skeleton
+`devfile.yaml`, rendered only for a run that requested `outcome-board/v1`):
+`container-overrides.securityContext.runAsUser` = a uid inside the namespace's
+SCC range and different from the worker's (1001040001 for wksp-ai-developer's
+measured range 1001040000/10000), privilege escalation off, capabilities
+dropped; code from the image's root-owned `/opt/rhoai3/outcome-authority`. The
+store volume is mounted ONLY in the sidecar. The worker container has no mount
+of it at all, so no path, uid, group or user namespace reaches it from there.
+(The worker can edit `/etc/subuid` and use `newuidmap`; a different owner uid
+alone would not be a boundary.) The socket volume is shared; the worker mounts
+it READ-ONLY (it can connect, it cannot remove, replace or plant a socket).
+
+**Pre-use check.** `authority_protected()` is true only when the socket answers
+with the service schema for this root, the service's uid differs from the
+caller's, the caller can neither stat nor open the reported store path, no
+cooperative store sits in the tree, and the service's code identity equals the
+image stamp `/opt/rhoai3/080.pins` `outcome_authority.code_sha256` (and the
+harness pin `pins.outcome_authority.code_sha256` when present). Peer
+credentials are never consulted: they are forgeable from a user namespace.
+
+**What the service never trusts or runs.** A worker-supplied PASS, scope,
+budget, candidate or store path; the worker's Hermes home (the pinned CLI runs
+with a PRIVATE, empty `HERMES_HOME` and only `HERMES_KANBAN_DB` and
+`HERMES_KANBAN_ATTACHMENTS_ROOT` shared); repository configuration (git runs
+with command-scope protected configuration: no fsmonitor, hooks path, external
+diff, submodule recursion, file/ssh/ext transports; and only object-reading
+commands — no `status`, no `archive`, no worktree diff).
+
+**Serialization.** SQLite's database lock (`BEGIN IMMEDIATE`) in the service's
+store is the one cross-process exclusion mechanism for revision commit,
+writer-grant ownership and external-effect admission.
+
+**Qualification mode** (local fixtures) runs the same transitions in-process
+against an in-tree store (cooperative). A consistent same-uid rewrite of that
+store is undetectable, which is why `enabled` never runs on it.
+
+**What stays cooperative (stated with every claim).** Native lifecycle data
+(`kanban.db`) is worker-writable; it never grants anything the store does not
+also record. The heavy measurements (Maven build/test, parity, MTA, the M4
+verdict, the M5 stage receipts and the rebuilt work list) are worker-produced;
+an acceptance records its check classes as `classes_asserted_by:
+worker-receipts` (section 8b). The hook's profile and audit-green facts and a
+push's observed result are the caller's report; the service admits the push,
+it holds no push credential. No claim is made against a compromised
+administrator, the kernel, or processes of the service's own uid.
 `claimed_control` stays false.
 
 ## 4. Transition table
@@ -163,20 +222,44 @@ runtime's `on_kanban_dispatch_tick` observer. The gateway-embedded dispatcher
 fires it once per tick, after it releases its lock. It also runs on
 `kanban_task_completed` in the worker, as an accelerator. It is idempotent and
 does nothing unless the root runs the outcome protocol with execution not
-disabled. No new scheduler, daemon or polling agent. The registration lives in
-the Stage 050 managed config. It is gated on the run selecting the protocol,
-and the tick also recovers unresolved push effects of finished runs by
-identity.
+disabled. Under `enabled` execution the hook only forwards the tick to the
+authority service, which reconciles in its own principal (native operations
+through its private-home CLI). No new scheduler, daemon or polling agent. The
+registration lives in the Stage 050 managed config; the producer registers it
+from the SAME effective selection (`select_protocol`: the governed request
+agreed by the read-only run control), never from a mutable file alone, and
+prints the refusal when the selection is inconsistent. The tick also recovers
+unresolved push effects of finished runs by identity.
 
 ## 8. Conditions and blockers
 
-- **F1/C2 (blocker):** no independent writer principal exists in the migration
-  workspace. Gateway, dispatcher, hooks and workers share one UID and one
-  container. The only non-writable surfaces are the root-owned image (static) and
-  provisioner-written cluster objects (static per run). A protected writer needs a
-  new principal: a sidecar with a separate UID that owns the store, or a platform
-  service. Until one is qualified, `enabled` refuses and only `qualification` runs
-  locally.
+- **F1/C2:** the protected writer is BUILT and locally qualified, not yet live.
+  - Built: the authority service, its clients, the store binding, the pre-use
+    check, the sidecar layout in the skeleton devfile (rendered only for an
+    outcome-board request), the protocol selection chain and launch refusals.
+  - Qualified locally (`outcome-authority-two-uid.qualify.py`, podman, the
+    ws-080 image, two uids): the store path does not exist in the worker
+    container (`ENOENT`), the socket cannot be unlinked, renamed or planted
+    beside (`EROFS`/`EACCES`), a request crosses the uid boundary,
+    `authority_protected()` is true, the gate needs the trust decision; same-uid
+    and store-mounted-in-worker controls fail closed.
+  - Synthetic (`lib/planner/outcome_authority.test.py`, one uid, separate
+    service process): forged candidates and replayed attempt keys spend budget;
+    out-of-scope and non-child commits refuse; a planted consistent store
+    refuses everything; manual M5 claim, unaccepted parent and stale run grant
+    nothing; repository config runs nothing in the service.
+  - Exact runtime (`hermes-runtime/tests/rhoai3_outcome_board/test_outcome_authority_service.py`,
+    tree 8a3bb406): the service publishes the graph with the real CLI under a
+    private home; attachments land where the worker reads them; read-back green.
+  - NOT established (live Dev Spaces qualification, section 8a): the DWO
+    controller applying `container-overrides.securityContext.runAsUser` to the
+    pod (server-side dry-run admitted it on DWO 0.43.0, 2026-09-26); SCC
+    `container-build` admitting the second in-range uid; the per-workspace PVC
+    subPath and fsGroup behaviour for the store and the socket; the run-control
+    ConfigMap automount reaching the sidecar; the sidecar reading and writing
+    `kanban.db` (group ownership, WAL/shm files) and the attachments root; the
+    image carrying `/opt/rhoai3/outcome-authority` and the stamp.
+- **Measurement trust (section 8b):** open architect decision.
 - C1/C6: qualified locally on the exact runtime tree `8a3bb406` (series
   0001–0012) with real dispatcher, CLI and workers
   (`hermes-runtime/tests/rhoai3_outcome_board`, fake provider). No runtime
@@ -187,11 +270,11 @@ identity.
 - Production hooks: the Stage 050 producer (`maas-api-key-provisioning.yaml`,
   block `outcome-board hooks`) adds `kanban_block|kanban_request_review|request_review`
   to the K2 matcher and registers `on_kanban_dispatch_tick` → the destination's
-  `kernel/outcome_reconcile.py`. It does so ONLY when the destination's
-  `run-defaults.json` selects `outcome-board/v1`, so it registers nothing today
-  (`gitops/.../devspaces/outcome-board-hooks.test.py`). The real-worker tests run
-  with exactly that configuration and the producer's 5 s hook timeout. It
-  reaches a workspace only through the normal Stage 050 publication.
+  `kernel/outcome_reconcile.py`, ONLY for a clean `outcome-board/v1` selection
+  (`gitops/.../devspaces/outcome-board-hooks.test.py`, governed cases
+  included). The real-worker tests run with that configuration and the
+  producer's 5 s hook timeout (a copy of the producer's registration, not the
+  producer's output).
 - `k4_graph.py publish --plan-file` exists for the runtime qualification.
   It is honoured in `qualification` mode only, which no factory run can
   enter.
@@ -200,33 +283,36 @@ identity.
   prefers PyYAML when importable, so a `python3` with PyYAML on its path
   refuses the file.
 
-## 8a. F1: the protected writer the platform must supply (design; not built)
+## 8a. The live qualification the platform still owes
 
-The authority's validation code is complete. What is missing is a principal
-the worker cannot replace. The smallest design that fits the existing
-workspace:
+| Element | What must be observed on a disposable started workspace |
+|---|---|
+| Sidecar uid | the admitted pod's `outcome-authority` container runs as 1001040001 (`oc get pod -o jsonpath` on `securityContext`), the worker as its range start; `openshift.io/scc: container-build` |
+| Store unreachable | from the worker container: `stat /var/lib/outcome-authority` → no such file; no volumeMount of `outcome-authority-store` in the worker container spec |
+| Socket read-only | from the worker container: `rm /run/outcome-authority/authority.sock` → read-only file system; `outcome_authority.py hello` answers |
+| Pre-use check | `python3 -c 'from planner.outcome_protocol import authority_protected; print(authority_protected("/projects/modernized"))'` → `(True, ...)` with the image stamp |
+| Board access | the sidecar's private-home CLI creates and attaches on `kanban.db` (group-writable under the pod fsGroup) and the worker reads the attachment |
+| Run control | `/etc/rhoai3/run-control/contract.json` mounted in the sidecar |
 
-| Element | What the platform provides | Why |
-|---|---|---|
-| Authority sidecar | a second container in the migration workspace pod (devfile component, the same ws-080 image, command `python3 /opt/rhoai3/outcome_authority.py serve`) with `securityContext.runAsUser` = a DIFFERENT UID inside the namespace range (restricted SCC permits a per-container UID in range) | a principal the worker UID cannot impersonate |
-| State volume | an `emptyDir` (or dedicated PVC) mounted read-write ONLY in the sidecar; mounted `readOnly: true` (or not at all) in the worker container | the kernel enforces the read-only mount; fsGroup group-write does not help the worker across a read-only mount |
-| Code | `.hermes/lib/planner/outcome_*.py` and the kernel entry points baked into the image under `/opt/rhoai3` (root-owned), never read from the worker-writable `/projects/modernized/.hermes` | the checker cannot be rewritten by the worker |
-| Interface | a unix socket in a shared `emptyDir` (`/run/outcome-authority/sock`); `outcome_gate.py`, the K2 hook and the reconciler become clients that send transition REQUESTS (issue, verdict, amend, stage completion, effect admission); the sidecar recomputes every decision itself | the writer validates transitions; it never signs worker-supplied PASS/scope/budget data |
-| Inputs the sidecar reads | the destination tree and `kanban.db` mounted read-only; the Git remote with its own read credential; for M5, `oc get` with its own read-only ServiceAccount token (not the worker's) | decisions re-derived from sources the worker cannot forge through the authority |
-| Hook placement | `pre_tool_call.sh` and the reconciler from `/etc/hermes` (root-owned image path), `HERMES_MANAGED_DIR` baked into the image/unit | the rule in `.agents/rules/managed-scope-enforcement.md` |
+The commands are in `tmp/v17-run-20260926/kanban-review/implementation/activation-plan.md`.
+Until they pass, `enabled` is not set by the platform, and a run that requested
+the outcome board refuses at launch.
 
-What stays cooperative even then, and must be stated with any claim:
-`kanban.db` is native lifecycle data and remains worker-writable. The worker
-still runs the heavy measurements (Maven build/test, parity, MTA), and their
-receipts remain worker-produced unless the sidecar re-runs them. The protected
-claim covers authorization, scope, baseline, budget and effect admission. It
-does not cover measurement authenticity.
+## 8b. Measurement trust (open architect decision)
 
-`authority_protected()` becomes true only when the sidecar answers on the
-socket, its store path is not writable by the calling UID, and its owner is
-another UID. Until the platform qualifies this layout, including DWO
-container overrides for `runAsUser` on the chosen Dev Spaces version,
-`enabled` keeps refusing `AUTHORITY_UNPROTECTED`.
+The service measures tree identity, scope and baseline ancestry itself. It does
+not re-run the heavy measurements: a compile or test run in the sidecar would
+execute worker-controlled build logic (Maven plugins, annotation processors,
+the worker-writable `~/.m2`) in the authority's principal, and is not bounded in
+time. So an acceptance's check classes and the rebuilt work list are the
+worker's receipts; a worker that forges them for an in-scope, correctly
+committed candidate obtains an acceptance, which the ledger marks
+`classes_asserted_by: worker-receipts`
+(`outcome_authority.test.py test_forged_heavy_receipts_are_the_declared_cooperative_limit`).
+`enabled` execution therefore also requires the platform to declare
+`outcome_board.measurement_trust: cooperative-receipts` in the run control —
+the architect's explicit acceptance of this limit — or to fund an independent
+measurement (a separate build principal with its own dependency cache).
 
 ## 9. Rollback
 

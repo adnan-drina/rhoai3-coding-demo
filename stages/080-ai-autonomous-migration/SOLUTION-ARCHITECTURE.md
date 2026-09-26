@@ -322,8 +322,22 @@ The approved native outcome-board design is implemented behind a protocol
 selection that no existing run makes (`OUTCOME-BOARD-CONTRACT.md`). After M2
 the board shows the known outcomes, their prerequisites and their acceptance.
 A repair attempt stays within the outcome that owns it. Continuations run on
-the dispatcher's own tick. Execution is disabled until a protected writer
-principal exists (architect F1). The current workspace has none.
+the dispatcher's own tick.
+
+A run requests the protocol once, at creation (the app-migration template's
+`boardProtocol`, default `serial-loop/v1`, stamped into the initial commit's
+`run-budget.json`); the platform's provisioner selects it in the read-only run
+control together with the execution state it owns (default `disabled`). Every
+reader applies one rule (`outcome_protocol.select_protocol`): request and
+selection agree, or the run refuses at launch and never falls back to the
+serial loop. Runs created before the request existed stay serial.
+
+The protected writer (architect F1) is an authority service in a sidecar of
+the workspace pod, under a different uid, holding the store on a volume the
+worker container does not mount, reachable only through a socket the worker
+mounts read-only. Execution stays disabled until that layout is qualified on
+Dev Spaces and the platform records its measurement-trust decision
+(`OUTCOME-BOARD-CONTRACT.md` sections 3, 8a, 8b).
 
 ## 11. Maturity
 
