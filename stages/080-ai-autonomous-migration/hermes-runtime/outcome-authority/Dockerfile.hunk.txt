@@ -17,15 +17,13 @@ appended to /opt/rhoai3/080.pins (0644, not group-writable).
 
 --- a/workspace-images/Dockerfile
 +++ b/workspace-images/Dockerfile
-@@ -113,6 +113,11 @@
- FROM rhoai3-udi-foundation AS rhoai3-ws-080-unsigned
+@@ -246,6 +246,24 @@
+     && chown -R 10001:0 /opt/rhoai3 /opt/hermes-agent /opt/hermes-venv /opt/kantra /opt/mta-cli \
+          /usr/local/share/hermes /home/tooling/.hermes /etc/hermes
 +# Outcome-board authority code identity (planner.outcome_authority.code_identity
 +# over the staged tree); the build refuses a tree that does not compute it.
 +ARG OUTCOME_AUTHORITY_CODE_SHA256
 +COPY out/outcome-authority/ /opt/rhoai3/outcome-authority/
-@@ -246,6 +251,20 @@
-     && chown -R 10001:0 /opt/rhoai3 /opt/hermes-agent /opt/hermes-venv /opt/kantra /opt/mta-cli \
-          /usr/local/share/hermes /home/tooling/.hermes /etc/hermes
 +# The outcome-board authority (OUTCOME-BOARD-CONTRACT.md 3/8a): root-owned and
 +# not writable by any workspace uid or gid 0 -- AFTER the chown above, which
 +# would otherwise hand it to 10001:0. Its code identity is verified and stamped.
@@ -34,12 +32,18 @@ appended to /opt/rhoai3/080.pins (0644, not group-writable).
 +    && find /opt/rhoai3/outcome-authority -type d -exec chmod 0755 {} + \
 +    && find /opt/rhoai3/outcome-authority -type f -perm -u+x -exec chmod 0755 {} + \
 +    && find /opt/rhoai3/outcome-authority -type f ! -perm -u+x -exec chmod 0644 {} + \
-+    && ident="$(cd /tmp && python3 /opt/rhoai3/outcome-authority/kernel/outcome_authority.py code-identity --base /opt/rhoai3/outcome-authority)" \
-+    && test "${ident}" = "${OUTCOME_AUTHORITY_CODE_SHA256}" \
 +    && ! find /opt/rhoai3/outcome-authority -name __pycache__ | grep -q . \
++    && ident="$(cd /tmp && PYTHONDONTWRITEBYTECODE=1 python3 /opt/rhoai3/outcome-authority/kernel/outcome_authority.py code-identity --base /opt/rhoai3/outcome-authority)" \
++    && test "${ident}" = "${OUTCOME_AUTHORITY_CODE_SHA256}" \
 +    && printf 'outcome_authority.code_sha256=%s\n' "${ident}" >> /opt/rhoai3/080.pins \
 +    && chmod 0644 /opt/rhoai3/080.pins
  ENV MTA_CLI_HOME=/opt/mta-cli
+
+The ARG and COPY sit immediately before the RUN (not at the stage head) so
+every earlier layer of the stage stays cached. `.dockerignore` excludes
+`out/*`; the build needs `!out/outcome-authority/` and
+`!out/outcome-authority/**` re-included (the local build used a copy passed
+with `podman build --ignorefile`).
 
 Notes
 - The tree is root-owned, so the service (uid 1001040001) cannot write

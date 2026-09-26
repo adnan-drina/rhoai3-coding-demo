@@ -106,18 +106,21 @@ def podman(*args: str, check: bool = True, capture: bool = True) -> subprocess.C
     return p
 
 
-def scenario(image: str, tag: str, *, service_uid: int, store_in_worker: bool, stamp_dir: Path) -> dict:
+def scenario(image: str, tag: str, *, service_uid: int, store_in_worker: bool, stamp_dir: Path, baked: bool = False) -> dict:
     vols = {k: "ob-%s-%s" % (k, tag) for k in ("dest", "store", "sock")}
     for v in vols.values():
         podman("volume", "create", v)
-    code = "%s:/opt/rhoai3/outcome-authority:ro" % HERMES
+    # --baked: the image's own root-owned /opt/rhoai3/outcome-authority and its
+    # /opt/rhoai3/080.pins stamp; nothing of the source tree is mounted
+    code_mount = [] if baked else ["-v", "%s:/opt/rhoai3/outcome-authority:ro" % HERMES]
+    stamp_mount = [] if baked else ["-v", "%s:/opt/rhoai3/080.pins:ro" % (stamp_dir / "080.pins")]
     try:
         podman("run", "--rm", "--user", "%d:0" % WORKER_UID, "-v", "%s:/projects:U" % vols["dest"], *PY,
                image, "-c", SETUP)
         svc = podman("run", "-d", "--name", "ob-svc-" + tag, "--user", "%d:0" % service_uid,
                      "-v", "%s:/var/lib/outcome-authority:U" % vols["store"],
                      "-v", "%s:/run/outcome-authority:U" % vols["sock"],
-                     "-v", "%s:/projects:ro" % vols["dest"], "-v", code, *PY, image,
+                     "-v", "%s:/projects:ro" % vols["dest"], *code_mount, *PY, image,
                      "/opt/rhoai3/outcome-authority/kernel/outcome_authority.py", "serve",
                      "--root", "/projects/modernized", "--store-dir", "/var/lib/outcome-authority/store",
                      "--socket", SOCK, "--native-db", "/projects/modernized/.hermes/home/kanban.db").stdout.strip()
@@ -127,8 +130,7 @@ def scenario(image: str, tag: str, *, service_uid: int, store_in_worker: bool, s
                 break
             time.sleep(0.3)
         worker = ["run", "--rm", "--user", "%d:0" % WORKER_UID, "-v", "%s:/projects" % vols["dest"],
-                  "-v", "%s:/run/outcome-authority:ro" % vols["sock"], "-v", code,
-                  "-v", "%s:/opt/rhoai3/080.pins:ro" % (stamp_dir / "080.pins")]
+                  "-v", "%s:/run/outcome-authority:ro" % vols["sock"], *code_mount, *stamp_mount]
         if store_in_worker:
             worker += ["-v", "%s:/var/lib/outcome-authority" % vols["store"]]
         p = podman(*worker, *PY, image, "-c", CHECK, check=False)
@@ -148,20 +150,28 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", required=True)
     ap.add_argument("--out", default="")
+    ap.add_argument("--baked", action="store_true", help="use the code and stamp baked into the image (no source mounts)")
+    ap.add_argument("--commit", default="", help="the frozen commit the image was built from (recorded)")
+    ap.add_argument("--image-id", default="", help="the local image id (recorded)")
     ns = ap.parse_args()
     sys.path.insert(0, str(HERMES / "lib"))
     from planner.outcome_authority import code_identity
-    digest = code_identity(HERMES)
+    if ns.baked:
+        p = podman("run", "--rm", "--entrypoint", "sh", ns.image, "-c",
+                   "grep '^outcome_authority.code_sha256=' /opt/rhoai3/080.pins | cut -d= -f2")
+        digest = p.stdout.strip()
+    else:
+        digest = code_identity(HERMES)
     with tempfile.TemporaryDirectory() as d:
         stamp_dir = Path(d)
         (stamp_dir / "080.pins").write_text("outcome_authority.code_sha256=%s\n" % digest)
         os.chmod(stamp_dir / "080.pins", 0o644)
         tag = str(os.getpid())
         runs = {
-            "two_uid": scenario(ns.image, tag + "a", service_uid=SERVICE_UID, store_in_worker=False, stamp_dir=stamp_dir),
-            "control_same_uid": scenario(ns.image, tag + "b", service_uid=WORKER_UID, store_in_worker=False, stamp_dir=stamp_dir),
+            "two_uid": scenario(ns.image, tag + "a", service_uid=SERVICE_UID, store_in_worker=False, stamp_dir=stamp_dir, baked=ns.baked),
+            "control_same_uid": scenario(ns.image, tag + "b", service_uid=WORKER_UID, store_in_worker=False, stamp_dir=stamp_dir, baked=ns.baked),
             "control_store_mounted_in_worker": scenario(ns.image, tag + "c", service_uid=SERVICE_UID, store_in_worker=True,
-                                                        stamp_dir=stamp_dir),
+                                                        stamp_dir=stamp_dir, baked=ns.baked),
         }
     t = runs["two_uid"]
     verdict = {
@@ -177,6 +187,8 @@ def main() -> int:
                                         and runs["control_store_mounted_in_worker"]["protected"][0] is False),
     }
     receipt = {"schema": "rhoai3.outcome-authority-two-uid/v1", "image": ns.image, "code_sha256": digest,
+               "code_source": "baked into the image" if ns.baked else "source tree bind-mounted",
+               "commit": ns.commit, "image_id": ns.image_id,
                "worker_uid": WORKER_UID, "service_uid": SERVICE_UID, "verdict": verdict, "ok": all(verdict.values()),
                "runs": runs, "boundary": "local podman containers; not Dev Spaces, SCC or DWO"}
     text = json.dumps(receipt, indent=2, sort_keys=True)
