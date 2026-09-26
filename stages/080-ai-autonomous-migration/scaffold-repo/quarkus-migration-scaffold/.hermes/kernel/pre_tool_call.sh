@@ -889,16 +889,15 @@ for _expr in expression_args(cmd):
     # and a file operand spelled the same way must still be read as a path
     cmd_for_paths = cmd_for_paths.replace(_expr, " ", 1)
 if cmd_for_paths:
-    for word in cmd_for_paths.split():
+    for tok in cmd_for_paths.split():
         # V17-1: a separator written against the path (`--root /x; echo`,
-        # `ls /x&& …`, `ls /x;cat /y`) is shell syntax, not part of the name:
-        # every piece between separators is its own operand and is checked
-        for tok in re.split(r"[;&|]+", word):
-            if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
-                if not looks_like_http_route(tok):
-                    paths.append(tok)
+        # `ls /x&& …`) is shell syntax, not part of the name
+        tok = tok.rstrip(";&|")
+        if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
+            if not looks_like_http_route(tok):
+                paths.append(tok)
     cmd_scan = re.sub(r"https?://\S+", " ", cmd_for_paths)
-    for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}();&|]+", cmd_scan):
+    for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}()]+", cmd_scan):
         span = m.group(0)
         span = span.split(",")[0]
         while span and span[-1] in ".,;:&|" + chr(39) + chr(34):
