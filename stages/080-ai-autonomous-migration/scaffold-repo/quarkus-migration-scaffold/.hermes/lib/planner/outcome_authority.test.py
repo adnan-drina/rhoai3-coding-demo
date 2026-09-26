@@ -285,9 +285,11 @@ class Protection(unittest.TestCase):
     def test_code_identity_is_the_code_set(self):
         a = A.code_identity(HERMES)
         self.assertEqual(a, A.code_identity(HERMES))
-        names = {p.name for p in A.code_files(HERMES)}
-        self.assertTrue({"outcome_authority.py", "outcome_lifecycle.py", "outcome_store.py", "k4_graph.py"} <= names)
-        self.assertFalse(any(n.endswith(".test.py") for n in names))
+        rels = {p.relative_to(HERMES).as_posix() for p in A.code_files(HERMES)}
+        for want in ("kernel/outcome_authority.py", "lib/planner/outcome_lifecycle.py", "kernel/k4_schema.py",
+                     "skills/migration/fix-until-green/scripts/jdk-dest-model/DestModel.java"):
+            self.assertIn(want, rels)
+        self.assertFalse(any("__pycache__" in r or r.startswith("home/") for r in rels))
 
 
 # ===========================================================================

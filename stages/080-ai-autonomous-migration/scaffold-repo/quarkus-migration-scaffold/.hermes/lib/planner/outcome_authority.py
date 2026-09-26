@@ -64,7 +64,7 @@ DEFAULT_TIMEOUT = 120.0
 
 # the code the service runs; its identity is the image stamp
 # outcome_authority.code_sha256 (outcome_protocol.STAMP_KEY)
-CODE_KERNEL = ("outcome_authority.py", "k4_graph.py", "outcome_reconcile.py", "outcome_gate.py", "k4_convert.py")
+CODE_TREES = ("kernel", "lib", "planning", "skills")
 
 GIT_PROTECTED = (
     ("safe.directory", "*"), ("core.fsmonitor", "false"), ("core.hooksPath", "/dev/null"),
@@ -161,13 +161,20 @@ def hello(endpoint: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def code_files(base: Path) -> list[Path]:
-    """The service's code set under ``base`` (a .hermes-shaped tree: kernel/,
-    lib/planner/). Tests excluded; every other planner module is included
-    because the lifecycle imports across it."""
+    """Everything the service can execute or load, under ``base`` (a
+    .hermes-shaped tree): the harness release trees kernel/, lib/ and skills/
+    (the lifecycle reaches across lib/planner, the kernel K-modules and the
+    skills' Java model tools) plus planning/ (catalogs, schemas). Bytecode
+    caches excluded. This is exactly the tree the image bakes under
+    /opt/rhoai3/outcome-authority."""
     base = Path(base)
-    files = [base / "kernel" / n for n in CODE_KERNEL if (base / "kernel" / n).is_file()]
-    files += sorted(p for p in (base / "lib" / "planner").glob("*.py") if not p.name.endswith(".test.py"))
-    return sorted(files)
+    out = []
+    for top in CODE_TREES:
+        d = base / top
+        if d.is_dir():
+            out += [p for p in d.rglob("*") if p.is_file() and not p.is_symlink()
+                    and "__pycache__" not in p.parts and p.suffix != ".pyc" and not p.name.startswith("._")]
+    return sorted(out)
 
 
 def code_identity(base: Path) -> str:

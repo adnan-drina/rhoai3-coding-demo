@@ -1,0 +1,56 @@
+Outcome-board authority: bake the service code into the ws-080 image (PREPARED, NOT APPLIED, NOT BUILT).
+
+Applies to workspace-images/Dockerfile as it stands on 2026-09-26 (after the
+12-patch Hermes runtime hunk). Staging, outside the build:
+
+  python3 stages/080-ai-autonomous-migration/hermes-runtime/outcome-authority/stage-outcome-authority.py \
+      --repo <this repository> --commit <FROZEN commit> \
+      --out workspace-images/out/outcome-authority
+  # prints the frozen code identity C; also written to out/outcome-authority.code_sha256
+
+Build (local only, no push) with --build-arg OUTCOME_AUTHORITY_CODE_SHA256=C.
+
+Ownership: the tree is root:root, 0755 dirs / 0644 files (0755 for files that
+were executable), OUTSIDE the `chown -R 10001:0 /opt/rhoai3` of the stage, so
+neither the worker's random uid nor gid 0 can write it. The stamp line is
+appended to /opt/rhoai3/080.pins (0644, not group-writable).
+
+--- a/workspace-images/Dockerfile
++++ b/workspace-images/Dockerfile
+@@ -113,6 +113,11 @@
+ FROM rhoai3-udi-foundation AS rhoai3-ws-080-unsigned
++# Outcome-board authority code identity (planner.outcome_authority.code_identity
++# over the staged tree); the build refuses a tree that does not compute it.
++ARG OUTCOME_AUTHORITY_CODE_SHA256
++COPY out/outcome-authority/ /opt/rhoai3/outcome-authority/
+@@ -246,6 +251,20 @@
+     && chown -R 10001:0 /opt/rhoai3 /opt/hermes-agent /opt/hermes-venv /opt/kantra /opt/mta-cli \
+          /usr/local/share/hermes /home/tooling/.hermes /etc/hermes
++# The outcome-board authority (OUTCOME-BOARD-CONTRACT.md 3/8a): root-owned and
++# not writable by any workspace uid or gid 0 -- AFTER the chown above, which
++# would otherwise hand it to 10001:0. Its code identity is verified and stamped.
++RUN test -n "${OUTCOME_AUTHORITY_CODE_SHA256}" \
++    && chown -R 0:0 /opt/rhoai3/outcome-authority \
++    && find /opt/rhoai3/outcome-authority -type d -exec chmod 0755 {} + \
++    && find /opt/rhoai3/outcome-authority -type f -perm -u+x -exec chmod 0755 {} + \
++    && find /opt/rhoai3/outcome-authority -type f ! -perm -u+x -exec chmod 0644 {} + \
++    && ident="$(cd /tmp && python3 /opt/rhoai3/outcome-authority/kernel/outcome_authority.py code-identity --base /opt/rhoai3/outcome-authority)" \
++    && test "${ident}" = "${OUTCOME_AUTHORITY_CODE_SHA256}" \
++    && ! find /opt/rhoai3/outcome-authority -name __pycache__ | grep -q . \
++    && printf 'outcome_authority.code_sha256=%s\n' "${ident}" >> /opt/rhoai3/080.pins \
++    && chmod 0644 /opt/rhoai3/080.pins
+ ENV MTA_CLI_HOME=/opt/mta-cli
+
+Notes
+- The tree is root-owned, so the service (uid 1001040001) cannot write
+  __pycache__ into it; code_identity ignores bytecode caches in any case, and
+  the build step refuses a staged tree that already carries one.
+- After the build, read back (no push):
+    podman run --rm --entrypoint sh <image> -c 'grep outcome_authority /opt/rhoai3/080.pins; \
+      stat -c "%U:%G %a %n" /opt/rhoai3/outcome-authority /opt/rhoai3/outcome-authority/kernel/outcome_authority.py'
+  expect the frozen C and root:root 755/644.
+- Skeleton: the devfile's worker, initialize-legacy and outcome-authority
+  components pin the SAME digest D of the built image; the sidecar command is
+  /opt/rhoai3/outcome-authority/kernel/outcome_authority.py (already in the
+  skeleton). The digest is a platform commit made only after the authorized
+  build; it does not exist today.
