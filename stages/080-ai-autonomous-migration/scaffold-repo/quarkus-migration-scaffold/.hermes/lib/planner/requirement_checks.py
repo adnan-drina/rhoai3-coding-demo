@@ -206,6 +206,8 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
                 status, detail = _mode_check(req, chk.rsplit(":", 1)[1], receipts or {}, tree)
             elif chk == "config:decided-keys":
                 status, detail = _config_check(root, req)
+            elif chk == "config:application-path":
+                status, detail = _app_path_check(root, req)
             elif chk == "build:clean-generation":
                 status, detail = _generation_check(worklist, diagnostics)
             elif chk == "parity:request-body-positive-negative":
@@ -430,3 +432,34 @@ def _body_check(root: Path, req: dict[str, Any], scen: Any) -> tuple[str, str]:
     if any(r[0] == UNKNOWN for r in res):
         return UNKNOWN, "; ".join(r[1] for r in res if r[0] == UNKNOWN)[:300]
     return PASS, "the static condition no longer holds and %d captured case scenario(s) pass" % len(res)
+
+
+def _app_path_check(root: Path, req: dict[str, Any]) -> tuple[str, str]:
+    """config:application-path (round 3): the destination's EFFECTIVE value
+    of the owed key -- application.properties, a %<profile>. key of a decided
+    build profile overriding the unprefixed one -- is the owed path (both
+    normalised: leading slash, no trailing slash but the root)."""
+    from response_adapters import read_properties
+    from planner.decisions import load_decisions
+    from planner.source_requirements import _norm_path
+    facts = req.get("facts") or {}
+    key, want = str(facts.get("dest_key") or ""), str(facts.get("dest_value") or "")
+    if not key or not want:
+        return UNKNOWN, "the requirement names no destination key or value"
+    props_p = Path(root) / "src/main/resources/application.properties"
+    if not props_p.is_file():
+        return FAIL, "application.properties does not exist; %s is owed %s" % (key, want)
+    props = read_properties(props_p.read_text(encoding="utf-8", errors="replace"))
+    try:
+        active = [str(x) for x in ((load_decisions(Path(root)).get("build_profiles") or {}).get("active") or [])]
+    except (OSError, ValueError):
+        active = []
+    got, where = props.get(key), key
+    for prof in active:
+        if "%%%s.%s" % (prof, key) in props:
+            got, where = props["%%%s.%s" % (prof, key)], "%%%s.%s" % (prof, key)
+    if got is None:
+        return FAIL, "%s is not set; the source serves at %s (%s=%s)" % (key, want, facts.get("source_key"), facts.get("source_value"))
+    if _norm_path(got) != want:
+        return FAIL, "%s=%s, owed %s (source %s=%s)" % (where, got, want, facts.get("source_key"), facts.get("source_value"))
+    return PASS, "%s=%s serves where the source's %s=%s did" % (where, got, facts.get("source_key"), facts.get("source_value"))

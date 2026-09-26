@@ -267,6 +267,9 @@ def run_world(base: str, names: dict[str, str]) -> int:
             run.edit(rel, text)
         for rel, text in {**STUBS, **w.domain(), w.ctrl: w.spring_ctrl()}.items():
             run.edit(".derived/frozen-input/" + rel, text)
+        # the source's own configuration: where it serves (round 3)
+        run.edit(".derived/frozen-input/src/main/resources/application.properties",
+                 "server.port=9966\nserver.servlet.context-path=/%s-app/\n" % names["route"])
         run.edit("pom.xml", "<project><dependencies><dependency><groupId>io.quarkus</groupId>"
                             "<artifactId>quarkus-jdbc-postgresql</artifactId></dependency></dependencies></project>\n")
         run.edit("src/main/resources/application.properties", "quarkus.profile=%s\n" % names["alt_profile"])
@@ -326,7 +329,7 @@ def run_world(base: str, names: dict[str, str]) -> int:
             L.check_write(ctx, task_id=tid, run_id=rid, rel_paths=sorted(edits))
             L.record_verdict(ctx, task_id=tid, run_id=rid, verdict="ACCEPTED", candidate=ctx.product_tree(), attempt=attempt_no)
             ob.git(root, "add", "-A")
-            ob.git(root, "commit", "-qm", "%s attempt %s" % (oid, attempt_no))
+            ob.git(root, "commit", "-qm", "%s attempt %s" % (oid, attempt_no), "--allow-empty")
             if drop:
                 run.drop(*nodes[oid]["obligations"])
             run.worklist["runtime"] = {"package": {"ran": True, "rc": 0 if runtime_ok else 1},
@@ -342,6 +345,12 @@ def run_world(base: str, names: dict[str, str]) -> int:
 
         ds_req = [r for r in byrule["configuration-decision"] if r["subject"] == "datasource"][0]
         owner["datasource"] = acct[ds_req["id"]]
+        ap = [r for r in byrule.get("application-path", []) if r["status"] == "applicable"]
+        if [(r["facts"]["dest_key"], r["facts"]["dest_value"]) for r in ap] != [("quarkus.http.root-path", "/%s-app" % names["route"])]:
+            return _fail("[%s] the source's context path is an owed application path: %s" % (base, byrule.get("application-path")))
+        owner["application-path"] = acct[ap[0]["id"]]
+        if owner["application-path"] != owner["datasource"]:
+            return _fail("[%s] the application path joins the configuration owner of the same file: %s" % (base, owner))
         targets = {ctrl_owner, owner["repository-architecture"], owner["configuration-decision"], owner["datasource"]}
         props = {"quarkus.profile": names["alt_profile"]}
 
@@ -397,7 +406,11 @@ def run_world(base: str, names: dict[str, str]) -> int:
             if owner["configuration-decision"] == owner["datasource"]:
                 return ""
             out, iss, meas = attempt(oid, {"src/main/resources/application.properties": render()}, "2", drop=False)
-            return "" if out["outcome_accepted"] else "the decided datasource is accepted: %s" % meas["check_status"]
+            if out["outcome_accepted"] or meas["check_status"]["config:application-path"]["status"] != "fail":
+                return "the decided datasource without the source's context path is still refused: %s" % meas["check_status"]
+            props["quarkus.http.root-path"] = "/%s-app/" % names["route"]
+            out, iss, meas = attempt(oid, {"src/main/resources/application.properties": render()}, "3", drop=False)
+            return "" if out["outcome_accepted"] else "the decided datasource under the source's path is accepted: %s" % meas["check_status"]
 
         def do_both(oid: str) -> str:
             # the two decided-configuration requirements share one owner (the
@@ -411,6 +424,10 @@ def run_world(base: str, names: dict[str, str]) -> int:
             props["quarkus.profile"] = names["profile"]
             out, iss, meas = attempt(oid, {"src/main/resources/application.properties": render(),
                                            ".mvn/maven.config": "-Dquarkus.profile=%s\n" % names["profile"]}, "4", drop=False)
+            if out["outcome_accepted"] or meas["check_status"]["config:application-path"]["status"] != "fail":
+                return "the destination not serving under the source's context path is refused: %s" % meas["check_status"]
+            props["quarkus.http.root-path"] = "/%s-app/" % names["route"]
+            out, iss, meas = attempt(oid, {"src/main/resources/application.properties": render()}, "5", drop=False)
             return "" if out["outcome_accepted"] else "both decisions rendered are accepted: %s" % meas["check_status"]
 
         scripted = {ctrl_owner: do_controller, owner["repository-architecture"]: do_repository}
