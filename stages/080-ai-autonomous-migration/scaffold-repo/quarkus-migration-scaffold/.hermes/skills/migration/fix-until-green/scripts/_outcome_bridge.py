@@ -112,6 +112,32 @@ def amend(root: Path, cluster: str, rel: str, row: dict[str, Any]) -> int | None
     return 0
 
 
+def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) -> int | None:
+    """After a worker died between its commit and the acceptance record, the next
+    run's issue recovered that commit (review R5). The re-measured tree then
+    finishes THAT acceptance; nothing is committed or spent again. None when
+    there is nothing recovered to finish."""
+    if not active(root):
+        return None
+    from planner import outcome_lifecycle as L
+    task, run_id = _ids()
+    parity = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
+    scenarios = [str(s) for s in parity.get("scenarios") or []]
+    classes = ["build", "compile", "tests"] + (["runtime"] if (worklist.get("runtime") or {}).get("ready") else []) + \
+              (["parity"] if scenarios else [])
+    try:
+        out = L.evaluate_recovered(_ctx(root), task_id=task, run_id=run_id,
+                                   measurement={"classes": classes, "scenarios": scenarios})
+    except Exception as exc:
+        return _refuse(exc)
+    if out is None:
+        return None
+    if out["outcome_accepted"]:
+        print("OUTCOME ACCEPTED %s on recovered commit %s: kanban_complete this card." % (out["outcome_id"], out["commit"][:12]))
+        return 0
+    return reissue(root, note="recovered commit %s; outcome still owns %s" % (out["commit"][:12], ", ".join(out["open_owned"][:4])))
+
+
 def reissue(root: Path, note: str = "") -> int | None:
     """The next attempt (or the outcome's next cluster) on the SAME card: a
     fresh issue for this run and a fresh issued.json. Never a new card."""

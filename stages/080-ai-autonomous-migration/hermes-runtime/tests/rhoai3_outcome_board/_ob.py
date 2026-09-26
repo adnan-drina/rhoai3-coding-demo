@@ -108,10 +108,12 @@ def task_of(dest: Path, oid: str) -> str:
 def hook_config(cfg: dict, dest: Path, *, tick: bool) -> dict:
     cfg = dict(cfg)
     cfg["hooks_auto_accept"] = True
+    # exactly what the Stage 050 producer registers for a run that selects the protocol
+    # (maas-api-key-provisioning.yaml "outcome-board hooks"), including its 5 s hook timeout
     hooks = {"pre_tool_call": [{"matcher": OUTCOME_MATCHER, "command": "bash %s" % (GOLDEN / "kernel" / "pre_tool_call.sh"),
-                                "timeout": 30, "fail_closed": True}]}
+                                "timeout": 5, "fail_closed": True}]}
     if tick:
-        hooks["on_kanban_dispatch_tick"] = [{"command": "python3 %s --root %s" % (GOLDEN / "kernel" / "outcome_reconcile.py", dest),
+        hooks["on_kanban_dispatch_tick"] = [{"command": "python3 %s --root %s" % (dest / ".hermes" / "kernel" / "outcome_reconcile.py", dest),
                                              "timeout": 120}]
     cfg["hooks"] = hooks
     return cfg

@@ -691,6 +691,41 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
             "covered": covered}
 
 
+def evaluate_recovered(ctx: Ctx, *, task_id: str, run_id: int, measurement: dict[str, Any]) -> dict[str, Any] | None:
+    """Finish an acceptance that recovery recorded (review R5): the recovered
+    commit is the current tree, the worker re-measured it, and the OUTCOME is
+    judged exactly as accept_commit judges it. None when there is nothing to
+    finish. Spends nothing and never re-commits."""
+    iss = active_issue(ctx, task_id, run_id)
+    oid = iss["outcome_id"]
+    rows = [r for r in ctx.store.ledger(oid) if r["kind"] == "accept-commit"]
+    if not rows or not rows[-1]["doc"].get("recovered") or rows[-1]["doc"].get("outcome_accepted"):
+        return None
+    last = rows[-1]
+    tree = ctx.product_tree()
+    if tree != last["doc"]["tree"]:
+        raise Refusal("ACCEPT_TREE_DRIFT", "the tree is not the recovered commit's tree")
+    wl, why = load_worklist(ctx.root)
+    if wl is None:
+        raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
+    open_now = sorted(open_obligations(wl))
+    rec = record_measurement(ctx, tree=tree, classes=list(measurement.get("classes") or []),
+                             scenarios=list(measurement.get("scenarios") or []), open_ids=open_now,
+                             source="recovered:%s" % last["attempt_key"])
+    owned = _owned(ctx.store, oid)
+    node = _node(_plan(ctx.store), oid) or {}
+    covered = _covers(node, rec)
+    done = not (owned & set(open_now)) and covered
+    with ctx.store.txn() as c:
+        ctx.store.append(c, oid, "accept-evaluated", {"commit": last["doc"]["commit"], "tree": tree, "outcome_accepted": done,
+                                                      "run_id": run_id}, attempt_key="%s:evaluated" % last["attempt_key"])
+        if done:
+            c.execute("UPDATE outcomes SET status='accepted', accepted_tree=?, accepted_commit=?, accepted_rev=? WHERE outcome_id=?",
+                      (tree, last["doc"]["commit"], int(ctx.store.meta("revision", "0")), oid))
+    return {"outcome_id": oid, "outcome_accepted": done, "open_owned": sorted(owned & set(open_now)), "covered": covered,
+            "commit": last["doc"]["commit"]}
+
+
 def recover_accept(ctx: Ctx, *, oid: str, commits: Callable[[str], list[tuple[str, str, str]]],
                    skip_run: int | None = None) -> list[dict[str, Any]]:
     """After a crash between accept-begin and accept-commit: find the commit

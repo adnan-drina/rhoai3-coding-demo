@@ -288,7 +288,10 @@ def readback(store: Store, native: Any, plan: dict[str, Any] | None = None, *, m
         for f in ("title", "body"):
             if t.get(f) != exp[f]:
                 gaps.append("%s: %s differs" % (oid, f))
-        if (t.get("assignee") or None) not in {exp["assignee"], exp.get("final_assignee")}:
+        allowed_assignees = {exp["assignee"], exp.get("final_assignee")}
+        if node.get("role") in ("assess", "deliver") and t.get("status") in ("review", "done"):
+            allowed_assignees.add("reviewer")    # native same-card review hands the card to the reviewer seat
+        if (t.get("assignee") or None) not in allowed_assignees:
             gaps.append("%s: assignee %r" % (oid, t.get("assignee")))
         if node.get("role") == "deliver" and t.get("assignee") and not _granted(store, oid):
             gaps.append("%s: assigned without a stage grant" % oid)

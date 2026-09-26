@@ -646,6 +646,10 @@ def main(argv: list[str] | None = None) -> int:
     if digest(cur) != state.get("worklist_sha256"):
         print("FAIL: LOOP_STALE_STATE work list changed after verify", file=sys.stderr)
         return 2
+    if not args.baseline:
+        ob = _outcome_bridge.resume_recovered(root, cur, load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
+        if ob is not None:
+            return ob  # outcome board: a commit recovered from a dead worker, finished on the re-measured tree
     run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
     if isinstance(run, dict) and ((run.get("admission") or {}) if isinstance(run.get("admission"), dict) else {}).get("resealed_during_verify"):
         adm = run["admission"]

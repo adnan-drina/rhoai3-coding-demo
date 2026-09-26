@@ -1226,6 +1226,13 @@ class ReviewGaps(unittest.TestCase):
         self.assertEqual(s.meta("accepted_commit"), sha)
         self.assertEqual(out["budget"]["spent"], 0)
         self.assertNotEqual(base, sha)
+        # the re-measured tree finishes THAT acceptance: no second commit, no spend
+        r.drop("inc:pom:quarkus-bom")
+        fin = L.evaluate_recovered(r.ctx(), task_id=tid, run_id=run2, measurement={"classes": ["build", "compile", "tests"]})
+        self.assertTrue(fin["outcome_accepted"])
+        self.assertEqual(git(r.root, "rev-parse", "HEAD"), sha)
+        L.check_complete(r.ctx(), task_id=tid, run_id=run2, profile="implementer", audit_green=False)
+        self.assertEqual(Store(r.root).spent(out["budget"]["key"]), 0)
 
     # R6 — amendments update the projection only ----------------------------------
     def test_r6_evidence_valid_amendment_changes_the_governing_permission(self):
