@@ -24,7 +24,7 @@ from typing import Any
 
 from planner.canonical import digest, is_sha256, load_json, sha256_file
 from planner import decided_repairs
-from planner.decisions import missing_decisions
+from planner.decisions import missing_decisions, plan_semantics as plan_semantics_mode
 from planner.paths import ADMISSION_RECEIPT, BOOTSTRAP_RECEIPT, DECIDED_REPAIRS_RECEIPT, DECISIONS, EVIDENCE_BUNDLE, LOOP_STEPS, SCHEMAS_DIR, WORKLIST, contract_files
 from planner.pins import activation_gaps, activation_record, digestable_pins, load_pins, pin_gaps
 from planner.schema_lite import load_schema, validate
@@ -137,7 +137,11 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
     return out
 
 
-def compose_receipt(root: Path) -> dict[str, Any]:
+def compose_receipt(root: Path, *, semantics_out: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The receipt. Under decisions.loop.plan_semantics v1 it also derives the
+    semantic plan (planner.plan_semantics.contract), adds its typed blocks and
+    seals its fingerprints BESIDE the exact digests; ``semantics_out`` receives
+    the document so the caller writes exactly what was sealed."""
     root = Path(root)
     bundle = load_json(root / EVIDENCE_BUNDLE)
     worklist = load_json(root / WORKLIST)
@@ -160,6 +164,17 @@ def compose_receipt(root: Path) -> dict[str, Any]:
     except ValueError:
         decisions = None
     blocks = blocks_for(root, bundle, worklist, decisions, pins, bundle_digest) if status != COMPAT_FAIL else []
+    sem_doc = None
+    if status != COMPAT_FAIL and decisions is not None and plan_semantics_mode(decisions) == "v1":
+        from planner import plan_semantics
+
+        # the INITIAL plan is checked once and then frozen: a re-seal after a
+        # loop step seals the same frozen document again (a later live work
+        # list never rewrites the initial plan, nor re-judges it)
+        sem_doc = plan_semantics.frozen(root)
+        if sem_doc is None:
+            sem_doc, sem_blocks = plan_semantics.contract(root)
+            blocks.extend(sem_blocks)
     if blocks:
         status = INCONCLUSIVE
         reasons.extend("%s: %s" % (b["class"], b["detail"]) for b in blocks)
@@ -176,6 +191,14 @@ def compose_receipt(root: Path) -> dict[str, Any]:
     dr = root / DECIDED_REPAIRS_RECEIPT
     if dr.is_file():
         seals["decided_repairs"] = sha256_file(dr)
+    if sem_doc is not None:
+        from planner import plan_semantics
+
+        # the semantic identity of the initial plan: same inputs, same plan,
+        # whatever run, checkout or clock (verify_receipt checks the file)
+        seals["plan_semantics"] = plan_semantics.seal_of(sem_doc)
+        if semantics_out is not None:
+            semantics_out.update(sem_doc)
     m = worklist.get("measure") or {}
     receipt = {
         "schema": SCHEMA,
@@ -240,6 +263,10 @@ def verify_receipt(root: Path, *, require_admitted: bool = True) -> tuple[dict[s
         dr = root / DECIDED_REPAIRS_RECEIPT
         if (sha256_file(dr) if dr.is_file() else "") != seals.get("decided_repairs"):
             gaps.append("decided repair receipt changed after admission")
+    if "plan_semantics" in seals:
+        from planner import plan_semantics
+
+        gaps.extend(plan_semantics.seal_gaps(root, seals["plan_semantics"] or {}))
     dec = root / DECISIONS
     if dec.is_file():
         if sha256_file(dec) != seals.get("decisions_yaml"):

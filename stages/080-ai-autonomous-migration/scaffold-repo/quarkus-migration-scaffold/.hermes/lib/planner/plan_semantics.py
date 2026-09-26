@@ -413,6 +413,15 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     return doc, blocks
 
 
+def frozen(root: Path) -> dict[str, Any] | None:
+    """The initial plan's semantic document once an ADMITTED receipt froze it
+    (pipeline.admit), or None before that."""
+    from planner.paths import PLAN_SEMANTICS
+
+    doc = _read(Path(root) / PLAN_SEMANTICS)
+    return doc if isinstance(doc, dict) and doc.get("frozen") is True and doc.get("schema") == SCHEMA else None
+
+
 def seal_of(doc: dict[str, Any]) -> dict[str, str]:
     return {"schema": SCHEMA, "input_fingerprint": doc["input_fingerprint"], "plan_fingerprint": doc["plan_fingerprint"],
             "semantic_digest": semantic_digest(doc)}
