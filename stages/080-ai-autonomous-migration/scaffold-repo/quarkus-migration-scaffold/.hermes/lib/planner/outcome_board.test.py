@@ -204,6 +204,44 @@ class Run:
 
 
 # ===========================================================================
+class PlannedUnitIssue(unittest.TestCase):
+    """T5 for a REQUIREMENT-ONLY outcome: the authority grants exactly the
+    planned unit's bounded paths (outcome_graph.planned_unit_grant), and
+    nothing when the planner refuses the unit."""
+
+    def run_with(self, unit):
+        r = Run(publish=False)
+        node = next(n for n in r.plan["nodes"] if n["outcome_id"] == "config:rk:cfg")
+        node.update(clusters=[], obligations=[], requirements=["req:cfg"], planned_units=[unit])
+        r.plan["requirements"] = [{"id": "req:cfg", "rule": "config-binding/v1", "facts": {"sites": 1}}]
+        r.plan["ownership"] = {k: v for k, v in (r.plan.get("ownership") or {}).items() if v != "config:rk:cfg"}
+        r.plan["digest"] = OG.plan_digest(r.plan)
+        r.drop("inc:cfg:server-port")
+        r.publish()
+        r.release()
+        return r
+
+    def test_bounded_grant_and_refusal(self):
+        r = self.run_with({"paths": ["src/main/resources/application.properties"], "symbols": 1})
+        try:
+            tid, run, iss = r.issue("config:rk:cfg")
+            self.assertEqual((iss["cluster"], iss["allowed_paths"]), ("", ["src/main/resources/application.properties"]))
+            self.assertEqual(iss["planned_unit"]["refusal"], "")
+            L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=["src/main/resources/application.properties"])
+            with self.assertRaises(L.Refusal):
+                L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=["pom.xml"])
+        finally:
+            r.close()
+        r = self.run_with({"paths": ["src/test/java/X.java"], "symbols": 1})
+        try:
+            tid, run, iss = r.issue("config:rk:cfg")
+            self.assertEqual(iss["allowed_paths"], [])
+            self.assertTrue(iss["planned_unit"]["refusal"].startswith("PATH_NOT_PRODUCT"))
+        finally:
+            r.close()
+
+
+# ===========================================================================
 class Derivation(unittest.TestCase):
     """C5/F5: initial graph from admission-time evidence (A1, A6, A14)."""
 

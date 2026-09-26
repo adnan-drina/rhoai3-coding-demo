@@ -496,6 +496,15 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
     if cluster:
         # amendments granted earlier to this cluster survive a restart (never renewed, never lost)
         allowed = sorted(set(allowed) | set(amended_paths(store, oid, cluster)))
+    unit_grant: dict[str, Any] = {}
+    if node["role"] == "repair" and not cluster and node.get("planned_units"):
+        # a REQUIREMENT-ONLY outcome: its planned unit's bounded grant, computed from the
+        # frozen plan (outcome_graph.planned_unit_grant); granted only without a refusal,
+        # under the same writer generation, budget and baseline checks as a cluster
+        from planner.outcome_graph import planned_unit_grant
+        unit_grant = planned_unit_grant(node, plan.get("requirements") or [], exists=lambda rel: (ctx.root / rel).exists())
+        if not unit_grant.get("refusal"):
+            allowed = sorted(unit_grant.get("paths") or [])
     with store.txn() as c:
         prior = c.execute("SELECT issue_id, run_id FROM issues WHERE task_id=? AND state='active'", (task_id,)).fetchall()
         for r in prior:
@@ -526,6 +535,8 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
             "cluster": cluster, "allowed_paths": allowed, "budget": {"key": orow["budget_key"], "spent": spent,
                                                                       "limit": orow["budget_limit"]},
             "retained_candidate": bool(pending), "generation": gen, "claimed_control": False,
+            "planned_unit": ({"refusal": unit_grant.get("refusal") or "", "owed": unit_grant.get("owed") or [],
+                              "bounds": unit_grant.get("bounds") or {}} if unit_grant else None),
             "run": store.meta("run_id"),
             "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
                            for a in amends]}
