@@ -191,6 +191,14 @@ class Run:
         self.native.complete(tid)
         return tid
 
+    def to_preflight(self):
+        """Every repair accepted, a PROVISIONAL_ACCEPT assessment, the dispatcher tick: M5 PREFLIGHT granted."""
+        self.drop("inc:unlocatable:jndi")
+        self.accept_all_repairs()
+        self.assess("assess:m4:g1", "PROVISIONAL_ACCEPT")
+        R.tick(self.root, self.native)
+        return self.tid("deliver:prepare:c1")
+
     def close(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
@@ -1004,8 +1012,9 @@ class Continuations(unittest.TestCase):
         self.assertEqual([c for c in r.native.calls if c == ("assign", prep)], [("assign", prep)])
         # M5 stage runs, records its result, completes; the next stage is granted, a later one is not
         tid, run, iss = r.issue("deliver:prepare:c1")
-        L.record_stage_result(r.ctx(), task_id=tid, run_id=run, result={"accepted": True, "build_authorized": True})
-        L.check_complete(r.ctx(), task_id=tid, run_id=run, profile="implementer", audit_green=True)
+        import m5_delivery
+        self.assertTrue(m5_delivery.prepare_candidate(r.root)["ok"])        # the real PREFLIGHT producer
+        L.check_complete(r.ctx(), task_id=tid, run_id=run, profile="reviewer", audit_green=True)
         r.native.complete(tid)
         R.tick(r.root, r.native)
         self.assertEqual(r.native.task(r.tid("deliver:push:c1"))["assignee"], "implementer")
@@ -1026,6 +1035,253 @@ class Continuations(unittest.TestCase):
         row = Store(r.root).conn.execute("SELECT state, result FROM intents WHERE intent_id='m4-assessed:assess:m4:g1'").fetchone()
         self.assertEqual(row[0], "stopped")
         self.assertIn("REFUSE_NOTHING_REPAIRABLE", row[1])
+
+
+# ===========================================================================
+class ReviewGaps(unittest.TestCase):
+    """Implementation review 2026-09-26, R1–R6: each counterexample reproduced
+    first (these tests failed before the correction), then held."""
+
+    def setUp(self):
+        self.r = Run()
+        mirror_layout(self.r.root)
+        self.r.release()
+        self.env = {k: os.environ.get(k) for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID", "HERMES_KANBAN_CLAIM_LOCK")}
+
+    def tearDown(self):
+        for k, v in self.env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        self.r.close()
+
+    def as_worker(self, tid, run, lock=""):
+        os.environ.update(HERMES_KANBAN_TASK=tid, HERMES_KANBAN_RUN_ID=str(run), HERMES_KANBAN_CLAIM_LOCK=lock)
+        self.r.native.sync()
+
+    def gate(self, *args):
+        import outcome_gate
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = outcome_gate.main(["--root", str(self.r.root), *args])
+        return rc, buf.getvalue()
+
+    # R1 — worker booleans can release M5 DEPLOY -------------------------------
+    def test_r1_asserted_stage_flags_cannot_complete_preflight_or_grant_deploy(self):
+        r = self.r
+        prep = r.to_preflight()
+        tid, run, iss = r.issue("deliver:prepare:c1")
+        with self.assertRaises(L.Refusal) as cm:
+            L.record_stage_result(r.ctx(), task_id=tid, run_id=run, result={"accepted": True, "build_authorized": True})
+        self.assertEqual(cm.exception.code, "STAGE_RESULT_ASSERTED")
+        for profile, audit in (("reviewer", False), ("reviewer", True), ("implementer", True)):
+            with self.assertRaises(L.Refusal) as cm:
+                L.check_complete(r.ctx(), task_id=tid, run_id=run, profile=profile, audit_green=audit)
+            self.assertIn(cm.exception.code, ("DELIVER_AUDIT_RED", "STAGE_EVIDENCE_MISSING", "DELIVER_TERMINATOR"))
+        r.native.complete(prep)                          # even a forced native completion grants nothing
+        R.tick(r.root, r.native)
+        self.assertIsNone(r.native.task(r.tid("deliver:push:c1"))["assignee"])
+
+    def test_r1_real_candidate_bound_evidence_still_progresses(self):
+        r = self.r
+        prep = r.to_preflight()
+        tid, run, iss = r.issue("deliver:prepare:c1")
+        import m5_delivery
+        doc = m5_delivery.prepare_candidate(r.root)      # the actual PREFLIGHT producer
+        self.assertTrue(doc["ok"], doc)
+        self.assertEqual(doc["candidate_sha"], git(r.root, "rev-parse", "HEAD"))
+        with self.assertRaises(L.Refusal) as cm:         # a red audit still refuses
+            L.check_complete(r.ctx(), task_id=tid, run_id=run, profile="reviewer", audit_green=False)
+        self.assertEqual(cm.exception.code, "DELIVER_AUDIT_RED")
+        out = L.check_complete(r.ctx(), task_id=tid, run_id=run, profile="reviewer", audit_green=True)
+        self.assertTrue(out["allow"])
+        r.native.complete(prep)
+        R.tick(r.root, r.native)
+        self.assertEqual(r.native.task(r.tid("deliver:push:c1"))["assignee"], "implementer")
+        # a contradictory receipt (another candidate) is refused, not believed
+        cand = json.loads((r.root / "verification/delivery/candidate.json").read_text())
+        cand["candidate_sha"] = "0" * 40
+        (r.root / "verification/delivery/candidate.json").write_text(json.dumps(cand))
+        ok, _doc, reasons = L.stage_evidence(r.root, Store(r.root), "prepare")
+        self.assertFalse(ok)
+        self.assertTrue(any("CANDIDATE" in x for x in reasons), reasons)
+
+    # R2 — effect admission ignores stage and eligibility ---------------------
+    def test_r2_m3_worker_cannot_admit_push(self):
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        self.as_worker(tid, run)
+        rc, out = self.gate("effect-admit", "--kind", "push", "--operation-id", "origin:refs/heads/main@x", "--revision", "1")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("EFFECT_STAGE", out)
+        self.assertEqual(Store(r.root).conn.execute("SELECT COUNT(*) FROM effects").fetchone()[0], 0)
+
+    def test_r2_push_only_from_granted_deploy_with_preflight_evidence_and_recovery(self):
+        r = self.r
+        prep = r.to_preflight()
+        # an ungranted DEPLOY stage, manually claimed, cannot push
+        push_t = r.tid("deliver:push:c1")
+        r.native.tasks[push_t]["assignee"] = "implementer"
+        run0, lock0 = r.native.claim(push_t, pid=dead_pid())
+        self.as_worker(push_t, run0)
+        rc, out = self.gate("effect-admit", "--kind", "push", "--operation-id", "o", "--revision", "1")
+        self.assertEqual(rc, 1, out)
+        r.native.end_run(push_t, "todo")
+        r.native.tasks[push_t]["assignee"] = None
+        # PREFLIGHT with real evidence, reviewer completion, continuation grants DEPLOY
+        tid, run, _ = r.issue("deliver:prepare:c1")
+        import m5_delivery
+        m5_delivery.prepare_candidate(r.root)
+        L.check_complete(r.ctx(), task_id=tid, run_id=run, profile="reviewer", audit_green=True)
+        r.native.complete(prep)
+        R.tick(r.root, r.native)
+        remote = r.tmp / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(r.root, "remote", "add", "origin", str(remote))
+        tid2, run2, _ = r.issue("deliver:push:c1")
+        self.as_worker(tid2, run2)
+        head = git(r.root, "rev-parse", "HEAD")
+        # a crash after the push was sent and before its result: recovery by identity, no replay
+        os.environ.update(OB_FAULT="after-push-sent", OB_FAULT_MODE="raise")
+        try:
+            with self.assertRaises(Crash):
+                self.gate("push", "--remote", "origin", "--ref", "refs/heads/main")
+        finally:
+            os.environ.pop("OB_FAULT")
+            os.environ.pop("OB_FAULT_MODE")
+        eff = dict(Store(r.root).conn.execute("SELECT * FROM effects").fetchone())
+        self.assertEqual((eff["kind"], eff["state"], eff["candidate"]), ("push", "sent", head))
+        R.tick(r.root, r.native)                          # the dispatcher's recovery probes the remote
+        eff = dict(Store(r.root).conn.execute("SELECT * FROM effects").fetchone())
+        self.assertEqual(eff["state"], "landed")
+        rc, out = self.gate("push", "--remote", "origin", "--ref", "refs/heads/main")
+        self.assertEqual(rc, 0, out)                      # already landed: recorded, never repeated
+        self.assertIn("already", out)
+        self.assertEqual(Store(r.root).conn.execute("SELECT COUNT(*) FROM effects").fetchone()[0], 1)
+
+    # R3 — the M5 review handoff is refused -------------------------------------
+    def test_r3_m5_review_handoff_is_the_stage_terminator(self):
+        r = self.r
+        r.to_preflight()
+        tid, run, _ = r.issue("deliver:prepare:c1")
+        r.native.sync()
+        env = {"HERMES_KANBAN_TASK": tid, "HERMES_KANBAN_RUN_ID": str(run)}
+        out = HK.terminator(str(r.root), kind="request_review", profile="implementer", env=env, audit_green=lambda: False)
+        self.assertEqual(out["action"], "allow", out)
+        out = HK.terminator(str(r.root), kind="complete", profile="implementer", env=env, audit_green=lambda: True)
+        self.assertEqual(out["action"], "block")          # the implementer never completes a delivery stage
+
+    # R4 — an interrupted REFUSE publication stays stuck --------------------------
+    def test_r4_interrupted_repair_publication_is_replayed_to_completion(self):
+        r = self.r
+        r.accept_all_repairs()
+        c = Continuations()
+        items, clusters = c.parity_regression()
+        r.assess("assess:m4:g1", "REFUSE", new_items=items, new_clusters=clusters)
+        os.environ.update(OB_FAULT="after-attach", OB_FAULT_MODE="raise")
+        try:
+            with self.assertRaises(Crash):
+                R.tick(r.root, r.native)
+        finally:
+            os.environ.pop("OB_FAULT")
+            os.environ.pop("OB_FAULT_MODE")
+        follow = "followup:behavior:http:com.acme.shop.web.ItemController:g2"
+        # nothing executes before the complete revised graph reads back
+        for oid in (follow, "assess:m4:g2"):
+            row = Store(r.root).conn.execute("SELECT task_id FROM publication WHERE outcome_id=?", (oid,)).fetchone()
+            if row and row[0]:
+                self.assertIsNone(r.native.task(row[0])["assignee"], oid)
+        for _ in range(3):
+            R.tick(r.root, r.native)
+        s = Store(r.root)
+        self.assertEqual(s.conn.execute("SELECT state FROM intents WHERE intent_id='m4-assessed:assess:m4:g1'").fetchone()[0], "done")
+        pub = dict(s.conn.execute("SELECT * FROM publication WHERE outcome_id=?", (follow,)).fetchone())
+        self.assertEqual(pub["state"], "published")
+        self.assertIsNotNone(pub["attachment_id"])
+        self.assertEqual(len(r.native.attachments(pub["task_id"])), 1)       # the attachment made before the crash is reused
+        self.assertEqual(r.native.task(pub["task_id"])["assignee"], "implementer")
+        self.assertEqual(G.readback(s, r.native), [])
+
+    # R5 — a crash after the accepted commit blocks normal recovery ---------------
+    def test_r5_commit_without_accept_record_is_recovered_on_the_next_issue(self):
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        r.edit("pom.xml", "<fixed/>")
+        cand = r.ctx().product_tree()
+        base = git(r.root, "rev-parse", "HEAD")
+        L.record_verdict(r.ctx(), task_id=tid, run_id=run, verdict="ACCEPTED", candidate=cand, attempt="a1")
+        git(r.root, "commit", "-qam", "accept")          # ... and the worker dies before accept-commit
+        sha = git(r.root, "rev-parse", "HEAD")
+        r.native.end_run(tid, "ready")
+        R.tick(r.root, r.native)
+        run2, lock2 = r.native.claim(tid, pid=dead_pid())
+        out = L.issue(r.ctx(), task_id=tid, run_id=run2, claim_lock=lock2, pid=dead_pid(), pgid=0)
+        s = Store(r.root)
+        rows = [x for x in s.ledger("build:rk:pom") if x["kind"] == "accept-commit"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["doc"]["commit"], rows[0]["doc"]["recovered"]), (sha, True))
+        self.assertEqual(s.meta("accepted_commit"), sha)
+        self.assertEqual(out["budget"]["spent"], 0)
+        self.assertNotEqual(base, sha)
+
+    # R6 — amendments update the projection only ----------------------------------
+    def test_r6_evidence_valid_amendment_changes_the_governing_permission(self):
+        r = self.r
+        J = "src/main/java/com/acme/shop/"
+        item = {"id": "parity:items-list:body", "source": "parity", "kind": "parity", "category": "mandatory",
+                "path": J + "web/ItemController.java", "line": 0, "rule_id": "",
+                "entry_point": "ep:com.acme.shop.web.ItemController#list():http", "scenario": "items-list",
+                "advice": {"body_diff": {"locus_hints": [{"path": J + "dto/ItemDto.java", "member": "getName"}]}}}
+        cl = {"id": "c:p-items", "kind": "parity", "items": [item["id"]], "path": item["path"], "write_set": [item["path"]],
+              "order_key": [5, 0, item["path"]], "status": "open", "gate": "parity"}
+        plan = r.store.current_revision()
+        for n in OG.topo_order(plan["nodes"]):
+            if n["role"] == "repair" and n["class"] != "behavior":
+                cls = ("build", "compile", "tests") + (("runtime",) if n["class"] == "runtime" else ())
+                r.accept(n["outcome_id"], classes=cls)
+        r.worklist["items"].append(item)
+        r.worklist["clusters"].append(cl)
+        r.save_worklist()
+        ob = "behavior:http:com.acme.shop.web.ItemController"
+        s = Store(r.root)
+        with s.txn() as c:                                # this obligation is owned by the ItemController behavior outcome
+            c.execute("INSERT OR REPLACE INTO ownership(obligation_id, rev, outcome_id, disposition, reason) VALUES(?,?,?,?,?)",
+                      (item["id"], 1, ob, "owned", ""))
+        tid, run, lock = r.claim(ob)
+        self.as_worker(tid, run, lock)
+        rc, out = self.gate("issue")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(json.loads(out)["allowed_paths"], [J + "web/ItemController.java"])
+        target = J + "dto/ItemDto.java"
+        with self.assertRaises(L.Refusal):
+            L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=[target])
+        script = LIB.parent / "skills" / "migration" / "fix-until-green" / "scripts" / "amend-scope.py"
+        env = dict(os.environ)
+        p = subprocess.run([sys.executable, str(script), "--root", str(r.root), "--cluster", "c:p-items", "--card", tid,
+                            "--path", target, "--reason", "the body difference is produced by this getter",
+                            "--evidence", "parity:" + item["id"]], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=[target])            # the governing permission now admits it
+        with self.assertRaises(L.Refusal):                                               # and nothing wider
+            L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=[J + "web/OrderController.java"])
+        # restart: a new run keeps the amendment and does not renew the budget
+        spent = Store(r.root).spent(L._outcome(Store(r.root), ob)["budget_key"])
+        r.native.end_run(tid, "ready")
+        run2, lock2 = r.native.claim(tid, pid=dead_pid())
+        iss2 = L.issue(r.ctx(), task_id=tid, run_id=run2, claim_lock=lock2, pid=dead_pid(), pgid=0)
+        self.assertIn(target, iss2["allowed_paths"])
+        self.assertEqual(iss2["budget"]["spent"], spent)
+        # an unsupported expansion is refused and the permission is unchanged
+        self.as_worker(tid, run2, lock2)
+        p = subprocess.run([sys.executable, str(script), "--root", str(r.root), "--cluster", "c:p-items", "--card", tid,
+                            "--path", J + "web/OrderController.java", "--reason", "I would like to edit this as well",
+                            "--evidence", "parity:" + item["id"]], capture_output=True, text=True, env=dict(os.environ))
+        self.assertNotEqual(p.returncode, 0)
+        with self.assertRaises(L.Refusal):
+            L.check_write(r.ctx(), task_id=tid, run_id=run2, rel_paths=[J + "web/OrderController.java"])
 
 
 # ===========================================================================

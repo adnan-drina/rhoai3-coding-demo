@@ -235,12 +235,14 @@ def quiescent(pid: int | None, pgid: int | None) -> bool:
 # T5: claim -> run-bound execution issue
 # ---------------------------------------------------------------------------
 
-def _allowed_paths(root: Path, node: dict[str, Any], worklist: dict[str, Any] | None) -> tuple[str, list[str]]:
+def _allowed_paths(root: Path, node: dict[str, Any], worklist: dict[str, Any] | None,
+                   owned: set[str] | None = None) -> tuple[str, list[str]]:
     """The ONE cluster this outcome may edit now, and its write set. Never the
-    union of the outcome's plan paths."""
+    union of the outcome's plan paths. Ownership is the recorded ownership
+    (latest revision), so obligations a revision assigned later count."""
     if node.get("role") != "repair" or worklist is None:
         return "", []
-    owned = set(node.get("obligations") or [])
+    owned = set(node.get("obligations") or []) | set(owned or ())
     for c in worklist.get("clusters") or []:
         if not isinstance(c, dict) or c.get("status") != "open":
             continue
@@ -307,6 +309,12 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
                       "was restored" % task_id)
     if orow["budget_limit"] and spent >= orow["budget_limit"]:
         raise Refusal("ISSUE_BUDGET_EXHAUSTED", "%s spent %d of %d" % (orow["budget_key"], spent, orow["budget_limit"]))
+    # an acceptance begun and committed by a worker that died before recording it is
+    # recovered here, from Git history, before anything is judged (review R5)
+    w0 = store.conn.execute("SELECT * FROM writer WHERE slot='product-tree'").fetchone()
+    if not w0 or (w0["task_id"] == task_id and w0["run_id"] == run_id) or quiescent(w0["pid"], w0["pgid"]):
+        # never while the previous writer may still be committing; never this run's own
+        recover_accept(ctx, oid=oid, commits=git_commits_after(ctx.root), skip_run=run_id)
     head, tree = ctx.git_head(), ctx.product_tree()
     base_commit = store.meta("accepted_commit") or store.meta("baseline_commit")
     base_tree = store.meta("accepted_tree") or store.meta("baseline_tree")
@@ -319,7 +327,10 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
     worklist, why = load_worklist(ctx.root)
     if node["role"] == "repair" and worklist is None:
         raise Refusal("ISSUE_" + why, "an outcome is issued against the measured work list")
-    cluster, allowed = _allowed_paths(ctx.root, node, worklist)
+    cluster, allowed = _allowed_paths(ctx.root, node, worklist, _owned(store, oid))
+    if cluster:
+        # amendments granted earlier to this cluster survive a restart (never renewed, never lost)
+        allowed = sorted(set(allowed) | set(amended_paths(store, oid, cluster)))
     with store.txn() as c:
         prior = c.execute("SELECT issue_id, run_id FROM issues WHERE task_id=? AND state='active'", (task_id,)).fetchall()
         for r in prior:
@@ -355,6 +366,61 @@ def _issue_seal(iid: int, task_id: str, run_id: int, rev: int, cluster: str, all
                 head: str, tree: str) -> dict[str, Any]:
     return {"issue_id": int(iid), "task_id": task_id, "run_id": int(run_id), "rev": int(rev), "cluster": cluster,
             "allowed_paths": sorted(allowed), "generation": int(gen), "baseline_commit": head, "baseline_tree": tree}
+
+
+AMEND_LIMIT = 4
+AMEND_MAX_FILES = 20
+
+
+def amended_paths(store: Store, oid: str, cluster: str) -> list[str]:
+    return sorted({str(r["doc"]["path"]) for r in store.ledger(oid)
+                   if r["kind"] == "amend" and r["doc"].get("cluster") == cluster})
+
+
+def amend_issue(ctx: Ctx, *, task_id: str, run_id: int, cluster: str, rel: str, row: dict[str, Any]) -> dict[str, Any]:
+    """The authority's scope-amendment transition (review R6). amend-scope.py has
+    validated the evidence and the locus; this transition re-checks the bounds
+    it owns (the run-bound issue and its cluster, product path, never a test
+    source or the build file, not yet edited, the amendment count and the unit
+    file bound) and only then widens the GOVERNING permission: a new issue for
+    the same run, outcome, baseline, generation and budget, sealed in the ledger.
+    The projection (issued.json) is written after it, never instead of it."""
+    iss = active_issue(ctx, task_id, run_id)
+    rel = norm_rel(rel)
+    if str(iss.get("cluster") or "") != cluster:
+        raise Refusal("AMEND_FOREIGN_CLUSTER", "the issue for this run is cluster %r, not %r" % (iss.get("cluster"), cluster))
+    if rel in set(iss["allowed_paths"]):
+        return {"path": rel, "already": True, "allowed_paths": iss["allowed_paths"]}
+    if not _is_product(rel) or rel == "pom.xml" or (rel.startswith("src/test/") and not rel.endswith((".properties", ".yaml", ".yml"))):
+        raise Refusal("AMEND_PATH", "%s is not a path an amendment may reach" % rel)
+    if len(str(row.get("reason") or "").strip()) < 12 or not str(row.get("locus") or "").strip():
+        raise Refusal("AMEND_UNEVIDENCED", "an amendment carries a reason and the locus the validator established")
+    p = subprocess.run(["git", "-C", str(ctx.root), "status", "--porcelain", "--", rel], capture_output=True, text=True)
+    if p.stdout.strip():
+        raise Refusal("AMEND_ALREADY_EDITED", "%s has already been edited; an amendment authorizes a change before it happens" % rel)
+    oid = iss["outcome_id"]
+    prior = [r for r in ctx.store.ledger(oid) if r["kind"] == "amend" and r["doc"].get("cluster") == cluster]
+    if len(prior) >= AMEND_LIMIT:
+        raise Refusal("AMEND_LIMIT", "cluster %s already carries %d amendment(s) (limit %d)" % (cluster, len(prior), AMEND_LIMIT))
+    allowed = sorted(set(iss["allowed_paths"]) | {rel})
+    if len(allowed) > AMEND_MAX_FILES:
+        raise Refusal("AMEND_OVERSIZE", "%d files exceed the unit bound %d" % (len(allowed), AMEND_MAX_FILES))
+    with ctx.store.txn() as c:
+        c.execute("UPDATE issues SET state='superseded' WHERE issue_id=?", (iss["issue_id"],))
+        c.execute("INSERT INTO issues(task_id, run_id, claim_digest, outcome_id, rev, baseline_commit, baseline_tree, cluster, "
+                  "allowed_paths, pins, budget_key, generation, ledger_head, state, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (task_id, run_id, iss["claim_digest"], oid, iss["rev"], iss["baseline_commit"], iss["baseline_tree"], cluster,
+                   json.dumps(allowed), iss["pins"], iss["budget_key"], iss["generation"], ctx.store.meta("ledger_head"),
+                   "active", time.time()))
+        iid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        ctx.store.append(c, oid, "amend", {"cluster": cluster, "path": rel, "reason": str(row.get("reason") or "")[:500],
+                                           "locus": str(row.get("locus") or "")[:500], "evidence": row.get("evidence") or {},
+                                           "run_id": run_id, "issue_id": int(iid)},
+                         attempt_key="amend:%s:%s" % (cluster, rel))
+        ctx.store.append(c, oid, "issue", _issue_seal(iid, task_id, run_id, iss["rev"], cluster, allowed, iss["generation"],
+                                                     iss["baseline_commit"] or "", iss["baseline_tree"] or ""),
+                         attempt_key="issue:%d" % iid)
+    return {"path": rel, "already": False, "allowed_paths": allowed, "issue_id": int(iid), "amendments": len(prior) + 1}
 
 
 def _open_pending(store: Store, oid: str) -> dict[str, Any] | None:
@@ -484,14 +550,20 @@ def check_complete(ctx: Ctx, *, task_id: str, run_id: int, profile: str, audit_g
                        {"outcome_id": node["outcome_id"], "assessment_seq": rec["seq"], "verdict": rec["doc"]["verdict"],
                         "candidate": rec["doc"]["candidate"]}, set_status=(node["outcome_id"], "assessed"))
     if node["role"] == "deliver":
+        # M5's own procedure: the implementer ends with kanban_request_review, the reviewer
+        # completes after the stage audit is green; the deciding facts are the stage's
+        # domain receipts, bound to this candidate, never a worker's assertion (review R1/R3)
         g = store.conn.execute("SELECT * FROM grants WHERE outcome_id=?", (node["outcome_id"],)).fetchone()
         if not g or g["state"] not in ("granted", "executed"):
             raise Refusal("DELIVER_UNGRANTED", "%s was never admitted" % node["outcome_id"])
-        res = [r for r in store.ledger(node["outcome_id"]) if r["kind"] == "stage-result"]
-        if not res:
-            raise Refusal("DELIVER_NO_RESULT", "no recorded stage result for %s" % node["outcome_id"])
+        if profile != "reviewer":
+            raise Refusal("DELIVER_TERMINATOR", "a delivery stage ends with kanban_request_review reviewer=reviewer; "
+                                                "the reviewer completes it after the stage audit")
+        if not audit_green:
+            raise Refusal("DELIVER_AUDIT_RED", "the paved-road M5 audit has not exited 0 in this log")
+        doc = _record_stage_evidence(ctx, node, run_id)
         return _intent(store, "m5-stage-done:%s" % node["outcome_id"], "m5-stage-done", task_id,
-                       {"outcome_id": node["outcome_id"], "stage": node.get("stage"), "result": res[-1]["doc"]},
+                       {"outcome_id": node["outcome_id"], "stage": node.get("stage"), "result": doc},
                        set_status=(node["outcome_id"], "done"))
     raise Refusal("COMPLETE_FOREIGN_TASK", "role %s" % node["role"])
 
@@ -619,7 +691,8 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
             "covered": covered}
 
 
-def recover_accept(ctx: Ctx, *, oid: str, commits: Callable[[str], list[tuple[str, str, str]]]) -> list[dict[str, Any]]:
+def recover_accept(ctx: Ctx, *, oid: str, commits: Callable[[str], list[tuple[str, str, str]]],
+                   skip_run: int | None = None) -> list[dict[str, Any]]:
     """After a crash between accept-begin and accept-commit: find the commit
     whose parent is the recorded baseline and whose product tree is the
     candidate (commits(baseline) -> [(sha, parent, tree)]); record it, or
@@ -630,8 +703,13 @@ def recover_accept(ctx: Ctx, *, oid: str, commits: Callable[[str], list[tuple[st
     for r in rows:
         if r["kind"] != "accept-begin" or r["attempt_key"] in closed:
             continue
+        if skip_run is not None and r["doc"].get("run_id") == skip_run:
+            continue
         hits = [s for s, parent, tree in commits(r["doc"]["baseline_commit"])
                 if parent == r["doc"]["baseline_commit"] and tree == r["doc"]["candidate"]]
+        if len(hits) > 1:
+            raise Refusal("ACCEPT_RECOVERY_AMBIGUOUS", "%d commits on %s carry candidate %s; the acceptance of attempt %s "
+                          "is not guessed" % (len(hits), r["doc"]["baseline_commit"][:12], r["doc"]["candidate"][:12], r["attempt_key"]))
         with ctx.store.txn() as c:
             if len(hits) == 1:
                 ctx.store.append(c, oid, "accept-commit", {"commit": hits[0], "tree": r["doc"]["candidate"],
@@ -647,6 +725,37 @@ def recover_accept(ctx: Ctx, *, oid: str, commits: Callable[[str], list[tuple[st
                                  attempt_key=r["attempt_key"] + ":aborted")
                 out.append({"attempt": r["attempt_key"], "aborted": True})
     return out
+
+
+def git_commits_after(root: Path) -> Callable[[str], list[tuple[str, str, str]]]:
+    """commits(baseline) -> [(sha, first parent, product tree digest)] for every
+    commit between the baseline and HEAD. The digest is the product-tree identity
+    of the committed tree (the same algorithm as the working tree's)."""
+    def commits(baseline: str) -> list[tuple[str, str, str]]:
+        if not baseline:
+            return []
+        p = subprocess.run(["git", "-C", str(root), "rev-list", "--parents", "%s..HEAD" % baseline],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            return []
+        out = []
+        import tarfile
+        import tempfile
+        from planner.canonical import product_tree_sha256
+        for line in p.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 2 or parts[1] != baseline:
+                continue
+            with tempfile.TemporaryDirectory(prefix="ob-commit-") as tmp:
+                arc = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", parts[0]], capture_output=True)
+                if arc.returncode != 0:
+                    continue
+                import io
+                with tarfile.open(fileobj=io.BytesIO(arc.stdout)) as tf:
+                    tf.extractall(tmp, filter="data") if hasattr(tarfile, "data_filter") else tf.extractall(tmp)
+                out.append((parts[0], parts[1], product_tree_sha256(Path(tmp))))
+        return out
+    return commits
 
 
 def restore_pending(ctx: Ctx, *, task_id: str, run_id: int, candidate_now: str) -> dict[str, Any]:
@@ -1032,25 +1141,154 @@ def delivery_facts(ctx: Ctx, stage_oid: str) -> dict[str, Any]:
             {"id": u["id"], "class": "deferred", "satisfied": False, "before": "ship"}
             for u in plan.get("unresolved") or [] if u.get("blocks") == "ship"],
     }
-    for prev in ("prepare", "push"):
+    # an earlier stage counts only as its RECORDED, derived result that its receipts still
+    # support for the current candidate (re-derived here; a worker's flag is never read)
+    for prev, key in (("prepare", "preflight"), ("push", "deploy")):
         res = [r for r in store.ledger("deliver:%s:c1" % prev) if r["kind"] == "stage-result"]
-        if res:
-            facts["preflight" if prev == "prepare" else "deploy"] = res[-1]["doc"]
+        ok, doc, _reasons = stage_evidence(ctx.root, store, prev)
+        if res and ok and res[-1]["doc"].get("candidate_sha") == doc.get("candidate_sha"):
+            facts[key] = dict(doc, accepted=True, result=True, candidate=tree)
     facts["plan_coherent"] = True
-    facts["build_authorized"] = bool((facts.get("preflight") or {}).get("build_authorized"))
-    facts["live_inputs"] = bool((facts.get("deploy") or {}).get("live_inputs"))
+    facts["build_authorized"] = bool((facts.get("preflight") or {}).get("pipeline_eligible"))
+    facts["live_inputs"] = bool((facts.get("deploy") or {}).get("https"))
     return facts
 
 
-def record_stage_result(ctx: Ctx, *, task_id: str, run_id: int, result: dict[str, Any]) -> dict[str, Any]:
+DELIVERY_RECEIPTS = {
+    "prepare": (Path("verification/delivery/candidate.json"), Path("verification/delivery/eligibility.json")),
+    "push": (Path("verification/delivery/pipeline.json"), Path("verification/delivery/deployment.json")),
+    "accept": (Path("verification/delivery/live.json"), Path("evidence/verdicts/m5-verdict.json")),
+}
+
+
+def _git_head(root: Path) -> str:
+    p = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True)
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def _stage_assessment_task(store: Store) -> str:
+    plan = store.current_revision() or {}
+    node = next((n for n in plan.get("nodes") or [] if n["outcome_id"] == "deliver:prepare:c1"), {})
+    bind = (node.get("binding") or {}).get("assessment") or ""
+    row = store.conn.execute("SELECT task_id FROM publication WHERE outcome_id=?", (bind,)).fetchone() if bind else None
+    return row[0] if row and row[0] else ""
+
+
+def stage_evidence(root: Path, store: Store, stage: str) -> tuple[bool, dict[str, Any], list[str]]:
+    """The deciding facts of one M5 stage, DERIVED from the stage producers' own
+    receipts (prepare-release-candidate, observe-app-push/assert-deployed-app,
+    live-acceptance/compose-m5-verdict) and the push effect record, all bound to
+    the current Git candidate. (ok, facts, reasons). Missing, failed or
+    contradictory evidence is never success."""
+    root = Path(root)
+    head = _git_head(root)
+    reasons: list[str] = []
+    docs: dict[str, dict[str, Any]] = {}
+    digests: dict[str, str] = {}
+    for rel in DELIVERY_RECEIPTS.get(stage, ()):
+        doc = _read_json(root / rel)
+        if not isinstance(doc, dict):
+            reasons.append("STAGE_EVIDENCE_MISSING:%s" % rel)
+            continue
+        docs[rel.name] = doc
+        digests[str(rel)] = sha(canonical(doc))
+    if stage not in DELIVERY_RECEIPTS:
+        reasons.append("STAGE_UNKNOWN:%s" % stage)
+    if reasons:
+        return False, {"stage": stage, "candidate_sha": head}, reasons
+
+    def bound(label: str, doc: dict[str, Any]) -> None:
+        if str(doc.get("candidate_sha") or "") != head or not head:
+            reasons.append("CANDIDATE_MISMATCH:%s names %s, HEAD is %s" % (label, str(doc.get("candidate_sha") or "none")[:12], head[:12]))
+
+    facts: dict[str, Any] = {"stage": stage, "candidate_sha": head, "receipts": digests}
+    if stage == "prepare":
+        cand, elig = docs["candidate.json"], docs["eligibility.json"]
+        bound("candidate.json", cand)
+        bound("eligibility.json", elig)
+        if cand.get("ok") is not True or cand.get("pipeline_eligible") is not True:
+            reasons.append("PREFLIGHT_FAILED:%s" % (cand.get("reason") or "candidate not pipeline-eligible"))
+        if elig.get("pipeline_eligible") is not True:
+            reasons.append("PREFLIGHT_FAILED:eligibility not pipeline-eligible")
+        want = _stage_assessment_task(store)
+        if not want or str(cand.get("m4_card") or "") != want:
+            reasons.append("ASSESSMENT_MISMATCH:candidate binds M4 %r, the stage binds %r" % (cand.get("m4_card"), want))
+        facts.update(pipeline_eligible=cand.get("pipeline_eligible") is True, release_eligible=bool(cand.get("release_eligible")),
+                     m4_card=str(cand.get("m4_card") or ""), outstanding=len(cand.get("outstanding") or []))
+    elif stage == "push":
+        pipe, dep = docs["pipeline.json"], docs["deployment.json"]
+        bound("pipeline.json", pipe)
+        bound("deployment.json", dep)
+        if pipe.get("ok") is not True or pipe.get("succeeded") is not True or not pipe.get("image_digest"):
+            reasons.append("DEPLOY_FAILED:pipeline %s" % (pipe.get("reason") or "not a succeeded run with an image digest"))
+        if dep.get("ok") is not True or dep.get("image_digest") != pipe.get("image_digest"):
+            reasons.append("DEPLOY_FAILED:deployment %s" % (",".join(dep.get("issues") or []) or "image differs from the pipeline's"))
+        if not str(dep.get("route_url") or "").startswith("https://"):
+            reasons.append("DEPLOY_FAILED:route is not https")
+        landed = store.conn.execute("SELECT effect_id FROM effects WHERE kind='push' AND candidate=? AND state='landed'",
+                                    (head,)).fetchone()
+        if not landed:
+            reasons.append("PUSH_NOT_LANDED:no recorded, landed push effect for %s" % head[:12])
+        facts.update(image_digest=str(pipe.get("image_digest") or ""), route_url=str(dep.get("route_url") or ""),
+                     https=str(dep.get("route_url") or "").startswith("https://"), pipeline_run=str(pipe.get("pipeline_run") or ""))
+    else:
+        live, verdict = docs["live.json"], docs["m5-verdict.json"]
+        bound("live.json", live)
+        bound("m5-verdict.json", verdict)
+        if live.get("ok") is not True:
+            reasons.append("VALIDATE_FAILED:live %s" % ",".join(live.get("issues") or []))
+        token = str(verdict.get("verdict") or "")
+        if token not in ("ACCEPT", "INCONCLUSIVE") or verdict.get("failed_stage"):
+            reasons.append("VALIDATE_FAILED:M5 verdict %s %s" % (token or "missing", verdict.get("failed_stage") or ""))
+        facts.update(verdict=token, ship=bool(token == "ACCEPT" and verdict.get("ship") is True),
+                     deployment_status=str(verdict.get("deployment_status") or ""))
+    return not reasons, facts, reasons
+
+
+def _record_stage_evidence(ctx: Ctx, node: dict[str, Any], run_id: int) -> dict[str, Any]:
+    ok, doc, reasons = stage_evidence(ctx.root, ctx.store, str(node.get("stage") or ""))
+    if not ok:
+        code = "STAGE_EVIDENCE_MISSING" if any(r.startswith("STAGE_EVIDENCE_MISSING") for r in reasons) else "STAGE_EVIDENCE_REFUSED"
+        raise Refusal(code, "; ".join(reasons[:4]))
+    with ctx.store.txn() as c:
+        ctx.store.append(c, node["outcome_id"], "stage-result", doc, attempt_key="%s:%s" % (run_id, sha(canonical(doc))[:16]))
+        c.execute("UPDATE grants SET state='executed' WHERE outcome_id=?", (node["outcome_id"],))
+    return doc
+
+
+def record_stage_result(ctx: Ctx, *, task_id: str, run_id: int, result: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Record the stage's derived evidence (the reviewer's completion does the same).
+    A caller-supplied result is refused: the deciding facts are the receipts."""
+    if result is not None:
+        raise Refusal("STAGE_RESULT_ASSERTED", "stage results are derived from the stage's receipts; a supplied result "
+                                               "(%s) is never recorded" % ", ".join(sorted(result))[:120])
     iss = active_issue(ctx, task_id, run_id)
     if not iss["outcome_id"].startswith("deliver:"):
         raise Refusal("DELIVER_FOREIGN", "%s is not a delivery stage" % iss["outcome_id"])
-    doc = dict(result, candidate=ctx.product_tree())
-    with ctx.store.txn() as c:
-        ctx.store.append(c, iss["outcome_id"], "stage-result", doc, attempt_key="%s:%s" % (run_id, sha(canonical(doc))[:16]))
-        c.execute("UPDATE grants SET state='executed' WHERE outcome_id=?", (iss["outcome_id"],))
-    return doc
+    node = _node(_plan(ctx.store), iss["outcome_id"]) or {}
+    return _record_stage_evidence(ctx, node, run_id)
+
+
+def m4_closure(root: Path) -> dict[str, Any] | None:
+    """The M4 closure an outcome-board run delivers from: the assessment the M5
+    stages are bound to, completed (assessed) with its recorded verdict. Read
+    from the authority, never from the serial loop's steps.json."""
+    try:
+        store = Store(Path(root))
+    except StoreError:
+        return None
+    try:
+        plan = store.current_revision() or {}
+        node = next((n for n in plan.get("nodes") or [] if n["outcome_id"] == "deliver:prepare:c1"), {})
+        bind = (node.get("binding") or {}).get("assessment") or ""
+        orow = _outcome(store, bind) if bind else None
+        rec = _assessment(store, bind) if bind else None
+        if not orow or orow["status"] not in ("assessed", "done") or not rec:
+            return None
+        return {"closed": True, "card": _stage_assessment_task(store), "verdict": rec["doc"]["verdict"],
+                "assessment": bind}
+    finally:
+        store.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1058,7 +1296,7 @@ def record_stage_result(ctx: Ctx, *, task_id: str, run_id: int, result: dict[str
 # ---------------------------------------------------------------------------
 
 def admit_effect(store: Store, *, kind: str, candidate: str, operation_id: str, expected_rev: int,
-                 predicate: Callable[[], list[str]] | None = None) -> str:
+                 predicate: Callable[[], list[str]] | None = None, doc: dict[str, Any] | None = None) -> str:
     """Admission in ONE transaction: the revision the caller checked is still
     current, no other effect is unresolved, and the predicate holds. Then the
     effect is recorded BEFORE it starts. A revision that commits later refuses
@@ -1080,8 +1318,110 @@ def admit_effect(store: Store, *, kind: str, candidate: str, operation_id: str, 
         gen = int(store.meta("generation", "0") or 0)
         now = time.time()
         c.execute("INSERT INTO effects(effect_id, kind, candidate, operation_id, rev, generation, state, doc, admitted_at, updated_at) "
-                  "VALUES(?,?,?,?,?,?,?,?,?,?)", (eid, kind, candidate, operation_id, cur, gen, "admitted", "{}", now, now))
+                  "VALUES(?,?,?,?,?,?,?,?,?,?)", (eid, kind, candidate, operation_id, cur, gen, "admitted",
+                                                   canonical(doc or {}), now, now))
     return eid
+
+
+EFFECT_STAGE = {"push": "push", "deploy": "push"}
+
+
+def admit_delivery_effect(ctx: Ctx, *, task_id: str, run_id: int, kind: str, operation_id: str) -> str:
+    """Only the GRANTED M5 stage that owns the effect may admit it, for the
+    current Git candidate that its preflight evidence admitted, under the one
+    serialization lock (review R2). Everything else is refused before a row
+    is written."""
+    iss = active_issue(ctx, task_id, run_id)
+    stage = EFFECT_STAGE.get(kind)
+    oid = iss["outcome_id"]
+    if not stage or not oid.startswith("deliver:%s:" % stage):
+        raise Refusal("EFFECT_STAGE", "%s may not admit a %s effect; only the granted M5 %s stage may"
+                      % (oid, kind, {"push": "DEPLOY"}.get(stage or "", "?")))
+    head = _git_head(ctx.root)
+
+    def predicate() -> list[str]:
+        out = []
+        g = ctx.store.conn.execute("SELECT state FROM grants WHERE outcome_id=?", (oid,)).fetchone()
+        if not g or g[0] not in ("granted", "executed"):
+            out.append("EFFECT_UNGRANTED:%s" % oid)
+        ok, pre, reasons = stage_evidence(ctx.root, ctx.store, "prepare")
+        rec = [r for r in ctx.store.ledger("deliver:prepare:c1") if r["kind"] == "stage-result"]
+        if not ok or not rec or rec[-1]["doc"].get("candidate_sha") != head:
+            out.append("EFFECT_INELIGIBLE:preflight evidence does not admit %s (%s)" % (head[:12], "; ".join(reasons[:2]) or "no recorded preflight"))
+        return out
+
+    return admit_effect(ctx.store, kind=kind, candidate=head, operation_id=operation_id,
+                        expected_rev=int(ctx.store.meta("revision", "0") or 0), predicate=predicate,
+                        doc={"worker_pid": int((ctx.native.task(task_id) or {}).get("worker_pid") or 0),
+                             "task_id": task_id, "run_id": run_id, "stage": oid})
+
+
+def push_candidate(ctx: Ctx, *, task_id: str, run_id: int, remote: str, ref: str) -> dict[str, Any]:
+    """The M5 DEPLOY publication step under the outcome protocol: admit the push
+    effect (recorded BEFORE it starts), push exactly HEAD to <remote> <ref>,
+    record sent, then establish the result by identity. A push already recorded
+    for this candidate is never repeated: it is reported (landed) or probed."""
+    head = _git_head(ctx.root)
+    op = "%s:%s@%s" % (remote, ref, head)
+    eid = "push:%s" % op
+    row = ctx.store.conn.execute("SELECT state FROM effects WHERE effect_id=?", (eid,)).fetchone()
+    if row:
+        if row[0] in ("landed", "failed"):
+            return {"effect_id": eid, "state": row[0], "already": True}
+        state = push_probe(ctx.root)(dict(kind="push", operation_id=op)) or "uncertain"
+        record_effect(ctx.store, eid, state, {"recovered": True})
+        return {"effect_id": eid, "state": state, "already": True}
+    admit_delivery_effect(ctx, task_id=task_id, run_id=run_id, kind="push", operation_id=op)
+    p = subprocess.run(["git", "-C", str(ctx.root), "push", remote, "%s:%s" % (head, ref)], capture_output=True, text=True, timeout=600)
+    record_effect(ctx.store, eid, "sent", {"rc": p.returncode, "stderr": (p.stderr or "")[-400:]})
+    from planner.outcome_store import fault
+    fault("after-push-sent")
+    state = push_probe(ctx.root)(dict(kind="push", operation_id=op)) or "uncertain"
+    record_effect(ctx.store, eid, state, {"rc": p.returncode})
+    return {"effect_id": eid, "state": state, "already": False}
+
+
+def recover_dead_effects(store: Store, root: Path, native: Any = None) -> list[dict[str, Any]]:
+    """The dispatcher's recovery: an unresolved effect whose admitting worker run
+    is over (its native run is no longer current, or its worker process is gone)
+    is established by identity and never re-sent. A live run keeps its own
+    effect; it re-probes it through the same `push` step."""
+    out = []
+    probe = push_probe(root)
+    for e in store.unresolved_effects():
+        doc = json.loads(e.get("doc") or "{}")
+        t = native.task(str(doc.get("task_id") or "")) if native is not None and doc.get("task_id") else None
+        run_live = bool(t and t.get("current_run_id") == doc.get("run_id") and t.get("status") == "running")
+        if e["state"] in ("admitted", "sent") and run_live and _pid_alive(doc.get("worker_pid")):
+            continue
+        seen = probe(e)
+        state = seen if seen in ("landed", "failed") else "uncertain"
+        if state != e["state"]:
+            record_effect(store, e["effect_id"], state, dict(doc, recovered=True, probe=seen))
+        out.append({"effect_id": e["effect_id"], "state": state})
+    return out
+
+
+def push_probe(root: Path) -> Callable[[dict[str, Any]], str | None]:
+    """Recovery by identity for a push effect: operation id <remote>:<ref>@<sha>.
+    The remote ref equal to the sha -> landed; the remote answering with
+    another value -> failed (the dead process can no longer land it); an
+    unreachable remote -> None (uncertain, never repeated automatically)."""
+    def probe(e: dict[str, Any]) -> str | None:
+        if e.get("kind") != "push":
+            return None
+        op = str(e.get("operation_id") or "")
+        try:
+            remote_ref, want = op.rsplit("@", 1)
+            remote, ref = remote_ref.split(":", 1)
+        except ValueError:
+            return None
+        p = subprocess.run(["git", "-C", str(root), "ls-remote", remote, ref], capture_output=True, text=True, timeout=60)
+        if p.returncode != 0:
+            return None
+        got = (p.stdout.split() or [""])[0]
+        return "landed" if got == want else "failed"
+    return probe
 
 
 def record_effect(store: Store, effect_id: str, state: str, detail: dict[str, Any] | None = None) -> None:

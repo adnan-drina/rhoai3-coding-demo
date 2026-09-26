@@ -96,6 +96,22 @@ def after_accept(root: Path, commit: str, candidate: str, worklist: dict[str, An
     return reissue(root, note="outcome %s still owns %s" % (out["outcome_id"], ", ".join(out["open_owned"][:4]) or "unmeasured checks"))
 
 
+def amend(root: Path, cluster: str, rel: str, row: dict[str, Any]) -> int | None:
+    """Scope amendment under the outcome protocol: the authority transition first
+    (it widens the governing permission); the caller writes the projection only
+    after it succeeds."""
+    if not active(root):
+        return None
+    from planner import outcome_lifecycle as L
+    task, run = _ids()
+    try:
+        out = L.amend_issue(_ctx(root), task_id=task, run_id=run, cluster=cluster, rel=rel, row=row)
+    except Exception as exc:
+        return _refuse(exc)
+    print("OUTCOME AMENDMENT recorded: %s + %s (issue %s)" % (cluster, rel, out.get("issue_id", "unchanged")))
+    return 0
+
+
 def reissue(root: Path, note: str = "") -> int | None:
     """The next attempt (or the outcome's next cluster) on the SAME card: a
     fresh issue for this run and a fresh issued.json. Never a new card."""

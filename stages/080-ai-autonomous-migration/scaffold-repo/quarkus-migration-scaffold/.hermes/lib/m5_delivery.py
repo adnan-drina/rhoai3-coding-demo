@@ -943,6 +943,12 @@ def assess_eligibility(root: Path, *, runner: Runner | None = None) -> dict[str,
     reasons: list[dict[str, str]] = []
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}
     closed = close_row(steps)
+    from planner.outcome_protocol import select_protocol
+    if select_protocol(root).outcome:
+        # outcome board: M4 closes as the completed assessment the M5 stages are bound
+        # to, recorded by the authority; the serial steps.json close row does not exist
+        from planner.outcome_lifecycle import m4_closure
+        closed = m4_closure(root)
     verdict = load_json(root / M4_VERDICT) if (root / M4_VERDICT).is_file() else {}
     candidate = git_rev(root, runner)
     if not closed or not closed.get("closed"):

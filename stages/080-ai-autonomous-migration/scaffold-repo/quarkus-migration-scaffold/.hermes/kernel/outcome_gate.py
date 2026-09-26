@@ -60,7 +60,17 @@ def write_issued_record(root: Path, ctx: L.Ctx, issued: dict) -> str:
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}
     receipt = load_json(root / ADMISSION_RECEIPT) if (root / ADMISSION_RECEIPT).is_file() else {}
     key = "outcome:v1:%s:%s:%s:issue%d" % (ctx.store.meta("run_id"), issued["outcome_id"], issued["cluster"], issued["issue_id"])
-    write_issued(root, wl, cluster_card(row, steps), str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
+    card = cluster_card(row, steps)
+    card["write_set"] = sorted(set(card["write_set"]) | set(issued.get("allowed_paths") or []))
+    write_issued(root, wl, card, str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
+    amends = [r["doc"] for r in ctx.store.ledger(issued["outcome_id"]) if r["kind"] == "amend" and r["doc"].get("cluster") == issued["cluster"]]
+    if amends:
+        from planner.canonical import load_json as _lj, write_canonical as _wc
+        from planner.paths import LOOP_ISSUED
+        doc = _lj(root / LOOP_ISSUED)
+        doc["amendments"] = [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
+                             for a in amends]
+        _wc(root / LOOP_ISSUED, doc)
     return key
 
 
@@ -81,10 +91,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("restore-pending")
     r = sub.add_parser("assessment-record")
     r.add_argument("--verdict-file", default=str(L.VERDICT))
-    s = sub.add_parser("stage-result")
-    s.add_argument("--result-file", required=True)
+    sub.add_parser("stage-result")
+    pu = sub.add_parser("push")
+    pu.add_argument("--remote", default="origin")
+    pu.add_argument("--ref", default="refs/heads/main")
     e = sub.add_parser("effect-admit")
-    e.add_argument("--kind", required=True, choices=("commit", "push", "deploy"))
+    e.add_argument("--kind", required=True, choices=("push", "deploy"))
     e.add_argument("--operation-id", required=True)
     e.add_argument("--revision", type=int, required=True)
     er = sub.add_parser("effect-record")
@@ -123,12 +135,14 @@ def main(argv: list[str] | None = None) -> int:
             doc = json.loads((root / ns.verdict_file).read_text(encoding="utf-8"))
             out = L.record_assessment(ctx, task_id=task, run_id=run_id, verdict_doc=doc)
         elif ns.cmd == "stage-result":
-            out = L.record_stage_result(ctx, task_id=task, run_id=run_id,
-                                        result=json.loads(Path(ns.result_file).read_text(encoding="utf-8")))
+            out = L.record_stage_result(ctx, task_id=task, run_id=run_id)
+        elif ns.cmd == "push":
+            out = L.push_candidate(ctx, task_id=task, run_id=run_id, remote=ns.remote, ref=ns.ref)
         elif ns.cmd == "effect-admit":
-            L.active_issue(ctx, task, run_id)
-            out = {"effect_id": L.admit_effect(ctx.store, kind=ns.kind, candidate=ctx.product_tree(),
-                                                operation_id=ns.operation_id, expected_rev=ns.revision)}
+            if int(ctx.store.meta("revision", "0") or 0) != ns.revision:
+                raise L.Refusal("EFFECT_STALE_REVISION", "checked revision %d is not current" % ns.revision)
+            out = {"effect_id": L.admit_delivery_effect(ctx, task_id=task, run_id=run_id, kind=ns.kind,
+                                                         operation_id=ns.operation_id)}
         elif ns.cmd == "effect-record":
             L.active_issue(ctx, task, run_id)
             L.record_effect(ctx.store, ns.effect_id, ns.state)

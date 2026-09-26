@@ -145,20 +145,19 @@ def _m4_assessed(ctx: Ctx, intent: dict[str, Any]) -> str:
         _step(store, iid, "revision", rev)
         fault("reconcile-after-revision")
     plan = store.current_revision()
-    published = {r[0] for r in store.conn.execute("SELECT outcome_id FROM publication WHERE task_id IS NOT NULL")}
-    new_nodes = [n for n in plan["nodes"] if n["outcome_id"] not in published]
-    if "published" not in _steps(store, iid):
-        publish_plan(ctx.root, store, ctx.native, plan, m2_task=store.meta("m2_task"), nodes=new_nodes, hold=True)
-        _step(store, iid, "published", sorted(n["outcome_id"] for n in new_nodes))
-        fault("reconcile-after-publish")
-    held = _steps(store, iid).get("published") or []
-    for oid in held:
-        tid = _task_of(store, oid)
-        t = ctx.native.task(tid)
-        if t and t.get("assignee") != IMPL:
-            ctx.native.assign(tid, IMPL)
-            fault("reconcile-after-assign")
-    succ = next(n["outcome_id"] for n in plan["nodes"] if n.get("role") == "assess" and n["outcome_id"] in held)
+    if "nodes" not in _steps(store, iid):
+        # the continuation's node set, persisted BEFORE any native operation: every node this
+        # revision adds. A crash anywhere replays exactly this set (review R4).
+        prev = store.conn.execute("SELECT doc FROM revisions WHERE rev=?", (int(plan["revision"]) - 1,)).fetchone()
+        before = {n["outcome_id"] for n in json.loads(prev[0])["nodes"]} if prev else set()
+        _step(store, iid, "nodes", sorted(n["outcome_id"] for n in plan["nodes"] if n["outcome_id"] not in before))
+    wanted = set(_steps(store, iid).get("nodes") or [])
+    nodes = [n for n in plan["nodes"] if n["outcome_id"] in wanted]
+    # replay EVERY node of the set through complete publication (a node that already has a
+    # task id may still lack its recorded brief); held: nothing is assigned yet
+    publish_plan(ctx.root, store, ctx.native, plan, m2_task=store.meta("m2_task"), nodes=nodes, hold=True)
+    fault("reconcile-after-publish")
+    succ = next(n["outcome_id"] for n in nodes if n.get("role") == "assess")
     prep = _task_of(store, "deliver:%s:c1" % DELIVER_STAGES[0])
     succ_tid = _task_of(store, succ)
     t = ctx.native.task(prep)
@@ -168,7 +167,19 @@ def _m4_assessed(ctx: Ctx, intent: dict[str, Any]) -> str:
     if gaps:
         _step(store, iid, "readback", gaps[:8])
         return "pending"
-    _finish(store, iid, "done", {"revision": plan["revision"], "successor": succ, "published": held})
+    # only a complete revised graph that reads back releases work (T9 order)
+    for oid in sorted(wanted):
+        node = next(n for n in nodes if n["outcome_id"] == oid)
+        tid = _task_of(store, oid)
+        t = ctx.native.task(tid)
+        if node.get("assignee") and t and t.get("assignee") != node["assignee"]:
+            ctx.native.assign(tid, node["assignee"])
+            fault("reconcile-after-assign")
+    gaps = readback(store, ctx.native, plan)
+    if gaps:
+        _step(store, iid, "readback", gaps[:8])
+        return "pending"
+    _finish(store, iid, "done", {"revision": plan["revision"], "successor": succ, "published": sorted(wanted)})
     return "done"
 
 
@@ -219,6 +230,9 @@ def tick(root: Path, native: Any | None = None) -> list[dict[str, Any]]:
     out = []
     if store.meta("publication_state") == "incomplete":
         complete_generation(store, native)
+    from planner.outcome_lifecycle import recover_dead_effects
+    for row in recover_dead_effects(store, root, native):
+        out.append({"effect": row["effect_id"], "state": row["state"]})
     for row in store.conn.execute("SELECT * FROM intents WHERE state='pending' ORDER BY created_at, intent_id").fetchall():
         intent = dict(row)
         handler = HANDLERS.get(intent["kind"])

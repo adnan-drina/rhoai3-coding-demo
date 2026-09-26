@@ -44,6 +44,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _outcome_bridge  # noqa: E402  outcome-board protocol; a no-op on serial-loop runs
 from _loop_common import ensure_hermes_lib, load_issued, product_paths_changed  # noqa: E402
 
 ensure_hermes_lib()
@@ -436,6 +437,8 @@ def _parity_amend(root: Path, issued: dict, args: argparse.Namespace, ref: str) 
     amendments.append({"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
                        "granted_before_sha256": sha256_file(root / rel), "dirty_at_grant": False, "locus": locus,
                        "evidence": {"kind": "parity", "ref": ref, "tool_named": True}})
+    if _outcome_bridge.amend(root, args.cluster, rel, amendments[-1]):
+        return 1  # outcome board: the governing permission refused; the projection is not written
     issued["amendments"] = amendments
     issued["write_set"] = sorted(set(issued.get("write_set") or []) | {rel})
     write_canonical(root / LOOP_ISSUED, issued)
@@ -566,6 +569,8 @@ def main(argv: list[str] | None = None) -> int:
                           "contract": obligation.get("contract") or "", "source": obligation.get("source") or ""}
         if obligation.get("verify") == "template":
             row["creates"]["template_sha256"] = str(obligation.get("template_sha256") or "")
+    if _outcome_bridge.amend(root, args.cluster, rel, row):
+        return 1  # outcome board: the governing permission refused; the projection is not written
     amendments.append(row)
     issued["amendments"] = amendments
     if unit:

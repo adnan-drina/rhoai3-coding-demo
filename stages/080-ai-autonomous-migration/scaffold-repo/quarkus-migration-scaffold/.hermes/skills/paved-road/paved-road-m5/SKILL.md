@@ -124,6 +124,30 @@ and `verdict-reason` are not re-opened. KEEP `evidence/verdicts/m5-verdict.json`
 Reviewer: `python3 .../assert-paved-road-audit.py --root . --steps steps-prepare.json`
 (or `steps-push.json` / `steps-accept.json`) over the official kanban log.
 
+## Outcome-board runs (new protocol, disabled by default)
+
+On a run that declares `outcome-board/v1` the three stage cards already exist.
+They were published with the plan. A stage is granted (assigned) by the
+dispatcher's continuation once its predicate holds. `start-m5-delivery.py`
+refuses on this protocol. For each stage:
+
+1. `python3 .hermes/kernel/outcome_gate.py --root . issue` binds this run.
+   An ungranted or manually claimed stage gets nothing.
+2. Run the stage's producers exactly as above. On M5 DEPLOY, the
+   publication step is
+   `python3 .hermes/kernel/outcome_gate.py --root . push --remote origin --ref refs/heads/main`.
+   It admits the push against this candidate and the preflight evidence,
+   records it before it starts, pushes HEAD, and establishes the result by
+   identity. Run it again after a crash: it reports or probes the recorded
+   push and never repeats it. Then run `observe-app-push.py` and
+   `assert-deployed-app.py`.
+3. Terminator: `kanban_request_review reviewer=reviewer`. The reviewer runs
+   the stage audit, then `kanban_complete`. Completion is allowed only when
+   the audit is green and the stage's own receipts (`candidate.json` +
+   `eligibility.json`; `pipeline.json` + `deployment.json` + the landed push;
+   `live.json` + `m5-verdict.json`) are all bound to the current HEAD and
+   passed. No stage result is ever typed in by a worker.
+
 ## Failures
 
 Name the failed stage (M5 PREFLIGHT / M5 DEPLOY / M5 VALIDATE), the exact

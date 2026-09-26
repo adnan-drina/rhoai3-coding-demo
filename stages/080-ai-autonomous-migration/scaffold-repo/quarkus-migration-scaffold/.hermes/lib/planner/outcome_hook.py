@@ -89,6 +89,12 @@ def terminator(root: str, *, kind: str, profile: str, env: dict[str, str],
             pub = _pub_by_task(ctx.store, task)
             if pub and pub["outcome_id"].startswith("assess:"):
                 return {"action": "allow", "code": "ASSESS_REVIEW_ALLOWED"}
+            if pub and pub["outcome_id"].startswith("deliver:"):
+                # paved-road-m5: the implementer hands every stage to the reviewer, who completes it
+                # after the stage audit on the stage's own receipts (check_complete)
+                from planner.outcome_lifecycle import active_issue
+                active_issue(ctx, task, run_id)
+                return {"action": "allow", "code": "DELIVER_REVIEW_ALLOWED"}
             return _block("OUTCOME_NO_REVIEW_LANE", "an outcome card completes on its recorded acceptance; "
                                                     "kanban_block if it cannot be accepted")
     except Refusal as exc:
