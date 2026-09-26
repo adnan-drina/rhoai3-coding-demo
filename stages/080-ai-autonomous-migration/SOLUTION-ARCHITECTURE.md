@@ -287,6 +287,22 @@ verification and decided configuration are judged by their checks.
   `uri_expansions`, `worklist._location_verdict`) and its create entry
   point a Location verification responsibility, unresolved without a
   capture.
+- **Runtime proof of the V17 repairs (local, offline, pinned platform).**
+  Three packaged-jar tests under `fix-until-green/scripts` boot Quarkus and
+  speak HTTP: `repository-effects-runtime.test.py` (PostgreSQL 16 in podman;
+  `@Typed` fragment delegates behind the generated repositories; create,
+  update, delete and related-record effects each read back by an
+  independent request after its transaction; a "reads pass, writes do
+  nothing" delegate fails every write check; a remove-first delete fails on
+  Hibernate 6's flush while the dependents-first port passes),
+  `request-body-runtime.test.py` (openapi-generator 7.25.0 jaxrs-spec:
+  omitted/null/empty/invalid per required collection and scalar under
+  `generateJsonCreator` false and true; only the captured and recipe-stated
+  cells are asserted) and `location-null-runtime.test.py` (a bare
+  `build(dto.id)` answers 500 after the row committed; the null-tolerant
+  build answers 201 with the empty segment Spring's `buildAndExpand(null)`,
+  measured offline, produces). They prove the repair shapes on fixtures, not
+  on the migrated application.
 - **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
   gives every requirement exactly one account: joined to the finding outcome
   that already owns the same file, a bounded requirement outcome (planned

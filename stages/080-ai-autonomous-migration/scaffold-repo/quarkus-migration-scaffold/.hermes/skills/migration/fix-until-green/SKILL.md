@@ -288,6 +288,15 @@ record naming the card.
   family is a typed VERIFICATION_PENDING.
 - Every accepted step is a commit; `verification/loop/steps.json` is the
   append-only record; the sealed work list is rebuilt, never edited.
+- Runtime proof of the V17 repair shapes (harness selftests, local and offline,
+  pinned platform; not run inside a migration): `scripts/repository-effects-runtime.test.py`
+  (PostgreSQL 16 in podman: `@Typed` fragment delegates pass create/update/delete
+  and related-record effects read back by independent requests; no-op writes
+  and a Hibernate 6 remove-first delete fail), `scripts/request-body-runtime.test.py`
+  (omitted/null/empty/invalid per required property under `generateJsonCreator`
+  false and true) and `scripts/location-null-runtime.test.py` (bare
+  `build(dto.id)` 500 after commit vs the null-tolerant 201 with Spring's empty
+  segment). Each prints SKIP with the reason when a prerequisite is missing.
 
 ## Scripts
 
