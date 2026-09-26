@@ -116,6 +116,25 @@ def main() -> int:
                      "v17_1_path_then_semicolon_allowed", cwd=cwd)
         expect_allow("ls %s&& echo ok" % dest, "v17_1_path_then_and_allowed", cwd=cwd)
         expect_block("cat /etc/passwd; echo x", "v17_1_outside_path_then_semicolon_refused", "/etc/passwd", cwd=cwd)
+        # V17-1 qualification: trimming the separator must not weaken path or
+        # command enforcement. An outside path glued to ANY separator, a second
+        # command after an allowed path, and a mutation behind a separator all
+        # stay refused; an allowed path glued to each separator stays allowed.
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect_block("cat /etc/passwd%s echo x" % sep, "v17_1_q_outside_glued_%d" % i, "/etc/passwd", cwd=cwd)
+            expect_allow("ls %s%s echo ok" % (dest, sep), "v17_1_q_allowed_glued_%d" % i, cwd=cwd)
+        expect_block("ls %s; cat /etc/shadow" % dest, "v17_1_q_second_command_outside", "/etc/shadow", cwd=cwd)
+        expect_block("ls %s;cat /etc/shadow" % dest, "v17_1_q_second_command_outside_nospace", "/etc/shadow", cwd=cwd)
+        expect_block("ls %s; echo L2V0Yy9wYXNzd2Q= | base64 -d | xargs cat" % dest, "v17_1_q_opaque_after_separator",
+                     "opaque", cwd=cwd)
+        expect_block("ls %s; git checkout -- .hermes/pins.json" % dest, "v17_1_q_git_mutation_after_separator",
+                     "refused", cwd=cwd, extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
+        expect_block("cat %s/../../etc/passwd; echo x" % dest, "v17_1_q_traversal_then_separator", "outside allow root", cwd=cwd)
+        # glued on both sides: each piece between separators is its own operand
+        expect_allow("ls %s;echo ok" % dest, "v17_1_q_allowed_glued_both_sides", cwd=cwd)
+        expect_allow("ls %s;ls %s/src" % (dest, dest), "v17_1_q_two_allowed_glued", cwd=cwd)
+        expect_block("ls %s;/etc/x.sh" % dest, "v17_1_q_outside_after_glued_separator", "/etc/x.sh", cwd=cwd)
+        expect_block("ls %s|cat /etc/shadow" % dest, "v17_1_q_outside_after_glued_pipe", "/etc/shadow", cwd=cwd)
 
         expect_allow("export JAVA_HOME=/usr/lib/jvm/java-21-openjdk", "java_home")
         expect_allow("export PATH=/bin:$PATH", "path_concat")
