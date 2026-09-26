@@ -341,7 +341,8 @@ def initial_graph(root: Path, worklist: dict[str, Any], *, requirements: list[di
     try:
         g = derive_initial_graph(run_id=run_id, worklist=worklist, entry_points=inv["entry_points"], oracles=oracles,
                                  references=_references(root), max_attempts=max_attempts(dec),
-                                 provenance={"snapshot_kind": "admission", "scope_note": "semantic projection of this root's admission-time evidence"})
+                                 provenance={"snapshot_kind": "admission", "scope_note": "semantic projection of this root's admission-time evidence"},
+                                 requirements=requirements)
     except PlanError as exc:
         return None, "%s: %s" % (exc.code, exc.detail)
     return g, ""
@@ -362,9 +363,11 @@ def from_root(root: Path, *, run_id: str = "semantic", worklist: dict[str, Any] 
         worklist = _read(root / WORKLIST)
     if not isinstance(worklist, dict):
         raise SemanticsError("%s is missing or malformed" % WORKLIST)
+    from planner import source_requirements
+
     oracles = _oracles(root)
     inputs = input_components(root, oracles=oracles or {}, oracles_known=oracles is not None)
-    reqs: dict[str, Any] = {"requirements": [], "unknowns": []}
+    reqs = source_requirements.for_root(root, oracles=oracles)
     graph, why = initial_graph(root, worklist, requirements=reqs["requirements"], oracles=oracles, run_id=run_id)
     doc = compose(inputs=inputs, worklist=worklist, requirements=reqs["requirements"], graph=graph,
                   audit={"root": str(root), "bundle_sha256": sha256_file(root / EVIDENCE_BUNDLE) if (root / EVIDENCE_BUNDLE).is_file() else ""})
@@ -375,6 +378,112 @@ def from_root(root: Path, *, run_id: str = "semantic", worklist: dict[str, Any] 
         doc["unknowns"] = sorted(set(doc["unknowns"]) | {"graph: %s" % why})
         doc["complete"] = False
     return doc
+
+
+def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+    """Admission's plan-semantics v1 check: the semantic document and every
+    reason it may not be admitted (typed blocks). The exact evidence checks of
+    planner.admission still run; this adds, never replaces.
+
+      PLAN_SEMANTICS_UNDERIVABLE  the planning inputs cannot be read
+      PLAN_CONTRACT               the one graph builder refused the plan
+                                  (conservation, scope bound, cycle, lost
+                                  requirement, ...): its own code is kept
+      PLAN_ACCEPTANCE_MISSING     an applicable requirement names no check
+      PLAN_RECIPE_MISSING         an applicable requirement has no qualified
+                                  recipe
+    Unresolved requirements are not blocks here: like a missing oracle they
+    are named responsibilities that block delivery, never an empty plan."""
+    blocks: list[dict[str, str]] = []
+    try:
+        doc = from_root(root)
+    except (SemanticsError, OSError, ValueError) as exc:
+        return None, [{"class": "PLAN_SEMANTICS_UNDERIVABLE", "subject": "plan-semantics", "detail": str(exc)[:300]}]
+    for u in doc.get("unknowns") or []:
+        if u.startswith("graph: "):
+            code = u[len("graph: "):].split(":", 1)[0]
+            blocks.append({"class": "PLAN_CONTRACT", "subject": code, "detail": u[len("graph: "):][:300]})
+    for r in doc["plan"]["requirements"]:
+        if r.get("status") != "applicable":
+            continue
+        if not r.get("acceptance"):
+            blocks.append({"class": "PLAN_ACCEPTANCE_MISSING", "subject": r["id"], "detail": "an applicable requirement names no completion check"})
+        if not r.get("recipe"):
+            blocks.append({"class": "PLAN_RECIPE_MISSING", "subject": r["id"], "detail": "an applicable requirement has no qualified recipe"})
+    return doc, blocks
+
+
+def seal_of(doc: dict[str, Any]) -> dict[str, str]:
+    return {"schema": SCHEMA, "input_fingerprint": doc["input_fingerprint"], "plan_fingerprint": doc["plan_fingerprint"],
+            "semantic_digest": semantic_digest(doc)}
+
+
+def seal_gaps(root: Path, seal: dict[str, Any]) -> list[str]:
+    """The file admission wrote still carries the sealed semantics and its
+    fingerprints still cover its own content (a tampered or replaced file
+    fails)."""
+    from planner.paths import PLAN_SEMANTICS
+
+    doc = _read(Path(root) / PLAN_SEMANTICS)
+    if not isinstance(doc, dict):
+        return ["%s is missing after admission" % PLAN_SEMANTICS]
+    gaps = []
+    if digest(doc.get("plan")) != doc.get("plan_fingerprint"):
+        gaps.append("plan semantics: the plan fingerprint does not cover the file's plan")
+    if digest({k: (doc.get("inputs") or {}).get(k, {}).get("digest") for k in INPUT_ORDER if k in (doc.get("inputs") or {})}) != doc.get("input_fingerprint"):
+        gaps.append("plan semantics: the input fingerprint does not cover the file's inputs")
+    for k in ("input_fingerprint", "plan_fingerprint"):
+        if doc.get(k) != seal.get(k):
+            gaps.append("plan semantics %s %s != sealed %s" % (k, str(doc.get(k))[:12], str(seal.get(k))[:12]))
+    return gaps
+
+
+def plan_view(doc: dict[str, Any], *, protocol: str) -> dict[str, Any]:
+    """The one derived human-readable view of the initial plan: each planned
+    M3 outcome, why it exists, its prerequisites, recipes, bounded units,
+    completion checks and unresolved conditions; baseline, additions and
+    unfinished work apart; the M4/M5 milestones by their existing titles. It
+    grants nothing and is never a queue. On a serial-loop run it is
+    observational: that run executes the serial loop, not pre-minted outcomes."""
+    g = (doc.get("plan") or {}).get("graph") or {}
+    reqs = {r["id"]: r for r in (doc.get("plan") or {}).get("requirements") or []}
+    nodes = g.get("nodes") or []
+    titles = {n["outcome_id"]: n.get("title") for n in nodes}
+    outcomes, milestones = [], []
+    for n in nodes:
+        if n.get("role") != "repair":
+            milestones.append({"outcome_id": n["outcome_id"], "title": n.get("title"),
+                               "after": [titles.get(p, p) for p in n.get("parents") or [] if p in titles]})
+            continue
+        why = ["%d measured obligation(s)" % len(n.get("obligations") or [])] if n.get("obligations") else []
+        why += ["%s: %s" % (reqs[r]["rule"].split("/", 1)[0], reqs[r]["subject"]) for r in n.get("requirements") or [] if r in reqs]
+        outcomes.append({
+            "outcome_id": n["outcome_id"], "title": n.get("title"), "class": n.get("class"), "why": why,
+            "after": [titles.get(p, p) for p in n.get("parents") or [] if p in titles],
+            "recipes": list(n.get("recipes") or []),
+            "units": ([{"cluster": c} for c in n.get("clusters") or []] + list(n.get("planned_units") or [])),
+            "completion_checks": list((n.get("acceptance") or {}).get("checks") or []) + list((n.get("acceptance") or {}).get("requirement_checks") or []),
+            "budget_limit": (n.get("budget") or {}).get("limit"),
+        })
+    counts = g.get("counts") or {}
+    return {
+        "schema": "rhoai3.plan-view/v1",
+        "protocol": protocol,
+        "observational": protocol != "outcome-board/v1",
+        "note": ("derived from evidence/planning/plan-semantics.json; grants nothing and is not a queue"
+                 + ("; this run executes the serial loop, so the outcomes below are the planned responsibilities, not pre-minted cards"
+                    if protocol != "outcome-board/v1" else "; the outcome store and K4 publication remain the executable records")),
+        "plan_fingerprint": doc.get("plan_fingerprint"),
+        "input_fingerprint": doc.get("input_fingerprint"),
+        "baseline": outcomes,
+        "additions": [],
+        "unfinished": [o["outcome_id"] for o in outcomes],
+        "milestones": milestones,
+        "unresolved": [{"id": u["id"], "blocks": u.get("blocks"), "reason": u.get("reason")} for u in g.get("unresolved") or []],
+        "counts": {"baseline_outcomes": counts.get("baseline_outcomes"), "requirements": counts.get("requirements") or {},
+                   "unresolved": counts.get("unresolved")},
+        "unknowns": list(doc.get("unknowns") or []),
+    }
 
 
 def semantic_digest(doc: dict[str, Any]) -> str:

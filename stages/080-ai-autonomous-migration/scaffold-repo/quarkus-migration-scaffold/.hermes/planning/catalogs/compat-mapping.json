@@ -503,5 +503,187 @@
         }
       }
     }
+  },
+  "migration_recipes": {
+    "note": "Qualified transformation recipes for the responsibilities planner.source_requirements derives from the FROZEN source before any destination failure (plan semantics v1). A recipe fixes WHAT the repair is and HOW it is accepted; it is never a second transformation engine. `implementation.kind` is either `decided-repairs` (a mechanical operation of bootstrap-destination/scripts/_decided_repairs.py, applied only when decisions.yaml decided_repairs names it, with a receipt row) or `agent-bounded` (an M3 worker edits inside the issued write grant; the selected architecture is the cited catalog row and the acceptance checks below are mechanical). `acceptance` names the EXISTING independent checks that refuse the recipe's known broken forms: a check a recipe names must exist (source_requirements.test.py resolves every checker and every package-level test). `applies_to` keys are qualified catalog identities; `refuse` lists the conditions under which the requirement stays unresolved and no edit is made. A recipe never widens a write set and never discharges another requirement (the retirement of an adapter-owned annotation discharges no adapter behaviour).",
+    "handler-validation-translation": {
+      "version": "1",
+      "rule": "request-validation",
+      "phase": "m3",
+      "applies_to": [
+        "org.springframework.validation.BindingResult",
+        "org.springframework.validation.Errors"
+      ],
+      "implementation": {
+        "kind": "agent-bounded",
+        "architecture": "handler_parameters.undocumented[<type>].action and .translation: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator BEFORE any side effect, keep every other operand and operator of the source guard verbatim, remove @Valid from the self-validated body (the jakarta.validation.Valid row), keep the DTO's own and nested constraints, build the source's error response from the violations"
+      },
+      "acceptance": [
+        {
+          "check": "unit:handler-validation-guards",
+          "checker": "planner.worklist._assess_handler_parameters",
+          "refuses": [
+            "inverted guard",
+            "|| turned into &&",
+            "@Valid kept on a self-validating handler"
+          ]
+        },
+        {
+          "check": "gate:package",
+          "checker": "skills/migration/fix-until-green/scripts/handler-validation-package.test.py",
+          "refuses": [
+            "inverted guard refuses the valid create",
+            "&& persists an invalid create",
+            "kept @Valid answers with the platform report"
+          ]
+        }
+      ],
+      "refuse": [
+        "the validated body parameter cannot be identified from the handler signature",
+        "the handler's parameters are not fully resolved"
+      ]
+    },
+    "handler-uri-parameter": {
+      "version": "1",
+      "rule": "handler-parameter-binding",
+      "phase": "m3",
+      "applies_to": [
+        "org.springframework.web.util.UriComponentsBuilder"
+      ],
+      "precedence": "a qualified handler-parameter action precedes the bare symbol_renames row for the same type (V16-5)",
+      "implementation": {
+        "kind": "agent-bounded",
+        "architecture": "handler_parameters.undocumented[org.springframework.web.util.UriComponentsBuilder].action: @Context jakarta.ws.rs.core.UriInfo, uriInfo.getBaseUriBuilder().path(<source path template>).build(<ids>) for the Location"
+      },
+      "acceptance": [
+        {
+          "check": "unit:handler-parameter-sites",
+          "checker": "planner.worklist.handler_parameter_sites",
+          "refuses": [
+            "an unannotated builder left as a handler parameter (a second request body)"
+          ]
+        },
+        {
+          "check": "gate:augmentation",
+          "checker": "skills/migration/fix-until-green/scripts/handler-location-package.test.py",
+          "refuses": [
+            "the bare rename fails augmentation",
+            "a relative Location drops the application base"
+          ]
+        }
+      ],
+      "refuse": [
+        "the handler builds no Location and the parameter has another use the catalog does not document"
+      ]
+    },
+    "retire-adapter-owned-annotation": {
+      "version": "1",
+      "rule": "annotation-retirement",
+      "phase": "m3",
+      "applies_to": [
+        "org.springframework.web.bind.annotation.CrossOrigin"
+      ],
+      "implementation": {
+        "kind": "decided-repairs",
+        "operation": "java_retire_annotation",
+        "architecture": "adapter_owned_annotations[<annotation>].action: delete each resolved site with its arguments and the single-type import; nothing replaces it"
+      },
+      "acceptance": [
+        {
+          "check": "structure:annotation-absent",
+          "checker": "skills/migration/bootstrap-destination/scripts/_decided_repairs.py Engine.java_retire_annotation (post-edit parse: no site resolves to the annotation)",
+          "refuses": [
+            "a site left behind",
+            "another package's annotation of the same simple name removed",
+            "a partial retirement"
+          ]
+        },
+        {
+          "check": "gate:compile",
+          "checker": "planner.worklist.compile_items"
+        }
+      ],
+      "never_discharges": [
+        "adapter-behavior"
+      ],
+      "refuse": [
+        "an annotation name the parse tree and imports cannot resolve",
+        "the destination carries only some of the source's sites"
+      ]
+    },
+    "generated-body-binding": {
+      "version": "1",
+      "rule": "generator-configuration",
+      "phase": "m3",
+      "applies_to": [
+        "org.openapitools:openapi-generator-maven-plugin"
+      ],
+      "qualified": {
+        "jaxrs-spec": {
+          "plugin_versions": [
+            "7.25.0"
+          ],
+          "source_generator": "spring"
+        }
+      },
+      "implementation": {
+        "kind": "agent-bounded",
+        "architecture": "build_plugins[org.openapitools:openapi-generator-maven-plugin].generators[<name>]: an option changes ONLY under that row's conditional rule (V16-8: the recorded source request omits a property the generated constructor requires and the source accepted it); generateJsonCreator=false, disabled validation or permissive null handling are never a universal workaround"
+      },
+      "acceptance": [
+        {
+          "check": "build:clean-generation",
+          "checker": "skills/migration/fix-until-green/scripts/prepare-initial-analysis.py (regenerated roots) and planner.worklist.generated_body_binding"
+        },
+        {
+          "check": "parity:request-body-positive-negative",
+          "checker": "skills/migration/fix-until-green/scripts/handler-validation-package.test.py",
+          "refuses": [
+            "the default generateJsonCreator=true refuses a valid body that omits the required collection"
+          ],
+          "cases": [
+            "omitted",
+            "null",
+            "empty",
+            "invalid collection -- distinct where the source distinguishes them"
+          ]
+        }
+      ],
+      "refuse": [
+        "a generator name or plugin version the catalog does not qualify",
+        "no recorded source request body to compare"
+      ]
+    },
+    "spring-data-fragment-impl": {
+      "version": "1",
+      "rule": "repository-architecture",
+      "phase": "m3",
+      "applies_to": [],
+      "implementation": {
+        "kind": "agent-bounded",
+        "architecture": "planner.worklist.FRAGMENT_IMPL_CONTRACT: the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed to the fragment (worklist.fragment_cdi_exposure), one intended injectable implementation per contract in the decided build profile"
+      },
+      "acceptance": [
+        {
+          "check": "unit:fragment-implementation",
+          "checker": "planner.worklist._assess_implementations",
+          "refuses": [
+            "a fragment member no implementation declares"
+          ]
+        },
+        {
+          "check": "structure:single-injectable-implementation",
+          "checker": "skills/migration/fix-until-green/scripts/fragment-cdi-package.test.py",
+          "refuses": [
+            "an unrestricted implementation that is also a bean of the repository type (ambiguous injection)"
+          ]
+        }
+      ],
+      "refuse": [
+        "the fragment has no <Fragment>Impl in the source",
+        "several implementations in the selected profile",
+        "profile-gated implementations with no decided build profile"
+      ]
+    }
   }
 }

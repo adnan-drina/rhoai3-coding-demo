@@ -246,8 +246,15 @@ def _validate_provenance(p: Any) -> None:
 def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points: list[dict[str, Any]],
                          oracles: dict[str, list[str]] | None, references: dict[str, list[str]] | None,
                          provenance: dict[str, Any], max_attempts: int = 3,
-                         satisfied: dict[str, str] | None = None) -> dict[str, Any]:
-    """Plan revision 1 for a run, or PlanError. Never a partial plan."""
+                         satisfied: dict[str, str] | None = None,
+                         requirements: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Plan revision 1 for a run, or PlanError. Never a partial plan.
+
+    ``requirements`` (plan semantics v1, planner.source_requirements) are the
+    known responsibilities derived from the frozen source. None (every caller
+    before v1) leaves the revision exactly as before; a list makes each one
+    owned by exactly one outcome, satisfied with its receipt, not applicable,
+    or an explicit unresolved responsibility (attach_requirements)."""
     _req(bool(_s(run_id)) and ":" not in run_id, "ADMISSION_INPUT", "run_id must be a non-empty name without ':'")
     _req(isinstance(max_attempts, int) and max_attempts >= 1, "ADMISSION_INPUT", "max_attempts must be >= 1")
     _validate_provenance(provenance)
@@ -340,7 +347,11 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
         if o["class"] == "behavior" and not o["obligations"] and not o["clusters"]:
             # every captured entry point was already satisfied: no repair outcome is issued
             pass
-    outcomes = {k: v for k, v in outcomes.items() if v["obligations"]}
+    req_account: dict[str, str] = {}
+    if requirements is not None:
+        req_account = attach_requirements(outcomes, requirements, unresolved=unresolved, dispositions=dispositions,
+                                          order=order, outcome=outcome)
+    outcomes = {k: v for k, v in outcomes.items() if v["obligations"] or v.get("requirements")}
 
     # 3. conservation: each mandatory item exactly once, or explicitly disposed
     owned: dict[str, str] = {}
@@ -368,7 +379,8 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
     for k in ids:
         for p in outcomes[k]["plan_paths"]:
             path_owner.setdefault(p, set()).add(k)
-    first_order = {k: min((order.get(c, ("~",)) for c in outcomes[k]["clusters"]), default=("~",)) for k in ids}
+    first_order = {k: min([order.get(c, ("~",)) for c in outcomes[k]["clusters"]]
+                          + ([outcomes[k]["_order"]] if outcomes[k].get("_order") else []), default=("~",)) for k in ids}
     # support first: A references B => A depends on B. Only a mutual reference
     # (a strongly connected component) is ordered by the work list's own
     # leaf-first order key, which keeps the graph acyclic without ever putting
@@ -397,6 +409,9 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
             parents |= {x for x in ids if cls_of[x] == "source"}
         if cls_of[k] == "behavior":
             parents |= {x for x in ids if cls_of[x] != "behavior"}
+        # qualified source/recipe prerequisites (generated models before their
+        # consumers, a retirement before the behaviour it hands over)
+        parents |= {x for x in o.pop("_req_parents", set()) if x in outcomes and x != k}
         o["parents"] = sorted(parents)
     for k in ids:
         o = outcomes[k]
@@ -408,6 +423,13 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
         o["shared_prerequisite"] = len(referenced_by[k]) >= 2
         o["title"] = _title(o["class"], o["subject"])
         o["acceptance"] = {"checks": list(CHECKS[o["class"]])}
+        o.pop("_order", None)
+        if o.get("requirements"):
+            # the owner's applicable completion checks: an empty live work list
+            # never discharges them (outcome_lifecycle._covers)
+            o["requirements"] = sorted(set(o["requirements"]))
+            o["acceptance"]["requirement_checks"] = sorted(set(o.pop("_req_checks", [])))
+            o["recipes"] = sorted(set(o.pop("_recipes", [])))
         o["assignee"] = IMPL
         o["skills"] = [REPAIR_SKILL]
         o["budget"] = {"key": "rk:outcome:%s:%s" % (run_id, k), "limit": max_attempts * max(1, len(o["clusters"]))}
@@ -448,8 +470,146 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
         "counts": counts,
         "claimed_control": False,
     }
+    if requirements is not None:
+        # present only under plan semantics v1, so an existing revision's
+        # content -- and its digest -- is exactly what it was
+        doc["requirements"] = sorted((copy.deepcopy(r) for r in requirements), key=lambda r: str(r.get("id")))
+        doc["requirement_ownership"] = dict(sorted(req_account.items()))
+        by_status: dict[str, int] = {}
+        for r in requirements:
+            by_status[_s(r.get("status"))] = by_status.get(_s(r.get("status")), 0) + 1
+        counts["requirements"] = dict(sorted(by_status.items()))
     doc["digest"] = plan_digest(doc)
     return doc
+
+
+REQ_UNIT_MAX_FILES = MAX_WRITE_SET   # worklist.UNIT_MAX_FILES
+REQ_UNIT_MAX_SYMBOLS = 16            # worklist.UNIT_MAX_FRAGMENT_SYMBOLS (the widest coherent unit the former allows)
+_REQ_WORDS = {"repository-architecture": "repository fragment", "request-validation": "request validation",
+              "handler-parameter-binding": "handler parameter", "annotation-retirement": "retire annotation",
+              "adapter-behavior": "adapter behaviour", "generator-configuration": "generator configuration",
+              "configuration-decision": "decided configuration", "behavior-verification": "verify"}
+
+
+def _simple(subject: str) -> str:
+    """org.a.B#m(org.a.C,org.x.D) -> B#m(C,D): readable, still distinct."""
+    out, tok = [], ""
+    for ch in subject + " ":
+        if ch.isalnum() or ch in "._$":
+            tok += ch
+            continue
+        if tok:
+            out.append(tok.rsplit(".", 1)[-1] if "." in tok and not tok.startswith(".") else tok)
+            tok = ""
+        out.append(ch)
+    return "".join(out).strip()
+
+
+def attach_requirements(outcomes: dict[str, dict[str, Any]], requirements: list[dict[str, Any]], *,
+                        unresolved: list[dict[str, Any]], dispositions: list[dict[str, Any]],
+                        order: dict[str, tuple], outcome: Any) -> dict[str, str]:
+    """Give every source requirement exactly one account (conservation).
+
+    applicable      owned by the outcome that already owns the SAME work (a
+                    finding cluster of the same class whose write scope holds
+                    the requirement's primary path; several: the work list's
+                    leaf-first order key, then the id -- never file order), a
+                    captured behaviour outcome for an entry point, or a new
+                    requirement outcome with its planned scope bounded by the
+                    unit limits (UNIT_OVERSIZE otherwise). Its acceptance
+                    becomes the owner's requirement_checks; the owner's budget
+                    is NOT reset or widened.
+    satisfied       a disposition carrying the receipt that applied it
+    not-applicable  recorded, owns nothing
+    unresolved      an explicit unresolved responsibility, never an empty plan
+
+    Returns requirement id -> owner (outcome id, unresolved id, 'satisfied'
+    or 'not-applicable')."""
+    account: dict[str, str] = {}
+    by_id = {_s(r.get("id")): r for r in requirements if isinstance(r, dict) and _s(r.get("id"))}
+    _req(len(by_id) == len([r for r in requirements if isinstance(r, dict)]), "ADMISSION_INPUT", "duplicate or unnamed source requirement")
+    unresolved_ids = {u["id"] for u in unresolved}
+
+    def unresolved_for(r: dict[str, Any], kind: str, reason: str) -> str:
+        rule = _s(r.get("rule")).split("/", 1)[0]
+        if rule == "behavior-verification":
+            typ, k = declaring_type(_s(r.get("subject")))
+            uid = "unresolved:verification:%s:%s" % (k, typ)
+            if uid in unresolved_ids:
+                row = next(u for u in unresolved if u["id"] == uid)
+                row.setdefault("requirements", []).append(r["id"])
+                row["requirements"] = sorted(set(row["requirements"]))
+                return uid
+        uid = "unresolved:requirement:%s:%s" % (rule, hashlib.sha256(_s(r.get("subject")).encode("utf-8")).hexdigest()[:12])
+        unresolved.append({"id": uid, "kind": kind, "blocks": "ship" if rule in ("behavior-verification", "adapter-behavior") else "delivery",
+                           "reason": reason, "requirements": [r["id"]], "subject": _s(r.get("subject"))})
+        unresolved_ids.add(uid)
+        return uid
+
+    for rq in sorted(by_id):
+        r = by_id[rq]
+        status = _s(r.get("status"))
+        rule = _s(r.get("rule")).split("/", 1)[0]
+        if status == "not-applicable":
+            account[rq] = "not-applicable"
+            continue
+        if status == "satisfied":
+            account[rq] = "satisfied"
+            dispositions.append({"obligation_id": rq, "disposition": "satisfied",
+                                 "reason": "applied before the baseline: %s" % (", ".join((r.get("facts") or {}).get("receipt") or []) or "the bootstrap receipt")})
+            continue
+        if status == "unresolved":
+            account[rq] = unresolved_for(r, "requirement", "; ".join(r.get("unknowns") or []) or "unresolved")
+            continue
+        _req(status == "applicable", "ADMISSION_INPUT", "requirement %s status %r" % (rq, status))
+        cls = _s(r.get("class")) or "source"
+        _req(cls in CLASSES, "ADMISSION_UNSUPPORTED", "requirement %s class %r" % (rq, cls))
+        owner = ""
+        if rule == "behavior-verification":
+            typ, k = declaring_type(_s(r.get("subject")))
+            cand = "behavior:%s:%s" % (k, typ)
+            if cand in outcomes:
+                owner = cand
+        elif r.get("paths"):
+            primary = sorted(r.get("paths") or [])[0]
+            cands = [oid for oid, o in outcomes.items() if o["class"] == cls and primary in o["plan_paths"]]
+            if cands:
+                owner = min(cands, key=lambda oid: (min((order.get(c, ("~",)) for c in outcomes[oid]["clusters"]), default=("~",)), oid))
+        if not owner:
+            paths = sorted(set(r.get("paths") or []))
+            symbols = len((r.get("facts") or {}).get("members") or []) or len(paths)
+            if len(paths) > REQ_UNIT_MAX_FILES or symbols > REQ_UNIT_MAX_SYMBOLS:
+                account[rq] = unresolved_for(r, "blocked-cluster", "UNIT_OVERSIZE: requirement %s spans %d file(s) and %d symbol(s); "
+                                             "the unit limits are %d and %d and one requirement is one coherent repair"
+                                             % (rq, len(paths), symbols, REQ_UNIT_MAX_FILES, REQ_UNIT_MAX_SYMBOLS))
+                continue
+            short = hashlib.sha256(_s(r.get("subject")).encode("utf-8")).hexdigest()[:12]
+            owner = "requirement:%s:%s" % (rule, short)
+            subject = "%s %s" % (_REQ_WORDS.get(rule, rule), _simple(_s(r.get("subject"))))
+            o = outcome(owner, cls, subject, "%s:%s" % (rule, _s(r.get("subject"))))
+            o["plan_paths"].extend(paths)
+            o["entry_points"].extend(_s(e) for e in r.get("consumers") or [] if _s(e).startswith("ep:"))
+            o["_order"] = (json.dumps("~req"), json.dumps(rule), json.dumps(_s(r.get("subject"))))
+            # the planned responsibility, not a write grant: the authority grants
+            # one bounded unit at a time (outcome_lifecycle._allowed_paths)
+            o["planned_units"] = [{"unit": 1, "paths": paths, "symbols": symbols, "grant": "none until issued"}]
+        o = outcomes[owner]
+        o.setdefault("requirements", []).append(rq)
+        o.setdefault("_req_checks", []).extend(_s(c) for c in r.get("acceptance") or [])
+        if r.get("recipe"):
+            o.setdefault("_recipes", []).append("%s@%s" % (_s((r.get("recipe") or {}).get("id")), _s((r.get("recipe") or {}).get("version"))))
+        account[rq] = owner
+    # prerequisites between the owners of dependent requirements
+    for rq, owner in account.items():
+        if owner not in outcomes:
+            continue
+        for dep in by_id[rq].get("dependencies") or []:
+            dep_owner = account.get(_s(dep), "")
+            if dep_owner in outcomes and dep_owner != owner:
+                outcomes[owner].setdefault("_req_parents", set()).add(dep_owner)
+    lost = sorted(set(by_id) - set(account))
+    _req(not lost, "REQUIREMENT_LOST", "source requirement(s) with no account: %s" % ", ".join(lost[:5]))
+    return account
 
 
 def _scc(edges: dict[str, set[str]]) -> dict[str, int]:
@@ -536,7 +696,16 @@ def topo_order(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def brief_document(plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
     """The attachment a worker reads: membership, checks, lineage. Data only;
     it grants nothing (the authority recomputes every check)."""
-    return {
+    extra: dict[str, Any] = {}
+    for key in ("requirements", "recipes", "planned_units"):
+        if node.get(key):
+            # plan semantics v1 only: the source requirements this outcome owns,
+            # their qualified recipes and the planned (never granted) units
+            extra[key] = copy.deepcopy(node[key])
+    if node.get("requirements"):
+        rows = {_s(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}
+        extra["requirement_rows"] = [copy.deepcopy(rows[r]) for r in node["requirements"] if r in rows]
+    return dict(extra, **{
         "schema": "rhoai3.outcome-brief/v1",
         "run_id": plan["run_id"],
         "revision": plan["revision"],
@@ -555,7 +724,59 @@ def brief_document(plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]
         "binding": dict(node.get("binding") or {}),
         "lineage": list(node.get("lineage") or []),
         "note": "Descriptive. Edits are granted per issued cluster by the authority, never by this file.",
-    }
+    })
+
+
+HANDLER_RULES = ("request-validation", "handler-parameter-binding", "behavior-verification")
+
+
+def owner_of_finding(plan: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+    """The frozen owner of a finding measured AFTER the initial plan (plan
+    semantics v1), whatever order the destination revealed it in.
+
+      obligation   the plan already owns this obligation id
+      requirement  a planned requirement's scope holds the finding's locus
+                   (its file, or for a behaviour finding its entry point):
+                   one owner, so a defect seen through several endpoints or
+                   checkpoints keeps that owner and its budget
+      none         no planned owner: a TYPED revision class instead of an
+                   arbitrary attachment -- previously-unknown-behavior (a
+                   behaviour finding), evidence-gap (an environment or
+                   unlocatable finding), missing-planning-rule (anything
+                   else), or ambiguous-ownership (two owners claim the locus)
+    Pure; grants nothing."""
+    iid = _s(item.get("id"))
+    own = plan.get("ownership") or {}
+    if iid and iid in own:
+        return {"owner": own[iid], "resolution": "obligation"}
+    path = _s(item.get("path"))
+    ep = _s(item.get("entry_point"))
+    repair = {n["outcome_id"]: n for n in plan.get("nodes") or [] if n.get("role") == "repair" and n.get("requirements")}
+    hits: set[str] = set()
+    if path:
+        hits = {oid for oid, n in repair.items() if path in (n.get("plan_paths") or [])}
+    elif ep:
+        # a behaviour finding at an entry point: the handler-level requirement
+        # that serves it owns it; a generator or adapter requirement that only
+        # lists the endpoint as a consumer owns it only when nothing closer does
+        acct = plan.get("requirement_ownership") or {}
+        near: set[str] = set()
+        far: set[str] = set()
+        for r in plan.get("requirements") or []:
+            if ep in (r.get("consumers") or []) and acct.get(_s(r.get("id"))) in repair:
+                (near if _s(r.get("rule")).split("/", 1)[0] in HANDLER_RULES else far).add(acct[_s(r.get("id"))])
+        hits = near or far
+    if len(hits) == 1:
+        return {"owner": next(iter(hits)), "resolution": "requirement"}
+    if len(hits) > 1:
+        return {"owner": None, "class": "ambiguous-ownership", "candidates": sorted(hits)}
+    if _s(item.get("kind")) == "parity" or ep:
+        cls = "previously-unknown-behavior"
+    elif _s(item.get("kind")) in ("environment", "unlocatable") or _s(item.get("cause")) == "environment":
+        cls = "evidence-gap"
+    else:
+        cls = "missing-planning-rule"
+    return {"owner": None, "class": cls}
 
 
 def resolve_identities(frozen: dict[str, dict[str, Any]], derived: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

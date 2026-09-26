@@ -128,12 +128,21 @@ def initial_plan_from_root(root: Path) -> dict[str, Any]:
         doc = load_yaml(mig) if mig.is_file() else {}
         run_id = str(((doc or {}).get("resources") or {}).get("run") or "")
     from planner.canonical import sha256_file
+    # plan semantics v1 (decisions.loop.plan_semantics, sealed by the receipt
+    # just verified): the source-derived requirements enter revision 1; absent
+    # keeps the revision exactly as before
+    from planner.decisions import plan_semantics
+    oracles = _oracles(root)
+    extra: dict[str, Any] = {}
+    if plan_semantics(load_decisions(root)) == "v1":
+        from planner import source_requirements
+        extra["requirements"] = source_requirements.for_root(root, oracles=oracles)["requirements"]
     return derive_initial_graph(
-        run_id=run_id or "local", worklist=worklist, entry_points=inv["entry_points"], oracles=_oracles(root),
+        run_id=run_id or "local", worklist=worklist, entry_points=inv["entry_points"], oracles=oracles,
         references=_references(root), max_attempts=max_attempts(load_decisions(root)),
         provenance={"snapshot_kind": "admission", "scope_note": "admission-time work list and M1 inventories of this run",
                     "receipt_sha256": receipt.get("receipt_digest"), "worklist_sha256": sha256_file(root / WORKLIST),
-                    "entry_point_inventory_sha256": sha256_file(root / EP_INVENTORY)})
+                    "entry_point_inventory_sha256": sha256_file(root / EP_INVENTORY)}, **extra)
 
 
 # ---------------------------------------------------------------------------
@@ -827,6 +836,12 @@ def record_measurement(ctx: Ctx, *, tree: str, classes: list[str], scenarios: li
 def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:
     cls = node.get("class")
     have = set(m.get("classes") or [])
+    # plan semantics v1: an outcome owning source requirements is covered only
+    # by a measurement that records each of their named checks; an empty live
+    # work list or a vanished diagnostic never discharges them
+    req = set(((node.get("acceptance") or {}).get("requirement_checks")) or [])
+    if req and not req <= set(m.get("checks") or []):
+        return False
     if cls in ("build", "config"):
         return "build" in have
     if cls == "source":
