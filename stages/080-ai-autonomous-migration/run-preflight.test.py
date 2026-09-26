@@ -110,6 +110,42 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("'RHOAI3_REQUEST_BUDGET=' not in env_text", code)
 
 
+class HookRegistrations(unittest.TestCase):
+    """The effective managed config must carry the K2 hook fail-closed and,
+    when the harness ships it, the terminal post_tool_call observer."""
+
+    def snippet(self):
+        code = DeclaredBudget().fill()
+        return code[code.index('# The effective hook registrations'):code.index("require(c.get('model'")]
+
+    def check(self, hooks, ships_post):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            if ships_post:
+                (root / '.hermes/kernel').mkdir(parents=True)
+                (root / '.hermes/kernel/post_tool_call.sh').write_text('#!/bin/bash\n')
+
+            def require(cond, msg):
+                if not cond:
+                    raise AssertionError(msg)
+            exec(self.snippet(), {'require': require, 'root': root, 'c': {'hooks': hooks}})
+
+    def test_registrations(self):
+        k2 = {'matcher': 'write|terminal|kanban_complete|complete_task', 'command': '/m/agent-hooks/pre_tool_call.sh',
+              'timeout': 5, 'fail_closed': True}
+        post = {'matcher': 'terminal', 'command': '/m/agent-hooks/post_tool_call.sh', 'timeout': 5}
+        self.check({'pre_tool_call': [k2]}, False)
+        self.check({'pre_tool_call': [k2], 'post_tool_call': [post]}, True)
+        for hooks, ships, text in (({'pre_tool_call': [dict(k2, fail_closed=False)]}, False, 'fail-closed'),
+                                   ({'pre_tool_call': [dict(k2, timeout=60)]}, False, 'fail-closed'),
+                                   ({}, False, 'fail-closed'),
+                                   ({'pre_tool_call': [k2]}, True, 'post_tool_call observer')):
+            with self.assertRaises(AssertionError) as cm:
+                self.check(hooks, ships)
+            self.assertIn(text, str(cm.exception))
+
+
 class BoardProtocol(unittest.TestCase):
     """The launch refuses an inconsistent, missing or downgraded protocol
     selection instead of launching the serial loop. The remote snippet runs

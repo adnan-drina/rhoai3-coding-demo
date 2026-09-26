@@ -36,11 +36,11 @@ MATCHER = ("write|write_file|patch|edit_file|apply_patch|create_file|terminal|ex
            "skill_manage|kanban_complete|complete_task")
 
 
-def block() -> str:
+def block(name: str = "outcome-board hooks") -> str:
     text = PRODUCER.read_text()
-    m = re.search(r"\n( *)# >>> outcome-board hooks.*?\n(.*?)\n *# <<< outcome-board hooks", text, re.S)
+    m = re.search(r"\n( *)# >>> %s.*?\n(.*?)\n *# <<< %s" % (re.escape(name), re.escape(name)), text, re.S)
     if not m:
-        raise SystemExit("FAIL: the producer's outcome-board hooks block is missing")
+        raise SystemExit("FAIL: the producer's %s block is missing" % name)
     indent = len(m.group(1))
     return "\n".join(line[indent:] for line in m.group(2).splitlines())
 
@@ -78,6 +78,40 @@ def governed(td: Path, *, request=None, has_request=True, selected=None, default
         doc["board_protocol"] = selected
     (control / "contract.json").write_text(json.dumps(doc))
     return root
+
+
+def post_hook_cases(base: dict) -> list:
+    """V17-6b: the terminal post_tool_call observer is registered exactly when
+    the destination ships .hermes/kernel/post_tool_call.sh; the K2
+    pre_tool_call registrations keep fail_closed: true (honoured by the pinned
+    runtime for pre_tool_call only)."""
+    import os
+    import shutil
+    import tempfile
+    fails = []
+    text = PRODUCER.read_text()
+    k2 = re.findall(r'cfg\["hooks"\]\["pre_tool_call"\] = \[\s*\{(.*?)\}\s*\]', text, re.S)
+    if len(k2) != 2 or not all('"fail_closed": True' in e and '"timeout": 5' in e for e in k2):
+        fails.append("K2 pre_tool_call registrations are not fail_closed with a 5 s timeout: %d found" % len(k2))
+    for ships in (False, True):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, hooks = Path(tmp) / "dest", Path(tmp) / "managed" / "agent-hooks"
+            (root / ".hermes" / "kernel").mkdir(parents=True)
+            if ships:
+                (root / ".hermes" / "kernel" / "post_tool_call.sh").write_text("#!/bin/bash\ncat >/dev/null\n")
+            ns = {"os": os, "shutil": shutil, "safe_root": str(root), "hooks_dir": str(hooks),
+                  "cfg": copy.deepcopy(base), "print": lambda *a: None}
+            exec(block("post-tool-call observer"), ns)
+            got = ns["cfg"]["hooks"].get("post_tool_call")
+            if not ships and got is not None:
+                fails.append("post_tool_call registered without the script: %s" % got)
+            if ships:
+                want = [{"matcher": "terminal", "command": str(hooks / "post_tool_call.sh"), "timeout": 5}]
+                if got != want or not os.access(str(hooks / "post_tool_call.sh"), os.X_OK):
+                    fails.append("post_tool_call registration %s, want %s" % (got, want))
+                if ns["cfg"]["hooks"]["pre_tool_call"] != base["hooks"]["pre_tool_call"]:
+                    fails.append("the post block changed the K2 registration")
+    return fails
 
 
 def governed_cases(base: dict) -> list:
@@ -141,6 +175,7 @@ def main() -> int:
         if not (len(tick) == 1 and tick[0]["command"] == "python3 %s/.hermes/kernel/outcome_reconcile.py --root %s" % (root, root)):
             fails.append("selected run: reconciler not registered: %s" % tick)
     fails.extend(governed_cases(base))
+    fails.extend(post_hook_cases(base))
     if fails:
         print("FAIL: " + "; ".join(fails), file=sys.stderr)
         return 1

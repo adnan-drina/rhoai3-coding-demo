@@ -238,6 +238,18 @@ require(hashlib.sha256((root / r['manifest']).read_bytes()).hexdigest() == r['ma
 config = next((p for p in (Path('/etc/hermes/config.yaml'), Path('/projects/.platform/hermes/config.yaml')) if p.is_file()), None)
 require(config, 'managed Hermes config missing')
 c = load_yaml(config)
+# The effective hook registrations (Stage 050 producer): K2 fail-closed with the
+# complete terminator in its matcher and a 5 s timeout; the terminal
+# post_tool_call observer when the harness ships it (V17-6b).
+hooks = c.get('hooks') or {}
+k2 = [h for h in hooks.get('pre_tool_call') or [] if str(h.get('command', '')).endswith('pre_tool_call.sh')]
+require(len(k2) == 1 and k2[0].get('fail_closed') is True and k2[0].get('timeout') == 5
+        and 'kanban_complete' in str(k2[0].get('matcher', '')).split('|'),
+        'the K2 pre_tool_call hook is not registered fail-closed with a 5 s timeout')
+if (root / '.hermes/kernel/post_tool_call.sh').is_file():
+    require(any(h.get('matcher') == 'terminal' and str(h.get('command', '')).endswith('post_tool_call.sh')
+                for h in hooks.get('post_tool_call') or []),
+            'the terminal post_tool_call observer is not registered')
 require(c.get('model', {}).get('default') == MODEL, 'worker model mismatch')
 import socket
 from urllib.parse import urlsplit
@@ -361,6 +373,13 @@ else:
     sel, gaps = launch(root)
     require(not gaps, 'BOARD_PROTOCOL: %s' % (outcome_protocol.describe(gaps).splitlines()[0] if gaps else ''))
     protocol = sel.protocol
+    if protocol == 'outcome-board/v1':
+        # the producer registered the outcome hooks from the same selection
+        hk = c.get('hooks') or {}
+        require(any('outcome_reconcile.py' in str(h.get('command', '')) for h in hk.get('on_kanban_dispatch_tick') or [])
+                and all(t in str((hk.get('pre_tool_call') or [{}])[0].get('matcher', '')).split('|')
+                        for t in ('kanban_block', 'kanban_request_review', 'request_review')),
+                'BOARD_PROTOCOL: the managed config lacks the outcome-board hooks (reconciler tick, review/block terminators)')
 print('PASS: board protocol %s (requested %s)' % (protocol, declared.get('board_protocol', 'nothing')))
 print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
 '''.replace('EXPECTED_HOURS',repr(expected_hours)).replace('EXPECTED',repr(json.dumps(expected))).replace('MODEL',repr(os.environ['EXPECTED_MODEL'])).replace('WINDOW',str(windows[0])).replace('WORKER_IDENTITY',repr('system:serviceaccount:' + ns + ':' + workspace + '-worker')).replace('WORKSPACE_NAME',repr(workspace)).replace('MAASHOSTVAL',repr(maas_host)).replace('MAASIPVAL',repr(maas_ip)).replace('QLIMITVAL',str(quota_limit)).replace('QWINVAL',repr(quota_window)).replace('QOTHERSVAL',str(quota_others))
