@@ -33,7 +33,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _runtime_fixture as rt  # noqa: E402
+import test_runtime_fixture as rt  # noqa: E402
 
 FIXTURE = rt.FIXTURES / "repository-effects-runtime"
 CONTROLLER = "src/main/java/org/acme/depot/rest/LabelRestController.java"
