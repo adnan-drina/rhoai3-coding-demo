@@ -20,7 +20,7 @@ producer, `autostart-migration.sh` and `run-preflight.sh`
 
 | Question | Answer | Where |
 |---|---|---|
-| Who requests a protocol? | The run, once, at creation: the app-migration template parameter `boardProtocol` (default `serial-loop/v1`) stamped as `board_protocol` into the factory's `run-budget.json` in the destination's INITIAL commit. It is read from that commit only, never from the working tree | template.yaml, skeleton `run-budget.json`, `run_control.declared` |
+| Who requests a protocol? | The run, once, at creation: the app-migration template parameter `boardProtocol` (default `outcome-board/v1` since 2026-09-26) stamped as `board_protocol` into the factory's `run-budget.json` in the destination's INITIAL commit. It is read from that commit only, never from the working tree | template.yaml, skeleton `run-budget.json`, `run_control.declared` |
 | Who selects it? | The platform: the migration-run provisioner reads `board_protocol` from `run-budget.json` AT the validated scaffolding commit (content-addressed) and writes `board_protocol`, and for `outcome-board/v1` `outcome_board.execution` (a Task parameter, default `disabled`; never a template or event value; `qualification` refused) and the optional `outcome_board.measurement_trust`, into the read-only `contract.json` | `task-provision-migration-run.yaml` |
 | Which protocol does a governed run use? | The request and the selection must agree. Nothing requested and nothing selected keeps `serial-loop/v1` (every run created before the request existed: v12–v17) | `outcome_protocol._governed` |
 | Disagreement | `PROTOCOL_UNBOUND` (outcome requested, nothing selected or no platform record: v17's live shape), `PROTOCOL_DOWNGRADED` (outcome requested, serial selected), `PROTOCOL_UNREQUESTED` (outcome selected or its execution set without a request; or the shared `run-defaults.json` naming a protocol), `PROTOCOL_UNKNOWN`. Each routes to the outcome paths, which refuse; the serial loop is never started instead | same; K2, K4, launch checks |
@@ -31,9 +31,13 @@ producer, `autostart-migration.sh` and `run-preflight.sh`
 | Mixed state | Outcome protocol with serial-loop records, serial protocol with an outcome store, or a cooperative in-tree store beside the service, refuses `PROTOCOL_MIXED` on every path | `outcome_protocol.mixed_state` |
 | Launch | `autostart-migration.sh` and `run-preflight.sh` refuse any selection refusal, a mixed state, or a closed outcome execution gate (`python3 -m planner.outcome_protocol --root R launch-check`) | `outcome_protocol.launch_gaps` |
 
-The golden ships no `board_protocol` and the template defaults to the serial
-loop, so the next golden behaves exactly as today unless a run requests the
-outcome board AND the platform enables it.
+The golden ships no `board_protocol`; the template defaults to `outcome-board/v1`
+(user decision 2026-09-26: a new run never launches on the serial fallback). A
+default run therefore refuses at launch until the platform enables execution
+for it; `serial-loop/v1` stays available only as an explicit choice, and runs
+created before the parameter keep the serial loop. The template default must
+not be published before the image that carries the authority code (activation
+plan P4): a default run renders the authority sidecar.
 
 ## 2. Records and storage
 

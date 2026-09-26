@@ -83,17 +83,19 @@ spec:
         boardProtocol:
           title: Board protocol
           type: string
-          default: serial-loop/v1
+          default: outcome-board/v1
           enum:
             - serial-loop/v1
             - outcome-board/v1
           description: |
-            How the run's work is organised after M2. serial-loop/v1 (default)
-            is the proven one-card-at-a-time loop. outcome-board/v1 publishes
-            every known outcome at M2; it runs only when the platform has
-            enabled it for this run (the migration-run provisioner records the
-            selection and its execution state in the read-only run control),
-            and a run that requested it never falls back to the serial loop.
+            How the run's work is organised after M2. outcome-board/v1
+            (default) publishes every known outcome at M2; it runs only when
+            the platform has enabled it for this run (the migration-run
+            provisioner records the selection and its execution state in the
+            read-only run control), and a run that requested it never falls
+            back to the serial loop: until the platform enables it, the launch
+            refuses. serial-loop/v1 is the one-card-at-a-time loop, kept for
+            explicit compatibility only.
             Recorded once, in the destination's initial commit; a run never
             changes protocol.
 

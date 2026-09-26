@@ -5,7 +5,8 @@ Renders the skeleton (devfile.yaml, run-budget.json) the way the scaffolder does
 (fetch:template: Nunjucks with ${{ }} variables; rendered here with Jinja2,
 which implements the same constructs the skeleton uses) for both protocol
 values, and checks:
-  * the template offers boardProtocol with default serial-loop/v1 and exactly
+  * the template offers boardProtocol with default outcome-board/v1 (a default
+    run never launches on the serial fallback) and exactly
     the two protocols, passes it to the skeleton, and offers NO execution value;
   * run-budget.json stamps the request (the harness reads it from the initial
     commit only);
@@ -54,7 +55,7 @@ def main() -> int:
     tmpl = yaml.safe_load(TEMPLATE.read_text())
     props = {k: v for page in tmpl["spec"]["parameters"] for k, v in (page.get("properties") or {}).items()}
     bp = props.get("boardProtocol") or {}
-    if bp.get("default") != "serial-loop/v1" or bp.get("enum") != ["serial-loop/v1", "outcome-board/v1"]:
+    if bp.get("default") != "outcome-board/v1" or bp.get("enum") != ["serial-loop/v1", "outcome-board/v1"]:
         fails.append("template boardProtocol parameter: %s" % bp)
     if any("execution" in k.lower() for k in props):
         fails.append("the template offers an execution value: %s" % sorted(props))
@@ -113,7 +114,7 @@ def main() -> int:
     if fails:
         print("FAIL: " + "; ".join(fails), file=sys.stderr)
         return 1
-    print("OK: app-migration template (boardProtocol default serial-loop/v1, no execution value; run-budget.json "
+    print("OK: app-migration template (boardProtocol default outcome-board/v1, no execution value; run-budget.json "
           "stamps the request; serial renders no authority parts; outcome renders the sidecar with a distinct in-range "
           "uid, the store mounted only in it, the socket shared and read-only for the worker, the image's root-owned code)")
     return 0

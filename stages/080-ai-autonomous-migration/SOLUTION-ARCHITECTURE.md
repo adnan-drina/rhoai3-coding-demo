@@ -403,7 +403,7 @@ A repair attempt stays within the outcome that owns it. Continuations run on
 the dispatcher's own tick.
 
 A run requests the protocol once, at creation (the app-migration template's
-`boardProtocol`, default `serial-loop/v1`, stamped into the initial commit's
+`boardProtocol`, default `outcome-board/v1`, stamped into the initial commit's
 `run-budget.json`); the platform's provisioner selects it in the read-only run
 control together with the execution state it owns (default `disabled`). Every
 reader applies one rule (`outcome_protocol.select_protocol`): request and
