@@ -162,6 +162,12 @@ def reissue(root: Path, note: str = "") -> int | None:
                       pid=int(t.get("worker_pid") or 0), pgid=0)
         key = write_issued_record(Path(root), ctx, out)
     except Exception as exc:
+        if getattr(exc, "code", "") == "OWNER_REPAIR_PENDING":
+            # automatic owner recovery: this card waits on its owner's repair; the one
+            # legal terminator (paved-road-m3), not a refusal to work around
+            print("OWNER_REPAIR_PENDING: %s. Terminator: kanban_block kind=dependency." % getattr(exc, "detail", exc),
+                  file=sys.stderr)
+            return 0
         return _refuse(exc)
     print("CONTINUE THIS CARD: outcome %s, cluster %s issued (%s)%s. Read the brief again; do not complete."
           % (out["outcome_id"], out["cluster"] or "(verification only)", key or "no product edits",

@@ -187,6 +187,17 @@ attempts, and it completes only when the outcome is accepted.
 3. After a restart (a new native run), run `issue` again. A retained
    candidate is reported. `outcome_gate.py --root . restore-pending` adopts
    it and never renews the budget.
+4. `OWNER_RECOVERY` (or `OWNER_REPAIR_PENDING`) from advance.py or `issue`:
+   the runtime failure was proven on the baseline and belongs to an accepted
+   outcome. The authority holds your candidate (no attempt spent) and
+   publishes ONE repair of that outcome as this card's prerequisite. The only
+   terminator is `kanban_block kind=dependency` (K2 refuses `kanban_complete`
+   naming it). When the repair is accepted this card is dispatched again:
+   run `issue`, then `outcome_gate.py --root . restore-held` to put the held
+   candidate back, then run-verify and advance as usual (it is re-verified
+   on the repaired baseline, never carried over).
+5. A planned unit (`cluster` `planned:<outcome>:1`, no finding cluster) is
+   issued like a cluster: its `allowed_paths` are the plan's bounded unit.
 
 `kanban_request_review` is refused on an outcome card: its acceptance is
 the recorded measurement.

@@ -205,62 +205,104 @@ class Run:
 
 # ===========================================================================
 class OwnerRecovery(unittest.TestCase):
-    """Automatic owner recovery: a runtime failure the classifier proves on
-    the baseline and assigns to an ACCEPTED owner holds the dependent's
-    candidate (no spend), publishes ONE repair of the owner as the dependent's
-    prerequisite (owner's budget key, idempotent across interruption), and the
-    dependent is re-verified on the repaired baseline. Candidate regressions and
-    ambiguous causes are ordinary rejections (ambiguous is reported, no blame
-    transfer). The classifier is a stub with the agreed interface
-    planner.runtime_cause.classify(root, issued, cur, steps, baseline)."""
+    """Automatic owner recovery with the REAL classifier
+    (planner.runtime_cause.classify) on the authority's own inputs: the
+    dependent's runtime failure is proven identical on the baseline tree and
+    thrown in a file an ACCEPTED owner committed -> the candidate is held (no
+    attempt spent), ONE repair of the owner is published as the dependent's
+    parent (owner's budget key; idempotent across interruptions and a duplicate
+    claim), the repair is accepted only when the failing scenario PASSES on its
+    tree, and the dependent's held candidate is restored, re-verified on the
+    repaired baseline and accepted. The user's counterexample (changed caller,
+    unchanged callee, baseline PASSING) is a candidate regression; no baseline
+    record is ambiguous. SYNTHETIC board (FakeNative); the scenario records are
+    written the way run-verify writes them (worker receipts)."""
 
-    DEP, OWNER, PROPS = "config:rk:cfg", "build:rk:pom", "src/main/resources/application.properties"
+    OWNER, DEP, SID = "source:u:dto-mapper", "source:rk:item", "items-list"
+    CALLEE = "src/main/java/com/acme/shop/dto/ItemDto.java"
+    CALLER = "src/main/java/com/acme/shop/web/ItemController.java"
+    ERROR = {"exception": "java.lang.NullPointerException",
+             "frames": [{"class": "com.acme.shop.dto.ItemDto", "method": "getName", "file": CALLEE, "line": 12},
+                        {"class": "com.acme.shop.web.ItemController", "method": "list", "file": CALLER, "line": 40}],
+             "stack_sha256": "a" * 64}
 
     def setUp(self):
-        import types
-        self.calls = []
-        self.answer = {}
-        mod = types.ModuleType("planner.runtime_cause")
-
-        def classify(root, issued, cur, steps, baseline):
-            self.calls.append({"issued": issued, "baseline": baseline, "cur": bool(cur)})
-            return dict(self.answer)
-        mod.classify = classify
-        sys.modules["planner.runtime_cause"] = mod
         self.r = Run()
         self.r.release()
-        self.r.accept(self.OWNER, classes=("build",))
+        for oid in ("build:rk:pom", "config:rk:cfg", self.OWNER):
+            self.r.accept(oid, classes=("build", "compile", "tests"))
 
     def tearDown(self):
-        sys.modules.pop("planner.runtime_cause", None)
         os.environ.pop("OB_FAULT", None)
         os.environ.pop("OB_FAULT_MODE", None)
         self.r.close()
 
-    def fail_dependent(self, answer, attempt="1"):
+    def record(self, base: str, verdict: str, tree: str, error: dict | None) -> None:
+        from planner.paths import LOOP_ACCEPTED, PARITY_DIR
+        d = self.r.root / (LOOP_ACCEPTED / "parity" if base == "baseline" else PARITY_DIR) / "scenarios"
+        d.mkdir(parents=True, exist_ok=True)
+        doc = {"scenario": self.SID, "verdict": verdict, "binding": {"candidate_sha256": tree}}
+        if error:
+            doc["server_error"] = error
+        (d / ("%s.json" % self.SID)).write_text(json.dumps(doc))
+
+    def runtime_item(self, present: bool) -> None:
+        wl = self.r.worklist
+        wl["items"] = [i for i in wl["items"] if i["id"] != "rt:items-list"]
+        for c in wl["clusters"]:
+            c["items"] = [i for i in c["items"] if i != "rt:items-list"]
+        if present:
+            wl["items"].append({"id": "rt:items-list", "source": "parity", "kind": "parity", "category": "mandatory",
+                                "scenario": self.SID, "entry_point": "com.acme.shop.web.ItemController#list():http", "path": ""})
+            next(c for c in wl["clusters"] if c["id"] == "c:item")["items"].append("rt:items-list")
+        self.r.save_worklist()
+
+    def fail_dependent(self, baseline_verdict: str | None, *, attempt="1"):
+        """One attempt of the dependent that fails at runtime; the baseline
+        record says `baseline_verdict` (None = the baseline never measured it)."""
         r = self.r
         tid, run, iss = r.issue(self.DEP)
-        r.edit(self.PROPS, "server.port=8080  # attempt %s\n" % attempt)
-        self.answer = dict(answer)
-        if "evidence" in answer and answer["evidence"] == "BASELINE":
-            self.answer["evidence"] = {"baseline": iss["baseline_commit"], "failure": "application does not start"}
+        base_tree = iss["baseline_tree"]
+        if baseline_verdict:
+            self.record("baseline", baseline_verdict, base_tree, self.ERROR if baseline_verdict == "FAIL" else None)
+        r.edit(self.CALLER, "// caller changed, attempt %s\n" % attempt)
         ctx = r.ctx()
-        out = L.record_verdict(ctx, task_id=tid, run_id=run, verdict="REVERTED", candidate=ctx.product_tree(),
-                               attempt=attempt, reason="startup failed")
-        git(r.root, "checkout", "--", self.PROPS)
+        cand = ctx.product_tree()
+        self.record("live", "FAIL", cand, self.ERROR)
+        self.runtime_item(True)
+        out = L.record_verdict(ctx, task_id=tid, run_id=run, verdict="REVERTED", candidate=cand, attempt=attempt,
+                               reason="runtime scenario %s failed" % self.SID)
+        git(r.root, "checkout", "--", self.CALLER)
         return tid, run, iss, out
 
-    def owner_defect(self):
-        return {"class": L.OWNER_DEFECT, "owner": self.OWNER, "evidence": "BASELINE", "reason": "pom lacks the runtime artifact"}
-
-    def test_complete_sequence_with_interruption_and_no_duplicates(self):
+    def test_complete_sequence_with_interruptions_and_no_duplicates(self):
         r = self.r
-        tid, run, iss, out = self.fail_dependent(self.owner_defect())
-        self.assertEqual((out["verdict"], out["owner"], out["spent"]), ("OWNER_RECOVERY", self.OWNER, 0))
-        self.assertEqual(out["held_paths"], [self.PROPS])
-        self.assertEqual(self.calls[-1]["baseline"]["commit"], iss["baseline_commit"])   # the authority's own inputs
+        tid, run, iss, out = self.fail_dependent("FAIL")
+        self.assertEqual((out["verdict"], out["owner"], out["spent"]), ("OWNER_RECOVERY", self.OWNER, 0), out)
+        self.assertEqual(out["held_paths"], [self.CALLER])
         fid = L.owner_repair_id(self.OWNER, self.DEP)
-        # interrupted twice inside the continuation, then replayed: one repair card, linked, assigned
+        # the worker is told its terminator; completion names it, block is allowed
+        with self.assertRaises(L.Refusal) as cm:
+            L.check_complete(r.ctx(), task_id=tid, run_id=run, profile="implementer", audit_green=True)
+        self.assertEqual(cm.exception.code, "OWNER_REPAIR_PENDING")
+        self.assertIn("kanban_block kind=dependency", cm.exception.detail)
+        # the same through the K2 hook branch as the worker meets it: complete is refused naming the
+        # terminator, the named terminator is allowed (no refusal loop)
+        r.native.sync()
+        env = {"HERMES_KANBAN_TASK": tid, "HERMES_KANBAN_RUN_ID": str(run)}
+        d = HK.terminator(str(r.root), kind="complete", profile="implementer", env=env, audit_green=lambda: True)
+        self.assertEqual(d["code"], "OWNER_REPAIR_PENDING")
+        self.assertIn("kanban_block kind=dependency", d["message"])
+        d = HK.terminator(str(r.root), kind="block", profile="implementer", env=env, audit_green=lambda: True)
+        self.assertEqual(d["action"], "allow")
+        # a duplicate claim for the same pair before the continuation ran: ordinary, reported, still ONE intent
+        r.native.end_run(tid, "ready")
+        run2, lock2 = r.native.claim(tid, pid=dead_pid())
+        with self.assertRaises(L.Refusal) as cm:
+            L.issue(r.ctx(), task_id=tid, run_id=run2, claim_lock=lock2, pid=dead_pid(), pgid=0)
+        self.assertEqual(cm.exception.code, "OWNER_REPAIR_PENDING")
+        r.native.end_run(tid, "todo")                                         # kanban_block kind=dependency
+        # interrupted inside the continuation (after the revision, after the publish), then replayed
         for point in ("reconcile-after-revision", "reconcile-after-publish"):
             os.environ.update(OB_FAULT=point, OB_FAULT_MODE="raise")
             with self.assertRaises(Crash):
@@ -270,34 +312,45 @@ class OwnerRecovery(unittest.TestCase):
         R.tick(r.root, r.native)
         store = Store(r.root)
         node = L._node(store.current_revision(), fid)
-        key = G.native_key("r1", node)
-        self.assertEqual(len(r.native.by_key(key)), 1)
-        ftid = r.native.by_key(key)[0]["id"]
-        self.assertIn(ftid, r.native.task(tid)["parents"])                      # the dependent waits on the repair
-        self.assertNotIn(tid, r.native.task(ftid)["parents"])                   # never the reverse
+        rows = r.native.by_key(G.native_key("r1", node))
+        self.assertEqual(len(rows), 1, rows)                                  # exactly one repair card
+        ftid = rows[0]["id"]
+        self.assertIn(ftid, r.native.task(tid)["parents"])                    # the dependent waits on the repair
+        self.assertNotIn(tid, r.native.task(ftid)["parents"])                 # never the reverse (no deadlock)
         self.assertEqual(r.native.task(ftid)["assignee"], "implementer")
-        orow, owner = L._outcome(store, fid), L._outcome(store, self.OWNER)
-        self.assertEqual(orow["budget_key"], owner["budget_key"])               # no fresh budget
-        self.assertEqual(store.conn.execute("SELECT state FROM intents WHERE intent_id=?",
-                                            ("owner-repair:%s:%s" % (self.OWNER, self.DEP),)).fetchone()[0], "done")
+        self.assertEqual(L._outcome(store, fid)["budget_key"], L._outcome(store, self.OWNER)["budget_key"])
+        self.assertEqual(node["repair_scenarios"], [self.SID])
+        self.assertIn(self.CALLEE, node["repair_paths"])                      # the throwing file the classifier named
         self.assertEqual(G.readback(store, r.native), [])
-        # the dependent's old issue is stale; it cannot be re-issued before the repair is accepted
-        with self.assertRaises(L.Refusal) as cm:
-            L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=[self.PROPS])
-        self.assertEqual(cm.exception.code, "ISSUE_STALE_REVISION")
-        r.native.end_run(tid, "todo")                                          # kanban_block kind=dependency
-        run2, lock2 = r.native.claim(tid, pid=dead_pid())
-        with self.assertRaises(L.Refusal) as cm:
-            L.issue(r.ctx(), task_id=tid, run_id=run2, claim_lock=lock2, pid=dead_pid(), pgid=0)
-        self.assertEqual(cm.exception.code, "ISSUE_PARENT_UNACCEPTED")
-        r.native.end_run(tid, "todo")
-        # the repair: scoped to the owner's recorded write set, accepted on its own measurement
-        _t, _r, _i = r.issue(fid)
-        self.assertEqual(_i["allowed_paths"], ["pom.xml"])
-        r.native.end_run(_t, "ready")
-        r.accept(fid, classes=("build",))
-        self.assertEqual(L._outcome(Store(r.root), fid)["status"], "accepted")
+        # the repair: its own unit, accepted only when the failing scenario PASSES on its tree
+        rtid, rrun, riss = r.issue(fid)
+        self.assertEqual(riss["cluster"], L.planned_cluster_id(fid))
+        self.assertIn(self.CALLEE, riss["allowed_paths"])
+        r.edit(self.CALLEE, "// ItemDto.getName null-safe\n")
+        ctx = r.ctx()
+        L.record_verdict(ctx, task_id=rtid, run_id=rrun, verdict="ACCEPTED", candidate=ctx.product_tree(), attempt="r1")
+        git(r.root, "commit", "-qam", "repair owner")
+        self.runtime_item(False)
+        acc = L.accept_commit(r.ctx(), task_id=rtid, run_id=rrun, attempt="r1", commit=git(r.root, "rev-parse", "HEAD"),
+                              measurement={"classes": ["compile", "tests"]})
+        self.assertFalse(acc["outcome_accepted"])                             # the scenario is not measured PASS yet
+        self.assertTrue(acc["repair_evidence_gaps"])
+        r.native.end_run(rtid, "ready")
+        rtid, rrun, riss = r.issue(fid)
+        r.edit(self.CALLEE, "// ItemDto.getName null-safe, measured\n")
+        ctx = r.ctx()
+        tree = ctx.product_tree()
+        self.record("live", "PASS", tree, None)
+        L.record_verdict(ctx, task_id=rtid, run_id=rrun, verdict="ACCEPTED", candidate=tree, attempt="r2")
+        git(r.root, "commit", "-qam", "repair owner, scenario passes")
+        acc = L.accept_commit(r.ctx(), task_id=rtid, run_id=rrun, attempt="r2", commit=git(r.root, "rev-parse", "HEAD"),
+                              measurement={"classes": ["compile", "tests"]})
+        self.assertTrue(acc["outcome_accepted"], acc)
+        L.check_complete(r.ctx(), task_id=rtid, run_id=rrun, profile="implementer", audit_green=True)
+        r.native.complete(rtid)
+        R.tick(r.root, r.native)
         # the dependent resumes on the repaired baseline with its held candidate, re-verified
+        self.assertEqual(r.native.task(tid)["status"], "ready")
         run3, lock3 = r.native.claim(tid, pid=dead_pid())
         iss3 = L.issue(r.ctx(), task_id=tid, run_id=run3, claim_lock=lock3, pid=dead_pid(), pgid=0)
         self.assertNotEqual(iss3["baseline_commit"], iss["baseline_commit"])
@@ -305,53 +358,90 @@ class OwnerRecovery(unittest.TestCase):
         import base64
         for rel, b64 in held["files"].items():
             (r.root / rel).write_bytes(base64.b64decode(b64))
-        self.assertIn("attempt 1", (r.root / self.PROPS).read_text())
+        self.assertIn("attempt 1", (r.root / self.CALLER).read_text())
         ctx = r.ctx()
-        L.record_verdict(ctx, task_id=tid, run_id=run3, verdict="ACCEPTED", candidate=ctx.product_tree(), attempt="2")
-        git(r.root, "commit", "-qam", "accept dependent")
-        r.drop("inc:cfg:server-port")
-        out = L.accept_commit(r.ctx(), task_id=tid, run_id=run3, attempt="2", commit=git(r.root, "rev-parse", "HEAD"),
-                              measurement={"classes": ["build"]})
-        self.assertTrue(out["outcome_accepted"])
+        tree = ctx.product_tree()
+        self.record("live", "PASS", tree, None)
+        L.record_verdict(ctx, task_id=tid, run_id=run3, verdict="ACCEPTED", candidate=tree, attempt="2")
+        git(r.root, "commit", "-qam", "dependent on the repaired baseline")
+        r.drop(*L._node(Store(r.root).current_revision(), self.DEP)["obligations"])
+        acc = L.accept_commit(r.ctx(), task_id=tid, run_id=run3, attempt="2", commit=git(r.root, "rev-parse", "HEAD"),
+                              measurement={"classes": ["compile", "tests"]})
+        self.assertTrue(acc["outcome_accepted"], acc)
         self.assertEqual(Store(r.root).spent(L._outcome(Store(r.root), self.DEP)["budget_key"]), 0)
-
-    def test_one_bounded_repair_and_ordinary_rejections(self):
-        r = self.r
-        tid, run, iss, out = self.fail_dependent(self.owner_defect())
-        self.assertEqual(out["verdict"], "OWNER_RECOVERY")
-        # a second owner-defect claim for the same pair is an ordinary, reported rejection
-        _t, _r, _i, out = self.fail_dependent(self.owner_defect(), attempt="2")
-        self.assertEqual((out.get("verdict"), out["spent"]), ("REVERTED", 1))
-        n = sum(1 for row in Store(r.root).ledger(self.DEP) if row["kind"] == "cause-report")
-        self.assertEqual(n, 1)
-        # candidate regression: ordinary rejection, nothing reported, nothing scheduled
-        _t, _r, _i, out = self.fail_dependent({"class": "candidate-regression", "owner": "", "evidence": {}, "reason": "x"}, "3")
-        self.assertEqual((out.get("verdict"), out["spent"]), ("REVERTED", 2))
-        self.assertEqual(sum(1 for row in Store(r.root).ledger(self.DEP) if row["kind"] == "cause-report"), 1)
-        # ambiguous: visible report, no blame transfer, ordinary rejection
-        _t, _r, _i, out = self.fail_dependent({"class": "ambiguous", "owner": self.OWNER, "evidence": {}, "reason": "two causes"}, "4")
-        self.assertEqual((out.get("verdict"), out["spent"]), ("REVERTED", 3))
-        self.assertTrue(any("not transferred" in c for c in r.native.comments(tid)))
+        # the continuation proceeds
+        out = L.check_complete(r.ctx(), task_id=tid, run_id=run3, profile="implementer", audit_green=True)
+        r.native.complete(tid)
+        R.tick(r.root, r.native)
+        self.assertEqual(Store(r.root).conn.execute("SELECT state FROM intents WHERE intent_id=?", (out["intent"],)).fetchone()[0], "done")
         self.assertEqual(Store(r.root).conn.execute("SELECT COUNT(*) FROM intents WHERE kind='owner-repair'").fetchone()[0], 1)
 
-    INVALID = ({"class": L.OWNER_DEFECT, "owner": "source:rk:item", "evidence": "BASELINE"},       # owner not accepted
-               {"class": L.OWNER_DEFECT, "owner": DEP, "evidence": "BASELINE"},                    # itself
-               {"class": L.OWNER_DEFECT, "owner": OWNER, "evidence": {}},                          # no evidence
-               {"class": L.OWNER_DEFECT, "owner": OWNER, "evidence": {"baseline": "0" * 40}},      # another baseline
-               {"class": "blame-everyone", "owner": OWNER, "evidence": "BASELINE"})                # unknown class
+    def test_advance_bridge_path_ends_on_the_dependency_terminator(self):
+        """advance.py's own calls (_outcome_bridge.record, then reissue in _mint):
+        both succeed and name the terminator; nothing loops on a refusal."""
+        import contextlib
+        import io
+        sys.path.insert(0, str(LIB.parent / "skills" / "migration" / "fix-until-green" / "scripts"))
+        import _outcome_bridge as B
+        r = self.r
+        mirror_layout(r.root)
+        tid, run, iss = r.issue(self.DEP)
+        self.record("baseline", "FAIL", iss["baseline_tree"], self.ERROR)
+        r.edit(self.CALLER, "// caller changed\n")
+        cand = r.ctx().product_tree()
+        self.record("live", "FAIL", cand, self.ERROR)
+        self.runtime_item(True)
+        r.native.sync()
+        saved = {k: os.environ.get(k) for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID")}
+        os.environ.update(HERMES_KANBAN_TASK=tid, HERMES_KANBAN_RUN_ID=str(run))
+        try:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(B.record(r.root, "REVERTED", cand, "runtime scenario failed"), 0)
+                git(r.root, "checkout", "--", self.CALLER)
+                self.assertEqual(B.reissue(r.root), 0)
+            self.assertIn("OWNER_RECOVERY", err.getvalue())
+            self.assertIn("OWNER_REPAIR_PENDING", err.getvalue())
+            self.assertIn("kanban_block kind=dependency", err.getvalue())
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.assertEqual(Store(r.root).spent(L._outcome(Store(r.root), self.DEP)["budget_key"]), 0)
 
-    def _invalid(self, cases):
-        # each is an ordinary rejection (the budget limit is 3: at most three per run)
-        for i, ans in enumerate(cases):
-            _t, _r, _i, out = self.fail_dependent(ans, attempt=str(i + 1))
-            self.assertEqual(out.get("verdict"), "REVERTED", ans)
-        self.assertEqual(Store(self.r.root).conn.execute("SELECT COUNT(*) FROM intents WHERE kind='owner-repair'").fetchone()[0], 0)
+    def test_changed_caller_unchanged_callee_baseline_passing_is_a_regression(self):
+        tid, run, iss, out = self.fail_dependent("PASS")
+        self.assertEqual((out["verdict"], out["spent"]), ("REVERTED", 1))
+        store = Store(self.r.root)
+        self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM intents WHERE kind='owner-repair'").fetchone()[0], 0)
+        self.assertFalse([row for row in store.ledger(self.DEP) if row["kind"] == "owner-hold"])
 
-    def test_invalid_owner_claims_are_not_honoured(self):
-        self._invalid(self.INVALID[:3])
+    def test_no_baseline_record_is_ambiguous_reported_no_grant(self):
+        r = self.r
+        tid, run, iss, out = self.fail_dependent(None)
+        self.assertEqual((out["verdict"], out["spent"]), ("REVERTED", 1))
+        store = Store(r.root)
+        self.assertEqual([row["doc"]["class"] for row in store.ledger(self.DEP) if row["kind"] == "cause-report"], ["ambiguous"])
+        self.assertTrue(any("not transferred" in c for c in r.native.comments(tid)))
+        self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM intents WHERE kind='owner-repair'").fetchone()[0], 0)
+        # no scope moves: the next issue of the dependent grants exactly its cluster
+        r.native.end_run(tid, "ready")
+        run2, lock2 = r.native.claim(tid, pid=dead_pid())
+        iss2 = L.issue(r.ctx(), task_id=tid, run_id=run2, claim_lock=lock2, pid=dead_pid(), pgid=0)
+        self.assertEqual(iss2["allowed_paths"], iss["allowed_paths"])
 
-    def test_invalid_evidence_and_class_are_not_honoured(self):
-        self._invalid(self.INVALID[3:])
+    def test_baseline_record_of_another_tree_is_not_evidence(self):
+        r = self.r
+        tid, run, iss = r.issue(self.DEP)
+        self.record("baseline", "FAIL", "f" * 64, self.ERROR)                # bound to some other tree
+        r.edit(self.CALLER, "// caller changed\n")
+        ctx = r.ctx()
+        self.record("live", "FAIL", ctx.product_tree(), self.ERROR)
+        self.runtime_item(True)
+        out = L.record_verdict(ctx, task_id=tid, run_id=run, verdict="REVERTED", candidate=ctx.product_tree(), attempt="1")
+        self.assertEqual((out["verdict"], out["spent"]), ("REVERTED", 1))
 
 
 # ===========================================================================
@@ -372,22 +462,60 @@ class PlannedUnitIssue(unittest.TestCase):
         r.release()
         return r
 
-    def test_bounded_grant_and_refusal(self):
-        r = self.run_with({"paths": ["src/main/resources/application.properties"], "symbols": 1})
+    def gate_issue(self, r, oid):
+        """outcome_gate.py issue as the worker runs it after the native claim."""
+        import contextlib
+        import io
+        import outcome_gate
+        tid = r.tid(oid)
+        run, lock = r.native.claim(tid, pid=dead_pid())
+        r.native.sync()
+        env = {k: os.environ.get(k) for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID", "HERMES_KANBAN_CLAIM_LOCK")}
+        os.environ.update(HERMES_KANBAN_TASK=tid, HERMES_KANBAN_RUN_ID=str(run), HERMES_KANBAN_CLAIM_LOCK=lock)
         try:
-            tid, run, iss = r.issue("config:rk:cfg")
-            self.assertEqual((iss["cluster"], iss["allowed_paths"]), ("", ["src/main/resources/application.properties"]))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = outcome_gate.main(["--root", str(r.root), "issue"])
+        finally:
+            for k, v in env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        return tid, run, rc, json.loads(buf.getvalue())
+
+    def test_bounded_grant_projection_and_refusal(self):
+        r = self.run_with({"paths": ["src/main/resources/application.properties"], "symbols": 1})
+        mirror_layout(r.root)
+        try:
+            tid, run, rc, iss = self.gate_issue(r, "config:rk:cfg")
+            self.assertEqual(rc, 0, iss)
+            self.assertEqual((iss["cluster"], iss["allowed_paths"]),
+                             ("planned:config:rk:cfg:1", ["src/main/resources/application.properties"]))
             self.assertEqual(iss["planned_unit"]["refusal"], "")
+            # the projection the loop tools read (brief, run-verify, advance)
+            proj = json.loads((r.root / "verification/loop/issued.json").read_text())
+            self.assertEqual((proj["cluster"], proj["write_set"], proj["task_id"]),
+                             ("planned:config:rk:cfg:1", ["src/main/resources/application.properties"], tid))
             L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=["src/main/resources/application.properties"])
             with self.assertRaises(L.Refusal):
                 L.check_write(r.ctx(), task_id=tid, run_id=run, rel_paths=["pom.xml"])
+            # an amendment widens the planned unit like a cluster, and survives a re-issue
+            L.amend_issue(r.ctx(), task_id=tid, run_id=run, cluster="planned:config:rk:cfg:1",
+                          rel="src/main/java/com/acme/shop/web/RootController.java",
+                          row={"reason": "the port property is read by the root controller", "locus": "RootController.java:3"})
+            r.native.end_run(tid, "ready")
+            tid, run, rc, iss = self.gate_issue(r, "config:rk:cfg")
+            self.assertIn("src/main/java/com/acme/shop/web/RootController.java", iss["allowed_paths"])
         finally:
             r.close()
         r = self.run_with({"paths": ["src/test/java/X.java"], "symbols": 1})
+        mirror_layout(r.root)
         try:
-            tid, run, iss = r.issue("config:rk:cfg")
-            self.assertEqual(iss["allowed_paths"], [])
+            tid, run, rc, iss = self.gate_issue(r, "config:rk:cfg")
+            self.assertEqual((rc, iss["cluster"], iss["allowed_paths"]), (0, "", []))
             self.assertTrue(iss["planned_unit"]["refusal"].startswith("PATH_NOT_PRODUCT"))
+            self.assertEqual(iss["issued_record"], "")                          # nothing to act on, nothing projected
         finally:
             r.close()
 
@@ -1153,6 +1281,64 @@ class Continuations(unittest.TestCase):
             self.assertEqual(Store(r.root).meta("publication_state"), "released")
         finally:
             r.close()
+
+    def test_refuse_findings_resolve_through_owner_of_finding(self):
+        """Plan semantics v1: a finding M4 reveals later resolves to its frozen
+        requirement owner (outcome_graph.owner_of_finding) -- a follow-up of
+        THAT owner, sharing its budget -- and a locus two owners claim is a
+        typed unresolved row, never an arbitrary attachment."""
+        r = self.r
+        r.accept_all_repairs()
+        new = {"id": "err:web:order-late", "category": "mandatory", "kind": "compile", "source": "compile",
+               "path": "src/main/java/com/acme/shop/web/OrderController.java", "entry_point": ""}
+        r.assess("assess:m4:g1", "REFUSE", new_items=[new],
+                 new_clusters=[{"id": "c:late", "kind": "compile", "path": new["path"], "write_set": [new["path"]],
+                                "items": [new["id"]], "status": "open"}])
+        store = Store(r.root)
+        intent = json.loads(store.conn.execute("SELECT doc FROM intents WHERE intent_id='m4-assessed:assess:m4:g1'").fetchone()[0])
+        base = store.current_revision()
+
+        def with_owners(*oids):
+            plan = copy.deepcopy(base)
+            plan["requirements"] = [{"id": "req:%s" % o, "rule": "request-validation/v1"} for o in oids]
+            for n in plan["nodes"]:
+                if n["outcome_id"] in oids:
+                    n["requirements"] = ["req:%s" % n["outcome_id"]]
+                    n["plan_paths"] = sorted(set(n.get("plan_paths") or []) | {new["path"]})
+            return plan
+
+        nxt = L.plan_after_refuse(store, with_owners("source:rk:order"), intent)
+        self.assertEqual(nxt["ownership"][new["id"]], "followup:source:rk:order:g2")
+        by = {n["outcome_id"]: n for n in nxt["nodes"]}
+        self.assertEqual(by["followup:source:rk:order:g2"]["budget"]["key"],
+                         L._outcome(store, "source:rk:order")["budget_key"])
+        nxt = L.plan_after_refuse(store, with_owners("source:rk:order", "source:rk:item"), intent)
+        # nothing else is repairable: a typed stop that names the ambiguous finding
+        self.assertIsInstance(nxt, L.Refusal)
+        self.assertEqual(nxt.code, "REFUSE_NOTHING_REPAIRABLE")
+        self.assertIn("unresolved:ambiguous-ownership:%s" % new["id"], nxt.detail)
+
+    def test_m4_assessment_records_requirement_checks(self):
+        """plan semantics v1: M4 records the requirement checks of every owner
+        node, recomputed on the assessed tree (planner.requirement_checks)."""
+        r = self.r
+        r.accept_all_repairs()
+        calls = []
+        orig = L.requirement_measurement
+
+        def measured(root, plan, node, wl, scenarios, tree=""):
+            calls.append((node["outcome_id"], tree))
+            return {"check:%s" % node["outcome_id"]: {"status": "pass"}} if node["outcome_id"] == "source:rk:order" else None
+        L.requirement_measurement = measured
+        try:
+            r.assess("assess:m4:g1", "PROVISIONAL_ACCEPT")
+        finally:
+            L.requirement_measurement = orig
+        repairs = {n["outcome_id"] for n in Store(r.root).current_revision()["nodes"] if n["role"] == "repair"}
+        self.assertEqual({c[0] for c in calls}, repairs)
+        self.assertTrue(all(c[1] == r.ctx().product_tree() for c in calls))
+        m = [row for row in Store(r.root).ledger("_measure") if row["doc"]["source"] == "assessment:assess:m4:g1"][-1]
+        self.assertIn("check:source:rk:order", m["doc"].get("check_status") or {})
 
     def test_refuse_repair_reassess_then_delivery_without_operator(self):
         r = self.r

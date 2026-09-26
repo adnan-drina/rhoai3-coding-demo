@@ -71,7 +71,14 @@ def write_issued_record(root: Path, ctx: L.Ctx, issued: dict) -> str:
     from planner.canonical import load_json
     from planner.paths import ADMISSION_RECEIPT, LOOP_STEPS
     wl, _why = L.load_worklist(root)
-    row = next(c for c in wl["clusters"] if c["id"] == issued["cluster"])
+    row = next((c for c in (wl or {}).get("clusters") or [] if c["id"] == issued["cluster"]), None)
+    if row is None and issued.get("planned_unit"):
+        # a planned unit or an owner repair (no finding cluster): the unit the authority granted
+        allowed = sorted(issued.get("allowed_paths") or [])
+        row = {"id": issued["cluster"], "kind": issued["planned_unit"].get("kind") or "compile", "path": allowed[0] if allowed else "",
+               "write_set": allowed, "items": [], "retry_key": (issued.get("budget") or {}).get("key") or issued["cluster"]}
+    if row is None:
+        raise L.Refusal("ISSUE_PROJECTION", "cluster %s is not in the measured work list" % issued["cluster"])
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}
     receipt = load_json(root / ADMISSION_RECEIPT) if (root / ADMISSION_RECEIPT).is_file() else {}
     key = "outcome:v1:%s:%s:%s:issue%d" % (issued.get("run") or "", issued["outcome_id"], issued["cluster"], issued["issue_id"])

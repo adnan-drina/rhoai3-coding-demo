@@ -468,6 +468,10 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
         if pt.get("status") != "done" or prow is None or prow["status"] not in ("accepted", "assessed", "done"):
             raise Refusal("ISSUE_PARENT_UNACCEPTED", "parent %s is %s natively and %s in the domain record"
                           % (p, pt.get("status"), (prow or {}).get("status")))
+    waiting = _awaiting_owner_repair(store, oid)
+    if waiting:
+        raise Refusal("OWNER_REPAIR_PENDING", "%s waits on the repair %s of its owner; end this run with "
+                                              "kanban_block kind=dependency" % (oid, waiting))
     spent = store.spent(orow["budget_key"])
     if _native_rejections(ctx, task_id) > sum(1 for r in store.ledger(oid) if r["kind"] == "reject"):
         raise Refusal("STORE_ROLLBACK", "the board records more rejected attempts on %s than the ledger: an older store "
@@ -498,16 +502,23 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
         allowed = sorted(set(allowed) | set(amended_paths(store, oid, cluster)))
     unit_grant: dict[str, Any] = {}
     if node["role"] == "repair" and not cluster and node.get("repair_paths"):
-        # an owner repair (automatic owner recovery): the owner's recorded write set, bounded
+        # an owner repair (automatic owner recovery): the owner's recorded write set and the
+        # throwing file the classifier named, bounded; a synthetic unit id so the loop tools
+        # (brief, run-verify, advance) have a card to act on
+        cluster = planned_cluster_id(oid)
         allowed = sorted(node["repair_paths"])[:AMEND_MAX_FILES]
-    elif node["role"] == "repair" and not cluster and node.get("planned_units"):
-        # a REQUIREMENT-ONLY outcome: its planned unit's bounded grant, computed from the
-        # frozen plan (outcome_graph.planned_unit_grant); granted only without a refusal,
-        # under the same writer generation, budget and baseline checks as a cluster
+        unit_grant = {"refusal": "", "paths": allowed, "basis": "owner repair"}
+    elif node["role"] == "repair" and not cluster and (node.get("planned_units") or node.get("requirements")):
+        # no OPEN finding cluster grants this outcome anything: its planned work
+        # (outcome_graph.planned_unit_grant, the frozen plan's own bounds) -- granted
+        # only without a refusal, under the same writer generation, budget, parent
+        # and baseline checks as a cluster, and amendable like one
         from planner.outcome_graph import planned_unit_grant
-        unit_grant = planned_unit_grant(node, plan.get("requirements") or [], exists=lambda rel: (ctx.root / rel).exists())
+        unit_grant = planned_unit_grant(node, plan.get("requirements") or [],
+                                        exists=lambda rel: (ctx.root / rel).exists(), cluster_open=False)
         if not unit_grant.get("refusal"):
-            allowed = sorted(unit_grant.get("paths") or [])
+            cluster = planned_cluster_id(oid)
+            allowed = sorted(set(unit_grant.get("paths") or []) | set(amended_paths(store, oid, cluster)))
     with store.txn() as c:
         prior = c.execute("SELECT issue_id, run_id FROM issues WHERE task_id=? AND state='active'", (task_id,)).fetchall()
         for r in prior:
@@ -539,10 +550,34 @@ def issue(ctx: Ctx, *, task_id: str, run_id: int, claim_lock: str, pid: int, pgi
                                                                       "limit": orow["budget_limit"]},
             "retained_candidate": bool(pending), "generation": gen, "claimed_control": False,
             "planned_unit": ({"refusal": unit_grant.get("refusal") or "", "owed": unit_grant.get("owed") or [],
-                              "bounds": unit_grant.get("bounds") or {}} if unit_grant else None),
-            "run": store.meta("run_id"), "baseline_commit": head,
+                              "bounds": unit_grant.get("bounds") or {}, "basis": unit_grant.get("basis") or "",
+                              "kind": _unit_kind(node)} if unit_grant else None),
+            "run": store.meta("run_id"), "baseline_commit": head, "baseline_tree": tree,
             "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
                            for a in amends]}
+
+
+def planned_cluster_id(oid: str) -> str:
+    return "planned:%s:1" % oid
+
+
+def _unit_kind(node: dict[str, Any]) -> str:
+    """The loop card kind a synthetic unit is projected as (issued.json)."""
+    return {"build": "build", "config": "config", "source": "compile", "runtime": "incident",
+            "behavior": "parity"}.get(str(node.get("class") or ""), "compile")
+
+
+def _awaiting_owner_repair(store: Store, oid: str) -> str:
+    """The owner repair this outcome's held candidate waits on, until that
+    repair is accepted; '' otherwise."""
+    for r in store.ledger(oid):
+        if r["kind"] != "owner-hold":
+            continue
+        fid = owner_repair_id(str(r["doc"].get("owner") or ""), oid)
+        row = _outcome(store, fid)
+        if not row or row["status"] not in ("accepted", "done"):
+            return fid
+    return ""
 
 
 def _issue_seal(iid: int, task_id: str, run_id: int, rev: int, cluster: str, allowed: list[str], gen: int,
@@ -709,6 +744,10 @@ def check_complete(ctx: Ctx, *, task_id: str, run_id: int, profile: str, audit_g
     if node is None or orow is None:
         raise Refusal("COMPLETE_FOREIGN_TASK", "%s is not in the current revision" % pub["outcome_id"])
     if node["role"] == "repair":
+        waiting = _awaiting_owner_repair(store, node["outcome_id"])
+        if waiting and orow["status"] != "accepted":
+            raise Refusal("OWNER_REPAIR_PENDING", "%s waits on the repair %s of its owner: end this run with "
+                                                  "kanban_block kind=dependency (not kanban_complete)" % (node["outcome_id"], waiting))
         if orow["status"] != "accepted":
             raise Refusal("OUTCOME_NOT_ACCEPTED", "%s is %s: a rejected or pending attempt keeps the outcome open"
                           % (node["outcome_id"], orow["status"]))
@@ -844,24 +883,68 @@ CAUSE_CLASSES = (OWNER_DEFECT, "candidate-regression", "ambiguous")
 HOLD_MAX_BYTES = 2 << 20
 
 
+def cause_inputs(ctx: Ctx, iss: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    """(issued, cur, steps, baseline) for planner.runtime_cause.classify, built
+    by the AUTHORITY:
+
+      issued    its own issue (cluster, allowed paths) and the issued cluster's
+                items from the measured work list
+      cur       the failures the measured work list reports for those items,
+                each with the server error of its LIVE scenario record, and the
+                paths the candidate changed since the issued baseline -- the
+                latter measured here from git and the tree
+      steps     every committed acceptance in its own ledger, with the paths
+                that commit changed (git diff-tree commit^1..commit)
+      baseline  the issue's baseline tree digest (its own) and the ACCEPTED
+                parity snapshot's scenario records
+
+    The scenario records and the work list are worker-produced parity/runtime
+    receipts: the classification is only as authentic as they are (the
+    declared measurement trust, cooperative-receipts; contract 8b). Parsing is
+    runtime_cause's (failures_of, scenario_records), trust is not."""
+    from planner import runtime_cause as RC
+    from planner.paths import LOOP_ACCEPTED, PARITY_DIR
+    wl, _why = load_worklist(ctx.root)
+    wl = wl or {"items": [], "clusters": []}
+    row = next((c for c in wl.get("clusters") or [] if isinstance(c, dict) and c.get("id") == iss.get("cluster")), {})
+    node = _node(_plan(ctx.store), iss["outcome_id"]) or {}
+    issued = {"cluster": iss.get("cluster") or "", "task_id": iss.get("task_id") or "", "items": list(row.get("items") or []),
+              "gate_items": [], "scenarios": list(node.get("scenarios") or []), "entry_points": list(node.get("entry_points") or []),
+              "write_set": list(iss.get("allowed_paths") or []), "amendments": []}
+    changed = changed_product_paths(ctx.root, str(iss.get("baseline_commit") or "")) or []
+    cur = {"failures": RC.failures_of(wl, issued, RC.scenario_records(ctx.root / PARITY_DIR)), "changed": changed}
+    steps = []
+    for r in ctx.store.ledger():
+        if r["kind"] != "accept-commit" or not r["doc"].get("commit"):
+            continue
+        commit = str(r["doc"]["commit"])
+        pub = ctx.store.conn.execute("SELECT task_id FROM publication WHERE outcome_id=?", (r["outcome_id"],)).fetchone()
+        steps.append({"cluster": str(r["doc"].get("cluster") or r["outcome_id"]), "card": pub[0] if pub else "",
+                      "commit": commit, "verdict": "accepted", "outcome_id": r["outcome_id"],
+                      "changed": changed_product_paths(ctx.root, commit + "^1", commit) or []})
+    baseline = {"tree": str(iss.get("baseline_tree") or ""),
+                "records": RC.scenario_records(ctx.root / LOOP_ACCEPTED / "parity")}
+    return issued, cur, steps, baseline
+
+
 def _classify(ctx: Ctx, iss: dict[str, Any]) -> dict[str, Any] | None:
-    """planner.runtime_cause.classify on the AUTHORITY's inputs: its own issue
-    and baseline, and the measured work list and loop steps of the tree. None
-    when the classifier is absent or fails (the ordinary rejection applies)."""
+    """planner.runtime_cause.classify on the authority's inputs. None when the
+    classifier is absent or the candidate reports no runtime failure (the
+    ordinary rejection applies)."""
     try:
         from planner import runtime_cause
     except ImportError:
         return None
-    from planner.paths import LOOP_STEPS
-    issued = {k: iss.get(k) for k in ("issue_id", "task_id", "run_id", "outcome_id", "cluster", "allowed_paths",
-                                      "baseline_commit", "baseline_tree", "rev")}
-    cur, _why = load_worklist(ctx.root)
-    steps = _read_json(ctx.root / LOOP_STEPS) or {}
-    baseline = {"commit": iss.get("baseline_commit") or "", "tree": iss.get("baseline_tree") or ""}
+    issued, cur, steps, baseline = cause_inputs(ctx, iss)
+    if not cur["failures"]:
+        return None
     try:
         out = runtime_cause.classify(ctx.root, issued, cur, steps, baseline)
     except Exception as exc:  # a classifier failure is no evidence of anything
-        return {"class": "ambiguous", "owner": "", "evidence": {}, "reason": "classifier failed: %s" % type(exc).__name__}
+        return {"class": "ambiguous", "owner": None, "evidence": [], "reason": "classifier failed: %s" % type(exc).__name__}
+    if isinstance(out, dict):
+        out = dict(out, failing_scenarios=sorted({str(f.get("scenario") or "") for f in cur["failures"]} - {""}),
+                   baseline_tree=baseline["tree"])
     return out if isinstance(out, dict) else None
 
 
@@ -901,17 +984,21 @@ def _owner_recovery(ctx: Ctx, iss: dict[str, Any], orow: dict[str, Any], *, task
         why = "classifier answered %r" % cls
     elif cls != OWNER_DEFECT:
         why = "%s: %s" % (cls, str(res.get("reason") or "")[:200])
-    owner = str(res.get("owner") or "")
-    evidence = res.get("evidence")
+    owner_doc = res.get("owner") if isinstance(res.get("owner"), dict) else {}
+    owner = str(owner_doc.get("outcome_id") or "")
+    evidence = res.get("evidence") if isinstance(res.get("evidence"), list) else []
     if not why:
         orow_owner = _outcome(store, owner) if owner else None
+        base_rows = [e for e in evidence if isinstance(e, dict) and e.get("kind") == "baseline-record"]
         if not orow_owner or owner == oid or orow_owner["role"] != "repair" or orow_owner["status"] not in ("accepted", "done"):
             why = "owner %r is not another accepted repair outcome" % owner
-        elif not evidence:
+        elif not base_rows or not any(e.get("kind") == "baseline-failure" for e in evidence):
             why = "no evidence names the failure on the baseline"
-        elif isinstance(evidence, dict) and evidence.get("baseline") and evidence.get("baseline") not in (
-                iss.get("baseline_commit"), iss.get("baseline_tree")):
-            why = "the evidence names another baseline"
+        elif any(e.get("baseline_tree") != iss.get("baseline_tree") or e.get("bound_to") != iss.get("baseline_tree")
+                 for e in base_rows):
+            why = "the evidence names another baseline than the issued one"
+        elif not res.get("failing_scenarios"):
+            why = "no failing scenario to re-measure after the repair"
         elif orow_owner["budget_limit"] and store.spent(orow_owner["budget_key"]) >= orow_owner["budget_limit"]:
             why = "the owner's budget %s is exhausted" % orow_owner["budget_key"]
         elif store.conn.execute("SELECT 1 FROM intents WHERE intent_id=?", ("owner-repair:%s:%s" % (owner, oid),)).fetchone():
@@ -932,8 +1019,10 @@ def _owner_recovery(ctx: Ctx, iss: dict[str, Any], orow: dict[str, Any], *, task
     owner_row = _outcome(store, owner)
     last = store.conn.execute("SELECT allowed_paths FROM issues WHERE outcome_id=? ORDER BY issue_id DESC LIMIT 1",
                               (owner,)).fetchone()
+    repair_paths = sorted(set(json.loads(last[0]) if last else []) | set(owner_doc.get("paths") or []))[:AMEND_MAX_FILES]
     doc = {"owner": owner, "dependent": oid, "dependent_task": task_id, "evidence": evidence,
-           "reason": str(res.get("reason") or "")[:500], "repair_paths": json.loads(last[0]) if last else [],
+           "reason": str(res.get("reason") or "")[:500], "repair_paths": repair_paths,
+           "repair_scenarios": list(res.get("failing_scenarios") or []), "owner_step": owner_doc,
            "budget": {"key": owner_row["budget_key"], "limit": owner_row["budget_limit"]}}
     with store.txn() as c:
         store.append(c, oid, "owner-hold", {"owner": owner, "candidate": candidate, "files": held,
@@ -1057,17 +1146,38 @@ def accept_commit(ctx: Ctx, *, task_id: str, run_id: int, attempt: str, commit: 
                              asserted_by=_asserted_by(ctx))
     owned = _owned(ctx.store, oid)
     covered = _covers(node, rec)
-    done = not (owned & set(open_now)) and covered
+    evidence_gaps = repair_evidence_gaps(ctx.root, node, tree)
+    done = not (owned & set(open_now)) and covered and not evidence_gaps
     with ctx.store.txn() as c:
         ctx.store.append(c, oid, "accept-commit", {"commit": commit, "tree": tree, "cluster": iss["cluster"],
-                                                   "outcome_accepted": done}, attempt_key=key)
+                                                   "outcome_accepted": done, "repair_evidence_gaps": evidence_gaps},
+                         attempt_key=key)
         ctx.store.set_meta(c, "accepted_commit", commit)
         ctx.store.set_meta(c, "accepted_tree", tree)
         if done:
             c.execute("UPDATE outcomes SET status='accepted', accepted_tree=?, accepted_commit=?, accepted_rev=? WHERE outcome_id=?",
                       (tree, commit, int(ctx.store.meta("revision", "0")), oid))
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": sorted(owned & set(open_now)),
-            "covered": covered}
+            "covered": covered, "repair_evidence_gaps": evidence_gaps}
+
+
+def repair_evidence_gaps(root: Path, node: dict[str, Any], tree: str) -> list[str]:
+    """An owner repair is accepted only when every scenario the classifier saw
+    fail now PASSES, in a live scenario record bound to this very tree
+    (worker-produced receipts: the declared measurement trust)."""
+    sids = list(node.get("repair_scenarios") or [])
+    if not sids:
+        return []
+    from planner import runtime_cause as RC
+    from planner.paths import PARITY_DIR
+    recs = RC.scenario_records(Path(root) / PARITY_DIR)
+    out = []
+    for sid in sids:
+        r = recs.get(sid) or {}
+        bound = str(((r.get("binding") or {}) if isinstance(r.get("binding"), dict) else {}).get("candidate_sha256") or "")
+        if r.get("verdict") != "PASS" or bound != tree:
+            out.append("%s is %s on %s" % (sid, r.get("verdict") or "unmeasured", (bound or "no tree")[:12]))
+    return out
 
 
 @transition
@@ -1377,8 +1487,18 @@ def record_assessment(ctx: Ctx, *, task_id: str, run_id: int, verdict_doc: dict[
     with ctx.store.txn() as c:
         seq, _ = ctx.store.append(c, iss["outcome_id"], "assessment", doc, attempt_key="%s:%s" % (run_id, sha(canonical(doc))[:16]))
     if wl is not None:
+        # plan semantics v1: the requirement checks of every owner node, recomputed on
+        # this tree (a revalidation of historically accepted requirement owners)
+        checks: dict[str, dict[str, str]] = {}
+        plan = _plan(ctx.store)
+        for n in plan.get("nodes") or []:
+            if n.get("role") == "repair":
+                got = requirement_measurement(ctx.root, plan, n, wl, measured, tree)
+                if got:
+                    checks.update(got)
         record_measurement(ctx, tree=tree, classes=["build", "compile", "tests", "runtime", "parity"], scenarios=measured,
-                           open_ids=[o["id"] for o in obligations], source="assessment:%s" % iss["outcome_id"])
+                           open_ids=[o["id"] for o in obligations], source="assessment:%s" % iss["outcome_id"],
+                           checks=checks or None, asserted_by=_asserted_by(ctx))
     return {"assessment_seq": seq, "verdict": token, "open_obligations": len(obligations)}
 
 
@@ -1414,6 +1534,20 @@ def plan_after_refuse(store: Store, plan: dict[str, Any], intent: dict[str, Any]
                 unresolved.append({"id": uid, "kind": "decision", "blocks": "delivery", "reason": "no card can discharge %s" % ob["id"], "obligations": [ob["id"]]})
             continue
         owner = ownership.get(ob["id"])
+        if owner is None:
+            # plan semantics v1: the frozen owner of a later finding, or a typed revision class
+            from planner.outcome_graph import owner_of_finding
+            found = owner_of_finding(plan, {"id": ob["id"], "path": ob.get("path") or "", "entry_point": ob.get("entry_point") or "",
+                                            "kind": ob.get("kind") or ""})
+            if found.get("owner"):
+                owner = str(found["owner"])
+            elif found.get("class") in ("ambiguous-ownership", "evidence-gap") and (plan.get("requirements") or []):
+                uid = "unresolved:%s:%s" % (found["class"], ob["id"])
+                if not any(u["id"] == uid for u in unresolved):
+                    unresolved.append({"id": uid, "kind": found["class"], "blocks": "delivery", "obligations": [ob["id"]],
+                                       "reason": "a later finding has no single planned owner (%s)" % found["class"],
+                                       "candidates": list(found.get("candidates") or [])})
+                continue
         if owner is None:
             typ, kind = declaring_type(ob.get("entry_point") or "")
             natural = "%s:%s" % (kind, typ) if typ else str(ob.get("key") or "")
@@ -1457,8 +1591,9 @@ def plan_after_refuse(store: Store, plan: dict[str, Any], intent: dict[str, Any]
         ownership[ob["id"]] = target
         touched[target] = n
     if not touched:
-        return Refusal("REFUSE_NOTHING_REPAIRABLE", "the REFUSE names no obligation a card can discharge; %d unresolved decision(s)"
-                       % sum(1 for u in unresolved if u["kind"] == "decision"))
+        return Refusal("REFUSE_NOTHING_REPAIRABLE", "the REFUSE names no obligation a card can discharge; %d unresolved decision(s); "
+                       "unresolved: %s" % (sum(1 for u in unresolved if u["kind"] == "decision"),
+                                           ", ".join(u["id"] for u in unresolved if u["kind"] != "decision")[:400] or "none"))
     succ = "%s:g%d" % (ASSESS_PREFIX, gen + 1)
     open_repairs = sorted(oid for oid, n in by_id.items() if n.get("role") == "repair"
                           and ((_outcome(store, oid) or {}).get("status") not in ("accepted", "done") or oid in additions))
@@ -1522,11 +1657,12 @@ def plan_owner_repair(store: Store, plan: dict[str, Any], doc: dict[str, Any]) -
         return Refusal("OWNER_REPAIR_FOREIGN", "%s or %s is not in the current revision" % (owner, dep))
     node = {"outcome_id": fid, "role": "repair", "class": on.get("class"), "subject": on.get("subject"), "natural_key": "",
             "obligations": [], "clusters": [], "plan_paths": sorted(doc.get("repair_paths") or []),
-            "repair_paths": sorted(doc.get("repair_paths") or []), "entry_points": [], "scenarios": [], "parents": [],
+            "repair_paths": sorted(doc.get("repair_paths") or []), "repair_scenarios": list(doc.get("repair_scenarios") or []),
+            "entry_points": [], "scenarios": [], "parents": [],
             "assignee": IMPL, "skills": [REPAIR_SKILL], "budget": dict(doc["budget"]),
             "lineage": [{"repairs": owner, "for": dep, "cause": OWNER_DEFECT, "reason": doc.get("reason") or "",
                          "evidence": doc.get("evidence")}],
-            "acceptance": {"checks": ["measure:compile", "measure:tests", "gate:runtime"]}}
+            "acceptance": {"checks": ["measure:compile", "measure:tests"] + ["scenario:%s" % x for x in doc.get("repair_scenarios") or []]}}
     node["title"] = "Repair %s (found by %s)" % (on.get("subject") or owner, dn.get("subject") or dep)
     node["description"] = ("Repair the runtime defect in %s that the work on %s exposed: the failure is proven on the "
                            "accepted baseline and belongs to %s. Complete when the owner's checks pass again on the "

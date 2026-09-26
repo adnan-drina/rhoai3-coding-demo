@@ -196,6 +196,12 @@ the outcome ledger, and its budget is cumulative across runs and restarts. A
 REVERTED attempt is re-issued on the same card instead of re-minted. An
 acceptance is begun on the ledger before the commit and recorded after it.
 The card completes when the OUTCOME is accepted, not when one cluster is.
+A REVERTED attempt whose runtime failure the authority proves on the baseline
+and attributes to an accepted outcome (planner.runtime_cause) is not spent:
+advance prints `OWNER_RECOVERY`, the candidate is held, one repair of the owner
+becomes this card's prerequisite, and the terminator is `kanban_block
+kind=dependency`; after the repair, `outcome_gate.py restore-held` returns the
+candidate for re-verification.
 
 ## After M4
 

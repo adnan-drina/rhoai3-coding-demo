@@ -29,10 +29,8 @@ checks refuse, then the correct one):
   * configuration-decision (build profiles), requirement-only: a candidate
     that decides another profile is refused; the decided one is accepted.
 
-THE ISSUE SEAM (what workstream B must wire): outcome_lifecycle._allowed_paths
-grants a requirement-only outcome nothing today. This test installs, AS A
-TEST SEAM ONLY, the wiring B is asked to implement in the authority's issue
-path: when _allowed_paths finds no OPEN cluster for an outcome that has
+THE ISSUE PATH (wired by workstream B in outcome_lifecycle.issue; the test
+seam that stood in for it is kept below for reference and NOT installed): when _allowed_paths finds no OPEN cluster for an outcome that has
 planned_units or owns requirements, grant
 outcome_graph.planned_unit_grant(node, revision["requirements"],
 exists=<the tree>, cluster_open=False) -- its paths when refusal == "", under
@@ -252,7 +250,8 @@ def run_world(base: str, names: dict[str, str]) -> int:
                                   cluster_open=False)
         return ("planned:%s:1" % node["outcome_id"], g["paths"]) if not g["refusal"] else ("", [])
 
-    L._allowed_paths = seam
+    # the seam is no longer installed: outcome_lifecycle.issue grants planned units itself (workstream B)
+    del seam
     try:
         root = run.root
         pins = json.loads((root / ".hermes/pins.json").read_text())
@@ -461,7 +460,7 @@ def main() -> int:
     print("OK: planned units end to end (derive -> publish/release -> issue a bounded scope -> scripted candidate -> recomputed "
           "requirement checks -> accept -> complete): the controller unit refuses an inverted guard, a bare Location argument "
           "and a kept CrossOrigin and accepts the faithful migration; the requirement-only repository unit (issued through "
-          "the planned_unit_grant SEAM) refuses stub bodies and an unmeasured write and accepts the real delegate with its "
+          "planned_unit_grant in outcome_lifecycle.issue) refuses stub bodies and an unmeasured write and accepts the real delegate with its "
           "scenarios; the requirement-only configuration unit refuses another profile and accepts the decided one; twice, renamed)")
     return 0
 
