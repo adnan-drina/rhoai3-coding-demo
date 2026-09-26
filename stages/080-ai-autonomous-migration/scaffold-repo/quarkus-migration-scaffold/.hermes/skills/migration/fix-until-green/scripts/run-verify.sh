@@ -58,13 +58,21 @@ ROOT=""
 RUNTIME=1
 MODE="acceptance"
 FORCE_PARITY=false
+# --initial (build-worklist under decisions.loop.plan_semantics v1): the
+# controlled initial-analysis boundary -- prepare-initial-analysis.py removes
+# the stale build outputs BEFORE the first baseline (never after it), the
+# warm-up regenerates every generated root from its pinned inputs, the
+# diagnostics never read target/classes, and a generated root older than this
+# verification is refused rather than planned from
+INITIAL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
     --mode) MODE="${2:-}"; shift 2 ;;
     --no-runtime) RUNTIME=0; shift ;;
     --parity) FORCE_PARITY=true; shift ;;
-    *) echo "usage: run-verify.sh --root <dest> [--mode acceptance|diagnostic] [--no-runtime] [--parity]" >&2; exit 2 ;;
+    --initial) INITIAL=1; shift ;;
+    *) echo "usage: run-verify.sh --root <dest> [--mode acceptance|diagnostic] [--no-runtime] [--parity] [--initial]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
@@ -85,6 +93,33 @@ export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
 [[ -n "${JAVA_HOME}" ]] && export PATH="${JAVA_HOME}/bin:${PATH}"
 RELEASE="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["pins"]; print(p.get("quarkus_platform",{}).get("java_release") or 21)' "${ROOT}/.hermes/pins.json")"
 javac -d "${WORK}/classes" "${SCRIPT_DIR}/jdk-diagnostics/JdkDiagnostics.java" >"${WORK}/javac.log" 2>&1 || { echo "FAIL: VERIFY_TOOL_COMPILE" >&2; exit 1; }
+DIAG_EXTRA=()
+# the run's decided plan semantics (decisions.yaml, sealed by admission);
+# anything unreadable is "off", which changes nothing
+PLAN_SEMANTICS="$(python3 - "${ROOT}" "${HARNESS_LIB}" 2>/dev/null <<'PYEOF' || echo off
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2])
+from planner.decisions import load_decisions, plan_semantics
+try:
+    doc = load_decisions(Path(sys.argv[1]))
+except Exception:
+    doc = {}
+print(plan_semantics(doc))
+PYEOF
+)"
+if [[ "${PLAN_SEMANTICS}" == "v1" ]]; then
+  # an orphan class from an earlier build resolves a reference whose source
+  # is gone and hides a real error: the generated roots are compiled from
+  # source, so the analysis never needs target/classes
+  DIAG_EXTRA+=(--exclude-output-classes)
+fi
+INITIAL_BEFORE="${WORK}/initial-before.json"
+INITIAL_AFTER="${WORK}/initial-after.json"
+if [[ "${INITIAL}" -eq 1 ]]; then
+  python3 "${SCRIPT_DIR}/prepare-initial-analysis.py" --root "${ROOT}" --phase before --out "${INITIAL_BEFORE}" >/dev/null || exit $?
+  [[ "${PLAN_SEMANTICS}" == "v1" ]] || DIAG_EXTRA+=(--exclude-output-classes)
+fi
 # H10 (dest v9 t_56adcd76): a mid-card verification NEVER re-seals admission
 # (only advance, rewind, operator-step, refresh and resume do). The receipt's
 # digest is taken here and compared at the end: a change means another
@@ -127,8 +162,28 @@ set +e
 # holds everything and the online pass is skipped (v7 item 9: ~60 s per card).
 WARM_STAMP="${ROOT}/verification/build/warmup.stamp"
 WARM_KEY="$(cat "${ROOT}/pom.xml" "${ROOT}"/.mvn/* 2>/dev/null | sha256sum | cut -c1-64)"
+if [[ "${PLAN_SEMANTICS}" == "v1" ]]; then
+  # a matching pom alone does not prove the generated outputs current: the
+  # key also covers the toolchain and every generator specification the pom
+  # names (<inputSpec>), so a changed spec regenerates instead of reusing
+  WARM_KEY="$( { printf '%s\n' "${WARM_KEY}"; java -version 2>&1; python3 - "${ROOT}" <<'PYEOF'
+import hashlib, sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+root = Path(sys.argv[1])
+try:
+    specs = {(e.text or "").strip() for e in ET.parse(root / "pom.xml").iter() if str(e.tag).rsplit("}", 1)[-1] == "inputSpec"}
+except (OSError, ET.ParseError):
+    specs = {"pom unreadable"}
+for spec in sorted(s for s in specs if s):
+    rel = spec.replace("${project.basedir}/", "").replace("${basedir}/", "")
+    p = root / rel
+    print(spec, hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "absent")
+PYEOF
+} | sha256sum | cut -c1-64)"
+fi
 T0="$(now_ms)"
-if [[ -f "${WARM_STAMP}" && "$(cat "${WARM_STAMP}")" == "${WARM_KEY}" ]]; then
+if [[ "${INITIAL}" -eq 0 && -f "${WARM_STAMP}" && "$(cat "${WARM_STAMP}")" == "${WARM_KEY}" ]]; then
   echo "warm-up skipped: build inputs unchanged since the last successful warm-up (${WARM_KEY:0:12})" >"${WORK}/warmup.log"
   WARM_RC=0
   WARM_SKIPPED=true
@@ -162,12 +217,22 @@ json.dump({"schema": "rhoai3.diagnostics/v1", "files": 0, "classpath_entries": 0
 PYEOF
 else
   set +e
-  java -cp "${WORK}/classes" JdkDiagnostics --source "${ROOT}" --out "${DIAG}" --classpath "${WORK}/classpath.txt" --release "${RELEASE}" 2>"${WORK}/diag.log"
+  # the exports only let the tool READ the compiler's structured diagnostic
+  # arguments (identity without localized text); the text itself is rendered
+  # in the pinned ROOT locale by the tool, whatever this JVM's locale is
+  java --add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED \
+    -cp "${WORK}/classes" JdkDiagnostics --source "${ROOT}" --out "${DIAG}" --classpath "${WORK}/classpath.txt" --release "${RELEASE}" ${DIAG_EXTRA[@]+"${DIAG_EXTRA[@]}"} 2>"${WORK}/diag.log"
   DIAG_RC=$?
   set -e
   [[ "${DIAG_RC}" -eq 0 && -s "${DIAG}" ]] || { echo "FAIL: VERIFY_DIAGNOSTICS_RUN rc=${DIAG_RC}" >&2; exit 1; }
 fi
 DIAG_MS="$(( $(now_ms) - T0 ))"
+if [[ "${INITIAL}" -eq 1 ]]; then
+  # provenance of every generated root the analysis read: regenerated by this
+  # verification's warm-up, or an explicit refusal -- never silently planned from
+  python3 "${SCRIPT_DIR}/prepare-initial-analysis.py" --root "${ROOT}" --phase after --diagnostics "${DIAG}" \
+    --since-ms "${T_ALL}" --out "${INITIAL_AFTER}" >/dev/null || exit $?
+fi
 ERRORS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["errors"] + (1 if d.get("build_unresolvable") else 0))' "${DIAG}")"
 
 TEST_ARGS=()
@@ -230,7 +295,7 @@ done
 
 TOTAL_MS="$(( $(now_ms) - T_ALL ))"
 export VERIFY_MODE="${MODE}" WARM_RC CP_RC DIAG_RC TEST_RAN TEST_RC RESCAN_RAN RESCAN_RC WARM_SKIPPED
-export WARM_MS CP_MS DIAG_MS TEST_MS RESCAN_MS TOTAL_MS
+export WARM_MS CP_MS DIAG_MS TEST_MS RESCAN_MS TOTAL_MS INITIAL_BEFORE INITIAL_AFTER
 python3 - "${RUN}" "${MVN_COMPILE_FAILED}" "${MVN_COMPILE_DETAIL}" <<'PYEOF'
 import json, os, sys
 def rc(v):
@@ -251,6 +316,15 @@ doc = {"schema": "rhoai3.verify-run/v1",
        "maven_compile": {"failed": sys.argv[2] == "true", "goal": sys.argv[3]},
        "stages_ms": {"warmup": ms("WARM_MS"), "classpath": ms("CP_MS"), "diagnostics": ms("DIAG_MS"), "tests": ms("TEST_MS"), "rescan": ms("RESCAN_MS"), "runtime": 0},
        "total_ms": ms("TOTAL_MS")}
+# the controlled initial-analysis boundary, when this verification was one
+# (present only then: a loop verification's record is unchanged)
+prep = {}
+for key in ("INITIAL_BEFORE", "INITIAL_AFTER"):
+    p = os.environ.get(key) or ""
+    if p and os.path.isfile(p):
+        prep.update(json.load(open(p)))
+if prep:
+    doc["initial_preparation"] = prep
 json.dump(doc, open(sys.argv[1], "w"))
 PYEOF
 python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}

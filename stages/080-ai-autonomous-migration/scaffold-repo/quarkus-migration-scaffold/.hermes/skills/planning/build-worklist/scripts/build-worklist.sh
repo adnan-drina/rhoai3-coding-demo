@@ -27,5 +27,21 @@ run_phase() {
     return "${rc}"
   fi
 }
-run_phase verify bash "${LOOP}/run-verify.sh" --root "${ROOT}"
+# decisions.loop.plan_semantics v1: the first verification is the controlled
+# initial-analysis boundary (run-verify.sh --initial): stale build outputs are
+# removed before the baseline and every generated root is regenerated or the
+# verification refuses. Absent keeps today's first verification.
+VERIFY_ARGS=()
+LIB="${SCRIPT_DIR}/../../../../lib"
+if [[ -d "${LIB}/planner" ]] && [[ "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[2])
+from pathlib import Path
+from planner.decisions import load_decisions, plan_semantics
+try:
+    d = load_decisions(Path(sys.argv[1]))
+except Exception:
+    d = {}
+print(plan_semantics(d))' "${ROOT}" "${LIB}" 2>/dev/null || echo off)" == "v1" ]]; then
+  VERIFY_ARGS+=(--initial)
+fi
+run_phase verify bash "${LOOP}/run-verify.sh" --root "${ROOT}" ${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}
 run_phase baseline python3 "${LOOP}/advance.py" --root "${ROOT}" --baseline --no-mint
