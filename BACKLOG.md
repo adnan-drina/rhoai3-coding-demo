@@ -75,11 +75,14 @@ The implementation is in the golden, disabled by default. The contract is
   socket read-only, kanban.db access, run-control mount) and the image build
   that bakes `/opt/rhoai3/outcome-authority` + `outcome_authority.code_sha256`.
   Until then `enabled` refuses `AUTHORITY_UNPROTECTED`.
-- [ ] **Architect decision: measurement trust.** Heavy receipts (build, tests,
-  parity, MTA, work list) stay worker-produced; `enabled` also refuses
-  `MEASUREMENT_TRUST_UNDECIDED` until the run control declares
-  `measurement_trust: cooperative-receipts` or an independent measurement
-  principal is funded (contract 8b).
+- [x] **Measurement trust decided (user, 2026-09-26) for the FIRST controlled
+  run:** `cooperative-receipts` — worker-produced build/test/parity evidence
+  remains trusted subject to binding and consistency checks; this does NOT
+  establish independently verified results or protection against fabricated
+  evidence. Also cooperative: liveness snapshots, reviewer audit assertions,
+  push-result reports (contract 8b). The run control must carry it.
+- [ ] Image bake of `/opt/rhoai3/outcome-authority` (prepared:
+  `hermes-runtime/outcome-authority/`), after the code freeze.
 - [x] Implementation review 2026-09-26, R1–R6: corrected, each with a
   regression reproduced first. The real-worker delivery test runs an accepted
   repair with a worker killed after its commit, REFUSE → reassessment, and M5

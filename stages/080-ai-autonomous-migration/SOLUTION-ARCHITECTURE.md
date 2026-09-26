@@ -414,8 +414,12 @@ The protected writer (architect F1) is an authority service in a sidecar of
 the workspace pod, under a different uid, holding the store on a volume the
 worker container does not mount, reachable only through a socket the worker
 mounts read-only. Execution stays disabled until that layout is qualified on
-Dev Spaces and the platform records its measurement-trust decision
-(`OUTCOME-BOARD-CONTRACT.md` sections 3, 8a, 8b).
+Dev Spaces. Measurement trust is decided for the FIRST controlled run:
+`cooperative-receipts` — worker-produced build/test/parity evidence remains trusted subject to binding and consistency checks; this does NOT establish independently verified results or protection against fabricated evidence. The same trust boundary covers the
+other cooperative inputs: process-liveness/quiescence snapshots, reviewer
+audit assertions (the paved-road audit, its receipts and execution ledger are
+worker-writable process evidence) and push-result reports
+(`OUTCOME-BOARD-CONTRACT.md` sections 3, 8a, 8b, 9).
 
 On this protocol a runtime failure the authority proves on the accepted
 baseline and attributes to an accepted outcome (`planner.runtime_cause`, on

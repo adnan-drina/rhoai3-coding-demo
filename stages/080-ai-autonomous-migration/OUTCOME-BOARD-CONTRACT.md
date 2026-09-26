@@ -126,15 +126,11 @@ writer-grant ownership and external-effect admission.
 against an in-tree store (cooperative). A consistent same-uid rewrite of that
 store is undetectable, which is why `enabled` never runs on it.
 
-**What stays cooperative (stated with every claim).** Native lifecycle data
-(`kanban.db`) is worker-writable; it never grants anything the store does not
-also record. The heavy measurements (Maven build/test, parity, MTA, the M4
-verdict, the M5 stage receipts and the rebuilt work list) are worker-produced;
-an acceptance records its check classes as `classes_asserted_by:
-worker-receipts` (section 8b). The hook's profile and audit-green facts and a
-push's observed result are the caller's report; the service admits the push,
-it holds no push credential. No claim is made against a compromised
-administrator, the kernel, or processes of the service's own uid.
+**What stays cooperative (stated with every claim).** See the trust-boundary
+table in section 8b: heavy measurements and the work list, process-liveness
+snapshots, reviewer audit assertions, push-result reports and native lifecycle
+data. For the first controlled run: worker-produced build/test/parity evidence remains trusted subject to binding and consistency checks; this does NOT establish independently verified results or protection against fabricated evidence. No claim is made against a
+compromised administrator, the kernel, or processes of the service's own uid.
 `claimed_control` stays false.
 
 ## 4. Transition table
@@ -374,7 +370,7 @@ unresolved push effects of finished runs by identity.
     ConfigMap automount reaching the sidecar; the sidecar reading and writing
     `kanban.db` (group ownership, WAL/shm files) and the attachments root; the
     image carrying `/opt/rhoai3/outcome-authority` and the stamp.
-- **Measurement trust (section 8b):** open architect decision.
+- **Measurement trust (section 8b):** decided for the first controlled run (cooperative-receipts); the run control must carry it.
 - C1/C6: qualified locally on the exact runtime tree `8a3bb406` (series
   0001–0012) with real dispatcher, CLI and workers
   (`hermes-runtime/tests/rhoai3_outcome_board`, fake provider). No runtime
@@ -415,25 +411,55 @@ The commands are in `tmp/v17-run-20260926/kanban-review/implementation/activatio
 Until they pass, `enabled` is not set by the platform, and a run that requested
 the outcome board refuses at launch.
 
-## 8b. Measurement trust (open architect decision)
+## 8b. Measurement trust — DECIDED for the first controlled run
 
-The service measures tree identity, scope and baseline ancestry itself. It does
-not re-run the heavy measurements: a compile or test run in the sidecar would
-execute worker-controlled build logic (Maven plugins, annotation processors,
-the worker-writable `~/.m2`) in the authority's principal, and is not bounded in
-time. So an acceptance's check classes and the rebuilt work list are the
-worker's receipts; a worker that forges them for an in-scope, correctly
-committed candidate obtains an acceptance, which the ledger marks
-`classes_asserted_by: worker-receipts`
+**Decision (user, 2026-09-26):** `measurement_trust: cooperative-receipts` is
+accepted for the FIRST controlled run: worker-produced build/test/parity evidence remains trusted subject to binding and consistency checks; this does NOT establish independently verified results or protection against fabricated evidence.
+
+The service measures tree identity, changed-path scope and baseline ancestry
+itself. It does not re-run heavy measurements: a compile or test run in the
+sidecar would execute worker-controlled build logic (Maven plugins, annotation
+processors, the worker-writable `~/.m2`) in the authority's principal, and no
+independent measurement service is part of this release. A worker that forges
+receipts for an in-scope, correctly committed candidate obtains an acceptance,
+recorded as `classes_asserted_by: worker-receipts`
 (`outcome_authority.test.py test_forged_heavy_receipts_are_the_declared_cooperative_limit`).
-`enabled` execution therefore also requires the platform to declare
-`outcome_board.measurement_trust: cooperative-receipts` in the run control —
-the architect's explicit acceptance of this limit — or to fund an independent
-measurement (a separate build principal with its own dependency cache).
 
-## 9. Rollback
+The trust boundary covers every cooperative input, not only heavy measurements:
 
-Before any publication: remove the modules and the `pre_tool_call.sh` branch.
-Nothing else changes. After a publication, which requires `qualification`
-today: leave the store and board, hold execution (`disabled`), and abandon the run
-explicitly. Never bulk-complete, archive unresolved parents or reset budgets.
+| Cooperative input (worker-produced or worker-reported) | Where the authority uses it | What the authority checks |
+|---|---|---|
+| Build, test, parity, MTA receipts; the rebuilt work list; the M4 verdict; M5 stage receipts; the live and baseline scenario records (owner recovery) | acceptance classes, open obligations, requirement checks, stage evidence, runtime-cause classification | binding to the tree it measured itself, consistency (bound candidate, verdict/stack agreement), path scope and ancestry; recorded `classes_asserted_by: worker-receipts` |
+| Process-liveness / quiescence snapshots (the caller's `/proc` view) | writer transfer (`quiescent`), dead-effect recovery | none beyond the native worker pid; a false "dead" can transfer the writer early |
+| Reviewer audit assertions: the paved-road audit, its receipts and its execution ledger (worker-writable process evidence) | `check_complete` `audit_green` for M2, M4 and M5 stages | none; the audit's own bindings only |
+| Push-result reports (`sent`/`landed`/`failed`, `ls-remote` from the worker's remote config) | effect records | the state machine refuses regressions; admission itself is protected |
+| Native lifecycle data (`kanban.db`) | claims, run ids, parents | cross-checked against the store; never grants what the store does not record |
+
+Setting for the first run (documentation only; no live state is changed
+here): the migration-run provisioner writes it into that run's contract when
+the Task parameters are `outcome-board-execution: enabled` and
+`outcome-board-measurement-trust: cooperative-receipts` for that one
+provisioning (PipelineRun params, or the Task defaults changed through GitOps
+for the first run only). The resulting contract reads
+`"outcome_board": {"execution": "enabled", "measurement_trust": "cooperative-receipts"}`.
+
+## 9. Rollback and stopping a run
+
+- **New-run defaults.** The template's `boardProtocol` default is
+  `outcome-board/v1` (660c1c03); the provisioner's
+  `outcome-board-execution` default is `disabled`. Changing either affects
+  only runs provisioned AFTER the change.
+- **Existing runs.** The provisioner writes each run's control record ONCE;
+  a later Task-default change does not touch it. What governs an existing run
+  is its own immutable contract. The supported stop is stopping the
+  DevWorkspace (`spec.started=false`), which is how v12–v17 were frozen. A
+  rewrite of an existing run's contract is an explicit assisted Operator
+  intervention, never a default change.
+- **Workspace shutdown.** Stopping the workspace stops the worker, gateway,
+  dispatcher and the authority sidecar together; the authority store persists
+  on its volume, the board and the destination repository persist. Restarting
+  resumes under the same contract.
+- **Code rollback.** Before any publication: remove the modules and the
+  `pre_tool_call.sh` branch. After a publication, leave the store and board,
+  stop the workspace, and abandon the run explicitly. Never bulk-complete,
+  archive unresolved parents or reset budgets.
