@@ -400,6 +400,11 @@ public final class DestModel {
                             }.scan(m.getBody(), null);
                         }
                         mrow.put("call_names", callNames);
+                        // V17-3: what the WHOLE body amounts to, from the
+                        // attributed tree (a stub is a shape, not a name)
+                        if (m.getBody() != null) {
+                            mrow.put("body_shape", bodyShape(trees, new TreePath(mp, m.getBody()), type, task));
+                        }
                         List<String> guards = m.getBody() == null ? List.of()
                                 : validationGuards(task, trees, unit, new TreePath(mp, m.getBody()));
                         if (!guards.isEmpty()) { mrow.put("validation_guards", guards); }
@@ -604,6 +609,119 @@ public final class DestModel {
         doc.put("types", types);
         Files.createDirectories(out.toAbsolutePath().getParent());
         try (Writer w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) { writeJson(w, doc); }
+    }
+
+    /**
+     * V17-3: the SHAPE of one member body, from the attributed tree -- what an
+     * implementation obligation needs to tell a stub from an implementation:
+     *
+     *   empty               no statement at all, or only a bare `return;`
+     *   throw               the whole body is one throw (any exception type)
+     *   placeholder-return  every statement is a return of a placeholder:
+     *                       null, a literal, "", a zero-argument empty
+     *                       factory of java.util / java.util.stream
+     *                       (Collections.emptyList(), List.of(),
+     *                       Optional.empty(), Stream.empty(), ...) or a
+     *                       zero-argument java.util collection constructor
+     *   delegate            one statement that invokes (or returns the
+     *                       invocation of) a method declared by THIS type;
+     *                       `delegate` is that method's signature, so the
+     *                       reader can follow a private helper
+     *   substantive         anything else
+     *
+     * `statements` is the number of top-level statements; `exception` the
+     * erased thrown type of a `throw` body.
+     */
+    private static Map<String, Object> bodyShape(Trees trees, TreePath body, TypeElement owner, JavacTask task) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        com.sun.source.tree.BlockTree block = (com.sun.source.tree.BlockTree) body.getLeaf();
+        List<? extends com.sun.source.tree.StatementTree> stmts = block.getStatements();
+        out.put("statements", stmts.size());
+        if (stmts.isEmpty() || (stmts.size() == 1 && stmts.get(0) instanceof com.sun.source.tree.ReturnTree
+                && ((com.sun.source.tree.ReturnTree) stmts.get(0)).getExpression() == null)) {
+            out.put("kind", "empty");
+            return out;
+        }
+        if (stmts.size() == 1 && stmts.get(0) instanceof com.sun.source.tree.ThrowTree) {
+            out.put("kind", "throw");
+            TypeMirror tm = trees.getTypeMirror(new TreePath(new TreePath(body, stmts.get(0)),
+                    ((com.sun.source.tree.ThrowTree) stmts.get(0)).getExpression()));
+            out.put("exception", tm == null ? "" : task.getTypes().erasure(tm).toString());
+            return out;
+        }
+        boolean allPlaceholder = true;
+        for (com.sun.source.tree.StatementTree s : stmts) {
+            if (!(s instanceof com.sun.source.tree.ReturnTree)) { allPlaceholder = false; break; }
+            ExpressionTree e = ((com.sun.source.tree.ReturnTree) s).getExpression();
+            if (e == null || !placeholder(trees, new TreePath(new TreePath(body, s), e))) { allPlaceholder = false; break; }
+        }
+        if (allPlaceholder) {
+            out.put("kind", "placeholder-return");
+            return out;
+        }
+        if (stmts.size() == 1) {
+            ExpressionTree e = null;
+            com.sun.source.tree.StatementTree s = stmts.get(0);
+            if (s instanceof com.sun.source.tree.ExpressionStatementTree) {
+                e = ((com.sun.source.tree.ExpressionStatementTree) s).getExpression();
+            } else if (s instanceof com.sun.source.tree.ReturnTree) {
+                e = ((com.sun.source.tree.ReturnTree) s).getExpression();
+            }
+            if (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                Element callee = trees.getElement(new TreePath(new TreePath(body, s), e));
+                if (callee instanceof ExecutableElement && owner != null && owner.equals(callee.getEnclosingElement())) {
+                    out.put("kind", "delegate");
+                    out.put("delegate", signature((ExecutableElement) callee));
+                    return out;
+                }
+            }
+        }
+        out.put("kind", "substantive");
+        return out;
+    }
+
+    private static final java.util.Set<String> EMPTY_FACTORIES = java.util.Set.of(
+            "java.util.Collections#emptyList", "java.util.Collections#emptySet", "java.util.Collections#emptyMap",
+            "java.util.Collections#emptySortedSet", "java.util.Collections#emptySortedMap",
+            "java.util.Collections#emptyNavigableSet", "java.util.Collections#emptyNavigableMap",
+            "java.util.Collections#emptyIterator", "java.util.List#of", "java.util.Set#of", "java.util.Map#of",
+            "java.util.Optional#empty", "java.util.OptionalInt#empty", "java.util.OptionalLong#empty",
+            "java.util.OptionalDouble#empty", "java.util.stream.Stream#empty", "java.util.stream.IntStream#empty",
+            "java.util.stream.LongStream#empty", "java.util.stream.DoubleStream#empty");
+
+    /** A returned expression that carries no computed value (bodyShape). */
+    private static boolean placeholder(Trees trees, TreePath p) {
+        Tree t = p.getLeaf();
+        switch (t.getKind()) {
+            case PARENTHESIZED:
+                return placeholder(trees, new TreePath(p, ((com.sun.source.tree.ParenthesizedTree) t).getExpression()));
+            case TYPE_CAST:
+                return placeholder(trees, new TreePath(p, ((com.sun.source.tree.TypeCastTree) t).getExpression()));
+            case NULL_LITERAL: case BOOLEAN_LITERAL: case INT_LITERAL: case LONG_LITERAL: case FLOAT_LITERAL:
+            case DOUBLE_LITERAL: case CHAR_LITERAL:
+                return true;
+            case STRING_LITERAL:
+                return String.valueOf(((com.sun.source.tree.LiteralTree) t).getValue()).isEmpty();
+            case METHOD_INVOCATION: {
+                com.sun.source.tree.MethodInvocationTree mi = (com.sun.source.tree.MethodInvocationTree) t;
+                if (!mi.getArguments().isEmpty()) { return false; }
+                Element el = trees.getElement(p);
+                if (!(el instanceof ExecutableElement) || !(el.getEnclosingElement() instanceof TypeElement)) { return false; }
+                String key = ((TypeElement) el.getEnclosingElement()).getQualifiedName() + "#" + el.getSimpleName();
+                return EMPTY_FACTORIES.contains(key);
+            }
+            case NEW_CLASS: {
+                com.sun.source.tree.NewClassTree nc = (com.sun.source.tree.NewClassTree) t;
+                if (!nc.getArguments().isEmpty() || nc.getClassBody() != null) { return false; }
+                Element el = trees.getElement(p);
+                Element cls = el == null ? null : el.getEnclosingElement();
+                if (!(cls instanceof TypeElement)) { return false; }
+                String q = ((TypeElement) cls).getQualifiedName().toString();
+                return q.startsWith("java.util.") && q.lastIndexOf('.') == "java.util".length();
+            }
+            default:
+                return false;
+        }
     }
 
     /**

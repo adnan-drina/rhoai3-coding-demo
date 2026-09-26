@@ -484,7 +484,9 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
 
 
 REQ_UNIT_MAX_FILES = MAX_WRITE_SET   # worklist.UNIT_MAX_FILES
-REQ_UNIT_MAX_SYMBOLS = 16            # worklist.UNIT_MAX_FRAGMENT_SYMBOLS (the widest coherent unit the former allows)
+REQ_UNIT_MAX_SYMBOLS = 8             # worklist.UNIT_MAX_SYMBOLS: an ordinary unit
+REQ_UNIT_MAX_FRAGMENT_SYMBOLS = 16   # worklist.UNIT_MAX_FRAGMENT_SYMBOLS: ADR-024's fragment-unit exception only
+REQ_UNIT_MAX_SITES = 160             # worklist.UNIT_MAX_SITES
 _REQ_WORDS = {"repository-architecture": "repository fragment", "request-validation": "request validation",
               "handler-parameter-binding": "handler parameter", "annotation-retirement": "retire annotation",
               "adapter-behavior": "adapter behaviour", "generator-configuration": "generator configuration",
@@ -578,10 +580,15 @@ def attach_requirements(outcomes: dict[str, dict[str, Any]], requirements: list[
         if not owner:
             paths = sorted(set(r.get("paths") or []))
             symbols = len((r.get("facts") or {}).get("members") or []) or len(paths)
-            if len(paths) > REQ_UNIT_MAX_FILES or symbols > REQ_UNIT_MAX_SYMBOLS:
-                account[rq] = unresolved_for(r, "blocked-cluster", "UNIT_OVERSIZE: requirement %s spans %d file(s) and %d symbol(s); "
-                                             "the unit limits are %d and %d and one requirement is one coherent repair"
-                                             % (rq, len(paths), symbols, REQ_UNIT_MAX_FILES, REQ_UNIT_MAX_SYMBOLS))
+            sites = (r.get("facts") or {}).get("sites")
+            sites = sites if isinstance(sites, int) else 0
+            # ADR-024: only a fragment (repository-architecture) unit may carry
+            # 16 symbols; every other unit keeps 20 files / 160 sites / 8 symbols
+            max_symbols = REQ_UNIT_MAX_FRAGMENT_SYMBOLS if rule == "repository-architecture" else REQ_UNIT_MAX_SYMBOLS
+            if len(paths) > REQ_UNIT_MAX_FILES or symbols > max_symbols or sites > REQ_UNIT_MAX_SITES:
+                account[rq] = unresolved_for(r, "blocked-cluster", "UNIT_OVERSIZE: requirement %s spans %d file(s), %d symbol(s) and "
+                                             "%d site(s); the unit limits are %d, %d and %d and one requirement is one coherent repair"
+                                             % (rq, len(paths), symbols, sites, REQ_UNIT_MAX_FILES, max_symbols, REQ_UNIT_MAX_SITES))
                 continue
             short = hashlib.sha256(_s(r.get("subject")).encode("utf-8")).hexdigest()[:12]
             owner = "requirement:%s:%s" % (rule, short)

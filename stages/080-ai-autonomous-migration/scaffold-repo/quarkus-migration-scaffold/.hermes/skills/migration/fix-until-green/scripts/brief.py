@@ -1213,7 +1213,8 @@ def main(argv: list[str] | None = None) -> int:
                                                                 str(r.get("type") or "").rsplit(".", 1)[-1],
                                                                 str(r.get("parent") or "").rsplit(".", 1)[-1],
                                                                 str(r.get("parent") or "").rsplit(".", 1)[-1]))}
-                                               if isinstance(r.get("cdi"), dict) else {}))
+                                               if isinstance(r.get("cdi"), dict) else {}),
+                                            **behaviour_brief(r))
                                        for r in (scope.get("implementation_obligations") or [])
                                        if isinstance(r, dict) and r.get("verify") != "template"]}
                    if any(isinstance(r, dict) and r.get("verify") != "template"
@@ -1233,6 +1234,61 @@ def main(argv: list[str] | None = None) -> int:
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
     print(json.dumps(brief, indent=2, sort_keys=True))
     return 0
+
+
+def behaviour_brief(row: dict) -> dict:
+    """V17-3: what each owed fragment member must DO, as sealed on the
+    obligation (worklist.fragment_behaviour_rows): the selected source
+    behaviour per member -- the override fragment's method, the repository's
+    @Query, the base repository's CRUD semantics or a derived query -- with any
+    persistence translation it needs, the implementations that are NOT the
+    behaviour source (another profile's), and the functional evidence that
+    will judge it. {} for an obligation that carries none."""
+    beh = row.get("behaviour") if isinstance(row.get("behaviour"), dict) else None
+    if beh is None:
+        return {}
+    members = []
+    for m in beh.get("members") or []:
+        if not isinstance(m, dict):
+            continue
+        kind = str(m.get("kind") or "")
+        if kind == "query":
+            what = "run the source's @Query %s%s" % ("; ".join(str(q) for q in m.get("query") or []),
+                                                     " (a @Modifying update)" if m.get("modifying") else "")
+        elif kind == "source-override":
+            what = "port the BEHAVIOUR of %s (%s)" % (m.get("source"), m.get("path"))
+        elif kind == "crud-default":
+            what = "Spring Data's %s: %s" % (m.get("source"), m.get("semantics"))
+        elif kind == "derived-query":
+            what = "the query Spring Data derives from the name %s" % str(m.get("signature") or "").split("(", 1)[0]
+        else:
+            what = "UNRESOLVED: %s -- stop and report it (kanban_block needs_input); do not guess" % (m.get("why") or "no source behaviour")
+        entry = {"member": m.get("signature"), "behaviour": kind, "source": m.get("source"), "do": what,
+                 "effect": m.get("effect") or ""}
+        if m.get("translations"):
+            entry["translations"] = [{"id": t.get("id"), "obligation": t.get("obligation"), "calls": t.get("calls")}
+                                     for t in m["translations"] if isinstance(t, dict)]
+        members.append(entry)
+    out = {"behaviour": {"repository": beh.get("repository") or "", "members": members,
+                         "not_behaviour_sources": [{"type": n.get("type"), "path": n.get("path"), "why": n.get("why")}
+                                                   for n in beh.get("not_behaviour_sources") or [] if isinstance(n, dict)],
+                         "unknowns": list(beh.get("unknowns") or [])}}
+    if members:
+        out["required_behaviour"] = (
+            "every owed member carries the SELECTED source behaviour above (the decided build profiles' repository, "
+            "never an implementation gated to another profile -- those are listed as NOT the behaviour source). A body "
+            "that only throws, does nothing, returns a placeholder, or delegates to a helper that does is refused at the "
+            "checkpoint (unit:fragment-behaviour-bodies). Port behaviour, not text: where a translation is listed, the "
+            "destination's persistence provider does not preserve the literal source order")
+    ver = [v for v in row.get("verification") or [] if isinstance(v, dict)]
+    if ver:
+        out["functional_evidence"] = {
+            "rows": [{"member": v.get("member"), "effect": v.get("effect"), "scenarios": v.get("scenarios"),
+                      "status": v.get("status"), "needs": v.get("needs")} for v in ver],
+            "note": ("structural acceptance at this checkpoint is NOT functional completion: the effects are proven by the "
+                     "listed scenarios through the generated repository (reads, and writes read back in a later request); "
+                     "an unresolved row stays an open verification debt owned by this unit, never a PASS")}
+    return out
 
 
 def planned_requirements(root: Path, write_set: list[str]) -> list[dict]:

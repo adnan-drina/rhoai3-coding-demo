@@ -5426,7 +5426,7 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
         # authorize a path the model cannot yet have a type for. It is in the
         # write set from the start, because the file seal is what acceptance
         # enforces and a repair that may not write its own adapter is no repair.
-        owed = unit_implementation_obligations(parents)
+        owed = fragment_behaviour_rows(root, unit_implementation_obligations(parents))
         for row in owed:
             files.append(row["path"])
             evidence.append({"kind": "catalog", "ref": "%s: %s implements %s at %s (%s)"
@@ -5611,6 +5611,133 @@ def _implements(typ: dict[str, Any], parent: str) -> bool:
     return bool(parent) and parent in [_erased(s) for s in (typ.get("supertypes") or [])]
 
 
+# V17-3 (v17 t_eca28a3c): the seven fragment delegates compiled, packaged and
+# carried the owed CDI exposure, and every body was a stub -- query members
+# threw UnsupportedOperationException, save/delete did nothing. Compilation and
+# the package gate cannot see a body's SHAPE; the dest model can
+# (DestModel.bodyShape, from the attributed tree).
+STUB_SHAPES = {
+    "throw": "its whole body is one throw",
+    "empty": "its body is empty (a no-op)",
+    "placeholder-return": "it only returns a placeholder (null, a literal, an empty collection or Optional)",
+}
+
+
+def owed_member_body(typ: dict[str, Any], sig: str) -> tuple[str, str]:
+    """(verdict, detail) for the body of owed member `sig` of `typ`: 'ok',
+    'stub' or 'inconclusive'. A body that only delegates to another method of
+    the SAME type is judged by that method (a private helper cannot hide a
+    stub; a delegation to a real implementation -- another owed member
+    included -- is fine); a delegation cycle is a stub (it never returns a
+    computed answer). A body the model did not shape is inconclusive, never
+    a pass."""
+    declared = {str(m.get("signature") or ""): m for m in (typ.get("declared") or []) if isinstance(m, dict)}
+    chain: list[str] = []
+    cur = sig
+    while True:
+        m = declared.get(cur)
+        if m is None:
+            if chain:
+                return "ok", "%s delegates to %s, which this type inherits" % (sig, cur)
+            return "inconclusive", "the model declares no %s" % cur
+        shape = m.get("body_shape")
+        if not isinstance(shape, dict):
+            return "inconclusive", "the model recorded no body shape for %s" % cur
+        kind = str(shape.get("kind") or "")
+        if kind in STUB_SHAPES:
+            via = (" (through %s)" % " -> ".join(chain + [cur])) if chain else ""
+            what = STUB_SHAPES[kind] + ((" of %s" % shape.get("exception")) if kind == "throw" and shape.get("exception") else "")
+            return "stub", "%s%s: %s" % (sig, via, what)
+        if kind == "delegate":
+            nxt = str(shape.get("delegate") or "")
+            chain.append(cur)
+            if nxt in chain or nxt == sig:
+                return "stub", "%s only delegates in a cycle (%s): it never computes an answer" % (sig, " -> ".join(chain + [nxt]))
+            cur = nxt
+            continue
+        return "ok", "%s has a substantive body%s" % (sig, (" (through %s)" % " -> ".join(chain + [cur])) if chain else "")
+
+
+def fragment_behaviour_rows(root: Path | None, owed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """V17-3: each owed fragment implementation, annotated with the SELECTED
+    source behaviour of every member (source_requirements.repository_behaviour:
+    decided build profiles; override fragment, @Query, CRUD default, derived
+    query; never an inactive-profile implementation) and the functional
+    verification that proves it (repository_verification: reads, and writes
+    by a committed read-back; a member no captured scenario reaches stays
+    unresolved). Sealed with the unit, so the brief renders it and acceptance
+    judges against it. Missing evidence is an unknown on the row, never an
+    empty behaviour."""
+    from planner.source_requirements import repository_behaviour, repository_verification
+    if not owed:
+        return owed
+    bundle = None
+    decisions: dict[str, Any] | None = None
+    catalog: dict[str, Any] = {}
+    if root is not None:
+        try:
+            bundle = load_json(Path(root) / EVIDENCE_BUNDLE)
+        except (OSError, ValueError):
+            bundle = None
+        try:
+            from planner.decisions import load_decisions
+            decisions = load_decisions(Path(root))
+        except (OSError, ValueError):
+            decisions = None
+        try:
+            catalog = load_json(Path(root) / CATALOGS_DIR / "compat-mapping.json")
+        except (OSError, ValueError):
+            catalog = {}
+    types = ((bundle or {}).get("structure") or {}).get("types") if isinstance(bundle, dict) else None
+    oracles, facts = corpus_scenario_facts(root)
+    out = []
+    for row in owed:
+        row = dict(row)
+        if row.get("contract") != FRAGMENT_IMPL_CONTRACT:
+            out.append(row)
+            continue
+        if not isinstance(types, list) or decisions is None:
+            row["behaviour"] = {"parent": row.get("parent"), "repository": "", "members": [], "not_behaviour_sources": [],
+                                "unknowns": ["the frozen structural model or decisions.yaml is unreadable: the selected source "
+                                             "behaviour of %s is unknown" % row.get("parent")]}
+            row["verification"] = []
+            out.append(row)
+            continue
+        # every member of the parent, not only the ones the platform cannot
+        # derive: the <Parent>Impl implements the whole interface, and the
+        # generated repository delegates to it for each of them (v17: the
+        # derivable findById / findByLastName threw from the delegate too)
+        src_parent = next((t for t in types if isinstance(t, dict) and str(t.get("fqn") or "") == str(row.get("parent") or "")), {})
+        every = sort_unique([str(s) for s in row.get("members") or []]
+                            + [str(m.get("signature") or "") for m in (src_parent.get("methods") or []) if isinstance(m, dict)])
+        beh = repository_behaviour(types, parent=str(row.get("parent") or ""), members=every,
+                                   decisions=decisions, catalog=catalog)
+        row["behaviour"] = beh
+        row["verification"] = repository_verification(beh, entry_points=list((bundle or {}).get("entry_points") or []),
+                                                      types=types, oracles=oracles, scenarios=facts)
+        out.append(row)
+    return out
+
+
+def corpus_scenario_facts(root: Path | None) -> tuple[dict[str, list[str]] | None, dict[str, dict[str, Any]] | None]:
+    """(entry point -> scenario ids, scenario id -> {method, path, effects})
+    from the captured corpus; (None, None) when there is none."""
+    if root is None:
+        return None, None
+    oracles: dict[str, list[str]] = {}
+    facts: dict[str, dict[str, Any]] = {}
+    seen = False
+    for doc in _iter_corpus_docs(Path(root)):
+        seen = True
+        for sc in doc.get("scenarios") or []:
+            if isinstance(sc, dict) and sc.get("id"):
+                facts[str(sc["id"])] = {"method": str(sc.get("method") or ""), "path": str(sc.get("path") or ""),
+                                        "effects": [dict(e) for e in (sc.get("effects") or []) if isinstance(e, dict)]}
+                if sc.get("entry_point"):
+                    oracles.setdefault(str(sc["entry_point"]), []).append(str(sc["id"]))
+    return (oracles, facts) if seen else (None, None)
+
+
 def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, Any] | None,
                             by_path: dict[str, list[dict[str, Any]]], rule: str) -> list[dict[str, Any]]:
     """The recorded implementation obligations, verified from the model AFTER
@@ -5652,6 +5779,31 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
             out.append(dict(base, verdict="violates",
                             detail="%s implements %s but declares no body for %s; an abstract answer answers nothing"
                                    % (typ.get("fqn"), parent, ", ".join(missing[:3]))))
+            continue
+        # V17-3: a body is not an implementation because it compiles
+        # every member the delegate declares that the parent owes or the
+        # sealed behaviour covers: the generated repository calls them all
+        mine = {str(m.get("signature") or "") for m in (typ.get("declared") or []) if isinstance(m, dict)}
+        judged = sort_unique([str(s) for s in row.get("members") or []]
+                             + [str(b.get("signature") or "") for b in ((row.get("behaviour") or {}).get("members") or [])
+                                if isinstance(b, dict) and str(b.get("signature") or "") in mine])
+        bodies = [(s, owed_member_body(typ, str(s))) for s in judged]
+        stubs = [d for _s, (v, d) in bodies if v == "stub"]
+        if stubs:
+            beh = {str(b.get("signature") or ""): b for b in ((row.get("behaviour") or {}).get("members") or [])
+                   if isinstance(b, dict)}
+            owed_src = ["%s <- %s" % (s, beh[s].get("source") or beh[s].get("kind")) for s, (v, _d) in bodies
+                        if v == "stub" and s in beh]
+            out.append(dict(base, verdict="violates",
+                            detail="%s implements %s with STUB bodies, which answer nothing the source answered: %s. Each "
+                                   "owed member must carry its SELECTED source behaviour%s (spring-data-fragment-impl/v1, "
+                                   "V17-3)" % (typ.get("fqn"), parent, "; ".join(stubs[:4]),
+                                               (": " + "; ".join(owed_src[:4])) if owed_src else "")))
+            continue
+        unshaped = [d for _s, (v, d) in bodies if v == "inconclusive"]
+        if unshaped:
+            out.append(dict(base, verdict="inconclusive",
+                            detail="the bodies of %s cannot be judged: %s" % (typ.get("fqn"), "; ".join(unshaped[:3]))))
             continue
         if isinstance(row.get("cdi"), dict):
             verdict, detail = fragment_cdi_exposure(typ, row["cdi"])

@@ -238,12 +238,40 @@ initial logical M3 plan:
   Partial evidence is unresolved, never absent. Each requirement names a
   qualified recipe (`compat-mapping.json` `migration_recipes`) and the
   existing checks that refuse its broken forms.
+- **Repository behaviour (V17-3).** A fragment parent the decided build
+  profiles serve through Spring Data in the source (no implementation of
+  their own) is an OWED `<Parent>Impl` whose every member carries its
+  SELECTED source behaviour (`source_requirements.repository_behaviour`,
+  catalog `repository_behaviour`): the override fragment's method, the
+  repository's `@Query`, the base repository's CRUD semantics or a derived
+  query -- never the implementation another profile selects, which is named
+  as NOT the behaviour source. A source method whose ordered calls a
+  `persistence_behaviour_translations` row matches carries that obligation
+  (Hibernate 6 flushes a pending removal before a query or bulk statement:
+  port the committed effects, dependents first). Stub bodies (a throw of
+  any type, an empty mutator, a placeholder return, a private helper or a
+  delegation cycle hiding one) are refused at the checkpoint from the
+  compiler model's `body_shape`. Functional completion is separate: every
+  member plans a verification row (`repository_verification`: a read, or a
+  write proven by a scenario that reads the committed effect back in another
+  request; a member no captured scenario reaches stays unresolved). The same
+  rows are sealed on the serial loop's fragment unit
+  (`worklist.fragment_behaviour_rows`), rendered by the brief, and recorded
+  on acceptance as `acceptance: structural`, `functional: owed`
+  (`verification/loop/owner-debts.json`). A runtime failure a later card
+  meets whose first product frame is in that owner's accepted file is
+  charged to the owner (`VERIFICATION_PENDING runtime-cause-owned-elsewhere`,
+  no attempt spent), never to the card that saw it.
 - **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
   gives every requirement exactly one account: joined to the finding outcome
   that already owns the same file, a bounded requirement outcome (planned
   units, no grant; `UNIT_OVERSIZE` otherwise), a satisfied disposition with its
   receipt, or an explicit unresolved responsibility. The owner's
-  `requirement_checks` are not met by an empty work list.
+  `requirement_checks` are not met by an empty work list: the outcome
+  board's acceptance recomputes them on the committed tree
+  (`planner/requirement_checks.py`) and records the passing ones; a check
+  with no producer yet stays unknown, so its owner cannot be accepted
+  (OUTCOME-BOARD-CONTRACT §5.1 lists which are measured).
 - **Admission.** The receipt seals `seals.plan_semantics` (input and plan
   fingerprints) beside the exact digests and adds `PLAN_CONTRACT`,
   `PLAN_ACCEPTANCE_MISSING` and `PLAN_RECIPE_MISSING`. The first ADMITTED

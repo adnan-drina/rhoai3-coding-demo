@@ -448,6 +448,123 @@
       }
     }
   },
+  "repository_behaviour": {
+    "note": "Where the behaviour of an owed fragment method COMES FROM in the source (V17-3). A <Fragment>Impl owed under spring-data-fragment-impl/v1 must carry the SELECTED source behaviour of each member: the Spring Data repository the decided build profiles select (decisions.build_profiles.active; a type gated by @Profile to another profile is never the behaviour source, even when its text implements the same interface), and within it, in Spring Data's own precedence, (1) a custom implementation fragment the repository also extends (its <Override>Impl method), (2) a @Query the repository declares for the member, (3) the CRUD method of the repository base implementation the member's name and arity select, (4) a query derived from the method name. Anything else is unresolved, never guessed. planner.source_requirements.repository_behaviour reads this block and the frozen structural model; nothing here names a specimen.",
+    "source": "https://docs.spring.io/spring-data/jpa/reference/repositories/custom-implementations.html (fragments take precedence over the base repository and query derivation); https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html (@Query, derived queries); https://docs.spring.io/spring-data/jpa/reference/repositories/core-concepts.html (CrudRepository methods served by SimpleJpaRepository)",
+    "query_annotations": [
+      "org.springframework.data.jpa.repository.Query"
+    ],
+    "modifying_annotations": [
+      "org.springframework.data.jpa.repository.Modifying"
+    ],
+    "write_calls": {
+      "note": "a source override is a WRITE when its recorded calls change persistent state through the JPA API (the effect is then proven by a committed read-back, not by a read)",
+      "owners": [
+        "javax.persistence.EntityManager",
+        "jakarta.persistence.EntityManager",
+        "javax.persistence.Query",
+        "jakarta.persistence.Query",
+        "javax.persistence.TypedQuery",
+        "jakarta.persistence.TypedQuery"
+      ],
+      "names": [
+        "persist",
+        "merge",
+        "remove",
+        "executeUpdate"
+      ]
+    },
+    "crud_defaults": {
+      "save/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.save: persist a NEW entity (null id / version), merge an existing one, inside a read-write transaction; the change is committed when the transaction ends, so a later request reads it"
+      },
+      "saveAll/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.saveAll: save each element as save/1 does, in one transaction"
+      },
+      "delete/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.delete: remove the entity (merged first when detached; a detached entity that no longer exists is ignored) inside a read-write transaction; the removal is committed, cascades as the mapping declares"
+      },
+      "deleteById/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.deleteById: find by id and delete/1 it; a missing id is ignored (Spring Data 3) or raises EmptyResultDataAccessException (Spring Data 2) -- the source's own version decides"
+      },
+      "deleteAll/0": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.deleteAll: delete/1 every entity, in one transaction"
+      },
+      "findAll/0": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.findAll: every entity of the domain type, read-only transaction"
+      },
+      "findById/1": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.findById: the entity with that id; the declared return type decides Optional vs nullable"
+      },
+      "findAllById/1": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.findAllById: the entities with those ids"
+      },
+      "existsById/1": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.existsById"
+      },
+      "count/0": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.count"
+      }
+    },
+    "derived_query_prefixes": [
+      "find",
+      "read",
+      "get",
+      "query",
+      "search",
+      "stream",
+      "count",
+      "exists",
+      "delete",
+      "remove"
+    ]
+  },
+  "persistence_behaviour_translations": {
+    "note": "Behaviour a LITERAL port of source persistence code does not preserve on the destination's persistence provider (V17-3). Each row is matched against the ORDERED calls the frozen structural model records for the selected source method (owner type and method name, pre-order); a match adds an obligation to that owed member: port the BEHAVIOUR (the committed effects the source produced), not the text. Evidence is cited per row.",
+    "hibernate6-flush-before-query": {
+      "when": {
+        "first": {
+          "owners": [
+            "javax.persistence.EntityManager",
+            "jakarta.persistence.EntityManager"
+          ],
+          "names": [
+            "remove"
+          ]
+        },
+        "then_any": {
+          "owners": [
+            "javax.persistence.Query",
+            "jakarta.persistence.Query",
+            "javax.persistence.TypedQuery",
+            "jakarta.persistence.TypedQuery",
+            "javax.persistence.EntityManager",
+            "jakarta.persistence.EntityManager"
+          ],
+          "names": [
+            "executeUpdate",
+            "getResultList",
+            "getSingleResult",
+            "getResultStream",
+            "createNativeQuery"
+          ]
+        }
+      },
+      "obligation": "the source removes the entity and THEN queries or bulk-deletes its dependents. Hibernate 6 (the destination's ORM) flushes the pending removal before an AUTO-flush query or a native/bulk statement runs, so the literal order deletes the parent row while dependents still reference it (TransientPropertyValueException, or a foreign-key violation). Preserve the source's committed effects: delete or detach the dependents first, then remove the entity, in one transaction; the check is the committed state after the request (the row and its dependents gone), never the order of the source text.",
+      "evidence": "v17 (spring-petclinic-rest-legacy-v17, 2026-09-26): the literal port of the PetType and Specialty override deletes failed with TransientPropertyValueException / FK vet_specialties; reordering dependents-first matched the captured source effects (204, row and dependents gone) and 43/43 repository write behaviours passed on committed effects",
+      "source": "https://docs.jboss.org/hibernate/orm/6.2/userguide/html_single/Hibernate_User_Guide.html#flushing-auto (AUTO flush before a query that may be affected; before any native query)"
+    }
+  },
   "validation_helpers": {
     "note": "Spring validation types used OUTSIDE a handler's parameter list -- a helper such as an error-response class whose constructor or method takes the BindingResult, Errors or FieldError the handler used to pass (V17-2). The compat layer has none of these types, and after the handler_parameters BindingResult translation the handler holds a Set<ConstraintViolation<T>> instead. Each row is conditional: `when` says which member it applies to; `action` is the documented replacement, derived from the Bean Validation and Spring javadoc the row cites and from nothing specific to a specimen. KEYS ARE QUALIFIED IDENTITIES (a helper's parameter type resolved through the file's imports, or through a wildcard import of the package a unit seals); the planner renders a row only at a member that actually takes the type.",
     "org.springframework.validation.BindingResult": {
@@ -709,6 +826,25 @@
           "refuses": [
             "a fragment member no implementation declares"
           ]
+        },
+        {
+          "check": "unit:fragment-behaviour-bodies",
+          "checker": "planner.worklist.owed_member_body",
+          "refuses": [
+            "an owed member whose whole body is one throw (any exception type)",
+            "an owed member with an empty body (a no-op mutator)",
+            "an owed member that only returns a placeholder (null, a literal, an empty collection or Optional)",
+            "an owed member that only delegates to a private helper that is itself one of those"
+          ],
+          "behaviour_source": "compat-mapping repository_behaviour: the selected profile's repository, its override fragment, @Query or CRUD default; never an inactive-profile implementation"
+        },
+        {
+          "check": "behavior:repository-effects",
+          "checker": "planner.source_requirements.repository_verification (planned); M4 parity over the corpus scenarios that reach the member",
+          "refuses": [
+            "reads pass, writes do nothing: a write member accepted without a committed effect read back across a request boundary"
+          ],
+          "unresolved_when": "no captured scenario reaches the member's write effect: the responsibility stays open (coverage unresolved), never PASS"
         },
         {
           "check": "structure:single-injectable-implementation",

@@ -638,6 +638,130 @@ def _parity_card_case() -> int:
     return 0
 
 
+def _runtime_owner_attribution_case() -> int:
+    """V17-3 (v17 u:f2fd979369f1): the CORS card's scenario GET /owners came
+    back 500 -- UnsupportedOperationException thrown from a repository
+    delegate ANOTHER card had written and had accepted -- and the card spent 3
+    attempts on it. Through the production advance.py: the same failure, with
+    the frame's file committed by an earlier accepted step of another cluster,
+    is charged to that owner (VERIFICATION_PENDING
+    runtime-cause-owned-elsewhere, no attempt spent, an owner-debts row). The
+    control, the same failure with no owner on record, is judged exactly as
+    before (REVERTED, one attempt)."""
+    from planner.paths import MTA_FINDINGS, PARITY_DIR, STRUCTURE, VERIFY_DIR  # noqa: E402
+    from planner.worklist import item_ids, obligation_keys, parity_receipt_file  # noqa: E402
+    import response_adapters as ra  # noqa: E402
+
+    impl = "src/main/java/org/acme/repo/OwnerStoreImpl.java"
+    for label, with_owner in (("owned elsewhere", True), ("no owner (control)", False)):
+        with tempfile.TemporaryDirectory(prefix="owner-attr-") as td:
+            root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                        decisions=specimens.admitted_decisions(max_attempts=3))
+            structure = load_json(root / STRUCTURE)
+            for t in structure["types"]:
+                if t["fqn"].endswith(".OwnerController"):
+                    t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                             "values": {"exposedHeaders": ["errors"]}})
+            write_canonical(root / STRUCTURE, structure)
+            specimens.prepare_loop(root)
+            (root / impl).parent.mkdir(parents=True, exist_ok=True)
+            (root / impl).write_text("package org.acme.repo;\npublic class OwnerStoreImpl {\n"
+                                     "    public java.util.List<String> findAll() { throw new UnsupportedOperationException(); }\n}\n",
+                                     encoding="utf-8")
+            _git(root, "add", impl)
+            _git(root, "commit", "-qm", "an earlier card's delegate")
+            findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+            findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items() if v.get("category") != "mandatory"}
+            specimens.runtime(root, package_rc=0, boot_ready=True)
+            _parity_records(root, "FAIL")
+            specimens.verify(root, errors=[], failures=[], findings=findings)
+            pipeline.admit(root)
+            cur = load_json(root / WORKLIST)
+            steps = load_json(root / LOOP_STEPS)
+            steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                      obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                      candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
+            if with_owner:
+                # the earlier accepted step of ANOTHER cluster that committed the delegate
+                steps["steps"].append(dict(steps["steps"][-1], cluster="u:repo-fragments", card="t_frag0", verdict="accepted",
+                                           changed=[impl], commit=_git(root, "rev-parse", "HEAD").strip()))
+            write_canonical(root / LOOP_STEPS, steps)
+            pipeline.admit(root)
+            cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["status"] == "open")
+            specimens.issue(root)
+            _run([sys.executable, str(HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"),
+                  "--root", str(root), "--adapter", "cors"])
+            shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
+            # the comparison ran on the candidate and the scenario answered 500:
+            # the runner put the destination's exception block on the verdict
+            reason = "status 500 vs 200; body type object vs array"
+            sub = root / PARITY_DIR / "scenarios"
+            write_canonical(sub / "sc_cors.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP,
+                                                   "scenario": _PARITY_SID, "verdict": "FAIL", "reason": reason,
+                                                   "security_mode": "disabled",
+                                                   "server_error": {"status": 500, "expected_status": 200,
+                                                                    "exception": "java.lang.UnsupportedOperationException",
+                                                                    "message": "", "stack_sha256": "ab" * 32,
+                                                                    "frames": [{"class": "org.acme.repo.OwnerStoreImpl",
+                                                                                "method": "findAll", "line": 3,
+                                                                                "file": "OwnerStoreImpl.java"}]}})
+            write_canonical(root / parity_receipt_file("disabled"),
+                            {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL", "total": 1, "not_passed": 1,
+                             "security_mode": "disabled",
+                             "entry_points": [{"entry_point": _PARITY_EP, "verdict": "FAIL", "reason": reason,
+                                               "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]})
+            _parity_verified(root, findings, verdict="FAIL")
+            spent = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+            p = _advance(root, cluster["id"], "t_cors1")
+            blob = p.stdout + p.stderr
+            after = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+            debts = root / "verification/loop/owner-debts.json"
+            if with_owner:
+                if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "cause=runtime-cause-owned-elsewhere" not in blob:
+                    return _fail("[%s] a runtime cause inside another owner's accepted file is charged to it: %s" % (label, blob[-800:]))
+                if after != spent:
+                    return _fail("[%s] no attempt of this card is spent on another owner's failure: %s -> %s" % (label, spent, after))
+                rows = [d for d in (load_json(debts).get("debts") if debts.is_file() else []) if d.get("kind") == "runtime-failure-charged"]
+                if not rows or rows[0]["owner_cluster"] != "u:repo-fragments" or rows[0]["charged_from_cluster"] != cluster["id"]:
+                    return _fail("[%s] the owner debt names the owner and the card it was charged from: %s" % (label, rows))
+                if "u:repo-fragments" not in blob or impl not in blob:
+                    return _fail("[%s] the message names the owner and the file: %s" % (label, blob[-500:]))
+            else:
+                if "runtime-cause-owned-elsewhere" in blob:
+                    return _fail("[%s] a file no accepted step owns is never attributed: %s" % (label, blob[-500:]))
+                if p.returncode == 0 or "REVERTED" not in blob or after == spent:
+                    return _fail("[%s] with no owner on record the failure is judged as before (reverted, attempt spent): %s"
+                                 % (label, blob[-600:]))
+    return 0
+
+
+def _functional_debt_case() -> int:
+    """V17-3: a unit whose owed implementations carry planned functional
+    verification is accepted as STRUCTURAL progress with an owned debt
+    (covered rows owed, uncovered rows unresolved), never as functional
+    completion."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("adv_fd", HERE / "advance.py")
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)  # type: ignore[union-attr]
+    scope = {"implementation_obligations": [{"path": "src/main/java/p/StoreImpl.java", "verification": [
+        {"member": "p.Store#findAll()", "effect": "read", "scenarios": ["sc:list"], "status": "applicable"},
+        {"member": "p.Store#save(p.E)", "effect": "write", "scenarios": [], "status": "unresolved"}]}]}
+    d = adv._functional_debt(scope, "u:frag", "t_f", "0123456789abcdef")
+    if not d or [r["status"] for r in d["rows"]] != ["owed", "unresolved"] or d["owner_cluster"] != "u:frag":
+        return _fail("the structural acceptance records the owed and unresolved functional rows: %s" % d)
+    if adv._functional_debt({"implementation_obligations": [{"path": "x", "verify": "template"}]}, "u", "t", "c") is not None:
+        return _fail("a unit that owes no behaviour records no functional debt")
+    with tempfile.TemporaryDirectory(prefix="fd-") as td:
+        root = Path(td)
+        adv._record_owner_debt(root, d)
+        adv._record_owner_debt(root, d)
+        doc = load_json(root / "verification/loop/owner-debts.json")
+        if len(doc["debts"]) != 1:
+            return _fail("the same debt recorded twice is one row: %s" % doc)
+    return 0
+
+
 def _enabled_mode_acceptance_case() -> int:
     """Disabled PASS + enabled FAIL, then an enabled replay must advance on
     that candidate's enabled receipt -- never the sealed disabled one.
@@ -2276,7 +2400,7 @@ def _stop_request_case() -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _runtime_owner_attribution_case() or _functional_debt_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1

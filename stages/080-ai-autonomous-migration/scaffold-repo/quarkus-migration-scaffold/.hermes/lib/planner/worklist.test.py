@@ -2606,7 +2606,7 @@ def _real_fragment_case() -> int:
             def write_adapter(annotations: str) -> None:
                 (root / adapter).write_text(
                     "package %s.%s;\nimport java.util.List;\n%spublic class %s implements %s {\n"
-                    "    public List<String> %s(String clause) { return List.of(); }\n}\n"
+                    "    public List<String> %s(String clause) { return List.of(clause); }\n}\n"
                     % (base, n["frag_pkg"], annotations, impl, n["frag"], n["member"]), encoding="utf-8")
 
             cdi = owed[0].get("cdi") or {}
