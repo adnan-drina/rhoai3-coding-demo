@@ -237,10 +237,31 @@ def legacy_case(tmp: Path) -> int:
     return 0
 
 
+def plan_view_case(tmp: Path) -> int:
+    """Round 3: the view claims only what it knows. From the frozen document
+    alone it is the frozen initial plan -- no additions, no unfinished list;
+    given the store's recorded revisions, a repair outcome a later revision
+    added is reported with its revision and lineage."""
+    del tmp
+    n1 = {"outcome_id": "source:c:1", "role": "repair", "title": "M3 A", "parents": [], "class": "source"}
+    n2 = {"outcome_id": "source:c:2", "role": "repair", "title": "M3 B", "parents": [], "class": "source",
+          "lineage": {"class": "previously-unknown-behavior", "from": "assess:m4:g1"}}
+    doc = {"plan": {"graph": {"nodes": [n1], "unresolved": [], "counts": {}}, "requirements": []}}
+    frozen = PS.plan_view(doc, protocol="outcome-board/v1")
+    if frozen.get("scope") != "frozen-initial-plan" or "additions" in frozen or "unfinished" in frozen:
+        return _fail("the frozen view claims no additions or progress: %s" % sorted(frozen))
+    live = PS.plan_view(doc, protocol="outcome-board/v1", revisions=[{"rev": 2, "doc": {"nodes": [n1, n2]}}, {"rev": 1, "doc": {"nodes": [n1]}}])
+    if [(a["outcome_id"], a["added_in_revision"], a["revision_class"]) for a in live.get("additions") or []] != [("source:c:2", 2, "previously-unknown-behavior")]:
+        return _fail("the recorded revisions give the real additions: %s" % live.get("additions"))
+    if PS.plan_view(doc, protocol="outcome-board/v1", revisions=[{"rev": 1, "doc": {"nodes": [n1]}}]).get("additions") != []:
+        return _fail("one revision has no additions")
+    return 0
+
+
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="plan-semantics-"))
     try:
-        for case in (elapsed_time_case, locale_case, same_locus_case, semantic_change_case, legacy_case):
+        for case in (elapsed_time_case, locale_case, same_locus_case, semantic_change_case, legacy_case, plan_view_case):
             if case(tmp):
                 return 1
         rc, evidence = run_identity_case(tmp)
