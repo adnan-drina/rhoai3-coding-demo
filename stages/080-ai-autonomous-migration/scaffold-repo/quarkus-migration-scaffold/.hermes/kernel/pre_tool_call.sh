@@ -81,6 +81,38 @@ for src in (data, extra, inp, args):
     if hook_cwd:
         break
 
+# V17-6b (review of 660c1c03): the execution ledger pairs every terminal
+# INVOCATION (written here, before the call can run) with its COMPLETION
+# (written by the post_tool_call observer) by tool_call_id, so the audit can
+# tell a latest invocation whose result was lost or never came from a success.
+# Recording is best effort and never decides anything here: a missing start row
+# makes the audit read the call as unknown, never as a pass.
+def record_invocation():
+    if tool not in ("terminal", "bash", "shell"):
+        return
+    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
+    if not task or not home:
+        return
+    parent, name = os.path.split(home)
+    root, prof = os.path.split(parent)
+    if prof == "profiles" and name and root:
+        home = root
+    row = {"schema": "rhoai3.exec-ledger/v1", "phase": "start", "task": task,
+           "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(), "profile": profile,
+           "tool_call_id": str(extra.get("tool_call_id") or ""), "command": cmd,
+           "command_sha256": hashlib.sha256(cmd.encode("utf-8", errors="replace")).hexdigest()}
+    try:
+        fd = os.open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, (json.dumps(row, sort_keys=True) + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+record_invocation()
+
 def resolve_rp(p):
     s = (p or "").strip()
     if s.startswith("~"):

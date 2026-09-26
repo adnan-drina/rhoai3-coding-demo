@@ -8,9 +8,14 @@ boundary (never a parent directory).
 
 Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails: a
 later clean invocation of the *same* needle clears an earlier red
-(SOUL self-correction). "Clean" is POSITIVE evidence (V17-6b): the last
-recorded execution in the execution ledger (``<task>.exec.jsonl``, written
-by the K2 post_tool_call observer) exited 0. The runtime omits ``[exit N]``
+(SOUL self-correction). "Clean" is POSITIVE evidence (V17-6b): in the
+execution ledger (``<task>.exec.jsonl``) every terminal INVOCATION has a
+``start`` row (K2 pre hook, before the call runs) and, when it finishes, an
+``end`` row (post_tool_call observer) with the same task, run and
+tool_call_id. A mandated command passes only when its LATEST invocation has a
+recorded completion with exit 0 and the ledger records at least as many
+invocations as the official log shows; a lost, interrupted, refused or
+unrecorded latest invocation is unknown, never an older success. The runtime omits ``[exit N]``
 whenever a result is not JSON with a non-zero exit_code, so an unmarked log
 line alone is unknown, never success. Every audit writes its receipt
 ``<task>.audit.json`` (run, profile, graded log/ledger prefixes; ``running``
@@ -661,9 +666,21 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
                             "and the execution ledger records none (an unmarked line is unknown, not success)"
                             % (sid, needle, len(runs)))
             continue
-        last_exit = executed[-1].get("exit_code")
+        if len(executed) < len(runs):
+            # the log shows more invocations than the ledger recorded: the
+            # latest one may be the unrecorded one, so no recorded success
+            # stands for it (a preview can hide a run, never invent one)
+            failures.append("step %s needle %r: the official log shows %d invocation(s) and the execution ledger %d; the "
+                            "latest invocation has no recorded result (unknown, not success)" % (sid, needle, len(runs), len(executed)))
+            continue
+        latest = executed[-1]
+        last_exit = (latest["end"] or {}).get("exit_code") if latest["end"] else None
+        if latest["end"] is None:
+            failures.append("the latest invocation of needle %r (step %s, run %s) has no recorded completion: lost, "
+                            "interrupted or refused -- unknown, not success" % (needle, sid, latest["start"].get("run") or "?"))
+            continue
         if last_exit != 0:
-            failures.append("last recorded execution of needle %r did not exit 0 (step %s exit_code=%s)"
+            failures.append("the latest invocation of needle %r did not exit 0 (step %s exit_code=%s)"
                             % (needle, sid, "unknown" if last_exit is None else last_exit))
             continue
         missing = keep_missing(root, keep)
@@ -710,15 +727,27 @@ def load_exec_ledger(log: Path) -> list[dict[str, Any]] | None:
 
 
 def executions_of(ledger: list[dict[str, Any]] | None, needle: str) -> list[dict[str, Any]]:
-    """Recorded executions whose command RUNS ``needle`` (same executable rule
-    as the log lines: a grep/cat that names the script is not a run)."""
+    """The INVOCATIONS of ``needle``, in order, each with its completion:
+    ``{"start": row, "end": row | None}``. An invocation is a ``start`` row
+    (the K2 pre hook, before the call runs) whose command RUNS ``needle`` (a
+    grep/cat naming the script is a read, not a run); its completion is the
+    ``end`` row (the post_tool_call observer) with the same task, run and
+    tool_call_id. A start with no id, or no matching end, has no completion:
+    its result is unknown (lost observer, interrupted or refused call)."""
+    ends: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in ledger or []:
+        if row.get("phase") == "end" and row.get("tool_call_id"):
+            ends[(str(row.get("task") or ""), str(row.get("run") or ""), str(row["tool_call_id"]))] = row
     out = []
     for row in ledger or []:
-        cmd = str(row.get("command") or "")
-        if "--help" in cmd or not cmd:
+        if row.get("phase") != "start":
             continue
-        if is_run_of(cmd, needle):
-            out.append(row)
+        cmd = str(row.get("command") or "")
+        if not cmd or "--help" in cmd or not is_run_of(cmd, needle):
+            continue
+        cid = str(row.get("tool_call_id") or "")
+        end = ends.get((str(row.get("task") or ""), str(row.get("run") or ""), cid)) if cid else None
+        out.append({"start": row, "end": end})
     return out
 
 

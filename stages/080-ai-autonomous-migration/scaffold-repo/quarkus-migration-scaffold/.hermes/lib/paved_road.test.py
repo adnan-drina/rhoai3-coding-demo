@@ -42,18 +42,21 @@ M2_SKILLS = "  ┊ 📚 skill  bootstrap-destination\n  ┊ 📚 skill  build-wo
 M2_MINT = "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s\n"
 
 
-def intent_ledger(text: str) -> list[dict]:
-    """The execution ledger a log line's AUTHOR intended (its marker's code,
-    else 0), for tests of OTHER audit semantics. V17-6b tests pass explicit
-    ledgers instead: in production an unmarked line proves nothing."""
+def intent_ledger(text: str, run: str = "1") -> list[dict]:
+    """The execution ledger a log line's AUTHOR intended: one start/end pair
+    per invocation, the end carrying the marker's code (else 0), for tests of
+    OTHER audit semantics. V17-6b tests edit these pairs explicitly: in
+    production an unmarked line proves nothing."""
     import re as _re
     rows = []
-    for ln in text.splitlines():
+    for i, ln in enumerate(text.splitlines()):
         m = _re.search(r"\$\s+(?P<cmd>.*?)\s+\d+(?:\.\d+)?s(?:\s+\[(?P<tag>[^\]]*)\])?\s*$", ln)
         if "$" not in ln or not m:
             continue
         em = _re.fullmatch(r"exit (\d+)", m.group("tag") or "")
-        rows.append({"command": m.group("cmd"), "exit_code": int(em.group(1)) if em else (0 if m.group("tag") is None else 1)})
+        base = {"task": "t", "run": run, "tool_call_id": "c%d" % i, "command": m.group("cmd")}
+        rows.append(dict(base, phase="start"))
+        rows.append(dict(base, phase="end", exit_code=int(em.group(1)) if em else (0 if m.group("tag") is None else 1)))
     return rows
 
 
@@ -258,14 +261,46 @@ class TestAuditSemantics(unittest.TestCase):
         self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
 
     def test_red_then_recorded_clean_passes(self):
-        text = GATE + M2_SKILLS + M2_MINT
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
         ledger = intent_ledger(text)
-        ledger.insert(1, dict(ledger[-1], exit_code=1))
+        ledger[-3]["exit_code"] = 1  # the first mint's end: red, then the second is clean
         self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 0)
 
     def test_read_of_the_script_is_not_an_execution(self):
         text = GATE + M2_SKILLS + M2_MINT
-        ledger = intent_ledger(text)[:-1] + [{"command": "cat .hermes/kernel/k4_mint.py", "exit_code": 0}]
+        ledger = intent_ledger(text)
+        for row in ledger[-2:]:
+            row["command"] = "cat .hermes/kernel/k4_mint.py"
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_review_repro_latest_invocation_unrecorded_refuses(self):
+        # review of 660c1c03: log shows two invocations, ledger records only
+        # the first (exit 0) -- the older success must not stand for the latest
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        ledger = intent_ledger(text)[:-2]
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_lost_observer_result_refuses(self):
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        ledger = intent_ledger(text)[:-1]  # second mint started, its end never recorded
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_unfinished_invocation_refuses(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger.append(dict(ledger[-2], tool_call_id="c-unfinished"))  # a later start, still running
+        self.assertEqual(evaluate_audit(text + M2_MINT, self.doc, self.keep, ledger), 1)
+
+    def test_earlier_run_success_does_not_stand_for_a_later_run(self):
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        first = intent_ledger(GATE + M2_SKILLS + M2_MINT, run="28")
+        later = [dict(r, run="30", tool_call_id="late") for r in intent_ledger(M2_MINT, run="30") if r["phase"] == "start"]
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, first + later), 1)
+
+    def test_end_from_another_run_does_not_complete(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-1]["run"] = "other"
         self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
 
     def test_explicit_exit_2_refuses(self):

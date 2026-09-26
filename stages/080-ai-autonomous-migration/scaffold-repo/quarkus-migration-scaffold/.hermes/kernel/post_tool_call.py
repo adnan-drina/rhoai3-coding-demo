@@ -13,8 +13,11 @@ shell hook, matcher ``terminal``; it therefore imports nothing from the
 destination tree) and appends
 one row to ``<kanban root>/kanban/logs/<task>.exec.jsonl``:
 
-    {"run", "profile", "task", "tool_call_id", "command", "command_sha256",
-     "exit_code", "status"}
+    {"phase": "end", "run", "profile", "task", "tool_call_id", "command",
+     "command_sha256", "exit_code", "status"}
+
+paired by ``tool_call_id`` with the ``"phase": "start"`` row the K2 pre hook
+writes for the same call before it runs.
 
 ``exit_code`` is read from the tool result the runtime hands the hook; a
 result without one is recorded as ``null`` (unknown, never success). The
@@ -76,6 +79,7 @@ def record(payload: dict) -> str:
     command = str(tin.get("command") or "")
     row = {
         "schema": "rhoai3.exec-ledger/v1",
+        "phase": "end",  # the K2 pre hook wrote this call's "start" row
         "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(),
         "profile": (os.environ.get("HERMES_PROFILE") or "").strip().lower(),
         "task": task,

@@ -1821,5 +1821,35 @@ def v17_1_qualification() -> int:
     return fails
 
 
+def v17_6b_invocation_record() -> int:
+    """V17-6b (review of 660c1c03): the hook writes the INVOCATION row the
+    audit pairs with the observer COMPLETION by tool_call_id -- for an allowed
+    and for a refused terminal call alike (a refused call never completes, so
+    the audit reads it as unknown) -- and never for another tool."""
+    fails = 0
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        (home / "kanban" / "logs").mkdir(parents=True)
+        dest = Path(td) / "mod"
+        dest.mkdir()
+        env = {"HERMES_HOME": str(home / "profiles" / "reviewer"), "HERMES_KANBAN_TASK": "t_inv1",
+               "HERMES_KANBAN_RUN_ID": "5", "HERMES_PROFILE": "reviewer", "K2_BOUND_GATE_EXIT": "0"}
+        (home / "profiles" / "reviewer").mkdir(parents=True)
+        run("ls %s" % dest, [str(dest)], cwd=str(dest), extra_env=env, extra_payload={"extra": {"tool_call_id": "call-a"}})
+        run("cat /etc/shadow", [str(dest)], cwd=str(dest), extra_env=env, extra_payload={"extra": {"tool_call_id": "call-b"}})
+        run("", [str(dest)], cwd=str(dest), tool="write_file", extra_env=env, extra_input={"path": str(dest / "x")},
+            extra_payload={"extra": {"tool_call_id": "call-c"}})
+        ledger = home / "kanban" / "logs" / "t_inv1.exec.jsonl"
+        rows = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()] if ledger.exists() else []
+        got = [(r.get("phase"), r.get("tool_call_id"), r.get("run"), r.get("profile")) for r in rows]
+        want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer")]
+        if got != want:
+            print("FAIL v17_6b_invocation_record", got, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v17_6b_invocation_record")
+    return fails
+
+
 if __name__ == "__main__":
-    raise SystemExit(main() + v17_1_qualification())
+    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record())
