@@ -201,11 +201,13 @@ def loads(text: str) -> Any:
 
 
 def load_yaml(path: Path) -> Any:
-    """Load YAML: PyYAML when available, else the strict subset parser."""
-    text = Path(path).read_text(encoding="utf-8")
-    try:
-        import yaml  # type: ignore
+    """Load YAML with the strict subset parser, always.
 
-        return yaml.safe_load(text)
-    except ImportError:
-        return loads(text)
+    The parser is part of the planning input, so it cannot depend on what
+    happens to be importable: the workspace runtime has no PyYAML, and a
+    developer or authority python that did got a DIFFERENT reading of the same
+    frozen file -- the golden decisions.yaml is read by this parser and
+    refused by PyYAML (line 38, "mapping values are not allowed here"), so the
+    same run could admit in the workspace and refuse elsewhere (repeatability
+    contract: same frozen inputs, same plan)."""
+    return loads(Path(path).read_text(encoding="utf-8"))

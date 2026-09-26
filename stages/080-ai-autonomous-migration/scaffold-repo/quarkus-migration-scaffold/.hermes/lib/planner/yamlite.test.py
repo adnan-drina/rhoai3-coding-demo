@@ -41,6 +41,27 @@ def main() -> int:
         ]
     }:
         return _fail("quoted valueMap keys must parse without PyYAML: %r" % got)
+    # the parser is a planning input: load_yaml reads the golden decisions.yaml
+    # with this parser whatever else is importable (PyYAML refuses that file)
+    import sys
+    import types
+    from pathlib import Path as _P
+    from planner.yamlite import load_yaml
+    decisions = _P(__file__).resolve().parents[3] / "decisions.yaml"
+    want = loads(decisions.read_text(encoding="utf-8"))
+    fake = types.ModuleType("yaml")
+    fake.safe_load = lambda _t: {"parsed": "by an importable yaml module"}
+    prev = sys.modules.get("yaml")
+    sys.modules["yaml"] = fake
+    try:
+        got = load_yaml(decisions)
+    finally:
+        if prev is None:
+            sys.modules.pop("yaml", None)
+        else:
+            sys.modules["yaml"] = prev
+    if got != want or not isinstance(got, dict) or not got:
+        return _fail("load_yaml must use the subset parser even when a yaml module is importable")
     return 0
 
 

@@ -389,10 +389,12 @@ unresolved push effects of finished runs by identity.
 - `k4_graph.py publish --plan-file` exists for the runtime qualification.
   It is honoured in `qualification` mode only, which no factory run can
   enter.
-- Found while qualifying (not changed here): the golden `decisions.yaml`
-  parses with the harness's `yamlite`, but PyYAML rejects it. `load_yaml`
-  prefers PyYAML when importable, so a `python3` with PyYAML on its path
-  refuses the file.
+- Resolved 2026-09-26: the golden `decisions.yaml` parses with the harness's
+  `yamlite` but PyYAML rejects it, and `load_yaml` used to prefer PyYAML when
+  importable, so the same frozen file admitted in the workspace (no PyYAML)
+  and refused on any python that had it. `load_yaml` now always uses the
+  subset parser: the parser is a planning input and may not depend on the
+  environment (`yamlite.test.py`).
 
 ## 8a. The live qualification the platform still owes
 
