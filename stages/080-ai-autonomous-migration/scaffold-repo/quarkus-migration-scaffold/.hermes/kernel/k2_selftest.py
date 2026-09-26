@@ -1793,6 +1793,10 @@ def v17_1_qualification() -> int:
         expect("ls %s; git checkout -- .hermes/pins.json" % dest, "v17_1_q_git_mutation_after_separator", True, "refused",
                extra_env=wk)
         expect("cat %s/../../etc/passwd; echo x" % dest, "v17_1_q_traversal_then_separator", True, "outside allow root")
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect("ls %s%secho ok" % (dest, sep), "v17_1_q_allowed_glued_both_%d" % i, False)
+            expect("ls %s%scat /etc/shadow" % (dest, sep), "v17_1_q_outside_glued_both_%d" % i, True, "outside allow root")
+        expect("ls %s/src;%s/../../etc/passwd" % (dest, dest), "v17_1_q_traversal_glued_both", True, "outside allow root")
     return fails
 
 
