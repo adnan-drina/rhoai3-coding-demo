@@ -24,7 +24,7 @@ from typing import Any
 
 from planner.canonical import digest, is_sha256, load_json, sha256_file
 from planner import decided_repairs
-from planner.decisions import missing_decisions, plan_semantics as plan_semantics_mode
+from planner.decisions import missing_decisions, plan_semantics as plan_semantics_mode, plan_semantics_pin_gap
 from planner.paths import ADMISSION_RECEIPT, BOOTSTRAP_RECEIPT, DECIDED_REPAIRS_RECEIPT, DECISIONS, EVIDENCE_BUNDLE, LOOP_STEPS, SCHEMAS_DIR, WORKLIST, contract_files
 from planner.pins import activation_gaps, activation_record, digestable_pins, load_pins, pin_gaps
 from planner.schema_lite import load_schema, validate
@@ -79,6 +79,11 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
     else:
         for gap in missing_decisions(decisions, root):
             block(gap["class"], gap["subject"], gap["detail"])
+        # the plan semantics is the run's, as its destination was created
+        # with it: a later decisions.yaml edit may not flip it
+        pin = plan_semantics_pin_gap(root, decisions)
+        if pin:
+            block("PLAN_SEMANTICS_REPINNED", "decisions.loop.plan_semantics", pin)
     for g in activation_gaps(pins, bundle_digest):
         block("PLANNER_NOT_ACTIVATED" if "NOT_ACTIVATED" in g else "PLANNER_PILOT_SEAL", "pins.planner", g)
     for g in pin_gaps(pins, bundle.get("producers") or {}):

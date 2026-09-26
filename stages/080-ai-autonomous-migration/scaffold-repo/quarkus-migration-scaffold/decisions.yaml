@@ -102,9 +102,18 @@ thresholds:
 # Cost-guarded: it is skipped when the tree's parity receipt is already bound
 # to this candidate digest, and a parity CARD still runs its own scoped
 # comparison. Absent means off, which is the v9 behaviour.
+# Plan semantics (v1): the repeatable initial M3 plan -- compile-obligation
+# identity from the compiler's structured diagnostic in a pinned locale, a
+# clean initial analysis, the known migration responsibilities derived from
+# the frozen source before any failure (planner.source_requirements), and a
+# semantic plan fingerprint sealed by admission beside the exact digests.
+# Selected here for NEW runs: a run keeps the value its destination's initial
+# commit carried (admission refuses a later flip, PLAN_SEMANTICS_REPINNED), so
+# every earlier run -- created without the key -- stays off.
 loop:
   unit_formation: v1
   runtime_feedback: v1
+  plan_semantics: v1
 
 # Repairs accepted ADRs already made, carried into a FRESH run as bootstrap
 # transformations (ADR-019 sections 2 and 3) instead of mid-run Operator steps.

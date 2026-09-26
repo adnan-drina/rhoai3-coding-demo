@@ -432,7 +432,17 @@
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
         "note": "not among the parameter kinds the Spring Web guide lists; symbol_renames maps it to jakarta.ws.rs.core.UriBuilder reached from an injected jakarta.ws.rs.core.UriInfo (uriInfo.getBaseUriBuilder(), references/rest-annotations.md rest-location-uri).",
-        "action": "the compat layer does not bind a UriComponentsBuilder: replace the parameter with @Context jakarta.ws.rs.core.UriInfo uriInfo and build the Location as uriInfo.getBaseUriBuilder().path(<the source's own path template>).build(<the id values>) -- never new URI(String) (its checked URISyntaxException is vetoed) and never URI.create of a relative path (it drops the base the scenario compares) (references/rest-annotations.md rest-location-uri)."
+        "action": "the compat layer does not bind a UriComponentsBuilder: replace the parameter with @Context jakarta.ws.rs.core.UriInfo uriInfo and build the Location as uriInfo.getBaseUriBuilder().path(<the source's own path template>).build(<the source's own expansion arguments>) -- never new URI(String) (its checked URISyntaxException is vetoed) and never URI.create of a relative path (it drops the base the scenario compares). Pass each argument null-tolerantly, exactly as the source expanded it: Spring's buildAndExpand(x) expands a null x as an EMPTY segment, JAX-RS build(x) throws IllegalArgumentException for it (a 500 after the row is committed), so write build(x == null ? \"\" : x) or build(java.util.Objects.toString(x, \"\")) -- never String.valueOf(x) (it expands \"null\") and never a different value such as the saved entity's id instead of the source's own expression unless decisions.yaml location_arguments authorizes that substitution (references/rest-annotations.md rest-location-uri).",
+        "location_translation": {
+          "rule": "V17-5: the URI template expansion is translated argument by argument; the Location the source built, a null argument included, is the Location the destination builds",
+          "from": "<builder>.path(<template>).buildAndExpand(<arg>...)",
+          "to": "uriInfo.getBaseUriBuilder().path(<template>).build(<arg> == null ? \"\" : <arg>, ...)",
+          "null_argument": "Spring UriComponentsBuilder.buildAndExpand expands a null value as an empty segment (201 with /api/x/); JAX-RS UriBuilder.build(Object...) throws IllegalArgumentException for a null value, so every argument the source did not pass as a non-null literal is passed null-tolerantly: `a == null ? \"\" : a`, `a != null ? a : \"\"`, `Objects.toString(a, \"\")` or `Objects.requireNonNullElse(a, \"\")`; String.valueOf(a) is NOT null-tolerant (it expands \"null\")",
+          "substitution": "the argument stays the source's own expression (the same parameter, or a local of the same type, and the same accessors); another value -- typically the saved entity's id where the source expanded the request DTO's -- is a behaviour change unless decisions.yaml location_arguments.substitutions records it with an accepted ADR",
+          "checked_by": "worklist._location_verdict: the candidate handler's JAX-RS expansions (DestModel uri_expansions) against the frozen source handler's buildAndExpand arguments",
+          "source": "https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/web/util/UriComponentsBuilder.html#buildAndExpand-java.lang.Object...- (expand; UriComponents.expand encodes a null value as an empty string) and https://jakarta.ee/specifications/restful-ws/3.1/apidocs/jakarta.ws.rs/jakarta/ws/rs/core/uribuilder#build(java.lang.Object...) (IllegalArgumentException if any of the values is null)",
+          "evidence": "v17 PetTypeRestController.addPetType: buildAndExpand(petType.getId()) on the request DTO answered 201 on the source; the migrated build(petType.getId()) threw IllegalArgumentException (Template parameter null: id) and answered 500 after the row was committed (tmp/v17-run-20260926/blockers.md V17-5)"
+        }
       },
       "jakarta.validation.Valid": {
         "kind": "annotation",
@@ -446,6 +456,123 @@
         "note": "the pre-Jakarta spelling of jakarta.validation.Valid (package_renames javax.validation -> jakarta.validation); the same row.",
         "action": "rename the import to jakarta.validation.Valid (package_renames), then the same first action as jakarta.validation.Valid."
       }
+    }
+  },
+  "repository_behaviour": {
+    "note": "Where the behaviour of an owed fragment method COMES FROM in the source (V17-3). A <Fragment>Impl owed under spring-data-fragment-impl/v1 must carry the SELECTED source behaviour of each member: the Spring Data repository the decided build profiles select (decisions.build_profiles.active; a type gated by @Profile to another profile is never the behaviour source, even when its text implements the same interface), and within it, in Spring Data's own precedence, (1) a custom implementation fragment the repository also extends (its <Override>Impl method), (2) a @Query the repository declares for the member, (3) the CRUD method of the repository base implementation the member's name and arity select, (4) a query derived from the method name. Anything else is unresolved, never guessed. planner.source_requirements.repository_behaviour reads this block and the frozen structural model; nothing here names a specimen.",
+    "source": "https://docs.spring.io/spring-data/jpa/reference/repositories/custom-implementations.html (fragments take precedence over the base repository and query derivation); https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html (@Query, derived queries); https://docs.spring.io/spring-data/jpa/reference/repositories/core-concepts.html (CrudRepository methods served by SimpleJpaRepository)",
+    "query_annotations": [
+      "org.springframework.data.jpa.repository.Query"
+    ],
+    "modifying_annotations": [
+      "org.springframework.data.jpa.repository.Modifying"
+    ],
+    "write_calls": {
+      "note": "a source override is a WRITE when its recorded calls change persistent state through the JPA API (the effect is then proven by a committed read-back, not by a read)",
+      "owners": [
+        "javax.persistence.EntityManager",
+        "jakarta.persistence.EntityManager",
+        "javax.persistence.Query",
+        "jakarta.persistence.Query",
+        "javax.persistence.TypedQuery",
+        "jakarta.persistence.TypedQuery"
+      ],
+      "names": [
+        "persist",
+        "merge",
+        "remove",
+        "executeUpdate"
+      ]
+    },
+    "crud_defaults": {
+      "save/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.save: persist a NEW entity (null id / version), merge an existing one, inside a read-write transaction; the change is committed when the transaction ends, so a later request reads it"
+      },
+      "saveAll/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.saveAll: save each element as save/1 does, in one transaction"
+      },
+      "delete/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.delete: remove the entity (merged first when detached; a detached entity that no longer exists is ignored) inside a read-write transaction; the removal is committed, cascades as the mapping declares"
+      },
+      "deleteById/1": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.deleteById: find by id and delete/1 it; a missing id is ignored (Spring Data 3) or raises EmptyResultDataAccessException (Spring Data 2) -- the source's own version decides"
+      },
+      "deleteAll/0": {
+        "kind": "write",
+        "semantics": "SimpleJpaRepository.deleteAll: delete/1 every entity, in one transaction"
+      },
+      "findAll/0": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.findAll: every entity of the domain type, read-only transaction"
+      },
+      "findById/1": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.findById: the entity with that id; the declared return type decides Optional vs nullable"
+      },
+      "findAllById/1": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.findAllById: the entities with those ids"
+      },
+      "existsById/1": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.existsById"
+      },
+      "count/0": {
+        "kind": "read",
+        "semantics": "SimpleJpaRepository.count"
+      }
+    },
+    "derived_query_prefixes": [
+      "find",
+      "read",
+      "get",
+      "query",
+      "search",
+      "stream",
+      "count",
+      "exists",
+      "delete",
+      "remove"
+    ]
+  },
+  "persistence_behaviour_translations": {
+    "note": "Behaviour a LITERAL port of source persistence code does not preserve on the destination's persistence provider (V17-3). Each row is matched against the ORDERED calls the frozen structural model records for the selected source method (owner type and method name, pre-order); a match adds an obligation to that owed member: port the BEHAVIOUR (the committed effects the source produced), not the text. Evidence is cited per row.",
+    "hibernate6-flush-before-query": {
+      "when": {
+        "first": {
+          "owners": [
+            "javax.persistence.EntityManager",
+            "jakarta.persistence.EntityManager"
+          ],
+          "names": [
+            "remove"
+          ]
+        },
+        "then_any": {
+          "owners": [
+            "javax.persistence.Query",
+            "jakarta.persistence.Query",
+            "javax.persistence.TypedQuery",
+            "jakarta.persistence.TypedQuery",
+            "javax.persistence.EntityManager",
+            "jakarta.persistence.EntityManager"
+          ],
+          "names": [
+            "executeUpdate",
+            "getResultList",
+            "getSingleResult",
+            "getResultStream",
+            "createNativeQuery"
+          ]
+        }
+      },
+      "obligation": "the source removes the entity and THEN queries or bulk-deletes its dependents. Hibernate 6 (the destination's ORM) flushes the pending removal before an AUTO-flush query or a native/bulk statement runs, so the literal order deletes the parent row while dependents still reference it (TransientPropertyValueException, or a foreign-key violation). Preserve the source's committed effects: delete or detach the dependents first, then remove the entity, in one transaction; the check is the committed state after the request (the row and its dependents gone), never the order of the source text.",
+      "evidence": "v17 (spring-petclinic-rest-legacy-v17, 2026-09-26): the literal port of the PetType and Specialty override deletes failed with TransientPropertyValueException / FK vet_specialties; reordering dependents-first matched the captured source effects (204, row and dependents gone) and 43/43 repository write behaviours passed on committed effects",
+      "source": "https://docs.jboss.org/hibernate/orm/6.2/userguide/html_single/Hibernate_User_Guide.html#flushing-auto (AUTO flush before a query that may be affected; before any native query)"
     }
   },
   "validation_helpers": {
@@ -534,11 +661,23 @@
               "why": "the model's constraints (@NotNull, @Size, nested @Valid) are what the handler's validator reads; generateJsonCreator only removes the required-args constructor, a container property stays initialized to an empty list, so the constraint on it still holds for a body that omits it"
             }
           },
-          "evidence": "the documented jaxrs-spec option (source above); a v10 accepted repair made exactly this edit (commit 7df34470, c:9c5fb3d1b7e3) and v16 verified the regenerated DTO loses its @JsonCreator constructor; skills/migration/fix-until-green/scripts/handler-validation-package.test.py packages both settings"
+          "evidence": "the documented jaxrs-spec option (source above); a v10 accepted repair made exactly this edit (commit 7df34470, c:9c5fb3d1b7e3) and v16 verified the regenerated DTO loses its @JsonCreator constructor; skills/migration/fix-until-green/scripts/handler-validation-package.test.py packages both settings",
+          "binding": {
+            "kind": "creator",
+            "while": "generateJsonCreator is not false (default true)",
+            "omitted_required": "Jackson refuses the body before the handler (an empty 400 at the boundary)",
+            "source": "https://openapi-generator.tech/docs/generators/jaxrs-spec (generateJsonCreator)"
+          }
         },
         "spring": {
           "source": "https://openapi-generator.tech/docs/generators/spring",
-          "models": "the legacy build's generator (library spring-boot): models bind through setters; no required-args constructor unless generatedConstructorWithRequiredArgs is set (default false)."
+          "models": "the legacy build's generator (library spring-boot): models bind through setters; no required-args constructor unless generatedConstructorWithRequiredArgs is set (default false).",
+          "binding": {
+            "kind": "setters",
+            "omitted_required": "the property stays at its initial value (null, or an initialized empty container) and only the model's bean-validation constraints, checked by the handler's validation, decide the response",
+            "note": "generatedConstructorWithRequiredArgs, where a version has it, adds a constructor without @JsonCreator; Jackson still binds through the no-args constructor and the setters",
+            "source": "https://openapi-generator.tech/docs/generators/spring"
+          }
         }
       }
     }
@@ -609,6 +748,15 @@
             "the bare rename fails augmentation",
             "a relative Location drops the application base"
           ]
+        },
+        {
+          "check": "unit:location-null-arguments",
+          "checker": "planner.worklist._location_verdict",
+          "refuses": [
+            "a bare build(<dto>.getId()) where the source expanded a possibly-null value (IllegalArgumentException -> 500)",
+            "the saved entity's id substituted for the source's expression without a decisions.yaml location_arguments authorization",
+            "String.valueOf(<arg>) (expands \"null\")"
+          ]
         }
       ],
       "refuse": [
@@ -662,7 +810,17 @@
           "plugin_versions": [
             "7.25.0"
           ],
-          "source_generator": "spring"
+          "libraries": [
+            "quarkus"
+          ],
+          "source_generator": "spring",
+          "source_libraries": [
+            "spring-boot"
+          ],
+          "source_plugin_versions": [
+            "5.2.1"
+          ],
+          "evidence": "v17 (tmp/v17-run-20260926/blockers.md V17-4): the source spring/spring-boot 5.2.1 model answered sc_create-owners (a body without pets and id) 201; the destination jaxrs-spec/quarkus 7.25.0 model with the default generateJsonCreator answered an empty 400. A generator, library or version outside these lists is UNRESOLVED, never assumed to bind the same way."
         }
       },
       "implementation": {
@@ -684,14 +842,17 @@
             "omitted",
             "null",
             "empty",
-            "invalid collection -- distinct where the source distinguishes them"
-          ]
+            "invalid"
+          ],
+          "case_binding": "per required property of each request-body model: OMITTED (the key absent), NULL (the key with null), EMPTY (an empty string, array or object) and INVALID (a negative capture whose value for the property differs from the accepted capture), each bound to the corpus scenarios that send it; a case no capture sends is an UNRESOLVED verification responsibility -- the source's answer is never invented"
         }
       ],
       "refuse": [
         "a generator name or plugin version the catalog does not qualify",
-        "no recorded source request body to compare"
-      ]
+        "no recorded source request body to compare",
+        "the source build's generator cannot be read (the legacy pom is not reachable): its binding is unknown"
+      ],
+      "static_trigger": "plan semantics v1: the V16-8 condition is decided from files on disk at M2 -- the destination plugin's generator, library, version and effective generateJsonCreator, the source build's generator (the frozen legacy pom), the spec's `required` list (or the generated @JsonCreator) of every request-body model, and the corpus's recorded source bodies. A required property an ACCEPTED source capture (2xx) omits plans the pom obligation (worklist.static_generated_body_items, rule PARITY_GENERATED_BODY, gate plan) before any create scenario runs; no failing scenario is needed."
     },
     "spring-data-fragment-impl": {
       "version": "1",
@@ -709,6 +870,25 @@
           "refuses": [
             "a fragment member no implementation declares"
           ]
+        },
+        {
+          "check": "unit:fragment-behaviour-bodies",
+          "checker": "planner.worklist.owed_member_body",
+          "refuses": [
+            "an owed member whose whole body is one throw (any exception type)",
+            "an owed member with an empty body (a no-op mutator)",
+            "an owed member that only returns a placeholder (null, a literal, an empty collection or Optional)",
+            "an owed member that only delegates to a private helper that is itself one of those"
+          ],
+          "behaviour_source": "compat-mapping repository_behaviour: the selected profile's repository, its override fragment, @Query or CRUD default; never an inactive-profile implementation"
+        },
+        {
+          "check": "behavior:repository-effects",
+          "checker": "planner.source_requirements.repository_verification (planned); M4 parity over the corpus scenarios that reach the member",
+          "refuses": [
+            "reads pass, writes do nothing: a write member accepted without a committed effect read back across a request boundary"
+          ],
+          "unresolved_when": "no captured scenario reaches the member's write effect: the responsibility stays open (coverage unresolved), never PASS"
         },
         {
           "check": "structure:single-injectable-implementation",

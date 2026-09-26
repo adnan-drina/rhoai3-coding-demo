@@ -666,7 +666,43 @@ def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
         doc = load_steps(steps_path)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return _fail("steps.json: %s" % exc)
-    return evaluate_audit(text, doc, root)
+    rc = evaluate_audit(text, doc, root)
+    write_audit_receipt(log, rc)
+    return rc
+
+
+AUDIT_RECEIPT_SUFFIX = ".audit.json"
+
+
+def audit_receipt_path(log: Path) -> Path:
+    """<logs>/<task>.audit.json beside <logs>/<task>.log."""
+    return log.with_name(log.stem + AUDIT_RECEIPT_SUFFIX)
+
+
+def write_audit_receipt(log: Path, rc: int) -> None:
+    """V17-6: the audit's own result, bound to the native run and profile that
+    ran it. The official log cannot say an audit passed: the runtime stamps
+    ``[exit N]`` only when the terminal result parses as JSON with a non-zero
+    exit_code (agent/display.py _detect_tool_failure), so v17 M4 run 30's
+    reviewer audit exited 1 twice and its lines carry no marker. K2's reviewer
+    fence and complete gate read this receipt, never an absent marker."""
+    doc = {
+        "schema": "rhoai3.paved-road-audit-receipt/v1",
+        "task": log.stem,
+        "rc": int(rc),
+        "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(),
+        "profile": (os.environ.get("HERMES_PROFILE") or "").strip().lower(),
+    }
+    if not _OFFICIAL_KANBAN_LOG.search(str(log).replace("\\", "/")):
+        return  # a land-time fixture log gets no receipt (and dirties no tree)
+    target = audit_receipt_path(log)
+    try:
+        tmp = target.with_name(target.name + ".tmp")
+        tmp.write_text(json.dumps(doc, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        # no receipt means "not green": the fence stays open, never latched
+        pass
 
 
 def dest_skill_mds(skills_root: Path) -> list[Path]:

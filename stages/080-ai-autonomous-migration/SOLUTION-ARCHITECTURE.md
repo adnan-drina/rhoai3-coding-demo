@@ -204,6 +204,7 @@ Fail-closed boundaries, each with a permanent negative test:
 | `STRUCTURE_MISSING` / `ZERO_ENTRY_POINTS` | no admitted structural evidence, or nothing to verify parity against |
 | `PLANNER_NOT_ACTIVATED` / `PLANNER_PILOT_SEAL` | the activation gate (§9) |
 | `MISSING_DECISION` / `ADR_NOT_ACCEPTED` / `PLATFORM_UNKNOWN` | `decisions.yaml` incomplete or citing an unaccepted ADR |
+| `PLAN_SEMANTICS_REPINNED` | `decisions.yaml` `loop.plan_semantics` differs from the value the destination's initial commit carried (§7.1): a run keeps the plan semantics it was created with |
 | `BOOTSTRAP_MISSING` / `BOOTSTRAP_STALE` | no deterministic baseline, or one bound to another bundle |
 | `MEASURE_UNKNOWN` / `WORKLIST_STALE` | a tool did not run in this verification, or the list belongs to another bundle |
 | `BOOTSTRAP_BLOCKED` | the bootstrap recorded a non-trivial launcher or an unmapped dependency |
@@ -211,12 +212,19 @@ Fail-closed boundaries, each with a permanent negative test:
 
 `ADMITTED` means "the loop may run its next step from this exact state". `COMPAT_FAIL` means the bundle or the work list fails its schema: a planner defect. The receipt digest binds every idempotency key and every K1 body.
 
-### 7.1 Repeatable initial plan (plan semantics v1, opt-in per run)
+### 7.1 Repeatable initial plan (plan semantics v1, run-pinned)
 
-`decisions.yaml` `loop.plan_semantics: v1` (sealed with `decisions.yaml`;
-absent means off, so every existing run keeps its identities and plan) makes
-the same frozen application, decisions and pinned toolchain produce the same
-initial logical M3 plan:
+`decisions.yaml` `loop.plan_semantics: v1` makes the same frozen
+application, decisions and pinned toolchain produce the same initial logical
+M3 plan. The golden `decisions.yaml` selects it, so every NEW run's
+destination is created with it; a run keeps the value its destination's
+initial (scaffolding) commit carried -- every earlier run was created without
+the key and stays off -- and admission refuses a later edit that flips it
+(`PLAN_SEMANTICS_REPINNED`, `decisions.plan_semantics_pin_gap`), so the
+selection is immutable per run and never an environment fallback.
+`run-preflight.sh` requires it for a new run. `PLAN_RECIPE_MISSING` applies
+to repair requirements only (`source_requirements.RECIPE_RULES`); behaviour
+verification and decided configuration are judged by their checks.
 
 - **Stable producer identity.** `JdkDiagnostics` renders in the ROOT locale
   (the JVM-locale text is kept as `message_jvm_locale`), emits the column and
@@ -238,12 +246,53 @@ initial logical M3 plan:
   Partial evidence is unresolved, never absent. Each requirement names a
   qualified recipe (`compat-mapping.json` `migration_recipes`) and the
   existing checks that refuse its broken forms.
+- **Repository behaviour (V17-3).** A fragment parent the decided build
+  profiles serve through Spring Data in the source (no implementation of
+  their own) is an OWED `<Parent>Impl` whose every member carries its
+  SELECTED source behaviour (`source_requirements.repository_behaviour`,
+  catalog `repository_behaviour`): the override fragment's method, the
+  repository's `@Query`, the base repository's CRUD semantics or a derived
+  query -- never the implementation another profile selects, which is named
+  as NOT the behaviour source. A source method whose ordered calls a
+  `persistence_behaviour_translations` row matches carries that obligation
+  (Hibernate 6 flushes a pending removal before a query or bulk statement:
+  port the committed effects, dependents first). Stub bodies (a throw of
+  any type, an empty mutator, a placeholder return, a private helper or a
+  delegation cycle hiding one) are refused at the checkpoint from the
+  compiler model's `body_shape`. Functional completion is separate: every
+  member plans a verification row (`repository_verification`: a read, or a
+  write proven by a scenario that reads the committed effect back in another
+  request; a member no captured scenario reaches stays unresolved). The same
+  rows are sealed on the serial loop's fragment unit
+  (`worklist.fragment_behaviour_rows`), rendered by the brief, and recorded
+  on acceptance as `acceptance: structural`, `functional: owed`
+  (`verification/loop/owner-debts.json`). A runtime failure a later card
+  meets whose first product frame is in that owner's accepted file is
+  charged to the owner (`VERIFICATION_PENDING runtime-cause-owned-elsewhere`,
+  no attempt spent), never to the card that saw it.
+- **Statically decided repairs (V17-4, V17-5).** The generated-body
+  obligation (V16-8) no longer waits for a create scenario to fail: the
+  destination and source generators are qualified as a pair
+  (`worklist.generator_qualification`: generator, library and plugin
+  version on both sides, the source read from the frozen legacy pom), and a
+  required property an accepted source capture omits plans the pom card at
+  gate `plan` before the first loop step. Each required property's
+  omitted/null/empty/invalid cases are bound to the captures that send them;
+  a case none sends is unresolved. A handler that built its Location with
+  `buildAndExpand` carries a null-argument check (`DestModel`
+  `uri_expansions`, `worklist._location_verdict`) and its create entry
+  point a Location verification responsibility, unresolved without a
+  capture.
 - **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
   gives every requirement exactly one account: joined to the finding outcome
   that already owns the same file, a bounded requirement outcome (planned
   units, no grant; `UNIT_OVERSIZE` otherwise), a satisfied disposition with its
   receipt, or an explicit unresolved responsibility. The owner's
-  `requirement_checks` are not met by an empty work list.
+  `requirement_checks` are not met by an empty work list: the outcome
+  board's acceptance recomputes them on the committed tree
+  (`planner/requirement_checks.py`) and records the passing ones; a check
+  with no producer yet stays unknown, so its owner cannot be accepted
+  (OUTCOME-BOARD-CONTRACT §5.1 lists which are measured).
 - **Admission.** The receipt seals `seals.plan_semantics` (input and plan
   fingerprints) beside the exact digests and adds `PLAN_CONTRACT`,
   `PLAN_ACCEPTANCE_MISSING` and `PLAN_RECIPE_MISSING`. The first ADMITTED
@@ -258,10 +307,19 @@ initial logical M3 plan:
 
 Proof levels actually run are recorded by
 `skills/planning/build-worklist/scripts/qualify-repeatability.py`:
-recorded-evidence replay on SYNTHETIC specimens and producer replay of the
-JDK diagnostics and decided-repairs producers. The MTA, JDK-model and build
-producers on a preserved pinned PetClinic specimen have not been replayed.
-Planning equality does not authorize execution or establish behavioural PASS.
+recorded-evidence replay on SYNTHETIC specimens (every WP8 matrix row,
+including source/profile/generator deltas, dependency cycles, ambiguous
+shared ownership and mixed protocol state); with `--specimen` the same
+consumers on PRESERVED PetClinic M1 evidence (two reordered copies: identical
+requirements and logical graph, distinct run bindings); with `--source` the
+M1 structure producer (JdkModelExtract after an offline `mvn compile`)
+re-executed on two clean copies of the frozen PetClinic source -- identical
+structure, and requirements identical to those derived from the preserved
+run's evidence (2026-09-26). Producer replay also covers the JDK diagnostics,
+initial-analysis boundary, decided-repairs, declared-reference, V17-3/4/5
+checkpoint and brief cases. The MTA CLI and the Maven build/test producers
+were not re-executed on the specimen. Planning equality does not authorize
+execution or establish behavioural PASS.
 
 ---
 

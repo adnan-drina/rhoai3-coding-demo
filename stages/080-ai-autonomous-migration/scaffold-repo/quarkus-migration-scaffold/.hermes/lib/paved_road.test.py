@@ -376,6 +376,42 @@ class TestAuditLogMustBeOfficial(unittest.TestCase):
         self.assertFalse(is_allowed_audit_log(Path("/tmp/worker.log")))
 
 
+class TestAuditReceipt(unittest.TestCase):
+    """V17-6: the audit writes its own result, bound to the native run and
+    profile, beside the official log; K2 reads that, never an absent marker."""
+
+    def _audit_into(self, logs: Path, fixture: str, env: dict) -> tuple[int, dict]:
+        log = logs / "t_rcpt0001.log"
+        log.write_text((M2 / "fixtures" / fixture / "official.log").read_text(encoding="utf-8"), encoding="utf-8")
+        with patch.dict(os.environ, env, clear=False):
+            with redirect_stderr(io.StringIO()):
+                rc = audit_paths(log, M2 / "fixtures" / fixture, M2 / "steps.json")
+        return rc, json.loads((logs / "t_rcpt0001.audit.json").read_text(encoding="utf-8"))
+
+    def test_green_audit_receipt_names_run_and_profile(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            rc, doc = self._audit_into(logs, "green-m2", {"HERMES_KANBAN_RUN_ID": "32", "HERMES_PROFILE": "Reviewer"})
+            self.assertEqual(rc, 0)
+            self.assertEqual((doc["task"], doc["rc"], doc["run"], doc["profile"]), ("t_rcpt0001", 0, "32", "reviewer"))
+
+    def test_red_audit_receipt_records_the_red(self):
+        red = [p.name for p in sorted((M2 / "fixtures").iterdir()) if p.is_dir() and p.name != "green-m2"
+               and (p / "official.log").is_file()]
+        self.assertTrue(red, "paved-road-m2 has no red fixture to audit")
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            rc, doc = self._audit_into(logs, red[0], {"HERMES_KANBAN_RUN_ID": "30", "HERMES_PROFILE": "reviewer"})
+            self.assertNotEqual(rc, 0)
+            self.assertEqual(doc["rc"], rc)
+
+    def test_fixture_log_gets_no_receipt(self):
+        audit_paths(M2 / "fixtures" / "green-m2" / "official.log", M2 / "fixtures" / "green-m2", M2 / "steps.json")
+        self.assertFalse((M2 / "fixtures" / "green-m2" / "official.audit.json").exists())
+
+
 M4 = HERMES_DIR / "skills" / "paved-road" / "paved-road-m4"
 RUNNER_REL = ".hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh"
 RUNNER_LINE = "  ┊ 💻 $         bash %s /projects/modernized  44.8s\n" % RUNNER_REL

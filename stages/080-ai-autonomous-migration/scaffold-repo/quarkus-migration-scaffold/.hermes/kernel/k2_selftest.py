@@ -664,6 +664,14 @@ def main() -> int:
         (profile_root / "kanban" / "logs" / "t_ok.log").write_text(
             audit_ok, encoding="utf-8"
         )
+
+        def audit_receipt(logs, task, rc, profile="reviewer", run_id=""):
+            # what paved_road.write_audit_receipt writes beside the official log
+            (logs / ("%s.audit.json" % task)).write_text(json.dumps(
+                {"schema": "rhoai3.paved-road-audit-receipt/v1", "task": task, "rc": rc,
+                 "run": run_id, "profile": profile}), encoding="utf-8")
+
+        audit_receipt(profile_root / "kanban" / "logs", "t_ok", 0)
         r = run(
             "hermes kanban complete t_ok",
             roots,
@@ -710,6 +718,7 @@ def main() -> int:
         (profile_root / "kanban" / "logs" / "t_red.log").write_text(
             audit_red, encoding="utf-8"
         )
+        audit_receipt(profile_root / "kanban" / "logs", "t_red", 1)
         r = run(
             "hermes kanban complete t_red",
             roots,
@@ -731,6 +740,37 @@ def main() -> int:
         (default_home / "kanban" / "logs" / "t_def.log").write_text(
             audit_ok.replace("t_ok.log", "t_def.log"), encoding="utf-8"
         )
+        audit_receipt(default_home / "kanban" / "logs", "t_def", 0)
+        # V17-6 (v17 M4 t_4c09775b): an unmarked audit line is not a pass, and
+        # only the CURRENT reviewer run's own audit latches the fence.
+        v17_logs = profile_root / "kanban" / "logs"
+        (v17_logs / "t_v17.log").write_text(audit_ok.replace("t_ok.log", "t_v17.log"), encoding="utf-8")
+        v17_env = {"HERMES_PROFILE": "reviewer", "HERMES_HOME": str(profile_home), "HERMES_KANBAN_TASK": "t_v17",
+                   "HERMES_KANBAN_RUN_ID": "32", "K2_BOUND_GATE_EXIT": "0"}
+        for label, receipt in (("no_receipt_unmarked_line", None),
+                               ("implementer_self_audit", ("implementer", "28", 0)),
+                               ("earlier_reviewer_run", ("reviewer", "30", 0)),
+                               ("current_run_red", ("reviewer", "32", 1))):
+            rp = v17_logs / "t_v17.audit.json"
+            if rp.exists():
+                rp.unlink()
+            if receipt:
+                audit_receipt(v17_logs, "t_v17", receipt[2], profile=receipt[0], run_id=receipt[1])
+            r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
+            r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+            if (r.get("action") == "block" and "already exited 0" in (r.get("message") or "")) or r2.get("action") != "block":
+                print("FAIL v17_6_%s (fence must stay open, complete refused)" % label, r, r2, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok v17_6_%s" % label)
+        audit_receipt(v17_logs, "t_v17", 0, profile="reviewer", run_id="32")
+        r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        if r.get("action") != "block" or "already exited 0" not in (r.get("message") or "") or r2.get("action") == "block":
+            print("FAIL v17_6_current_reviewer_green (fence latches, complete allowed)", r, r2, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v17_6_current_reviewer_green")
         r = run(
             "hermes kanban complete t_def",
             roots,
@@ -1717,5 +1757,48 @@ def scratch_removal_checks() -> int:
     return fails
 
 
+def v17_1_qualification() -> int:
+    """V17-1 qualification (2353a4d4): trimming a separator written against a
+    path must not weaken path or command enforcement. An outside path glued to
+    each of ; && || | & is refused; an allowed path glued to each (followed by
+    a space) is allowed; a second outside command, an opaque decode, a git
+    mutation or a traversal behind a separator is still refused. A separator
+    glued on BOTH sides of an allowed path (`ls /x;echo ok`) is still refused
+    by this hook (fail-closed; recorded as an open item, not asserted here)."""
+    fails = 0
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "mod"
+        (dest / "src").mkdir(parents=True)
+        roots = [str(dest)]
+        cwd = str(dest)
+        wk = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+
+        def expect(cmd: str, name: str, block: bool, needle: str = "", **kw) -> None:
+            nonlocal fails
+            r = run(cmd, roots, cwd=cwd, **kw)
+            got = r.get("action") == "block" and needle in (r.get("message") or "")
+            if got != block or (not block and r.get("action") == "block"):
+                print("FAIL", name, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok", name)
+
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect("cat /etc/passwd%s echo x" % sep, "v17_1_q_outside_glued_%d" % i, True, "/etc/passwd")
+            expect("ls %s%s echo ok" % (dest, sep), "v17_1_q_allowed_glued_%d" % i, False)
+        expect("ls %s; cat /etc/shadow" % dest, "v17_1_q_second_command_outside", True, "/etc/shadow")
+        expect("ls %s;cat /etc/shadow" % dest, "v17_1_q_second_command_outside_nospace", True, "outside allow root")
+        expect("ls %s|cat /etc/shadow" % dest, "v17_1_q_outside_after_glued_pipe", True, "outside allow root")
+        expect("ls %s; echo L2V0Yy9wYXNzd2Q= | base64 -d | xargs cat" % dest, "v17_1_q_opaque_after_separator", True, "opaque")
+        expect("ls %s; git checkout -- .hermes/pins.json" % dest, "v17_1_q_git_mutation_after_separator", True, "refused",
+               extra_env=wk)
+        expect("cat %s/../../etc/passwd; echo x" % dest, "v17_1_q_traversal_then_separator", True, "outside allow root")
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect("ls %s%secho ok" % (dest, sep), "v17_1_q_allowed_glued_both_%d" % i, False)
+            expect("ls %s%scat /etc/shadow" % (dest, sep), "v17_1_q_outside_glued_both_%d" % i, True, "outside allow root")
+        expect("ls %s/src;%s/../../etc/passwd" % (dest, dest), "v17_1_q_traversal_glued_both", True, "outside allow root")
+    return fails
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main() + v17_1_qualification())

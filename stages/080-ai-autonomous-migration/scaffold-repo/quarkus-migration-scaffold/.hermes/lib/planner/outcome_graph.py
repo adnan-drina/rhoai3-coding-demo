@@ -484,7 +484,9 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
 
 
 REQ_UNIT_MAX_FILES = MAX_WRITE_SET   # worklist.UNIT_MAX_FILES
-REQ_UNIT_MAX_SYMBOLS = 16            # worklist.UNIT_MAX_FRAGMENT_SYMBOLS (the widest coherent unit the former allows)
+REQ_UNIT_MAX_SYMBOLS = 8             # worklist.UNIT_MAX_SYMBOLS: an ordinary unit
+REQ_UNIT_MAX_FRAGMENT_SYMBOLS = 16   # worklist.UNIT_MAX_FRAGMENT_SYMBOLS: ADR-024's fragment-unit exception only
+REQ_UNIT_MAX_SITES = 160             # worklist.UNIT_MAX_SITES
 _REQ_WORDS = {"repository-architecture": "repository fragment", "request-validation": "request validation",
               "handler-parameter-binding": "handler parameter", "annotation-retirement": "retire annotation",
               "adapter-behavior": "adapter behaviour", "generator-configuration": "generator configuration",
@@ -578,10 +580,15 @@ def attach_requirements(outcomes: dict[str, dict[str, Any]], requirements: list[
         if not owner:
             paths = sorted(set(r.get("paths") or []))
             symbols = len((r.get("facts") or {}).get("members") or []) or len(paths)
-            if len(paths) > REQ_UNIT_MAX_FILES or symbols > REQ_UNIT_MAX_SYMBOLS:
-                account[rq] = unresolved_for(r, "blocked-cluster", "UNIT_OVERSIZE: requirement %s spans %d file(s) and %d symbol(s); "
-                                             "the unit limits are %d and %d and one requirement is one coherent repair"
-                                             % (rq, len(paths), symbols, REQ_UNIT_MAX_FILES, REQ_UNIT_MAX_SYMBOLS))
+            sites = (r.get("facts") or {}).get("sites")
+            sites = sites if isinstance(sites, int) else 0
+            # ADR-024: only a fragment (repository-architecture) unit may carry
+            # 16 symbols; every other unit keeps 20 files / 160 sites / 8 symbols
+            max_symbols = REQ_UNIT_MAX_FRAGMENT_SYMBOLS if rule == "repository-architecture" else REQ_UNIT_MAX_SYMBOLS
+            if len(paths) > REQ_UNIT_MAX_FILES or symbols > max_symbols or sites > REQ_UNIT_MAX_SITES:
+                account[rq] = unresolved_for(r, "blocked-cluster", "UNIT_OVERSIZE: requirement %s spans %d file(s), %d symbol(s) and "
+                                             "%d site(s); the unit limits are %d, %d and %d and one requirement is one coherent repair"
+                                             % (rq, len(paths), symbols, sites, REQ_UNIT_MAX_FILES, max_symbols, REQ_UNIT_MAX_SITES))
                 continue
             short = hashlib.sha256(_s(r.get("subject")).encode("utf-8")).hexdigest()[:12]
             owner = "requirement:%s:%s" % (rule, short)
@@ -610,6 +617,51 @@ def attach_requirements(outcomes: dict[str, dict[str, Any]], requirements: list[
     lost = sorted(set(by_id) - set(account))
     _req(not lost, "REQUIREMENT_LOST", "source requirement(s) with no account: %s" % ", ".join(lost[:5]))
     return account
+
+
+def planned_unit_grant(node: dict[str, Any], requirements: list[dict[str, Any]], *,
+                       exists: Any = None) -> dict[str, Any]:
+    """The bounded write grant a REQUIREMENT-ONLY outcome's planned unit would
+    carry, computed from the frozen plan alone (pure; the authority's issue
+    path decides whether to grant it). {"paths", "owed", "bounds", "refusal"}.
+
+    paths  the unit's planned paths (planned_units[0].paths): every existing
+           file the requirement names plus the file its naming contract OWES
+           (facts.owed_implementation), never a test path, never a harness
+           path (planner.paths.is_product_path)
+    owed   the subset that does not exist yet (`exists(rel) -> bool`; unknown
+           when not given): authorized only by the requirement's contract
+    refusal ''; UNIT_OVERSIZE past 20 files / 160 sites / 8 symbols (16 for a
+           repository-architecture fragment unit, ADR-024);
+           NOT_REQUIREMENT_ONLY for an outcome that owns a finding cluster (its
+           cluster is the grant); PATH_NOT_PRODUCT for a test or harness path;
+           NO_PLANNED_UNIT when the plan recorded none"""
+    from planner.paths import is_product_path
+    if node.get("clusters"):
+        return {"paths": [], "owed": [], "bounds": {}, "refusal": "NOT_REQUIREMENT_ONLY"}
+    units = [u for u in node.get("planned_units") or [] if isinstance(u, dict)]
+    if not units:
+        return {"paths": [], "owed": [], "bounds": {}, "refusal": "NO_PLANNED_UNIT"}
+    owned = set(node.get("requirements") or [])
+    reqs = [r for r in requirements or [] if isinstance(r, dict) and r.get("id") in owned]
+    paths = sorted(set(str(p) for p in units[0].get("paths") or []))
+    bad = [p for p in paths if not is_product_path(p) or "/src/test/" in "/" + p or p.startswith("src/test/")]
+    rules = {str(r.get("rule") or "").split("/", 1)[0] for r in reqs}
+    max_symbols = REQ_UNIT_MAX_FRAGMENT_SYMBOLS if rules == {"repository-architecture"} else REQ_UNIT_MAX_SYMBOLS
+    symbols = int(units[0].get("symbols") or 0)
+    sites = sum(int((r.get("facts") or {}).get("sites") or 0) for r in reqs if isinstance((r.get("facts") or {}).get("sites"), int))
+    bounds = {"files": len(paths), "symbols": symbols, "sites": sites,
+              "limits": {"files": REQ_UNIT_MAX_FILES, "symbols": max_symbols, "sites": REQ_UNIT_MAX_SITES}}
+    owed = sorted(p for p in paths if exists is not None and not exists(p))
+    contract_owed = {str((r.get("facts") or {}).get("owed_implementation") or "") for r in reqs} - {""}
+    if bad:
+        return {"paths": [], "owed": [], "bounds": bounds, "refusal": "PATH_NOT_PRODUCT: %s" % ", ".join(bad[:3])}
+    if set(owed) - contract_owed:
+        return {"paths": [], "owed": owed, "bounds": bounds,
+                "refusal": "PATH_UNAUTHORIZED: %s does not exist and no requirement's contract owes it" % ", ".join(sorted(set(owed) - contract_owed)[:3])}
+    if len(paths) > REQ_UNIT_MAX_FILES or symbols > max_symbols or sites > REQ_UNIT_MAX_SITES:
+        return {"paths": [], "owed": owed, "bounds": bounds, "refusal": "UNIT_OVERSIZE"}
+    return {"paths": paths, "owed": owed, "bounds": bounds, "refusal": ""}
 
 
 def _scc(edges: dict[str, set[str]]) -> dict[str, int]:

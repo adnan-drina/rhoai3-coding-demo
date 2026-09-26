@@ -113,9 +113,11 @@ decision is an admission BLOCK, never an inference.
 A run that decides `loop.plan_semantics: v1` also plans the known migration
 responsibilities from the frozen source before any failure and seals a
 semantic fingerprint of that initial plan, so equivalent pinned inputs give
-the same initial plan. This is opt-in and qualified locally on synthetic
-evidence only; see
-[§7.1 of the solution architecture](SOLUTION-ARCHITECTURE.md#71-repeatable-initial-plan-plan-semantics-v1-opt-in-per-run).
+the same initial plan. The golden selects it for new runs; a run keeps the
+value it was created with (earlier runs stay off). It is qualified locally on
+synthetic evidence and on recorded PetClinic M1 evidence, not by a live run;
+see
+[§7.1 of the solution architecture](SOLUTION-ARCHITECTURE.md#71-repeatable-initial-plan-plan-semantics-v1-run-pinned).
 
 On this revision the activation pin is `not-activated`: dest-init mints
 **M1 ANALYZE** only and a hand-minted M2 refuses at
