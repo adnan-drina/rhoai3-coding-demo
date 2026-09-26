@@ -131,10 +131,32 @@ passes the source requirements (`planner/source_requirements.py`) to the same
 
 - An outcome owning requirements is covered (`_covers`) only by a measurement
   that records every requirement check; an empty work list never discharges
-  it. The current measurement path records no such checks, so these outcomes
-  cannot be accepted until it does (fail closed).
+  it. `accept_commit` and `evaluate_recovered` RECOMPUTE the owner's checks on
+  the committed tree (`planner/requirement_checks.py`, via
+  `outcome_lifecycle.requirement_measurement`; never a caller-supplied value)
+  and record the passing ones as `checks` beside `check_status`. Measured
+  today: `gate:compile` (no open javac item in the requirement's files),
+  `gate:package` / `gate:augmentation` / `gate:startup` (the rebuilt work
+  list's runtime rows), `structure:annotation-absent:<fqn>` (dest model),
+  `unit:fragment-implementation`, `unit:fragment-behaviour-bodies` and
+  `structure:single-injectable-implementation` (`worklist._assess_implementations`
+  over the owed implementation: existence, `implements`, no stub body, the
+  concrete-only CDI exposure), `parity:<scenario>` (measured on this tree and
+  discharged) and `behavior:repository-effects:<fragment>` (every planned
+  read/committed-write row covered and discharged; an unresolved row is an
+  owned verification debt). Not measured yet, so an owner of one is never
+  accepted (fail closed): `unit:handler-validation-guards`,
+  `unit:handler-parameter-sites`, `adapter:*`, `parity:*-mode:*`,
+  `config:decided-keys`, `build:clean-generation`,
+  `parity:request-body-positive-negative`, `coverage:unresolved`.
 - A requirement-only outcome has no cluster; `issue` grants it no paths until a
   finding cluster attaches or the protected authority issues its planned unit.
+  An empty work list never discharges it either (its checks above are
+  required). Its planned unit is bounded like any unit (20 files, 160 sites,
+  8 symbols; 16 only for a repository-architecture fragment unit, ADR-024)
+  and names its owed paths (`planned_units`, `facts.owed_implementation`);
+  issuing it through the existing issue path's bounds is an open integration
+  item of the authority (it is not issued by this revision).
 - `owner_of_finding` maps a later finding to the frozen owner (obligation,
   then the requirement scope; a behaviour finding prefers the handler-level
   requirement) or returns a typed revision class: `previously-unknown-behavior`,
