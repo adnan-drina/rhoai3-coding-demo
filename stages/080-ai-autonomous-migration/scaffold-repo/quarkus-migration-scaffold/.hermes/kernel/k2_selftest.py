@@ -665,11 +665,20 @@ def main() -> int:
             audit_ok, encoding="utf-8"
         )
 
-        def audit_receipt(logs, task, rc, profile="reviewer", run_id=""):
-            # what paved_road.write_audit_receipt writes beside the official log
-            (logs / ("%s.audit.json" % task)).write_text(json.dumps(
-                {"schema": "rhoai3.paved-road-audit-receipt/v1", "task": task, "rc": rc,
-                 "run": run_id, "profile": profile}), encoding="utf-8")
+        def audit_receipt(logs, task, rc, profile="reviewer", run_id="", state="done"):
+            # what paved_road.write_audit_receipt writes beside the official
+            # log: bound to the log and execution-ledger bytes it graded
+            import hashlib
+            ledger = logs / ("%s.exec.jsonl" % task)
+            if not ledger.exists():
+                ledger.write_text('{"command": "audit", "exit_code": 0}\n', encoding="utf-8")
+            bound = {}
+            for name, path in (("log", logs / ("%s.log" % task)), ("ledger", ledger)):
+                data = path.read_bytes()
+                bound[name] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+            (logs / ("%s.audit.json" % task)).write_text(json.dumps(dict(
+                {"schema": "rhoai3.paved-road-audit-receipt/v2", "task": task, "rc": rc, "state": state,
+                 "run": run_id, "profile": profile}, **bound)), encoding="utf-8")
 
         audit_receipt(profile_root / "kanban" / "logs", "t_ok", 0)
         r = run(
@@ -763,7 +772,19 @@ def main() -> int:
                 fails += 1
             else:
                 print("ok v17_6_%s" % label)
+        # an interrupted audit (state running) and a log rewritten after the
+        # audit are not green either
+        audit_receipt(v17_logs, "t_v17", None, profile="reviewer", run_id="32", state="running")
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        print(("FAIL" if r2.get("action") != "block" else "ok") + " v17_6_interrupted_audit_not_green")
+        fails += r2.get("action") != "block"
         audit_receipt(v17_logs, "t_v17", 0, profile="reviewer", run_id="32")
+        original = (v17_logs / "t_v17.log").read_text(encoding="utf-8")
+        (v17_logs / "t_v17.log").write_text(original.replace("0.2s", "0.3s"), encoding="utf-8")
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        print(("FAIL" if r2.get("action") != "block" else "ok") + " v17_6_rewritten_log_not_green")
+        fails += r2.get("action") != "block"
+        (v17_logs / "t_v17.log").write_text(original + "  appended after the audit\n", encoding="utf-8")
         r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
         r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
         if r.get("action") != "block" or "already exited 0" not in (r.get("message") or "") or r2.get("action") == "block":

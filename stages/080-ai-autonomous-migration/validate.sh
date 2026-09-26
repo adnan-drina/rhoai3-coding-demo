@@ -491,6 +491,15 @@ check "080 catalog Locations use a stable Argo ref not a SHA blob" \
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+# V17-6b: the paved-road audit grades mandated commands from the execution
+# ledger this observer writes; the producer copies this one file into Managed
+# Scope, so it must be executable and self-contained.
+check "080 K2 post_tool_call observer is executable" \
+  "test -x '${SCAFFOLD_KERNEL}/post_tool_call.py' && echo 1 || echo 0" \
+  "1"
+check "080 K2 post_tool_call observer records positive execution evidence" \
+  "python3 '${SCAFFOLD_KERNEL}/post_tool_call.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 K2 implementer complete is request_review" \
   "tr -d '\n' < '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | sed 's/\"[[:space:]]*\"//g' | grep -c 'implementer terminator is kanban_request_review' || echo 0" \
   "1"

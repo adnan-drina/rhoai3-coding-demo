@@ -49,7 +49,7 @@ set -euo pipefail
 K2_HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export K2_HOOK_DIR
 exec python3 -c '
-import json, os, re, sys, time
+import hashlib, json, os, re, sys, time
 
 def block(reason):
     print(json.dumps({"action": "block", "message": reason}))
@@ -292,7 +292,23 @@ def paved_road_audit_green():
     run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
     if str(doc.get("run") or "") != run:
         return False
-    return doc.get("rc") == 0
+    if doc.get("rc") != 0 or doc.get("state") != "done":
+        return False
+    # bound to the inputs it graded: the official log and the execution
+    # ledger must still begin with exactly the bytes the audit read
+    for name, suffix in (("log", ".log"), ("ledger", ".exec.jsonl")):
+        seen = doc.get(name) if isinstance(doc.get(name), dict) else {}
+        size, want = seen.get("bytes"), str(seen.get("sha256") or "")
+        if not isinstance(size, int) or size <= 0 or not want:
+            return False
+        try:
+            with open(os.path.join(home, "kanban", "logs", task + suffix), "rb") as fh:
+                head = fh.read(size)
+        except OSError:
+            return False
+        if len(head) != size or hashlib.sha256(head).hexdigest() != want:
+            return False
+    return True
 
 LOOP_VERDICTS = ("OK: ACCEPTED", "REVERTED ", "DEFERRED ")
 
