@@ -135,8 +135,13 @@ class Lifecycle(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name)
+        # the platform's model-profile table (v13 R1/R3): the provisioner refuses
+        # to provision a run without a default profile that carries a quota
+        profiles = (HERE.parents[1] / 'gitops/stages/050-advanced-app-platform/base/devspaces/model-profiles.json').read_text()
         (self.home / 'state.json').write_text(json.dumps({'objects': {'Secret/fixtures': {
-            'kind': 'Secret', 'metadata': {'name': 'fixtures'}, 'data': {'IDENTITY': 'eDp5'}}}, 'mutations': []}))
+            'kind': 'Secret', 'metadata': {'name': 'fixtures'}, 'data': {'IDENTITY': 'eDp5'}},
+            'ConfigMap/migration-model-profiles': {'kind': 'ConfigMap', 'metadata': {'name': 'migration-model-profiles'},
+                                                   'data': {'model-profiles.json': profiles}}}, 'mutations': []}))
         oc = self.home / 'oc'
         oc.write_text('#!/bin/sh\nexec ' + sys.executable + ' ' + str(Path(__file__).resolve()) + ' fake "$@"\n')
         oc.chmod(0o755)
@@ -150,7 +155,11 @@ class Lifecycle(unittest.TestCase):
         self.script.write_text(script)
         self.env = dict(os.environ, PATH=str(self.home) + ':' + os.environ['PATH'], FAKE_API=str(self.home),
                         RUN='demo-v10', WSNS='test-ns', SCAFFOLD='a'*40, FIXTURE_SRC='fixtures',
-                        DB_IMAGE='registry.test/db@sha256:'+'a'*64, CLI_IMAGE='registry.test/cli@sha256:'+'b'*64)
+                        DB_IMAGE='registry.test/db@sha256:'+'a'*64, CLI_IMAGE='registry.test/cli@sha256:'+'b'*64,
+                        # outcome-board selection (a728e255): platform defaults; the request fetch
+                        # points at a closed port, so every fixture run selects the serial loop
+                        OB_EXECUTION='disabled', OB_TRUST='', REQUEST_OWNER='test-owner',
+                        REQUEST_RAW_BASE='http://127.0.0.1:9')
 
     def start(self, mode='provision', task='test', **extra):
         return subprocess.Popen(['bash', str(self.script)], env=dict(self.env, MODE=mode, TASKRUN=task, **extra),
@@ -225,7 +234,7 @@ class Lifecycle(unittest.TestCase):
     def test_api_failure_is_not_absence(self):
         for name in ('migration-run-demo-v10','demo-v10-parity-postgres'):
             self.finish(self.start(FAKE_FAIL_GET=name), False)
-            self.assertEqual(list(self.objects()), ['Secret/fixtures'])
+            self.assertEqual(list(self.objects()), ['Secret/fixtures', 'ConfigMap/migration-model-profiles'])
 
     def test_interrupted_retirement_keeps_durable_intent(self):
         self.finish(self.start())
@@ -244,7 +253,7 @@ class Lifecycle(unittest.TestCase):
 
     def test_unpinned_image_cannot_create_resources(self):
         self.finish(self.start(DB_IMAGE='registry.test/db:latest'), False)
-        self.assertEqual(list(self.objects()), ['Secret/fixtures'])
+        self.assertEqual(list(self.objects()), ['Secret/fixtures', 'ConfigMap/migration-model-profiles'])
 
 
 if __name__ == '__main__':
