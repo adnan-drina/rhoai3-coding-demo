@@ -1602,6 +1602,26 @@ data:
             f"missing k2={not k2_present}"
         )
         cfg["hooks"]["pre_tool_call"] = []
+    # >>> outcome-board hooks (stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md)
+    # ONLY for a run whose destination run-defaults.json (bound by its initial
+    # commit) selects outcome-board/v1. No existing run and no current golden
+    # selects it, so this registers nothing today. When selected: the K2 hook
+    # also decides the review/block terminators, and the gateway-embedded
+    # dispatcher runs the continuation reconciler on its own tick (no new
+    # scheduler). Execution itself stays refused until a protected writer exists.
+    try:
+        with open(os.path.join(safe_root, "run-defaults.json"), encoding="utf-8") as _obf:
+            _ob_protocol = ((_pjson.load(_obf) or {}).get("configuration") or {}).get("board_protocol")
+    except (OSError, ValueError, AttributeError):
+        _ob_protocol = None
+    if _ob_protocol == "outcome-board/v1" and cfg["hooks"].get("pre_tool_call"):
+        cfg["hooks"]["pre_tool_call"][0]["matcher"] += "|kanban_block|kanban_request_review|request_review"
+        cfg["hooks"]["on_kanban_dispatch_tick"] = [{
+            "command": "python3 %s --root %s" % (os.path.join(safe_root, ".hermes/kernel/outcome_reconcile.py"), safe_root),
+            "timeout": 120,
+        }]
+        print("OUTCOME-BOARD: review/block matcher + on_kanban_dispatch_tick reconciler registered")
+    # <<< outcome-board hooks
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
         # a JSON round trip unshares nested values (the provider and the
