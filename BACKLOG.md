@@ -23,16 +23,23 @@ SOLUTION-ARCHITECTURE §7.1.
   preserved run's M1 evidence; the preserved evidence replays to the same
   requirements and logical graph under reordering (`qualify-repeatability.py
   --specimen --source`; artifacts under `tmp/next-golden-20260926/ws-a/`).
-- [ ] Producer replay of the MTA CLI and the Maven build/test producers on
-  that specimen (not run).
+- [x] 2026-09-26 round 3: the M1 BUILD producer (capture-build-evidence) and
+  the structure producer re-run on two clean copies: identical build facts,
+  structure and requirements (including the new application-path row).
+- [ ] The pinned MTA CLI 8.2 on the specimen (NOT RUN: host mta-cli 7.3.0 is
+  not admissible; the 8.2.1 in the ws-080 image hung under amd64 emulation on
+  the arm64 workstation). Run it on an amd64 host or in the workspace.
+- [ ] The M2 destination analysis on FRESH M1 output (bootstrap, destination
+  compile, rescan) was not re-run: the finding half of the initial plan is
+  compared from recorded evidence only.
 - [x] The outcome board's acceptance recomputes an owner's requirement checks
   on the committed tree (`planner/requirement_checks.py`).
-- [ ] Requirement checks with no producer yet stay unknown, so their owners
-  cannot be accepted (fail closed): `unit:handler-validation-guards`,
-  `unit:handler-parameter-sites`, `adapter:*`, `parity:*-mode:*`,
-  `config:decided-keys`, `build:clean-generation`,
-  `parity:request-body-positive-negative`. Requirement-only outcomes still need
-  a bounded planned-unit write grant from the authority (workstream B / F1).
+- [x] Every requirement check class we implement is measured (round 2), and
+  application paths are derived and measured (`config:application-path`,
+  round 3). Only missing SOURCE coverage stays unknown.
+- [x] The initial M2 analysis never reuses a warm-up (round 3).
+- [x] The plan view is labelled the frozen initial plan; real additions come
+  from recorded revisions (round 3).
 - [x] The golden selects `plan_semantics: v1` for new runs (run-pinned); the
   next golden must still be published and a run created through the normal
   release process.

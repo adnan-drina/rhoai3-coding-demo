@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "decisions.yaml (rhoai3.decisions/v2) \u2014 the only human input to the fix-until-green loop",
+  "title": "decisions.yaml (rhoai3.decisions/v2) — the only human input to the fix-until-green loop",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -625,17 +625,58 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["handler", "argument", "expression", "adr"],
+            "required": [
+              "handler",
+              "argument",
+              "expression",
+              "adr"
+            ],
             "properties": {
-              "handler": {"type": "string", "pattern": "^[^#]+#[^#]+$", "description": "<handler type fqn>#<member name>"},
-              "argument": {"type": "integer", "minimum": 0},
-              "expression": {"type": "string", "minLength": 1, "description": "the candidate's base expression at that argument"},
-              "adr": {"type": "string", "minLength": 1},
-              "reason": {"type": "string"}
+              "handler": {
+                "type": "string",
+                "pattern": "^[^#]+#[^#]+$",
+                "description": "<handler type fqn>#<member name>"
+              },
+              "argument": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expression": {
+                "type": "string",
+                "minLength": 1,
+                "description": "the candidate's base expression at that argument"
+              },
+              "adr": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string"
+              }
             }
           }
         }
       }
+    },
+    "application_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Round 3: an application path the destination serves DIFFERENTLY from the frozen source (compat-mapping application_paths), decided under an ACCEPTED ADR: destination key -> value. Absent means the source's own effective value is owed.",
+      "properties": {
+        "adr": {
+          "type": "string"
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "adr",
+        "values"
+      ]
     }
   }
 }

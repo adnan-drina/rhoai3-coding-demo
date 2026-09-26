@@ -463,9 +463,68 @@ def planned_grant_case() -> int:
     return 0
 
 
+def application_path_case() -> int:
+    """Round 3: the application paths the frozen SOURCE configures are owed
+    on the destination and measured (config:application-path). The specimen
+    shape (server.servlet.context-path in application.properties, profiles
+    activated by the source), a renamed twin whose paths come from a profile
+    file the source activates (spring.mvc.servlet.path, the management base
+    path), a source that configures none (not-applicable), YAML configuration
+    (unresolved), an accepted-ADR decision overriding the value, and the
+    measurement on the destination's broken and correct forms."""
+    import tempfile
+    from planner import requirement_checks as RC
+    specimen = {"application.properties": {"spring.profiles.active": "hsqldb,spring-data-jpa", "server.port": "9966",
+                                           "server.servlet.context-path": "/petclinic/"},
+                "application-hsqldb.properties": {"spring.datasource.url": "jdbc:hsqldb:mem:x"}}
+    twin = {"application.properties": {"spring.profiles.active": "edge"},
+            "application-edge.properties": {"spring.mvc.servlet.path": "/ledger-api", "management.endpoints.web.base-path": "/ops/"},
+            "application-unused.properties": {"server.servlet.context-path": "/never"}}
+    got = SR.application_paths({"files": specimen, "unread": []}, CATALOG, {})
+    if [(r["status"], r["facts"]["dest_key"], r["facts"]["dest_value"]) for r in got] != [("applicable", "quarkus.http.root-path", "/petclinic")]:
+        return _fail("specimen: the context path is owed on quarkus.http.root-path: %s" % got)
+    if got[0]["acceptance"] != ["config:application-path"] or got[0]["class"] != "config":
+        return _fail("specimen: owned as configuration with its measured check: %s" % got[0])
+    got = {r["facts"]["dest_key"]: r["facts"]["dest_value"] for r in SR.application_paths({"files": twin, "unread": []}, CATALOG, {})}
+    if got != {"quarkus.rest.path": "/ledger-api", "quarkus.http.non-application-root-path": "/ops"}:
+        return _fail("twin: the paths of the ACTIVE profile file, never an inactive one's: %s" % got)
+    none = SR.application_paths({"files": {"application.properties": {"server.port": "8080"}}, "unread": []}, CATALOG, {})
+    if [r["status"] for r in none] != ["not-applicable"]:
+        return _fail("no configured path is not-applicable: %s" % none)
+    yml = SR.application_paths({"files": specimen, "unread": ["application.yml"]}, CATALOG, {})
+    if [r["status"] for r in yml] != ["unresolved"] or SR.application_paths(None, CATALOG, {})[0]["status"] != "unresolved":
+        return _fail("YAML or unreadable configuration is unresolved")
+    dec = {"adrs": [{"id": "ADR-9", "status": "accepted"}], "application_paths": {"adr": "ADR-9", "values": {"quarkus.http.root-path": "/v2"}}}
+    if SR.application_paths({"files": specimen, "unread": []}, CATALOG, dec)[0]["facts"]["dest_value"] != "/v2":
+        return _fail("an accepted decision decides the destination value")
+    dec["adrs"][0]["status"] = "proposed"
+    if SR.application_paths({"files": specimen, "unread": []}, CATALOG, dec)[0]["facts"]["dest_value"] != "/petclinic":
+        return _fail("a proposed ADR decides nothing")
+    # measured on the destination: absent / different / trailing slash / profile override
+    req = SR.application_paths({"files": specimen, "unread": []}, CATALOG, {})[0]
+    with tempfile.TemporaryDirectory(prefix="sr-apppath-") as d:
+        root = Path(d)
+        props = root / "src/main/resources/application.properties"
+        props.parent.mkdir(parents=True)
+        (root / "decisions.yaml").write_text(S.decisions_yaml(dict(S.full_decisions(), build_profiles={"adr": "ADR-001", "active": ["prod"]})),
+                                             encoding="utf-8")
+        (root / ".hermes/planning").mkdir(parents=True)
+        import shutil as _sh
+        _sh.copytree(HERMES / "planning/schemas", root / ".hermes/planning/schemas")
+        wl = {"items": [], "measure": {"known": True}}
+        for text, want in (("quarkus.http.port=9966\n", "fail"), ("quarkus.http.root-path=/other\n", "fail"),
+                           ("quarkus.http.root-path=/petclinic/\n", "pass"),
+                           ("quarkus.http.root-path=/petclinic\n%prod.quarkus.http.root-path=/x\n", "fail")):
+            props.write_text(text, encoding="utf-8")
+            st = RC.measure(root, [req], worklist=wl, scenarios=[])["config:application-path"]["status"]
+            if st != want:
+                return _fail("measure %r: %s, expected %s" % (text, st, want))
+    return 0
+
+
 def main() -> int:
     for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
-                 repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case):
+                 repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case, application_path_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "

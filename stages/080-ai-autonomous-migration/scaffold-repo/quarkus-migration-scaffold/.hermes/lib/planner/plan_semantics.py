@@ -450,13 +450,21 @@ def seal_gaps(root: Path, seal: dict[str, Any]) -> list[str]:
     return gaps
 
 
-def plan_view(doc: dict[str, Any], *, protocol: str) -> dict[str, Any]:
-    """The one derived human-readable view of the initial plan: each planned
-    M3 outcome, why it exists, its prerequisites, recipes, bounded units,
-    completion checks and unresolved conditions; baseline, additions and
-    unfinished work apart; the M4/M5 milestones by their existing titles. It
-    grants nothing and is never a queue. On a serial-loop run it is
-    observational: that run executes the serial loop, not pre-minted outcomes."""
+def plan_view(doc: dict[str, Any], *, protocol: str, revisions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The one derived human-readable view of the plan: each planned M3
+    outcome, why it exists, its prerequisites, recipes, bounded units,
+    completion checks and unresolved conditions; the M4/M5 milestones by their
+    existing titles. It grants nothing and is never a queue. On a serial-loop
+    run it is observational: that run executes the serial loop, not pre-minted
+    outcomes.
+
+    Without `revisions` it is STRICTLY the frozen initial plan (scope
+    "frozen-initial-plan"): it says nothing about additions or what is
+    unfinished, because the frozen document cannot know. With the outcome
+    store's recorded plan revisions (oldest first, each {"rev", "doc"}), the
+    additions are the repair outcomes a later revision carries that the
+    initial one did not, with the revision that added them and their lineage
+    (round 3: no hard-coded empty field)."""
     g = (doc.get("plan") or {}).get("graph") or {}
     reqs = {r["id"]: r for r in (doc.get("plan") or {}).get("requirements") or []}
     nodes = g.get("nodes") or []
@@ -487,15 +495,35 @@ def plan_view(doc: dict[str, Any], *, protocol: str) -> dict[str, Any]:
                     if protocol != "outcome-board/v1" else "; the outcome store and K4 publication remain the executable records")),
         "plan_fingerprint": doc.get("plan_fingerprint"),
         "input_fingerprint": doc.get("input_fingerprint"),
+        "scope": "frozen-initial-plan" if revisions is None else "initial-plan-and-recorded-revisions",
         "baseline": outcomes,
-        "additions": [],
-        "unfinished": [o["outcome_id"] for o in outcomes],
+        **({} if revisions is None else {"additions": _additions(revisions)}),
         "milestones": milestones,
         "unresolved": [{"id": u["id"], "blocks": u.get("blocks"), "reason": u.get("reason")} for u in g.get("unresolved") or []],
         "counts": {"baseline_outcomes": counts.get("baseline_outcomes"), "requirements": counts.get("requirements") or {},
                    "unresolved": counts.get("unresolved")},
         "unknowns": list(doc.get("unknowns") or []),
     }
+
+
+def _additions(revisions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Repair outcomes of later recorded revisions that revision 1 did not
+    have: the first revision that carries each, and its lineage."""
+    revs = sorted((r for r in revisions or [] if isinstance(r, dict) and isinstance(r.get("doc"), dict)),
+                  key=lambda r: int(r.get("rev") or 0))
+    if not revs:
+        return []
+    seen = {n.get("outcome_id") for n in revs[0]["doc"].get("nodes") or [] if n.get("role") == "repair"}
+    out = []
+    for r in revs[1:]:
+        for n in r["doc"].get("nodes") or []:
+            oid = n.get("outcome_id")
+            if n.get("role") != "repair" or oid in seen:
+                continue
+            seen.add(oid)
+            out.append({"outcome_id": oid, "title": n.get("title"), "added_in_revision": int(r.get("rev") or 0),
+                        "lineage": n.get("lineage") or {}, "revision_class": (n.get("lineage") or {}).get("class") or n.get("revision_class")})
+    return out
 
 
 def semantic_digest(doc: dict[str, Any]) -> str:

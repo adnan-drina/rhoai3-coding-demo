@@ -69,11 +69,11 @@ REQUEST_BODY = "org.springframework.web.bind.annotation.RequestBody"
 FRAGMENT_SUFFIX = "Impl"  # Spring Data's fragment naming contract (worklist.FRAGMENT_IMPL_CONTRACT)
 
 RULES = ("repository-architecture", "request-validation", "handler-parameter-binding", "annotation-retirement",
-         "adapter-behavior", "generator-configuration", "configuration-decision", "behavior-verification")
+         "adapter-behavior", "generator-configuration", "configuration-decision", "application-path", "behavior-verification")
 # the outcome class a requirement's work belongs to (outcome_graph.CLASSES)
 RULE_CLASS = {"repository-architecture": "source", "request-validation": "source", "handler-parameter-binding": "source",
               "annotation-retirement": "source", "adapter-behavior": "behavior", "generator-configuration": "build",
-              "configuration-decision": "config", "behavior-verification": "behavior"}
+              "configuration-decision": "config", "application-path": "config", "behavior-verification": "behavior"}
 APPLICABLE, NOT_APPLICABLE, UNRESOLVED, SATISFIED = "applicable", "not-applicable", "unresolved", "satisfied"
 # The rules whose work is a source REPAIR and so needs a qualified recipe
 # (compat-mapping migration_recipes) before admission. Verification
@@ -194,12 +194,16 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
            generator: dict[str, Any] | None = None, generator_known: bool = True,
            decided_rows: list[dict[str, Any]] | None = None, bootstrap: dict[str, Any] | None = None,
            scenario_facts: dict[str, dict[str, Any]] | None = None,
-           generator_facts: dict[str, Any] | None = None) -> dict[str, Any]:
+           generator_facts: dict[str, Any] | None = None,
+           source_config: dict[str, Any] | None = None) -> dict[str, Any]:
     """{"schema", "requirements": [...], "unknowns": [...]}. Pure.
 
     ``scenario_facts``: scenario id -> {method, effects} from the captured
     corpus (a write is covered only by a scenario that reads its committed
     effect back); None when the corpus is unreadable.
+    ``source_config`` (round 3): the frozen source's configuration files
+    ({"files": {name: {key: value}}, "unread": [names]}), from which the
+    application paths are derived; None when it could not be read.
     ``generator_facts`` (V17-4, worklist.static_generated_body_facts): the
     qualification of the destination/source generator pair and the request
     body cases bound to the corpus captures; None keeps the generator
@@ -482,6 +486,9 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
                         acceptance=["config:decided-keys", "gate:startup"],
                         facts={"adr": _s(fact.get("adr")), "applied_by_bootstrap": bs_ok and key != "security"}))
 
+    # -- application paths (round 3): what the SOURCE configures ------------
+    out.extend(application_paths(source_config, catalog, decisions))
+
     # -- behaviour verification of every entry point -----------------------
     for e in eps:
         scen = sorted(set((oracles or {}).get(e["id"]) or []))
@@ -753,6 +760,99 @@ def repository_verification(behaviour: dict[str, Any], *, entry_points: list[dic
 
 
 # ---------------------------------------------------------------------------
+# application paths (round 3)
+# ---------------------------------------------------------------------------
+
+def _norm_path(v: str) -> str:
+    """A context/root path as both platforms resolve it: leading slash, no
+    trailing slash except the root itself."""
+    t = "/" + str(v or "").strip().strip("/")
+    return "/" if t == "/" else t
+
+
+def effective_source_properties(files: dict[str, dict[str, str]]) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """(effective key -> value, key -> the file it came from, the active
+    profiles) of a Spring Boot source: application.properties, then each
+    application-<profile>.properties the source itself activates
+    (spring.profiles.active), in order, the later overriding."""
+    base = dict(files.get("application.properties") or {})
+    active = [x.strip() for x in str(base.get("spring.profiles.active") or "").split(",") if x.strip()]
+    eff, came = dict(base), {k: "application.properties" for k in base}
+    for prof in active:
+        name = "application-%s.properties" % prof
+        for k, v in (files.get(name) or {}).items():
+            eff[k], came[k] = v, name
+    return eff, came, active
+
+
+def application_paths(source_config: dict[str, Any] | None, catalog: dict[str, Any],
+                      decisions: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The application path requirements: every key of compat-mapping
+    `application_paths` the frozen source configures (its effective value,
+    under the profiles it activates itself) is owed on the destination key the
+    row names, with that value -- or the value decisions.yaml
+    `application_paths.values` records under an ACCEPTED ADR. A source that
+    configures none of them keeps the platform defaults on both sides:
+    not-applicable. Unreadable configuration, or configuration the source also
+    keeps in a format not read here (YAML), is unresolved."""
+    rows = {str(k): v for k, v in ((catalog or {}).get("application_paths") or {}).items()
+            if k != "note" and isinstance(v, dict) and v.get("dest")}
+    if not rows:
+        return []
+    if source_config is None:
+        return [_req("application-path", "*", UNRESOLVED, evidence=[], paths=["src/main/resources/application.properties"],
+                     acceptance=[], unknowns=["the frozen source's configuration could not be read: its application paths are unknown"])]
+    files = {str(k): dict(v) for k, v in (source_config.get("files") or {}).items() if isinstance(v, dict)}
+    unread = sorted(str(x) for x in source_config.get("unread") or [])
+    eff, came, active = effective_source_properties(files)
+    dec = (decisions or {}).get("application_paths") if isinstance((decisions or {}).get("application_paths"), dict) else {}
+    from planner.decisions import accepted_adrs
+    decided = dict(dec.get("values") or {}) if dec and str(dec.get("adr") or "") in accepted_adrs(decisions or {}) else {}
+    out = []
+    for key in sorted(rows):
+        if key not in eff:
+            continue
+        row = rows[key]
+        dest = str(row["dest"])
+        want = _norm_path(str(decided.get(dest) if dest in decided else eff[key]))
+        out.append(_req("application-path", key, UNRESOLVED if unread else APPLICABLE,
+                        evidence=[{"artifact": ".derived/frozen-input/src/main/resources/%s" % came[key], "selector": key}]
+                        + ([{"artifact": "decisions.yaml", "selector": "application_paths.values.%s" % dest}] if dest in decided else []),
+                        paths=["src/main/resources/application.properties"],
+                        acceptance=["config:application-path"],
+                        unknowns=(["the source also configures through %s, which is not read: its effective %s is unproven"
+                                   % (", ".join(unread), key)] if unread else []),
+                        facts={"source_key": key, "source_value": eff[key], "source_file": came[key],
+                               "source_profiles": active, "dest_key": dest, "dest_value": want,
+                               "decided": dest in decided, "source": str(row.get("source") or "")}))
+    if not out:
+        out.append(_req("application-path", "*", UNRESOLVED if unread else NOT_APPLICABLE, evidence=[], paths=[], acceptance=[],
+                        unknowns=["the source also configures through %s, which is not read" % ", ".join(unread)] if unread else [],
+                        facts={"reason": "the frozen source configures no application path; both platforms keep their default"}))
+    return out
+
+
+def source_configuration(root: Path, *, frozen_dir: Path | None = None) -> dict[str, Any] | None:
+    """The frozen source's configuration files (.derived/frozen-input, or
+    `frozen_dir`, src/main/resources/application*.properties), parsed as
+    properties; None when the frozen input is absent."""
+    from response_adapters import read_properties
+    frozen = Path(frozen_dir) if frozen_dir is not None else Path(root) / ".derived" / "frozen-input"
+    res = frozen / "src" / "main" / "resources"
+    if not frozen.is_dir():
+        return None
+    files: dict[str, dict[str, str]] = {}
+    unread: list[str] = []
+    if res.is_dir():
+        for f in sorted(res.iterdir()):
+            if f.is_file() and f.name.startswith("application") and f.suffix == ".properties":
+                files[f.name] = read_properties(f.read_text(encoding="utf-8", errors="replace"))
+            elif f.is_file() and f.name.startswith("application") and f.suffix in (".yml", ".yaml"):
+                unread.append(f.name)
+    return {"files": files, "unread": unread}
+
+
+# ---------------------------------------------------------------------------
 # reading a destination root (I/O lives here, never in derive)
 # ---------------------------------------------------------------------------
 
@@ -794,7 +894,8 @@ def for_root(root: Path, *, oracles: dict[str, list[str]] | None = None) -> dict
     doc = derive(types=st.get("types") or [], entry_points=bundle.get("entry_points") or [], catalog=catalog,
                  decisions=decisions, oracles=oracles, structure_complete=bool(st.get("available")) and str(st.get("mode")) == "full",
                  generator=generator, generator_known=gen_known, decided_rows=rows, bootstrap=read(root / BOOTSTRAP_RECEIPT),
-                 scenario_facts=_scenario_facts(root), generator_facts=gen_facts)
+                 scenario_facts=_scenario_facts(root), generator_facts=gen_facts,
+                 source_config=source_configuration(root))
     if decisions is None:
         doc["unknowns"] = sorted(set(doc["unknowns"]) | {"decisions.yaml missing or invalid: decided configuration is unknown"})
     return doc

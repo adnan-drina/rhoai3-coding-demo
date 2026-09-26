@@ -458,6 +458,21 @@
       }
     }
   },
+  "application_paths": {
+    "note": "Where the source serves its application and management endpoints, and the destination key that owes the same value (round 3). planner.source_requirements.application_paths reads the FROZEN source's configuration (application.properties and the application-<profile>.properties of the profiles the source itself activates) and owes each configured key's effective value on the destination key -- or the value decisions.yaml application_paths records under an accepted ADR; requirement_checks measures it as config:application-path. A source that configures none of these keeps both platforms' defaults.",
+    "server.servlet.context-path": {
+      "dest": "quarkus.http.root-path",
+      "source": "https://docs.spring.io/spring-boot/appendix/application-properties/index.html#application-properties.server.server.servlet.context-path; https://quarkus.io/guides/all-config#quarkus-vertx-http_quarkus-http-root-path"
+    },
+    "spring.mvc.servlet.path": {
+      "dest": "quarkus.rest.path",
+      "source": "https://docs.spring.io/spring-boot/appendix/application-properties/index.html#application-properties.web.spring.mvc.servlet.path; https://quarkus.io/guides/rest#reference (quarkus.rest.path: the path prefix of the REST resources)"
+    },
+    "management.endpoints.web.base-path": {
+      "dest": "quarkus.http.non-application-root-path",
+      "source": "https://docs.spring.io/spring-boot/appendix/application-properties/index.html#application-properties.actuator.management.endpoints.web.base-path; https://quarkus.io/guides/all-config#quarkus-vertx-http_quarkus-http-non-application-root-path"
+    }
+  },
   "repository_behaviour": {
     "note": "Where the behaviour of an owed fragment method COMES FROM in the source (V17-3). A <Fragment>Impl owed under spring-data-fragment-impl/v1 must carry the SELECTED source behaviour of each member: the Spring Data repository the decided build profiles select (decisions.build_profiles.active; a type gated by @Profile to another profile is never the behaviour source, even when its text implements the same interface), and within it, in Spring Data's own precedence, (1) a custom implementation fragment the repository also extends (its <Override>Impl method), (2) a @Query the repository declares for the member, (3) the CRUD method of the repository base implementation the member's name and arity select, (4) a query derived from the method name. Anything else is unresolved, never guessed. planner.source_requirements.repository_behaviour reads this block and the frozen structural model; nothing here names a specimen.",
     "source": "https://docs.spring.io/spring-data/jpa/reference/repositories/custom-implementations.html (fragments take precedence over the base repository and query derivation); https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html (@Query, derived queries); https://docs.spring.io/spring-data/jpa/reference/repositories/core-concepts.html (CrudRepository methods served by SimpleJpaRepository)",

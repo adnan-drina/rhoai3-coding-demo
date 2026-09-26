@@ -533,8 +533,10 @@ def producer_cases(q: Q) -> None:
             q.case(name, "producer-replay", lambda: (NOT_RUN, "no JDK on PATH"))
         return
     q.case("JVM locale; two symbols at one site", "producer-replay", lambda: run_test("lib/planner/plan_semantics.test.py"))
-    q.case("stale generated/class output; clean vs warm replay", "producer-replay",
-           lambda: run_test("skills/migration/fix-until-green/scripts/prepare-initial-analysis.test.py"))
+    q.case("stale generated/class output; the initial analysis never reuses a warm-up", "producer-replay",
+           lambda: (lambda a, b: (a[0] if a[0] != PASS else b[0], "%s; %s" % (a[1][:140], b[1][:140])))(
+               run_test("skills/migration/fix-until-green/scripts/prepare-initial-analysis.test.py"),
+               run_test("skills/migration/fix-until-green/scripts/run-verify-initial-cache.test.py")))
     q.case("bootstrap recipe twice; wrong transformation that still parses", "producer-replay",
            lambda: run_test("skills/migration/bootstrap-destination/scripts/retire-annotation.test.py"))
     def run_fns(rel: str, names: list[str]):
@@ -575,16 +577,30 @@ def producer_cases(q: Q) -> None:
                            ["_package_unit_production_brief_case", "_planned_generated_body_brief_case",
                             "_location_obligation_production_brief_case"]))
     if q.source is not None:
-        q.case("M1 structure producer (JdkModelExtract) on the frozen source: two independent clean copies", "producer-replay",
+        q.case("M1 build + structure producers (capture-build-evidence, JdkModelExtract) on the frozen source: two independent clean copies", "producer-replay",
                lambda: m1_structure_replay(q, q.source))
-    if q.specimen is None:
-        q.case("MTA / structure / build producers on a preserved pinned PetClinic specimen", "producer-replay",
-               lambda: (NOT_RUN, "no --specimen given; the preserved evidence replay and producer replay did not run"))
-    else:
-        q.case("MTA / structure / build producers on the preserved PetClinic specimen", "producer-replay",
-               lambda: (NOT_RUN, "the preserved specimen (%s) holds M1 EVIDENCE, not a pinned toolchain workspace: the MTA CLI "
-                                 "8.2, jdk-model and Maven build producers were not re-executed on it here (recorded-evidence "
-                                 "replay above only)" % q.specimen))
+    q.case("MTA CLI 8.2 (pinned) on the frozen source: two independent clean copies", "producer-replay", mta_probe)
+
+
+def mta_probe():
+    """The pinned MTA CLI is admissible only as mta-cli 8.2.x (pins.mta_cli).
+    This driver does not run any other analyzer as a stand-in: a host
+    mta-cli of another version, or none, is NOT-RUN with the version it
+    reports."""
+    cli = shutil.which("mta-cli")
+    if not cli:
+        return NOT_RUN, "no mta-cli on PATH: the pinned MTA CLI 8.2 producer was not executed; MTA findings stay recorded evidence"
+    try:
+        v = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=60)
+        line = next((ln for ln in (v.stdout + v.stderr).splitlines() if ln.lower().startswith("version")), "unknown")
+    except (OSError, subprocess.SubprocessError) as exc:
+        line = "unreadable (%s)" % exc
+    ver = line.split(":", 1)[-1].strip()
+    if not ver.startswith("8.2"):
+        return NOT_RUN, ("the host mta-cli (%s) reports version %s, not the pinned 8.2.x: not admissible, not run as a "
+                         "stand-in; MTA findings stay recorded evidence" % (cli, ver))
+    return NOT_RUN, ("mta-cli %s is present; this driver does not yet execute an MTA analysis replay (bounded: recorded "
+                     "evidence only)" % ver)
 
 
 def m1_structure_replay(q: Q, source: Path):
@@ -602,7 +618,9 @@ def m1_structure_replay(q: Q, source: Path):
     if not (shutil.which("javac") and shutil.which("mvn")):
         return NOT_RUN, "javac or mvn is not on PATH"
     script = HERMES / "skills/analysis/inventory-legacy-surface/scripts/run-jdk-model-extract.sh"
+    build_script = HERMES / "skills/analysis/capture-build-evidence/scripts/capture-build-evidence.sh"
     outs = {}
+    builds: dict[str, dict] = {}
     for label in ("a", "b"):
         base = q.tmp / ("m1-%s" % label)
         src, root = base / "frozen", base / "root"
@@ -610,25 +628,28 @@ def m1_structure_replay(q: Q, source: Path):
         (root / ".hermes").mkdir(parents=True)
         shutil.copy(HERMES / "pins.json", root / ".hermes/pins.json")
         shutil.copytree(HERMES / "planning", root / ".hermes/planning")
-        (root / "evidence/build").mkdir(parents=True)
-        mv = subprocess.run(["mvn", "-o", "-q", "dependency:build-classpath", "-Dmdep.outputFile=%s" % (root / "evidence/build/classpath.txt")],
-                            cwd=str(src), capture_output=True, text=True, timeout=600)
-        if mv.returncode != 0:
-            return NOT_RUN, "offline Maven classpath resolution failed on copy %s: %s" % (label, (mv.stdout + mv.stderr)[-200:])
-        # the M1 build producer's compile: generated sources and target/classes,
-        # which the extractor puts on its classpath (JdkModelExtract)
-        cc = subprocess.run(["mvn", "-o", "-q", "-DskipTests", "compile"], cwd=str(src), capture_output=True, text=True, timeout=900)
-        if cc.returncode != 0:
-            return NOT_RUN, "offline Maven compile of the frozen source failed on copy %s: %s" % (label, (cc.stdout + cc.stderr)[-200:])
         write_canonical(root / "evidence/producers/freeze.json", {"schema": "rhoai3.producer-receipt/v1", "producer": "freeze",
                                                                   "status": "ok", "analysis_copy": str(src)})
-        write_canonical(root / "evidence/producers/build.json", {"schema": "rhoai3.producer-receipt/v1", "producer": "build",
-                                                                 "status": "ok", "classpath_available": True})
+        # the pinned M1 BUILD producer itself (capture-build-evidence.sh: the
+        # warm-up, the effective pom, the offline compile, the classpath and
+        # its receipt), then the structure producer on what it built
+        bp = subprocess.run(["bash", str(build_script), "--root", str(root)], capture_output=True, text=True, timeout=1800)
+        brec = root / "evidence/producers/build.json"
+        if bp.returncode != 0 or not brec.is_file():
+            return NOT_RUN, "the build producer did not complete on copy %s: %s" % (label, (bp.stdout + bp.stderr)[-200:])
+        builds[label] = load_json(brec)
         p = subprocess.run(["bash", str(script), "--root", str(root)], capture_output=True, text=True, timeout=900)
         st = root / "evidence/structure/structure.json"
         if p.returncode != 0 or not st.is_file():
             return FAIL, "copy %s: the structure producer failed: %s" % (label, (p.stdout + p.stderr)[-300:])
         outs[label] = (root, load_json(st))
+    def build_facts(r: dict) -> dict:
+        # the build's own facts, not its timings or paths
+        return {k: r.get(k) for k in ("status", "outcome", "classpath_available", "classpath_entries", "source_roots",
+                                      "generated_source_roots", "toolchain", "managed_versions") if k in r}
+    if build_facts(builds["a"]) != build_facts(builds["b"]):
+        return FAIL, "the two clean builds recorded different facts: %s / %s" % (build_facts(builds["a"]), build_facts(builds["b"]))
+    q.evidence.setdefault("m1_structure_replay", {})["build_facts"] = build_facts(builds["a"])
     ta = outs["a"][1].get("types") or []
     tb = outs["b"][1].get("types") or []
     if digest(ta) != digest(tb):
@@ -645,7 +666,8 @@ def m1_structure_replay(q: Q, source: Path):
             from planner.worklist import corpus_scenario_facts
             oracles, facts = corpus_scenario_facts(q.specimen)
         reqs[label] = SR.derive(types=doc["types"], entry_points=eps, catalog=cat, decisions=dec, oracles=oracles,
-                                structure_complete=True, generator=None, scenario_facts=facts)
+                                structure_complete=True, generator=None, scenario_facts=facts,
+                                source_config=SR.source_configuration(root, frozen_dir=q.tmp / ("m1-%s" % label) / "frozen"))
     if digest(reqs["a"]) != digest(reqs["b"]):
         return FAIL, "equal structure derived different requirements"
     partial = sum(1 for t in ta if str(t.get("resolution") or "full") != "full")
@@ -657,7 +679,8 @@ def m1_structure_replay(q: Q, source: Path):
         from planner.worklist import corpus_scenario_facts
         oracles, facts = corpus_scenario_facts(q.specimen)
         pres = SR.derive(types=pb["structure"]["types"], entry_points=pb["entry_points"], catalog=cat, decisions=dec, oracles=oracles,
-                         structure_complete=True, generator=None, scenario_facts=facts)
+                         structure_complete=True, generator=None, scenario_facts=facts,
+                         source_config=SR.source_configuration(q.specimen, frozen_dir=q.source))
         ids_f = {(r["id"], r["status"]) for r in reqs["a"]["requirements"]}
         ids_p = {(r["id"], r["status"]) for r in pres["requirements"]}
         vs_preserved = ("; vs the preserved run's M1 evidence: requirements %s (%d only fresh, %d only preserved)"
@@ -669,9 +692,29 @@ def m1_structure_replay(q: Q, source: Path):
         "types": len(ta), "partial_types": partial, "structure_digest": digest(ta), "requirements_digest": digest(reqs["a"]),
         "requirements": sorted("%s %s" % (r["rule"], r["status"]) for r in reqs["a"]["requirements"])})
     rows = sum(1 for r in reqs["a"]["requirements"] if r["rule"] == "repository-architecture/v1")
-    return PASS, ("JdkModelExtract + normalize-structure on two clean copies (own offline classpath and compile): %d types (%d partial) "
+    return PASS, ("capture-build-evidence + JdkModelExtract + normalize-structure on two clean copies: identical build facts; %d types (%d partial) "
                   "identical; %d requirements (%d repository) identical%s" % (len(ta), partial, len(reqs["a"]["requirements"]), rows,
                                                                             vs_preserved))
+
+
+def claim_boundary(q: Q) -> dict:
+    """What this run's repeatability claim covers, from the cases that ran --
+    never wider (round 3): equal plans from RECORDED evidence are not equal
+    results from a FRESH M1 analysis, and a producer not executed here is
+    named as such."""
+    ran = {c["case"]: c["status"] for c in q.cases}
+    fresh = [k for k, v in ran.items() if v == PASS and k.startswith(("M1 build + structure", "MTA CLI"))]
+    not_run = [k for k, v in ran.items() if v == NOT_RUN]
+    return {
+        "covers": ["planning determinism for FIXED evidence (recorded-evidence cases: synthetic specimens"
+                   + (", and the preserved PetClinic M1 evidence" if q.specimen is not None else "") + ")"]
+                  + ["fresh producer execution: %s" % k for k in fresh],
+        "does_not_cover": ["equal initial plans from a FRESH end-to-end M1 analysis beyond the producers listed as fresh",
+                           "live source behaviour, a successful migration, native outcome execution readiness"]
+                          + ["not run here: %s" % k for k in not_run],
+        "initial_analysis_cache": "the initial M2 analysis always rebuilds (no warm-up reuse; run.json warmup.cache "
+                                  "not-reused-initial-analysis); routine verification may reuse a matching warm-up",
+    }
 
 
 def tools() -> dict:
@@ -709,8 +752,7 @@ def main(argv: list[str] | None = None) -> int:
             shutil.rmtree(tmp, ignore_errors=True)
     report = {"schema": "rhoai3.repeatability-qualification/v1", "synthetic_evidence": True,
               "preserved_evidence": str(q.specimen) if q.specimen is not None else "",
-              "claim_boundary": "planning determinism for fixed evidence and the producers listed; not live source behaviour, "
-                                "not a successful migration, not native outcome execution readiness",
+              "claim_boundary": claim_boundary(q),
               "tools": tools(), "seconds": round(time.time() - t0, 1), "cases": q.cases, **q.evidence}
     text = json.dumps(report, indent=2, sort_keys=True)
     if a.out:

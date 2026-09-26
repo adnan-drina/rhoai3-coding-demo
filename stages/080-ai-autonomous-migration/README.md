@@ -115,7 +115,10 @@ responsibilities from the frozen source before any failure and seals a
 semantic fingerprint of that initial plan, so equivalent pinned inputs give
 the same initial plan. The golden selects it for new runs; a run keeps the
 value it was created with (earlier runs stay off). It is qualified locally on
-synthetic evidence and on recorded PetClinic M1 evidence, not by a live run;
+synthetic evidence, on recorded PetClinic M1 evidence, and by re-running the
+M1 build and structure producers on two clean copies of the frozen source
+(the MTA producer and the M2 destination analysis were not re-run); not by a
+live run;
 see
 [§7.1 of the solution architecture](SOLUTION-ARCHITECTURE.md#71-repeatable-initial-plan-plan-semantics-v1-run-pinned).
 

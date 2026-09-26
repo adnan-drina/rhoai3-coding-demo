@@ -236,7 +236,22 @@ verification and decided configuration are judged by their checks.
   --initial`: `prepare-initial-analysis.py` removes `target/` before the first
   baseline only (never after a baseline or an issued card), the warm-up
   regenerates every generated root, the analysis never reads `target/classes`,
-  and a stale generated root refuses (`VERIFY_INITIAL_STALE_OUTPUT`).
+  and a stale generated root refuses (`VERIFY_INITIAL_STALE_OUTPUT`). The
+  initial analysis NEVER reuses a warm-up: the warm-up stamp's key does not
+  cover the resolved dependency graph, so `--initial` discards the stamp and
+  rebuilds (`run.json` `warmup.cache: not-reused-initial-analysis`); routine
+  verification keeps its reuse.
+- **Application paths.** `source_requirements.application_paths` owes every
+  path the FROZEN source configures (compat-mapping `application_paths`:
+  `server.servlet.context-path` -> `quarkus.http.root-path`,
+  `spring.mvc.servlet.path` -> `quarkus.rest.path`,
+  `management.endpoints.web.base-path` ->
+  `quarkus.http.non-application-root-path`), at its effective value under the
+  profiles the source itself activates, or at the value decisions.yaml
+  `application_paths` records under an accepted ADR; measured as
+  `config:application-path` (the destination's effective value under the
+  decided build profiles). No configured path is not-applicable; YAML
+  configuration is unresolved.
 - **Source-derived responsibilities.** `planner/source_requirements.py` plans
   the known work from the frozen structural model before any destination
   failure: repository fragment architecture, BindingResult/Errors validation,
@@ -317,7 +332,11 @@ verification and decided configuration are judged by their checks.
   fingerprints) beside the exact digests and adds `PLAN_CONTRACT`,
   `PLAN_ACCEPTANCE_MISSING` and `PLAN_RECIPE_MISSING`. The first ADMITTED
   receipt freezes `evidence/planning/plan-semantics.json`; re-seals never
-  rewrite it. `plan-view.json` is the derived human view; on a serial-loop run
+  rewrite it. `plan-view.json` is the derived human view of the FROZEN
+  initial plan (`scope: frozen-initial-plan`; it carries no additions or
+  progress it cannot know; given the store's recorded revisions,
+  `plan_view(..., revisions=)` reports the real additions with their
+  revision and lineage); on a serial-loop run
   it is observational.
 - **Comparison.** `planner/plan_semantics.py` compares two documents by class
   (input-version, input, evidence-quality, outcome/obligation/requirement
@@ -332,14 +351,25 @@ including source/profile/generator deltas, dependency cycles, ambiguous
 shared ownership and mixed protocol state); with `--specimen` the same
 consumers on PRESERVED PetClinic M1 evidence (two reordered copies: identical
 requirements and logical graph, distinct run bindings); with `--source` the
-M1 structure producer (JdkModelExtract after an offline `mvn compile`)
-re-executed on two clean copies of the frozen PetClinic source -- identical
-structure, and requirements identical to those derived from the preserved
-run's evidence (2026-09-26). Producer replay also covers the JDK diagnostics,
-initial-analysis boundary, decided-repairs, declared-reference, V17-3/4/5
-checkpoint and brief cases. The MTA CLI and the Maven build/test producers
-were not re-executed on the specimen. Planning equality does not authorize
-execution or establish behavioural PASS.
+pinned M1 BUILD producer (capture-build-evidence.sh) and STRUCTURE producer
+(run-jdk-model-extract.sh) re-executed on two clean copies of the frozen
+PetClinic source -- identical build facts, identical structure (100 types, 0
+partial), and source-derived requirements identical to those derived from the
+preserved run's recorded evidence (2026-09-26, round 3). Producer replay also
+covers the JDK diagnostics, the initial-analysis boundary (which never reuses
+a warm-up), decided-repairs, declared-reference, V17-3/4/5 checkpoint and
+brief cases.
+
+**The claim is narrower than "same inputs, same plan" end to end.** NOT RUN:
+the pinned MTA CLI 8.2 (the host's mta-cli is 7.3.0, not admissible; the
+pinned 8.2.1 exists locally only as linux/amd64 inside the ws-080 image, and
+under emulation on the arm64 workstation its Java provider did not start the
+analysis within 21 minutes -- the native run takes about a minute), so MTA
+findings are recorded evidence; and the M2 destination analysis (bootstrap,
+destination compile and rescan) on fresh M1 output, so the finding half of the
+initial plan was compared from recorded evidence only. Equal plans from
+recorded evidence are not equal results from a fresh M1 analysis. Planning
+equality does not authorize execution or establish behavioural PASS.
 
 ---
 
