@@ -1,0 +1,348 @@
+From 8eb7d7071701177b822039a7b8a594102555f23d Mon Sep 17 00:00:00 2001
+From: "Claude (rhoai3 Stage 080)" <noreply@anthropic.com>
+Date: Sun, 27 Sep 2026 22:41:40 +0200
+Subject: [PATCH] fix(kanban): review handoff is terminal in the stop guard
+
+The turn-end stop guard (agent/kanban_stop.py) treated only kanban_complete
+and kanban_block as terminal, gated on the inherited HERMES_KANBAN_TASK env
+var alone, and its nudge asserted the task "is still `running`" without
+reading the board. A worker that correctly handed its card off with
+kanban_request_review (or a reviewer that called kanban_request_changes) was
+nudged up to twice to "call kanban_complete ... or kanban_block", steering it
+to close or re-handle a card that was already under review. Delegated
+children and in-process cron runs, which inherit the env var but own no
+task, were nudged too.
+
+- _TERMINAL_KANBAN_TOOLS now includes kanban_request_review and
+  kanban_request_changes.
+- kanban_stop_nudge_enabled() resolves identity through the new
+  agent/delegation_context.py owned_kanban_task(): the nudge fires only for
+  the dispatcher-owned worker, never for delegate_task children or
+  non-dispatcher-owned (cron) contexts.
+- The nudge no longer claims the card's status; it states that this session
+  made no terminal board call and names every legal worker exit.
+- The conversation-loop call site comment/status text and the worker-facing
+  orchestrator-only refusal in tools/kanban_tools.py list the same exits.
+
+A worker that makes no terminal call is still nudged (bounded, unchanged).
+
+Backport of upstream NousResearch/hermes-agent commits:
+  2bd0f1c59e5975676abe466bb06a0dc9da40326b fix(kanban): scope the stop nudge to the dispatcher-owned worker
+  474db5363aac83a8395466584013264032ccc613 fix: kanban guidance and stop nudge resolve worker identity through one helper (owned_kanban_task + kanban_stop only)
+  42500bf0cba4e2642a8f4f90db9fec593c1eedb8 fix(kanban): treat review-handoff tools as terminal in the stop guard
+  41fe679d96ee640ae35beaca264b2fba70c3eb5a fix(kanban): stop-guard nudge names every worker exit; sync terminal-tool copies (stop-guard text only)
+
+Tests: upstream test_kanban_stop.py cases for these commits, plus a
+previous-tool -> nudge reproduction table (rhoai3 Stage 080 patch 0013).
+---
+ agent/conversation_loop.py      |   8 +-
+ agent/delegation_context.py     |  12 +++
+ agent/kanban_stop.py            |  42 +++++++---
+ tests/agent/test_kanban_stop.py | 137 ++++++++++++++++++++++++++++++++
+ tools/kanban_tools.py           |   3 +-
+ 5 files changed, 187 insertions(+), 15 deletions(-)
+
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index a7077ab..a486114 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -8281,7 +8281,9 @@ def run_conversation(
+                     continue
+ 
+                 # ── Kanban worker terminal-tool stop guard ─────────────
+-                # Workers must end with kanban_complete / kanban_block.
++                # Workers must end with a terminal board tool
++                # (kanban_complete / kanban_block / kanban_request_review /
++                # kanban_request_changes).
+                 # Models sometimes narrate the next step ("Let me write the
+                 # report") and stop with finish_reason=stop — a clean exit
+                 # that the dispatcher records as protocol_violation. Nudge
+@@ -8316,8 +8318,8 @@ def run_conversation(
+                         os.environ.get("HERMES_KANBAN_TASK", ""),
+                     )
+                     agent._emit_status(
+-                        "⚠️ Kanban worker tried to exit without "
+-                        "kanban_complete/kanban_block — nudging to finish"
++                        "⚠️ Kanban worker tried to exit without a terminal board call "
++                        "(kanban_complete/kanban_request_review/kanban_block) — nudging to finish"
+                     )
+                     # Same finalizer contract as verify-on-stop: clear
+                     # final_response while continuing so a later budget
+diff --git a/agent/delegation_context.py b/agent/delegation_context.py
+index 9b8bce9..6125b84 100644
+--- a/agent/delegation_context.py
++++ b/agent/delegation_context.py
+@@ -106,6 +106,18 @@ def is_dispatcher_owned_worker_context() -> bool:
+     return not _NON_DISPATCHER_OWNED_CONTEXT.get()
+ 
+ 
++def owned_kanban_task() -> str:
++    """The board task this execution OWNS: ``HERMES_KANBAN_TASK`` for the dispatcher-owned
++    worker, ``""`` otherwise. Tool access is not worker identity — a profile can expose the
++    kanban toolset interactively, and children/cron runs inherit the env var — so every
++    reader that turns the task id into worker behaviour goes through this one helper."""
++    if not is_dispatcher_owned_worker_context():
++        return ""
++    import os
++
++    return (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
++
++
+ def enter_non_dispatcher_owned_context() -> Token[bool]:
+     """Token-based form of :func:`non_dispatcher_owned_context`.
+ 
+diff --git a/agent/kanban_stop.py b/agent/kanban_stop.py
+index e7c2eae..53e54b1 100644
+--- a/agent/kanban_stop.py
++++ b/agent/kanban_stop.py
+@@ -1,6 +1,8 @@
+ """Turn-end guard for kanban workers.
+ 
+-Kanban workers must end with ``kanban_complete`` or ``kanban_block``. Models
++Kanban workers must end with a terminal board tool that hands the card to
++whoever owns it next (``kanban_complete``, ``kanban_block``,
++``kanban_request_review``, ``kanban_request_changes``). Models
+ (especially GLM / Qwen families) sometimes narrate the next step
+ ("Let me write the report now") and stop with ``finish_reason=stop`` and no
+ tool calls. Hermes treats that as a clean exit → ``rc=0`` → dispatcher
+@@ -16,8 +18,20 @@ from __future__ import annotations
+ import os
+ from typing import Any, Iterable, Optional
+ 
++from agent.delegation_context import owned_kanban_task
+ 
+-_TERMINAL_KANBAN_TOOLS = frozenset({"kanban_complete", "kanban_block"})
++
++# Every tool that ends this worker's responsibility for the card, not just the two that
++# close it out: ``kanban_request_review`` moves it to ``review`` (goals.py's continuation /
++# finalize prompts tell builders to call it) and ``kanban_request_changes`` returns it to
++# ``ready`` (the sdlc-review skill tells reviewers to). Nudging after either asks a worker
++# that did the right thing to ``kanban_complete`` a card it must not close.
++_TERMINAL_KANBAN_TOOLS = frozenset({
++    "kanban_complete",
++    "kanban_block",
++    "kanban_request_review",
++    "kanban_request_changes",
++})
+ 
+ _DEFAULT_MAX_ATTEMPTS = 2
+ 
+@@ -25,14 +39,15 @@ _DEFAULT_MAX_ATTEMPTS = 2
+ def kanban_stop_nudge_enabled() -> bool:
+     """Return whether the kanban stop-guard is active for this process.
+ 
+-    On when ``HERMES_KANBAN_TASK`` is set (dispatcher-spawned worker), unless
+-    ``HERMES_KANBAN_STOP_NUDGE`` explicitly disables it.
++    On when ``HERMES_KANBAN_TASK`` is set for the dispatcher-owned worker,
++    unless ``HERMES_KANBAN_STOP_NUDGE`` explicitly disables it. In-process
++    delegate_task children and cron runs inherit the env var but own no board
++    task and carry no kanban toolset.
+     """
+     env = os.environ.get("HERMES_KANBAN_STOP_NUDGE")
+     if env is not None and env.strip().lower() in {"0", "false", "no", "off"}:
+         return False
+-    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+-    return bool(task)
++    return bool(owned_kanban_task())
+ 
+ 
+ def _tool_call_name(tc: Any) -> str:
+@@ -86,16 +101,21 @@ def build_kanban_stop_nudge(
+         return None
+ 
+     tid = (task_id or os.environ.get("HERMES_KANBAN_TASK") or "").strip() or "this task"
++    # The transcript is the status source: this text is only reached when the session made no
++    # handoff call, so it never tells a worker to close a card it already sent to review.
+     return (
+         "[System: You are a Hermes kanban worker. A plain-text reply is NOT a "
+         "terminal state for the board.\n\n"
+-        f"Task `{tid}` is still `running`. Ending now without a board tool "
+-        "causes a protocol violation (clean exit with no "
+-        "`kanban_complete` / `kanban_block`).\n\n"
++        f"Task `{tid}` has not been handed off: this session made no terminal board "
++        "call (`kanban_complete` / `kanban_request_review` / `kanban_block`). Ending now "
++        "causes a protocol violation (clean exit with the card still `running`).\n\n"
+         "Do this immediately in your next response — do not narrate intent:\n"
+         "1. Finish any remaining deliverable (write the required file(s) now).\n"
+-        "2. Call `kanban_complete(summary=..., artifacts=[...])` if the work "
+-        "is done, OR `kanban_block(reason=...)` if you are blocked.\n\n"
++        "2. Call `kanban_complete(summary=..., artifacts=[...])` if the work is done "
++        "and needs no review, `kanban_request_review(summary=...)` if it is a code "
++        "change that needs same-card review, OR `kanban_block(reason=...)` if you are "
++        "blocked. Reviewers approve with `kanban_complete` or send the card back with "
++        "`kanban_request_changes(reason=...)`.\n\n"
+         "Never end a turn with only a promise of future action. Repeated "
+         "protocol violations will block this task and require manual intervention.]"
+     )
+diff --git a/tests/agent/test_kanban_stop.py b/tests/agent/test_kanban_stop.py
+index dbe371d..4399bb4 100644
+--- a/tests/agent/test_kanban_stop.py
++++ b/tests/agent/test_kanban_stop.py
+@@ -29,6 +29,30 @@ def test_env_can_disable(clear_kanban_env):
+     assert build_kanban_stop_nudge(messages=[]) is None
+ 
+ 
++def test_nudge_disabled_inside_delegated_child(clear_kanban_env):
++    from agent.delegation_context import delegated_child_context
++
++    clear_kanban_env.setenv("HERMES_KANBAN_TASK", "t_parent")
++
++    assert kanban_stop_nudge_enabled() is True
++    with delegated_child_context():
++        assert kanban_stop_nudge_enabled() is False
++        assert build_kanban_stop_nudge(messages=[]) is None
++    assert kanban_stop_nudge_enabled() is True
++
++
++def test_nudge_disabled_inside_non_dispatcher_context(clear_kanban_env):
++    from agent.delegation_context import non_dispatcher_owned_context
++
++    clear_kanban_env.setenv("HERMES_KANBAN_TASK", "t_parent")
++
++    assert kanban_stop_nudge_enabled() is True
++    with non_dispatcher_owned_context():
++        assert kanban_stop_nudge_enabled() is False
++        assert build_kanban_stop_nudge(messages=[]) is None
++    assert kanban_stop_nudge_enabled() is True
++
++
+ def test_nudge_when_no_terminal_tool(clear_kanban_env):
+     clear_kanban_env.setenv("HERMES_KANBAN_TASK", "t_46be8aa5")
+     messages = [
+@@ -74,6 +98,119 @@ def test_no_nudge_after_kanban_complete(clear_kanban_env):
+     assert build_kanban_stop_nudge(messages=messages) is None
+ 
+ 
++@pytest.mark.parametrize(
++    "tool_name,who",
++    [
++        ("kanban_request_review", "build worker handing off for same-card review"),
++        ("kanban_request_changes", "review agent sending the card back"),
++    ],
++)
++def test_no_nudge_after_handoff_tool(clear_kanban_env, tool_name, who):
++    """Handoff tools end the worker's turn just like complete/block.
++
++    Both move the card out of ``running``, and the worker is told to call
++    them — goals.py's continuation/finalize prompts name
++    ``kanban_request_review``; the force-loaded sdlc-review skill names
++    ``kanban_request_changes``. Nudging afterwards asks a worker that did
++    the right thing to close a card it must not close.
++    """
++    clear_kanban_env.setenv("HERMES_KANBAN_TASK", "t_handoff")
++    messages = [
++        {
++            "role": "assistant",
++            "content": "",
++            "tool_calls": [
++                {
++                    "id": "1",
++                    "type": "function",
++                    "function": {"name": tool_name, "arguments": "{}"},
++                }
++            ],
++        },
++        {"role": "tool", "name": tool_name, "tool_call_id": "1", "content": "ok"},
++    ]
++    assert session_called_kanban_terminal(messages) is True, who
++    assert build_kanban_stop_nudge(messages=messages) is None
++
++
++def test_nudge_still_fires_for_non_terminal_kanban_tool(clear_kanban_env):
++    """Widening the set must not swallow the case the guard exists for."""
++    clear_kanban_env.setenv("HERMES_KANBAN_TASK", "t_abc")
++    messages = [
++        {
++            "role": "assistant",
++            "content": "Let me open the review next.",
++            "tool_calls": [
++                {
++                    "id": "1",
++                    "type": "function",
++                    "function": {"name": "kanban_comment", "arguments": "{}"},
++                }
++            ],
++        },
++        {"role": "tool", "name": "kanban_comment", "tool_call_id": "1", "content": "ok"},
++    ]
++    assert session_called_kanban_terminal(messages) is False
++    nudge = build_kanban_stop_nudge(messages=messages)
++    assert nudge is not None
++    # The nudge offers every worker exit, not just close-out; a card that must go
++    # through review must never be steered to ``kanban_complete`` alone.
++    assert "kanban_request_review" in nudge and "kanban_block" in nudge
++    # The nudge reads no board state, so it must not assert the card's status.
++    assert "is still `running`" not in nudge
++
++
++def _transcript_ending_with(tool_name):
++    """A worker transcript whose last board action is ``tool_name`` (None = plain text)."""
++    msgs = [{"role": "user", "content": "work kanban task"}]
++    if tool_name is not None:
++        msgs += [
++            {
++                "role": "assistant",
++                "content": "",
++                "tool_calls": [
++                    {
++                        "id": "1",
++                        "type": "function",
++                        "function": {"name": tool_name, "arguments": "{}"},
++                    }
++                ],
++            },
++            {"role": "tool", "name": tool_name, "tool_call_id": "1", "content": "ok"},
++        ]
++    msgs.append({"role": "assistant", "content": "Handed off; nothing more to do."})
++    return msgs
++
++
++@pytest.mark.parametrize(
++    "previous_tool,context,expect_nudge",
++    [
++        ("kanban_request_review", "owned", False),
++        ("kanban_request_changes", "owned", False),
++        ("kanban_complete", "owned", False),
++        ("kanban_block", "owned", False),
++        (None, "owned", True),
++        (None, "delegated_child", False),
++        (None, "non_dispatcher_owned", False),
++    ],
++)
++def test_stop_guard_reproduction_table(clear_kanban_env, previous_tool, context, expect_nudge):
++    """Previous tool call -> does the turn-end guard nudge? (rhoai3 patch 0013)."""
++    from contextlib import nullcontext
++
++    from agent.delegation_context import delegated_child_context, non_dispatcher_owned_context
++
++    clear_kanban_env.setenv("HERMES_KANBAN_TASK", "t_owned")
++    scope = {
++        "owned": nullcontext,
++        "delegated_child": delegated_child_context,
++        "non_dispatcher_owned": non_dispatcher_owned_context,
++    }[context]
++    with scope():
++        nudge = build_kanban_stop_nudge(messages=_transcript_ending_with(previous_tool))
++    assert (nudge is not None) is expect_nudge
++
++
+ 
+ 
+ 
+diff --git a/tools/kanban_tools.py b/tools/kanban_tools.py
+index d49b53a..5a547a7 100644
+--- a/tools/kanban_tools.py
++++ b/tools/kanban_tools.py
+@@ -476,7 +476,8 @@ def _require_orchestrator_tool(tool_name: str) -> Optional[str]:
+     if os.environ.get("HERMES_KANBAN_TASK"):
+         return tool_error(
+             f"{tool_name} is orchestrator-only; dispatcher-spawned workers "
+-            "must use kanban_complete, kanban_block, kanban_heartbeat, or "
++            "must use kanban_complete, kanban_request_review, "
++            "kanban_request_changes, kanban_block, kanban_heartbeat, or "
+             "kanban_comment for their assigned task."
+         )
+     return None
+-- 
+2.54.0 (Apple Git-157)
+
