@@ -184,6 +184,74 @@ class DeferredChecks(unittest.TestCase):
 
 
 # ===========================================================================
+class Satisfied(unittest.TestCase):
+    """v21 t_23612034: a package unit's commit discharged every obligation a
+    type-level outcome owned; its card got an empty issue and no road."""
+
+    def setUp(self):
+        self.r = Run()
+        self.r.release()
+
+    def tearDown(self):
+        self.r.close()
+
+    def subsume(self, oid):
+        """Another outcome's fix removes this outcome's obligations (no edit of its own)."""
+        self.r.drop(*NC.owned(self.r.plan(), NC._node(self.r.plan(), oid)))
+
+    def test_discharged_elsewhere_is_accepted_and_reviewable(self):
+        r = self.r
+        r.accept("build:rk:pom")                                          # an acceptance measured on this tree
+        self.subsume("config:rk:cfg")
+        tid, run, iss = r.issue("config:rk:cfg")
+        self.assertEqual((iss["cluster"], iss["allowed_paths"]), ("", []))
+        self.assertTrue(iss["next"].startswith("SATISFIED: config:rk:cfg"), iss["next"])
+        self.assertEqual(iss["satisfied"]["by"]["outcome"], "build:rk:pom")
+        self.assertEqual(NC.outcome_acceptance(r.root, r.board, tid, r.plan(), NC._node(r.plan(), "config:rk:cfg"))[0], True)
+        again = NC.issue(r.root, r.board, task_id=tid, run_id=run)       # a replayed issue records nothing twice
+        self.assertTrue(again["next"].startswith("SATISFIED"))
+        self.assertEqual(len([x for x in r.board.records(tid, "accept-commit") if x.get("satisfied_by")]), 1)
+        rrun = r.review_and_complete(tid, run)                           # request_review and the reviewer's completion
+        self.assertEqual(status(r, tid), "done")
+        # the M3 audit grades the harness record for such a card (no loop step exists)
+        spec = importlib.util.spec_from_file_location(
+            "m3_audit", NB.LIB.parent / "skills" / "paved-road" / "paved-road-m3" / "scripts" / "assert-paved-road-audit.py")
+        audit = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(audit)
+        orig = NC.board_for
+        NC.board_for = lambda root, native=None: NC.Board(r.native, author="reviewer")
+        try:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = audit._satisfied_audit(tid, r.root, r.tmp / "not-an-official.log", r.tmp / "steps.json")
+            self.assertEqual(rc, 0, out.getvalue())
+            self.assertIn("artifact=satisfied", out.getvalue())
+            r.edit("pom.xml", "<project>drift</project>\n")               # the tree moves: the record no longer holds
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(audit._satisfied_audit(tid, r.root, r.tmp / "x.log", r.tmp / "steps.json"), 1)
+            other = r.tid("source:rk:item")                               # a loop card: the log audit decides
+            self.assertIsNone(audit._satisfied_audit(other, r.root, r.tmp / "x.log", r.tmp / "steps.json"))
+        finally:
+            NC.board_for = orig
+
+    def test_nothing_measured_on_this_tree_is_not_satisfied(self):
+        r = self.r
+        self.subsume("config:rk:cfg")                                      # no acceptance was ever measured on this tree
+        tid, run, iss = r.issue("config:rk:cfg")
+        self.assertIsNone(iss["satisfied"])
+        self.assertTrue(iss["next"].startswith("NOTHING ISSUED: config:rk:cfg"), iss["next"])
+        self.assertIn("nothing measured it", iss["next"])
+        with self.assertRaises(Refusal) as cm:
+            NC.check_terminator(r.root, r.board, task_id=tid, run_id=run, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        self.assertEqual(cm.exception.code, "OUTCOME_NOT_ACCEPTED")
+
+    def test_an_outcome_with_open_work_is_issued_as_before(self):
+        tid, run, iss = self.r.issue("build:rk:pom")
+        self.assertEqual((iss["cluster"], iss["next"], iss["satisfied"]), ("c:pom", "", None))
+
+
+# ===========================================================================
 class NotAccepted(unittest.TestCase):
 
     def test_reasons_are_named(self):

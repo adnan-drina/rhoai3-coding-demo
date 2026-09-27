@@ -657,6 +657,39 @@ def repair_waiting(board: Board, run_id: str, plan: dict[str, Any], task_id: str
     return ""
 
 
+def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
+               tree: str, head: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """An outcome with nothing left to issue whose owned obligations are
+    already absent (another outcome's accepted commit discharged them -- v21
+    t_23612034: the package unit u:0e0fee12e896 fixed PropertyComparator):
+    measured on THIS tree from the acceptance another card recorded on it.
+    (evidence, []) when it is satisfied; (None, reasons) otherwise."""
+    if changed_product_paths(root, head):
+        return None, ["the product tree differs from HEAD %s" % head[:12]]
+    still = sorted(open_obligations(worklist) & owned(plan, node))
+    if still:
+        return None, ["open obligation %s" % o for o in still[:6]]
+    evidence = None
+    for oid, row in (board.run_tasks(run) or {}).items():
+        for r in _accept_records(board, row["id"]):
+            if r.get("kind") == "accept-commit" and r.get("outcome_accepted") and r.get("tree") == tree \
+                    and not r.get("satisfied_by"):
+                evidence = dict(r, task=row["id"], outcome=oid)
+    if evidence is None:
+        return None, ["no outcome was accepted on this tree %s: nothing measured it" % tree[:12]]
+    em = evidence.get("measurement") or {}
+    m = _measure(root, plan, node, worklist, tree, {"classes": em.get("classes") or [], "scenarios": em.get("scenarios") or []})
+    m["classes_asserted_by"] = "accept-commit %s (%s)" % (evidence["key"], evidence["task"])
+    gaps = repair_evidence_gaps(root, node, tree)
+    reasons = not_accepted_reasons({"measurement": m, "repair_evidence_gaps": gaps})
+    if not _covers(node, m) and not reasons:
+        reasons = ["the check class of %s was not measured on this tree" % node["outcome_id"]]
+    if reasons or m["open_owned"]:
+        return None, reasons
+    return {"measurement": m, "by": {"task": evidence["task"], "outcome": evidence["outcome"], "commit": evidence.get("commit"),
+                                     "record": evidence["key"]}}, []
+
+
 def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: str = "") -> dict[str, Any]:
     """The scope of this native run: the one open cluster (or planned unit,
     owner repair unit, rework unit) of the task's outcome, the baseline it is
@@ -702,6 +735,7 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     if role == "repair" and worklist is None:
         raise Refusal("ISSUE_" + why, "an outcome is issued against the measured work list")
     cluster, allowed, unit = "", [], None
+    satisfied, unsatisfied = None, []
     if role == "repair":
         own = owned(plan, node)
         cluster, allowed = _allowed_paths(node, worklist, own)
@@ -725,11 +759,28 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                 unit = {"refusal": "", "paths": paths, "basis": "reviewer requested changes"}
         if cluster:
             allowed = sorted(set(allowed) | amended_paths(board, task_id, cluster))
+        elif not (unit and unit.get("refusal")):
+            satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
     seq = len([r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]) + 1
     rec = board.record(task_id, "issue", "issue:%d:%d" % (run_id, seq), run=int(run_id), seq=seq, outcome_id=oid,
                        role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
                        budget_key=budget["key"], revision=int(plan["revision"]))
-    return {"issue_id": seq, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
+    nxt = ""
+    if satisfied is not None:
+        # recorded once per native run (a replayed issue finds the key); judged later exactly like any
+        # acceptance: outcome_acceptance re-measures it on the then-current tree
+        board.record(task_id, "accept-commit", "accept-commit:%d:satisfied" % int(run_id), run=int(run_id), commit=head,
+                     tree=tree, cluster="", outcome_accepted=True, measurement=satisfied["measurement"],
+                     repair_evidence_gaps=[], satisfied_by=satisfied["by"])
+        nxt = ("SATISFIED: %s owns no open obligation on this tree (discharged by %s, %s, commit %s). Nothing to edit: "
+               "run python3 .hermes/kernel/native_gate.py --root . handoff, then kanban_request_review reviewer=reviewer "
+               "with its summary and metadata. Do not run brief.py or advance.py." % (
+                   oid, satisfied["by"]["outcome"], satisfied["by"]["task"], str(satisfied["by"]["commit"] or "")[:12]))
+    elif role == "repair" and not cluster:
+        nxt = ("NOTHING ISSUED: %s has no open scope and is not satisfied (%s). kanban_block kind=needs_input naming "
+               "these reasons." % (oid, "; ".join(([("planned unit refused: %s" % unit["refusal"])] if unit and unit.get("refusal") else [])
+                                         + unsatisfied[:3]) or "no reason measured"))
+    return {"issue_id": seq, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
             "cluster": cluster, "allowed_paths": allowed, "budget": budget, "retained_candidate": bool(pending),
             "planned_unit": (dict(unit, owed=unit.get("owed") or [], bounds=unit.get("bounds") or {},
                                   kind=_unit_kind(node)) if unit else None),

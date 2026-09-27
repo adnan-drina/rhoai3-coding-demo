@@ -214,6 +214,13 @@ review; the domain checks guard your native actions.
    It checks this native run, writes `verification/loop/issued.json` for the
    ONE scope you may edit now and records the issue on the card. Its
    `allowed_paths` is your write set. No issue means no product write.
+   Read its `next` field first:
+   - `SATISFIED: …` — another outcome's accepted commit already discharged
+     everything this card owns; the acceptance is recorded. Run `handoff`,
+     then `kanban_request_review` reviewer=reviewer (item 3). Do not run
+     brief.py or advance.py: there is nothing to edit.
+   - `NOTHING ISSUED: …` — no scope and not satisfied: `kanban_block
+     kind=needs_input` naming the reasons it lists. Do not search for work.
 2. The same road: brief, patch, run-verify, advance. A REVERTED attempt stays
    on this card: advance re-issues the scope (`CONTINUE THIS CARD`), read the
    brief again.
