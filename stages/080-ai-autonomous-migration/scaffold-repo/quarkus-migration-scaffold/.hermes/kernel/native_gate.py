@@ -74,6 +74,9 @@ def write_issued_projection(root: Path, issued: dict) -> str:
                                                int(issued["issue_id"]), int(issued["run_id"]))
     card = cluster_card(row, steps)
     card["write_set"] = sorted(set(card["write_set"]) | set(issued.get("allowed_paths") or []))
+    if issued.get("planned_unit") and str(issued["cluster"]).startswith("planned:"):
+        from planner.worklist import PLANNED_UNIT_GATE
+        card["gate"] = PLANNED_UNIT_GATE          # judged by its requirement checks, not the tuple
     write_issued(root, wl, card, str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
     amends = list(issued.get("amendments") or [])
     if amends:
@@ -150,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
     pu.add_argument("--ref", default="refs/heads/main")
     sub.add_parser("account")
     sub.add_parser("handoff")
+    vr = sub.add_parser("void-rejects", help="Operator: take rejections a harness defect caused out of the budget")
+    vr.add_argument("--task", default="")
+    vr.add_argument("--key", action="append", default=[], required=True)
+    vr.add_argument("--reason", required=True)
     sub.add_parser("park")
     sub.add_parser("restore-parked")
     ns = ap.parse_args(argv)
@@ -211,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
             out = NC.m4_repair(root, board, task_id=task, run_id=run_id)
         elif ns.cmd == "handoff":
             out = NC.handoff(root, board, task_id=task)
+        elif ns.cmd == "void-rejects":
+            out = {"voided": NC.void_rejects(board, task_id=ns.task or task, keys=ns.key, reason=ns.reason,
+                                             by=(os.environ.get("HERMES_PROFILE") or "").strip().lower())}
         elif ns.cmd == "park":
             out = NC.park(root, board, task_id=task, run_id=run_id)
         elif ns.cmd == "restore-parked":

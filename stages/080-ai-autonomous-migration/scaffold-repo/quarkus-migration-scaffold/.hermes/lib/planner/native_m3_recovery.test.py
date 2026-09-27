@@ -272,6 +272,63 @@ class NotAccepted(unittest.TestCase):
 class UnitIdempotency(unittest.TestCase):
     """advance.py answers "ACCEPTED already" for the issued UNIT only."""
 
+    def test_a_planned_unit_is_judged_by_its_requirements_not_the_tuple(self):
+        # v21 t_0bc6319b run 39: the owed fragment implementations compiled cleanly and were refused
+        # "measure [0, 179, 0] did not decrease" three times -- the 179 were outside the unit's write set
+        from planner.worklist import PLANNED_UNIT_GATE, progress
+        m = lambda t: {"known": True, "tuple": t}
+        ok, why = progress(m([0, 179, 0]), m([0, 179, 0]), set(), set(), gate=PLANNED_UNIT_GATE)
+        self.assertTrue(ok, why)
+        self.assertIn("requirement checks decide", why)
+        ok, why = progress(m([0, 179, 0]), m([0, 180, 0]), set(), set(), gate=PLANNED_UNIT_GATE)
+        self.assertFalse(ok)
+        self.assertIn("may not make the measure worse", why)
+        ok, why = progress(m([0, 179, 0]), m([0, 179, 0]), set(), {"inc:new|a#1"}, gate=PLANNED_UNIT_GATE)
+        self.assertFalse(ok)                                               # a new mandatory obligation still vetoes
+        ok, why = progress(m([0, 179, 0]), m([0, 179, 0]), set(), set())   # a finding cluster: unchanged
+        self.assertFalse(ok)
+        # the issued projection of a planned unit carries that gate
+        sys.path.insert(0, str(KERNEL))
+        import native_gate as G
+        from planner.paths import LOOP_ISSUED
+        r = Run()
+        mirror_layout(r.root)
+        try:
+            r.release()
+            tid, run, iss = r.issue("build:rk:pom")
+            planned = dict(iss, cluster="planned:build:rk:pom:1", allowed_paths=["pom.xml"],
+                           planned_unit={"kind": "build", "paths": ["pom.xml"], "refusal": ""})
+            G.write_issued_projection(r.root, planned)
+            self.assertEqual(json.loads((r.root / LOOP_ISSUED).read_text()).get("gate"), PLANNED_UNIT_GATE)
+            G.write_issued_projection(r.root, iss)                         # a finding cluster keeps its own gate
+            self.assertNotEqual(json.loads((r.root / LOOP_ISSUED).read_text()).get("gate"), PLANNED_UNIT_GATE)
+        finally:
+            r.close()
+
+    def test_the_operator_voids_rejections_a_harness_defect_caused(self):
+        r = Run()
+        try:
+            r.release()
+            tid, run, iss = r.issue("build:rk:pom")
+            node = NC._node(r.plan(), "build:rk:pom")
+            for a in ("1", "2"):
+                NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="REVERTED", candidate=r.tree(), attempt=a,
+                                  reason="measure did not decrease")
+            self.assertEqual(NC.budget_state(r.board, r.run_id, r.plan(), node)["spent"], 2)
+            keys = [x["key"] for x in r.board.records(tid, "reject")]
+            with self.assertRaises(Refusal) as cm:
+                NC.void_rejects(r.board, task_id=tid, keys=keys[:1], reason="gate defect", by="implementer")
+            self.assertEqual(cm.exception.code, "VOID_NOT_OPERATOR")
+            with self.assertRaises(Refusal) as cm:
+                NC.void_rejects(r.board, task_id=tid, keys=["reject:nope"], reason="gate defect", by="operator")
+            self.assertEqual(cm.exception.code, "VOID_UNKNOWN_REJECT")
+            self.assertEqual(NC.void_rejects(r.board, task_id=tid, keys=keys[:1], reason="gate defect", by="operator"), keys[:1])
+            self.assertEqual(NC.void_rejects(r.board, task_id=tid, keys=keys[:1], reason="gate defect", by="operator"), [])
+            self.assertEqual(NC.budget_state(r.board, r.run_id, r.plan(), node)["spent"], 1)   # the other still counts
+            self.assertEqual(len(r.board.records(tid, "reject")), 2)                          # nothing is deleted
+        finally:
+            r.close()
+
     def test_a_recorded_rejection_reissues_the_same_card(self):
         # v21 t_0bc6319b run 38: advance.py on a clean tree answered "REVERTED already -- call
         # kanban_complete" (serial wording); K2 refused complete and review; the card blocked

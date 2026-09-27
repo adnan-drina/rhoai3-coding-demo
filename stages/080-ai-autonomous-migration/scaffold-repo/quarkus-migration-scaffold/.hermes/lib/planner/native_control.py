@@ -561,9 +561,36 @@ def family_spent(board: Board, run_id: str, plan: dict[str, Any], key: str) -> i
         row = tasks.get(n["outcome_id"])
         if not row:
             continue
-        spent += len(board.records(row["id"], "reject"))
+        voided = {str(v.get("reject") or "") for v in board.records(row["id"], "reject-voided")}
+        spent += sum(1 for r in board.records(row["id"], "reject") if r["key"] not in voided)
         spent += sum(1 for r in board.native.runs(row["id"]) if r.get("outcome") == "changes_requested")
     return spent
+
+
+def void_rejects(board: Board, *, task_id: str, keys: list[str], reason: str, by: str) -> list[str]:
+    """The Operator's disposition that named rejections were caused by a HARNESS
+    defect, not by the candidate (v21 t_0bc6319b: a planned unit refused "measure
+    did not decrease" by a gate that could not measure it). Each stays on the
+    record; a `reject-voided` record beside it takes it out of the family budget.
+    Only the Operator records this; a rejection of a broken candidate is never voided."""
+    if by != "operator":
+        raise Refusal("VOID_NOT_OPERATOR", "only the Operator voids a rejection (profile %r)" % by)
+    if not reason.strip():
+        raise Refusal("VOID_REASON_MISSING", "name the harness defect that caused the rejection")
+    rejects = {r["key"]: r for r in board.records(task_id, "reject")}
+    voided = {str(v.get("reject") or "") for v in board.records(task_id, "reject-voided")}
+    unknown = [k for k in keys if k not in rejects]
+    if unknown:
+        raise Refusal("VOID_UNKNOWN_REJECT", "%s: no such rejection on %s (%s)" % (", ".join(unknown), task_id,
+                                                                                    ", ".join(sorted(rejects)) or "none"))
+    done = []
+    for k in keys:
+        if k in voided:
+            continue
+        board.record(task_id, "reject-voided", "reject-voided:%s" % k, reject=k, reason=reason[:500],
+                     cluster=rejects[k].get("cluster") or "", original_reason=str(rejects[k].get("reason") or "")[:300])
+        done.append(k)
+    return done
 
 
 def budget_state(board: Board, run_id: str, plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:

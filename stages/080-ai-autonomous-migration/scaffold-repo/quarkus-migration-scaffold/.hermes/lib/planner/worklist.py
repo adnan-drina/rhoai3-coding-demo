@@ -2845,6 +2845,12 @@ def generated_body_text(gb: dict[str, Any], item_id: str) -> str:
 # recipe (compat-mapping migration_recipes generated-body-binding.qualified).
 
 PLAN_GATE = "plan"
+# an outcome-board planned unit (planner.outcome_graph.planned_unit_grant): a
+# REQUIREMENT the plan owes (a fragment implementation, a decided profile), not
+# a finding the tuple counts. v21 t_0bc6319b: the owed fragment implementations
+# compiled cleanly and were refused three times because "measure [0, 179, 0] did
+# not decrease" -- the 179 diagnostics were outside the unit's write set.
+PLANNED_UNIT_GATE = "planned-unit"
 
 
 def pom_properties(pom: Path) -> dict[str, str]:
@@ -6985,6 +6991,14 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
                                  explained=explained, family_scope=family_scope)
         if verdict is not None:
             return verdict
+    if gate == PLANNED_UNIT_GATE:
+        # the tuple may not get worse; whether the requirement is met is the outcome's
+        # requirement checks, recomputed on the committed tree by the acceptance
+        # (native_control.accept_commit / outcome_lifecycle.accept_commit)
+        if b > a:
+            return False, "a planned unit may not make the measure worse: %s > %s" % (b, a)
+        return True, ("planned unit: measure %s not worse than %s; the outcome's requirement checks decide "
+                      "its acceptance" % (b, a))
     if b < a:
         return True, "measure %s < %s" % (b, a)
     if gate == "parity":

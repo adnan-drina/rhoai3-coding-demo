@@ -106,6 +106,14 @@ M3 cards and recovery (after v20, 2026-09-27):
   `issue` answers `next: SATISFIED …` (handoff, then review; no loop), or
   `NOTHING ISSUED …` with its reasons (block needs_input). The M3 audit
   grades that record for such a card.
+- **Planned units are judged by their requirements.** A planned unit's
+  issued card carries the `planned-unit` gate: a step is accepted when the
+  measure does not get worse and no mandatory obligation appears; the
+  outcome's requirement checks, recomputed by `accept-commit`, decide the
+  outcome (v21: fragment implementations were refused "measure did not
+  decrease" by the compile tuple they cannot move). A rejection a harness
+  defect caused is taken out of the budget by the Operator's
+  `native_gate.py void-rejects` (a `reject-voided` record; nothing deleted).
 - **One verdict per unit.** advance.py answers "ACCEPTED already" only for
   the issued unit's idempotency key, so the next unit issued on the same card
   is judged.
