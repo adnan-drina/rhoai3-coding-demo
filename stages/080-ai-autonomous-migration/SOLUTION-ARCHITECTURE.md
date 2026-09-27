@@ -426,37 +426,44 @@ New: `planner.worklist`, `planner.cards`, `bootstrap-destination`, `compat-mappi
 
 ### 10.1 Outcome board (new runs, disabled by default)
 
-The approved native outcome-board design is implemented behind a protocol
-selection that no existing run makes (`OUTCOME-BOARD-CONTRACT.md`). After M2
-the board shows the known outcomes, their prerequisites and their acceptance.
-A repair attempt stays within the outcome that owns it. Continuations run on
-the dispatcher's own tick.
+After M2 the board shows the known outcomes, their prerequisites and their
+acceptance, and a repair attempt stays within the outcome that owns it
+(`OUTCOME-BOARD-CONTRACT.md`).
 
 A run requests the protocol once, at creation (the app-migration template's
-`boardProtocol`, default `outcome-board/v1`, stamped into the initial commit's
+`boardProtocol`, default `outcome-board/v2`, stamped into the initial commit's
 `run-budget.json`); the platform's provisioner selects it in the read-only run
 control together with the execution state it owns (default `disabled`). Every
 reader applies one rule (`outcome_protocol.select_protocol`): request and
 selection agree, or the run refuses at launch and never falls back to the
 serial loop. Runs created before the request existed stay serial.
 
-The protected writer (architect F1) is an authority service in a sidecar of
-the workspace pod, under a different uid, holding the store on a volume the
-worker container does not mount, reachable only through a socket the worker
-mounts read-only. Execution stays disabled until that layout is qualified on
-Dev Spaces. Measurement trust is decided for the FIRST controlled run:
-`cooperative-receipts` — worker-produced build/test/parity evidence remains trusted subject to binding and consistency checks; this does NOT establish independently verified results or protection against fabricated evidence. The same trust boundary covers the
-other cooperative inputs: process-liveness/quiescence snapshots, reviewer
-audit assertions (the paved-road audit, its receipts and execution ledger are
-worker-writable process evidence) and push-result reports
-(`OUTCOME-BOARD-CONTRACT.md` sections 3, 8a, 8b, 9).
+**Native cooperative control (`outcome-board/v2`, contract Part A).** Hermes
+Kanban is the one lifecycle authority: one native task per outcome with its
+attached contract; rejected attempts and reviewer change requests are runs of
+the same task; the reviewer completes an accepted outcome; a proven owner
+defect becomes a native prerequisite of the dependent, which resumes by
+native promotion. M4 means verification ACCEPTED: a REFUSE keeps the same M4
+task open and makes its repairs prerequisites, and M5's three stages depend
+on the accepted M4. A small adapter (`planner/native_control.py`,
+`kernel/native_gate.py`) publishes the plan deterministically, validates each
+native action through the fail-closed K2 hook, and records domain verdicts as
+comments and attachments on the board. There is no second store, service,
+scheduler or reconciler. The control boundary is cooperative: worker code can
+alter the board and its records, and no tamper resistance is claimed (the
+earlier protected-writer requirement F1 is amended for v2). Measurement trust
+is `cooperative-receipts`: worker-produced build/test/parity evidence remains
+trusted subject to binding and consistency checks; this does NOT establish
+independently verified results or protection against fabricated evidence.
 
-On this protocol a runtime failure the authority proves on the accepted
-baseline and attributes to an accepted outcome (`planner.runtime_cause`, on
-inputs the authority builds; the scenario records stay worker receipts) is not
-charged to the outcome that met it: its candidate is held, one repair of the
-owner becomes its prerequisite, and it is re-verified afterwards (contract
-§5.2). Requirement-only outcomes are issued their planned unit (§5.1).
+A runtime failure proven on the accepted baseline and attributed to an
+accepted outcome (`planner.runtime_cause`) is not charged to the outcome that
+met it: its candidate is held, one repair of the owner becomes its
+prerequisite, and it is re-verified afterwards. Requirement-only outcomes are
+issued their planned unit (contract §5.1).
+
+The protected-authority variant (`outcome-board/v1`, a sidecar service in a
+second principal) is retired for new runs; its contract is Part B.
 
 ## 11. Maturity
 

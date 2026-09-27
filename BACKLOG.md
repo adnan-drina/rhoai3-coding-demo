@@ -77,19 +77,19 @@ The implementation is in the golden, disabled by default. The contract is
   worker-side entry point is a client; the service re-measures candidate,
   scope and baseline ancestry and runs no repository-configured git code.
   Two-uid kernel check passed locally (podman, ws-080 image).
-- [ ] **Live Dev Spaces qualification of the sidecar** (container-overrides
-  runAsUser applied, SCC admission of the second uid, store unreachable,
-  socket read-only, kanban.db access, run-control mount) and the image build
-  that bakes `/opt/rhoai3/outcome-authority` + `outcome_authority.code_sha256`.
-  Until then `enabled` refuses `AUTHORITY_UNPROTECTED`.
+- [x] ~~Live Dev Spaces qualification of the sidecar~~ — superseded
+  2026-09-27: the sidecar is retired for new runs (outcome-board/v2 below).
+  v18's startup check had already measured the sidecar uid, the unreachable
+  store and `authority_protected()`; the shared-board relocation is parked on
+  `wip/shared-board-relocation-parked`.
 - [x] **Measurement trust decided (user, 2026-09-26) for the FIRST controlled
   run:** `cooperative-receipts` — worker-produced build/test/parity evidence
   remains trusted subject to binding and consistency checks; this does NOT
   establish independently verified results or protection against fabricated
   evidence. Also cooperative: liveness snapshots, reviewer audit assertions,
   push-result reports (contract 8b). The run control must carry it.
-- [ ] Image bake of `/opt/rhoai3/outcome-authority` (prepared:
-  `hermes-runtime/outcome-authority/`), after the code freeze.
+- [x] ~~Image bake of `/opt/rhoai3/outcome-authority`~~ — done for image
+  6a8a69a3; no longer needed by new runs (v2 has no authority service).
 - [x] Implementation review 2026-09-26, R1–R6: corrected, each with a
   regression reproduced first. The real-worker delivery test runs an accepted
   repair with a worker killed after its commit, REFUSE → reassessment, and M5
@@ -97,6 +97,29 @@ The implementation is in the golden, disabled by default. The contract is
 - [x] Production hooks in the Stage 050 producer, gated on the destination
   selecting `outcome-board/v1` (registers nothing today). This needs the normal
   Stage 050 publication before any run selects the protocol.
+
+### outcome-board/v2: native cooperative control — 2026-09-27
+
+Architect review `tmp/native-hermes-review-20260927/NATIVE-SOLUTION-REVIEW.md`,
+confirmed by the user (F1 amended for v2). Contract Part A.
+
+- [x] Hermes Kanban as the one lifecycle authority: `planner/native_control.py`,
+  `planner/native_publish.py`, `kernel/native_gate.py`; M4 = verification
+  ACCEPTED (REFUSE repairs become prerequisites of the same M4); the reviewer
+  completes accepted outcomes; owner repairs as native prerequisites; no
+  store, service or reconciler. Pure predicates shared with v1
+  (`planner/outcome_checks.py`).
+- [x] Synthetic suite `lib/planner/native_board.test.py` (22) and the
+  exact-runtime qualification `hermes-runtime/tests/rhoai3_outcome_board/
+  test_native_control.py` (36 checks, ws-080 image, worker python 3.9).
+- [x] Stage 050: template default `outcome-board/v2`, skeleton without the
+  sidecar, provisioner and producer (v2 matcher, no reconciler),
+  run-preflight v2 launch checks.
+- [ ] Publish the golden and the platform (Stage 050 sync + catalog refresh);
+  the ws-080 image is unchanged (6a8a69a3).
+- [ ] First controlled v2 run: a model-driven worker and the native
+  dispatcher on a live workspace; measure completion, elapsed time, tokens,
+  Operator interventions and explained plan revisions.
 
 ## Destination declared references and package-leaf isolation — 2026-09-25
 

@@ -231,3 +231,19 @@ parallel workers + verifier + synthesizer.
     Publication is still K4 (`k4_mint.py` → `k4_graph.py`). No second
     scheduler, no polling agent and no parallel M3. Contract:
     `stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md`.
+    **Amended 2026-09-27 (architect native review, user confirmation):** new
+    runs select `outcome-board/v2`, native cooperative control. F1 (a
+    protected writer) is repealed as a v2 prerequisite; `enabled` needs only
+    the measurement-trust decision. Hermes Kanban is the one lifecycle
+    authority: one native task per outcome, rejected attempts and
+    `request_changes` are runs of the same task, the reviewer completes an
+    accepted outcome, dependency waits are native prerequisites
+    (`kanban_block kind=dependency`, promotion without an Operator unblock).
+    **M4 means verification ACCEPTED**: a REFUSE is kept as evidence on its
+    run, the needed repairs become prerequisites of the SAME M4 task, and M5
+    depends on the accepted M4 (no stage grants, no reconciler, no authority
+    store). No-red-M3 acceptance is preserved. The control boundary is
+    cooperative: worker code can alter `kanban.db` and the domain records;
+    nothing claims tamper resistance. Domain records are `[native-control]`
+    comments and attachments written only by `native_gate.py` / `advance.py`.
+    Contract Part A.
