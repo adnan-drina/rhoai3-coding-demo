@@ -707,7 +707,7 @@ class M4VerificationAccepted(unittest.TestCase):
         self.assertEqual(status(r, m4), "ready")
         new = {"id": "parity:orders-get", "source": "parity", "kind": "parity", "category": "mandatory",
                "scenario": "orders-get", "entry_point": "ep:com.acme.shop.web.OrderController#get:http", "path": ""}
-        cl = {"id": "c:orders-get", "status": "open", "items": ["parity:orders-get"],
+        cl = {"id": "c:orders-get", "kind": "parity", "status": "open", "path": "src/main/java/com/acme/shop/web/OrderController.java", "order_key": [5, 0, "orders-get"], "items": ["parity:orders-get"],
               "write_set": ["src/main/java/com/acme/shop/web/OrderController.java"], "retry_key": "rk:orders-get"}
         tid, run, out = r.assess("REFUSE", new_items=[new], new_clusters=[cl])
         self.assertFalse(out["accepted"])
@@ -755,7 +755,7 @@ class M4VerificationAccepted(unittest.TestCase):
         for i in range(NC.MAX_ASSESSMENT_GENERATIONS):
             tid, run, out = r.assess("REFUSE", new_items=[{"id": "cfg:%d" % i, "source": "mta", "kind": "incident",
                                                            "category": "mandatory", "path": "src/main/resources/application.properties"}],
-                                     new_clusters=[{"id": "c:cfg%d" % i, "status": "open", "items": ["cfg:%d" % i],
+                                     new_clusters=[{"id": "c:cfg%d" % i, "kind": "config", "status": "open", "path": "src/main/resources/application.properties", "order_key": [1, 0, "cfg"], "items": ["cfg:%d" % i],
                                                     "write_set": ["src/main/resources/application.properties"], "retry_key": "rk:cfg%d" % i}])
             if i + 1 >= NC.MAX_ASSESSMENT_GENERATIONS:
                 with self.assertRaises(Refusal) as cm:
