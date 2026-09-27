@@ -92,9 +92,12 @@ check "app-migration template Location in the runtime catalog" \
 check "runtime catalog placeholders are resolved" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -cE '__RHOAI3_DEMO_(REVISION|LOCATION_REF)__' || echo 0" \
   "0"
-check "runtime catalog app-migration Location is not SHA-pinned" \
-  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep 'templates/app-migration/template.yaml' | grep -cE '/blob/[0-9a-f]{40}/' || echo 0" \
-  "0"
+# B2 (a459cce7): the generator pins every template Location to the ONE revision
+# it published and prunes the rest; the app-migration Location must name the
+# catalog's recorded rhoai3.redhat.com/catalog-revision (Stage 050 checks all).
+check "runtime catalog app-migration Location is pinned to the catalog revision" \
+  "rev=\$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-revision}'); oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep 'templates/app-migration/template.yaml' | grep -oE '/blob/[0-9a-f]{40}/' | sort -u | grep -cx \"/blob/\$rev/\" || echo 0" \
+  "1"
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     GOLDEN_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold-v2/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
     if [[ -n "$GOLDEN_SHA" ]]; then
@@ -505,7 +508,7 @@ check "080 K2 post_tool_call observer is executable" \
   "test -x '${SCAFFOLD_KERNEL}/post_tool_call.py' && echo 1 || echo 0" \
   "1"
 check "080 the outcome authority never executes analyzer code from the destination tree" \
-  "python3 '${SCAFFOLD_LIB}/planner/analyzer_isolation.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "python3 '${SCAFFOLD_KERNEL}/../lib/planner/analyzer_isolation.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
 check "080 K2 post_tool_call observer records positive execution evidence" \
   "python3 '${SCAFFOLD_KERNEL}/post_tool_call.test.py' >/dev/null && echo 1 || echo 0" \
