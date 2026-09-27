@@ -1149,7 +1149,31 @@ def _planned_generated_body_brief_case() -> int:
     return 0
 
 
+def _large_brief_digest_case() -> int:
+    """v21 t_0bc6319b: a large unit's brief is printed as a readable digest (write set, obligations
+    per file on one line each, procedure and rules in full, a section index naming how to read each)."""
+    import brief as B
+    items = [{"path": "src/A%d.java" % (i % 3), "line": i, "rule_id": "compiler.err.cant.resolve",
+              "message": "cannot find symbol\n  symbol: class Profile\n  location: package x"} for i in range(40)]
+    doc = {"cluster": {"id": "u:big", "kind": "compile", "path": "src/A0.java"}, "write_set": ["src/A0.java", "src/A1.java", "src/A2.java"],
+           "items": items, "measure": {"tuple": [0, 40, 0]}, "attempts_left": 3, "budget": {"left": 3},
+           "procedure": "Patch the write set one item at a time.", "rule": "Edit only the write set.", "stop_rule": "Stop after two.",
+           "evidence_rule": "Only run-verify.", "unit": {"checkpoint": "judged once", "members_by_rule": {"r": ["x"] * 2000}},
+           "planned_requirements": ["y" * 5000] * 4}
+    text = B.brief_digest(doc, "brief-u-big")
+    for needle in ("WRITE SET (3 file(s)", "src/A0.java -- 14 item(s)", "cannot find symbol symbol: class Profile location: package x",
+                   "… 11 more", "PROCEDURE:", "Patch the write set", "STOP_RULE:", "checkpoint: judged once",
+                   "--section <key>", "verification/loop/brief-u-big.txt", "planned_requirements"):
+        if needle not in text:
+            return _fail("the digest of a large brief carries %r:\n%s" % (needle, text[:1500]))
+    if len(text) >= len(json.dumps(doc)) or "\n  symbol:" in text:
+        return _fail("the digest is shorter than the brief and keeps each item on one line")
+    return 0
+
+
 def main() -> int:
+    if _large_brief_digest_case():
+        return 1
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):
         return 1
     if _pending_recovery_case():

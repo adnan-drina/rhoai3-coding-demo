@@ -281,7 +281,7 @@ def _checked_family_advance_case() -> int:
         _issue_cluster(root, cluster, "t_fam")
         if not all(v.startswith("chk:") for v in load_json(root / LOOP_ISSUED)["item_identities"].values()):
             return _fail("the issued failure carries its line-free identity")
-        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cluster["id"]])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root), "--cluster", cluster["id"]])
         brief = json.loads(p.stdout) if p.returncode == 0 else {}
         if "request-aware URI builder" not in json.dumps(brief.get("batch_scope") or {}) or (brief.get("budget") or {}).get("limit") != 3:
             return _fail("the family brief carries the family's note and the one budget: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
@@ -485,7 +485,7 @@ def _parity_card_case() -> int:
         if card.get("logical_id") != cluster["id"] or issued.get("gate") != "parity" or issued.get("gate_items") != cluster["items"]:
             return _fail("K4 must mint the parity cluster and carry gate=parity and what the gate held onto the issued card: %s | %s"
                          % (card.get("logical_id"), {k: issued.get(k) for k in ("gate", "gate_items", "items")}))
-        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cluster["id"]])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root), "--cluster", cluster["id"]])
         brief = json.loads(p.stdout) if p.returncode == 0 else {}
         if _PARITY_SID not in json.dumps((brief.get("parity") or {})) or "PASS" not in json.dumps(brief.get("parity") or {}):
             return _fail("the parity brief must name the scenarios and what discharges them: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
@@ -2508,7 +2508,7 @@ def main() -> int:
         issued = load_json(root / LOOP_ISSUED)
         if head["kind"] != "build" or issued["cluster"] != head["logical_id"] or issued["write_set"] != ["pom.xml"] or issued["attempt"] != 1:
             return _fail("issued card %s" % issued)
-        p = _run([sys.executable, str(BRIEF), "--root", str(root)])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root)])
         if p.returncode != 0 or "pom.xml" not in p.stdout:
             return _fail("brief: %s" % p.stderr)
         brief = json.loads(p.stdout)
@@ -2614,7 +2614,7 @@ def main() -> int:
             return _fail("revert must restore the file in the working tree AND the index")
         if load_json(root / LOOP_STEPS)["attempts"].get(cl2["id"]) != 1:
             return _fail("rejection must count an attempt")
-        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cl2["id"]])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root), "--cluster", cl2["id"]])
         b2 = json.loads(p.stdout)
         reason = b2["previous_attempts"][0]["reason"]
         if len(b2.get("previous_attempts") or []) != 1 or b2.get("attempts_left") != 1:

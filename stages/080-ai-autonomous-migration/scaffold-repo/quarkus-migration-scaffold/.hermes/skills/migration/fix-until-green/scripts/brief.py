@@ -995,6 +995,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
     ap.add_argument("--cluster", default="", help="this card's cluster id (default: issued.json when $HERMES_KANBAN_TASK matches, else the head)")
+    ap.add_argument("--section", action="append", default=[], metavar="KEY",
+                    help="print only this top-level section of the brief, in full (repeatable)")
+    ap.add_argument("--full", action="store_true", help="print the whole brief even when it is large")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     doc = load_json(root / WORKLIST)
@@ -1252,9 +1255,78 @@ def main(argv: list[str] | None = None) -> int:
     planned = planned_requirements(root, write_set)
     if planned:
         brief["planned_requirements"] = planned
-    write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
-    print(json.dumps(brief, indent=2, sort_keys=True))
+    stem = "brief-%s" % cluster["id"].replace(":", "-")
+    write_canonical(root / LOOP_DIR / (stem + ".json"), brief)
+    text = json.dumps(brief, indent=2, sort_keys=True)
+    # the same brief, one key per line, so it can be read by line ranges and searched
+    (root / LOOP_DIR / (stem + ".txt")).write_text(text + "\n", encoding="utf-8")
+    if args.section:
+        missing = [k for k in args.section if k not in brief]
+        if missing:
+            return _refuse("BRIEF_SECTION_UNKNOWN", "no section %s; the sections are: %s"
+                           % (", ".join(missing), ", ".join(sorted(brief))))
+        print(json.dumps({k: brief[k] for k in args.section}, indent=2, sort_keys=True))
+        return 0
+    if args.full or len(text) <= BRIEF_PRINT_LIMIT:
+        print(text)
+        return 0
+    print(brief_digest(brief, stem))
     return 0
+
+
+# v21 t_0bc6319b: a seven-repository unit printed a 150 KB brief (~40K tokens); the terminal
+# truncated it and two runs spent 55 minutes slicing the one-line JSON file with grep windows.
+BRIEF_PRINT_LIMIT = 24000
+
+
+def _clip(value, n: int = 220) -> str:
+    s = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+    s = " ".join(s.split())                      # a javac message spans lines; one line per item here
+    return s if len(s) <= n else s[:n] + " …"
+
+
+def brief_digest(brief: dict, stem: str) -> str:
+    """A readable digest of a large brief: what to edit, what is owed per file,
+    how the card is judged, and how to read every section in full. Nothing is
+    decided here; the full brief is unchanged on disk."""
+    cl = brief.get("cluster") or {}
+    out = ["BRIEF (digest: the full brief is %d characters; nothing below replaces it)" % len(json.dumps(brief)),
+           "cluster %s  kind %s  path %s" % (cl.get("id"), cl.get("kind"), cl.get("path")),
+           "measure %s   attempts left %s   budget %s" % (_clip((brief.get("measure") or {}).get("tuple") or brief.get("measure"), 80),
+                                                        brief.get("attempts_left"), _clip(brief.get("budget"), 160)),
+           "", "WRITE SET (%d file(s) -- edit only these):" % len(brief.get("write_set") or [])]
+    out += ["  %s" % w for w in brief.get("write_set") or []]
+    by_path: dict = {}
+    for it in brief.get("items") or []:
+        if isinstance(it, dict):
+            by_path.setdefault(str(it.get("path") or "(no path)"), []).append(it)
+    out += ["", "OBLIGATIONS (%d item(s)) by file:" % len(brief.get("items") or [])]
+    for path in sorted(by_path):
+        rows = by_path[path]
+        out.append("  %s -- %d item(s)" % (path, len(rows)))
+        for it in rows[:3]:
+            out.append("    line %s %s: %s" % (it.get("line"), it.get("rule_id") or it.get("code") or it.get("kind"),
+                                               _clip(it.get("message") or it.get("detail") or "", 180)))
+        if len(rows) > 3:
+            out.append("    … %d more (see the items section)" % (len(rows) - 3))
+    unit = brief.get("unit")
+    if isinstance(unit, dict):
+        out += ["", "UNIT: " + ", ".join("%s (%s)" % (k, _size(v)) for k, v in sorted(unit.items()))]
+        for key in ("checkpoint", "completion", "acceptance"):
+            if key in unit:
+                out.append("  %s: %s" % (key, _clip(unit[key], 900)))
+    for key in ("procedure", "rule", "stop_rule", "evidence_rule"):
+        if brief.get(key):
+            out += ["", key.upper() + ":", textwrap.indent(textwrap.fill(str(brief[key]), 110), "  ")]
+    out += ["", "SECTIONS (read any in full: brief.py --root . --cluster %s --section <key>; "
+                "the whole brief one key per line: verification/loop/%s.txt):" % (cl.get("id"), stem)]
+    out += ["  %-22s %s" % (k, _size(brief[k])) for k in sorted(brief)]
+    return "\n".join(out)
+
+
+def _size(v) -> str:
+    n = len(json.dumps(v))
+    return "%d item(s), %d chars" % (len(v), n) if isinstance(v, (list, dict)) else "%d chars" % n
 
 
 def behaviour_brief(row: dict) -> dict:
