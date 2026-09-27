@@ -598,6 +598,20 @@ if OB_ROOT and hook_task_id():
             and int(_rs.get("count") or 0) >= 3 and not is_block():
         block("REPEATED_REFUSAL: %s was refused %d times in this run; the only legal next step is kanban_block "
               "kind=needs_input naming it" % (_rs.get("code"), int(_rs.get("count") or 0)))
+# outcome-board/v2: a session whose native run has ended (review requested,
+# completed, blocked, reclaimed) is answered once, whatever it calls: end the turn
+# (v21 t_051c4490: a nudged ended session tried park, block, checkout, write).
+if OB_ROOT and hook_task_id() and (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip():
+    for _d in (os.path.join(OB_ROOT, ".hermes", "kernel"), os.path.join(OB_ROOT, ".hermes", "lib")):
+        if os.path.isdir(_d) and _d not in sys.path:
+            sys.path.insert(0, _d)
+    try:
+        from planner import outcome_hook as _OBE
+        _ended = _OBE.run_ended(OB_ROOT, dict(os.environ))
+    except Exception:
+        _ended = ""
+    if _ended:
+        block(_ended)
 OB = None
 if OB_ROOT:
     # any record that can select the protocol: the golden defaults, the run

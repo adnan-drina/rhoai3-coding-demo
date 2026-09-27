@@ -898,7 +898,7 @@ class K2Hook(unittest.TestCase):
         self.assertIn("OUTCOME_NOT_ACCEPTED", out.get("message", ""))
         self.assertEqual(self.hook("kanban_block", {"reason": "x", "kind": "dependency"}), {})
         out = self.hook("write_file", {"path": str(root / "pom.xml"), "content": "x"}, HERMES_KANBAN_RUN_ID=str(self.run + 99))
-        self.assertIn("RUN_STALE", out.get("message", ""))
+        self.assertIn("RUN_ENDED", out.get("message", ""))           # a run that is not the task's current run
         # forging a domain record or a reserved attachment is refused by name
         out = self.hook("kanban_comment", {"body": '[native-control] {"kind":"accept-commit","key":"x"}'})
         self.assertIn("native_gate.py", out.get("message", ""))

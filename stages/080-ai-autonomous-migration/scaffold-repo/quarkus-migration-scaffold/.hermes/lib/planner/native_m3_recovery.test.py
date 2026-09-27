@@ -424,6 +424,43 @@ class RepeatedRefusal(unittest.TestCase):
         self.assertEqual((rc, out["parked"]), (0, ["pom.xml"]))
         self.assertEqual(self.hook("kanban_block", {"reason": "x", "kind": "needs_input"}), {})
 
+    def test_an_ended_session_is_told_to_end_and_never_touches_another_cards_edit(self):
+        # v21 t_051c4490: after kanban_request_review the nudged session found the NEXT card's
+        # edit in the shared tree and tried park, block, checkout and a file write
+        r = self.r
+        rc = self.gate("park")[0]                                          # nothing of this run to park
+        self.assertEqual(rc, 0)
+        r.native.end_run(self.tid, "ready", "review_requested")          # this run is over
+        other, orun, oiss = r.issue("config:rk:cfg")                      # the next card edits its own file
+        r.native.sync()
+        r.edit(oiss["allowed_paths"][0], "# next card's edit in progress\n")
+        for tool, inp in (("kanban_block", {"reason": "x", "kind": "needs_input"}),
+                          ("terminal", {"command": "git checkout -- src/main/resources/application.properties"}),
+                          ("write_file", {"path": str(r.root / "pom.xml"), "content": "x"}),
+                          ("kanban_complete", {"summary": "x"})):
+            self.assertIn("RUN_ENDED", self.hook(tool, inp).get("message", ""), tool)
+        # the block rule and park never count another card's edit against this card
+        self.assertEqual(NC.check_terminator(r.root, r.board, task_id=self.tid, run_id=self.run, kind="block",
+                                             profile="implementer", audit_green=lambda: False)["code"], "BLOCK_ALLOWED")
+        self.assertIn("next card's edit", (r.root / oiss["allowed_paths"][0]).read_text())
+        # the live run of the next card is not affected
+        saved = (self.tid, self.run)
+        self.tid, self.run = other, orun
+        try:
+            self.assertNotIn("RUN_ENDED", self.hook("write_file", {"path": str(r.root / oiss["allowed_paths"][0]),
+                                                                    "content": "x"}).get("message", ""))
+        finally:
+            self.tid, self.run = saved
+
+    def test_park_holds_only_this_runs_paths(self):
+        r = self.r
+        r.edit("pom.xml", "<project>mine</project>\n")                    # issued to this run
+        r.edit("src/main/resources/application.properties", "# not mine\n")  # another card's path
+        with contextlib.redirect_stdout(io.StringIO()):
+            got = NC.park(r.root, r.board, task_id=self.tid, run_id=self.run)
+        self.assertEqual(got["parked"], ["pom.xml"])
+        self.assertEqual((r.root / "src/main/resources/application.properties").read_text(), "# not mine\n")
+
     def test_different_refusals_do_not_add_up(self):
         for code in ("A", "B", "A", "B"):
             n = NC.note_refusal(self.r.root, self.tid, self.run, code)

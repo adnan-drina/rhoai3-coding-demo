@@ -155,6 +155,31 @@ def terminator(root: str, *, kind: str, profile: str, env: dict[str, str],
     return None
 
 
+def run_ended(root: str, env: dict[str, str]) -> str:
+    """outcome-board/v2: this worker's native run is no longer the task's
+    current run (it requested review, completed, blocked, or was reclaimed).
+    Hermes may still nudge the ended session to "finish" (v21 t_051c4490: the
+    nudged session tried park, block, git checkout and a file write against
+    the NEXT card's edit, each refused). One answer, whatever the tool: end
+    the turn. '' when the run is live, the task is unknown, or not v2."""
+    task, run_id = _ids(env)
+    if not task or not run_id or not active(root):
+        return ""
+    try:
+        sel = select_protocol(Path(root))
+        if not sel.native:
+            return ""
+        from planner import native_control as NC
+        t = NC.board_for(Path(root)).task(task)
+    except Exception:  # noqa: BLE001 - undecidable here: the other checks decide
+        return ""
+    if not t or int(t.get("current_run_id") or 0) == run_id:
+        return ""
+    return ("RUN_ENDED: your run %d of %s has ended (the card is %s%s). Nothing is left for this session to do and "
+            "no tool will act for it: do not park, block, complete or edit. End your turn now with a one-line final "
+            "message." % (run_id, task, t.get("status"), ", now run %s" % t.get("current_run_id") if t.get("current_run_id") else ""))
+
+
 def writes(root: str, *, rel_paths: list[str], env: dict[str, str]) -> dict[str, Any] | None:
     """Product-write decision for an outcome run; None = not an outcome run."""
     if not active(root):

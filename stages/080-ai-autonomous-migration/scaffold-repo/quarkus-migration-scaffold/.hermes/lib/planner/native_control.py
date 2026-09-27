@@ -959,9 +959,12 @@ def check_terminator(root: Path, board: Board, *, task_id: str, run_id: int, kin
         # a legal result: dependency waits, exhausted budgets, external blockers -- but a card
         # whose issued run leaves product edits in the shared tree parks them first
         issued = [r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id or 0)]
-        if issued and board.node_of(task_id)[0] == "repair" and not refusal_stop(root, task_id, run_id):
+        live = int((board.task(task_id) or {}).get("current_run_id") or 0) == int(run_id or 0)
+        if issued and live and board.node_of(task_id)[0] == "repair" and not refusal_stop(root, task_id, run_id):
+            # only this run's own candidate counts: another card's edit in the shared tree is never
+            # this card's to park (v21 t_051c4490: an ended session saw the next card's edit)
             head = _head(root)
-            changed = changed_product_paths(root, head) if head else None
+            changed = _issued_changes(root, board, task_id, run_id, head) if head else None
             if changed:
                 raise Refusal("BLOCK_LEAVES_CANDIDATE", "this run leaves product edits in the shared tree (%s): run "
                               "python3 .hermes/kernel/native_gate.py --root . park (it holds them on this card and restores "
@@ -1398,6 +1401,15 @@ def _changed_vs_head(root: Path) -> tuple[str, list[str]]:
     return head, changed
 
 
+def _issued_changes(root: Path, board: Board, task_id: str, run_id: int, head: str) -> list[str] | None:
+    """Product paths changed against HEAD that THIS native run was issued (the
+    union of its issue records' allowed_paths). None when unmeasurable."""
+    mine = {p for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)
+            for p in (r.get("allowed_paths") or [])}
+    changed = changed_product_paths(root, head)
+    return None if changed is None else [c for c in changed if c in mine]
+
+
 def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, Any]:
     """Hold this card's uncommitted product candidate as a versioned
     attachment on the card and restore the product tree to HEAD, so the next
@@ -1407,9 +1419,10 @@ def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, An
     root = Path(root)
     live_run(board, task_id, run_id)
     node_context(board, task_id)
-    head, changed = _changed_vs_head(root)
+    head, _all = _changed_vs_head(root)
+    changed = [c for c in _all if c in set(_issued_changes(root, board, task_id, run_id, head) or [])]
     if not changed:
-        return {"parked": [], "note": "the product tree already equals HEAD %s" % head[:12]}
+        return {"parked": [], "note": "no edit of a path this run was issued differs from HEAD %s" % head[:12]}
     files: dict[str, str] = {}
     for rel in changed:
         p = root / rel
@@ -1431,7 +1444,7 @@ def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, An
             _git(root, "checkout", head, "--", rel)
         elif (root / rel).exists():
             (root / rel).unlink()
-    _, left = _changed_vs_head(root)
+    left = [c for c in (_changed_vs_head(root)[1]) if c in set(changed)]
     if left:
         raise Refusal("PARK_INCOMPLETE", "the tree still differs from HEAD at %s" % ", ".join(left[:4]))
     return {"parked": sorted(files), "attachment": name, "record": rec["key"], "head": head}
