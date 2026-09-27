@@ -373,6 +373,16 @@ else:
     sel, gaps = launch(root)
     require(not gaps, 'BOARD_PROTOCOL: %s' % (outcome_protocol.describe(gaps).splitlines()[0] if gaps else ''))
     protocol = sel.protocol
+    if protocol == 'outcome-board/v2':
+        # native control: the producer extended the K2 matcher from the same selection and
+        # registered NO reconciler (the one native dispatcher promotes dependents itself)
+        hk = c.get('hooks') or {}
+        m = str((hk.get('pre_tool_call') or [{}])[0].get('matcher', '')).split('|')
+        require(all(t in m for t in ('kanban_block', 'kanban_request_review', 'request_review', 'kanban_comment',
+                                     'kanban_attach', 'kanban_create', 'kanban_link'))
+                and not hk.get('on_kanban_dispatch_tick'),
+                'BOARD_PROTOCOL: the managed config lacks the outcome-board/v2 hooks (review/block terminators, '
+                'kanban record/graph tools) or registers a reconciler')
     if protocol == 'outcome-board/v1':
         # the producer registered the outcome hooks from the same selection
         hk = c.get('hooks') or {}

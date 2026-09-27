@@ -63,12 +63,6 @@ components:
         volumeMounts:
           - mountPath: /projects/legacy
             readOnly: true
-{%- if values.boardProtocol == "outcome-board/v1" %}
-          # outcome-board authority socket: the worker may CONNECT, never
-          # replace the socket or plant another (read-only mount; architect F1)
-          - mountPath: /run/outcome-authority
-            readOnly: true
-{%- endif %}
     container:
       # Digest-pinned overlay (ws-080). Repos are private: cluster pull
       # needs the Quay pull secret on the workspace ServiceAccount before
@@ -173,10 +167,6 @@ components:
         # only this pod's tokenFile; an ephemeral volume also avoids PVC copies.
         - name: worker-kubeconfig
           path: /home/user/.kube
-{%- if values.boardProtocol == "outcome-board/v1" %}
-        - name: outcome-authority-socket
-          path: /run/outcome-authority
-{%- endif %}
       endpoints:
         - name: quarkus-dev
           targetPort: 8080
@@ -247,63 +237,6 @@ components:
     volume:
       ephemeral: true
       size: 64Mi
-{%- if values.boardProtocol == "outcome-board/v1" %}
-  # The outcome-board authority (OUTCOME-BOARD-CONTRACT.md 8a, architect F1):
-  # a second principal in this pod. It runs as a DIFFERENT uid from the
-  # worker (container-overrides runAsUser, inside the namespace's SCC range;
-  # 1001040001 is wksp-ai-developer's range 1001040000/10000 as measured
-  # 2026-09-26 -- restamp it from openshift.io/sa.scc.uid-range for another
-  # namespace; a value outside the range is refused by the SCC, never run
-  # unprotected), from the image's root-owned code, and owns the authority
-  # store on a volume mounted ONLY here. The worker container has no mount of
-  # outcome-authority-store at all, so no path, uid or user namespace reaches
-  # it from there; it reaches the service only through the socket volume,
-  # mounted read-only on its side. Included only for a run that requested
-  # outcome-board/v1; execution stays disabled until the platform enables it
-  # in the run control and this layout is qualified live.
-  - name: outcome-authority
-    attributes:
-      container-overrides:
-        securityContext:
-          runAsUser: 1001040001
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-    container:
-      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:6a8a69a38aa2973973039cb3492b08083bc98da2698cb7ba1ca088b4d6e5f291
-      # reads the destination tree (plumbing git, product-tree digest); never writes it
-      mountSources: true
-      memoryRequest: 128Mi
-      memoryLimit: 512Mi
-      cpuRequest: 50m
-      cpuLimit: 500m
-      command: [python3, /opt/rhoai3/outcome-authority/kernel/outcome_authority.py]
-      args:
-        - serve
-        - --root
-        - /projects/modernized
-        - --store-dir
-        - /var/lib/outcome-authority/store
-        - --socket
-        - /run/outcome-authority/authority.sock
-        - --native-db
-        - /projects/modernized/.hermes/home/kanban.db
-      env:
-        - name: HOME
-          value: /var/lib/outcome-authority
-      volumeMounts:
-        - name: outcome-authority-store
-          path: /var/lib/outcome-authority
-        - name: outcome-authority-socket
-          path: /run/outcome-authority
-  - name: outcome-authority-store
-    volume:
-      size: 1Gi
-  - name: outcome-authority-socket
-    volume:
-      ephemeral: true
-      size: 16Mi
-{%- endif %}
 commands:
   - id: initialize-legacy
     apply:

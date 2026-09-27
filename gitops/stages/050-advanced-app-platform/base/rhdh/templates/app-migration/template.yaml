@@ -83,19 +83,23 @@ spec:
         boardProtocol:
           title: Board protocol
           type: string
-          default: outcome-board/v1
+          default: outcome-board/v2
           enum:
             - serial-loop/v1
-            - outcome-board/v1
+            - outcome-board/v2
           description: |
-            How the run's work is organised after M2. outcome-board/v1
-            (default) publishes every known outcome at M2; it runs only when
-            the platform has enabled it for this run (the migration-run
-            provisioner records the selection and its execution state in the
-            read-only run control), and a run that requested it never falls
-            back to the serial loop: until the platform enables it, the launch
-            refuses. serial-loop/v1 is the one-card-at-a-time loop, kept for
-            explicit compatibility only.
+            How the run's work is organised after M2. outcome-board/v2
+            (default) publishes every known outcome at M2 as a native Hermes
+            Kanban task; Hermes owns the lifecycle (runs, dependencies,
+            review and rework) under a cooperative local-worker model, and
+            the migration's domain checks guard each native action. It runs
+            only when the platform has enabled it for this run (the
+            migration-run provisioner records the selection and its execution
+            state in the read-only run control), and a run that requested it
+            never falls back to the serial loop: until the platform enables
+            it, the launch refuses. serial-loop/v1 is the one-card-at-a-time
+            loop, kept for explicit compatibility only. (outcome-board/v1,
+            the protected-authority sidecar, is no longer offered to new runs.)
             Recorded once, in the destination's initial commit; a run never
             changes protocol.
 
