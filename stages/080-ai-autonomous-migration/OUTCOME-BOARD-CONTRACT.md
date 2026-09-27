@@ -435,6 +435,19 @@ The trust boundary covers every cooperative input, not only heavy measurements:
 | Push-result reports (`sent`/`landed`/`failed`, `ls-remote` from the worker's remote config) | effect records | the state machine refuses regressions; admission itself is protected |
 | Native lifecycle data (`kanban.db`) | claims, run ids, parents | cross-checked against the store; never grants what the store does not record |
 
+**Cooperative evidence is not code.** Trusting worker-produced EVIDENCE does
+not permit executing worker-supplied CODE in the authority's principal. The
+structural requirement checks run the JDK model tool (`dest_model`); in the
+service that tool is compiled from the source baked beside the authority code
+into the service's private store (`<store>/analyzer`, 0700, bound once at start
+by `dest_model.bind_private_work`, refused if symlinked, open or inside the
+tree), and it runs, caches and extracts only there. The destination tree is an
+input (its sources, classpath list and generated roots, compiled under
+`-proc:none`); its `verification/build/.dest-model` cache is never executed,
+read or written by the service. Architect reproduction 2026-09-27: before this,
+a planted `DestModel.class` with the expected stamp executed inside
+`requirement_measurement` (`analyzer_isolation.test.py`, before/after).
+
 Setting for the first run (documentation only; no live state is changed
 here): the migration-run provisioner writes it into that run's contract when
 the Task parameters are `outcome-board-execution: enabled` and

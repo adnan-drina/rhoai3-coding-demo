@@ -245,6 +245,11 @@ class Service:
         self.native_db = native_db
         self.private_home = self.store_dir / "hermes-home"
         self.private_home.mkdir(parents=True, exist_ok=True)
+        # the analyzer (DestModel) compiles, runs and caches ONLY here, from the
+        # tool source baked beside this code -- never from the destination
+        # tree's verification/build/.dest-model, which the worker writes
+        from planner import dest_model
+        dest_model.bind_private_work(self.store_dir / "analyzer", self.root)
         protect_git_environment()
         self.lock = threading.Lock()
 

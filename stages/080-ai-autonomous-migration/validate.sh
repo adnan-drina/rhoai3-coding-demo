@@ -504,6 +504,9 @@ check "080 K2 env-assignment selftest passes" \
 check "080 K2 post_tool_call observer is executable" \
   "test -x '${SCAFFOLD_KERNEL}/post_tool_call.py' && echo 1 || echo 0" \
   "1"
+check "080 the outcome authority never executes analyzer code from the destination tree" \
+  "python3 '${SCAFFOLD_LIB}/planner/analyzer_isolation.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 K2 post_tool_call observer records positive execution evidence" \
   "python3 '${SCAFFOLD_KERNEL}/post_tool_call.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
