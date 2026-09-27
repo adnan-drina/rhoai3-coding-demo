@@ -272,6 +272,40 @@ class NotAccepted(unittest.TestCase):
 class UnitIdempotency(unittest.TestCase):
     """advance.py answers "ACCEPTED already" for the issued UNIT only."""
 
+    def test_a_recorded_rejection_reissues_the_same_card(self):
+        # v21 t_0bc6319b run 38: advance.py on a clean tree answered "REVERTED already -- call
+        # kanban_complete" (serial wording); K2 refused complete and review; the card blocked
+        sys.path.insert(0, str(SCRIPTS))
+        import advance as A
+        import _outcome_bridge as B
+        r = Run()
+        mirror_layout(r.root)
+        saved = {k: os.environ.get(k) for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID", "HERMES_KANBAN_DB")}
+        orig = NC.board_for
+        try:
+            r.release()
+            tid, run, iss = r.issue("build:rk:pom")
+            r.native.sync()
+            os.environ.update(HERMES_KANBAN_TASK=tid, HERMES_KANBAN_RUN_ID=str(run), HERMES_KANBAN_DB=r.native.db_path)
+            NC.board_for = lambda root, native=None: NC.Board(r.native, author="implementer")
+            steps = {"steps": [], "rejected": [{"card": tid, "cluster": "c:pom", "reason": "measure did not decrease"}]}
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = A._recorded_verdict(r.root, steps, tid, "c" * 64, mint=False, hermes="hermes")
+            self.assertEqual(rc, 0, err.getvalue())
+            self.assertIn("this outcome stays open on this card", err.getvalue())
+            self.assertNotIn("kanban_complete", err.getvalue())
+            self.assertIn("CONTINUE THIS CARD", out.getvalue())
+            self.assertEqual([x["kind"] for x in r.board.records(tid)].count("issue"), 2)   # re-issued on the same card
+        finally:
+            NC.board_for = orig
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            r.close()
+
     def test_second_unit_on_the_same_card_is_judged(self):
         sys.path.insert(0, str(SCRIPTS))
         import advance as A

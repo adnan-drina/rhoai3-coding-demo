@@ -613,6 +613,14 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
                 print("DEFERRED already (%s: %s) -- the loop is stopped; kanban_block kind=needs_input naming the cluster"
                       % (cluster, str(deferred.get("reasons", {}).get(cluster) or "")[:160]), file=sys.stderr)
                 return 1
+            if _outcome_bridge.active(root):
+                # outcome board: a rejected attempt keeps THIS card open (no successor card
+                # exists). v21 t_0bc6319b run 38 was told "kanban_complete" here; K2 refused it
+                # and request_review, and the card blocked. The retry is the same card, re-issued.
+                print("REVERTED already (%s attempt on card %s: %s) -- this outcome stays open on this card; "
+                      "it is re-issued now" % (cluster, card, str(row.get("reason") or "")[:160]), file=sys.stderr)
+                return _outcome_bridge.reissue(root, note="the last attempt was REVERTED: %s"
+                                               % str(row.get("reason") or "")[:160])
             print("REVERTED already (%s attempt on card %s: %s) -- the retry is the next K4 card; call kanban_complete"
                   % (cluster, card, str(row.get("reason") or "")[:160]), file=sys.stderr)
             return 1
