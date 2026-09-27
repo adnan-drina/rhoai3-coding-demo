@@ -40,7 +40,8 @@ The same selection chain as v1 (section 1), with the value
 `outcome-board/v2`: the template's `boardProtocol` (default `outcome-board/v2`)
 is stamped into the initial commit's `run-budget.json`; the provisioner copies
 it into the read-only run control with `outcome_board.execution` (Task
-parameter, default `disabled`) and `outcome_board.measurement_trust`.
+parameter, default `enabled` since 2026-09-27) and
+`outcome_board.measurement_trust` (default `cooperative-receipts`).
 Request and selection must name the same version (`PROTOCOL_MISMATCH`
 otherwise). `enabled` needs `measurement_trust: cooperative-receipts`
 (`MEASUREMENT_TRUST_UNDECIDED` otherwise) and nothing else: there is no
@@ -59,8 +60,8 @@ table and no reconciler.
 | Task identity, status, runs, claims, dependencies, review/rework history | `tasks`, `task_runs`, `task_links`, `task_events` | Hermes (dispatcher, worker tools) |
 | The plan revision | attachment `plan.r<N>.json` on the task that triggered it (M2 for r1): the plan and the digest of every contract it introduces | `native_publish` |
 | A task's contract (brief, membership, checks, budget family, repair paths) | attachment `contract.json` on the task | `native_publish` |
-| Domain records (issue, reject, pending, accept-begin, accept-commit, amend, owner-hold, restore-held, cause-report, assessment, m4-repair, push) | keyed comments `[native-control] {json}` on the task (a key is recorded once; a replay finds it) | `native_gate.py`, `advance.py` through `_outcome_bridge` |
-| A held candidate, an M4 assessment | attachments `held.<id>.json`, `assessment.<run>.<sha>.json`, named by their record with a sha256 | same |
+| Domain records (issue, reject, pending, accept-begin, accept-commit, amend, owner-hold, restore-held, park, restore-parked, cause-report, assessment, m4-repair, push) | keyed comments `[native-control] {json}` on the task (a key is recorded once; a replay finds it) | `native_gate.py`, `advance.py` through `_outcome_bridge` |
+| A held or parked candidate, an M4 assessment | attachments `held.<id>.json`, `parked.<run>.<sha>.json`, `assessment.<run>.<sha>.json`, named by their record with a sha256 | same |
 | Progress | derived view (`native_gate.py account`), never read back | — |
 
 Stable keys: `outcome:v2:<run>:<outcome>`, `assess:v2:<run>:<outcome>`,
@@ -85,6 +86,33 @@ one procedure line for its role (`native_control.PROCEDURE`).
 | N12 | M5 stages | native parents: PREFLIGHT <- M4, DEPLOY <- PREFLIGHT, VALIDATE <- DEPLOY | `issue` refuses while M4 is not accepted or the tree drifted from the accepted candidate (`ISSUE_STALE_CANDIDATE`); reviewer completion on the stage's bound receipts |
 | N13 | Push | `native_gate.py push` | reads the remote back FIRST: a landed push is recorded, never repeated; `sent` / `landed` / `failed` / `uncertain` records |
 
+M3 cards and recovery (after v20, 2026-09-27):
+
+- **Titles.** Every repair card is titled `M3 <ACTION> — <subject>`
+  (BUILD, CONFIGURE, COMPILE, RUNTIME, BEHAVIOR; REPAIR for an owner repair,
+  FOLLOW-UP for an M4 follow-up). No two cards share a title: equal subjects
+  become `(part i of n)`. A published title is never rewritten.
+- **Runtime checks gate M4.** A requirement check that needs the running
+  application (`parity:`, `behavior:`, `gate:package|augmentation|startup`) on
+  an outcome whose class cannot measure it is moved to the M4 node's
+  `acceptance.deferred_requirement_checks` at publication. M4 refuses
+  `ASSESS_DEFERRED_CHECKS` while one is unmet; `m4-repair` turns each into a
+  follow-up of its owning outcome (class behavior, the owner's budget).
+- **One verdict per unit.** advance.py answers "ACCEPTED already" only for
+  the issued unit's idempotency key, so the next unit issued on the same card
+  is judged.
+- **Named reasons.** `accept-commit` returns `not_accepted_because`: each
+  open obligation, unmet check (status and detail) and unmeasured class.
+- **Park before block.** A block on a repair card whose issued run leaves
+  product edits in the tree refuses `BLOCK_LEAVES_CANDIDATE`;
+  `native_gate.py park` holds the candidate as `parked.<run>.<sha>.json`
+  and restores HEAD, so the next card starts clean. When the card resumes,
+  `issue` reports `parked_candidate` and `restore-parked` puts it back to be
+  re-verified.
+- **Repeated refusal.** The third identical `native_gate.py` refusal in one
+  run parks that run's candidate and answers `REPEATED_REFUSAL`. K2 then
+  refuses every tool except `kanban_block` for that run.
+
 Semantic repair budget: rejected attempts plus `changes_requested` runs across
 every task of one budget family (an owner, its follow-ups and its owner
 repairs share one key). Crashes, timeouts, quota requeues and dependency
@@ -108,6 +136,7 @@ observers are never acceptance gates.
 | Evidence | Scope |
 |---|---|
 | `.hermes/lib/planner/native_board.test.py` (22) | synthetic board with the pinned review/dependency semantics, real git, the real classifier, the real K2 hook |
+| `.hermes/lib/planner/native_m3_recovery.test.py` (11) | the M3 recovery rules above on the same synthetic board; also passes under the worker's `python3` (3.9) in the ws-080 image |
 | `hermes-runtime/tests/rhoai3_outcome_board/test_native_control.py` (36 checks) | the ws-080 image: real `kanban_db` lifecycle, real `hermes kanban` CLI, the golden's `native_gate.py` under the worker's `python3` (3.9), the real K2 hook. No model, no dispatcher loop, no cluster |
 | `outcome-board-hooks.test.py`, `app-migration-template.test.py`, `provision-migration-run.test.py`, `run-preflight.test.py` | platform side |
 
@@ -581,8 +610,10 @@ for the first run only). The resulting contract reads
 
 - **New-run defaults.** The template's `boardProtocol` default is
   `outcome-board/v1` (660c1c03); the provisioner's
-  `outcome-board-execution` default is `disabled`. Changing either affects
-  only runs provisioned AFTER the change.
+  `outcome-board-execution` default is `enabled` with
+  `outcome-board-measurement-trust: cooperative-receipts` since 2026-09-27
+  (v20 needed a manual per-run enable; setting `disabled` holds new runs).
+  Changing either affects only runs provisioned AFTER the change.
 - **Existing runs.** The provisioner writes each run's control record ONCE;
   a later Task-default change does not touch it. What governs an existing run
   is its own immutable contract. The supported stop is stopping the

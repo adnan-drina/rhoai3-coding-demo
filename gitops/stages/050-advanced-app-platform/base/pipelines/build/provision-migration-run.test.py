@@ -120,6 +120,15 @@ def _serve_request(td: Path, run: str, commit: str, decl: dict | None) -> None:
     f.write_text(json.dumps(decl), encoding="utf-8")
 
 
+def _param_default(name: str) -> str:
+    """The Task's declared default for a param: the value a run gets when the pipeline passes none."""
+    m = re.search(r"\n    - name: %s\n(?:      (?!default:).*\n)*?      default: \"?([^\"\n]*)\"?\n" % re.escape(name),
+                  TASK.read_text(encoding="utf-8"))
+    if not m:
+        raise SystemExit("FAIL: Task param %s declares no default" % name)
+    return m.group(1).strip()
+
+
 def _provision(td: Path, run: str, commit: str, **env_extra: str) -> tuple[int, str, dict]:
     bindir = td / "bin"
     bindir.mkdir(exist_ok=True)
@@ -135,7 +144,8 @@ def _provision(td: Path, run: str, commit: str, **env_extra: str) -> tuple[int, 
                WSNS="wksp-ai-developer", MODE="provision", FIXTURE_SRC="migration-fixture-credentials",
                DB_IMAGE="registry.example/postgresql@sha256:" + "1" * 64,
                CLI_IMAGE="registry.example/ose-cli@sha256:" + "2" * 64,
-               **dict({"OB_EXECUTION": "disabled", "OB_TRUST": "", "REQUEST_OWNER": "owner",
+               **dict({"OB_EXECUTION": _param_default("outcome-board-execution"),
+                       "OB_TRUST": _param_default("outcome-board-measurement-trust"), "REQUEST_OWNER": "owner",
                        "REQUEST_RAW_BASE": (td / "raw").as_uri()}, **env_extra))
     p = subprocess.run(["bash", str(td / "provision.sh")], env=env, capture_output=True, text=True)
     state = json.loads((td / "state.json").read_text()) if (td / "state.json").exists() else {"objects": {}, "applied": []}
@@ -195,6 +205,8 @@ def _case(run: str) -> int:
 
 
 SERIAL, OUTCOME, NATIVE = "serial-loop/v1", "outcome-board/v1", "outcome-board/v2"
+# the Task defaults (2026-09-27): a new outcome-board run starts enabled under the decided trust
+DEFAULT_OB = {"execution": "enabled", "measurement_trust": "cooperative-receipts"}
 
 
 def _contract_of(st: dict, run: str) -> dict:
@@ -209,10 +221,12 @@ def _protocol_cases(run: str, commit: str) -> int:
         (dict(base), {}, None, None, "read"),                                               # legacy: no request
         (None, {}, None, None, "unreadable"),                                               # nothing served
         (dict(base, board_protocol=SERIAL), {}, SERIAL, None, "read"),
-        (dict(base, board_protocol=OUTCOME), {}, OUTCOME, {"execution": "disabled"}, "read"),
+        (dict(base, board_protocol=OUTCOME), {}, OUTCOME, DEFAULT_OB, "read"),
+        (dict(base, board_protocol=OUTCOME), {"OB_EXECUTION": "disabled", "OB_TRUST": ""}, OUTCOME, {"execution": "disabled"}, "read"),
         (dict(base, board_protocol=OUTCOME), {"OB_EXECUTION": "enabled", "OB_TRUST": "cooperative-receipts"},
          OUTCOME, {"execution": "enabled", "measurement_trust": "cooperative-receipts"}, "read"),
-        (dict(base, board_protocol=NATIVE), {}, NATIVE, {"execution": "disabled"}, "read"),
+        (dict(base, board_protocol=NATIVE), {}, NATIVE, DEFAULT_OB, "read"),                # default since 2026-09-27
+        (dict(base, board_protocol=NATIVE), {"OB_EXECUTION": "disabled", "OB_TRUST": ""}, NATIVE, {"execution": "disabled"}, "read"),
         (dict(base, board_protocol=NATIVE), {"OB_EXECUTION": "enabled", "OB_TRUST": "cooperative-receipts"},
          NATIVE, {"execution": "enabled", "measurement_trust": "cooperative-receipts"}, "read"),
         (dict(base, board_protocol="board/v9"), {}, None, None, "read"),                    # recorded, never selected
@@ -316,7 +330,7 @@ def main() -> int:
           "read-only file volume into exactly this workspace; the golden reader accepts it; a re-delivery leaves it "
           "untouched; another commit and a missing profile table refuse; the worker role has no write verb; the run's own "
           "board_protocol request becomes the selection, outcome-board/v1 carries the platform's execution state "
-          "(disabled by default, qualification refused), and the golden reader agrees with every record)")
+          "(the Task default: enabled under cooperative-receipts since 2026-09-27; disabled when set; qualification refused), and the golden reader agrees with every record)")
     return 0
 
 

@@ -399,7 +399,7 @@ New: `planner.worklist`, `planner.cards`, `bootstrap-destination`, `compat-mappi
 
 ---
 
-### 10.1 Outcome board (new runs, disabled by default)
+### 10.1 Outcome board (new runs)
 
 After M2 the board shows the known outcomes, their prerequisites and their
 acceptance, and a repair attempt stays within the outcome that owns it
@@ -408,7 +408,8 @@ acceptance, and a repair attempt stays within the outcome that owns it
 A run requests the protocol once, at creation (the app-migration template's
 `boardProtocol`, default `outcome-board/v2`, stamped into the initial commit's
 `run-budget.json`); the platform's provisioner selects it in the read-only run
-control together with the execution state it owns (default `disabled`). Every
+control together with the execution state it owns (default `enabled`
+under `cooperative-receipts` since 2026-09-27). Every
 reader applies one rule (`outcome_protocol.select_protocol`): request and
 selection agree, or the run refuses at launch and never falls back to the
 serial loop. Runs created before the request existed stay serial.
