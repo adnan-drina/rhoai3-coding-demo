@@ -244,9 +244,50 @@ else:
 PY
 )"
 
-M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json in order: freeze-migration-input, capture-build-evidence, inventory-legacy-surface, scan-with-mta, assemble-evidence-bundle. Attach the KEEP artifacts by running .hermes/kernel/kanban_attach.py via terminal (python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec). That script fixes the file set and the 25 MiB cap, so the set is not your decision. The kanban_attach tool does not satisfy the paved-road audit. The original frozen legacy source is the only baseline; do not derive or upgrade it first. A producer that records status unpinned is evidence, not a defect to repair: kanban_block kind=needs_input naming the pin. Then run bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized --after-m1 "$HERMES_KANBAN_TASK" to continue this M1. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
+# The card bodies say what each phase delivers and how it is done, for the
+# person reading the board. The ordered commands, pins, exceptions and audit
+# mechanics live in the pinned skill (paved-road-m1 / paved-road-m2), never
+# here. M2 names the procedure of the protocol this run selected
+# (planner.outcome_protocol, checked above); it never changes a selection.
+BOARD_PROTOCOL="$(printf '%s\n' "${PROTOCOL_OUT:-}" | python3 -c 'import json,sys
+for line in sys.stdin:
+    line = line.strip()
+    if line.startswith("{"):
+        try:
+            print(json.loads(line).get("protocol") or "serial-loop/v1")
+            raise SystemExit(0)
+        except ValueError:
+            pass
+print("serial-loop/v1")' 2>/dev/null || echo serial-loop/v1)"
 
-M2_BODY='Follow paved-road-m2. First step is the activation gate (python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized); then skill_view bootstrap-destination, build-worklist and admit-migration-plan in that order, then python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board, then skill_view verify-live-kanban-loop. The plan is the work list the tools compute; you never author it. An INCONCLUSIVE admission is a legal stop: kanban_block kind=needs_input naming the BLOCK classes; do not hand-author anything under evidence/planning or verification/, and never edit decisions.yaml. K4 mints exactly one card (the head cluster) and zero unless the receipt is ADMITTED. Happy-path terminator is kanban_request_review with reviewer set to reviewer and created_cards equal to the native t_* list from mint. Never kanban swarm, decompose, link, triage, or daemon --force.'
+M1_BODY="Establish the legacy application's baseline for migration planning.
+
+Produce the frozen source reference, build evidence, MTA findings, the application inventories and the source's recorded behavior (baseline captures). Attach the evidence set to this card and record any coverage gaps.
+
+Done when: the evidence bundle and the captures exist for this run, M2 PLAN exists as this card's child, and the reviewer approves the audit.
+
+Procedure: paved-road-m1."
+
+case "${BOARD_PROTOCOL}" in
+  outcome-board/v2|outcome-board/v1)
+    M2_BODY="Publish the migration plan from the reviewed M1 evidence.
+
+Make every known repair outcome and the M4/M5 milestones visible on the board as their own cards, with their dependencies and attached contracts; the plan itself is attached to this card. Record unresolved responsibilities.
+
+Done when: the plan is ADMITTED, the published board reads back equal to the admitted plan, and the reviewer approves.
+
+Procedure: paved-road-m2 (${BOARD_PROTOCOL})."
+    ;;
+  *)
+    M2_BODY="Admit the migration plan from the reviewed M1 evidence and start the fix-until-green loop.
+
+Compute the work list, admit it, and create the first loop card for the head of the list.
+
+Done when: the plan is ADMITTED, the live board equals the loop's expected cards, and the reviewer approves.
+
+Procedure: paved-road-m2 (serial-loop/v1)."
+    ;;
+esac
 
 create_card() {
   local title="$1"

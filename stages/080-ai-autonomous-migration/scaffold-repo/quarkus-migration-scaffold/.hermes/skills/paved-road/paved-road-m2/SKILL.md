@@ -1,19 +1,21 @@
 ---
 name: paved-road-m2
 description: >
-  Pin only this on the M2 PLAN card. Index for the fix-until-green loop's
-  planning step: the activation gate (native), the deterministic
-  bootstrap (bootstrap-destination), the plan = tool-computed work list
-  plus baseline (build-worklist), admission (admit-migration-plan, the
-  producer), one K4 mint (kernel k4_mint.py: the head cluster's card),
-  and the live-board comparison (verify-live-kanban-loop). No LLM plans;
-  no partition; no capability graph. INCONCLUSIVE admission is a legal
-  stop (kanban_block). Never for story implementation.
+  Pin only this on the M2 PLAN card. Index for the planning step: the
+  activation gate (native), the deterministic bootstrap
+  (bootstrap-destination), the plan = tool-computed work list plus baseline
+  (build-worklist), admission (admit-migration-plan, the producer), then
+  publication through kernel k4_mint.py and the live-board comparison
+  (verify-live-kanban-loop). On an outcome-board/v2 run (the default for new
+  runs) publication puts the whole known plan on the board as native cards
+  under this open card; on a serial-loop/v1 run it mints the one head card.
+  No LLM plans. INCONCLUSIVE admission is a legal stop (kanban_block).
+  Never for story implementation.
 license: Apache-2.0
 compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "3.0.0"
+  version: "4.0.0"
   hermes:
     tags:
     - paved-road
@@ -21,11 +23,15 @@ metadata:
     category: paved-road
     kind: guidance
 ---
-# Paved road: M2 PLAN (activation gate → bootstrap → work list → admission → one mint → K3)
+# Paved road: M2 PLAN (activation gate → bootstrap → work list → admission → publish → read back)
 
 `steps.json` is the contract; `audit.json` is generated from it
 (`python3 .hermes/lib/paved_road.py generate --steps steps.json --out audit.json`).
 The reviewer runs `python3 .hermes/skills/paved-road/paved-road-m2/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"` over the official Kanban log (`$HERMES_HOME/kanban/logs/<id>.log`). Do not pass `--log` unless that file exists; a workshop path such as `/projects/modernized/kanban/logs/` is not the official log (v9 M2 `t_77e1fdac`). Silence, a missing KEEP file, or an unmatched `[exit 1]` refuses.
+
+The card body names the run's protocol: `Procedure: paved-road-m2 (outcome-board/v2)`
+or `(serial-loop/v1)`. The protocol was selected when the run was created;
+nothing here changes it. Steps 1–4 and 7 are the same for both.
 
 ## Procedure (in order)
 
@@ -42,51 +48,59 @@ The reviewer runs `python3 .hermes/skills/paved-road/paved-road-m2/scripts/asser
    (kind `needs_input`) naming the BLOCK classes; a human resolves them via
    `decisions.yaml` + ADR or by pinning a tool. Never hand-edit an artifact.
 5. `python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board`
-   — mints exactly one card (the head cluster) and refuses with zero
-   commands unless the receipt is ADMITTED.
+   — publishes the admitted plan (nothing without an ADMITTED receipt):
+   - **outcome-board/v2:** every known repair outcome, M4 and the three M5
+     stages become native cards under this open card, each with its
+     `contract.json`; the plan revision is attached to this card as
+     `plan.r1.json`. M3 depends on this card, M4 on every outcome, M5 on M4,
+     so nothing runs until this card is done. The command prints the
+     `created_cards` list. A crash mid-publication resumes with the same
+     command and creates nothing twice.
+   - **serial-loop/v1:** mints exactly one card, the head cluster (or M4
+     VERIFY when the list is empty). From then on each accepted M3 step
+     mints the next card (`advance.py`); `pipeline.admit` also writes the
+     derived `evidence/planning/serial-roadmap.json`, a view and never a gate.
 6. `skill_view verify-live-kanban-loop` → run its script (KEEP
-   `evidence/receipts/k3/live-board.json`) proves the board equals the
-   loop's expected cards.
-7. `kanban_request_review` with `reviewer=reviewer` and `created_cards`
-   equal to the native `t_*` list from mint, then end the turn (a later
-   nudge to finish is already satisfied; never answer it with `kanban_complete`).
+   `evidence/receipts/k3/live-board.json`):
+   - **outcome-board/v2:** the live board equals the published plan revision
+     (keys, bodies, dependencies, contracts; the same read-back as
+     `python3 .hermes/kernel/native_gate.py --root . readback`).
+   - **serial-loop/v1:** the live board equals the loop's expected cards.
+7. Hand off for review (below), then end the turn. A later nudge to finish is
+   already satisfied; never answer it with `kanban_complete` (K2 refuses it
+   for the implementer). On v2, K2 allows the review request and the
+   reviewer's completion only while the read-back is empty.
 
 After an Operator unblock, re-run the road from step 1. The terminal gate
 that says "needle admit-migration-plan last exited non-zero" clears when
 that step runs again in order; it is not asking you to run step 4 first.
 Step 5 needs no `--exempt` flags: the dest-init cards (M1, this M2) are
-registered from `.hermes/AUTOSTART-STATUS` and K3 exempts them itself.
+registered from `.hermes/AUTOSTART-STATUS`.
 
-After admission, `pipeline.admit` writes derived
-`evidence/planning/serial-roadmap.json`: one executable next card and
-planned M4 VERIFY / M5 PREFLIGHT / DEPLOY / VALIDATE without a candidate
-or receipt. It is not a KEEP file, not an audit needle, not a mint, and
-not a release gate. Re-run `skill_view compose-serial-roadmap` only to
-refresh the view.
+## Review handoff
 
-From here the loop propagates itself: each M3 card's `advance.py` mints
-the next card after the tools accept its step.
+`kanban_request_review` with `reviewer=reviewer` and:
 
-## Outcome-board runs (new protocol, disabled by default)
+- `summary` — two or three sentences a person can act on: the admission
+  verdict, how many cards were published (v2: outcomes, M4, M5; serial: the
+  head card) and any unresolved responsibility or BLOCK class the plan
+  carries.
+- `metadata` — `created_cards` (the native `t_*` list the publication
+  printed; never empty after a publication), `admission`
+  (`evidence/planning/admission-receipt.json` and its verdict),
+  `plan_revision` (v2: 1), `read_back` (v2: `[]`, or the receipt path),
+  `unresolved` (ids, or `[]`) and `limitations` (what this plan does not
+  cover yet, e.g. coverage gaps inherited from M1).
 
-The `k4-mint` step is the same command. On an outcome-board run it publishes
-the WHOLE known graph instead of one card. The graph holds outcomes,
-M4 ASSESS, and the unassigned M5 stages, all under this open M2, with this
-card's identity retained. Publication stops by name on an archived or
-duplicate identity and resumes safely under the same command.
-`kanban_request_review` is allowed only when the whole-graph read-back is
-green. The reviewer's `kanban_complete` releases the graph.
+The reviewer checks these against the attached plan and the board, runs the
+audit, and completes or requests changes.
 
-## outcome-board/v2 runs (native control)
+## Legacy protocol: outcome-board/v1
 
-The `k4-mint` step is the same command; on a v2 run it runs
-`native_gate.py publish` under this open card. Every known outcome, M4 VERIFY
-and the three M5 stages become native tasks, each with its `contract.json`,
-and the plan revision is attached to this card as `plan.r1.json`. M3 depends
-on this card, M4 on every outcome, M5 on M4: nothing runs until this card is
-done. A crash mid-publication resumes with the same command without
-duplicates. `kanban_request_review` (and the reviewer's `kanban_complete`) is
-allowed only when `native_gate.py --root . readback` is empty.
+Retired for new runs; kept only for a run that selected it. Step 5 publishes
+the graph under this open M2 with the M5 stages unassigned until the
+continuation grants them; the review request is allowed only when the
+whole-graph read-back is green.
 
 ## Self-test
 

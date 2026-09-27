@@ -206,7 +206,7 @@ the recorded measurement.
 
 ## outcome-board/v2 runs (native control)
 
-When the card body says "outcome-board/v2, native control" the card is one
+When the card body names "outcome-board/v2" the card is one
 native task per outcome. Hermes Kanban owns its runs, dependencies and
 review; the domain checks guard your native actions.
 
@@ -217,7 +217,10 @@ review; the domain checks guard your native actions.
 2. The same road: brief, patch, run-verify, advance. A REVERTED attempt stays
    on this card: advance re-issues the scope (`CONTINUE THIS CARD`), read the
    brief again.
-3. `OUTCOME ACCEPTED`: end the run with `kanban_request_review` reviewer=reviewer.
+3. `OUTCOME ACCEPTED`: run `python3 .hermes/kernel/native_gate.py --root . handoff`
+   and end the run with `kanban_request_review` reviewer=reviewer, passing its
+   `summary` and `metadata` (commit, tree, measurement, attempts, budget,
+   limitations). Add one sentence on what changed if it helps the reviewer.
    Never `kanban_complete` (K2 refuses it for the implementer). The reviewer
    runs this road's audit and completes the card, or requests changes: then
    this card is dispatched to you again, and `issue` grants the paths your

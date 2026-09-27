@@ -164,8 +164,7 @@ M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_K
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
 
-On an **outcome-board/v2** run (the card body says "outcome-board/v2, native
-control") the M2 card publishes the whole known plan as native tasks (one per
+On an **outcome-board/v2** run (the card body names "outcome-board/v2") the M2 card publishes the whole known plan as native tasks (one per
 outcome, M4 VERIFY, the three M5 stages) and every card starts with
 `python3 .hermes/kernel/native_gate.py --root . issue`. An accepted outcome,
 an accepted M4 verdict and a finished M5 stage end with

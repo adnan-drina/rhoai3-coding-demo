@@ -351,9 +351,12 @@ class TestAutostartAndCoverage(unittest.TestCase):
         for leaf in ("freeze-migration-input", "scan-with-mta", "inventory-legacy-surface", "bootstrap-destination", "build-worklist", "admit-migration-plan", "derive-legacy-boot3"):
             self.assertNotIn("--skill %s" % leaf, src)
         self.assertIn("--max-retries 1", src)
-        self.assertIn("kanban_request_review", src)
-        self.assertIn("kanban_block", src)
-        self.assertIn("skill_view", src)
+        # the terminators and step order live in the pinned skills the card bodies name
+        for leaf in ("paved-road-m1", "paved-road-m2"):
+            self.assertIn("Procedure: %s" % leaf, src)
+            skill = (HERMES_DIR / "skills" / "paved-road" / leaf / "SKILL.md").read_text(encoding="utf-8")
+            for needed in ("kanban_request_review", "kanban_block", "skill_view"):
+                self.assertIn(needed, skill, (leaf, needed))
         self.assertIn("planner_activation", src)
         self.assertIn("reused", src)
         self.assertNotIn("speckit", src.lower())

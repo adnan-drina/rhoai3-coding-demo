@@ -126,25 +126,78 @@ def contract_doc(plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
-PROCEDURE = {
-    "repair": ("Procedure (outcome-board/v2, native control): first python3 .hermes/kernel/native_gate.py --root . issue, "
-               "then the paved-road-m3 loop (brief, patch the issued paths, run-verify, advance). A rejected attempt stays on "
-               "this card. When advance prints OUTCOME ACCEPTED end the run with kanban_request_review reviewer=reviewer; the "
-               "reviewer runs the paved-road-m3 audit and completes, or requests changes (another run of this card)."),
-    "assess": ("Procedure (outcome-board/v2, native control): paved-road-m4, then native_gate.py assessment-record. "
-               "M4 means verification ACCEPTED: an ACCEPT or PROVISIONAL_ACCEPT verdict goes to kanban_request_review "
-               "reviewer=reviewer; a REFUSE runs native_gate.py m4-repair and ends with kanban_block kind=dependency "
-               "(this card resumes when its repairs are done)."),
-    "deliver": ("Procedure (outcome-board/v2, native control): native_gate.py issue, then this stage's paved-road-m5 "
-                "producers (DEPLOY pushes with native_gate.py push); end with kanban_request_review reviewer=reviewer; "
-                "the reviewer completes on the stage audit and its bound receipts."),
+STAGE_TEXT = {
+    "prepare": ("Prepare the accepted candidate for delivery: confirm it is exactly the candidate M4 accepted and "
+                "that it is eligible for the delivery pipeline.",
+                "the release-candidate and eligibility receipts are bound to the current commit and name the "
+                "accepted M4, and the reviewer approves."),
+    "push": ("Deliver the accepted candidate: push exactly that commit once, let the pipeline build its image, and "
+             "deploy it.",
+             "the pipeline succeeded with an image digest, the deployment runs that image behind an HTTPS route, the "
+             "push is recorded as landed, and the reviewer approves."),
+    "accept": ("Validate the deployed application live against the source's recorded behavior.",
+               "the live checks pass and the M5 verdict (ACCEPT, or INCONCLUSIVE with its reasons) is recorded for the "
+               "deployed commit, and the reviewer approves."),
 }
 
 
+DONE_WHEN = {
+    "build": "every owned obligation is gone from the measured work list, the build passes, and the reviewer approves.",
+    "config": "every owned obligation is gone from the measured work list, the build passes, and the reviewer approves.",
+    "source": "every owned obligation is gone from the measured work list for the current candidate, and the reviewer "
+              "approves.",
+    "runtime": "the package and startup gate passes on the packaged candidate (compiling alone is not enough), and the "
+               "reviewer approves.",
+    "behavior": "the assigned parity checks pass for the current candidate with no owned obligation open, and the "
+                "reviewer approves.",
+}
+
+
+def _plural(text: str) -> str:
+    """'1 owned obligation(s)' -> '1 owned obligation'; 'n obligation(s)' -> 'n obligations'."""
+    import re as _re
+    return _re.sub(r"\b(\d+)( [a-z ]*?)obligation\(s\)",
+                   lambda m: "%s%sobligation%s" % (m.group(1), m.group(2), "" if m.group(1) == "1" else "s"), text)
+
+
+def native_description(node: dict[str, Any]) -> str:
+    """The human-facing card body of a v2 task: what it delivers, how it is
+    done, where the detail is and which procedure applies. No commands, no
+    machine contract, no retry policy (those live in the pinned skill and the
+    attached contract.json)."""
+    role = node.get("role")
+    if role == "assess":
+        return ("Verify the combined migrated application on its packaged candidate.\n\n"
+                "Done when: the M4 verdict is ACCEPT or PROVISIONAL_ACCEPT for the current candidate and the reviewer "
+                "approves. A REFUSE keeps this card open: the repairs it needs become its prerequisites, and it runs "
+                "again after them. Delivery (M5) starts only after this card is done.\n\n"
+                "Details: the attached contract.json lists the prerequisite outcomes and the checks.\n"
+                "Procedure: paved-road-m4 (outcome-board/v2).")
+    if role == "deliver":
+        what, done = STAGE_TEXT.get(str(node.get("stage") or ""), ("Run this delivery stage.", "its receipts pass."))
+        return ("%s\n\nDone when: %s\n\n"
+                "Details: the attached contract.json names the accepted verification this stage is bound to.\n"
+                "Procedure: paved-road-m5 (outcome-board/v2)." % (what, done))
+    if node.get("repair_paths"):
+        # an owner repair: its revision wrote the one plain paragraph that explains it
+        what, done = str(node.get("description") or "").split(" Complete when ", 1)[0], (
+            "the failing scenarios pass on the repaired candidate and the reviewer approves; the waiting card then "
+            "resumes on this repair.")
+        if not what.endswith("."):
+            what += "."
+    else:
+        from planner.outcome_graph import outcome_summary
+        what = _plural(outcome_summary(node)[0])
+        done = DONE_WHEN.get(str(node.get("class") or ""), "every owned obligation is closed, and the reviewer approves.")
+    return ("%s\n\nDone when: %s\n\n"
+            "Details: the attached contract.json lists the owned obligations, checks and evidence.\n"
+            "Procedure: paved-road-m3 (outcome-board/v2). A rejected attempt or a review change request comes back "
+            "to this same card." % (what, done))
+
+
 def native_body(node: dict[str, Any]) -> str:
-    """The task body as published: the node's description and its v2
-    procedure line (deterministic; the read-back compares exactly this)."""
-    return "%s\n\n%s" % (node["description"], PROCEDURE[node["role"]])
+    """The task body as published (deterministic; the read-back compares exactly this)."""
+    return native_description(node)
 
 
 def native_plan(plan: dict[str, Any]) -> dict[str, Any]:
@@ -1318,6 +1371,78 @@ def push(root: Path, board: Board, *, task_id: str, run_id: int, remote: str = "
     board.record(task_id, "push", "push:%s:%s" % (op, state if state != "uncertain" else "uncertain:%d" % int(run_id)),
                  run=int(run_id), op=op, head=head, state=state, rc=int(getattr(p, "returncode", -1)))
     return {"op": op, "state": state, "already": False}
+
+
+# ---------------------------------------------------------------------------
+# review handoff: a task-specific summary and structured metadata
+# ---------------------------------------------------------------------------
+
+def handoff(root: Path, board: Board, *, task_id: str) -> dict[str, Any]:
+    """What the implementer passes to kanban_request_review (summary and
+    metadata), built from this task's own records and attachments on the
+    board. Read-only; it decides nothing (the K2 gate and the reviewer do)."""
+    root = Path(root)
+    if board.is_m2(task_id):
+        run = run_id_of(root, board)
+        plan = board.plan(run)
+        from planner.native_publish import readback
+        gaps = readback(board, plan)
+        tasks = board.run_tasks(run)
+        created = [tasks[n["outcome_id"]]["id"] for n in plan["nodes"] if n["outcome_id"] in tasks]
+        roles = {r: sum(1 for n in plan["nodes"] if n.get("role") == r) for r in ("repair", "assess", "deliver")}
+        unresolved = [u["id"] for u in plan.get("unresolved") or []]
+        receipt = _read_json(root / "evidence" / "planning" / "admission-receipt.json") or {}
+        summary = ("Plan %s: published %d cards (%d repair outcomes, M4, %d M5 stages); read-back %s. %s"
+                   % (receipt.get("status") or "admitted", len(created), roles["repair"], roles["deliver"],
+                      "equal" if not gaps else "has %d gap(s)" % len(gaps),
+                      ("Unresolved: %s." % ", ".join(unresolved[:5])) if unresolved else "No unresolved responsibility."))
+        return {"summary": summary, "metadata": {
+            "created_cards": created, "plan_revision": int(plan["revision"]), "plan_digest": plan["digest"],
+            "attachments": ["plan.r%d.json" % int(plan["revision"])], "read_back": gaps,
+            "admission": {"path": "evidence/planning/admission-receipt.json", "status": receipt.get("status")},
+            "unresolved": unresolved, "limitations": ["worker-produced receipts are trusted subject to binding (cooperative-receipts)"]}}
+    role, run, oid, plan, node = node_context(board, task_id)
+    tree = _product_tree(root)
+    if role == "repair":
+        recs = _accept_records(board, task_id)
+        last = recs[-1] if recs else {}
+        m = last.get("measurement") or {}
+        rejects = len(board.records(task_id, "reject"))
+        b = budget_state(board, run, plan, node)
+        ok = bool(last.get("outcome_accepted")) and last.get("tree") == tree
+        summary = ("%s: %s on commit %s; %d owned obligation(s) open; checks %s. %d rejected attempt(s) on this card; "
+                   "budget %d of %d." % (node.get("title") or oid, "accepted" if ok else "NOT accepted on the current tree",
+                                         str(last.get("commit") or "none")[:12], len(m.get("open_owned") or []),
+                                         ", ".join(m.get("classes") or []) or "none", rejects, b["spent"], b["limit"]))
+        limits = ["classes are asserted by worker receipts (cooperative-receipts)"]
+        if last.get("repair_evidence_gaps"):
+            limits.append("repair evidence gaps: %s" % "; ".join(last["repair_evidence_gaps"][:3]))
+        return {"summary": summary, "metadata": {
+            "outcome_id": oid, "commit": last.get("commit"), "tree": last.get("tree"), "accepted_on_current_tree": ok,
+            "measurement": {k: m.get(k) for k in ("classes", "scenarios", "checks", "open_owned", "open_count") if k in m},
+            "attempts_rejected": rejects, "budget": b, "attachments": [CONTRACT],
+            "records": [r["key"] for r in recs[-2:]], "limitations": limits}}
+    if role == "assess":
+        rec = latest_assessment(board, task_id) or {}
+        doc = _assessment_doc(board, task_id, rec) if rec else {}
+        deferred = [q.get("id") for q in doc.get("qualifications") or [] if not q.get("satisfied")]
+        summary = ("M4 verdict %s on candidate %s; %d open obligation(s); %s."
+                   % (rec.get("verdict") or "unrecorded", str(rec.get("candidate") or "")[:12], int(rec.get("open_obligations") or 0),
+                      ("deferred qualifications: %s" % ", ".join(deferred)) if deferred else "no deferred qualification"))
+        return {"summary": summary, "metadata": {
+            "verdict": rec.get("verdict"), "candidate": rec.get("candidate"), "candidate_is_current": rec.get("candidate") == tree,
+            "attachments": [CONTRACT] + ([rec["attachment"]] if rec.get("attachment") else []),
+            "failed_floors": doc.get("failed_floors") or [], "release_blockers": doc.get("release_blockers") or [],
+            "deferred_qualifications": deferred, "limitations": ["measurements are worker receipts (cooperative-receipts)"]}}
+    stage = str(node.get("stage") or "")
+    ok, facts, reasons = stage_evidence(root, board, run, plan, stage)
+    summary = ("%s: stage evidence %s for commit %s%s." % (node.get("title") or oid, "complete" if ok else "INCOMPLETE",
+                                                         str(facts.get("candidate_sha") or "")[:12],
+                                                         "" if ok else " (%s)" % "; ".join(reasons[:2])))
+    return {"summary": summary, "metadata": {
+        "stage": stage, "candidate_sha": facts.get("candidate_sha"), "receipts": facts.get("receipts") or {},
+        "facts": {k: v for k, v in facts.items() if k not in ("receipts",)}, "reasons": reasons,
+        "attachments": [CONTRACT], "limitations": ["stage receipts are produced by the worker (cooperative-receipts)"]}}
 
 
 # ---------------------------------------------------------------------------

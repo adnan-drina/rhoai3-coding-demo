@@ -62,8 +62,7 @@ green: REVERTED is a complete, recorded outcome (the candidate was
 discarded and the retry is its own card, minted by K4); never
 `kanban_request_changes` to make the same card try again.
 
-On an outcome-board/v2 run (the card body says "outcome-board/v2, native
-control"), every outcome, M4 and M5 card reaches you after the implementer
+On an outcome-board/v2 run (the card body names "outcome-board/v2"), every outcome, M4 and M5 card reaches you after the implementer
 accepted it. Run the audit of the card's paved road. Green audit: complete.
 The completion is also checked against the domain record (the outcome
 accepted on the current tree, an accepted M4 verdict bound to the current
@@ -71,6 +70,15 @@ candidate, or the stage's bound receipts). If that check refuses, request
 changes naming the refusal. Red audit: request changes naming what failed.
 A change request is another run of the same card and spends its repair
 budget; it is the normal rework path there.
+
+Read the implementer's handoff first: its summary and metadata name the
+commit or candidate, the measurement and the attached evidence. Check them
+against the attachments and the board, not against your expectation. Your
+completion is the card's result: the next card's worker receives your
+completion summary and metadata as this card's handoff. State what the card
+delivered and what you verified or did not, and carry the handoff's evidence
+references and limitations forward in your completion metadata. A change
+request names the failed step or refusal and the evidence.
 
 Green audit is the only path to complete. Red audit is
 request-changes with what failed. You do not invent a third grade.

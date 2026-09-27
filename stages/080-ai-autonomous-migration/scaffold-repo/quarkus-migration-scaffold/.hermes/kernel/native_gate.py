@@ -13,6 +13,7 @@
     native_gate.py --root . m4-repair                 (after a REFUSE: repairs become M4's prerequisites)
     native_gate.py --root . push [--remote origin] [--ref refs/heads/main]
     native_gate.py --root . account                   (read-only progress projection)
+    native_gate.py --root . handoff                   (read-only: the review summary + metadata for this card)
 
 The task, native run and claim come from the dispatcher's environment of THIS
 worker (HERMES_KANBAN_TASK / HERMES_KANBAN_RUN_ID / HERMES_KANBAN_CLAIM_LOCK)
@@ -113,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     pu.add_argument("--remote", default="origin")
     pu.add_argument("--ref", default="refs/heads/main")
     sub.add_parser("account")
+    sub.add_parser("handoff")
     ns = ap.parse_args(argv)
     root = Path(ns.root).resolve()
     task, run_id = _ids()
@@ -170,6 +172,8 @@ def main(argv: list[str] | None = None) -> int:
                            "python3 .hermes/kernel/native_gate.py --root . m4-repair, then kanban_block kind=dependency")
         elif ns.cmd == "m4-repair":
             out = NC.m4_repair(root, board, task_id=task, run_id=run_id)
+        elif ns.cmd == "handoff":
+            out = NC.handoff(root, board, task_id=task)
         elif ns.cmd == "push":
             out = NC.push(root, board, task_id=task, run_id=run_id, remote=ns.remote, ref=ns.ref)
         else:

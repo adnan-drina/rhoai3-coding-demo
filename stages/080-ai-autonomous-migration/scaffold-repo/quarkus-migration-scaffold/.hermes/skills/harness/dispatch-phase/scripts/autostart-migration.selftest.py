@@ -168,19 +168,43 @@ def _argv_log(store: Path) -> list[list[str]]:
     return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.is_file() else []
 
 
+def _body(argv: list[str]) -> str:
+    return argv[argv.index("--body") + 1] if "--body" in argv else ""
+
+
+# what belongs in the pinned skill, not in a card a person reads
+MACHINE_TOKENS = ("python3 ", ".py", "$", "--root", "kanban_", "skill_view", "hermes kanban", "HERMES_", "exit 1")
+
+
+def readable_body_gaps(argv: list[str], procedure: str) -> list[str]:
+    """A phase card body states its result, how it is done and one procedure
+    reference: no commands, variables, tool names or audit internals."""
+    body = _body(argv)
+    gaps = ["%s token %r" % (procedure, t) for t in MACHINE_TOKENS if t in body]
+    if "Procedure: %s" % procedure not in body:
+        gaps.append("%s: no procedure reference" % procedure)
+    if "Done when:" not in body:
+        gaps.append("%s: no acceptance statement" % procedure)
+    if len(body.split()) > 110:
+        gaps.append("%s: %d words" % (procedure, len(body.split())))
+    return gaps
+
+
 def assert_bodies_name_native_backings() -> int:
-    """A card body must name every native/kernel script its paved road mandates."""
-    text = SCRIPT.read_text(encoding="utf-8")
+    """The PINNED SKILL of each phase must name every native/kernel script its
+    paved road mandates (the card body names only the procedure; the ordered
+    commands live in the skill the card pins)."""
     bad = []
     for kind in ("m1", "m2"):
         steps = GOLDEN / ".hermes" / "skills" / "paved-road" / ("paved-road-" + kind) / "steps.json"
+        text = (steps.parent / "SKILL.md").read_text(encoding="utf-8")
         doc = json.loads(steps.read_text(encoding="utf-8"))
         for step in doc.get("steps", []):
             if step.get("backing") not in ("native", "kernel"):
                 continue
             name = str(step.get(step["backing"]) or "")
             if name and name not in text:
-                bad.append("%s body does not name %s backing %r (step %s)" % (kind.upper(), step["backing"], name, step.get("id")))
+                bad.append("paved-road-%s SKILL.md does not name %s backing %r (step %s)" % (kind, step["backing"], name, step.get("id")))
     for line in bad:
         sys.stderr.write("FAIL: " + line + "\n")
     return 1 if bad else 0
@@ -191,9 +215,15 @@ def main() -> int:
     for forbidden in ('"M3', "'M3", '"M4', "'M4", "--goal", "--triage", "swarm ", "decompose ", "specify", "speckit", "legacy-at-3.json"):
         if forbidden in src.replace("Never kanban swarm, decompose, link, triage, or daemon --force.", "").replace("triage, specify, decompose, swarm", ""):
             return _fail("script must not carry %r" % forbidden)
-    for needed in ("--idempotency-key m1-analyze", "--idempotency-key m2-plan", "--skill paved-road-m1", "--skill paved-road-m2", 'PLANNER_ACTIVATION}" == "activated"', "kanban_request_review", "kanban_block", "skill_view", '--parent "${M1_ID}"'):
+    for needed in ("--idempotency-key m1-analyze", "--idempotency-key m2-plan", "--skill paved-road-m1", "--skill paved-road-m2", 'PLANNER_ACTIVATION}" == "activated"', '--parent "${M1_ID}"'):
         if needed not in src:
             return _fail("script must carry %r" % needed)
+    # the terminators and the step order live in the pinned skills the cards name
+    for kind in ("m1", "m2"):
+        skill = (GOLDEN / ".hermes" / "skills" / "paved-road" / ("paved-road-" + kind) / "SKILL.md").read_text(encoding="utf-8")
+        for needed in ("kanban_request_review", "kanban_block", "skill_view"):
+            if needed not in skill:
+                return _fail("paved-road-%s SKILL.md must carry %r" % (kind, needed))
     if "--skill scan-with-mta" in src or "--skill plan-migration-increments" in src:
         return _fail("script must not pin subskills on the card")
     if "When the instructions do not work" in SKILL.read_text(encoding="utf-8"):
@@ -275,6 +305,11 @@ def main() -> int:
             return _fail("M2 argv: %s" % argv)
         if any(t in " ".join(argv[1]) for t in ("M3 ", "M4 ")):
             return _fail("dest-init must never mint M3/M4")
+        gap = readable_body_gaps(argv[0], "paved-road-m1") + readable_body_gaps(argv[1], "paved-road-m2")
+        if gap:
+            return _fail("M1/M2 bodies are not readable card descriptions: %s" % gap)
+        if "(serial-loop/v1)" not in _body(argv[1]):
+            return _fail("a run that selected no board protocol gets the serial M2 procedure: %r" % _body(argv[1]))
         run_autostart(root_a, bin_a)
         if set(json.loads((store_a / "keys.json").read_text())) != {"m1-analyze", "m2-plan"}:
             return _fail("activated rerun must reuse keys")

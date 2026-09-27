@@ -75,12 +75,36 @@ the root of the planner digest chain (SAD §6).
    `--after-m1` validates this existing native M1; the workspace startup
    preference cannot silently skip its continuation. The reviewer checks
    the M2 task, workspace and parent edge, not just the command exit code.
-5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
+5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`, with the
+   summary and metadata below), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
 6. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
 7. Reviewer runs `python3 .hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`.
    The official log is `$HERMES_HOME/kanban/logs/<id>.log`. Do not pass `--log` unless that file exists; a workshop path such as `/projects/modernized/kanban/logs/` is not the official log (v9 M1 `t_e84503a8`).
 
+## Progress and review handoff
+
+- **Attachments.** The `kanban-attach` step attaches the KEEP evidence set to
+  this card (native attachments, listed by `kanban_show` and in the worker
+  context): the evidence bundle, findings handoff, inventories, required
+  extensions and MTA findings. The script fixes the set and the 25 MiB cap;
+  the attachment tool alone does not satisfy the audit.
+- **Milestone comments** (`kanban_comment`, at most three, factual, never one
+  per command): after the MTA scan (findings count and any unpinned
+  producer), after the source captures (scenarios captured and qualified, the
+  enabled-mode status), and for a discovered coverage gap or blocker.
+- **Review request.** `summary`: two or three sentences a person can act on —
+  what the evidence establishes about the legacy application, the capture
+  coverage, and the gaps M2/M4 inherit. `metadata`: `attachments` (the
+  attached file names), `evidence_bundle`
+  (`evidence/planning/evidence-bundle.json`), `captures` (per security mode:
+  captured / qualified / idle with its reason), `m2_card` (the id
+  `autostart-migration.sh --after-m1` created), `coverage_gaps` and
+  `limitations`.
+
 ## Gotchas
+
+- Do not invent HTTP routes: paths come from the frozen source and its
+  inventories.
 
 - Silence fails. An unmatched `[exit 1]` on a mandated needle fails.
   A later clean invocation of the *same* needle clears an earlier red.

@@ -144,9 +144,6 @@ def _title(cls: str, subject: str) -> str:
 def render_description(outcome: dict[str, Any]) -> str:
     """Two to four plain sentences: the result and how acceptance is recognized.
     No machine JSON, no write set, no commands, no history, no verdict."""
-    cls = outcome.get("class")
-    n = len(outcome.get("obligations") or [])
-    subject = outcome.get("subject") or outcome.get("outcome_id")
     if outcome.get("role") == "assess":
         return ("Assess the combined migrated application on the final artifact. Complete when the measured "
                 "assessment is recorded and its audit passes, whatever the application verdict is. "
@@ -155,6 +152,17 @@ def render_description(outcome: dict[str, Any]) -> str:
         return ("%s for the assessed candidate. It starts only after the delivery stage before it is accepted and "
                 "the current assessment admits it. The attached brief states what this stage needs and produces."
                 % DELIVER_TITLES.get(_s(outcome.get("stage")), "Delivery stage"))
+    what, accept = outcome_summary(outcome)
+    return "%s %s The attached brief lists the obligations and evidence; the pinned repair procedure applies." % (
+        what, accept)
+
+
+def outcome_summary(outcome: dict[str, Any]) -> tuple[str, str]:
+    """(what the repair outcome delivers, how its acceptance is recognized):
+    the two sentences render_description and the native (v2) card body share."""
+    cls = outcome.get("class")
+    n = len(outcome.get("obligations") or [])
+    subject = outcome.get("subject") or outcome.get("outcome_id")
     what = {
         "build": "Make the destination build configuration satisfy its {n} owned obligation(s) for {subject}.",
         "config": "Migrate the configuration owned here ({n} obligation(s)) for {subject}.",
@@ -169,8 +177,7 @@ def render_description(outcome: dict[str, Any]) -> str:
         "runtime": "Complete when that gate passes on the packaged candidate; compiling alone does not satisfy it.",
         "behavior": "Complete when the assigned parity checks pass for the current candidate and no owned obligation remains open.",
     }[cls]
-    return "%s %s The attached brief lists the obligations and evidence; the pinned repair procedure applies." % (
-        what.format(n=n, subject=subject), accept)
+    return what.format(n=n, subject=subject), accept
 
 
 def _validate_worklist(worklist: Any) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:

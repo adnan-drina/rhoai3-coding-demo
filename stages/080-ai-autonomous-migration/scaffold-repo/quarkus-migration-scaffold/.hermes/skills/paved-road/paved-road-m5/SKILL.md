@@ -160,9 +160,11 @@ the accepted M4 natively (PREFLIGHT -> DEPLOY -> VALIDATE). No grants.
    `python3 .hermes/kernel/native_gate.py --root . push --remote origin --ref refs/heads/main`.
    It reads the remote back first: a push that already landed is recorded,
    never repeated. Run it again after a crash.
-3. Terminator: `kanban_request_review` reviewer=reviewer. The reviewer
-   completes after the stage audit; completion also requires the stage's own
-   receipts bound to the current HEAD.
+3. Terminator: `native_gate.py --root . handoff`, then `kanban_request_review`
+   reviewer=reviewer with its `summary` and `metadata` (the stage's receipts
+   and their digests, the commit). The reviewer completes after the stage
+   audit; completion also requires the stage's own receipts bound to the
+   current HEAD.
 
 ## Failures
 

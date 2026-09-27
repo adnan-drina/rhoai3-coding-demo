@@ -330,7 +330,9 @@ M4 means verification ACCEPTED. Walk the same road. After the verdict is linted:
 1. `python3 .hermes/kernel/native_gate.py --root . issue` at the start of the
    run, and `native_gate.py --root . assessment-record` after the verdict. It
    records the verdict, the candidate and the open obligations on this card.
-2. ACCEPT or PROVISIONAL_ACCEPT: `kanban_request_review` reviewer=reviewer.
+2. ACCEPT or PROVISIONAL_ACCEPT: `native_gate.py --root . handoff`, then
+   `kanban_request_review` reviewer=reviewer with its `summary` and `metadata`
+   (verdict, candidate, assessment attachment, deferred qualifications).
    The reviewer completes this card after the audit; that releases M5.
 3. REFUSE (or any other verdict): `native_gate.py --root . m4-repair`. It
    publishes the repairs the verdict needs as native tasks and makes them
