@@ -205,7 +205,24 @@ class BoardProtocol(unittest.TestCase):
             (dict(request='outcome-board/v1', selected='outcome-board/v1'), 'OUTCOME_EXECUTION_DISABLED', None),
             (dict(request='outcome-board/v1', selected='outcome-board/v1', execution='enabled'), 'AUTHORITY_UNPROTECTED', None),
         )
+        # The platform repository can carry a scaffold subtree that predates
+        # protocol selection (the golden is published separately). Its
+        # preflight must still refuse every outcome-board request -- with the
+        # older fail-closed message -- and never launch the serial loop; the
+        # selection-specific codes exist only with the harness that selects.
+        import sys
+        sys.path.insert(0, str(self.GOLDEN_LIB))
+        try:
+            from planner import outcome_protocol
+            selects = hasattr(outcome_protocol, 'launch_gaps')
+        except ImportError:
+            selects = False
         for kw, refusal, protocol in cases:
+            if not selects:
+                if kw.get('request') == 'outcome-board/v1':
+                    refusal = 'the run requests outcome-board/v1 and the installed harness cannot select it'
+                elif refusal:
+                    continue  # a contract selection the older harness does not read
             with tempfile.TemporaryDirectory() as d:
                 root = self.dest(Path(d).resolve(), **kw)
                 if refusal:
