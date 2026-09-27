@@ -40,10 +40,10 @@ from planner.outcome_checks import (  # noqa: F401  the pure predicates, shared 
     AMEND_MAX_FILES, DELIVERY_RECEIPTS, OWNER_DEFECT, CAUSE_CLASSES, HOLD_MAX_BYTES, _read_json, _oracles,
     _references, initial_plan_from_root, load_worklist, open_obligations, _git, _tree_blobs, _blob_id,
     changed_product_paths, norm_rel, _is_product, planned_cluster_id, _unit_kind, requirement_measurement, _covers,
-    repair_evidence_gaps, git_commits_after, commit_product_tree, stage_admission, _git_head, owner_repair_id)
+    repair_evidence_gaps, git_commits_after, commit_product_tree, stage_admission, _git_head, owner_repair_id,
+    MAX_ASSESSMENT_GENERATIONS, refuse_revision, owner_repair_revision, stage_evidence_facts)
 
 ACCOUNT = STORE_DIR / "account.json"
-MAX_ASSESSMENT_GENERATIONS = 4
 PROTECTED_DIRS = (str(STORE_DIR) + "/", ".hermes/", ".git/")
 
 
@@ -1183,7 +1183,9 @@ def record_assessment(ctx: Ctx, *, task_id: str, run_id: int, verdict_doc: dict[
 
 def plan_after_refuse(store: Store, plan: dict[str, Any], intent: dict[str, Any]) -> dict[str, Any] | Refusal:
     """The next revision, or a typed stop. Never reopens or overwrites the
-    completed assessment; never renews a budget."""
+    completed assessment; never renews a budget. The revision itself is
+    outcome_checks.refuse_revision (shared with native control); here: the
+    recorded assessment, the delivery-cycle stop and a successor assessment."""
     rec = next((r for r in store.ledger(intent["outcome_id"]) if r["seq"] == intent["assessment_seq"]), None)
     if rec is None:
         return Refusal("REFUSE_UNRECORDED", "assessment row %s is gone" % intent["assessment_seq"])
@@ -1195,170 +1197,24 @@ def plan_after_refuse(store: Store, plan: dict[str, Any], intent: dict[str, Any]
         return Refusal("DELIVERY_CYCLE_UNSUPPORTED", "delivery stage %s already ran for a candidate; a second cycle is an explicit stop" % executed[0][0])
     if rec["doc"]["worklist"] != "present":
         return Refusal("REFUSE_" + rec["doc"]["worklist"], "the assessment has no measured work list")
-    run_id = plan["run_id"]
-    nodes = [dict(n) for n in plan["nodes"]]
-    by_id = {n["outcome_id"]: n for n in nodes}
-    ownership = dict(plan.get("ownership") or {})
-    unresolved = list(plan.get("unresolved") or [])
-    touched: dict[str, dict[str, Any]] = {}
-    additions: list[str] = []
-    for ob in rec["doc"]["obligations"]:
-        if ob.get("status") == "blocked" or not ob.get("write_set"):
-            uid = "unresolved:decision:%s" % ob["id"]
-            if not any(u["id"] == uid for u in unresolved):
-                unresolved.append({"id": uid, "kind": "decision", "blocks": "delivery", "reason": "no card can discharge %s" % ob["id"], "obligations": [ob["id"]]})
-            continue
-        owner = ownership.get(ob["id"])
-        if owner is None:
-            # plan semantics v1: the frozen owner of a later finding, or a typed revision class
-            from planner.outcome_graph import owner_of_finding
-            found = owner_of_finding(plan, {"id": ob["id"], "path": ob.get("path") or "", "entry_point": ob.get("entry_point") or "",
-                                            "kind": ob.get("kind") or ""})
-            if found.get("owner"):
-                owner = str(found["owner"])
-            elif found.get("class") in ("ambiguous-ownership", "evidence-gap") and (plan.get("requirements") or []):
-                uid = "unresolved:%s:%s" % (found["class"], ob["id"])
-                if not any(u["id"] == uid for u in unresolved):
-                    unresolved.append({"id": uid, "kind": found["class"], "blocks": "delivery", "obligations": [ob["id"]],
-                                       "reason": "a later finding has no single planned owner (%s)" % found["class"],
-                                       "candidates": list(found.get("candidates") or [])})
-                continue
-        if owner is None:
-            typ, kind = declaring_type(ob.get("entry_point") or "")
-            natural = "%s:%s" % (kind, typ) if typ else str(ob.get("key") or "")
-            owner = next((n["outcome_id"] for n in nodes if n.get("role") == "repair" and n.get("natural_key") == natural), None)
-        orow = _outcome(store, owner) if owner else None
-        if owner and orow and orow["status"] not in ("accepted", "done"):
-            target = owner
-        elif owner and orow:
-            target = "followup:%s:g%d" % (owner, gen + 1)
-            if target not in by_id:
-                parent = by_id[owner]
-                by_id[target] = {"outcome_id": target, "role": "repair", "class": parent.get("class"), "subject": parent.get("subject"),
-                                 "natural_key": "", "obligations": [], "clusters": [], "plan_paths": [], "entry_points": [],
-                                 "scenarios": [], "parents": [], "assignee": IMPL, "skills": [REPAIR_SKILL],
-                                 "lineage": [{"follows": owner, "reason": "assessment %s found new work after acceptance" % intent["outcome_id"]}],
-                                 "budget": {"key": orow["budget_key"], "limit": orow["budget_limit"]}}
-                additions.append(target)
-        else:
-            typ, kind = declaring_type(ob.get("entry_point") or "")
-            cls = "behavior" if typ else ("runtime" if ob.get("gate") in ("package", "startup", "boot") else "source")
-            target = ("behavior:%s:%s" % (kind, typ)) if typ else "%s:%s" % (cls, ob.get("key") or ob["id"])
-            if target in by_id and _outcome(store, target) and _outcome(store, target)["status"] in ("accepted", "done"):
-                target = "followup:%s:g%d" % (target, gen + 1)
-            if target not in by_id:
-                by_id[target] = {"outcome_id": target, "role": "repair", "class": cls, "subject": typ or str(ob.get("path") or ob["id"]),
-                                 "natural_key": "%s:%s" % (kind, typ) if typ else str(ob.get("key") or ""),
-                                 "obligations": [], "clusters": [], "plan_paths": [], "entry_points": [], "scenarios": [],
-                                 "parents": [], "assignee": IMPL, "skills": [REPAIR_SKILL],
-                                 "lineage": [{"discovered_by": intent["outcome_id"]}],
-                                 "budget": {"key": "rk:outcome:%s:%s" % (run_id, target), "limit": 3}}
-                additions.append(target)
-        n = by_id[target]
-        n["obligations"] = sorted(set(n["obligations"]) | {ob["id"]})
-        if ob.get("cluster"):
-            n["clusters"] = sorted(set(n["clusters"]) | {ob["cluster"]})
-        n["plan_paths"] = sorted(set(n["plan_paths"]) | set(ob.get("write_set") or []))
-        if ob.get("entry_point"):
-            n["entry_points"] = sorted(set(n["entry_points"]) | {ob["entry_point"]})
-        if ob.get("scenario"):
-            n["scenarios"] = sorted(set(n["scenarios"]) | {ob["scenario"]})
-        ownership[ob["id"]] = target
-        touched[target] = n
-    if not touched:
-        return Refusal("REFUSE_NOTHING_REPAIRABLE", "the REFUSE names no obligation a card can discharge; %d unresolved decision(s); "
-                       "unresolved: %s" % (sum(1 for u in unresolved if u["kind"] == "decision"),
-                                           ", ".join(u["id"] for u in unresolved if u["kind"] != "decision")[:400] or "none"))
-    succ = "%s:g%d" % (ASSESS_PREFIX, gen + 1)
-    open_repairs = sorted(oid for oid, n in by_id.items() if n.get("role") == "repair"
-                          and ((_outcome(store, oid) or {}).get("status") not in ("accepted", "done") or oid in additions))
-    for oid in additions:
-        # a published card's description is never rewritten (the pinned CLI has
-        # no body edit); only new outcomes get their text here
-        n = by_id[oid]
-        n["title"] = "Follow-up: %s" % n["subject"] if oid.startswith("followup:") else {
-            "behavior": "Behavior: %s", "runtime": "Application %s", "source": "Source compatibility: %s"}.get(
-            n.get("class"), "Outcome: %s") % n["subject"]
-        n["description"] = render_description(n)
-        n["acceptance"] = {"checks": {"behavior": ["worklist-absent", "parity:scenarios"],
-                                      "runtime": ["worklist-absent", "gate:runtime"]}.get(
-            n.get("class"), ["worklist-absent", "measure:compile", "measure:tests"])}
-    by_id[succ] = {"outcome_id": succ, "role": "assess", "class": "assess", "generation": gen + 1, "subject": "M4 ASSESS",
-                   "title": "M4 ASSESS (reassessment %d)" % (gen + 1), "parents": sorted(set(open_repairs) | {intent["outcome_id"]}),
-                   "assignee": IMPL, "skills": [ASSESS_SKILL], "obligations": [], "clusters": [], "plan_paths": [],
-                   "lineage": [{"succeeds": intent["outcome_id"], "verdict": intent["verdict"]}]}
-    by_id[succ]["description"] = render_description(by_id[succ])
-    for stage in DELIVER_STAGES:
-        did = "deliver:%s:c1" % stage
-        if did in by_id:
-            d = dict(by_id[did])
-            d["binding"] = {"assessment": succ}
-            if stage == DELIVER_STAGES[0]:
-                d["parents"] = sorted(set(d.get("parents") or []) | {succ})
-            by_id[did] = d
-    new_nodes = [by_id[k] for k in sorted(by_id)]
-    counts = dict(plan.get("counts") or {})
-    counts["additions"] = int(counts.get("additions") or 0) + len(additions)
-    doc = {
-        "schema": plan["schema"], "run_id": run_id, "revision": int(plan["revision"]) + 1,
-        "parent_revision": int(plan["revision"]), "kind": "refuse-repair", "provenance": plan.get("provenance"),
-        "trigger": {"intent": "m4-assessed:%s" % intent["outcome_id"], "verdict": intent["verdict"]},
-        "nodes": new_nodes, "ownership": ownership, "dispositions": list(plan.get("dispositions") or []),
-        "unresolved": sorted(unresolved, key=lambda u: u["id"]), "counts": counts,
-        "additions": sorted(additions), "claimed_control": False,
-    }
-    doc["digest"] = plan_digest(doc)
-    return doc
+
+    def status_of(oid: str) -> str:
+        return str((_outcome(store, oid) or {}).get("status") or "")
+
+    def budget_of(oid: str) -> dict[str, Any]:
+        o = _outcome(store, oid) or {}
+        return {"key": o.get("budget_key"), "limit": o.get("budget_limit")}
+
+    return refuse_revision(plan, rec["doc"]["obligations"], gen=gen, trigger=intent["outcome_id"], verdict=intent["verdict"],
+                           status_of=status_of, budget_of=budget_of, successor=True)
 
 
 def plan_owner_repair(store: Store, plan: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any] | Refusal | None:
-    """The revision adding ONE bounded repair of an accepted owner (automatic
-    owner recovery): a new outcome with lineage to the owner, the owner's budget
-    key (no fresh budget) and the owner's recorded write set; it becomes a
-    PARENT of the dependent (and of every open assessment), so the dependent
-    waits on the repair, never the reverse. None when the revision already
-    carries it (replay)."""
-    owner, dep = doc["owner"], doc["dependent"]
-    fid = owner_repair_id(owner, dep)
-    by_id = {n["outcome_id"]: dict(n) for n in plan["nodes"]}
-    if fid in by_id:
-        return None
-    on, dn = by_id.get(owner), by_id.get(dep)
-    if not on or not dn:
-        return Refusal("OWNER_REPAIR_FOREIGN", "%s or %s is not in the current revision" % (owner, dep))
-    node = {"outcome_id": fid, "role": "repair", "class": on.get("class"), "subject": on.get("subject"), "natural_key": "",
-            "obligations": [], "clusters": [], "plan_paths": sorted(doc.get("repair_paths") or []),
-            "repair_paths": sorted(doc.get("repair_paths") or []), "repair_scenarios": list(doc.get("repair_scenarios") or []),
-            "entry_points": [], "scenarios": [], "parents": [],
-            "assignee": IMPL, "skills": [REPAIR_SKILL], "budget": dict(doc["budget"]),
-            "lineage": [{"repairs": owner, "for": dep, "cause": OWNER_DEFECT, "reason": doc.get("reason") or "",
-                         "evidence": doc.get("evidence")}],
-            "acceptance": {"checks": ["measure:compile", "measure:tests"] + ["scenario:%s" % x for x in doc.get("repair_scenarios") or []]}}
-    node["title"] = "Repair %s (found by %s)" % (on.get("subject") or owner, dn.get("subject") or dep)
-    node["description"] = ("Repair the runtime defect in %s that the work on %s exposed: the failure is proven on the "
-                           "accepted baseline and belongs to %s. Complete when the owner's checks pass again on the "
-                           "repaired candidate; %s then resumes and is re-verified on this repair. The attached brief "
-                           "lists the evidence." % (on.get("subject") or owner, dn.get("subject") or dep, owner, dep))
-    by_id[fid] = node
-    by_id[dep] = dict(dn, parents=sorted(set(dn.get("parents") or []) | {fid}))
-    for oid, n in list(by_id.items()):
-        if n.get("role") == "assess" and (_outcome(store, oid) or {}).get("status") not in ("assessed", "done"):
-            by_id[oid] = dict(n, parents=sorted(set(n.get("parents") or []) | {fid}))
-    counts = dict(plan.get("counts") or {})
-    counts["additions"] = int(counts.get("additions") or 0) + 1
-    new = {
-        "schema": plan["schema"], "run_id": plan["run_id"], "revision": int(plan["revision"]) + 1,
-        "parent_revision": int(plan["revision"]), "kind": "owner-repair", "provenance": plan.get("provenance"),
-        "trigger": {"intent": "owner-repair:%s:%s" % (owner, dep)},
-        "nodes": [by_id[k] for k in sorted(by_id)], "ownership": dict(plan.get("ownership") or {}),
-        "dispositions": list(plan.get("dispositions") or []), "unresolved": list(plan.get("unresolved") or []),
-        "counts": counts, "additions": sorted(set(plan.get("additions") or []) | {fid}), "claimed_control": False,
-    }
-    for k in ("requirements", "requirement_ownership"):
-        if k in plan:
-            new[k] = plan[k]
-    new["digest"] = plan_digest(new)
-    return new
+    """outcome_checks.owner_repair_revision, with the open assessments read
+    from the store (an assessment not yet assessed/done gains the repair)."""
+    open_assessments = {n["outcome_id"] for n in plan["nodes"] if n.get("role") == "assess"
+                        and (_outcome(store, n["outcome_id"]) or {}).get("status") not in ("assessed", "done")}
+    return owner_repair_revision(plan, doc, open_assessments=open_assessments)
 
 
 def plan_split(store: Store, plan: dict[str, Any], oid: str, groups: dict[str, list[str]], *, evidence: str) -> dict[str, Any]:
@@ -1462,74 +1318,12 @@ def _stage_assessment_task(store: Store) -> str:
 
 
 def stage_evidence(root: Path, store: Store, stage: str) -> tuple[bool, dict[str, Any], list[str]]:
-    """The deciding facts of one M5 stage, DERIVED from the stage producers' own
-    receipts (prepare-release-candidate, observe-app-push/assert-deployed-app,
-    live-acceptance/compose-m5-verdict) and the push effect record, all bound to
-    the current Git candidate. (ok, facts, reasons). Missing, failed or
-    contradictory evidence is never success."""
-    root = Path(root)
-    head = _git_head(root)
-    reasons: list[str] = []
-    docs: dict[str, dict[str, Any]] = {}
-    digests: dict[str, str] = {}
-    for rel in DELIVERY_RECEIPTS.get(stage, ()):
-        doc = _read_json(root / rel)
-        if not isinstance(doc, dict):
-            reasons.append("STAGE_EVIDENCE_MISSING:%s" % rel)
-            continue
-        docs[rel.name] = doc
-        digests[str(rel)] = sha(canonical(doc))
-    if stage not in DELIVERY_RECEIPTS:
-        reasons.append("STAGE_UNKNOWN:%s" % stage)
-    if reasons:
-        return False, {"stage": stage, "candidate_sha": head}, reasons
-
-    def bound(label: str, doc: dict[str, Any]) -> None:
-        if str(doc.get("candidate_sha") or "") != head or not head:
-            reasons.append("CANDIDATE_MISMATCH:%s names %s, HEAD is %s" % (label, str(doc.get("candidate_sha") or "none")[:12], head[:12]))
-
-    facts: dict[str, Any] = {"stage": stage, "candidate_sha": head, "receipts": digests}
-    if stage == "prepare":
-        cand, elig = docs["candidate.json"], docs["eligibility.json"]
-        bound("candidate.json", cand)
-        bound("eligibility.json", elig)
-        if cand.get("ok") is not True or cand.get("pipeline_eligible") is not True:
-            reasons.append("PREFLIGHT_FAILED:%s" % (cand.get("reason") or "candidate not pipeline-eligible"))
-        if elig.get("pipeline_eligible") is not True:
-            reasons.append("PREFLIGHT_FAILED:eligibility not pipeline-eligible")
-        want = _stage_assessment_task(store)
-        if not want or str(cand.get("m4_card") or "") != want:
-            reasons.append("ASSESSMENT_MISMATCH:candidate binds M4 %r, the stage binds %r" % (cand.get("m4_card"), want))
-        facts.update(pipeline_eligible=cand.get("pipeline_eligible") is True, release_eligible=bool(cand.get("release_eligible")),
-                     m4_card=str(cand.get("m4_card") or ""), outstanding=len(cand.get("outstanding") or []))
-    elif stage == "push":
-        pipe, dep = docs["pipeline.json"], docs["deployment.json"]
-        bound("pipeline.json", pipe)
-        bound("deployment.json", dep)
-        if pipe.get("ok") is not True or pipe.get("succeeded") is not True or not pipe.get("image_digest"):
-            reasons.append("DEPLOY_FAILED:pipeline %s" % (pipe.get("reason") or "not a succeeded run with an image digest"))
-        if dep.get("ok") is not True or dep.get("image_digest") != pipe.get("image_digest"):
-            reasons.append("DEPLOY_FAILED:deployment %s" % (",".join(dep.get("issues") or []) or "image differs from the pipeline's"))
-        if not str(dep.get("route_url") or "").startswith("https://"):
-            reasons.append("DEPLOY_FAILED:route is not https")
-        landed = store.conn.execute("SELECT effect_id FROM effects WHERE kind='push' AND candidate=? AND state='landed'",
-                                    (head,)).fetchone()
-        if not landed:
-            reasons.append("PUSH_NOT_LANDED:no recorded, landed push effect for %s" % head[:12])
-        facts.update(image_digest=str(pipe.get("image_digest") or ""), route_url=str(dep.get("route_url") or ""),
-                     https=str(dep.get("route_url") or "").startswith("https://"), pipeline_run=str(pipe.get("pipeline_run") or ""))
-    else:
-        live, verdict = docs["live.json"], docs["m5-verdict.json"]
-        bound("live.json", live)
-        bound("m5-verdict.json", verdict)
-        if live.get("ok") is not True:
-            reasons.append("VALIDATE_FAILED:live %s" % ",".join(live.get("issues") or []))
-        token = str(verdict.get("verdict") or "")
-        if token not in ("ACCEPT", "INCONCLUSIVE") or verdict.get("failed_stage"):
-            reasons.append("VALIDATE_FAILED:M5 verdict %s %s" % (token or "missing", verdict.get("failed_stage") or ""))
-        facts.update(verdict=token, ship=bool(token == "ACCEPT" and verdict.get("ship") is True),
-                     deployment_status=str(verdict.get("deployment_status") or ""))
-    return not reasons, facts, reasons
+    """outcome_checks.stage_evidence_facts with the bound assessment's task and
+    the landed push effects read from the store."""
+    def landed(head: str) -> bool:
+        return bool(head and store.conn.execute("SELECT effect_id FROM effects WHERE kind='push' AND candidate=? AND state='landed'",
+                                                (head,)).fetchone())
+    return stage_evidence_facts(root, stage, m4_task=_stage_assessment_task(store), push_landed=landed)
 
 
 def _record_stage_evidence(ctx: Ctx, node: dict[str, Any], run_id: int) -> dict[str, Any]:
