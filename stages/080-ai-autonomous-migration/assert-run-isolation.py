@@ -127,13 +127,25 @@ def main() -> int:
     # The two secrets a workspace receives are the database binding and the
     # fixture identities. Both must be in the operator's cache, or nothing is
     # mounted at all.
-    mounted = task.count('controller.devfile.io/mount-to-devworkspace: "true"')
-    watched = task.count('controller.devfile.io/watch-secret: "true"')
+    # Count within the Secret manifests only: since v13 the run-control
+    # ConfigMap is also automounted, and its cache label is watch-configmap
+    # (checked below), not watch-secret.
+    secrets = [d for d in task.split("<<YAML")[1:] if "\n        kind: Secret\n" in d.split("\n        YAML", 1)[0]]
+    secrets = [d.split("\n        YAML", 1)[0] for d in secrets]
+    mounted = sum(d.count('controller.devfile.io/mount-to-devworkspace: "true"') for d in secrets)
+    watched = sum(d.count('controller.devfile.io/watch-secret: "true"') for d in secrets)
     need(mounted == 2, "expected 2 automounted per-run secrets, found %d" % mounted)
     need(watched == mounted,
          "%d of %d automounted secrets carry watch-secret; DWO 0.43 selects its secret cache by that "
          "label, so an unwatched secret is never seen and never mounted" % (watched, mounted))
-    on_start = task.count('controller.devfile.io/mount-on-start: "true"')
+    on_start = sum(d.count('controller.devfile.io/mount-on-start: "true"') for d in secrets)
+    control = [d.split("\n        YAML", 1)[0] for d in task.split("<<YAML")[1:]
+               if "app.kubernetes.io/component: run-control" in d.split("\n        YAML", 1)[0]]
+    need(len(control) == 1 and "kind: ConfigMap" in control[0]
+         and 'controller.devfile.io/watch-configmap: "true"' in control[0]
+         and 'controller.devfile.io/mount-to-devworkspace-include: "${RUN}"' in control[0],
+         "the run-control ConfigMap must be one ConfigMap, in the ConfigMap cache (watch-configmap) and bound "
+         "to exactly this workspace")
     need(on_start == mounted,
          "%d of %d automounted secrets defer mounting to the next start; without it, writing a secret "
          "restarts a workspace that is already running" % (on_start, mounted))
@@ -147,9 +159,11 @@ def main() -> int:
          "the labels in one object")
 
     # --- 2. targeting is exact --------------------------------------------
+    # every automounted object -- the per-run Secrets and the run-control
+    # ConfigMap -- is targeted, and targeted exactly
     includes = re.findall(r'controller\.devfile\.io/mount-to-devworkspace-include:\s*"([^"]*)"', task)
-    need(len(includes) == mounted,
-         "expected %d include annotations, found %d" % (mounted, len(includes)))
+    need(len(includes) == mounted + len(control),
+         "expected %d include annotations, found %d" % (mounted + len(control), len(includes)))
     for inc in includes:
         need("*" not in inc and "," not in inc,
              "the include pattern %r is not an exact binding; a suffix or a list can match another run" % inc)

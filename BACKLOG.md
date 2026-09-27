@@ -1,5 +1,57 @@
 # Backlog
 
+## Repeatable initial M3 plan (plan semantics v1) — 2026-09-26
+
+Plan: `tmp/m2-repeatability-20260926/IMPLEMENTATION-PLAN.md`. Selected by the
+golden `decisions.yaml` (`loop.plan_semantics: v1`) for NEW runs; a run keeps
+the value its destination was created with (admission refuses a later flip,
+`PLAN_SEMANTICS_REPINNED`), so earlier runs stay off. See Stage 080
+SOLUTION-ARCHITECTURE §7.1.
+
+- [x] Stable producer identity (pinned-locale diagnostics, structured
+  arguments, per-site occurrence), controlled initial analysis
+  (`run-verify.sh --initial`), source-derived requirements and recipes, one
+  graph builder owning every requirement, admission seal of the frozen
+  initial plan, plan view, bounded qualification driver.
+- [x] Locally demonstrated: recorded-evidence replay on SYNTHETIC specimens
+  (PetClinic-shaped, renamed twin, non-HTTP) and producer replay of the JDK
+  diagnostics, initial-analysis boundary and decided-repairs producers
+  (`skills/planning/build-worklist/scripts/qualify-repeatability.py`).
+- [x] 2026-09-26 (workstream A): the JDK-model structure producer re-run on
+  two clean copies of the frozen PetClinic source (offline classpath and
+  compile) gives identical structure and requirements identical to the
+  preserved run's M1 evidence; the preserved evidence replays to the same
+  requirements and logical graph under reordering (`qualify-repeatability.py
+  --specimen --source`; artifacts under `tmp/next-golden-20260926/ws-a/`).
+- [x] 2026-09-26 round 3: the M1 BUILD producer (capture-build-evidence) and
+  the structure producer re-run on two clean copies: identical build facts,
+  structure and requirements (including the new application-path row).
+- [ ] The pinned MTA CLI 8.2 on the specimen (NOT RUN: host mta-cli 7.3.0 is
+  not admissible; the 8.2.1 in the ws-080 image hung under amd64 emulation on
+  the arm64 workstation). Run it on an amd64 host or in the workspace.
+- [ ] The M2 destination analysis on FRESH M1 output (bootstrap, destination
+  compile, rescan) was not re-run: the finding half of the initial plan is
+  compared from recorded evidence only.
+- [x] The outcome board's acceptance recomputes an owner's requirement checks
+  on the committed tree (`planner/requirement_checks.py`).
+- [x] Every requirement check class we implement is measured (round 2), and
+  application paths are derived and measured (`config:application-path`,
+  round 3). Only missing SOURCE coverage stays unknown.
+- [x] The initial M2 analysis never reuses a warm-up (round 3).
+- [x] The plan view is labelled the frozen initial plan; real additions come
+  from recorded revisions (round 3).
+- [x] The golden selects `plan_semantics: v1` for new runs (run-pinned); the
+  next golden must still be published and a run created through the normal
+  release process.
+- [ ] V17 follow-ups: a separator glued on BOTH sides of an allowed path
+  (`ls /projects/modernized;echo ok`) is still refused by K2 (fail-closed;
+  the hook is owned by the integration branch); the serial loop records a
+  fragment unit's functional debt and charges a runtime failure to its owner,
+  but nothing yet re-opens the owner automatically (Operator prerequisite);
+  the V17-4 source generator is qualified only at openapi-generator 5.2.1 /
+  7.25.0; runtime (Quarkus) proof of the null-Location and body cases was not
+  run.
+
 ## Native outcome board (Stage 080, new runs only) — 2026-09-26
 
 The architect approved the outcome-board design with conditions
@@ -13,20 +65,38 @@ The implementation is in the golden, disabled by default. The contract is
   serialization. Synthetic suite: `lib/planner/outcome_board.test.py`.
   Exact runtime and real workers:
   `hermes-runtime/tests/rhoai3_outcome_board` (tree 8a3bb406).
-- [ ] **Blocked (F1/C2): no protected writer.** Gateway, dispatcher, hooks
-  and workers share one UID in one container, so the authority store is
-  cooperative. `execution: enabled` refuses `AUTHORITY_UNPROTECTED` until a
-  separate principal owns the store: a sidecar with its own UID and a
-  read-only mount into the worker, or a platform service. This is a
-  platform decision; it is not substituted by a weaker check.
-- [ ] Publication dependencies for any run that selects the protocol, all
-  in Stage 050 `maas-api-key-provisioning.yaml`:
-  - add `kanban_block|kanban_request_review|request_review` to the
-    `pre_tool_call` matcher;
-  - register `on_kanban_dispatch_tick` →
-    `python3 /projects/modernized/.hermes/kernel/outcome_reconcile.py --root /projects/modernized`.
-  Nothing selects the protocol today, so the golden publishes safely without
-  them.
+- [x] One protocol selection (2026-09-26): the run's request
+  (`boardProtocol` → initial-commit `run-budget.json`) agreed by the
+  provisioner's read-only run control; `PROTOCOL_UNBOUND` / `_DOWNGRADED` /
+  `_UNREQUESTED` / `_UNKNOWN` refuse in K2, K4, autostart and run-preflight and
+  never fall back to the serial loop; the Stage 050 hook producer registers from
+  the same selection. v12–v17 (no request) unchanged.
+- [x] F1 protected writer BUILT (2026-09-26): authority service
+  (`planner/outcome_authority.py`) in a sidecar with a different uid, store on a
+  volume only the sidecar mounts, socket read-only in the worker; every
+  worker-side entry point is a client; the service re-measures candidate,
+  scope and baseline ancestry and runs no repository-configured git code.
+  Two-uid kernel check passed locally (podman, ws-080 image).
+- [ ] **Live Dev Spaces qualification of the sidecar** (container-overrides
+  runAsUser applied, SCC admission of the second uid, store unreachable,
+  socket read-only, kanban.db access, run-control mount) and the image build
+  that bakes `/opt/rhoai3/outcome-authority` + `outcome_authority.code_sha256`.
+  Until then `enabled` refuses `AUTHORITY_UNPROTECTED`.
+- [x] **Measurement trust decided (user, 2026-09-26) for the FIRST controlled
+  run:** `cooperative-receipts` — worker-produced build/test/parity evidence
+  remains trusted subject to binding and consistency checks; this does NOT
+  establish independently verified results or protection against fabricated
+  evidence. Also cooperative: liveness snapshots, reviewer audit assertions,
+  push-result reports (contract 8b). The run control must carry it.
+- [ ] Image bake of `/opt/rhoai3/outcome-authority` (prepared:
+  `hermes-runtime/outcome-authority/`), after the code freeze.
+- [x] Implementation review 2026-09-26, R1–R6: corrected, each with a
+  regression reproduced first. The real-worker delivery test runs an accepted
+  repair with a worker killed after its commit, REFUSE → reassessment, and M5
+  PREFLIGHT → DEPLOY → VALIDATE with the actual producers and audits.
+- [x] Production hooks in the Stage 050 producer, gated on the destination
+  selecting `outcome-board/v1` (registers nothing today). This needs the normal
+  Stage 050 publication before any run selects the protocol.
 
 ## Destination declared references and package-leaf isolation — 2026-09-25
 

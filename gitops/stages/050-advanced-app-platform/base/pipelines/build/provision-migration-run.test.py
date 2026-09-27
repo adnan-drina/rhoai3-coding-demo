@@ -14,6 +14,14 @@ runs against a fake `oc` that records every object applied. It proves:
     event for another commit, and a missing profile table, are refused
   * the worker identity the task creates has no write verb at all -- it can
     read devspace-ai-tools-init and use one SCC, nothing else
+  * the board protocol: the run's request is read from run-budget.json AT the
+    scaffolding commit (content-addressed URL; served here from a file:// root)
+    and becomes the contract's selection; outcome-board/v1 carries the
+    PLATFORM's execution state (disabled by default, enabled only by the task
+    parameter, qualification refused) and measurement-trust decision; a run
+    without a request, an unreadable request and a declaration naming another
+    run select nothing; the golden reader's select_protocol agrees with every
+    record the platform writes
 Run under two run names.
 """
 from __future__ import annotations
@@ -100,6 +108,17 @@ def _script() -> str:
     return "\n".join(l[8:] if l.startswith("        ") else l.strip() for l in body.splitlines()) + "\n"
 
 
+def _serve_request(td: Path, run: str, commit: str, decl: dict | None) -> None:
+    """The content-addressed raw endpoint the task reads the request from."""
+    f = td / "raw" / "owner" / run / commit / "run-budget.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    if decl is None:
+        if f.exists():
+            f.unlink()
+        return
+    f.write_text(json.dumps(decl), encoding="utf-8")
+
+
 def _provision(td: Path, run: str, commit: str, **env_extra: str) -> tuple[int, str, dict]:
     bindir = td / "bin"
     bindir.mkdir(exist_ok=True)
@@ -114,7 +133,9 @@ def _provision(td: Path, run: str, commit: str, **env_extra: str) -> tuple[int, 
                FAKE_PROFILES=str(PROFILES), TASKRUN="provision-%s-abc" % run, RUN=run, SCAFFOLD=commit,
                WSNS="wksp-ai-developer", MODE="provision", FIXTURE_SRC="migration-fixture-credentials",
                DB_IMAGE="registry.example/postgresql@sha256:" + "1" * 64,
-               CLI_IMAGE="registry.example/ose-cli@sha256:" + "2" * 64, **env_extra)
+               CLI_IMAGE="registry.example/ose-cli@sha256:" + "2" * 64,
+               **dict({"OB_EXECUTION": "disabled", "OB_TRUST": "", "REQUEST_OWNER": "owner",
+                       "REQUEST_RAW_BASE": (td / "raw").as_uri()}, **env_extra))
     p = subprocess.run(["bash", str(td / "provision.sh")], env=env, capture_output=True, text=True)
     state = json.loads((td / "state.json").read_text()) if (td / "state.json").exists() else {"objects": {}, "applied": []}
     return p.returncode, p.stdout + p.stderr, state
@@ -169,7 +190,82 @@ def _case(run: str) -> int:
         rc, out, st = _provision(Path(d), run, commit, FAKE_NO_PROFILES="1")
         if rc == 0 or "no usable default profile" not in out or any(k.endswith("-run-control") for k in st["objects"]):
             return _fail("a missing profile table refuses and writes no record: %s" % out[-400:])
+    return _protocol_cases(run, commit)
+
+
+SERIAL, OUTCOME = "serial-loop/v1", "outcome-board/v1"
+
+
+def _contract_of(st: dict, run: str) -> dict:
+    ctl = st["objects"].get("ConfigMap/%s-run-control" % run, {}).get("text", "")
+    return json.loads(json.loads(_yaml_value_raw(ctl, "contract.json"))) if ctl else {}
+
+
+def _protocol_cases(run: str, commit: str) -> int:
+    base = {"schema": "rhoai3.run-budget/v2", "run_id": run}
+    cases = (
+        # (declaration served, env, want board_protocol, want outcome_board, want request state prefix)
+        (dict(base), {}, None, None, "read"),                                               # legacy: no request
+        (None, {}, None, None, "unreadable"),                                               # nothing served
+        (dict(base, board_protocol=SERIAL), {}, SERIAL, None, "read"),
+        (dict(base, board_protocol=OUTCOME), {}, OUTCOME, {"execution": "disabled"}, "read"),
+        (dict(base, board_protocol=OUTCOME), {"OB_EXECUTION": "enabled", "OB_TRUST": "cooperative-receipts"},
+         OUTCOME, {"execution": "enabled", "measurement_trust": "cooperative-receipts"}, "read"),
+        (dict(base, board_protocol="board/v9"), {}, None, None, "read"),                    # recorded, never selected
+        (dict(base, run_id="another-run", board_protocol=OUTCOME), {}, None, None, "unreadable"),
+    )
+    for decl, env, want_p, want_b, want_state in cases:
+        with tempfile.TemporaryDirectory() as d:
+            td = Path(d)
+            _serve_request(td, run, commit, decl)
+            rc, out, st = _provision(td, run, commit, **env)
+            if rc != 0:
+                return _fail("provisioning with request %r succeeds: %s" % (decl, out[-600:]))
+            c = _contract_of(st, run)
+            if c.get("board_protocol") != want_p or c.get("outcome_board") != want_b:
+                return _fail("request %r env %r selects %r / %r, want %r / %r" % (
+                    decl, env, c.get("board_protocol"), c.get("outcome_board"), want_p, want_b))
+            req = c.get("protocol_request") or {}
+            if not str(req.get("state") or "").startswith(want_state) or req.get("source") != "run-budget.json@" + commit:
+                return _fail("the request read is recorded: %r" % req)
+            if READER:
+                gap = _selection_agrees(td, run, c, decl)
+                if gap:
+                    return _fail(gap)
+    for bad in ("qualification", "enabled-ish", ""):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out, st = _provision(Path(d), run, commit, OB_EXECUTION=bad)
+            if rc == 0 or "outcome-board-execution must be" not in out or any(k.endswith("-run-control") for k in st["objects"]):
+                return _fail("execution %r is refused before anything is written: %s" % (bad, out[-300:]))
     return 0
+
+
+def _selection_agrees(td: Path, run: str, contract: dict, decl: dict | None) -> str:
+    """The golden reader, on a destination whose initial commit carries the
+    served declaration (or none), reads a consistent selection from exactly the
+    contract the platform wrote."""
+    root, control = td / "sel-dest", td / "sel-control"
+    control.mkdir()
+    root.mkdir()
+    d = dict(decl or {"schema": "rhoai3.run-budget/v2", "run_id": run})
+    d["run_id"] = run
+    d["run_control"] = {"contract": "rhoai3.run-control/v1", "root": str(control), "state": str(td / "sel-state")}
+    (root / "run-budget.json").write_text(json.dumps(d), encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "s"], check=True)
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    (control / "contract.json").write_text(json.dumps(dict(contract, scaffold_commit=head)), encoding="utf-8")
+    sys.path.insert(0, str(GOLDEN_LIB))
+    from planner import outcome_protocol
+    sel = outcome_protocol.select_protocol(root)
+    requested = d.get("board_protocol")
+    if requested in (None, SERIAL) and contract.get("board_protocol") in (None, SERIAL):
+        return "" if (sel.protocol, sel.errors) == (SERIAL, []) else "serial selection refused: %s" % sel.as_dict()
+    if requested == OUTCOME and contract.get("board_protocol") == OUTCOME:
+        return "" if (sel.protocol, sel.errors) == (OUTCOME, []) else "outcome selection refused: %s" % sel.as_dict()
+    # an unknown request is refused by the reader, never run serial
+    return "" if sel.errors and sel.outcome else "an inconsistent record was not refused: %s" % sel.as_dict()
 
 
 def _yaml_value_raw(doc: str, key: str) -> str:
@@ -213,7 +309,9 @@ def main() -> int:
         print("SKIP: golden reader check -- %s has no planner/run_control.py (set GOLDEN_LIB to a golden checkout)" % GOLDEN_LIB)
     print("OK: provision-migration-run run control (the record is written once from the validated event, mounted as a "
           "read-only file volume into exactly this workspace; the golden reader accepts it; a re-delivery leaves it "
-          "untouched; another commit and a missing profile table refuse; the worker role has no write verb)")
+          "untouched; another commit and a missing profile table refuse; the worker role has no write verb; the run's own "
+          "board_protocol request becomes the selection, outcome-board/v1 carries the platform's execution state "
+          "(disabled by default, qualification refused), and the golden reader agrees with every record)")
     return 0
 
 

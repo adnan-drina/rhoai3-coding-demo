@@ -80,6 +80,24 @@ spec:
             pins.planner.activation is "activated" (Operator GO after the
             planner activation gate). Never M3/M4 at dest-init.
             Turn off to inspect the workspace before agents touch it.
+        boardProtocol:
+          title: Board protocol
+          type: string
+          default: outcome-board/v1
+          enum:
+            - serial-loop/v1
+            - outcome-board/v1
+          description: |
+            How the run's work is organised after M2. outcome-board/v1
+            (default) publishes every known outcome at M2; it runs only when
+            the platform has enabled it for this run (the migration-run
+            provisioner records the selection and its execution state in the
+            read-only run control), and a run that requested it never falls
+            back to the serial loop: until the platform enables it, the launch
+            refuses. serial-loop/v1 is the one-card-at-a-time loop, kept for
+            explicit compatibility only.
+            Recorded once, in the destination's initial commit; a run never
+            changes protocol.
 
   steps:
     - id: fetch-golden
@@ -129,6 +147,10 @@ spec:
           name: ${{ parameters.name }}
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           autoStartMigration: ${{ parameters.autoStartMigration }}
+          # The board protocol this run REQUESTS (run-budget.json board_protocol,
+          # immutable in the initial commit). The provisioner turns it into the
+          # platform's selection; execution is never a template value.
+          boardProtocol: ${{ parameters.boardProtocol }}
           # The scaffolder task that declares this run (run-budget.json). The
           # task context is the only run-specific fact the installed scaffolder
           # exposes besides the parameters: it has no clock, so no time is stamped.

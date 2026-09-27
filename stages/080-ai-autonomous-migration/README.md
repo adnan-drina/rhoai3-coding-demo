@@ -110,6 +110,18 @@ There is no ownership map and no capability graph: the work list is the
 plan, and it is recomputed by tools after every accepted step. A missing
 decision is an admission BLOCK, never an inference.
 
+A run that decides `loop.plan_semantics: v1` also plans the known migration
+responsibilities from the frozen source before any failure and seals a
+semantic fingerprint of that initial plan, so equivalent pinned inputs give
+the same initial plan. The golden selects it for new runs; a run keeps the
+value it was created with (earlier runs stay off). It is qualified locally on
+synthetic evidence, on recorded PetClinic M1 evidence, and by re-running the
+M1 build and structure producers on two clean copies of the frozen source
+(the MTA producer and the M2 destination analysis were not re-run); not by a
+live run;
+see
+[§7.1 of the solution architecture](SOLUTION-ARCHITECTURE.md#71-repeatable-initial-plan-plan-semantics-v1-run-pinned).
+
 On this revision the activation pin is `not-activated`: dest-init mints
 **M1 ANALYZE** only and a hand-minted M2 refuses at
 `assert-planner-activated.py`. Stop after M1 and label M2 **not

@@ -83,7 +83,7 @@ class Script:
         con.close()
         if len(runs) <= 1:
             seq = [("tool", "terminal", _gate("issue")),
-                   ("tool", "terminal", {"command": "shasum -a 256 %s" % self._brief(tid)}),
+                   ("tool", "terminal", {"command": "sha256sum {0} 2>/dev/null || shasum -a 256 {0}".format(self._brief(tid))}),
                    ("tool", "terminal", {"command": "echo TASK=$HERMES_KANBAN_TASK RUN=$HERMES_KANBAN_RUN_ID"}),
                    ("tool", "write_file", {"path": str(self.dest / ISSUED_PATH[oid]), "content": "<candidate/>\n"}),
                    ("tool", "write_file", {"path": str(self.dest / FOREIGN), "content": "// not mine\n"}),

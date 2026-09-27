@@ -120,18 +120,25 @@ check "live init ConfigMap uses overlay-baked Hermes CLI" \
 check "live init ConfigMap does not curl-install Hermes" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
   "0"
-check "init script pins Hermes main model to qwen3-8-27b-int4" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"default\": \"qwen3-8-27b-int4\"' || echo 0" \
+# Since d0816c25 the worker's Hermes model, provider and limits are GENERATED
+# from the one declared profile table (migration-model-profiles), not written
+# as literals in the init script; check the declaration and the one provider
+# name the script still carries.
+check "declared model profile makes qwen3-8-27b-int4 the default on provider qwen38" \
+  "oc get cm migration-model-profiles -n wksp-ai-developer -o go-template='{{index .data \"model-profiles.json\"}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d[\"profiles\"][d[\"default_model\"]]; print(int(d[\"default_model\"]==\"qwen3-8-27b-int4\" and p[\"provider\"]==\"qwen38\"))' 2>/dev/null || echo 0" \
   "1"
 check "init script names the Hermes Qwen provider qwen38" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen38\"' || echo 0" \
-  "2"
+  "1"
 check "init script sets Hermes api_mode chat_completions" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"api_mode\": \"chat_completions\"' || echo 0" \
   "1"
+# since d0816c25 the script writes discover_models False in two places: the
+# _provider() generator every profile-declared provider comes from, and the
+# MiniMax escalation provider
 check "init script disables Hermes /models discovery on named providers" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"discover_models\": False' || echo 0" \
-  "3"
+  "2"
 check "GitOps init script does not use legacy custom:maas-m2 default" \
   "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
   "NONE"
@@ -491,6 +498,15 @@ check "080 catalog Locations use a stable Argo ref not a SHA blob" \
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+# V17-6b: the paved-road audit grades mandated commands from the execution
+# ledger this observer writes; the producer copies this one file into Managed
+# Scope, so it must be executable and self-contained.
+check "080 K2 post_tool_call observer is executable" \
+  "test -x '${SCAFFOLD_KERNEL}/post_tool_call.py' && echo 1 || echo 0" \
+  "1"
+check "080 K2 post_tool_call observer records positive execution evidence" \
+  "python3 '${SCAFFOLD_KERNEL}/post_tool_call.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 K2 implementer complete is request_review" \
   "tr -d '\n' < '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | sed 's/\"[[:space:]]*\"//g' | grep -c 'implementer terminator is kanban_request_review' || echo 0" \
   "1"
@@ -565,9 +581,10 @@ check "080 dest-init records the workspace-creator authorization as an unbound p
 check "080 dest-init leaves an activated planner or an existing seal alone" \
   "grep -c 'pilot seal already present for run' '${GITOPS_INIT}' || echo 0" \
   "1"
+# both bind paths refuse an unfit bundle: the governed (run control) and the legacy (pins) one
 check "080 the dispatcher binds a platform-authorized seal and refuses an unfit bundle" \
   "grep -c 'BIND_UNFIT_BUNDLE' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
-  "1"
+  "2"
 check "080 only a platform-recorded authorization may be bound (never a worker-authored one)" \
   "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.pins import pilot_bind_gaps as g; ok={'planner':{'activation':'pilot','pilot':{'run_id':'r','authorized_by':'u','evidence_bundle_sha256':'','authorization':{'source':'devworkspace','creator':'c'}}}}; bad={'planner':{'activation':'pilot','pilot':{'run_id':'r','authorized_by':'u','evidence_bundle_sha256':'','authorization':{'source':'worker','creator':'c'}}}}; print(1 if not g(ok) and g(bad) else 0)\"" \
   "1"
@@ -637,8 +654,10 @@ check "080 K1 selftest passes (receipt/write-set/artifact body codes)" \
 check "080 golden K4 converter present" \
   "test -f '${SCAFFOLD_KERNEL}/k4_schema.py' && test -f '${SCAFFOLD_KERNEL}/k4_convert.py' && echo present || echo missing" \
   "present"
-check "080 K4 payloads pin max_retries 1" \
-  "grep -c '\"max_retries\": 1' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
+# B11 (635d9496): loop cards get one automatic recovery after a halt, so K4
+# pins max_retries to k4_schema.LOOP_MAX_RETRIES = 2 (M1/M2 keep 1)
+check "080 K4 payloads pin max_retries to LOOP_MAX_RETRIES (2)" \
+  "grep -q '^LOOP_MAX_RETRIES = 2$' '${SCAFFOLD_KERNEL}/k4_schema.py' && grep -c '\"max_retries\": LOOP_MAX_RETRIES' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
   "1"
 check "080 K4 converter emits no fixed m4-verify idempotency key (receipt-bound for M4 too)" \
   "grep -c 'm4-verify' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
@@ -991,9 +1010,11 @@ check "080 provisioning is bound to the scaffolding event, and a retired run can
 check "080 the run's secrets are watched and mounted, so DWO's cache can see them at all" \
   "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(t.count('controller.devfile.io/watch-secret: \\\"true\\\"'))\"" \
   "2"
-check "080 the run's secrets bind THIS workspace name, and both of them do" \
+# Three automounted objects bind this workspace: the two per-run Secrets and,
+# since v13, the run-control ConfigMap (assert-run-isolation.py checks each by kind).
+check "080 the run's secrets and its run-control record bind THIS workspace name, all three" \
   "sed 's/^[[:space:]]*#.*//' '${PIPELINES_BUILD}/task-provision-migration-run.yaml' | grep -c -F 'mount-to-devworkspace-include: \"\${RUN}\"' || echo 0" \
-  "2"
+  "3"
 # A comma or a star in the include is the collision the architect demonstrated:
 # demo-v10-retry matched demo-v10's pattern and received its database.
 check "080 no include pattern carries a suffix wildcard or a second pattern" \

@@ -109,5 +109,128 @@ class DeclaredBudget(unittest.TestCase):
         self.assertIn("'RHOAI3_ACCOUNTING_MODE=token' in env_text", code)
         self.assertIn("'RHOAI3_REQUEST_BUDGET=' not in env_text", code)
 
+
+class HookRegistrations(unittest.TestCase):
+    """The effective managed config must carry the K2 hook fail-closed and,
+    when the harness ships it, the terminal post_tool_call observer."""
+
+    def snippet(self):
+        code = DeclaredBudget().fill()
+        return code[code.index('# The effective hook registrations'):code.index("require(c.get('model'")]
+
+    def check(self, hooks, ships_post):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            if ships_post:
+                (root / '.hermes/kernel').mkdir(parents=True)
+                (root / '.hermes/kernel/post_tool_call.py').write_text('#!/usr/bin/env python3\n')
+
+            def require(cond, msg):
+                if not cond:
+                    raise AssertionError(msg)
+            exec(self.snippet(), {'require': require, 'root': root, 'c': {'hooks': hooks}})
+
+    def test_registrations(self):
+        k2 = {'matcher': 'write|terminal|kanban_complete|complete_task', 'command': '/m/agent-hooks/pre_tool_call.sh',
+              'timeout': 5, 'fail_closed': True}
+        post = {'matcher': 'terminal', 'command': '/m/agent-hooks/post_tool_call.py', 'timeout': 5}
+        self.check({'pre_tool_call': [k2], 'post_tool_call': [post]}, True)
+        for hooks, ships, text in (({'pre_tool_call': [dict(k2, fail_closed=False)], 'post_tool_call': [post]}, True, 'fail-closed'),
+                                   ({'pre_tool_call': [dict(k2, timeout=60)], 'post_tool_call': [post]}, True, 'fail-closed'),
+                                   ({}, True, 'fail-closed'),
+                                   ({'pre_tool_call': [k2]}, True, 'post_tool_call observer'),
+                                   ({'pre_tool_call': [k2], 'post_tool_call': [post]}, False, 'post_tool_call observer')):
+            with self.assertRaises(AssertionError) as cm:
+                self.check(hooks, ships)
+            self.assertIn(text, str(cm.exception))
+
+
+class BoardProtocol(unittest.TestCase):
+    """The launch refuses an inconsistent, missing or downgraded protocol
+    selection instead of launching the serial loop. The remote snippet runs
+    here against real governed destinations and the golden selection module."""
+
+    GOLDEN_LIB = HERE / 'scaffold-repo/quarkus-migration-scaffold/.hermes/lib'
+
+    def snippet(self):
+        code = DeclaredBudget().fill()
+        return code[code.index('# The board protocol:'):code.index("print('PASS: fresh workspace")]
+
+    def dest(self, td, request=None, has_request=True, selected=None, execution=None):
+        import json, subprocess
+        root, control = td / 'dest', td / 'control'
+        root.mkdir()
+        control.mkdir()
+        decl = {'schema': 'rhoai3.run-budget/v2', 'run_id': 'run-x',
+                'run_control': {'contract': 'rhoai3.run-control/v1', 'root': str(control), 'state': str(td / 'state')}}
+        if has_request:
+            decl['board_protocol'] = request
+        (root / 'run-budget.json').write_text(json.dumps(decl))
+        g = lambda *a: subprocess.run(['git', '-C', str(root), '-c', 'user.email=t@t', '-c', 'user.name=t', *a],  # noqa: E731
+                                      capture_output=True, text=True, check=True).stdout.strip()
+        subprocess.run(['git', 'init', '-q', str(root)], check=True)
+        g('add', '-A')
+        g('commit', '-qm', 'scaffold')
+        doc = {'schema': 'rhoai3.run-control/v1', 'run_id': 'run-x', 'scaffold_commit': g('rev-parse', 'HEAD'),
+               'activation': 'pilot', 'authorized_by': 'provision-migration-run:tr'}
+        if selected:
+            doc['board_protocol'] = selected
+        if execution:
+            doc['outcome_board'] = {'execution': execution}
+        (control / 'contract.json').write_text(json.dumps(doc))
+        return root
+
+    def run_snippet(self, root):
+        import io, json, subprocess, sys, contextlib
+        sys.path.insert(0, str(self.GOLDEN_LIB))
+        failures = []
+
+        def require(cond, msg):
+            if not cond:
+                raise AssertionError(msg)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            exec(self.snippet(), {'require': require, 'root': root, 'subprocess': subprocess, 'json': json})
+        return out.getvalue()
+
+    def test_consistent_selections_pass_and_disagreements_refuse(self):
+        import tempfile
+        cases = (
+            (dict(has_request=False), None, 'serial-loop/v1'),                                # v12-v17 runs
+            (dict(request='serial-loop/v1'), None, 'serial-loop/v1'),
+            (dict(request='outcome-board/v1'), 'PROTOCOL_UNBOUND', None),                      # v17 live shape
+            (dict(request='outcome-board/v1', selected='serial-loop/v1'), 'PROTOCOL_DOWNGRADED', None),
+            (dict(has_request=False, selected='outcome-board/v1'), 'PROTOCOL_UNREQUESTED', None),
+            (dict(request='outcome-board/v1', selected='outcome-board/v1'), 'OUTCOME_EXECUTION_DISABLED', None),
+            (dict(request='outcome-board/v1', selected='outcome-board/v1', execution='enabled'), 'AUTHORITY_UNPROTECTED', None),
+        )
+        # The platform repository can carry a scaffold subtree that predates
+        # protocol selection (the golden is published separately). Its
+        # preflight must still refuse every outcome-board request -- with the
+        # older fail-closed message -- and never launch the serial loop; the
+        # selection-specific codes exist only with the harness that selects.
+        import sys
+        sys.path.insert(0, str(self.GOLDEN_LIB))
+        try:
+            from planner import outcome_protocol
+            selects = hasattr(outcome_protocol, 'launch_gaps')
+        except ImportError:
+            selects = False
+        for kw, refusal, protocol in cases:
+            if not selects:
+                if kw.get('request') == 'outcome-board/v1':
+                    refusal = 'the run requests outcome-board/v1 and the installed harness cannot select it'
+                elif refusal:
+                    continue  # a contract selection the older harness does not read
+            with tempfile.TemporaryDirectory() as d:
+                root = self.dest(Path(d).resolve(), **kw)
+                if refusal:
+                    with self.assertRaises(AssertionError) as cm:
+                        self.run_snippet(root)
+                    self.assertIn('BOARD_PROTOCOL: ' + refusal, str(cm.exception), kw)
+                else:
+                    self.assertIn('PASS: board protocol %s' % protocol, self.run_snippet(root), kw)
+
 if __name__ == '__main__':
     unittest.main()

@@ -15,8 +15,11 @@
 # repository contributes a name, and the name arrives through an HMAC-verified
 # GitHub webhook that the dispatcher has already established is the scaffolding
 # event (branch creation, zero `before`, the migration-run topic). Repository
-# CONTENT never reaches this task. Editing k8s manifests into a destination
-# repository now changes nothing at all, because nothing reads them.
+# content reaches this task in exactly one place: the factory-stamped
+# board_protocol request in run-budget.json AT the validated scaffolding commit
+# (content-addressed; one enum value; everything else in the file ignored).
+# Editing k8s manifests into a destination repository changes nothing at all,
+# because nothing reads them.
 #
 # WHAT THE RUN GETS (every object labelled rhoai3.io/migration-run=<run>, which
 # is what `retire` enumerates, so retirement can account for all of them):
@@ -35,7 +38,9 @@
 #                                             a later event resurrecting the run
 #   ConfigMap      <run>-run-control          the run's CONTROL RECORD (B8/R3):
 #                                             contract.json (run, scaffolding
-#                                             commit, activation, authorization)
+#                                             commit, activation, authorization,
+#                                             and the board protocol selection
+#                                             from the run's own request)
 #                                             and profile.json (the model profile
 #                                             pinned for this run), mounted
 #                                             READ-ONLY at /etc/rhoai3/run-control
@@ -132,6 +137,35 @@ spec:
         The image this task runs. It is a parameter so the Operator can pin a
         digest; the receipt records whatever was used, so a run's provisioning
         is always attributable to an image reference.
+    - name: outcome-board-execution
+      type: string
+      default: disabled
+      description: >-
+        PLATFORM-controlled execution state written into the run control of a
+        run that requested outcome-board/v1: disabled (default) or enabled.
+        Never a template or event value; qualification is refused (it is for
+        disposable local fixtures only). enabled is honoured by the harness only
+        when the protected authority service answers (OUTCOME-BOARD-CONTRACT 8a).
+    - name: outcome-board-measurement-trust
+      type: string
+      default: ""
+      description: >-
+        The platform's explicit measurement-trust decision for outcome-board
+        execution (empty = undecided, which keeps enabled execution refused).
+        The one value the harness accepts today is cooperative-receipts.
+    - name: request-repository-owner
+      type: string
+      default: adnan-drina
+      description: >-
+        The GitHub owner the app-migration template publishes destinations
+        under (platform configuration, not event data). With the validated run
+        name and scaffolding commit it addresses the ONE file this task reads
+        from the scaffolding commit: run-budget.json, for its board_protocol
+        request.
+    - name: request-raw-base
+      type: string
+      default: https://raw.githubusercontent.com
+      description: Content-addressed raw file endpoint for the scaffolding commit.
   results:
     - name: receipt
       type: string
@@ -159,6 +193,14 @@ spec:
           value: $(params.database-image)
         - name: CLI_IMAGE
           value: $(params.cli-image)
+        - name: OB_EXECUTION
+          value: $(params.outcome-board-execution)
+        - name: OB_TRUST
+          value: $(params.outcome-board-measurement-trust)
+        - name: REQUEST_OWNER
+          value: $(params.request-repository-owner)
+        - name: REQUEST_RAW_BASE
+          value: $(params.request-raw-base)
       script: |
         #!/bin/bash
         set -euo pipefail
@@ -275,6 +317,13 @@ spec:
           echo "REFUSED: provisioning requires the full scaffolding commit" >&2
           exit 1
         fi
+        # Outcome-board execution is a PLATFORM value (a Task parameter with a
+        # disabled default), never a template or event value. qualification is
+        # for disposable local fixtures and is refused for any real run.
+        case "${OB_EXECUTION}" in
+          disabled|enabled) ;;
+          *) echo "REFUSED: outcome-board-execution must be disabled or enabled, not ${OB_EXECUTION}" >&2; exit 1 ;;
+        esac
         OUTCOME="provisioned"
         [ -z "${recorded}" ] || OUTCOME="reprovisioned"
 
@@ -544,8 +593,46 @@ spec:
             echo "REFUSED: migration-model-profiles in ${WSNS} has no usable default profile with a quota; a run is never provisioned without one" >&2
             exit 1
           fi
-          CONTRACT_JSON="$(python3 -c 'import json,sys; print(json.dumps({"schema": "rhoai3.run-control/v1", "run_id": sys.argv[1], "scaffold_commit": sys.argv[2], "activation": "pilot", "authorized_by": "provision-migration-run:" + sys.argv[3], "authorization": {"event": "scaffolding push (HMAC-verified webhook, created branch, migration-run topic)", "scaffold_commit": sys.argv[2], "taskrun": sys.argv[3], "provisioned_at": sys.argv[4]}}, sort_keys=True))' \
-                            "${RUN}" "${SCAFFOLD}" "${TASKRUN}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+          # The board protocol this run REQUESTED is the one run-specific fact
+          # this task reads from repository content: board_protocol in
+          # run-budget.json AT the scaffolding commit -- content-addressed by the
+          # validated commit, written by the factory, never by an agent -- and
+          # nothing else from that file. The platform's SELECTION is recorded
+          # here: board_protocol, and for outcome-board/v1 the platform-owned
+          # execution state and measurement-trust decision. An unreadable
+          # request selects nothing, which the harness refuses for an
+          # outcome-board request (PROTOCOL_UNBOUND) and accepts for a serial
+          # one; a run created before the request existed selects nothing and
+          # keeps the serial loop.
+          CONTRACT_JSON="$(python3 - "${RUN}" "${SCAFFOLD}" "${TASKRUN}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                             "${REQUEST_RAW_BASE}/${REQUEST_OWNER}/${RUN}/${SCAFFOLD}/run-budget.json" \
+                             "${OB_EXECUTION}" "${OB_TRUST}" <<'PYCONTRACT'
+        import json, sys, urllib.request
+        run, scaffold, taskrun, at, url, execution, trust = sys.argv[1:8]
+        doc = {"schema": "rhoai3.run-control/v1", "run_id": run, "scaffold_commit": scaffold, "activation": "pilot",
+               "authorized_by": "provision-migration-run:" + taskrun,
+               "authorization": {"event": "scaffolding push (HMAC-verified webhook, created branch, migration-run topic)",
+                                 "scaffold_commit": scaffold, "taskrun": taskrun, "provisioned_at": at}}
+        try:
+            with urllib.request.urlopen(url, timeout=20) as fh:
+                decl = json.loads(fh.read(1 << 20).decode("utf-8"))
+            if not isinstance(decl, dict) or decl.get("run_id") != run:
+                raise ValueError("declaration names another run")
+            state = "read"
+        except Exception as exc:
+            decl, state = None, "unreadable (%s)" % type(exc).__name__
+        request = {"source": "run-budget.json@" + scaffold, "state": state}
+        if decl is not None and "board_protocol" in decl:
+            value = decl["board_protocol"]
+            request["board_protocol"] = value
+            if value in ("serial-loop/v1", "outcome-board/v1"):
+                doc["board_protocol"] = value
+            if value == "outcome-board/v1":
+                doc["outcome_board"] = dict({"execution": execution}, **({"measurement_trust": trust} if trust else {}))
+        doc["protocol_request"] = request
+        print(json.dumps(doc, sort_keys=True))
+        PYCONTRACT
+          )"
           {
             cat <<YAML
         apiVersion: v1

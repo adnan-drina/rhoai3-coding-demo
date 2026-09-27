@@ -180,12 +180,172 @@ Fail-closed boundaries, each with a permanent negative test:
 | `STRUCTURE_MISSING` / `ZERO_ENTRY_POINTS` | no admitted structural evidence, or nothing to verify parity against |
 | `PLANNER_NOT_ACTIVATED` / `PLANNER_PILOT_SEAL` | the activation gate (§9) |
 | `MISSING_DECISION` / `ADR_NOT_ACCEPTED` / `PLATFORM_UNKNOWN` | `decisions.yaml` incomplete or citing an unaccepted ADR |
+| `PLAN_SEMANTICS_REPINNED` | `decisions.yaml` `loop.plan_semantics` differs from the value the destination's initial commit carried (§7.1): a run keeps the plan semantics it was created with |
 | `BOOTSTRAP_MISSING` / `BOOTSTRAP_STALE` | no deterministic baseline, or one bound to another bundle |
 | `MEASURE_UNKNOWN` / `WORKLIST_STALE` | a tool did not run in this verification, or the list belongs to another bundle |
 | `BOOTSTRAP_BLOCKED` | the bootstrap recorded a non-trivial launcher or an unmapped dependency |
 | `MANUAL_CLUSTER` / `SCOPE_UNDERIVED` | a deferred (human-owned) cluster, or a cluster with no derivable production scope; the loop stops |
 
 `ADMITTED` means "the loop may run its next step from this exact state". `COMPAT_FAIL` means the bundle or the work list fails its schema: a planner defect. The receipt digest binds every idempotency key and every K1 body.
+
+### 7.1 Repeatable initial plan (plan semantics v1, run-pinned)
+
+`decisions.yaml` `loop.plan_semantics: v1` makes the same frozen
+application, decisions and pinned toolchain produce the same initial logical
+M3 plan. The golden `decisions.yaml` selects it, so every NEW run's
+destination is created with it; a run keeps the value its destination's
+initial (scaffolding) commit carried -- every earlier run was created without
+the key and stays off -- and admission refuses a later edit that flips it
+(`PLAN_SEMANTICS_REPINNED`, `decisions.plan_semantics_pin_gap`), so the
+selection is immutable per run and never an environment fallback.
+`run-preflight.sh` requires it for a new run. `PLAN_RECIPE_MISSING` applies
+to repair requirements only (`source_requirements.RECIPE_RULES`); behaviour
+verification and decided configuration are judged by their checks.
+
+- **Stable producer identity.** `JdkDiagnostics` renders in the ROOT locale
+  (the JVM-locale text is kept as `message_jvm_locale`), emits the column and
+  the compiler's structured arguments, and records generated-root and
+  output-class provenance. A v1 compile obligation id is derived from code,
+  site and arguments; an identical key repeated at one site gets its own
+  occurrence, so two diagnostics stay two obligations.
+- **Controlled initial analysis.** `build-worklist` runs `run-verify.sh
+  --initial`: `prepare-initial-analysis.py` removes `target/` before the first
+  baseline only (never after a baseline or an issued card), the warm-up
+  regenerates every generated root, the analysis never reads `target/classes`,
+  and a stale generated root refuses (`VERIFY_INITIAL_STALE_OUTPUT`). The
+  initial analysis NEVER reuses a warm-up: the warm-up stamp's key does not
+  cover the resolved dependency graph, so `--initial` discards the stamp and
+  rebuilds (`run.json` `warmup.cache: not-reused-initial-analysis`); routine
+  verification keeps its reuse.
+- **Application paths.** `source_requirements.application_paths` owes every
+  path the FROZEN source configures (compat-mapping `application_paths`:
+  `server.servlet.context-path` -> `quarkus.http.root-path`,
+  `spring.mvc.servlet.path` -> `quarkus.rest.path`,
+  `management.endpoints.web.base-path` ->
+  `quarkus.http.non-application-root-path`), at its effective value under the
+  profiles the source itself activates, or at the value decisions.yaml
+  `application_paths` records under an accepted ADR; measured as
+  `config:application-path` (the destination's effective value under the
+  decided build profiles). No configured path is not-applicable; YAML
+  configuration is unresolved.
+- **Source-derived responsibilities.** `planner/source_requirements.py` plans
+  the known work from the frozen structural model before any destination
+  failure: repository fragment architecture, BindingResult/Errors validation,
+  unbound handler parameters, adapter-owned annotation retirement and the
+  separate adapter behaviour, generator configuration and its consumers,
+  decided configuration, and a verification responsibility per entry point.
+  Partial evidence is unresolved, never absent. Each requirement names a
+  qualified recipe (`compat-mapping.json` `migration_recipes`) and the
+  existing checks that refuse its broken forms.
+- **Repository behaviour (V17-3).** A fragment parent the decided build
+  profiles serve through Spring Data in the source (no implementation of
+  their own) is an OWED `<Parent>Impl` whose every member carries its
+  SELECTED source behaviour (`source_requirements.repository_behaviour`,
+  catalog `repository_behaviour`): the override fragment's method, the
+  repository's `@Query`, the base repository's CRUD semantics or a derived
+  query -- never the implementation another profile selects, which is named
+  as NOT the behaviour source. A source method whose ordered calls a
+  `persistence_behaviour_translations` row matches carries that obligation
+  (Hibernate 6 flushes a pending removal before a query or bulk statement:
+  port the committed effects, dependents first). Stub bodies (a throw of
+  any type, an empty mutator, a placeholder return, a private helper or a
+  delegation cycle hiding one) are refused at the checkpoint from the
+  compiler model's `body_shape`. Functional completion is separate: every
+  member plans a verification row (`repository_verification`: a read, or a
+  write proven by a scenario that reads the committed effect back in another
+  request; a member no captured scenario reaches stays unresolved). The same
+  rows are sealed on the serial loop's fragment unit
+  (`worklist.fragment_behaviour_rows`), rendered by the brief, and recorded
+  on acceptance as `acceptance: structural`, `functional: owed`
+  (`verification/loop/owner-debts.json`, observational). Who caused a
+  runtime failure a later card meets is a CLASSIFICATION, not a location
+  (`planner/runtime_cause.py`, pure over its inputs): pre-existing-owner-defect
+  only when the baseline tree's own bound measurement failed the same scenario
+  identically in another cluster's accepted file; candidate-regression when
+  the baseline passed or failed differently; ambiguous otherwise. The serial
+  loop only shows the class (the rejection and its attempt stand); an
+  authority may act on it only with inputs it measured itself.
+- **Statically decided repairs (V17-4, V17-5).** The generated-body
+  obligation (V16-8) no longer waits for a create scenario to fail: the
+  destination and source generators are qualified as a pair
+  (`worklist.generator_qualification`: generator, library and plugin
+  version on both sides, the source read from the frozen legacy pom), and a
+  required property an accepted source capture omits plans the pom card at
+  gate `plan` before the first loop step. Each required property's
+  omitted/null/empty/invalid cases are bound to the captures that send them;
+  a case none sends is unresolved. A handler that built its Location with
+  `buildAndExpand` carries a null-argument check (`DestModel`
+  `uri_expansions`, `worklist._location_verdict`) and its create entry
+  point a Location verification responsibility, unresolved without a
+  capture.
+- **Runtime proof of the V17 repairs (local, offline, pinned platform).**
+  Three packaged-jar tests under `fix-until-green/scripts` boot Quarkus and
+  speak HTTP: `repository-effects-runtime.test.py` (PostgreSQL 16 in podman;
+  `@Typed` fragment delegates behind the generated repositories; create,
+  update, delete and related-record effects each read back by an
+  independent request after its transaction; a "reads pass, writes do
+  nothing" delegate fails every write check; a remove-first delete fails on
+  Hibernate 6's flush while the dependents-first port passes),
+  `request-body-runtime.test.py` (openapi-generator 7.25.0 jaxrs-spec:
+  omitted/null/empty/invalid per required collection and scalar under
+  `generateJsonCreator` false and true; only the captured and recipe-stated
+  cells are asserted) and `location-null-runtime.test.py` (a bare
+  `build(dto.id)` answers 500 after the row committed; the null-tolerant
+  build answers 201 with the empty segment Spring's `buildAndExpand(null)`,
+  measured offline, produces). They prove the repair shapes on fixtures, not
+  on the migrated application.
+- **One graph builder.** `outcome_graph.derive_initial_graph(requirements=…)`
+  gives every requirement exactly one account: joined to the finding outcome
+  that already owns the same file, a bounded requirement outcome (planned
+  units, no grant; `UNIT_OVERSIZE` otherwise), a satisfied disposition with its
+  receipt, or an explicit unresolved responsibility. The owner's
+  `requirement_checks` are not met by an empty work list: the outcome
+  board's acceptance recomputes them on the committed tree
+  (`planner/requirement_checks.py`) and records the passing ones; a check
+  with no producer yet stays unknown, so its owner cannot be accepted
+  (OUTCOME-BOARD-CONTRACT §5.1 lists which are measured).
+- **Admission.** The receipt seals `seals.plan_semantics` (input and plan
+  fingerprints) beside the exact digests and adds `PLAN_CONTRACT`,
+  `PLAN_ACCEPTANCE_MISSING` and `PLAN_RECIPE_MISSING`. The first ADMITTED
+  receipt freezes `evidence/planning/plan-semantics.json`; re-seals never
+  rewrite it. `plan-view.json` is the derived human view of the FROZEN
+  initial plan (`scope: frozen-initial-plan`; it carries no additions or
+  progress it cannot know; given the store's recorded revisions,
+  `plan_view(..., revisions=)` reports the real additions with their
+  revision and lineage); on a serial-loop run
+  it is observational.
+- **Comparison.** `planner/plan_semantics.py` compares two documents by class
+  (input-version, input, evidence-quality, outcome/obligation/requirement
+  added or removed, membership, scope, recipe, dependencies, acceptance,
+  budget; audit-only never makes plans unequal) and names the first divergent
+  producer.
+
+Proof levels actually run are recorded by
+`skills/planning/build-worklist/scripts/qualify-repeatability.py`:
+recorded-evidence replay on SYNTHETIC specimens (every WP8 matrix row,
+including source/profile/generator deltas, dependency cycles, ambiguous
+shared ownership and mixed protocol state); with `--specimen` the same
+consumers on PRESERVED PetClinic M1 evidence (two reordered copies: identical
+requirements and logical graph, distinct run bindings); with `--source` the
+pinned M1 BUILD producer (capture-build-evidence.sh) and STRUCTURE producer
+(run-jdk-model-extract.sh) re-executed on two clean copies of the frozen
+PetClinic source -- identical build facts, identical structure (100 types, 0
+partial), and source-derived requirements identical to those derived from the
+preserved run's recorded evidence (2026-09-26, round 3). Producer replay also
+covers the JDK diagnostics, the initial-analysis boundary (which never reuses
+a warm-up), decided-repairs, declared-reference, V17-3/4/5 checkpoint and
+brief cases.
+
+**The claim is narrower than "same inputs, same plan" end to end.** NOT RUN:
+the pinned MTA CLI 8.2 (the host's mta-cli is 7.3.0, not admissible; the
+pinned 8.2.1 exists locally only as linux/amd64 inside the ws-080 image, and
+under emulation on the arm64 workstation its Java provider did not start the
+analysis within 21 minutes -- the native run takes about a minute), so MTA
+findings are recorded evidence; and the M2 destination analysis (bootstrap,
+destination compile and rescan) on fresh M1 output, so the finding half of the
+initial plan was compared from recorded evidence only. Equal plans from
+recorded evidence are not equal results from a fresh M1 analysis. Planning
+equality does not authorize execution or establish behavioural PASS.
 
 ---
 
@@ -245,8 +405,33 @@ The approved native outcome-board design is implemented behind a protocol
 selection that no existing run makes (`OUTCOME-BOARD-CONTRACT.md`). After M2
 the board shows the known outcomes, their prerequisites and their acceptance.
 A repair attempt stays within the outcome that owns it. Continuations run on
-the dispatcher's own tick. Execution is disabled until a protected writer
-principal exists (architect F1). The current workspace has none.
+the dispatcher's own tick.
+
+A run requests the protocol once, at creation (the app-migration template's
+`boardProtocol`, default `outcome-board/v1`, stamped into the initial commit's
+`run-budget.json`); the platform's provisioner selects it in the read-only run
+control together with the execution state it owns (default `disabled`). Every
+reader applies one rule (`outcome_protocol.select_protocol`): request and
+selection agree, or the run refuses at launch and never falls back to the
+serial loop. Runs created before the request existed stay serial.
+
+The protected writer (architect F1) is an authority service in a sidecar of
+the workspace pod, under a different uid, holding the store on a volume the
+worker container does not mount, reachable only through a socket the worker
+mounts read-only. Execution stays disabled until that layout is qualified on
+Dev Spaces. Measurement trust is decided for the FIRST controlled run:
+`cooperative-receipts` — worker-produced build/test/parity evidence remains trusted subject to binding and consistency checks; this does NOT establish independently verified results or protection against fabricated evidence. The same trust boundary covers the
+other cooperative inputs: process-liveness/quiescence snapshots, reviewer
+audit assertions (the paved-road audit, its receipts and execution ledger are
+worker-writable process evidence) and push-result reports
+(`OUTCOME-BOARD-CONTRACT.md` sections 3, 8a, 8b, 9).
+
+On this protocol a runtime failure the authority proves on the accepted
+baseline and attributes to an accepted outcome (`planner.runtime_cause`, on
+inputs the authority builds; the scenario records stay worker receipts) is not
+charged to the outcome that met it: its candidate is held, one repair of the
+owner becomes its prerequisite, and it is re-verified afterwards (contract
+§5.2). Requirement-only outcomes are issued their planned unit (§5.1).
 
 ## 11. Maturity
 
