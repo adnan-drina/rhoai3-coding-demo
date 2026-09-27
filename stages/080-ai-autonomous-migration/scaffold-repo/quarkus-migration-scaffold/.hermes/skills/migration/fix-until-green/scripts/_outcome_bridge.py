@@ -285,9 +285,10 @@ def _native_after_accept(root: Path, board, commit: str, candidate: str, worklis
     if out["outcome_accepted"]:
         print(_REVIEW % (out["outcome_id"], "commit " + commit[:12]))
         return 0
-    why = ", ".join(out["open_owned"][:4]) or ("repair evidence: %s" % "; ".join(out["repair_evidence_gaps"][:2])
-                                                 if out["repair_evidence_gaps"] else "unmeasured checks")
-    return reissue(root, note="outcome %s still owns %s" % (out["outcome_id"], why))
+    reasons = out.get("not_accepted_because") or ["an unmeasured check class"]
+    print("OUTCOME NOT YET ACCEPTED %s (commit %s is recorded): %s" % (out["outcome_id"], commit[:12], "; ".join(reasons[:4])),
+          file=sys.stderr)
+    return reissue(root, note="outcome %s is not accepted yet: %s" % (out["outcome_id"], "; ".join(reasons[:3])))
 
 
 def _native_reissue(root: Path, board, note: str = "") -> int:

@@ -567,10 +567,22 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
     exit 0 -- and the acceptance's tail (rebuild, re-seal, publish, mint) is
     completed if the kill interrupted it -- or `REVERTED already` /
     `DEFERRED already` exit 1, each naming its terminator. None when the card
-    has no recorded verdict (the normal path)."""
+    has no recorded verdict (the normal path).
+
+    The verdict belongs to the ISSUED UNIT, not to the card: an outcome-board
+    card carries several units (clusters, planned units, rework) in turn, each
+    issued under its own idempotency key. v20 t_5738bd11 (2026-09-27): after
+    the first unit was accepted, every later candidate of the same card was
+    answered "ACCEPTED already (step 1)" and could never be judged. A row
+    matches only when the issued key is the row's (legacy rows without a key
+    still match by card: one card, one unit)."""
+    issued_key = str((load_issued(root) or {}).get("idempotency_key") or "")
     for n, row in enumerate(steps.get("steps") or []):
         if not isinstance(row, dict) or str(row.get("card") or "") != card or str(row.get("verdict") or "") != "accepted":
             continue
+        row_key = str(row.get("idempotency_key") or "")
+        if row_key and issued_key and row_key != issued_key:
+            continue   # another unit of this card: this candidate is judged normally
         commit = str(row.get("commit") or "")
         same = str(row.get("candidate_sha256") or "") == on_disk
         print("OK: ACCEPTED already (step %d, commit %s) -- call kanban_complete; this invocation changes nothing about the verdict%s"

@@ -334,7 +334,10 @@ M4 means verification ACCEPTED. Walk the same road. After the verdict is linted:
    `kanban_request_review` reviewer=reviewer with its `summary` and `metadata`
    (verdict, candidate, assessment attachment, deferred qualifications).
    The reviewer completes this card after the audit; that releases M5.
-3. REFUSE (or any other verdict): `native_gate.py --root . m4-repair`. It
+3. REFUSE (or any other verdict), or `ASSESS_DEFERRED_CHECKS` (a runtime check
+   the plan moved from an early outcome to this card, e.g. a request-body parity
+   check, is not met): `native_gate.py --root . m4-repair`. Each unmet deferred
+   check becomes a follow-up of its owning outcome. It
    publishes the repairs the verdict needs as native tasks and makes them
    prerequisites of THIS card. End the run with `kanban_block kind=dependency`.
    The dispatcher runs this card again when they are done; measure again then.

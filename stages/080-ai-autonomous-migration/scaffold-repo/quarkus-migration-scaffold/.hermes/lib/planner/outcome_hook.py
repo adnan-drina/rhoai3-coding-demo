@@ -104,6 +104,20 @@ def terminator(root: str, *, kind: str, profile: str, env: dict[str, str],
             return _block("PROTOCOL_MIXED", "serial-loop run carries an outcome-board store")
         return None
     if kind == "block":
+        if sel.native:
+            # native control decides one thing about a block: a card whose issued run
+            # leaves product edits in the shared tree parks them first (v20 cascade).
+            # Escalation stays possible whatever else fails: only that named refusal blocks.
+            from planner import native_control as NC
+            task, run_id = _ids(env)
+            try:
+                NC.check_terminator(Path(root), NC.board_for(Path(root)), task_id=task, run_id=run_id, kind=kind,
+                                    profile=profile, audit_green=audit_green)
+            except NC.Refusal as exc:
+                if exc.code == "BLOCK_LEAVES_CANDIDATE":
+                    return _block(exc.code, exc.detail)
+            except Exception:  # noqa: BLE001 - a block is never trapped by a hook error
+                pass
         return {"action": "allow", "code": "BLOCK_ALLOWED"}
     gate = execution_gate(Path(root), sel)
     if gate:

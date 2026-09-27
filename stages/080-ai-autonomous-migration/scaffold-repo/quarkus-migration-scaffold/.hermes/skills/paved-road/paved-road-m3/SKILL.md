@@ -229,7 +229,20 @@ review; the domain checks guard your native actions.
    outcome's family): `kanban_block kind=needs_input` naming the outcome.
    VERIFICATION_PENDING: `kanban_block kind=needs_input`; after a restart,
    `native_gate.py --root . restore-pending` adopts the retained candidate.
-5. `OWNER_RECOVERY` / `OWNER_REPAIR_PENDING`: the runtime failure belongs to an
+5. `OUTCOME NOT YET ACCEPTED`: the commit is recorded; the message names each
+   reason (an open obligation, a check with its measured detail, a missing
+   measurement). Work on the reissued scope of this card; a runtime check
+   (`parity:*`, package/startup) is never yours on a build, config or source
+   card — those gate M4.
+6. Never leave uncommitted product edits behind: before `kanban_block`, run
+   `python3 .hermes/kernel/native_gate.py --root . park` (it holds your candidate
+   on this card and restores HEAD; K2 refuses the block otherwise). When the card
+   resumes, `issue` reports `parked_candidate` and
+   `native_gate.py --root . restore-parked` puts it back for re-verification.
+7. `REPEATED_REFUSAL`: the same refusal three times in this run. Your candidate
+   is parked for you; the only legal next step is `kanban_block kind=needs_input`
+   naming the refusal (K2 refuses every other tool). Do not retry it.
+8. `OWNER_RECOVERY` / `OWNER_REPAIR_PENDING`: the runtime failure belongs to an
    accepted outcome. Your candidate is held on this card and one repair is now
    this card's prerequisite. End the run with `kanban_block kind=dependency`.
    When the repair is done the dispatcher runs this card again: `issue`, then

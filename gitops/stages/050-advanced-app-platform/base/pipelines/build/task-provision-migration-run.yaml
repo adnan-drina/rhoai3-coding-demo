@@ -139,18 +139,19 @@ spec:
         is always attributable to an image reference.
     - name: outcome-board-execution
       type: string
-      default: disabled
+      default: enabled
       description: >-
         PLATFORM-controlled execution state written into the run control of a
         run that requested an outcome board (outcome-board/v2, native Hermes
-        Kanban control; or the retired outcome-board/v1): disabled (default) or
-        enabled. Never a template or event value; qualification is refused (it
+        Kanban control; or the retired outcome-board/v1): enabled (default since
+        2026-09-27, when v2 became the selected model and its measurement trust
+        was decided) or disabled (set it here to hold new runs). Never a template or event value; qualification is refused (it
         is for disposable local fixtures only). v2 enabled also needs the
         measurement-trust decision below; v1 enabled needs the protected
         authority service (OUTCOME-BOARD-CONTRACT).
     - name: outcome-board-measurement-trust
       type: string
-      default: ""
+      default: cooperative-receipts
       description: >-
         The platform's explicit measurement-trust decision for outcome-board
         execution (empty = undecided, which keeps enabled execution refused).

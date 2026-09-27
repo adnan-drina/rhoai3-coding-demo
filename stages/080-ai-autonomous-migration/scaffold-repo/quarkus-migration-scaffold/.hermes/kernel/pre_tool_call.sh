@@ -586,6 +586,18 @@ for _c in [(os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()] + [x.strip(
     if _c:
         OB_ROOT = os.path.realpath(_c)
         break
+# outcome-board/v2: native_gate.py records a refusal repeated in one run
+# (verification/native-board/refusals/<task>.json); at the third, only the
+# terminator remains (v20 t_686c715b repeated one refused command 181 times).
+if OB_ROOT and hook_task_id():
+    try:
+        _rs = json.load(open(os.path.join(OB_ROOT, "verification", "native-board", "refusals", "%s.json" % hook_task_id()), encoding="utf-8"))
+    except (OSError, ValueError):
+        _rs = None
+    if isinstance(_rs, dict) and str(_rs.get("run")) == (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip() \
+            and int(_rs.get("count") or 0) >= 3 and not is_block():
+        block("REPEATED_REFUSAL: %s was refused %d times in this run; the only legal next step is kanban_block "
+              "kind=needs_input naming it" % (_rs.get("code"), int(_rs.get("count") or 0)))
 OB = None
 if OB_ROOT:
     # any record that can select the protocol: the golden defaults, the run

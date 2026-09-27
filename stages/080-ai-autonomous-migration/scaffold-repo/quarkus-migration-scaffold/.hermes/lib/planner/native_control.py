@@ -76,7 +76,9 @@ CONTRACT_SCHEMA = "rhoai3.native-contract/v1"
 PLAN_SCHEMA = "rhoai3.native-plan/v1"
 PLAN_NAME = re.compile(r"^plan\.r(\d+)\.json$")
 REVIEWER = "reviewer"
-PROTECTED_DIRS = ("verification/outcome-board/", ".hermes/", ".git/")
+PROTECTED_DIRS = ("verification/outcome-board/", "verification/native-board/", ".hermes/", ".git/")
+REFUSALS = Path("verification") / "native-board" / "refusals"
+REPEAT_LIMIT = 3
 LOCK = Path("verification") / "native-board" / "publish.lock"
 MAX_RETRIES = 2
 WORKSPACE = "dir:/projects/modernized"
@@ -200,16 +202,121 @@ def native_body(node: dict[str, Any]) -> str:
     return native_description(node)
 
 
-def native_plan(plan: dict[str, Any]) -> dict[str, Any]:
-    """The initial revision as native control publishes it: the M5 stages are
-    ASSIGNED at creation (their native parent, the accepted M4, holds them;
-    there are no stage grants). Deterministic; the digest is recomputed."""
-    out = dict(plan)
-    out["nodes"] = [dict(n, assignee=IMPL) if n.get("role") == "deliver" else dict(n) for n in plan["nodes"]]
-    out["control"] = "native-cooperative"
+# checks a requirement can only pass once the application runs: they gate M4,
+# never an outcome that runs before the application can start (v20
+# build:c:9c5fb3d1b7e3 owned parity:request-body-positive-negative and could
+# not be accepted while ~233 compile errors remained)
+RUNTIME_CHECK_PREFIXES = ("parity:", "behavior:", "gate:package", "gate:augmentation", "gate:startup")
+MEASURES_RUNTIME = {"runtime": ("gate:package", "gate:augmentation", "gate:startup"),
+                    "behavior": RUNTIME_CHECK_PREFIXES}
+M3_ACTION = {"build": "BUILD", "config": "CONFIGURE", "source": "COMPILE", "runtime": "RUNTIME", "behavior": "BEHAVIOR"}
+DASH = "\u2014"
+
+
+def _deferred(node: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """(kept, deferred) requirement checks of a repair node: a runtime check
+    its class cannot measure is deferred to M4."""
+    checks = list(((node.get("acceptance") or {}).get("requirement_checks")) or [])
+    can = MEASURES_RUNTIME.get(str(node.get("class") or ""), ())
+    kept, deferred = [], []
+    for c in checks:
+        (deferred if c.startswith(RUNTIME_CHECK_PREFIXES) and not c.startswith(can) else kept).append(c)
+    return kept, deferred
+
+
+def _m3_title(node: dict[str, Any]) -> str:
+    title = str(node.get("title") or node["outcome_id"])
+    if title.startswith("M3 "):
+        return title
+    for prefix in ("Build: ", "Configuration: ", "Source compatibility: ", "Behavior: ", "Application ", "Follow-up: ", "Repair "):
+        if title.startswith(prefix):
+            subject = title[len(prefix):]
+            break
+    else:
+        subject = title
+    if node.get("repair_paths"):
+        action = "REPAIR"
+    elif node["outcome_id"].startswith("followup:"):
+        action = "FOLLOW-UP"
+    else:
+        action = M3_ACTION.get(str(node.get("class") or ""), "REPAIR")
+    return "M3 %s %s %s" % (action, DASH, subject)
+
+
+def native_titles(plan: dict[str, Any]) -> dict[str, Any]:
+    """Every repair outcome is titled ``M3 <ACTION> — <subject>`` (the serial
+    loop's vocabulary) and no two cards share a title: equal titles become
+    "part i of n" in outcome-id order (v20 had two outcomes both titled
+    "Configuration: application.properties"). A title already published
+    (it starts with "M3 ") is never rewritten."""
+    nodes = [dict(n) for n in plan["nodes"]]
+    fresh = [n for n in nodes if n.get("role") == "repair" and not str(n.get("title") or "").startswith("M3 ")]
+    taken = [str(n.get("title")) for n in nodes if n not in fresh]
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for n in sorted(fresh, key=lambda n: n["outcome_id"]):
+        groups.setdefault(_m3_title(n), []).append(n)
+    for base, members in groups.items():
+        clash = sum(1 for t in taken if t == base or t.startswith(base + " (part "))
+        total = len(members) + clash
+        for i, n in enumerate(members, start=clash + 1):
+            n["title"] = base if total == 1 else "%s (part %d of %d)" % (base, i, total)
+    out = dict(plan, nodes=nodes)
     out.pop("digest", None)
     out["digest"] = plan_digest(out)
     return out
+
+
+def defer_runtime_checks(plan: dict[str, Any]) -> dict[str, Any]:
+    """Move each runtime check an early outcome cannot measure to the M4
+    node's acceptance (``deferred_requirement_checks``: outcome, requirement
+    ids, check), and record it on the outcome (``deferred_checks``). The check
+    still gates delivery; it no longer blocks a card that runs before the
+    application can start. Idempotent."""
+    nodes = [dict(n) for n in plan["nodes"]]
+    moved: list[dict[str, Any]] = []
+    for n in nodes:
+        if n.get("role") != "repair":
+            continue
+        kept, deferred = _deferred(n)
+        if not deferred:
+            continue
+        acc = dict(n.get("acceptance") or {})
+        acc["requirement_checks"] = kept
+        n["acceptance"] = acc
+        n["deferred_checks"] = sorted(set(list(n.get("deferred_checks") or []) + deferred))
+        moved += [{"outcome": n["outcome_id"], "requirements": sorted(n.get("requirements") or []), "check": c}
+                  for c in deferred]
+    if moved:
+        for n in nodes:
+            if n.get("role") == "assess":
+                acc = dict(n.get("acceptance") or {})
+                have = {(d["outcome"], d["check"]) for d in acc.get("deferred_requirement_checks") or []}
+                acc["deferred_requirement_checks"] = sorted(
+                    list(acc.get("deferred_requirement_checks") or []) + [d for d in moved if (d["outcome"], d["check"]) not in have],
+                    key=lambda d: (d["outcome"], d["check"]))
+                n["acceptance"] = acc
+    out = dict(plan, nodes=nodes)
+    out.pop("digest", None)
+    out["digest"] = plan_digest(out)
+    return out
+
+
+def native_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """The initial revision as native control publishes it: the M5 stages are
+    ASSIGNED at creation (their native parent, the accepted M4, holds them;
+    there are no stage grants), runtime checks of early outcomes gate M4,
+    and every repair outcome carries a unique ``M3 <ACTION>`` title.
+    Deterministic; the digest is recomputed."""
+    out = dict(plan)
+    out["nodes"] = [dict(n, assignee=IMPL) if n.get("role") == "deliver" else dict(n) for n in plan["nodes"]]
+    out["control"] = "native-cooperative"
+    return native_titles(defer_runtime_checks(out))
+
+
+def native_revision(plan: dict[str, Any]) -> dict[str, Any]:
+    """A later revision (owner repair, REFUSE repairs) as native control
+    publishes it: the same titling and check placement for its new nodes."""
+    return native_titles(defer_runtime_checks(plan))
 
 
 def plan_attachment(plan: dict[str, Any], added: list[str]) -> dict[str, Any]:
@@ -627,6 +734,7 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             "planned_unit": (dict(unit, owed=unit.get("owed") or [], bounds=unit.get("bounds") or {},
                                   kind=_unit_kind(node)) if unit else None),
             "held_candidate": bool(board.records(task_id, "owner-hold")) and not board.records(task_id, "restore-held"),
+            "parked_candidate": bool(parked_pending(board, task_id)),
             "run": run, "baseline_commit": head, "baseline_tree": tree, "claimed_control": False,
             "control": "native-cooperative", "record": rec["key"],
             "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
@@ -797,7 +905,16 @@ def check_terminator(root: Path, board: Board, *, task_id: str, run_id: int, kin
     if board.node_of(task_id) is None:
         return None
     if kind == "block":
-        # a legal result: dependency waits, exhausted budgets, external blockers
+        # a legal result: dependency waits, exhausted budgets, external blockers -- but a card
+        # whose issued run leaves product edits in the shared tree parks them first
+        issued = [r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id or 0)]
+        if issued and board.node_of(task_id)[0] == "repair" and not refusal_stop(root, task_id, run_id):
+            head = _head(root)
+            changed = changed_product_paths(root, head) if head else None
+            if changed:
+                raise Refusal("BLOCK_LEAVES_CANDIDATE", "this run leaves product edits in the shared tree (%s): run "
+                              "python3 .hermes/kernel/native_gate.py --root . park (it holds them on this card and restores "
+                              "HEAD), then kanban_block" % ", ".join(changed[:4]))
         return {"action": "allow", "code": "BLOCK_ALLOWED"}
     _gate(root)
     role, run, oid, plan, node = node_context(board, task_id)
@@ -824,6 +941,11 @@ def check_terminator(root: Path, board: Board, *, task_id: str, run_id: int, kin
                           "native_gate.py m4-repair and end this run with kanban_block kind=dependency" % rec.get("verdict"))
         if rec.get("candidate") != _product_tree(root):
             raise Refusal("ASSESS_STALE", "the assessment measured another candidate")
+        unmet = unmet_deferred(root, board, plan, node, task_id)
+        if unmet:
+            raise Refusal("ASSESS_DEFERRED_CHECKS", "runtime checks deferred to M4 are not met: %s. Run native_gate.py "
+                          "m4-repair (each becomes a follow-up of its owning outcome) and end this run with kanban_block "
+                          "kind=dependency" % "; ".join(unmet[:4]))
         if kind == "complete" and not audit_green():
             raise Refusal("ASSESS_AUDIT_RED", "the paved-road M4 audit has not exited 0 in this reviewer run")
         return {"action": "allow", "code": "ASSESS_%s_ALLOWED" % ("COMPLETE" if kind == "complete" else "REVIEW")}
@@ -897,7 +1019,28 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
     checks = requirement_measurement(root, plan, node, worklist, scenarios, tree)
     if checks:
         m["checks"] = passed(checks)
+        m["unmet_checks"] = {k: {"status": v.get("status"), "detail": str(v.get("detail") or "")[:200]}
+                             for k, v in sorted(checks.items()) if v.get("status") != "pass"}
+    need = {"build": {"build"}, "config": {"build"}, "source": {"compile", "tests"}, "runtime": {"runtime"},
+            "behavior": {"parity"}}.get(str(node.get("class") or ""), set())
+    missing = sorted(need - set(m["classes"]))
+    if str(node.get("class") or "") == "behavior":
+        missing += ["scenario %s" % x for x in sorted(set(node.get("scenarios") or []) - set(m["scenarios"]))]
+    if missing:
+        m["missing_classes"] = missing
     return m
+
+
+def not_accepted_reasons(acc: dict[str, Any]) -> list[str]:
+    """Why an acceptance record did not accept its outcome, each reason named:
+    open owned obligations, unmet requirement checks with their measured
+    detail, missing measurement classes, owner-repair evidence gaps."""
+    m = acc.get("measurement") or {}
+    out = ["open obligation %s" % o for o in (m.get("open_owned") or [])[:6]]
+    out += ["check %s is %s: %s" % (k, v.get("status"), v.get("detail")) for k, v in (m.get("unmet_checks") or {}).items()]
+    out += ["not measured: %s" % c for c in m.get("missing_classes") or []]
+    out += ["repair evidence: %s" % g for g in acc.get("repair_evidence_gaps") or []]
+    return out
 
 
 def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attempt: str, commit: str,
@@ -934,7 +1077,8 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     board.record(task_id, "accept-commit", "accept-commit:%s" % key, run=int(run_id), commit=commit, tree=tree,
                  cluster=iss.get("cluster") or "", outcome_accepted=done, measurement=m, repair_evidence_gaps=evidence_gaps)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"],
-            "covered": covered, "repair_evidence_gaps": evidence_gaps}
+            "covered": covered, "repair_evidence_gaps": evidence_gaps,
+            "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": evidence_gaps})}
 
 
 def recover_accept(root: Path, board: Board, *, task_id: str, skip_run: int | None = None,
@@ -1162,6 +1306,8 @@ def _publish_owner_repair(root: Path, board: Board, run_id: str, plan: dict[str,
     nxt = owner_repair_revision(plan, doc, open_assessments=open_assess)
     if isinstance(nxt, Refusal):
         raise nxt
+    if nxt is not None:
+        nxt = native_revision(nxt)
     if nxt is None:                      # replay: the revision already carries it; finish its publication
         publish_revision(root, board, plan, added=[hold["repair"]], holder=dep_task)
         return
@@ -1190,8 +1336,158 @@ def restore_held(root: Path, board: Board, *, task_id: str, run_id: int) -> dict
 
 
 # ---------------------------------------------------------------------------
+# park: a card's unjudged candidate never stays in the shared tree
+# ---------------------------------------------------------------------------
+
+def _changed_vs_head(root: Path) -> tuple[str, list[str]]:
+    head = _head(root)
+    changed = changed_product_paths(root, head) if head else None
+    if changed is None:
+        raise Refusal("PARK_UNMEASURABLE", "the product changes against HEAD could not be measured")
+    return head, changed
+
+
+def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, Any]:
+    """Hold this card's uncommitted product candidate as a versioned
+    attachment on the card and restore the product tree to HEAD, so the next
+    card starts from the accepted state (v20: a verified-but-unjudged pom.xml
+    left in the tree made every later card refuse ISSUE_BASELINE_DRIFT).
+    The candidate is restored by ``restore-parked`` when this card resumes."""
+    root = Path(root)
+    live_run(board, task_id, run_id)
+    node_context(board, task_id)
+    head, changed = _changed_vs_head(root)
+    if not changed:
+        return {"parked": [], "note": "the product tree already equals HEAD %s" % head[:12]}
+    files: dict[str, str] = {}
+    for rel in changed:
+        p = root / rel
+        files[rel] = base64.b64encode(p.read_bytes()).decode("ascii") if p.is_file() and not p.is_symlink() else ""
+    data = canonical_bytes({"schema": "rhoai3.native-parked/v1", "task": task_id, "run": int(run_id), "head": head,
+                            "candidate": _product_tree(root), "files": files})
+    digest = sha256(data)
+    name = "parked.%d.%s.json" % (int(run_id), digest[:12])
+    if board.attachment(task_id, name) is None:
+        with tempfile.TemporaryDirectory(prefix="native-park-") as td:
+            f = Path(td) / name
+            f.write_bytes(data)
+            board.native.attach(task_id, str(f), name)
+    rec = board.record(task_id, "park", "park:%d:%s" % (int(run_id), digest[:16]), run=int(run_id), head=head,
+                       attachment=name, sha256=digest, paths=sorted(files))
+    for rel in changed:
+        tracked = _git(root, "cat-file", "-e", "%s:%s" % (head, rel)).returncode == 0
+        if tracked:
+            _git(root, "checkout", head, "--", rel)
+        elif (root / rel).exists():
+            (root / rel).unlink()
+    _, left = _changed_vs_head(root)
+    if left:
+        raise Refusal("PARK_INCOMPLETE", "the tree still differs from HEAD at %s" % ", ".join(left[:4]))
+    return {"parked": sorted(files), "attachment": name, "record": rec["key"], "head": head}
+
+
+def parked_pending(board: Board, task_id: str) -> dict[str, Any] | None:
+    restored = {r.get("park") for r in board.records(task_id, "restore-parked")}
+    rows = [r for r in board.records(task_id, "park") if r["key"] not in restored]
+    return rows[-1] if rows else None
+
+
+def restore_parked(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, Any]:
+    """Put this card's parked candidate back (paths of the current issue
+    only); it is re-verified, never carried over as accepted."""
+    root = Path(root)
+    iss = active_issue(board, task_id, run_id)
+    rec = parked_pending(board, task_id)
+    if rec is None:
+        raise Refusal("RESTORE_NO_PARK", "no parked candidate on %s" % task_id)
+    got = board.attachment(task_id, str(rec.get("attachment") or ""))
+    if got is None or sha256(got[0]) != rec.get("sha256"):
+        raise Refusal("RESTORE_PARK_CORRUPT", "the parked candidate %s is missing or differs from its record" % rec.get("attachment"))
+    files = json.loads(got[0]).get("files") or {}
+    outside = sorted(set(files) - set(iss.get("allowed_paths") or []))
+    if outside:
+        raise Refusal("RESTORE_OUTSIDE_ISSUE", "parked paths %s are outside the current issue" % ", ".join(outside[:3]))
+    for rel, b64 in sorted(files.items()):
+        p = root / rel
+        if b64:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(base64.b64decode(b64))
+        elif p.exists():
+            p.unlink()
+    board.record(task_id, "restore-parked", "restore-parked:%s" % rec["key"], run=int(run_id), park=rec["key"],
+                 files=sorted(files))
+    return {"restored": sorted(files), "from": rec["key"], "head_then": rec.get("head"), "head_now": _head(root)}
+
+
+# ---------------------------------------------------------------------------
+# repeated refusals: the third identical refusal in a run names the terminator
+# ---------------------------------------------------------------------------
+
+def note_refusal(root: Path, task_id: str, run_id: int, code: str) -> int:
+    """Count identical refusals of this task's current run (v20 t_686c715b ran
+    the same refused command 181 times). Returns the count."""
+    if not task_id:
+        return 0
+    p = Path(root) / REFUSALS / ("%s.json" % task_id)
+    try:
+        doc = json.loads(p.read_text())
+    except (OSError, ValueError):
+        doc = {}
+    if doc.get("run") != int(run_id) or doc.get("code") != code:
+        doc = {"run": int(run_id), "code": code, "count": 0}
+    doc["count"] = int(doc.get("count") or 0) + 1
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(doc))
+    return doc["count"]
+
+
+def refusal_stop(root: Path, task_id: str, run_id: int) -> dict[str, Any] | None:
+    """The recorded stop for this run, when its last refusal repeated REPEAT_LIMIT times."""
+    try:
+        doc = json.loads((Path(root) / REFUSALS / ("%s.json" % task_id)).read_text())
+    except (OSError, ValueError):
+        return None
+    return doc if doc.get("run") == int(run_id) and int(doc.get("count") or 0) >= REPEAT_LIMIT else None
+
+
+# ---------------------------------------------------------------------------
 # M4: verification ACCEPTED, or repairs as prerequisites of the same task
 # ---------------------------------------------------------------------------
+
+def deferred_checks_status(root: Path, plan: dict[str, Any], node: dict[str, Any], scenarios: list[str],
+                           tree: str) -> dict[str, dict[str, str]]:
+    """The runtime checks deferred to this M4 (defer_runtime_checks), measured
+    on the current tree exactly as the owning outcome's checks are
+    (requirement_measurement): '<outcome>|<check>' -> {status, detail}."""
+    rows = list(((node.get("acceptance") or {}).get("deferred_requirement_checks")) or [])
+    if not rows:
+        return {}
+    wl, why = load_worklist(root)
+    out: dict[str, dict[str, str]] = {}
+    for d in rows:
+        key = "%s|%s" % (d.get("outcome"), d.get("check"))
+        if wl is None:
+            out[key] = {"status": "unknown", "detail": "no measured work list (%s)" % why}
+            continue
+        pseudo = {"outcome_id": d.get("outcome"), "requirements": list(d.get("requirements") or []),
+                  "acceptance": {"requirement_checks": [d.get("check")]}}
+        got = requirement_measurement(root, plan, pseudo, wl, scenarios, tree) or {}
+        out[key] = dict(got.get(d.get("check")) or {"status": "unknown", "detail": "not measured"})
+    return out
+
+
+def unmet_deferred(root: Path, board: Board, plan: dict[str, Any], node: dict[str, Any], task_id: str) -> list[str]:
+    rec = latest_assessment(board, task_id)
+    scen = []
+    if rec:
+        try:
+            scen = list(_assessment_doc(board, task_id, rec).get("parity_scenarios") or [])
+        except Refusal:
+            scen = []
+    st = deferred_checks_status(root, plan, node, scen, _product_tree(root))
+    return ["%s: %s (%s)" % (k, v.get("status"), str(v.get("detail") or "")[:160]) for k, v in sorted(st.items())
+            if v.get("status") != "pass"]
+
 
 def latest_assessment(board: Board, task_id: str) -> dict[str, Any] | None:
     rows = board.records(task_id, "assessment")
@@ -1267,7 +1563,8 @@ def m4_repair(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[st
     rec = latest_assessment(board, task_id)
     if rec is None or int(rec.get("run") or 0) != int(run_id):
         raise Refusal("REFUSE_UNRECORDED", "record this run's assessment first (native_gate.py assessment-record)")
-    if rec["verdict"] in DELIVERY_OK_VERDICTS:
+    unmet_def = unmet_deferred(root, board, plan, node, task_id)
+    if rec["verdict"] in DELIVERY_OK_VERDICTS and not unmet_def:
         raise Refusal("REFUSE_NOT_REFUSED", "the assessment is %s: hand it to review" % rec["verdict"])
     tasks = board.run_tasks(run)
     ran = [n["outcome_id"] for n in plan["nodes"] if n.get("role") == "deliver"
@@ -1299,10 +1596,38 @@ def m4_repair(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[st
         publish_revision(root, board, cur, added=added, holder=task_id)
         return {"verdict": rec["verdict"], "revision": nxt_rev, "added": added, "replayed": True,
                 "terminator": "kanban_block kind=dependency"}
-    nxt = refuse_revision(plan, doc.get("obligations") or [], gen=gen, trigger=oid, verdict=rec["verdict"],
+    # an unmet deferred runtime check becomes an obligation of its owning outcome
+    # (a follow-up sharing the owner's budget when the owner is done)
+    obligations = list(doc.get("obligations") or [])
+    base_plan = dict(plan, ownership=dict(plan.get("ownership") or {}))
+    extra_checks: dict[str, tuple[str, list[str]]] = {}
+    for line in unmet_def:
+        key = line.split(": ", 1)[0]          # "<owner>|<check>: <status> (<detail>)"
+        owner, chk = key.split("|", 1)
+        onode = _node(plan, owner) or {}
+        ob_id = "deferred-check:%s:%s" % (owner, chk)
+        base_plan["ownership"][ob_id] = owner
+        extra_checks[ob_id] = (chk, list(onode.get("requirements") or []))
+        obligations.append({"id": ob_id, "kind": "requirement-check", "write_set": list(onode.get("plan_paths") or []),
+                            "key": owner, "cluster": "", "status": "open", "path": ""})
+    gen = max(gen, 1)
+    nxt = refuse_revision(base_plan, obligations, gen=gen, trigger=oid, verdict=rec["verdict"],
                           status_of=status_of, budget_of=budget_of, successor=False)
     if isinstance(nxt, Refusal):
         raise nxt
+    for n in nxt["nodes"]:
+        if n.get("role") != "repair" or n["outcome_id"] not in (nxt.get("additions") or []):
+            continue
+        own_checks = [extra_checks[o] for o in n.get("obligations") or [] if o in extra_checks]
+        if own_checks:
+            acc = dict(n.get("acceptance") or {})
+            acc["requirement_checks"] = sorted({c for c, _r in own_checks})
+            n["acceptance"] = acc
+            n["requirements"] = sorted({r for _c, rs in own_checks for r in rs})
+            n["class"] = "behavior"          # a runtime check is measured on the running application
+    nxt.pop("digest", None)
+    nxt["digest"] = plan_digest(nxt)
+    nxt = native_revision(nxt)
     added = list(nxt.get("additions") or [])
     # the targets that are existing open owners already are M4's prerequisites (every repair is)
     board.record(task_id, "m4-repair", "m4-repair:%d" % int(run_id), run=int(run_id), revision=int(nxt["revision"]),
