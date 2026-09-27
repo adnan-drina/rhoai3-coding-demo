@@ -510,6 +510,20 @@ check "080 K2 post_tool_call observer is executable" \
 check "080 the outcome authority never executes analyzer code from the destination tree" \
   "python3 '${SCAFFOLD_KERNEL}/../lib/planner/analyzer_isolation.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
+# outcome-board/v2 (architect review 2026-09-27): Hermes Kanban is the one
+# lifecycle authority; the domain adapter guards native actions. No sidecar.
+check "080 native control (outcome-board/v2) selftest passes (publication, same-task review, budget, owner repair, M4 accepted, M5 read-back, K2)" \
+  "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/../lib/planner/native_board.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 new runs default to outcome-board/v2 and the skeleton renders no authority sidecar" \
+  "n=0; T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -A1 -E '^ +boardProtocol:' \"\$T/template.yaml\" >/dev/null && awk '/boardProtocol:/{f=1} f&&/default:/{print; exit}' \"\$T/template.yaml\" | grep -q 'outcome-board/v2' && n=\$((n+1)); ! grep -q 'outcome-authority' \"\$T/skeleton/devfile.yaml\" && n=\$((n+1)); echo \$n" \
+  "2"
+check "080 the producer registers v2 hooks without a reconciler (outcome-board-hooks selftest)" \
+  "python3 '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/outcome-board-hooks.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 K2 refuses hand-written native-control records and reserved attachments" \
+  "grep -c 'native-control\\] records are written by' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "1"
 check "080 K2 post_tool_call observer records positive execution evidence" \
   "python3 '${SCAFFOLD_KERNEL}/post_tool_call.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

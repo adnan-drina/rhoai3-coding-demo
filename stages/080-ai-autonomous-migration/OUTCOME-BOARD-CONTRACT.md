@@ -1,15 +1,135 @@
-# Outcome board — implementation contract (disabled by default)
+# Outcome board — implementation contract
 
-Status: implementation contract for the approved native outcome-board design
-(architect decision "APPROVE WITH CONDITIONS", 2026-09-25, findings F1–F5).
-Applies to **new runs only**. Every existing run, board, deadline and evidence
-record keeps the serial loop protocol. Execution stays **disabled** until the
-conditions in section 8 are demonstrated.
+Two control models share the outcome board: the plan's known outcomes become
+tasks after M2, a rejected attempt stays on its outcome, and M4/M5 follow the
+outcomes. They differ in who owns the lifecycle.
 
-Code: `.hermes/lib/planner/outcome_{protocol,graph,store,lifecycle,authority}.py`,
-`.hermes/kernel/{k4_graph,outcome_gate,outcome_reconcile,outcome_authority}.py`,
-and a guarded branch at the top of `.hermes/kernel/pre_tool_call.sh`. Paths below are
-relative to the destination root unless they start with `.hermes/`.
+| Protocol | Control model | Status |
+|---|---|---|
+| `outcome-board/v2` | **Native cooperative control.** Hermes Kanban owns task identity, runs, dependencies, review and rework, dispatch and crash recovery; a small domain adapter guards the native actions. | **Default for new runs** (architect review 2026-09-27, user confirmation). Part A. |
+| `outcome-board/v1` | Protected-authority control (F1): a sidecar service in a second principal owns every deciding record. | Retired for new runs: the template no longer offers it and the skeleton renders no sidecar. The code stays for runs that selected it (v18, check-only). Part B. |
+| `serial-loop/v1` | One card per step, minted by K4. | Explicit compatibility only; v12–v17. |
+
+Paths are relative to the destination root unless they start with `.hermes/`.
+
+---
+
+# Part A — outcome-board/v2: native cooperative control
+
+Design and rationale: `tmp/native-hermes-review-20260927/NATIVE-SOLUTION-REVIEW.md`
+(architect). Code: `.hermes/lib/planner/{native_control,native_publish}.py`,
+`.hermes/kernel/native_gate.py` (worker CLI), the v2 branches of
+`outcome_hook.py`, `pre_tool_call.sh`, `_outcome_bridge.py`, `k4_mint.py`,
+`m5_delivery.py`. The pure domain predicates are shared with v1 in
+`.hermes/lib/planner/outcome_checks.py`.
+
+## A1. Requirement change (F1 amended for v2)
+
+The protected-writer requirement (F1: control records unreachable by worker
+code) is **not** a prerequisite of a v2 run. Native Kanban uses a cooperative
+local-user model: code running as the worker can alter `kanban.db`, its
+attachments and the domain records. No tamper resistance against worker code
+is claimed; `claimed_control` stays false. Measurement trust stays
+`cooperative-receipts` (8b below). The migration acceptance criteria are
+unchanged. Platform identity, credential and cross-run isolation protections
+are unchanged.
+
+## A2. Selection and gating
+
+The same selection chain as v1 (section 1), with the value
+`outcome-board/v2`: the template's `boardProtocol` (default `outcome-board/v2`)
+is stamped into the initial commit's `run-budget.json`; the provisioner copies
+it into the read-only run control with `outcome_board.execution` (Task
+parameter, default `disabled`) and `outcome_board.measurement_trust`.
+Request and selection must name the same version (`PROTOCOL_MISMATCH`
+otherwise). `enabled` needs `measurement_trust: cooperative-receipts`
+(`MEASUREMENT_TRUST_UNDECIDED` otherwise) and nothing else: there is no
+authority service to answer. A v1 authority store or serial-loop records in a
+v2 run refuse `PROTOCOL_MIXED`. The launch (`autostart-migration.sh`,
+`run-preflight.sh`) refuses every gap; `run-preflight.sh` also requires the
+producer's v2 hook registration and refuses a registered reconciler.
+
+## A3. Where the state lives
+
+Everything is on the native board. There is no store, no service, no intent
+table and no reconciler.
+
+| Fact | Native carrier | Written by |
+|---|---|---|
+| Task identity, status, runs, claims, dependencies, review/rework history | `tasks`, `task_runs`, `task_links`, `task_events` | Hermes (dispatcher, worker tools) |
+| The plan revision | attachment `plan.r<N>.json` on the task that triggered it (M2 for r1): the plan and the digest of every contract it introduces | `native_publish` |
+| A task's contract (brief, membership, checks, budget family, repair paths) | attachment `contract.json` on the task | `native_publish` |
+| Domain records (issue, reject, pending, accept-begin, accept-commit, amend, owner-hold, restore-held, cause-report, assessment, m4-repair, push) | keyed comments `[native-control] {json}` on the task (a key is recorded once; a replay finds it) | `native_gate.py`, `advance.py` through `_outcome_bridge` |
+| A held candidate, an M4 assessment | attachments `held.<id>.json`, `assessment.<run>.<sha>.json`, named by their record with a sha256 | same |
+| Progress | derived view (`native_gate.py account`), never read back | — |
+
+Stable keys: `outcome:v2:<run>:<outcome>`, `assess:v2:<run>:<outcome>`,
+`deliver:v2:<run>:<outcome>`. Every v2 task body is the node description plus
+one procedure line for its role (`native_control.PROCEDURE`).
+
+## A4. Lifecycle
+
+| # | Step | Native operation | Domain check (fail-closed hook or CLI) |
+|---|---|---|---|
+| N1 | M2 publishes the plan | `hermes kanban create` (parents at creation), `attach`; serialized by `verification/native-board/publish.lock` | a key match alone is never a reuse (`PUBLICATION_MISMATCH`); two live tasks (`PUBLICATION_DUPLICATE`) or an archived identity (`PUBLICATION_ARCHIVED`) stop; a crash resumes with the same command |
+| N2 | M2 review / completion | `request_review`, reviewer `complete` | read-back of the whole graph empty (`M2_READBACK`); reviewer audit green |
+| N3 | Release | native promotion of M3 roots when M2 is done | — |
+| N4 | M3 run start | dispatcher claim | `native_gate.py issue`: this native run, the contract, parents done, budget, no unexplained edits (`ISSUE_BASELINE_DRIFT`), one open cluster / planned unit / owner-repair unit / rework unit; `issued.json` projection |
+| N5 | Attempt rejected | none; the run continues | `reject` record (budget +1); advance re-issues on the same card |
+| N6 | Attempt accepted | none | `accept-begin` before the commit (scope measured from git), `accept-commit` after it with the outcome decision (owned obligations absent, check class covered, requirement checks recomputed, owner-repair evidence) |
+| N7 | Hand to review | `kanban_request_review` reviewer=reviewer | outcome accepted **on the current tree**; implementer `kanban_complete` refused (`NATIVE_TERMINATOR`) |
+| N8 | Review | reviewer `kanban_complete` or `kanban_request_changes` | complete: audit green and N7's check again; `request_changes` = another run of the same task, budget +1 |
+| N9 | Owner defect | worker publishes one repair task and `link repair -> dependent` (+ `-> open M4`), then `kanban_block kind=dependency` | classifier + validation as §5.2; candidate held as an attachment, no attempt spent; resumed by native promotion; `restore-held` on the repaired baseline |
+| N10 | M4 | `request_review`; reviewer `complete` | **M4 = verification ACCEPTED**: an ACCEPT / PROVISIONAL_ACCEPT verdict bound to this task and the current candidate, audit green |
+| N11 | M4 REFUSE | the M4 worker publishes repairs, links `repair -> M4`, `kanban_block kind=dependency` | `native_gate.py m4-repair` (`refuse_revision`, successor=False): same M4 task, no successor; `ASSESSMENT_BOUND` at 4 refusals; `DELIVERY_CYCLE_UNSUPPORTED` once a stage ran |
+| N12 | M5 stages | native parents: PREFLIGHT <- M4, DEPLOY <- PREFLIGHT, VALIDATE <- DEPLOY | `issue` refuses while M4 is not accepted or the tree drifted from the accepted candidate (`ISSUE_STALE_CANDIDATE`); reviewer completion on the stage's bound receipts |
+| N13 | Push | `native_gate.py push` | reads the remote back FIRST: a landed push is recorded, never repeated; `sent` / `landed` / `failed` / `uncertain` records |
+
+Semantic repair budget: rejected attempts plus `changes_requested` runs across
+every task of one budget family (an owner, its follow-ups and its owner
+repairs share one key). Crashes, timeouts, quota requeues and dependency
+waits spend nothing. At the limit `issue` refuses `ISSUE_BUDGET_EXHAUSTED`
+and the worker blocks `needs_input`.
+
+Crash recovery: a stale run's writes and completion refuse (`RUN_STALE`; the
+native `expected_run_id`); an `accept-begin` without its record is recovered
+from git (one commit on the baseline carrying the candidate: recorded, never
+committed again; none: the candidate is retained).
+
+Hooks: the producer extends the K2 matcher with the review/block terminators
+and the `kanban_comment` / `kanban_attach` / `kanban_create` / `kanban_link`
+tools and registers no reconciler. K2 refuses worker graph mutation, a
+hand-written `[native-control]` record and attaching or removing a reserved
+artifact. The pinned `pre_tool_call` shell hook fails closed; lifecycle
+observers are never acceptance gates.
+
+## A5. Evidence
+
+| Evidence | Scope |
+|---|---|
+| `.hermes/lib/planner/native_board.test.py` (22) | synthetic board with the pinned review/dependency semantics, real git, the real classifier, the real K2 hook |
+| `hermes-runtime/tests/rhoai3_outcome_board/test_native_control.py` (36 checks) | the ws-080 image: real `kanban_db` lifecycle, real `hermes kanban` CLI, the golden's `native_gate.py` under the worker's `python3` (3.9), the real K2 hook. No model, no dispatcher loop, no cluster |
+| `outcome-board-hooks.test.py`, `app-migration-template.test.py`, `provision-migration-run.test.py`, `run-preflight.test.py` | platform side |
+
+Not established here: a model-driven worker on a live workspace, the
+dispatcher's own loop and pacing on a v2 board, a fresh MTA replay. The first
+controlled run measures completion, elapsed time, tokens, Operator
+interventions and explained plan revisions.
+
+## A6. Rollback and stopping
+
+Stop the DevWorkspace (`spec.started=false`), or `hermes pause` to stop new
+dispatch while in-flight work finishes (verify against the configured
+gateway first). A new-run default change affects only runs provisioned after
+it. Never bulk-complete, archive unresolved parents or reset budgets.
+
+---
+
+# Part B — outcome-board/v1: protected-authority control (retired for new runs)
+
+The sections below are the v1 contract as implemented and locally qualified
+through 2026-09-27. They govern only a run that selected `outcome-board/v1`
+(none executes today). New runs use Part A.
 
 ## 1. Selection and gating
 
@@ -31,7 +151,8 @@ producer, `autostart-migration.sh` and `run-preflight.sh`
 | Mixed state | Outcome protocol with serial-loop records, serial protocol with an outcome store, or a cooperative in-tree store beside the service, refuses `PROTOCOL_MIXED` on every path | `outcome_protocol.mixed_state` |
 | Launch | `autostart-migration.sh` and `run-preflight.sh` refuse any selection refusal, a mixed state, or a closed outcome execution gate (`python3 -m planner.outcome_protocol --root R launch-check`) | `outcome_protocol.launch_gaps` |
 
-The golden ships no `board_protocol`; the template defaults to `outcome-board/v1`
+(Superseded 2026-09-27: the template now defaults to `outcome-board/v2` and
+renders no sidecar; Part A.) The golden ships no `board_protocol`; the template defaulted to `outcome-board/v1`
 (user decision 2026-09-26: a new run never launches on the serial fallback). A
 default run therefore refuses at launch until the platform enables execution
 for it; `serial-loop/v1` stays available only as an explicit choice, and runs
