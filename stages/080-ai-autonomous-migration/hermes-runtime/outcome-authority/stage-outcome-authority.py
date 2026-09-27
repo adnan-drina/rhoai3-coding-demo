@@ -22,6 +22,10 @@ import sys
 import tarfile
 from pathlib import Path
 
+# the identity is computed by importing the STAGED planner: never write
+# bytecode into the tree that is baked (the image build refuses __pycache__)
+sys.dont_write_bytecode = True
+
 TREES = ("kernel", "lib", "planning", "skills")
 DEFAULT_PREFIX = "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes"
 
