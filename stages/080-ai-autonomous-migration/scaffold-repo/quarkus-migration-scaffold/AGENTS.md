@@ -164,6 +164,17 @@ M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_K
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
 
+On an **outcome-board/v2** run (the card body says "outcome-board/v2, native
+control") the M2 card publishes the whole known plan as native tasks (one per
+outcome, M4 VERIFY, the three M5 stages) and every card starts with
+`python3 .hermes/kernel/native_gate.py --root . issue`. An accepted outcome,
+an accepted M4 verdict and a finished M5 stage end with
+`kanban_request_review` (reviewer=`reviewer`); the reviewer completes the card
+after its audit or requests changes (another run of the same card). A REFUSE
+on M4 runs `native_gate.py m4-repair` and ends with `kanban_block
+kind=dependency`. The card body names its procedure; the paved-road skills
+hold the detail.
+
 When a tool result is `Blocked terminal` or `repeated_exact_failure_warning`,
 there is no legal next command: `kanban_block --kind needs_input` naming that
 command and its last refusal. Do not exit 0 with the card still running.

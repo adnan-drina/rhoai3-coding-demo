@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Any
 
 from planner.native_control import (CONTRACT, IMPL, MAX_RETRIES, REVIEWER, WORKSPACE, Board, Refusal, canonical_bytes,
-                                    contract_doc, native_key, native_plan, plan_attachment, publication_lock, sha256)
+                                    contract_doc, native_body, native_key, native_plan, plan_attachment, publication_lock,
+                                    sha256)
 from planner.outcome_graph import CONTROL_M2, topo_order
 
 READBACK_ASSIGNEES = (IMPL, REVIEWER)
@@ -70,7 +71,7 @@ def _attach_plan(board: Board, holder: str, plan: dict[str, Any], added: list[st
 
 
 def _expected(node: dict[str, Any], parents: list[str]) -> dict[str, Any]:
-    return {"title": node["title"], "body": node["description"], "assignee": node.get("assignee"),
+    return {"title": node["title"], "body": native_body(node), "assignee": node.get("assignee"),
             "parents": sorted(parents), "skills": list(node.get("skills") or [])}
 
 
@@ -177,7 +178,7 @@ def readback(board: Board, plan: dict[str, Any]) -> list[str]:
                         else "%s: %s is archived" % (oid, key))
             continue
         t = board.task(live[0]["id"]) or {}
-        for f, want in (("title", node["title"]), ("body", node["description"])):
+        for f, want in (("title", node["title"]), ("body", native_body(node))):
             if t.get(f) != want:
                 gaps.append("%s: %s differs" % (oid, f))
         if list(t.get("skills") or []) != list(node.get("skills") or []):

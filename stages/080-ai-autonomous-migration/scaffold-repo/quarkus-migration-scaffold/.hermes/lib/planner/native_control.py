@@ -126,6 +126,27 @@ def contract_doc(plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
+PROCEDURE = {
+    "repair": ("Procedure (outcome-board/v2, native control): first python3 .hermes/kernel/native_gate.py --root . issue, "
+               "then the paved-road-m3 loop (brief, patch the issued paths, run-verify, advance). A rejected attempt stays on "
+               "this card. When advance prints OUTCOME ACCEPTED end the run with kanban_request_review reviewer=reviewer; the "
+               "reviewer runs the paved-road-m3 audit and completes, or requests changes (another run of this card)."),
+    "assess": ("Procedure (outcome-board/v2, native control): paved-road-m4, then native_gate.py assessment-record. "
+               "M4 means verification ACCEPTED: an ACCEPT or PROVISIONAL_ACCEPT verdict goes to kanban_request_review "
+               "reviewer=reviewer; a REFUSE runs native_gate.py m4-repair and ends with kanban_block kind=dependency "
+               "(this card resumes when its repairs are done)."),
+    "deliver": ("Procedure (outcome-board/v2, native control): native_gate.py issue, then this stage's paved-road-m5 "
+                "producers (DEPLOY pushes with native_gate.py push); end with kanban_request_review reviewer=reviewer; "
+                "the reviewer completes on the stage audit and its bound receipts."),
+}
+
+
+def native_body(node: dict[str, Any]) -> str:
+    """The task body as published: the node's description and its v2
+    procedure line (deterministic; the read-back compares exactly this)."""
+    return "%s\n\n%s" % (node["description"], PROCEDURE[node["role"]])
+
+
 def native_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """The initial revision as native control publishes it: the M5 stages are
     ASSIGNED at creation (their native parent, the accepted M4, holds them;

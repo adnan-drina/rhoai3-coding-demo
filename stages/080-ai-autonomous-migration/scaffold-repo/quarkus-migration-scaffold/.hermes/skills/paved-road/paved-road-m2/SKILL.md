@@ -77,6 +77,17 @@ duplicate identity and resumes safely under the same command.
 `kanban_request_review` is allowed only when the whole-graph read-back is
 green. The reviewer's `kanban_complete` releases the graph.
 
+## outcome-board/v2 runs (native control)
+
+The `k4-mint` step is the same command; on a v2 run it runs
+`native_gate.py publish` under this open card. Every known outcome, M4 VERIFY
+and the three M5 stages become native tasks, each with its `contract.json`,
+and the plan revision is attached to this card as `plan.r1.json`. M3 depends
+on this card, M4 on every outcome, M5 on M4: nothing runs until this card is
+done. A crash mid-publication resumes with the same command without
+duplicates. `kanban_request_review` (and the reviewer's `kanban_complete`) is
+allowed only when `native_gate.py --root . readback` is empty.
+
 ## Self-test
 
 `python3 scripts/selftest.py` (golden only, never on a card): steps.json ↔ audit.json sync, gate first, fixture PASS/REFUSE set, and the paved-road coverage lint.

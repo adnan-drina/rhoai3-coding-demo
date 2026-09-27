@@ -148,6 +148,22 @@ refuses on this protocol. For each stage:
    `live.json` + `m5-verdict.json`) are all bound to the current HEAD and
    passed. No stage result is ever typed in by a worker.
 
+## outcome-board/v2 runs (native control)
+
+The three stage cards were published with the plan, assigned, and depend on
+the accepted M4 natively (PREFLIGHT -> DEPLOY -> VALIDATE). No grants.
+
+1. `python3 .hermes/kernel/native_gate.py --root . issue` binds this run. It
+   refuses when M4 is not accepted, or when the tree is no longer the
+   candidate M4 accepted.
+2. The stage's producers as above. On M5 DEPLOY the publication step is
+   `python3 .hermes/kernel/native_gate.py --root . push --remote origin --ref refs/heads/main`.
+   It reads the remote back first: a push that already landed is recorded,
+   never repeated. Run it again after a crash.
+3. Terminator: `kanban_request_review` reviewer=reviewer. The reviewer
+   completes after the stage audit; completion also requires the stage's own
+   receipts bound to the current HEAD.
+
 ## Failures
 
 Name the failed stage (M5 PREFLIGHT / M5 DEPLOY / M5 VALIDATE), the exact

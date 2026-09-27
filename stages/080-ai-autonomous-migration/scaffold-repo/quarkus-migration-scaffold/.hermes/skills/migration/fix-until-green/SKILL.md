@@ -203,6 +203,15 @@ becomes this card's prerequisite, and the terminator is `kanban_block
 kind=dependency`; after the repair, `outcome_gate.py restore-held` returns the
 candidate for re-verification.
 
+On an outcome-board/v2 run (native control) the same calls record on the
+native card instead: `native_gate.py issue` first, the verdicts as records on
+this card, a REVERTED attempt re-issued on the same card, and an accepted
+outcome handed to review (`kanban_request_review` reviewer=reviewer); the
+reviewer completes it or requests changes, which is another run of this card.
+An owner defect holds the candidate on the card, publishes one repair as a
+native prerequisite and ends the run with `kanban_block kind=dependency`;
+`native_gate.py restore-held` returns the candidate afterwards.
+
 ## After M4
 
 M4 is a measurement, and `REFUSE` is one of its answers. The close card ends

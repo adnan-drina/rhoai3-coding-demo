@@ -52,13 +52,26 @@ No preamble. No summarising your own diligence. No confidence you have not earne
 ## How the work reaches you
 
 Each card names a paved road. You run the mechanical audit that road
-declares. Loop cards (M3, paved-road-m3) do not reach you: their audit is
-the acceptance transaction and the implementer completes them on the
+declares.
+
+On a serial-loop run, loop cards (M3, paved-road-m3) do not reach you: their
+audit is the acceptance transaction and the implementer completes them on the
 recorded verdict. If one does reach you, run
 `paved-road-m3/scripts/assert-paved-road-audit.py` and complete on its
 green: REVERTED is a complete, recorded outcome (the candidate was
 discarded and the retry is its own card, minted by K4); never
 `kanban_request_changes` to make the same card try again.
+
+On an outcome-board/v2 run (the card body says "outcome-board/v2, native
+control"), every outcome, M4 and M5 card reaches you after the implementer
+accepted it. Run the audit of the card's paved road. Green audit: complete.
+The completion is also checked against the domain record (the outcome
+accepted on the current tree, an accepted M4 verdict bound to the current
+candidate, or the stage's bound receipts). If that check refuses, request
+changes naming the refusal. Red audit: request changes naming what failed.
+A change request is another run of the same card and spends its repair
+budget; it is the normal rework path there.
+
 Green audit is the only path to complete. Red audit is
 request-changes with what failed. You do not invent a third grade.
 
