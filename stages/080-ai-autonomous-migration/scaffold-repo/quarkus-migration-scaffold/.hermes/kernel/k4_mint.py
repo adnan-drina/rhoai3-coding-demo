@@ -371,6 +371,18 @@ def main(argv: list[str] | None = None) -> int:
     # an outcome store on a serial run refuses both.
     from planner.outcome_protocol import describe, mixed_state, select_protocol
     sel = select_protocol(root)
+    if sel.native:
+        # outcome-board/v2: the plan is published as native tasks (native_gate.py
+        # publish, under the open M2 card); the harness-release drift check first
+        from planner.run_control import run_gaps
+        drift = run_gaps(root)
+        if drift:
+            print("REFUSE: %s" % drift[0], file=sys.stderr)
+            print("native publication REFUSED before any native operation.", file=sys.stderr)
+            return 1
+        import native_gate
+        os.environ["HERMES_BIN"] = hermes
+        return native_gate.main(["--root", str(root), "publish" if execute else "preview"])
     if sel.outcome:
         import k4_graph
         return k4_graph.main(["--root", str(root), "publish" if execute else "preview", "--hermes", hermes])

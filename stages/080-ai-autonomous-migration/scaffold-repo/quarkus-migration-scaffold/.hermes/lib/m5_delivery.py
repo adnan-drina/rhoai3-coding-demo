@@ -944,7 +944,13 @@ def assess_eligibility(root: Path, *, runner: Runner | None = None) -> dict[str,
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}
     closed = close_row(steps)
     from planner.outcome_protocol import select_protocol
-    if select_protocol(root).outcome:
+    sel = select_protocol(root)
+    if sel.native:
+        # outcome-board/v2: M4 closes as the native M4 task DONE on an accepted verdict
+        # (its reviewer completed it); the serial steps.json close row does not exist
+        from planner.native_control import m4_closure
+        closed = m4_closure(root)
+    elif sel.outcome:
         # outcome board: M4 closes as the completed assessment the M5 stages are bound
         # to, recorded by the authority; the serial steps.json close row does not exist
         from planner.outcome_lifecycle import m4_closure
@@ -1152,7 +1158,8 @@ def start_delivery(root: Path, *, runner: Runner, hermes: str = "hermes",
         # outcome-board runs pre-create the M5 stages at publication; a stage is GRANTED
         # (assigned) by the reconciler after its predicate, never minted here
         return {"ok": False, "blocked": True, "eligibility": {}, "created": [], "reused": [],
-                "reason": "PROTOCOL_NOT_SERIAL: outcome-board/v1 grants the pre-created M5 stages",
+                "reason": "PROTOCOL_NOT_SERIAL: %s pre-creates the M5 stages at publication (v2: native "
+                          "prerequisites of the accepted M4; v1: granted by the reconciler)" % select_protocol(root).protocol,
                 "failed_stage": STAGE_LABELS["prepare"]}
     eligibility = assess_eligibility(root, runner=runner)
     record_eligibility(root, eligibility)

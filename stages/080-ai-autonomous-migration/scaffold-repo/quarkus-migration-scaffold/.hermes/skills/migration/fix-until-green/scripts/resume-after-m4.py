@@ -550,7 +550,14 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     from planner.outcome_protocol import select_protocol
-    if select_protocol(root).outcome:
+    sel = select_protocol(root)
+    if sel.native:
+        # outcome-board/v2: a REFUSE keeps the SAME M4 task open; its repairs become
+        # native prerequisites (native_gate.py m4-repair) and the dispatcher resumes it
+        return _refuse("PROTOCOL_NOT_SERIAL: this run uses outcome-board/v2; after a REFUSE the M4 task itself "
+                       "publishes its repairs (python3 .hermes/kernel/native_gate.py --root . m4-repair) and waits "
+                       "on them with kanban_block kind=dependency, never this serial resume")
+    if sel.outcome:
         # the outcome board continues after M4 through its dispatcher-tick reconciler
         # (kernel/outcome_reconcile.py): bounded repairs and a successor assessment
         return _refuse("PROTOCOL_NOT_SERIAL: this run uses outcome-board/v1; the continuation after M4 is the "

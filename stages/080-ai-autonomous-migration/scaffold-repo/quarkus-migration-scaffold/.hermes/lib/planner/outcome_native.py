@@ -126,6 +126,34 @@ class KanbanNative:
         finally:
             con.close()
 
+    def comment_rows(self, task_id: str) -> list[dict[str, Any]]:
+        """Every comment of a task, oldest first: id (board-wide order), author, body."""
+        con = self._ro()
+        try:
+            return [{"id": int(r["id"]), "author": r["author"], "body": r["body"]} for r in
+                    con.execute("SELECT id, author, body FROM task_comments WHERE task_id=? ORDER BY id", (task_id,))]
+        finally:
+            con.close()
+
+    def runs(self, task_id: str) -> list[dict[str, Any]]:
+        """The task's native run history, oldest first."""
+        con = self._ro()
+        try:
+            return [dict(r) for r in con.execute("SELECT * FROM task_runs WHERE task_id=? ORDER BY id", (task_id,))]
+        finally:
+            con.close()
+
+    def tasks_with_key_prefix(self, prefix: str) -> list[dict[str, Any]]:
+        """Every task whose idempotency key starts with ``prefix`` (archived included)."""
+        con = self._ro()
+        try:
+            like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            return [{"id": r["id"], "status": r["status"], "idempotency_key": r["idempotency_key"]} for r in
+                    con.execute("SELECT id, status, idempotency_key FROM tasks WHERE idempotency_key LIKE ? ESCAPE '\\' "
+                                "ORDER BY created_at, id", (like,))]
+        finally:
+            con.close()
+
     # -- write side (pinned CLI) ----------------------------------------------
     def _cli(self, *args: str) -> str:
         argv = self.hermes + ["kanban", *args]
@@ -171,8 +199,11 @@ class KanbanNative:
     def link(self, parent: str, child: str) -> None:
         self._cli("link", parent, child)
 
-    def comment(self, task_id: str, text: str) -> None:
-        self._cli("comment", task_id, text)
+    def comment(self, task_id: str, text: str, author: str = "") -> None:
+        args = ["comment", task_id, text]
+        if author:
+            args += ["--author", author]
+        self._cli(*args)
 
 
 class FakeNative:
@@ -188,8 +219,9 @@ class FakeNative:
         self.tasks: dict[str, dict[str, Any]] = {}
         self.links: set[tuple[str, str]] = set()
         self.comments_: dict[str, list[str]] = {}
+        self.comment_meta: dict[str, list[dict[str, Any]]] = {}
         self.attach_: dict[str, list[dict[str, Any]]] = {}
-        self.runs: dict[int, dict[str, Any]] = {}
+        self.runs_: dict[int, dict[str, Any]] = {}
         self.n = 0
         self.fail_after: dict[str, int] = {}
         self.calls: list[tuple[str, ...]] = []
@@ -209,21 +241,23 @@ class FakeNative:
                 "CREATE TABLE task_links (parent_id TEXT, child_id TEXT);"
                 "CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER);"
                 "CREATE TABLE task_attachments (id INTEGER PRIMARY KEY, task_id TEXT, filename TEXT, stored_path TEXT, size INTEGER);"
-                "CREATE TABLE task_runs (id INTEGER PRIMARY KEY, task_id TEXT, status TEXT, claim_lock TEXT);")
+                "CREATE TABLE task_runs (id INTEGER PRIMARY KEY, task_id TEXT, status TEXT, claim_lock TEXT, profile TEXT,"
+                " outcome TEXT);")
             for i, t in enumerate(self.tasks.values()):
                 con.execute("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             (t["id"], t.get("title"), t.get("body"), t.get("assignee"), t.get("status"), t.get("idempotency_key"),
                              json.dumps(t.get("skills") or []), t.get("workspace_path"), t.get("max_retries"),
                              t.get("current_run_id"), t.get("claim_lock"), t.get("worker_pid"), i))
             con.executemany("INSERT INTO task_links VALUES (?,?)", sorted(self.links))
-            for tid, rows in self.comments_.items():
-                for body in rows:
-                    con.execute("INSERT INTO task_comments(task_id, author, body, created_at) VALUES (?,?,?,0)", (tid, "t", body))
+            rows_all = sorted((m["id"], tid, m["author"], m["body"]) for tid, ms in self.comment_meta.items() for m in ms)
+            for cid, tid, author, body in rows_all:
+                con.execute("INSERT INTO task_comments(id, task_id, author, body, created_at) VALUES (?,?,?,?,0)", (cid, tid, author, body))
             for tid, rows in self.attach_.items():
                 for a in rows:
                     con.execute("INSERT INTO task_attachments VALUES (?,?,?,?,?)", (a["id"], tid, a["filename"], a["stored_path"], a["size"]))
-            for rid, r in self.runs.items():
-                con.execute("INSERT INTO task_runs VALUES (?,?,?,?)", (rid, r["task_id"], r["status"], r.get("claim_lock")))
+            for rid, r in self.runs_.items():
+                con.execute("INSERT INTO task_runs VALUES (?,?,?,?,?,?)", (rid, r["task_id"], r["status"], r.get("claim_lock"),
+                                                                        r.get("profile"), r.get("outcome")))
             con.commit()
         finally:
             con.close()
@@ -247,11 +281,21 @@ class FakeNative:
     def comments(self, task_id: str) -> list[str]:
         return list(self.comments_.get(task_id, []))
 
+    def comment_rows(self, task_id: str) -> list[dict[str, Any]]:
+        return [dict(m) for m in self.comment_meta.get(task_id, [])]
+
+    def runs(self, task_id: str) -> list[dict[str, Any]]:
+        return [dict(r) for _rid, r in sorted(self.runs_.items()) if r["task_id"] == task_id]
+
+    def tasks_with_key_prefix(self, prefix: str) -> list[dict[str, Any]]:
+        return [{"id": t["id"], "status": t["status"], "idempotency_key": t.get("idempotency_key")}
+                for t in self.tasks.values() if str(t.get("idempotency_key") or "").startswith(prefix)]
+
     def attachments(self, task_id: str) -> list[dict[str, Any]]:
         return [dict(a) for a in self.attach_.get(task_id, [])]
 
     def run(self, run_id: int) -> dict[str, Any] | None:
-        return self.runs.get(run_id)
+        return self.runs_.get(run_id)
 
     def create(self, *, title, body, assignee, parents, key, skills, workspace, max_retries, max_runtime="2h") -> str:
         self.calls.append(("create", key))
@@ -294,8 +338,12 @@ class FakeNative:
         self.calls.append(("link", parent, child))
         self.links.add((parent, child))
 
-    def comment(self, task_id: str, text: str) -> None:
+    def comment(self, task_id: str, text: str, author: str = "") -> None:
+        self.calls.append(("comment", task_id))
+        self._maybe_fail("comment")
+        self.n += 1
         self.comments_.setdefault(task_id, []).append(text)
+        self.comment_meta.setdefault(task_id, []).append({"id": self.n, "author": author or "user", "body": text.strip()})
 
     # -- test helpers standing in for dispatcher / worker lifecycle ------------
     def claim(self, task_id: str, *, pid: int = 0) -> tuple[int, str]:
@@ -304,17 +352,19 @@ class FakeNative:
         run_id = self.n
         lock = "lock-%d" % run_id
         t.update(status="running", current_run_id=run_id, claim_lock=lock, worker_pid=pid)
-        self.runs[run_id] = {"id": run_id, "task_id": task_id, "status": "running", "claim_lock": lock}
+        self.runs_[run_id] = {"id": run_id, "task_id": task_id, "status": "running", "claim_lock": lock,
+                              "profile": t.get("assignee"), "outcome": None}
         return run_id, lock
 
-    def end_run(self, task_id: str, status: str = "ready") -> None:
+    def end_run(self, task_id: str, status: str = "ready", outcome: str | None = None) -> None:
         t = self.tasks[task_id]
-        if t.get("current_run_id") in self.runs:
-            self.runs[t["current_run_id"]]["status"] = "ended"
+        if t.get("current_run_id") in self.runs_:
+            self.runs_[t["current_run_id"]]["status"] = "ended"
+            self.runs_[t["current_run_id"]]["outcome"] = outcome
         t.update(status=status, current_run_id=None, claim_lock=None, worker_pid=None)
 
     def complete(self, task_id: str) -> None:
-        self.end_run(task_id, "done")
+        self.end_run(task_id, "done", "completed")
         for p, c in self.links:
             if p == task_id:
                 ch = self.tasks.get(c)
@@ -324,3 +374,27 @@ class FakeNative:
 
     def archive(self, task_id: str) -> None:
         self.tasks[task_id]["status"] = "archived"
+
+    # -- the pinned review / dependency semantics (kanban_db.request_review,
+    #    request_changes, block_task kind=dependency), for synthetic tests ------
+    def _parents_done(self, task_id: str) -> bool:
+        return all(self.tasks[p]["status"] in ("done", "archived") for p, c in self.links if c == task_id)
+
+    def request_review(self, task_id: str, reviewer: str = "reviewer") -> None:
+        t = self.tasks[task_id]
+        t["_implementer"] = t.get("assignee")
+        self.end_run(task_id, "review", "review_requested")
+        t["assignee"] = reviewer
+
+    def claim_review(self, task_id: str, *, pid: int = 0) -> tuple[int, str]:
+        assert self.tasks[task_id]["status"] == "review", self.tasks[task_id]["status"]
+        return self.claim(task_id, pid=pid)
+
+    def request_changes(self, task_id: str, reason: str = "") -> None:
+        t = self.tasks[task_id]
+        self.end_run(task_id, "ready" if self._parents_done(task_id) else "todo", "changes_requested")
+        t["assignee"] = t.get("_implementer") or t.get("assignee")
+
+    def block_dependency(self, task_id: str) -> None:
+        """kind=dependency: back to todo while a parent is open (native promotion), else blocked."""
+        self.end_run(task_id, "todo" if not self._parents_done(task_id) else "blocked", "blocked")

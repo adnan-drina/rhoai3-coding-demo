@@ -30,7 +30,24 @@ loop:
   PROTOCOL_DOWNGRADED   outcome requested, the contract selects the serial loop
   PROTOCOL_UNREQUESTED  the contract selects outcome (or enables its
                         execution) and the run never requested it
-  PROTOCOL_UNKNOWN      a value outside serial-loop/v1 and outcome-board/v1
+  PROTOCOL_MISMATCH     the run requested one outcome-board version and the
+                        contract selects the other
+  PROTOCOL_UNKNOWN      a value outside serial-loop/v1, outcome-board/v1 and
+                        outcome-board/v2
+
+Two outcome-board versions (same outcomes, different control model):
+
+  outcome-board/v1   protected-authority control (architect F1): every
+                     deciding record in a separate principal's store.
+                     Kept for the runs that selected it; no new run
+                     requests it.
+  outcome-board/v2   native cooperative control (architect review
+                     2026-09-27, user confirmation): Hermes Kanban owns the
+                     lifecycle -- tasks, runs, dependencies, review and
+                     rework -- and the domain checks guard the native
+                     actions (planner/native_control.py). The worker's
+                     local user can alter the board and its records; no
+                     tamper resistance against worker code is claimed.
 
 Execution modes:
 
@@ -39,7 +56,10 @@ Execution modes:
                  is no factory run declaration and no run control. A real run
                  can never enter it. Every check runs, against the cooperative
                  in-process store; ``claimed_control`` stays false.
-  enabled        requires the PROTECTED authority service
+  enabled        v2: requires the platform's explicit measurement-trust
+                 decision (``outcome_board.measurement_trust``); the control
+                 model is the protocol's own (native cooperative).
+                 v1: requires the PROTECTED authority service
                  (planner/outcome_authority.py, architect F1): a separate
                  principal answering on the fixed socket, whose store the
                  caller cannot reach by path and whose code identity is the
@@ -61,7 +81,9 @@ from typing import Any
 
 SERIAL = "serial-loop/v1"
 OUTCOME = "outcome-board/v1"
-PROTOCOLS = (SERIAL, OUTCOME)
+NATIVE = "outcome-board/v2"
+OUTCOMES = (OUTCOME, NATIVE)
+PROTOCOLS = (SERIAL, OUTCOME, NATIVE)
 
 DISABLED = "disabled"
 QUALIFICATION = "qualification"
@@ -91,9 +113,10 @@ STAMP_KEY = "outcome_authority.code_sha256"
 
 # Refusal codes, each with the one remedy it names.
 REMEDY = {
-    "PROTOCOL_UNKNOWN": "board_protocol must be serial-loop/v1 or outcome-board/v1; recreate the run from the factory.",
-    "PROTOCOL_UNBOUND": "The run requested outcome-board/v1 but the platform record does not select it (or the record is missing). A run never switches protocol; reprovision the run control from the scaffolding event or recreate the run.",
-    "PROTOCOL_DOWNGRADED": "The run requested outcome-board/v1 and the platform record selects the serial loop. Nothing falls back; recreate the run or reprovision its run control.",
+    "PROTOCOL_UNKNOWN": "board_protocol must be serial-loop/v1, outcome-board/v1 or outcome-board/v2; recreate the run from the factory.",
+    "PROTOCOL_MISMATCH": "The run requested one outcome-board version and the platform record selects the other. A run never switches control model; reprovision the run control or recreate the run.",
+    "PROTOCOL_UNBOUND": "The run requested an outcome board but the platform record does not select it (or the record is missing). A run never switches protocol; reprovision the run control from the scaffolding event or recreate the run.",
+    "PROTOCOL_DOWNGRADED": "The run requested an outcome board and the platform record selects the serial loop. Nothing falls back; recreate the run or reprovision its run control.",
     "PROTOCOL_UNREQUESTED": "The platform record selects (or enables) the outcome board for a run that never requested it. Nothing runs; correct the run control.",
     "PROTOCOL_MIXED": "Outcome-board and serial-loop records coexist. Neither reader may act; abandon or restore the run explicitly.",
     "PROTOCOL_NOT_OUTCOME": "This path belongs to the outcome-board protocol and this run uses the serial loop.",
@@ -105,7 +128,7 @@ REMEDY = {
 }
 
 SELECTION_REFUSALS = ("PROTOCOL_UNKNOWN", "PROTOCOL_UNBOUND", "PROTOCOL_DOWNGRADED", "PROTOCOL_UNREQUESTED",
-                      "EXECUTION_MODE_UNKNOWN")
+                      "PROTOCOL_MISMATCH", "EXECUTION_MODE_UNKNOWN")
 
 
 @dataclass
@@ -123,7 +146,13 @@ class Selection:
 
     @property
     def outcome(self) -> bool:
-        return self.protocol == OUTCOME
+        """Either outcome-board version: outcomes are tasks, not loop steps."""
+        return self.protocol in OUTCOMES
+
+    @property
+    def native(self) -> bool:
+        """outcome-board/v2: native cooperative control (no authority service)."""
+        return self.protocol == NATIVE
 
     def as_dict(self) -> dict[str, Any]:
         return {"protocol": self.protocol, "execution": self.execution, "source": self.source,
@@ -163,14 +192,14 @@ def _governed(root: Path) -> Selection:
     selected = doc.get("board_protocol") if "board_protocol" in doc else None
     execution = str(board.get("execution") or DISABLED)
     trust = str(board.get("measurement_trust") or "")
-    wants_outcome = requested == OUTCOME
+    wants_outcome = requested in OUTCOMES
     sel = Selection(SERIAL, execution, "run-control", True, "governed", requested=requested,
                     selected=selected if isinstance(selected, str) or selected is None else repr(selected),
                     measurement_trust=trust)
     if gaps:
         # a missing or malformed platform record: the serial gates refuse it on
         # their own (run_gaps); an outcome request must not reach them
-        sel.protocol = OUTCOME if wants_outcome else SERIAL
+        sel.protocol = requested if wants_outcome else SERIAL
         sel.errors.append(("PROTOCOL_UNBOUND", gaps[0]))
         return sel
     if has_request and requested not in PROTOCOLS:
@@ -182,18 +211,20 @@ def _governed(root: Path) -> Selection:
         sel.errors.append(("PROTOCOL_UNKNOWN", "the run control selects board_protocol %r" % (selected,)))
         return sel
     if wants_outcome:
-        sel.protocol = OUTCOME
+        sel.protocol = str(requested)
         if selected is None:
             sel.errors.append(("PROTOCOL_UNBOUND", "the run requested %s in its initial commit and the run control "
-                                                   "selects no board protocol" % OUTCOME))
+                                                   "selects no board protocol" % requested))
         elif selected == SERIAL:
-            sel.errors.append(("PROTOCOL_DOWNGRADED", "the run requested %s and the run control selects %s" % (OUTCOME, SERIAL)))
+            sel.errors.append(("PROTOCOL_DOWNGRADED", "the run requested %s and the run control selects %s" % (requested, SERIAL)))
+        elif selected != requested:
+            sel.errors.append(("PROTOCOL_MISMATCH", "the run requested %s and the run control selects %s" % (requested, selected)))
         return sel
     # requested serial, or requested nothing (a run created before the request existed)
-    if selected == OUTCOME:
-        sel.protocol = OUTCOME
+    if selected in OUTCOMES:
+        sel.protocol = str(selected)
         sel.errors.append(("PROTOCOL_UNREQUESTED", "the run control selects %s and the run requested %s"
-                                                   % (OUTCOME, requested or "nothing")))
+                                                   % (selected, requested or "nothing")))
         return sel
     if board and execution != DISABLED:
         sel.protocol = OUTCOME
@@ -253,6 +284,8 @@ def authority_endpoint(sel: Selection) -> str:
     (cooperative; qualification fixtures), else a unix socket path. Enabled
     execution always uses the fixed AUTHORITY_SOCKET; a qualification fixture
     may name a local test socket in its pins."""
+    if sel.native:
+        return ""   # native cooperative control has no authority service
     if sel.execution == ENABLED:
         return str(AUTHORITY_SOCKET)
     if sel.execution == QUALIFICATION and not sel.governed and sel.authority_socket:
@@ -344,9 +377,10 @@ def execution_gate(root: Path, sel: Selection | None = None) -> list[tuple[str, 
         if sel.governed or sel.declaration != "RUN_DECLARATION_MISSING":
             return [("OUTCOME_QUALIFICATION_REFUSED", "governed=%s declaration=%s" % (sel.governed, sel.declaration))]
         return []
-    ok, why = authority_protected(root, sel)
-    if not ok:
-        return [("AUTHORITY_UNPROTECTED", why)]
+    if not sel.native:
+        ok, why = authority_protected(root, sel)
+        if not ok:
+            return [("AUTHORITY_UNPROTECTED", why)]
     if sel.measurement_trust not in MEASUREMENT_TRUSTS:
         return [("MEASUREMENT_TRUST_UNDECIDED", "outcome_board.measurement_trust is %r; one of %s must be declared"
                  % (sel.measurement_trust, ", ".join(MEASUREMENT_TRUSTS)))]
@@ -389,6 +423,8 @@ def mixed_state(root: Path, sel: Selection | None = None) -> list[tuple[str, str
         serial = serial_records(root)
         if serial:
             return [("PROTOCOL_MIXED", "outcome-board run carries serial-loop records %s" % ", ".join(serial))]
+        if store and sel.native:
+            return [("PROTOCOL_MIXED", "a native-control (%s) run carries an outcome-board/v1 authority store %s" % (NATIVE, STORE_FILE))]
         if store and authority_endpoint(sel):
             return [("PROTOCOL_MIXED", "a cooperative in-tree store %s sits beside the authority service" % STORE_FILE)]
         return []
@@ -403,6 +439,10 @@ def store_present(root: Path, sel: Selection | None = None) -> bool:
     unreachable service answers True so that callers fail closed on it rather
     than falling back to the serial road."""
     sel = sel or select_protocol(root)
+    if sel.native:
+        # native control keeps no store; whether a TASK is a published node is
+        # read from the board by native_control (the hooks ask per task)
+        return False
     ep = authority_endpoint(sel)
     if not ep:
         return (Path(root) / STORE_FILE).exists()

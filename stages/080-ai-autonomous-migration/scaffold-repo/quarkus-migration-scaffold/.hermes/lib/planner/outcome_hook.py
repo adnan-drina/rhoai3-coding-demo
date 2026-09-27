@@ -9,7 +9,16 @@ authority (in-process for a qualification fixture, the protected service under
 enabled execution) and the native board. They never come from the card body or
 from K2_* environment overrides.
 
-Decisions:
+outcome-board/v2 (native cooperative control) decides from the board itself
+(planner/native_control.py): the M2 card completes only on a green read-back
+of the published graph; a node's terminators follow its role (repair: an
+accepted outcome on the current tree, handed to review, completed by the
+reviewer after the audit; assess: an ACCEPTED verdict bound to the current
+candidate; deliver: the stage's derived evidence); product writes follow
+this native run's issue record. Tasks that are neither (M1) keep the serial
+rules.
+
+Decisions (outcome-board/v1):
   kanban_block        allowed on a consistent selection (escalation is a legal
                       result); an inconsistent selection refuses everything
   kanban_complete     outcome_lifecycle.check_complete (records the intent first)
@@ -49,7 +58,7 @@ def active(root: str) -> bool:
         try:
             data = p.read_bytes()
             # the protocol named anywhere, or an outcome_board block in a contract
-            if OUTCOME.encode() in data or b'"outcome_board"' in data:
+            if b"outcome-board/v" in data or b'"outcome_board"' in data:
                 return True
         except OSError:
             continue
@@ -100,6 +109,15 @@ def terminator(root: str, *, kind: str, profile: str, env: dict[str, str],
     if gate:
         return _block(gate[0][0], describe(gate).splitlines()[0])
     task, run_id = _ids(env)
+    if sel.native:
+        from planner import native_control as NC
+        try:
+            return NC.check_terminator(Path(root), NC.board_for(Path(root)), task_id=task, run_id=run_id, kind=kind,
+                                       profile=profile, audit_green=audit_green)
+        except NC.Refusal as exc:
+            return _block(exc.code, exc.detail)
+        except Exception as exc:  # fail closed on a native-control run
+            return _block("OUTCOME_HOOK_ERROR", "%s: %s" % (type(exc).__name__, exc))
     if not store_present(Path(root), sel):
         # before publication: the serial M1/M2 road governs (its audit requires publication)
         return None
@@ -135,6 +153,8 @@ def writes(root: str, *, rel_paths: list[str], env: dict[str, str]) -> dict[str,
     rels = [r for r in rel_paths if r]
     if not rels:
         return {"action": "allow", "code": "NO_WRITE"}
+    if sel.native:
+        return _native_writes(root, sel, rels, env)
     from planner.outcome_lifecycle import PROTECTED_DIRS, Refusal, check_write, norm_rel
     for r in rels:
         rr = norm_rel(r)
@@ -157,4 +177,29 @@ def writes(root: str, *, rel_paths: list[str], env: dict[str, str]) -> dict[str,
     finally:
         if ctx is not None and getattr(ctx, "store", None) is not None:
             ctx.store.close()
+    return {"action": "allow", "code": "WRITE_IN_ISSUE"}
+
+
+def _native_writes(root: str, sel, rels: list[str], env: dict[str, str]) -> dict[str, Any] | None:
+    """Product writes on a native-control run: harness state is never
+    tool-written; a v2 node writes only inside this native run's issue; the
+    M1/M2 cards keep the serial rules (None)."""
+    from planner import native_control as NC
+    for r in rels:
+        rr = NC.norm_rel(r)
+        if any(rr == d.rstrip("/") or rr.startswith(d) for d in NC.PROTECTED_DIRS):
+            return _block("STORE_WRITE_REFUSED", "%s is harness state" % rr)
+    gate = execution_gate(Path(root), sel)
+    if gate:
+        return _block(gate[0][0], describe(gate).splitlines()[0])
+    task, run_id = _ids(env)
+    try:
+        board = NC.board_for(Path(root))
+        if not task or board.node_of(task) is None:
+            return None
+        NC.check_write(board, task_id=task, run_id=run_id, rel_paths=rels)
+    except NC.Refusal as exc:
+        return _block(exc.code, exc.detail)
+    except Exception as exc:
+        return _block("OUTCOME_HOOK_ERROR", "%s: %s" % (type(exc).__name__, exc))
     return {"action": "allow", "code": "WRITE_IN_ISSUE"}
