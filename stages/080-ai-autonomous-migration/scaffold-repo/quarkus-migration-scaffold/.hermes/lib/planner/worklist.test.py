@@ -5374,6 +5374,13 @@ def _static_generated_body_case() -> int:
             if (it["rule_id"] != RULE_PARITY_GENERATED_BODY or it["cause"] != GENERATED_BODY_CAUSE or it["gate"] != PLAN_GATE
                     or it["path"] != "pom.xml" or it["kind"] != "build" or not it["id"].startswith("plan:gb:")):
                 return _fail("[%s] the planned item is the V16-8 obligation on pom.xml at the plan gate: %s" % (pkg, it))
+            # the planned item is admissible: it validates against the sealed work-list schema the
+            # admission applies (v21 M2 2026-09-27: source "plan" was missing from the enum -> COMPAT_FAIL)
+            from planner.schema_lite import load_schema, validate
+            wl_schema = load_schema(Path(__file__).resolve().parents[2] / "planning" / "schemas" / "worklist.schema.json")
+            errs = validate(it, wl_schema["properties"]["items"]["items"], root=wl_schema)
+            if errs:
+                return _fail("[%s] the planned item validates against worklist.schema.json: %s" % (pkg, errs))
             if "generateJsonCreator" not in it["detail"] or "items" not in it["detail"] or "No controller edit" not in it["detail"]:
                 return _fail("[%s] its first action is the V16-8 catalogue action naming the omitted property: %s" % (pkg, it["detail"][:400]))
             if it["planned"]["omitted_by_accepted"] != [{"model": "%s.dto.%sDto" % (pkg, model), "property": "items", "scenarios": ["sc:create"]}]:
