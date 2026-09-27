@@ -5,13 +5,17 @@ Executes the producer's own `# >>> outcome-board hooks` block (from
 maas-api-key-provisioning.yaml) against a disposable destination:
   * no run-defaults, a serial run-defaults, a malformed one, a K2-less config
     -> the hook config is untouched (byte-identical);
-  * run-defaults selecting outcome-board/v1 -> the K2 matcher adds the review
-    and block terminators, and on_kanban_dispatch_tick runs the destination's
-    kernel/outcome_reconcile.py (the review's production-hook integration).
+  * run-defaults selecting outcome-board/v2 (native Hermes Kanban control) ->
+    the K2 matcher adds the review and block terminators and the kanban
+    comment/attach/create/link tools, and NO reconciler is registered (the one
+    native dispatcher promotes dependents itself);
+  * run-defaults selecting outcome-board/v1 (retired for new runs) -> the same
+    terminators, and on_kanban_dispatch_tick runs the destination's
+    kernel/outcome_reconcile.py.
 With the destination's harness present (.hermes/lib), the producer uses the
 harness's own selection (outcome_protocol.select_protocol), so a GOVERNED run
 registers the hooks only when its initial-commit request and the read-only
-run control agree on outcome-board/v1:
+run control agree on the same outcome-board version:
   * request + selection agree                    -> registered
   * request, no selection (v17's live shape)      -> nothing, reason printed
   * selection without request / downgraded       -> nothing, reason printed
@@ -32,7 +36,9 @@ REPO = Path(__file__).resolve().parents[5]
 SCAFFOLD_LIB = REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
 GOLDEN_LIB = Path(__import__("os").environ.get("GOLDEN_LIB") or
                   REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
-OUTCOME, SERIAL = "outcome-board/v1", "serial-loop/v1"
+OUTCOME, SERIAL, NATIVE = "outcome-board/v1", "serial-loop/v1", "outcome-board/v2"
+NATIVE_TOOLS = ("kanban_block", "kanban_request_review", "request_review", "kanban_comment", "kanban_attach",
+                "kanban_create", "kanban_link")
 MATCHER = ("write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task|"
            "skill_manage|kanban_complete|complete_task")
 
@@ -121,6 +127,9 @@ def governed_cases(base: dict) -> list:
         print("SKIP: governed cases -- %s has no planner/outcome_protocol.py (set GOLDEN_LIB)" % GOLDEN_LIB)
         return fails
     cases = (
+        ("v2 agree", dict(request=NATIVE, selected=NATIVE), "v2", ""),
+        ("v2 requested, v1 selected", dict(request=NATIVE, selected=OUTCOME), False, "PROTOCOL_MISMATCH"),
+        ("v2 requested, nothing selected", dict(request=NATIVE), False, "PROTOCOL_UNBOUND"),
         ("agree", dict(request=OUTCOME, selected=OUTCOME), True, ""),
         ("v17 shape: request, no selection", dict(request=OUTCOME), False, "PROTOCOL_UNBOUND"),
         ("selection without request", dict(has_request=False, selected=OUTCOME), False, "PROTOCOL_UNREQUESTED"),
@@ -136,9 +145,13 @@ def governed_cases(base: dict) -> list:
             said: list = []
             got = run(root, copy.deepcopy(base), said)
             registered = got != base
-            if registered != want:
+            if registered != bool(want):
                 fails.append("%s: registered=%s, want %s (%s)" % (label, registered, want, said))
-            if want:
+            if want == "v2":
+                matcher = got["hooks"]["pre_tool_call"][0]["matcher"].split("|")
+                if not all(t in matcher for t in NATIVE_TOOLS) or got["hooks"].get("on_kanban_dispatch_tick"):
+                    fails.append("%s: v2 matcher %s / tick %s" % (label, matcher, got["hooks"].get("on_kanban_dispatch_tick")))
+            elif want:
                 tick = got["hooks"].get("on_kanban_dispatch_tick") or []
                 if not (len(tick) == 1 and tick[0]["command"].endswith("--root %s" % root)):
                     fails.append("%s: reconciler not registered: %s" % (label, tick))
@@ -193,6 +206,14 @@ def main() -> int:
             got = run(root, copy.deepcopy(base))
             if got != base:
                 fails.append("%s run-defaults changed the hooks: %s" % (label, got))
+        (root / "run-defaults.json").write_text(json.dumps({"configuration": {"board_protocol": NATIVE}}))
+        got = run(root, copy.deepcopy(base))
+        matcher = got["hooks"]["pre_tool_call"][0]["matcher"].split("|")
+        if not all(t in matcher for t in NATIVE_TOOLS):
+            fails.append("v2 run: matcher lacks %s: %s" % (NATIVE_TOOLS, matcher))
+        if got["hooks"].get("on_kanban_dispatch_tick"):
+            fails.append("v2 run registered a reconciler: %s" % got["hooks"]["on_kanban_dispatch_tick"])
+        fails.extend(config_parses_case(got))
         (root / "run-defaults.json").write_text(json.dumps({"configuration": {"board_protocol": "outcome-board/v1"}}))
         got = run(root, {"hooks": {"pre_tool_call": []}})
         if got != {"hooks": {"pre_tool_call": []}}:
@@ -210,7 +231,8 @@ def main() -> int:
     if fails:
         print("FAIL: " + "; ".join(fails), file=sys.stderr)
         return 1
-    print("OK: outcome-board hooks are registered only for a run that selects outcome-board/v1 (governed: the initial-commit "
+    print("OK: outcome-board hooks are registered only for a run that selects an outcome board (v2: terminators and the "
+          "kanban record/graph tools, no reconciler; v1: terminators and the reconciler; governed: the initial-commit "
           "request agreed by the read-only run control; a mutable file alone never selects; disagreements register "
           "nothing and say why; v12-v17 runs untouched)")
     return 0

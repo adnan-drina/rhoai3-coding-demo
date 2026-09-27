@@ -16,7 +16,8 @@ runs against a fake `oc` that records every object applied. It proves:
     read devspace-ai-tools-init and use one SCC, nothing else
   * the board protocol: the run's request is read from run-budget.json AT the
     scaffolding commit (content-addressed URL; served here from a file:// root)
-    and becomes the contract's selection; outcome-board/v1 carries the
+    and becomes the contract's selection; an outcome board (v2 native control,
+    or the retired v1) carries the
     PLATFORM's execution state (disabled by default, enabled only by the task
     parameter, qualification refused) and measurement-trust decision; a run
     without a request, an unreadable request and a declaration naming another
@@ -193,7 +194,7 @@ def _case(run: str) -> int:
     return _protocol_cases(run, commit)
 
 
-SERIAL, OUTCOME = "serial-loop/v1", "outcome-board/v1"
+SERIAL, OUTCOME, NATIVE = "serial-loop/v1", "outcome-board/v1", "outcome-board/v2"
 
 
 def _contract_of(st: dict, run: str) -> dict:
@@ -211,6 +212,9 @@ def _protocol_cases(run: str, commit: str) -> int:
         (dict(base, board_protocol=OUTCOME), {}, OUTCOME, {"execution": "disabled"}, "read"),
         (dict(base, board_protocol=OUTCOME), {"OB_EXECUTION": "enabled", "OB_TRUST": "cooperative-receipts"},
          OUTCOME, {"execution": "enabled", "measurement_trust": "cooperative-receipts"}, "read"),
+        (dict(base, board_protocol=NATIVE), {}, NATIVE, {"execution": "disabled"}, "read"),
+        (dict(base, board_protocol=NATIVE), {"OB_EXECUTION": "enabled", "OB_TRUST": "cooperative-receipts"},
+         NATIVE, {"execution": "enabled", "measurement_trust": "cooperative-receipts"}, "read"),
         (dict(base, board_protocol="board/v9"), {}, None, None, "read"),                    # recorded, never selected
         (dict(base, run_id="another-run", board_protocol=OUTCOME), {}, None, None, "unreadable"),
     )
@@ -262,8 +266,9 @@ def _selection_agrees(td: Path, run: str, contract: dict, decl: dict | None) -> 
     requested = d.get("board_protocol")
     if requested in (None, SERIAL) and contract.get("board_protocol") in (None, SERIAL):
         return "" if (sel.protocol, sel.errors) == (SERIAL, []) else "serial selection refused: %s" % sel.as_dict()
-    if requested == OUTCOME and contract.get("board_protocol") == OUTCOME:
-        return "" if (sel.protocol, sel.errors) == (OUTCOME, []) else "outcome selection refused: %s" % sel.as_dict()
+    for version in (OUTCOME, NATIVE):
+        if requested == version and contract.get("board_protocol") == version:
+            return "" if (sel.protocol, sel.errors) == (version, []) else "outcome selection refused: %s" % sel.as_dict()
     # an unknown request is refused by the reader, never run serial
     return "" if sel.errors and sel.outcome else "an inconsistent record was not refused: %s" % sel.as_dict()
 

@@ -142,10 +142,12 @@ spec:
       default: disabled
       description: >-
         PLATFORM-controlled execution state written into the run control of a
-        run that requested outcome-board/v1: disabled (default) or enabled.
-        Never a template or event value; qualification is refused (it is for
-        disposable local fixtures only). enabled is honoured by the harness only
-        when the protected authority service answers (OUTCOME-BOARD-CONTRACT 8a).
+        run that requested an outcome board (outcome-board/v2, native Hermes
+        Kanban control; or the retired outcome-board/v1): disabled (default) or
+        enabled. Never a template or event value; qualification is refused (it
+        is for disposable local fixtures only). v2 enabled also needs the
+        measurement-trust decision below; v1 enabled needs the protected
+        authority service (OUTCOME-BOARD-CONTRACT).
     - name: outcome-board-measurement-trust
       type: string
       default: ""
@@ -598,7 +600,7 @@ spec:
           # run-budget.json AT the scaffolding commit -- content-addressed by the
           # validated commit, written by the factory, never by an agent -- and
           # nothing else from that file. The platform's SELECTION is recorded
-          # here: board_protocol, and for outcome-board/v1 the platform-owned
+          # here: board_protocol, and for an outcome board the platform-owned
           # execution state and measurement-trust decision. An unreadable
           # request selects nothing, which the harness refuses for an
           # outcome-board request (PROTOCOL_UNBOUND) and accepts for a serial
@@ -625,9 +627,9 @@ spec:
         if decl is not None and "board_protocol" in decl:
             value = decl["board_protocol"]
             request["board_protocol"] = value
-            if value in ("serial-loop/v1", "outcome-board/v1"):
+            if value in ("serial-loop/v1", "outcome-board/v1", "outcome-board/v2"):
                 doc["board_protocol"] = value
-            if value == "outcome-board/v1":
+            if value in ("outcome-board/v1", "outcome-board/v2"):
                 doc["outcome_board"] = dict({"execution": execution}, **({"measurement_trust": trust} if trust else {}))
         doc["protocol_request"] = request
         print(json.dumps(doc, sort_keys=True))

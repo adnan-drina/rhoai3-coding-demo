@@ -157,7 +157,7 @@ class BoardProtocol(unittest.TestCase):
         code = DeclaredBudget().fill()
         return code[code.index('# The board protocol:'):code.index("print('PASS: fresh workspace")]
 
-    def dest(self, td, request=None, has_request=True, selected=None, execution=None):
+    def dest(self, td, request=None, has_request=True, selected=None, execution=None, trust=None):
         import json, subprocess
         root, control = td / 'dest', td / 'control'
         root.mkdir()
@@ -178,6 +178,8 @@ class BoardProtocol(unittest.TestCase):
             doc['board_protocol'] = selected
         if execution:
             doc['outcome_board'] = {'execution': execution}
+            if trust:
+                doc['outcome_board']['measurement_trust'] = trust
         (control / 'contract.json').write_text(json.dumps(doc))
         return root
 
@@ -191,7 +193,8 @@ class BoardProtocol(unittest.TestCase):
                 raise AssertionError(msg)
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            exec(self.snippet(), {'require': require, 'root': root, 'subprocess': subprocess, 'json': json})
+            exec(self.snippet(), {'require': require, 'root': root, 'subprocess': subprocess, 'json': json,
+                                  'c': {'hooks': getattr(self, 'hooks', {})}})
         return out.getvalue()
 
     def test_consistent_selections_pass_and_disagreements_refuse(self):
@@ -204,6 +207,12 @@ class BoardProtocol(unittest.TestCase):
             (dict(has_request=False, selected='outcome-board/v1'), 'PROTOCOL_UNREQUESTED', None),
             (dict(request='outcome-board/v1', selected='outcome-board/v1'), 'OUTCOME_EXECUTION_DISABLED', None),
             (dict(request='outcome-board/v1', selected='outcome-board/v1', execution='enabled'), 'AUTHORITY_UNPROTECTED', None),
+            (dict(request='outcome-board/v2'), 'PROTOCOL_UNBOUND', None),
+            (dict(request='outcome-board/v2', selected='outcome-board/v1'), 'PROTOCOL_MISMATCH', None),
+            (dict(request='outcome-board/v2', selected='outcome-board/v2'), 'OUTCOME_EXECUTION_DISABLED', None),
+            (dict(request='outcome-board/v2', selected='outcome-board/v2', execution='enabled'), 'MEASUREMENT_TRUST_UNDECIDED', None),
+            (dict(request='outcome-board/v2', selected='outcome-board/v2', execution='enabled', trust='cooperative-receipts'),
+             'the managed config lacks the outcome-board/v2 hooks', None),
         )
         # The platform repository can carry a scaffold subtree that predates
         # protocol selection (the golden is published separately). Its
@@ -219,8 +228,8 @@ class BoardProtocol(unittest.TestCase):
             selects = False
         for kw, refusal, protocol in cases:
             if not selects:
-                if kw.get('request') == 'outcome-board/v1':
-                    refusal = 'the run requests outcome-board/v1 and the installed harness cannot select it'
+                if kw.get('request') in ('outcome-board/v1', 'outcome-board/v2'):
+                    refusal = 'the run requests %s and the installed harness cannot select it' % kw['request']
                 elif refusal:
                     continue  # a contract selection the older harness does not read
             with tempfile.TemporaryDirectory() as d:
@@ -231,6 +240,24 @@ class BoardProtocol(unittest.TestCase):
                     self.assertIn('BOARD_PROTOCOL: ' + refusal, str(cm.exception), kw)
                 else:
                     self.assertIn('PASS: board protocol %s' % protocol, self.run_snippet(root), kw)
+
+    def test_native_control_launches_with_its_hooks(self):
+        """outcome-board/v2 enabled with the trust decision launches only on the
+        producer's v2 registration (matcher extended, no reconciler)."""
+        import tempfile
+        v2 = 'write|terminal|kanban_complete|complete_task|kanban_block|kanban_request_review|request_review|' \
+             'kanban_comment|kanban_attach|kanban_create|kanban_link'
+        with tempfile.TemporaryDirectory() as d:
+            root = self.dest(Path(d).resolve(), request='outcome-board/v2', selected='outcome-board/v2',
+                             execution='enabled', trust='cooperative-receipts')
+            self.hooks = {'pre_tool_call': [{'matcher': v2}]}
+            self.assertIn('PASS: board protocol outcome-board/v2', self.run_snippet(root))
+            self.hooks = {'pre_tool_call': [{'matcher': v2}], 'on_kanban_dispatch_tick': [{'command': 'python3 x'}]}
+            with self.assertRaises(AssertionError) as cm:
+                self.run_snippet(root)
+            self.assertIn('registers a reconciler', str(cm.exception))
+            self.hooks = {}
+
 
 if __name__ == '__main__':
     unittest.main()

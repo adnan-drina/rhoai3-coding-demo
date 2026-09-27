@@ -1620,18 +1620,22 @@ data:
         print("POST-TOOL-CALL: terminal observer registered from .hermes/kernel/post_tool_call.py")
     # <<< post-tool-call observer
     # >>> outcome-board hooks (stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md)
-    # ONLY for a run whose EFFECTIVE selection is outcome-board/v1, decided by
+    # ONLY for a run whose EFFECTIVE selection is an outcome board, decided by
     # the one rule every harness reader uses (outcome_protocol.select_protocol):
     # a governed run's request in its initial commit, agreed by the read-only
     # run control at /etc/rhoai3/run-control; a local fixture's run-defaults.json.
     # Never a mutable file alone. An inconsistent selection registers nothing
     # and says why (the launch check refuses the run). A destination whose
     # harness predates the selection module keeps the previous rule
-    # (run-defaults.json), which no such golden sets. When selected: the K2
-    # hook also decides the review/block terminators, and the gateway-embedded
-    # dispatcher runs the continuation reconciler on its own tick (no new
-    # scheduler). Execution itself stays refused until the protected authority
-    # answers.
+    # (run-defaults.json), which no such golden sets.
+    # outcome-board/v2 (native Hermes Kanban control): the K2 hook also decides
+    # the review/block terminators and sees the kanban comment/attach/create/
+    # link tools (its record and graph guards); NO reconciler: the one native
+    # dispatcher (kanban.max_in_progress 1, review_dispatch on, pinned above)
+    # promotes dependents itself.
+    # outcome-board/v1 (retired for new runs): the same matcher plus the
+    # continuation reconciler on the dispatcher tick; execution stays refused
+    # until the protected authority answers.
     _ob_protocol, _ob_why = None, ""
     try:
         import sys as _ob_sys
@@ -1656,7 +1660,11 @@ data:
                 _ob_protocol = ((_pjson.load(_obf) or {}).get("configuration") or {}).get("board_protocol")
         except (OSError, ValueError, AttributeError):
             _ob_protocol = None
-    if _ob_protocol == "outcome-board/v1" and cfg["hooks"].get("pre_tool_call"):
+    if _ob_protocol == "outcome-board/v2" and cfg["hooks"].get("pre_tool_call"):
+        cfg["hooks"]["pre_tool_call"][0]["matcher"] += ("|kanban_block|kanban_request_review|request_review"
+                                                        "|kanban_comment|kanban_attach|kanban_create|kanban_link")
+        print("OUTCOME-BOARD v2: review/block/comment/attach/create/link matcher registered; no reconciler (native dispatcher)")
+    elif _ob_protocol == "outcome-board/v1" and cfg["hooks"].get("pre_tool_call"):
         cfg["hooks"]["pre_tool_call"][0]["matcher"] += "|kanban_block|kanban_request_review|request_review"
         cfg["hooks"]["on_kanban_dispatch_tick"] = [{
             "command": "python3 %s --root %s" % (os.path.join(safe_root, ".hermes/kernel/outcome_reconcile.py"), safe_root),
