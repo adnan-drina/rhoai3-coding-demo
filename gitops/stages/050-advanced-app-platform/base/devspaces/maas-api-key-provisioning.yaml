@@ -894,7 +894,7 @@ data:
             )
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
     with open(cfg_path, "w", encoding="utf-8") as fh:
-        yaml.safe_dump(doc, fh, sort_keys=False)
+        yaml.safe_dump(doc, fh, sort_keys=False, width=1000000)  # no folded continuation lines
     print(
         f"dest profile {name}: skills.external_dirs={skills_cfg['external_dirs']} "
         f"via {cfg_path}"
@@ -1671,8 +1671,11 @@ data:
         # a JSON round trip unshares nested values (the provider and the
         # compression slot copy the same request body), so PyYAML writes no
         # &anchor/*alias pair; the harness reader refuses anchors, and v13's
-        # first start refused MODEL_PROFILE_MISMATCH on one (2026-09-25)
-        yaml.safe_dump(_pjson.loads(_pjson.dumps(cfg)), fh, default_flow_style=False, sort_keys=False)
+        # first start refused MODEL_PROFILE_MISMATCH on one (2026-09-25). No
+        # line wrapping either: PyYAML folds a long plain scalar onto a
+        # continuation line (the outcome-board reconciler command did, on v18's
+        # startup check, 2026-09-27), which the harness reader refuses the same way.
+        yaml.safe_dump(_pjson.loads(_pjson.dumps(cfg)), fh, default_flow_style=False, sort_keys=False, width=1000000)
     env_path = os.path.join(managed, ".env")
     with open(env_path, "w") as fh:
         fh.write(f"MAAS_API_BASE_URL={model_base}\n")

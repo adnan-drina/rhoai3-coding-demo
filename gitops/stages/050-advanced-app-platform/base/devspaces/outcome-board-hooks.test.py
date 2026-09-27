@@ -29,6 +29,7 @@ from pathlib import Path
 
 PRODUCER = Path(__file__).resolve().parent / "maas-api-key-provisioning.yaml"
 REPO = Path(__file__).resolve().parents[5]
+SCAFFOLD_LIB = REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
 GOLDEN_LIB = Path(__import__("os").environ.get("GOLDEN_LIB") or
                   REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
 OUTCOME, SERIAL = "outcome-board/v1", "serial-loop/v1"
@@ -148,6 +149,35 @@ def governed_cases(base: dict) -> list:
     return fails
 
 
+def config_parses_case(cfg: dict) -> list:
+    """The selected run's managed config, written with the producer's OWN dump
+    call, must parse with the harness reader (planner.yamlite): run_control
+    reads it to verify the model profile, and v18's startup check (2026-09-27)
+    found PyYAML folding the long reconciler command onto a continuation line
+    -> MODEL_PROFILE_MISMATCH "config.yaml is unreadable" at every launch."""
+    try:
+        import yaml  # noqa: F401  (the producer's writer)
+    except ImportError:
+        print("SKIP config_parses_case: no PyYAML here (the producer's writer)")
+        return []
+    import io
+    import re
+    src = PRODUCER.read_text()
+    call = re.search(r"^\s*(yaml\.safe_dump\(_pjson\.loads\(_pjson\.dumps\(cfg\)\), fh, [^\n]*\))\s*$", src, re.M)
+    if not call:
+        return ["the producer's managed-config dump call was not found"]
+    cfg = dict(cfg, long_value={"command": "python3 " + "/very/long/path/" * 12 + "--root " + "/x" * 30})
+    fh = io.StringIO()
+    exec(call.group(1), {"yaml": yaml, "_pjson": json, "cfg": cfg, "fh": fh})
+    sys.path.insert(0, str(SCAFFOLD_LIB))
+    from planner.yamlite import loads
+    try:
+        back = loads(fh.getvalue())
+    except Exception as exc:  # noqa: BLE001
+        return ["the managed config the producer writes does not parse with the harness reader: %s" % exc]
+    return [] if back == json.loads(json.dumps(cfg)) else ["the harness reader reads the managed config differently"]
+
+
 def main() -> int:
     base = {"hooks": {"pre_tool_call": [{"matcher": MATCHER, "command": "/m/pre_tool_call.sh", "timeout": 5, "fail_closed": True}]}}
     fails = []
@@ -174,6 +204,7 @@ def main() -> int:
         tick = got["hooks"].get("on_kanban_dispatch_tick") or []
         if not (len(tick) == 1 and tick[0]["command"] == "python3 %s/.hermes/kernel/outcome_reconcile.py --root %s" % (root, root)):
             fails.append("selected run: reconciler not registered: %s" % tick)
+        fails.extend(config_parses_case(got))
     fails.extend(governed_cases(base))
     fails.extend(post_hook_cases(base))
     if fails:
