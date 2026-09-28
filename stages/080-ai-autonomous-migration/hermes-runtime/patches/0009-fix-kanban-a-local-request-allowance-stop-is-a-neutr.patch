@@ -17,7 +17,8 @@ failure nor a reason for an immediate retry.
 - Worker: persists one local_budget_deferral event bound to its task and
   worker run (with model and accounting mode) BEFORE exiting, then leaves
   through the pinned native temporary-rate-limit exit,
-  KANBAN_RATE_LIMIT_EXIT_CODE (cli.py, quiet and non-quiet chat -q paths).
+  KANBAN_RATE_LIMIT_EXIT_CODE (kanban_worker_exit_code(), honoured by the
+  quiet and non-quiet chat -q paths since patch 0006).
   Nothing was sent after the stop; the candidate on the tree, verification
   evidence and deadlines are untouched.
 - Reaper (detect_crashed_workers): a run with a persisted deferral ends with
@@ -30,17 +31,18 @@ failure nor a reason for an immediate retry.
   card (local_budget_wait) until retry_not_before AND a free slot in the
   shared ledger (peek, no slot taken); the native atomic claim then resumes
   the same card. A newer genuine failure or a manual stop supersedes it.
-  Provider 429 handling is unchanged.
+  A provider quota wall keeps its own record (patch 0006,
+  provider_throttle) and the native rate-limit cooldown.
 ---
  agent/conversation_loop.py |   4 ++
  agent/request_pacer.py     |   9 ++++
- agent/turn_finalizer.py    |  70 +++++++++++++++++++++++--
- cli.py                     |  21 ++++++++
- hermes_cli/kanban_db.py    | 105 +++++++++++++++++++++++++++++++++++--
- 5 files changed, 201 insertions(+), 8 deletions(-)
+ agent/turn_finalizer.py    |  62 ++++++++++++++++++++--
+ cli.py                     |  10 ++--
+ hermes_cli/kanban_db.py    | 103 +++++++++++++++++++++++++++++++++++--
+ 5 files changed, 176 insertions(+), 12 deletions(-)
 
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index d634cf7c9d..a7077ab55a 100644
+index d634cf7..a7077ab 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
 @@ -4420,6 +4420,10 @@ def run_conversation(
@@ -55,7 +57,7 @@ index d634cf7c9d..a7077ab55a 100644
  
                  # -----------------------------------------------------------
 diff --git a/agent/request_pacer.py b/agent/request_pacer.py
-index 5aa3cf7468..dc0f1b16bb 100644
+index 5aa3cf7..dc0f1b1 100644
 --- a/agent/request_pacer.py
 +++ b/agent/request_pacer.py
 @@ -66,6 +66,15 @@ class RequestBudgetExhausted(RuntimeError):
@@ -75,23 +77,13 @@ index 5aa3cf7468..dc0f1b16bb 100644
          # Wording must not match kanban_db._RESPAWN_BLOCKER_RE (see
          # turn_finalizer.record_kanban_turn_stop).
 diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
-index 5ff2cc9bad..40e070a1da 100644
+index 391e5bb..2e9047a 100644
 --- a/agent/turn_finalizer.py
 +++ b/agent/turn_finalizer.py
-@@ -182,6 +182,64 @@ def _record_kanban_worker_stop(
+@@ -183,6 +183,54 @@ def _record_kanban_worker_stop(
          return False
  
  
-+# Exit code a dispatcher-owned kanban worker must leave with (None = default).
-+_kanban_exit_code: "int | None" = None
-+
-+
-+def kanban_worker_exit_code() -> "int | None":
-+    """Exit code requested by a kanban turn stop (``KANBAN_RATE_LIMIT_EXIT_CODE``
-+    after a local budget deferral), or None."""
-+    return _kanban_exit_code
-+
-+
 +def _record_kanban_local_deferral(
 +    kanban_task: str,
 +    deferral: dict,
@@ -143,7 +135,16 @@ index 5ff2cc9bad..40e070a1da 100644
  def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Logger) -> None:
      """Record a tool-loop guardrail halt as a failed kanban run.
  
-@@ -232,13 +290,17 @@ def record_kanban_turn_stop(agent, result) -> bool:
+@@ -216,7 +264,7 @@ _kanban_exit_code: "int | None" = None
+ 
+ def kanban_worker_exit_code() -> "int | None":
+     """Exit code requested by a kanban turn stop (``KANBAN_RATE_LIMIT_EXIT_CODE``
+-    after a provider quota wall), or None."""
++    after a provider quota wall or a local budget deferral), or None."""
+     return _kanban_exit_code
+ 
+ 
+@@ -297,13 +345,17 @@ def record_kanban_turn_stop(agent, result) -> bool:
              event_payload_extra={"incomplete_output": kind, "output_cap": cap},
          )
      if result.get("model_stop") == "request_budget":
@@ -163,53 +164,42 @@ index 5ff2cc9bad..40e070a1da 100644
              logger,
 -            event_payload_extra={"model_stop": "MODEL_REQUEST_BUDGET"},
          )
-     if result.get("failed") and result.get("failure_reason") == "rate_limit":
-         attempts = result.get("api_attempts") or getattr(agent, "_api_max_retries", None)
+     if result.get("failed") and result.get("failure_reason") in _PROVIDER_THROTTLE_REASONS:
+         # A provider quota wall says nothing about the task: the run leaves
 diff --git a/cli.py b/cli.py
-index b53906386a..5f953853c4 100644
+index ae858ae..558a7eb 100644
 --- a/cli.py
 +++ b/cli.py
-@@ -21407,6 +21407,16 @@ def main(
-                                     _exit_code = _RL_CODE
+@@ -21408,7 +21408,8 @@ def main(
                                  except Exception:
                                      _exit_code = 1
-+                        # RHOAI3: a kanban worker that deferred on the run's
-+                        # local request allowance leaves through the native
-+                        # temporary-rate-limit exit (neutral requeue).
-+                        try:
-+                            from agent.turn_finalizer import kanban_worker_exit_code
-+
-+                            if os.environ.get("HERMES_KANBAN_TASK") and kanban_worker_exit_code():
-+                                _exit_code = kanban_worker_exit_code()
-+                        except Exception:
-+                            pass
-                         sys.exit(_exit_code)
- 
-                 # Exit with error code if credentials or agent init fails
-@@ -21435,6 +21445,17 @@ def main(
-                 cli._print_exit_summary(clear_screen=False)
-         finally:
+                         # RHOAI3: a neutral kanban turn stop (provider quota
+-                        # wall recorded for this run) leaves through the
++                        # wall, or a deferral on the run's local request
++                        # allowance, recorded for this run) leaves through the
+                         # native temporary-failure exit (EX_TEMPFAIL requeue).
+                         try:
+                             from agent.turn_finalizer import kanban_worker_exit_code
+@@ -21447,9 +21448,10 @@ def main(
              _finalize_single_query(cli)
-+        # RHOAI3: see the quiet branch — a kanban worker's local budget
-+        # deferral exits with the native temporary-rate-limit code.
-+        try:
-+            from agent.turn_finalizer import kanban_worker_exit_code
-+
-+            if os.environ.get("HERMES_KANBAN_TASK") and kanban_worker_exit_code():
-+                sys.exit(kanban_worker_exit_code())
-+        except SystemExit:
-+            raise
-+        except Exception:
-+            pass
-         return
-     
-     # Run interactive mode
+         # RHOAI3: the non-quiet branch (the one the dispatcher spawns) fell
+         # through to rc=0 for every outcome, which the reaper reads as a
+-        # protocol violation. A neutral kanban turn stop exits with the
+-        # native temporary-failure code, as the quiet branch does (upstream
+-        # be9d4369 closes the same gap with _single_query_exit_code).
++        # protocol violation. A neutral kanban turn stop (provider quota wall,
++        # local request-allowance deferral) exits with the native
++        # temporary-failure code, as the quiet branch does (upstream be9d4369
++        # closes the same gap with _single_query_exit_code).
+         try:
+             from agent.turn_finalizer import kanban_worker_exit_code
+ 
 diff --git a/hermes_cli/kanban_db.py b/hermes_cli/kanban_db.py
-index 79398b7d68..5c0beccdb2 100644
+index 2a62238..a01dcd5 100644
 --- a/hermes_cli/kanban_db.py
 +++ b/hermes_cli/kanban_db.py
-@@ -8097,6 +8097,61 @@ _RECENT_WORKER_EXITS_MAX = 4096
- _recent_worker_exits: "dict[int, tuple[int, float]]" = {}
+@@ -8137,6 +8137,61 @@ def _provider_throttle_for_run(conn, task_id: str, run_id) -> Optional[dict]:
+     return payload if isinstance(payload, dict) else None
  
  
 +# ---------------------------------------------------------------------------
@@ -270,19 +260,10 @@ index 79398b7d68..5c0beccdb2 100644
  def _record_worker_exit(pid: int, raw_status: int) -> None:
      """Record a reaped child's exit status for later classification.
  
-@@ -8892,7 +8947,7 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
-     exited_hook_payloads: list[dict] = []
-     with write_txn(conn):
-         rows = conn.execute(
--            "SELECT id, worker_pid, claim_lock, started_at, assignee "
-+            "SELECT id, worker_pid, claim_lock, started_at, assignee, current_run_id "
-             "FROM tasks "
-             "WHERE status = 'running' AND worker_pid IS NOT NULL"
-         ).fetchall()
-@@ -8916,7 +8971,34 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
-             pid = int(row["worker_pid"])
-             kind, code = _classify_worker_exit(pid)
-             rate_limited_exit = False
+@@ -8963,7 +9018,34 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
+             _throttle = _provider_throttle_for_run(conn, row["id"], row["current_run_id"])
+             if _throttle is not None and kind != "rate_limited":
+                 kind = "rate_limited"
 -            if kind == "clean_exit":
 +            # RHOAI3: a run that recorded a local request-allowance deferral
 +            # sent nothing after it and ends neutrally whatever the exit
@@ -315,7 +296,7 @@ index 79398b7d68..5c0beccdb2 100644
                  # Worker subprocess returned 0 but its task is still
                  # ``running`` in the DB — it exited without calling
                  # ``kanban_complete`` / ``kanban_block``. Overwhelmingly the
-@@ -9465,15 +9547,30 @@ def check_respawn_guard(
+@@ -9530,15 +9612,30 @@ def check_respawn_guard(
      #    no longer applies and the normal paths take over.
      rl_cooldown = _resolve_rate_limit_cooldown_seconds()
      latest_run = conn.execute(
