@@ -125,8 +125,7 @@ def _atoms(worklist: dict[str, Any], baseline: dict[str, Any], seals: dict[str, 
             for s in seal.get("symbols") or []:
                 q = qualify_symbol(_s(s.get("fqn")), _s(s.get("kind")), types, structure)
                 (syms.append((q, _s(s.get("kind")))) if q else unknown.append(_s(s.get("fqn"))))
-            sites = {(_s(m.get("path")), _s(m.get("type")), _s(m.get("member_id")), int(m.get("occurrence") or 0), _s(m.get("identity")))
-                     for m in seal.get("members") or []}
+            sites = set(seal_site_keys(seal))
             member_types = types
         else:
             for m in members:
@@ -135,7 +134,7 @@ def _atoms(worklist: dict[str, Any], baseline: dict[str, Any], seals: dict[str, 
                     syms.append((q, "resolved"))
                 elif _s(m.get("kind")) == "compile":
                     unknown.append(_s(m.get("id")))
-            sites = {(_s(m.get("path")), "", _s(m.get("id")), 0, _s(m.get("identity"))) for m in members}
+            sites = {"i|%s" % _s(m.get("id")) for m in members}
             member_types = []
         rules = sorted({_s(m.get("rule_id")) for m in members if _s(m.get("kind")) in ("config", "incident", "build")})
         fam_hits = {idx[q][0] for q, _k in syms if q in idx} | {rule_fam[r] for r in rules if r in rule_fam}
@@ -150,6 +149,8 @@ def _atoms(worklist: dict[str, Any], baseline: dict[str, Any], seals: dict[str, 
             why = "no objective family names its symbols or rules"
         out[cid] = {"cluster": cid, "baseline_owner": node["outcome_id"], "class": node["class"], "family": family,
                     "fallback_reason": why, "files": sorted(set(c.get("write_set") or [])), "sites": sites,
+                    "writable": sorted(set(c.get("write_set") or []) | {_s(p) for p in seal.get("writable_paths") or []}),
+                    "fragment": fragment_seal(seal),
                     "transformations": sorted({idx[q][1] for q, _k in syms if q in idx} | {"rule:%s" % r for r in rules}),
                     "symbols": sorted({q for q, _k in syms}), "rules": rules, "member_types": member_types,
                     "items": list(c.get("items") or []), "order": c.get("order_key"),
@@ -177,14 +178,54 @@ def _components(atoms: list[dict[str, Any]], by_rule: bool) -> list[list[dict[st
     return out
 
 
-def _bounds(comp: list[dict[str, Any]], fragment: bool = False) -> dict[str, Any]:
-    files = sorted({f for a in comp for f in a["files"]})
-    sites = {s for a in comp for s in a["sites"]}
-    syms = sorted({t for a in comp for t in a["transformations"]})
+def seal_site_keys(seal: dict[str, Any]) -> list[str]:
+    """A sealed unit's sites, one identity per member (the unit former's own
+    site count: worklist._unit_size counts members)."""
+    return sorted({"m|%s|%s|%s|%d|%s" % (_s(m.get("path")), _s(m.get("type")), _s(m.get("member_id")),
+                                         int(m.get("occurrence") or 0), _s(m.get("identity")))
+                   for m in seal.get("members") or [] if isinstance(m, dict)})
+
+
+def fragment_seal(seal: dict[str, Any]) -> bool:
+    """The unit former qualified this sealed unit for the fragment-set symbol
+    limit (worklist._bound_unit records max_symbols); nothing else does."""
+    return int(((seal or {}).get("bounds") or {}).get("max_symbols") or 0) == MAX_FRAGMENT_SYMBOLS
+
+
+def scope_bounds(*, files, sites, symbols, fragment: bool) -> dict[str, Any]:
+    """THE bound of an objective scope, over its FINAL canonical envelope and
+    in the unit former's own units (worklist._unit_size): files = every
+    writable path, sites = distinct sealed member (or unsealed item)
+    identities, symbols = distinct source symbol identities -- never
+    transformation names. The fragment limit applies only when every
+    constituent's own seal qualified for it. Derivation (compose) and
+    consumption (worklist.build_objective_scope, before any path is granted)
+    both call this; a stored `within` is never trusted."""
+    def n(x) -> int:
+        return x if isinstance(x, int) else len(set(x))
     lim = {"files": MAX_FILES, "sites": MAX_SITES, "symbols": MAX_FRAGMENT_SYMBOLS if fragment else MAX_SYMBOLS}
-    b = {"files": len(files), "sites": len(sites), "symbols": len(syms), "limits": lim}
+    b = {"files": n(files), "sites": n(sites), "symbols": n(symbols), "limits": lim}
     b["within"] = b["files"] <= lim["files"] and b["sites"] <= lim["sites"] and b["symbols"] <= lim["symbols"]
     return b
+
+
+def _bounds(comp: list[dict[str, Any]], extra_files=()) -> dict[str, Any]:
+    return scope_bounds(files={f for a in comp for f in a["writable"]} | set(extra_files),
+                        sites={x for a in comp for x in a["sites"]},
+                        symbols={q for a in comp for q in a["symbols"]},
+                        fragment=bool(comp) and all(a["fragment"] for a in comp))
+
+
+def _oversize(what: str, comp: list[dict[str, Any]], bounds: dict[str, Any], baseline_nodes: dict[str, dict[str, Any]],
+              requirements=()) -> str:
+    owners = sorted({a["baseline_owner"] for a in comp})
+    obligations = sum(len(baseline_nodes[o].get("obligations") or []) for o in owners)
+    accounts = sorted({_s((baseline_nodes[o].get("budget") or {}).get("key")) or o for o in owners})
+    return ("%s: %s exceeds the scope bound (%s) and no independent subcontract is proven; nothing is split or "
+            "issued. Accounted: clusters %s, %d obligation(s), requirements %s, budget accounts %s"
+            % (what, ", ".join(a["cluster"] for a in comp),
+               ", ".join("%s %d/%d" % (k, bounds[k], bounds["limits"][k]) for k in ("files", "sites", "symbols")),
+               ", ".join(a["cluster"] for a in comp), obligations, sorted(requirements) or "none", accounts))
 
 
 def _subject_type(r: dict[str, Any]) -> str:
@@ -227,15 +268,11 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
         for comp in comps:
             b = _bounds(comp)
             if len(comp) > 1 and not b["within"]:
-                refused.append({"family": fam, "clusters": [a["cluster"] for a in comp], "bounds": b,
-                                "reason": "COMPOSITION_OVERSIZE: the connected component exceeds the unit bounds and no "
-                                          "independent subcontract is proven; its units stay separate objectives"})
-                comps_out = [[a] for a in comp]
-            else:
-                comps_out = [comp]
-            for c in comps_out:
-                objectives.append({"family": fam, "atoms": c, "bounds": _bounds(c), "requirements": [],
-                                   "fallback_reason": c[0]["fallback_reason"] if not fam else ""})
+                # a connected component is ONE repair; splitting it by size alone would issue halves whose
+                # independent acceptance nobody proved. A typed planning refusal, never a fallback.
+                raise PlanError("COMPOSITION_OVERSIZE", _oversize("the %s component" % fam, comp, b, bnodes))
+            objectives.append({"family": fam, "atoms": comp, "bounds": b, "requirements": [],
+                               "fallback_reason": comp[0]["fallback_reason"] if not fam else ""})
 
     # 2. identities: a singleton keeps its baseline id; a composition hashes
     #    policy, family and constituent identities (never a display name)
@@ -354,10 +391,10 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
         paths = sorted({p for r in rows for p in r.get("paths") or []})
         symbols = sum(len((r.get("facts") or {}).get("members") or []) or len(r.get("paths") or []) for r in rows)
         sites = sum(int((r.get("facts") or {}).get("sites") or 0) for r in rows if isinstance((r.get("facts") or {}).get("sites"), int))
-        fragment = ro["family"] == "selected-repository-implementation"
-        lim = {"files": MAX_FILES, "sites": MAX_SITES, "symbols": MAX_FRAGMENT_SYMBOLS if fragment else MAX_SYMBOLS}
-        bounds = {"files": len(paths), "sites": sites, "symbols": symbols, "limits": lim,
-                  "within": len(paths) <= lim["files"] and sites <= lim["sites"] and symbols <= lim["symbols"]}
+        # a requirement objective's scope is its requirements' own paths; its symbols are the members it
+        # owes (the planned-unit grant's measure), and a selected repository contract is a fragment set
+        bounds = scope_bounds(files=paths, sites=sites, symbols=symbols,
+                              fragment=ro["family"] == "selected-repository-implementation")
         if not bounds["within"]:
             raise ObjectiveError("OBJECTIVE_OVERSIZE", "%s spans %s; one requirement objective is one coherent repair" % (key, bounds))
         title = fams[ro["family"]]["title"] if ro["family"] else "requirement"
@@ -522,16 +559,25 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
         n["assignee"] = IMPL
         n["skills"] = [REPAIR_SKILL]
         if len(n.get("objective", {}).get("constituents") or []) > 1:
+            comp = [atoms[c["cluster"]] for c in n["objective"]["constituents"]]
+            req_paths = {p for q in n.get("requirements") or [] for p in reqrows[q].get("paths") or []}
+            final_paths = sorted(set(n["plan_paths"]) | req_paths | {f for a in comp for f in a["writable"]})
+            final = _bounds(comp, extra_files=final_paths)
+            if not final["within"]:
+                raise PlanError("COMPOSITION_OVERSIZE", _oversize("objective %s after its requirements attached" % k, comp,
+                                                                  final, bnodes, n.get("requirements") or []))
+            n["objective"]["bounds"] = final
             n["execution_unit"] = {
                 "policy": POLICY, "constituents": sorted(c["cluster"] for c in n["objective"]["constituents"]),
-                "units": [{"cluster": c["cluster"], "seal": c["seal"], "write_set": c["write_set"], "items": c["items"]}
+                "units": [{"cluster": c["cluster"], "seal": c["seal"], "write_set": c["write_set"], "items": c["items"],
+                           "symbols": sorted(atoms[c["cluster"]]["symbols"]), "fragment": atoms[c["cluster"]]["fragment"]}
                           for c in sorted(n["objective"]["constituents"], key=lambda c: c["cluster"])],
                 "obligations": list(n["obligations"]), "requirements": list(n.get("requirements") or []),
                 # line-free identities of the admitted obligations: what "still
                 # open" means for this scope, whatever lines the edits move
                 "identities": {ob: _s(items.get(ob, {}).get("identity")) or ob for ob in n["obligations"]},
-                "paths": sorted(set(n["plan_paths"]) | {p for q in n.get("requirements") or [] for p in reqrows[q].get("paths") or []}),
-                "bounds": n["objective"]["bounds"],
+                "paths": final_paths,
+                "bounds": final,
                 "family": n["objective"]["family"],
                 "check_plan": [dict(r) for r in n.get("check_plan") or []]}
         n["description"] = render_description(n)

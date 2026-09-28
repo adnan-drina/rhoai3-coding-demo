@@ -184,6 +184,53 @@ def _objectives_pin_case() -> int:
     return 0
 
 
+def _composition_oversize_case() -> int:
+    """An oversized connected objective is a typed planning refusal that
+    reaches admission: the real planner raises COMPOSITION_OVERSIZE, the real
+    plan-semantics projection keeps its reason (initial_graph), and the plan
+    contract blocks PLAN_CONTRACT naming it, with the accounted clusters,
+    obligations and budget accounts. Nothing is published, split or issued."""
+    import importlib.util
+    import tempfile
+    from unittest.mock import patch
+    from planner import outcome_graph as OG
+    from planner import plan_semantics as PS
+    spec = importlib.util.spec_from_file_location("co_selftest", Path(__file__).with_name("compatibility_objectives.test.py"))
+    CO_T = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(CO_T)
+    w = CO_T.World()
+    files = ["b/F%02d.java" % i for i in range(21)]
+    w.unit("u:tx-a", "org.springframework.transaction.annotation", "package", files[:11], 0)
+    w.unit("u:tx-b", "org.springframework.transaction.annotation.Transactional", "annotation", files[10:], 1)
+    real = OG.derive_initial_graph
+    try:
+        CO_T.derive(w)   # the real planner on the oversized component
+    except OG.PlanError as exc:
+        refusal = exc
+    else:
+        return _fail("a 21-file connected component must not be planned")
+
+    def raise_real(**_kw):
+        raise refusal
+    with tempfile.TemporaryDirectory(prefix="adm-oversize-") as td:
+        root = Path(td)
+        (root / "evidence").mkdir()
+        (root / "evidence/entry-point-inventory.json").write_text('{"entry_points": []}', encoding="utf-8")
+        with patch.object(OG, "derive_initial_graph", raise_real):
+            graph, why = PS.initial_graph(root, w.worklist(), requirements=[], oracles=None, run_id="r")
+    if graph is not None or not why.startswith("COMPOSITION_OVERSIZE:") or "Accounted:" not in why:
+        return _fail("the planner's refusal must reach the projection with its accounting: %r" % why[:200])
+    if OG.derive_initial_graph is not real:
+        return _fail("the patch leaked")
+    doc = {"unknowns": ["graph: %s" % why], "plan": {"requirements": []}}   # from_root records exactly this
+    with patch.object(PS, "from_root", return_value=doc):
+        _doc, blocks = PS.contract(Path("."))
+    got = [(b["class"], b["subject"]) for b in blocks]
+    if got != [("PLAN_CONTRACT", "COMPOSITION_OVERSIZE")] or "u:tx-a, u:tx-b" not in blocks[0]["detail"]:
+        return _fail("admission blocks the oversized composition by name: %s" % blocks)
+    return 0
+
+
 def _recipe_rules_case() -> int:
     """PLAN_RECIPE_MISSING is for REPAIR requirements only: an applicable
     behaviour verification (a captured oracle) or decided configuration has
@@ -206,7 +253,7 @@ def _recipe_rules_case() -> int:
 
 def main() -> int:
     if (_typed_class_case() or _unit_oversize_case() or _unit_mode_switch_case() or _plan_semantics_pin_case()
-            or _objectives_pin_case() or _recipe_rules_case()):
+            or _objectives_pin_case() or _composition_oversize_case() or _recipe_rules_case()):
         return 1
     print("OK: admission block classes (a bounded-out unit is UNIT_OVERSIZE carrying the former's own refusal, a "
           "cluster with no derivable scope is still SCOPE_UNDERIVED with its own wording, a refused formation flip is "

@@ -17,7 +17,14 @@ admitted unit); the objective revision is composed from it.
 5. Renaming types and reordering clusters changes no membership (under the
    rename mapping); an unknown symbol or no family stays its own objective
    with a named reason; a missing catalog refuses.
-6. Exact bounds compose; bound+1 refuses the composition explicitly.
+6. One scope validator over the FINAL envelope: 20 files compose and 21
+   refuse COMPOSITION_OVERSIZE -- for a plain union, for paths a requirement
+   attaches and for a sealed child's writable paths; duplicates count once.
+   Symbols are distinct source symbols, never transformation names: 8 pass,
+   9 refuse, several under one transformation count separately, a shared one
+   counts once; the 16-symbol fragment limit applies only when every
+   constituent's seal qualified. Nothing is split to fit, and the refusal
+   names what it accounts for.
 7. Conservation: every obligation and requirement has one account; every
    later check is due at M4; a hard prerequisite cycle is PREREQUISITE_CYCLE.
 8. Without objectives the revision is byte-identical to the baseline.
@@ -215,16 +222,82 @@ def main() -> int:
             return _fail("a missing catalog refuses OBJECTIVES_CATALOG, got %s" % exc.code)
     else:
         return _fail("a requested policy without its catalog must refuse")
-    # 6. bounds: 20 files compose, 21 refuse
-    for n_files, compose in ((20, True), (21, False)):
+    # 6. one validator over the final envelope
+    def refused(fn) -> str:
+        try:
+            fn()
+        except OG.PlanError as exc:
+            return exc.code if exc.code == "COMPOSITION_OVERSIZE" and "Accounted:" in str(exc) else "BAD:%s %s" % (exc.code, exc)
+        return ""
+
+    def tx_world(n_files: int) -> World:
         wb = World()
         a = ["b/F%02d.java" % i for i in range(n_files)]
         wb.unit("u:tx-a", "org.springframework.transaction.annotation", "package", a[:11], 0)
         wb.unit("u:tx-b", "org.springframework.transaction.annotation.Transactional", "annotation", a[10:], 1)
-        gb = derive(wb)
-        composed = frozenset({"u:tx-a", "u:tx-b"}) in by_clusters(gb)
-        if composed != compose or (not compose and not gb["composition"]["refused"]):
-            return _fail("%d files: composed=%s, want %s; refused=%s" % (n_files, composed, compose, gb["composition"]["refused"]))
+        return wb
+    gb = derive(tx_world(20))
+    if frozenset({"u:tx-a", "u:tx-b"}) not in by_clusters(gb) or \
+            len(by_clusters(gb)[frozenset({"u:tx-a", "u:tx-b"})]["execution_unit"]["paths"]) != 20:
+        return _fail("a 20-file connected component composes into one 20-path scope")
+    if refused(lambda: derive(tx_world(21))) != "COMPOSITION_OVERSIZE":
+        return _fail("a 21-file connected component is a typed refusal, never an unproved split: %s"
+                     % refused(lambda: derive(tx_world(21))))
+    # requirement-attached paths count, duplicates once
+    ctl = next(n for n in reps(g).values() if "u:val-a" in (n.get("clusters") or []))
+    have = len(ctl["execution_unit"]["paths"])
+    for extra, ok in ((20 - have, True), (21 - have, False)):
+        wr = shop()
+        wr.reqs[3]["paths"] += [P + "zz/Extra%02d.java" % i for i in range(extra)] + [ctl["execution_unit"]["paths"][0]]
+        got = refused(lambda: derive(wr))
+        if ok and got:
+            return _fail("20 final paths (requirement-attached, one duplicate) compose: %s" % got)
+        if not ok and got != "COMPOSITION_OVERSIZE":
+            return _fail("21 final paths after requirement attachment refuse before any grant: %s" % (got or "composed"))
+        if ok:
+            node = next(n for n in reps(derive(wr)).values() if "u:val-a" in (n.get("clusters") or []))
+            eu = node["execution_unit"]
+            if len(eu["paths"]) != 20 or eu["bounds"]["files"] != 20 or not eu["bounds"]["within"]:
+                return _fail("the recorded bound is the final envelope's: %s over %d paths" % (eu["bounds"], len(eu["paths"])))
+    # a sealed child's writable paths count
+    for extra, ok in ((9, True), (10, False)):
+        wc_ = tx_world(11)
+        wc_.seals["u:tx-a"]["writable_paths"] = [P + "b/F%02d.java" % i for i in range(11)] + [P + "c/W%02d.java" % i for i in range(extra)]
+        got = refused(lambda: derive(wc_))
+        if bool(got) == ok or (got and got != "COMPOSITION_OVERSIZE"):
+            return _fail("%d sealed child path(s) beyond an 11-file union: %s" % (extra, got or "composed"))
+    # symbols: distinct source symbols, never transformation names
+    def sym_world(parts: list[list[str]], fragment: tuple[bool, ...] = ()) -> tuple[World, dict]:
+        cat = copy.deepcopy(CATALOG)
+        allsyms = sorted({x for part in parts for x in part})
+        cat["objective_families"]["families"]["collection-sorting"]["transformations"].append(
+            {"id": "selftest-multi-symbol", "symbols": allsyms})
+        ws = World()
+        for j, part in enumerate(parts):
+            cid = "u:many%d" % j
+            ws.unit(cid, part[0], "type", ["model/Shared.java"], j)
+            ws.seals[cid]["symbols"] = [{"fqn": x, "kind": "type"} for x in part]
+            if fragment and fragment[j]:
+                ws.seals[cid]["bounds"] = {"max_symbols": CO.MAX_FRAGMENT_SYMBOLS}
+        return ws, cat
+    syms = ["example.compat.Type%d" % i for i in range(12)]
+    for parts, fragment, ok, why in (
+            ([syms[0:4], syms[4:8]], (), True, "8 distinct symbols under ONE transformation"),
+            ([syms[0:5], syms[5:9]], (), False, "9 distinct symbols"),
+            ([syms[0:5], syms[3:8]], (), True, "5 + 5 sharing 2 identities count 8"),
+            ([syms[0:5], syms[5:10]], (True, True), True, "10 symbols where every seal qualified as a fragment set"),
+            ([syms[0:5], syms[5:10]], (True, False), False, "10 symbols where only one seal qualified")):
+        ws, cat = sym_world(parts, fragment)
+        got = refused(lambda: derive(ws, catalog=cat))
+        if ok and got:
+            return _fail("%s must compose: %s" % (why, got))
+        if not ok and got != "COMPOSITION_OVERSIZE":
+            return _fail("%s must refuse COMPOSITION_OVERSIZE: %s" % (why, got or "composed"))
+        if ok:
+            eu = next(n["execution_unit"] for n in reps(derive(ws, catalog=cat)).values() if n.get("execution_unit"))
+            want = len({x for part in parts for x in part})
+            if eu["bounds"]["symbols"] != want:
+                return _fail("%s: the bound counts %s symbols, want %d" % (why, eu["bounds"]["symbols"], want))
     # 7. conservation, later checks, cycle
     if set(g["ownership"]) != set(base["ownership"]) or set(acct) != set(base_acct):
         return _fail("every obligation and requirement keeps exactly one account")

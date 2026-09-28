@@ -785,7 +785,14 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         if eu and objective_open(eu, worklist):
             # compatibility-objectives/v1: the admitted objective is ONE bounded
             # scope, issued whole -- never its first open unit
-            cluster, allowed, objective = "objective:%s" % oid, sorted(str(p) for p in eu.get("paths") or []), eu
+            # the grant is the envelope the shared scope validator admits, recomputed here from the
+            # descriptor and its digest-bound child seals -- never the stored bounds
+            from planner.worklist import ObjectiveScopeError, build_objective_scope
+            try:
+                env = build_objective_scope(root, oid, eu, worklist)
+            except ObjectiveScopeError as exc:
+                raise Refusal("ISSUE_OBJECTIVE_SCOPE", str(exc)[:400])
+            cluster, allowed, objective = "objective:%s" % oid, sorted(env["writable_paths"]), eu
         else:
             cluster, allowed = _allowed_paths(node, worklist, own)
         if not cluster and node.get("repair_paths"):

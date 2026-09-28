@@ -6255,8 +6255,11 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
     judges the objective once. Requirement files the objective owns join the
     file seal; nothing else does. Raises ObjectiveScopeError when a child
     inventory is missing or changed."""
+    from planner.compatibility_objectives import fragment_seal, scope_bounds, seal_site_keys
     children: list[dict[str, Any]] = []
     writable: set[str] = set()
+    site_keys: set[str] = set()
+    fragment = bool(descriptor.get("units"))
     symbols: list[dict[str, Any]] = []
     targets: list[dict[str, Any]] = []
     members: list[dict[str, Any]] = []
@@ -6271,8 +6274,12 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
     for ch, doc in objective_children(root, {"children": children}):
         writable |= set(ch["write_set"])
         if doc is None:
+            site_keys |= {"i|%s" % i for i in ch["items"]}
+            fragment = False
             continue
         writable |= {str(p) for p in doc.get("writable_paths") or []}
+        site_keys |= set(seal_site_keys(doc))
+        fragment = fragment and fragment_seal(doc)
         for s in doc.get("symbols") or []:
             if s not in symbols:
                 symbols.append(s)
@@ -6283,6 +6290,20 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
     for ob, ident in sorted((descriptor.get("identities") or {}).items()):
         idents.add(str(ident))
     writable |= {str(p) for p in descriptor.get("paths") or []}
+    # the scope bound, recomputed over THIS final envelope with the planner's own validator: a stored
+    # `within` is never trusted, and a descriptor whose counts differ from its envelope is stale
+    bounds = scope_bounds(files=writable, sites=site_keys,
+                          symbols={str(q) for u in descriptor.get("units") or [] for q in u.get("symbols") or []},
+                          fragment=fragment)
+    if not bounds["within"]:
+        raise ObjectiveScopeError("OBJECTIVE_SCOPE_OVERSIZE: %s spans %s; nothing is granted" % (
+            objective_id, ", ".join("%s %d/%d" % (k, bounds[k], bounds["limits"][k]) for k in ("files", "sites", "symbols"))))
+    recorded = descriptor.get("bounds") or {}
+    if any(recorded.get(k) != bounds[k] for k in ("files", "sites", "symbols")) or sorted(writable) != sorted(descriptor.get("paths") or []):
+        raise ObjectiveScopeError("OBJECTIVE_SCOPE_MISREPORTED: %s records %s over %d path(s) but its envelope is %s over %d"
+                                  % (objective_id, {k: recorded.get(k) for k in ("files", "sites", "symbols")},
+                                     len(descriptor.get("paths") or []), {k: bounds[k] for k in ("files", "sites", "symbols")},
+                                     len(writable)))
     env = {
         "schema": UNIT_SCHEMA, "kind": UNIT_KIND, "rule": OBJECTIVE_RULE,
         "unit_id": str(objective_id), "cluster": "objective:%s" % objective_id,
@@ -6290,7 +6311,7 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
         "writable_paths": sorted(writable), "symbols": symbols, "target_symbols": targets,
         "members": sorted(members, key=lambda m: (str(m.get("path")), str(m.get("member_id")), str(m.get("constituent")))),
         "obligations": sorted(descriptor.get("obligations") or []), "requirements": sorted(descriptor.get("requirements") or []),
-        "bounds": dict(descriptor.get("bounds") or {}),
+        "bounds": bounds,
         "completion": [{"check": "identities-gone", "tool": "javac", "identities": sorted(idents),
                         "detail": "every one of the %d admitted obligations of the objective is no longer reported" % len(idents)},
                        {"check": "unit-assessment", "tool": "worklist.assess_unit",

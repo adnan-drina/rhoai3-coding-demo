@@ -69,7 +69,7 @@ def world():
     return w
 
 
-def setup(w) -> "NB.Run":
+def setup(w, mutate=None) -> "NB.Run":
     r = NB.Run(publish=False)
     NB.mirror_layout(r.root)
     wl = w.worklist()
@@ -79,7 +79,7 @@ def setup(w) -> "NB.Run":
         if not seal:
             continue
         doc = dict(copy.deepcopy(seal), cluster=c["id"], kind="unit", unit_id=c["id"],
-                   writable_paths=list(c["write_set"]))
+                   writable_paths=sorted(set(c["write_set"]) | set(seal.get("writable_paths") or [])))
         doc["digest"] = batch_scope_digest(doc)
         rel = batch_scope_path(doc)
         write_canonical(r.root / rel, doc)
@@ -98,10 +98,73 @@ def setup(w) -> "NB.Run":
                                    provenance=CO_T.PROV, requirements=copy.deepcopy(w.reqs),
                                    objectives={"catalog": CO_T.CATALOG, "seals": copy.deepcopy(w.seals), "item_symbols": {},
                                                "structure_types": copy.deepcopy(w.types)})
+    if mutate:
+        # a planner that recorded a wrong descriptor, re-sealed: the digest cannot catch it
+        mutate(plan)
+        plan["digest"] = NC.plan_digest(plan)
     r.plan_file.write_text(json.dumps(plan))
     r.out = r.publish()
     r.release()
     return r
+
+
+def _scope_case() -> int:
+    """The issued grant is the envelope the shared validator admits: a
+    requirement's attached paths and a sealed child's writable paths are
+    granted and writable; a descriptor whose recorded bounds or paths
+    disagree with its envelope, or whose envelope exceeds the bound, refuses
+    ISSUE_OBJECTIVE_SCOPE before any path is granted -- whatever `within` says."""
+    extra_req = [CO_T.P + "web/ReqExtra%d.java" % i for i in range(3)]
+    extra_seal = CO_T.P + "web/SealedCaller.java"
+
+    def world_plus():
+        w = world()
+        next(r for r in w.reqs if r["id"] == "req:annotation-retirement:order-api")["paths"] += extra_req
+        w.seals["u:val-a"]["writable_paths"] = list(w.seals["u:val-a"].get("writable_paths") or []) + [extra_seal]
+        return w
+
+    def ready(r):
+        r.accept(oid_of(r, {"c:cfg-main", "c:cfg-test"}))
+        r.accept(oid_of(r, {"c:cfg-other"}))
+        return oid_of(r, {"u:val-a", "u:uri-a", "u:cors"})
+
+    r = setup(world_plus())
+    try:
+        oid = ready(r)
+        tid, run, iss = r.issue(oid)
+        if not set(extra_req + [extra_seal]) <= set(iss["allowed_paths"]):
+            return _fail("requirement-attached and sealed-child paths are part of the granted envelope: %s" % iss["allowed_paths"])
+        NC.check_write(r.board, task_id=tid, run_id=run, rel_paths=[extra_req[0], extra_seal])
+        NG.write_issued_projection(r.root, iss)
+        env = json.loads((r.root / json.loads((r.root / "verification/loop/issued.json").read_text())["batch_scope"]["path"]).read_text())
+        if sorted(env["writable_paths"]) != sorted(iss["allowed_paths"]) or env["bounds"]["files"] != len(iss["allowed_paths"]):
+            return _fail("the projected envelope is exactly the grant, with its recomputed bound: %s" % env["bounds"])
+    finally:
+        r.close()
+
+    def misreport(plan):
+        n = next(x for x in plan["nodes"] if "u:val-a" in (x.get("clusters") or []))
+        n["execution_unit"]["bounds"] = dict(n["execution_unit"]["bounds"], files=n["execution_unit"]["bounds"]["files"] - 1)
+
+    def oversize(plan):
+        n = next(x for x in plan["nodes"] if "u:val-a" in (x.get("clusters") or []))
+        eu = n["execution_unit"]
+        eu["paths"] = sorted(set(eu["paths"]) | {CO_T.P + "zz/X%02d.java" % i for i in range(21)})
+        eu["bounds"] = dict(eu["bounds"], files=len(eu["paths"]), within=True)
+    for name, mutate in (("misreported bounds", misreport), ("an envelope past 20 files claiming within", oversize)):
+        r = setup(world(), mutate)
+        try:
+            oid = ready(r)
+            try:
+                r.issue(oid)
+            except Refusal as exc:
+                if exc.code != "ISSUE_OBJECTIVE_SCOPE":
+                    return _fail("%s must refuse ISSUE_OBJECTIVE_SCOPE, got %s" % (name, exc.code))
+            else:
+                return _fail("%s was issued" % name)
+        finally:
+            r.close()
+    return 0
 
 
 def oid_of(r, clusters: set[str]) -> str:
@@ -109,6 +172,8 @@ def oid_of(r, clusters: set[str]) -> str:
 
 
 def main() -> int:
+    if _scope_case():
+        return 1
     w = world()
     r = setup(w)
     try:
@@ -239,7 +304,8 @@ def main() -> int:
         print("OK: objective execution (issued whole with one envelope of admitted children; changed/missing child "
               "inventories refuse; out-of-scope writes refuse; acceptance judged per requirement and check; a parked "
               "objective does not stop an independent one and its wait spends nothing; a requirement objective whose checks "
-              "already hold is satisfied at issue)")
+              "already hold is satisfied at issue; the grant is the validated final envelope and a misreported or oversized "
+              "descriptor refuses ISSUE_OBJECTIVE_SCOPE)")
         return 0
     finally:
         r.close()
