@@ -196,40 +196,6 @@ leaves a lock, establish its holder TaskRun and pod are stopped before platform
 recovery removes it; never unlock a running writer. API errors refuse instead
 of being interpreted as missing state. PostgreSQL and CLI images are digest pinned.
 
-**Retiring a run.** Archive the run's evidence first, then start
-`provision-migration-run` with `mode: retire` (the PipelineRun is in the header
-of `pipeline-provision-migration-run.yaml`). It removes the objects labelled
-`rhoai3.io/migration-run=<run>` in `wksp-ai-developer`, then the per-app
-delivery project in this order:
-
-1. The run's delivery PipelineRuns (`app.kubernetes.io/name=<run>`) and their pods in `<run>-dev`. These pods hold the `maven-cache` claim.
-2. The Argo CD Application `project-<run>`, through its own cascade finalizer.
-3. The `<run>-dev` namespace.
-
-Retirement first checks that each present object belongs to exactly this run
-(receipt, Application destination and AppProject, namespace labels).
-It never selects by prefix. If any object belongs to another run, retirement
-refuses with `RETIRE_OWNERSHIP_MISMATCH` and deletes nothing. Retirement never
-removes a finalizer. If finalization does not finish, it reports
-`RETIRE_INCOMPLETE` and leaves the tombstone at `retiring`. Rerunning the same
-PipelineRun is safe; retiring an already retired run does nothing.
-
-The tombstone `migration-run-<run>` stays in place. It records
-`destinationRepository`, which an owner of the Git organization deletes; the
-platform never deletes a repository. While the tombstone says `retiring` or
-`retired`, the `retired-migration-run-project` admission policy refuses a new
-`scaffolded-projects` Application for the run. That prevents a later push to the
-kept repository from recreating `project-<run>` and `<run>-dev`. The
-`project-provisioner` CronJob skips those namespaces.
-
-Status: the fake-API tests (`provision-migration-run.test.py`) and manifest
-rendering cover this procedure. It has not yet been run on a live cluster. Live
-behavior is still unmeasured: Argo CD finalization time, Tekton's cascade to
-pods, the admission policy denying the bootstrap trigger, and the provisioner's
-new RBAC. Runs retired before this change, such as the `iso-*` runs, still have
-their project Application and namespace. Retiring them again removes only
-those.
-
 Missing resources refuse even after stamping. Legacy compatibility is disabled
 by default; an existing workspace needs a platform-owned entry in
 `/etc/hermes/migration-legacy-assignments.json`, keyed by DEVWORKSPACE_NAME with

@@ -171,24 +171,8 @@ spec:
                     echo "  $1/$2 -> $3"
                   }
 
-                  # A Stage 080 run whose receipt says retiring or retired is
-                  # being (or has been) removed by provision-migration-run:
-                  # seeding a delivery run there would hold the project's
-                  # maven-cache claim again and stall its Application's cascade
-                  # finalizer, and copying into a terminating namespace fails.
-                  # Exact receipt name; an unreadable receipt is not "retired".
-                  retiring() {  # <repo-name>
-                    PHASE=$(oc get configmap "migration-run-$1" -n wksp-ai-developer \
-                      --ignore-not-found -o jsonpath='{.data.phase}' 2>/dev/null || true)
-                    [ "${PHASE}" = "retiring" ] || [ "${PHASE}" = "retired" ]
-                  }
-
                   for NS in ${NAMESPACES}; do
                     [ "${NS}" = "${SOURCE_NS}" ] && continue
-                    if retiring "${NS%-dev}"; then
-                      echo "Skipping ${NS}: migration run ${NS%-dev} is retiring or retired"
-                      continue
-                    fi
                     echo "Provisioning ${NS}:"
                     for S in ${SECRETS}; do copy secret "${S}" "${NS}"; done
                     for C in ${CONFIGMAPS}; do copy configmap "${C}" "${NS}"; done
