@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""emit-build-receipt selftest: success, failure (planning-only fact), no-freeze refuse."""
+"""emit-build-receipt selftest: success, failure (planning-only fact), no-freeze
+refuse, a failed classpath extraction named after a successful compile, and the
+wrapper's warm-up covering every goal its offline pass measures (fake Maven)."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,6 +14,46 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "emit-build-receipt.py"
 WRAPPER = HERE / "capture-build-evidence.sh"
+
+# A Maven whose offline resolution holds only what the SAME goal fetched
+# online: go-offline fetches nothing another goal needs (measured 2026-09-09),
+# and compile does not fetch test scope (v21 2026-09-27, byte-buddy-agent).
+FAKE_MVN = r'''#!/usr/bin/env python3
+import json, os, sys
+state = os.environ["FAKE_MVN_STATE"]
+args = sys.argv[1:]
+if "-v" in args:
+    print("Apache Maven 3.9.10 (fake)"); sys.exit(0)
+warm = set(json.load(open(state))) if os.path.exists(state) else set()
+goals = [a for a in args if not a.startswith("-")]
+props = dict(a[2:].split("=", 1) for a in args if a.startswith("-D") and "=" in a)
+for g in goals:
+    if "-o" in args and g not in warm:
+        print("[ERROR] dependency for goal %s has not been downloaded from it before." % g); sys.exit(1)
+    warm.add(g)
+    if g == "compile":
+        os.makedirs("target/generated-sources/annotations", exist_ok=True)
+    if g == "dependency:build-classpath" and props.get("mdep.outputFile"):
+        open(props["mdep.outputFile"], "w").write("/repo/a.jar:/repo/b.jar")
+    if g == "help:effective-pom" and props.get("output"):
+        open(props["output"], "w").write("<project/>")
+json.dump(sorted(warm), open(state, "w"))
+'''
+
+
+def _run_wrapper(t: Path, wrapper: Path, name: str) -> dict:
+    root, copy, bin_dir = t / name / "dest", t / name / "copy", t / name / "bin"
+    root.mkdir(parents=True)
+    _seed(root, copy, compile_rc=0, classpath="")
+    bin_dir.mkdir()
+    (bin_dir / "mvn").write_text(FAKE_MVN, encoding="utf-8")
+    (bin_dir / "mvn").chmod(0o755)
+    env = dict(os.environ, PATH="%s:%s" % (bin_dir, os.environ.get("PATH", "")), FAKE_MVN_STATE=str(t / name / "m2.json"),
+               JAVA_HOME="", JAVA_HOME_21="")
+    p = subprocess.run(["bash", str(wrapper), "--root", str(root)], text=True, capture_output=True, env=env)
+    if p.returncode != 0:
+        raise AssertionError("%s wrapper rc=%d: %s" % (name, p.returncode, p.stderr[-400:]))
+    return json.loads((root / "evidence" / "producers" / "build.json").read_text())
 
 
 def _fail(msg: str) -> int:
@@ -79,7 +122,36 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(bare), "--copy", str(copy), "--raw", str(bare)], text=True, capture_output=True)
         if p.returncode != 1 or "BUILD_NO_FREEZE" not in p.stderr:
             return _fail("missing freeze must refuse: %s" % p.stderr)
-    print("OK: emit-build-receipt (success; failure recorded as planning-only fact; no-freeze refuse; identical rerun)")
+        # the compile succeeded, the offline classpath did not: the receipt
+        # keeps the successful outcome and NAMES the missing classpath
+        _seed(root, copy, compile_rc=0, classpath="")
+        (root / "evidence" / "build" / "classpath.rc").write_text("1\n")
+        (root / "evidence" / "build" / "classpath.log").write_text(
+            "[ERROR] Failed to execute goal on project x: Could not resolve dependencies\n"
+            "[ERROR] dependency: g:test-only:jar:1.0 (test)\n")
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--copy", str(copy), "--raw", str(root / "evidence" / "build")], text=True, capture_output=True)
+        rec = json.loads((root / "evidence" / "producers" / "build.json").read_text())
+        why = [r for r in rec["reasons"] if r.startswith("offline classpath extraction rc=1")]
+        if p.returncode != 0 or rec["outcome"] != "success" or rec["classpath_available"] or not why or "g:test-only" not in why[0]:
+            return _fail("a failed classpath after a successful compile must be named, not silent: %s" % rec["reasons"])
+        # the wrapper's warm-up covers every goal the offline pass measures
+        rec = _run_wrapper(t, WRAPPER, "wrapper")
+        if not rec["classpath_available"] or rec["classpath_entries"] != 2 or rec["reasons"]:
+            return _fail("warm-up must fetch what the offline classpath resolves: %s %s" % (rec["classpath_available"], rec["reasons"]))
+        # mutation: the pre-fix warm-up (go-offline + compile only) is caught
+        pre = t / "pre-fix"
+        pre.mkdir()
+        src = WRAPPER.read_text(encoding="utf-8")
+        cut = src.replace(' \\\n    && mvn -q -B dependency:build-classpath "-Dmdep.outputFile=${RAW}/warmup-classpath.txt"', "")
+        if cut == src:
+            return _fail("mutation did not apply; the warm-up line changed shape")
+        (pre / "capture-build-evidence.sh").write_text(cut, encoding="utf-8")
+        (pre / "emit-build-receipt.py").symlink_to(SCRIPT)
+        rec = _run_wrapper(t, pre / "capture-build-evidence.sh", "mutant")
+        if rec["classpath_available"] or not any(r.startswith("offline classpath extraction rc=1") for r in rec["reasons"]):
+            return _fail("the pre-fix warm-up must leave the classpath unavailable AND named: %s" % rec)
+    print("OK: emit-build-receipt (success; failure recorded as planning-only fact; no-freeze refuse; identical rerun; "
+          "failed classpath named; warm-up covers the measured classpath goal, pre-fix mutant caught)")
     return 0
 
 
