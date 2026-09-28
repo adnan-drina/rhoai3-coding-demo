@@ -3,6 +3,36 @@
 Paths under `tmp/` refer to optional local evidence, excluded from Git.
 Previously tracked run records and retired scripts remain available in Git history.
 
+## MTA destination rescan: use --json-output as the CLI defines it — next golden (2026-09-28)
+
+`mta-rescan-destination.sh` passes `--json-output "${OUT}/findings.json"`, but on the pinned MTA CLI
+8.2.1 `--json-output` is a boolean ("create analysis and dependency output as json"). The path
+is a stray argument, and findings come only from the `report/output.json` fallback. The
+Stage 080 MTA CLI skill's doc extraction lists the flag as a string; the real binary's
+`--help` does not.
+
+With JSON on, 8.2.1 fails to convert `dependencies.yaml` to JSON whenever indirect
+dependencies carry nested `baseDep.extras` ("json: unsupported type: map[interface {}]interface {}"),
+after "Analysis complete!". Every rescan therefore exits 1, including v21's live rescans, and
+the script ignores the analyzer's exit code, so a genuine analyzer failure that left an
+`output.json` would be accepted as a measurement.
+
+- [ ] Pass `--json-output` without a path. Accept a nonzero analyzer exit ONLY for this exact
+  known defect: `analysis.log` reports "Analysis complete!", the dependency-JSON marshal error
+  is the sole error, and a parseable `output.json` has the same ruleset count as `output.yaml`.
+  Record the defect in the findings' execution evidence. Any other nonzero exit means the
+  rescan did not run (incidents UNKNOWN).
+- [ ] Test with a fake analyzer: the known defect is accepted and recorded; any other nonzero
+  exit, a missing or unparseable `output.json`, or a ruleset-count mismatch is refused.
+- [ ] One pinned rescan in a disposable pod confirms `[4, 233, 0]` for the PetClinic fixture.
+- [ ] Correct `--json-output` to a boolean in `.agents/skills/mta-cli` (official-doc extraction
+  and SKILL.md).
+- [ ] Report the 8.2.1 dependency-JSON defect to Red Hat support or upstream Konveyor (no
+  existing kantra issue found).
+- Not chosen: YAML-only output (the pinned image has no Python YAML library, and its `yq`
+  wrapper is broken); `--mode source-only` (changes which rules run, so the inventory would
+  change).
+
 ## Compatibility objectives and the M1 classpath fix — 2026-09-28
 
 Design: `tmp/v21-run/m3-partition-comparison/IMPLEMENTATION-DESIGN.md`
