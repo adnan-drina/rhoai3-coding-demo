@@ -348,6 +348,12 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
                    "detail": str(i.get("detail") or i.get("message") or "")[:200]}
                   for i in (cur.get("items") or []) if str(i.get("id") or "").startswith("err:")]
     clear_pending(steps, cluster, why="rejected")
+    # a new file the candidate wrote is untracked, so the revert DELETES it: the
+    # retry must be told, or it patches the survivors and believes the file is
+    # still there (v23 t_71d9117b: the owed PetRepositoryImpl.java was lost with
+    # a rejected import, and the accepted retry never wrote it again)
+    deleted = sorted(p for p in changed if git(root, "ls-files", "--error-unmatch", "--", p).returncode != 0
+                     and (root / p).is_file())
     revert_paths(root, changed)
     restore_reports(root)
     # the budget belongs to the problem, not to the card: gate + cause + file,
@@ -368,12 +374,14 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     legal_next = (("do not remint a single-file retry of this cluster: the family's remaining members stay in the "
                    "sealed write set. " if family else "") +
                   (legal_next.rstrip(". ") + ". " if legal_next else "") +
+                  ("The revert DELETED the new file(s) %s: they are not in the tree now, so a retry that still owes them "
+                   "writes them again. " % ", ".join(deleted) if deleted else "") +
                   "Do not repeat this patch; the next brief names the previous diagnostic movement and this reason.")
     steps.setdefault("rejected", []).append({
         "cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason,
         "changed": changed, "verify": verify, "loci_before": loci_before, "loci_after": loci_after,
         "write_set": list(issued.get("write_set") or []), "legal_next": legal_next,
-        "patch_summary": sorted(changed), "retry_key": key,
+        "patch_summary": sorted(changed), "deleted_by_revert": deleted, "retry_key": key,
         "budget": budget(steps, cluster, key, max_attempts(load_decisions(root))),
     })
     save_steps(root, steps)
@@ -398,6 +406,8 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     rec = pipeline.admit(root)
     publish_loop_state(root, rebuilt)
     print("REVERTED %s attempt %d/%d (budget %s): %s" % (cluster, attempts[key], limit, key, reason), file=sys.stderr)
+    if deleted:
+        print("  the revert DELETED new file(s) the candidate wrote: %s (write them again if still owed)" % ", ".join(deleted), file=sys.stderr)
     if mint and rec.get("status") == "ADMITTED":
         # the same cluster, next attempt key: the retry is its own card (pilot v6
         # measured the gap — the skill promised the re-issue, nothing minted it)

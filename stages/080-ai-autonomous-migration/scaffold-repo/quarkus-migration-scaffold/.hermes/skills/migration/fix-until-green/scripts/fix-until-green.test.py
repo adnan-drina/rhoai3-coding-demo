@@ -1080,6 +1080,43 @@ def _mixed_mode_card_refusal_case() -> int:
     return 0
 
 
+def _revert_deletes_new_file_case() -> int:
+    """v23 t_71d9117b: a rejected candidate that had WRITTEN a new file lost it
+    to the revert (an untracked file is deleted), the retry patched only the
+    survivor, and the worker then claimed the file existed. The rejected row
+    and the retry brief name every file the revert deleted; a file that
+    existed before (tracked) is restored, not listed."""
+    with tempfile.TemporaryDirectory(prefix="chk-del-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner = paths[0]
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol class UriComponentsBuilder", "compiler.err.cant.resolve.location")])
+        wl = load_json(root / WORKLIST)
+        cluster = next(c for c in wl["clusters"] if owner in (c.get("write_set") or []))
+        _issue_cluster(root, cluster, "t_del")
+        new = str(Path(owner).parent / "OwnedHelperImpl.java")
+        (root / new).write_text("package x;\nclass OwnedHelperImpl {}\n", encoding="utf-8")
+        f = root / owner
+        original = f.read_text(encoding="utf-8")
+        f.write_text(original + "\n// touched\n", encoding="utf-8")
+        p = _advance(root, cluster["id"], "t_del")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or (root / new).exists() or f.read_text(encoding="utf-8") != original:
+            return _fail("the candidate is rejected and reverted, the new file removed: rc=%s %s" % (p.returncode, blob[-500:]))
+        rejected = (load_json(root / LOOP_STEPS).get("rejected") or [])[-1]
+        if rejected.get("deleted_by_revert") != [new]:
+            return _fail("the rejected row names the deleted new file, and only it: %s" % rejected.get("deleted_by_revert"))
+        if new not in rejected.get("legal_next", "") or "DELETED" not in rejected.get("legal_next", "") or "DELETED" not in blob:
+            return _fail("the retry is told the new file is gone: %s | %s" % (rejected.get("legal_next"), blob[-300:]))
+        b = subprocess.run([sys.executable, str(HERE / "brief.py"), "--root", str(root), "--cluster", cluster["id"],
+                            "--section", "previous_attempts"], capture_output=True, text=True)
+        if new not in b.stdout or "deleted_by_revert" not in b.stdout:
+            return _fail("the retry brief carries deleted_by_revert: rc=%s %s %s" % (b.returncode, b.stdout[-400:], b.stderr[-300:]))
+    print("OK: fix-until-green (a rejection names the new files its revert deleted)")
+    return 0
+
+
 def _introduced_attribution_case() -> int:
     """v9 t_3903f495: the right repair with the wrong import swapped 13
     attribution diagnostics for 13 of the same shape, and equal counts parked
@@ -1128,6 +1165,8 @@ def _introduced_attribution_case() -> int:
         rejected = (steps.get("rejected") or [])[-1]
         if "write set" not in rejected.get("legal_next", "") or "introduced 1 compile diagnostic" not in rejected.get("reason", ""):
             return _fail("the rejected row tells the retry to fix the named symbols inside the write set: %s" % rejected)
+        if rejected.get("deleted_by_revert") != [] or "DELETED" in rejected.get("legal_next", ""):
+            return _fail("a revert of tracked edits deletes nothing and says so: %s" % rejected)
 
         # control 1: a FLOW code newly reported outside any sealed family is still the typed diagnosis
         pipeline.admit(root)
@@ -2401,7 +2440,7 @@ def _stop_request_case() -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _runtime_owner_attribution_case() or _functional_debt_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _revert_deletes_new_file_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _runtime_owner_attribution_case() or _functional_debt_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1

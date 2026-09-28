@@ -15,6 +15,18 @@ methods fully resolved, 34 entry points, captures 18/18 and 67/67, qualification
   (6 file(s))" and attached nothing, and the audit passed. Paved-road steps now declare
   `require_args`, and the M1 attach and M2 mint require `--exec`. The dry run says
   "PLAN ONLY ... NOTHING was attached".
+- [x] **A requirement card whose checks already hold looped on an empty unit** (fixed on main;
+  ships with the next golden). The security card's planned checks held at the baseline, but
+  nothing satisfied them at issue, so the worker iterated on a unit with nothing to change.
+  `native_control._satisfied` now accepts the M2 baseline step as evidence when its commit is
+  HEAD, its digest is the tree, and its measure is known.
+- [x] **A rejection's revert silently deleted a new file** (fixed on main; ships with the next
+  golden). The Pet repository contract card (t_71d9117b) wrote the owed `PetRepositoryImpl.java`
+  in attempt 2, and a missing import in the other file rejected it. The revert deleted the
+  untracked new file. The retry re-applied only the other file and was accepted, and the worker
+  then blocked, claiming that the check denied a file that "exists". The rejected row now
+  records `deleted_by_revert`, which `legal_next`, the REVERTED line and the retry brief all
+  name. Live v23: the Operator unblocked the card with the diagnosis; no harness change.
 - [ ] **Retirement leaves the per-app pipeline project behind** (platform, next release: it changes
   the Pipeline the live run was provisioned by). `provision-migration-run` in retire mode deletes
   only what is labelled `rhoai3.io/migration-run=<run>`. v22 retirement then needed these by hand:

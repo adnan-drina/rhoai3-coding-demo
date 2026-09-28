@@ -1030,6 +1030,7 @@ def main(argv: list[str] | None = None) -> int:
             "loci_before": list(r.get("loci_before") or []),
             "loci_after": list(r.get("loci_after") or []),
             "patch_summary": list(r.get("patch_summary") or r.get("changed") or []),
+            "deleted_by_revert": list(r.get("deleted_by_revert") or []),
             "legal_next": str(r.get("legal_next") or ""),
             "write_set": list(r.get("write_set") or []),
         })

@@ -167,12 +167,55 @@ def _scope_case() -> int:
     return 0
 
 
+def _baseline_case() -> int:
+    """Before any outcome is accepted, the M2 baseline is the measurement of its
+    own tree: a requirement objective whose checks already hold there is
+    satisfied (v23: the decided security switch rendered by bootstrap was issued
+    an empty unit and the worker looped), one whose checks fail is refused on
+    its measurement -- and a moved HEAD or a changed tree never borrows it."""
+    from planner.paths import LOOP_STEPS
+    w = world()
+    w.reqs.append({"id": "req:annotation-retirement:clean", "rule": "annotation-retirement/v1", "status": "applicable",
+                   "class": "source", "subject": "com.acme.shop.web.Clean@org.springframework.web.bind.annotation.CrossOrigin",
+                   "paths": [CO_T.P + "web/Clean.java"], "acceptance": ["gate:compile"],
+                   "facts": {"sites": 1}, "consumers": [], "dependencies": []})
+    r = setup(w)
+    try:
+        (r.root / CO_T.P / "web/Clean.java").parent.mkdir(parents=True, exist_ok=True)
+        (r.root / CO_T.P / "web/Clean.java").write_text("// clean\n")
+        NB.git(r.root, "add", "-A")
+        NB.git(r.root, "commit", "-qm", "clean file")
+        head, tree = NC._head(r.root), NC._product_tree(r.root)
+        steps = {"steps": [{"cluster": "bootstrap", "verdict": "baseline", "commit": head, "candidate_sha256": tree,
+                            "measure": {"known": True, "tuple": [0, len(r.worklist["items"]), 0]}}]}
+        (r.root / LOOP_STEPS).parent.mkdir(parents=True, exist_ok=True)
+        (r.root / LOOP_STEPS).write_text(json.dumps(steps))
+        plan = r.plan()
+        clean = next(n for n in plan["nodes"] if "req:annotation-retirement:clean" in (n.get("requirements") or []))
+        dirty = next(n for n in plan["nodes"] if "req:annotation-retirement:order-model" in (n.get("requirements") or []))
+        ev, why = NC._satisfied(r.root, r.board, r.run_id, plan, clean, r.worklist, tree, head)
+        if ev is None or ev["by"]["record"] != "baseline:%s" % head[:12]:
+            return _fail("a requirement whose checks hold at the admitted baseline is satisfied from it: %s" % why)
+        ev, why = NC._satisfied(r.root, r.board, r.run_id, plan, dirty, r.worklist, tree, head)
+        if ev is not None or any("nothing measured it" in x for x in why):
+            return _fail("a failing requirement is refused ON ITS MEASUREMENT at the baseline: %s" % why)
+        if NC._baseline_evidence(r.root, tree, "0" * 40) or NC._baseline_evidence(r.root, "f" * 64, head):
+            return _fail("the baseline measures only its own commit and tree")
+        steps["steps"][0]["measure"]["known"] = False
+        (r.root / LOOP_STEPS).write_text(json.dumps(steps))
+        if NC._baseline_evidence(r.root, tree, head):
+            return _fail("an unknown baseline measure is no evidence")
+    finally:
+        r.close()
+    return 0
+
+
 def oid_of(r, clusters: set[str]) -> str:
     return next(n["outcome_id"] for n in r.plan()["nodes"] if set(n.get("clusters") or []) == clusters)
 
 
 def main() -> int:
-    if _scope_case():
+    if _scope_case() or _baseline_case():
         return 1
     w = world()
     r = setup(w)
@@ -305,7 +348,7 @@ def main() -> int:
               "inventories refuse; out-of-scope writes refuse; acceptance judged per requirement and check; a parked "
               "objective does not stop an independent one and its wait spends nothing; a requirement objective whose checks "
               "already hold is satisfied at issue; the grant is the validated final envelope and a misreported or oversized "
-              "descriptor refuses ISSUE_OBJECTIVE_SCOPE)")
+              "descriptor refuses ISSUE_OBJECTIVE_SCOPE; before any acceptance the admitted baseline measures its own tree)")
         return 0
     finally:
         r.close()

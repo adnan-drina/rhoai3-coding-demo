@@ -699,6 +699,24 @@ def repair_waiting(board: Board, run_id: str, plan: dict[str, Any], task_id: str
     return ""
 
 
+def _baseline_evidence(root: Path, tree: str, head: str) -> dict[str, Any] | None:
+    """The loop's recorded M2 baseline as the measurement of THIS tree, or None:
+    only when the baseline step's commit is HEAD, its candidate digest is this
+    tree (the same product_tree_sha256) and its measure was fully known. The
+    baseline verification measured build, compile and tests with the rescan."""
+    from planner.paths import LOOP_STEPS
+    try:
+        steps = json.loads((Path(root) / LOOP_STEPS).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    base = next((s for s in steps.get("steps") or [] if isinstance(s, dict) and s.get("verdict") == "baseline"), None)
+    if not base or not head or str(base.get("commit") or "") != head or str(base.get("candidate_sha256") or "") != tree \
+            or not (base.get("measure") or {}).get("known"):
+        return None
+    return {"key": "baseline:%s" % head[:12], "task": "M2 baseline", "outcome": CONTROL_M2, "commit": head,
+            "measurement": {"classes": ["build", "compile", "tests"], "scenarios": []}}
+
+
 def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
                tree: str, head: str) -> tuple[dict[str, Any] | None, list[str]]:
     """An outcome with nothing left to issue whose owned obligations are
@@ -717,6 +735,11 @@ def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: d
             if r.get("kind") == "accept-commit" and r.get("outcome_accepted") and r.get("tree") == tree \
                     and not r.get("satisfied_by"):
                 evidence = dict(r, task=row["id"], outcome=oid)
+    if evidence is None and node.get("check_plan"):
+        # compatibility-objectives/v1: before any outcome is accepted, the tree M2 measured and
+        # admitted IS a measured tree -- a requirement whose checks already hold there (v23: the
+        # decided security switch rendered by bootstrap) is satisfied, never handed an empty unit
+        evidence = _baseline_evidence(root, tree, head)
     if evidence is None:
         return None, ["no outcome was accepted on this tree %s: nothing measured it" % tree[:12]]
     em = evidence.get("measurement") or {}
