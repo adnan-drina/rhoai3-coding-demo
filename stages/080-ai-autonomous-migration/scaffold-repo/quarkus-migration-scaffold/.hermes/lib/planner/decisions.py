@@ -483,12 +483,42 @@ def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
     semantics = str(section.get("plan_semantics") or "").strip()
     return {"unit_formation": UNIT_FORMATION_V1 if formation == UNIT_FORMATION_V1 else UNIT_FORMATION_OFF,
             "runtime_feedback": RUNTIME_FEEDBACK_V1 if feedback == RUNTIME_FEEDBACK_V1 else RUNTIME_FEEDBACK_OFF,
-            "plan_semantics": PLAN_SEMANTICS_V1 if semantics == PLAN_SEMANTICS_V1 else PLAN_SEMANTICS_OFF}
+            "plan_semantics": PLAN_SEMANTICS_V1 if semantics == PLAN_SEMANTICS_V1 else PLAN_SEMANTICS_OFF,
+            "compatibility_objectives": "v1" if str(section.get("compatibility_objectives") or "").strip() == "v1" else "off"}
 
 
 def plan_semantics(doc: dict[str, Any] | None) -> str:
     """decisions.loop.plan_semantics: "v1" or "off" (absent, unknown)."""
     return loop_modes(doc or {})["plan_semantics"]
+
+
+def compatibility_objectives(doc: dict[str, Any] | None) -> str:
+    """decisions.loop.compatibility_objectives: "v1" or "off" (absent, unknown)."""
+    return loop_modes(doc or {})["compatibility_objectives"]
+
+
+def loop_pin_gap(root: Path, doc: dict[str, Any] | None, key: str) -> str:
+    """Why decisions.loop.<key> now differs from the run's initial commit; ''
+    when it does not (or there is no initial commit to compare against)."""
+    from planner.run_declaration import _blob, _history
+    from planner.yamlite import YamlLiteError, loads
+
+    hist = _history(Path(root))
+    if not isinstance(hist, tuple):
+        return ""
+    blob = _blob(Path(root), hist[0], DECISIONS)
+    if blob is None:
+        return ""
+    try:
+        first = loads(blob.decode("utf-8"))
+    except (UnicodeDecodeError, YamlLiteError):
+        return "the initial commit's %s cannot be read, so the run's loop.%s is unknown" % (DECISIONS, key)
+    pinned = loop_modes(first if isinstance(first, dict) else {})[key]
+    now = loop_modes(doc or {})[key]
+    if pinned != now:
+        return ("loop.%s is %s now but %s in the initial commit %s: a run keeps the planning policy it was created "
+                "with (a new golden selects it for NEW runs only)" % (key, now, pinned, hist[0][:12]))
+    return ""
 
 
 def plan_semantics_pin_gap(root: Path, doc: dict[str, Any] | None) -> str:

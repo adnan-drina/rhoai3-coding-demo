@@ -100,6 +100,55 @@ def corpus_binding_gaps(root: Path) -> list[str]:
     return gaps
 
 
+def objective_inputs(root: Path, worklist: dict[str, Any]) -> dict[str, Any] | None:
+    """The inputs of policy compatibility-objectives/v1 for this root, or None
+    when decisions.yaml does not select it. Read here so the composition stays
+    pure: the catalog, every admitted unit's sealed inventory, the qualified
+    symbol of each unsealed compile item (resolved through the declaring file's
+    imports in the destination model -- unresolved stays absent, never guessed)
+    and the frozen structural model. A selected policy whose catalog is missing
+    refuses (OBJECTIVES_CATALOG) instead of planning without it."""
+    from planner.decisions import compatibility_objectives, load_decisions
+    from planner.paths import CATALOGS_DIR
+    try:
+        doc = load_decisions(root)
+    except (OSError, ValueError):
+        doc = {}
+    if compatibility_objectives(doc) != "v1":
+        return None
+    root = Path(root)
+    catalog = _read_json(root / CATALOGS_DIR / "compat-mapping.json")
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("objective_families"), dict):
+        from planner.outcome_graph import PlanError
+        raise PlanError("OBJECTIVES_CATALOG", "decisions select compatibility-objectives/v1 and the catalog has no objective_families")
+    seals: dict[str, Any] = {}
+    unsealed: list[dict[str, Any]] = []
+    items = {str(i.get("id")): i for i in (worklist or {}).get("items") or [] if isinstance(i, dict)}
+    for c in (worklist or {}).get("clusters") or []:
+        ref = c.get("batch_scope") or {}
+        doc_ = _read_json(root / str(ref.get("path") or "")) if ref.get("path") else None
+        if isinstance(doc_, dict):
+            seals[str(c["id"])] = doc_
+        else:
+            unsealed.extend(items[m] for m in c.get("items") or [] if m in items and str(items[m].get("kind")) == "compile")
+    item_symbols: dict[str, str] = {}
+    if unsealed:
+        try:
+            from planner.dest_model import dest_model
+            from planner.worklist import _annotation_simples, resolve_compile_symbol
+            model = dest_model(root)
+            ann = _annotation_simples(model)
+            for it in unsealed:
+                key, _kind = resolve_compile_symbol(model, it, ann)
+                if key and "." in key:
+                    item_symbols[str(it["id"])] = key
+        except Exception:  # noqa: BLE001 -- no model: nothing resolves, nothing is guessed
+            item_symbols = {}
+    st = _read_json(root / STRUCTURE)
+    return {"catalog": catalog, "seals": seals, "item_symbols": item_symbols,
+            "structure_types": (st or {}).get("types") or [] if isinstance(st, dict) else []}
+
+
 def _oracles(root: Path) -> dict[str, list[str]] | None:
     """entry point -> captured scenario ids, or None when no corpus exists OR
     the corpora are not bound to this tree (corpus_binding_gaps): unknown,
@@ -169,7 +218,8 @@ def initial_plan_from_root(root: Path) -> dict[str, Any]:
         references=_references(root), max_attempts=max_attempts(load_decisions(root)),
         provenance={"snapshot_kind": "admission", "scope_note": "admission-time work list and M1 inventories of this run",
                     "receipt_sha256": receipt.get("receipt_digest"), "worklist_sha256": sha256_file(root / WORKLIST),
-                    "entry_point_inventory_sha256": sha256_file(root / EP_INVENTORY)}, **extra)
+                    "entry_point_inventory_sha256": sha256_file(root / EP_INVENTORY)},
+        objectives=objective_inputs(root, worklist), **extra)
 
 
 def load_worklist(root: Path) -> tuple[dict[str, Any] | None, str]:
@@ -403,6 +453,36 @@ def requirement_measurement(root: Path, plan: dict[str, Any], node: dict[str, An
     return measure(root, reqs, worklist=worklist, scenarios=scenarios, tree=tree,
                    receipts={m: r for m, r in receipts.items() if isinstance(r, dict)},
                    diagnostics=diags if isinstance(diags, dict) else None)
+
+
+def requirement_matrix(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
+                       scenarios: list[str], tree: str = "") -> dict[str, dict[str, dict[str, str]]]:
+    """compatibility-objectives/v1: every IMMEDIATE (requirement, check) of the
+    node's check plan measured for THAT requirement alone -- two requirements
+    using gate:compile keep their own results, and one passing cannot stand
+    for another's unknown. {requirement: {check: {status, detail}}}."""
+    from planner.paths import VERIFY_DIAGNOSTICS
+    from planner.requirement_checks import measure
+    from planner.worklist import parity_receipt_file
+    rows = {str(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}
+    want: dict[str, set[str]] = {}
+    for row in node.get("check_plan") or []:
+        if row.get("stage") == "immediate":
+            want.setdefault(str(row["requirement"]), set()).add(str(row["check"]))
+    receipts = {m: _read_json(Path(root) / parity_receipt_file(m)) for m in ("disabled", "enabled")}
+    receipts = {m: r for m, r in receipts.items() if isinstance(r, dict)}
+    diags = _read_json(Path(root) / VERIFY_DIAGNOSTICS)
+    out: dict[str, dict[str, dict[str, str]]] = {}
+    for rq, checks in sorted(want.items()):
+        r = rows.get(rq)
+        if r is None:
+            out[rq] = {c: {"status": "unknown", "detail": "the requirement is not in the plan"} for c in sorted(checks)}
+            continue
+        one = dict(r, acceptance=[c for c in r.get("acceptance") or [] if c in checks])
+        got = measure(root, [one], worklist=worklist, scenarios=scenarios, tree=tree, receipts=receipts,
+                      diagnostics=diags if isinstance(diags, dict) else None)
+        out[rq] = {c: dict(got.get(c) or {"status": "unknown", "detail": "not measured"}) for c in sorted(checks)}
+    return out
 
 
 def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:

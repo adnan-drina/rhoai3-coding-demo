@@ -919,5 +919,127 @@
         "profile-gated implementations with no decided build profile"
       ]
     }
+  },
+  "objective_families": {
+    "note": "Compatibility objectives (planner.compatibility_objectives, policy compatibility-objectives/v1, decisions.loop.compatibility_objectives). A family is ONE named change to an application contract; its transformations list the qualified symbols (a package and the types it exports are aliases of one transformation) or the MTA rules it retires, and its requirement_rules the source requirements that belong to that change. Admitted units of one family that share a site (the same file, for symbol families; the same rule, for rule families) compose into ONE bounded executable scope; independent components stay separate; a unit no family names stays its own objective. Composition is judged by these rows and qualified source facts only -- never by a layer, a file name or a package spelling. Borrowed from OpenRewrite/Moderne: small transformations composed into a larger one where partial application cannot meet the checkpoint (https://docs.openrewrite.org/concepts-and-explanations/recipes), applicability decided before editing (https://docs.openrewrite.org/reference/yaml-format-reference), and coupled incompatible changes applied together (https://docs.moderne.io/hands-on-learning/spring-boot-migration/module-6-wave-migration/). No recipe engine is run.",
+    "version": "1",
+    "families": {
+      "collection-sorting": {
+        "title": "preserve collection sorting",
+        "transformations": [
+          {
+            "id": "spring-beans-support-sort",
+            "symbols": [
+              "org.springframework.beans.support",
+              "org.springframework.beans.support.PropertyComparator",
+              "org.springframework.beans.support.MutableSortDefinition"
+            ]
+          }
+        ],
+        "acceptance_intent": "the source comparator's property, direction, case and null semantics, tested on actual order -- not symbol absence alone"
+      },
+      "retired-configuration-rule": {
+        "title": "retire an obsolete configuration rule",
+        "rules": [
+          "springboot-properties-to-quarkus-00003"
+        ],
+        "acceptance_intent": "every occurrence satisfies the same rule; main, test and profile files keep their own effective settings"
+      },
+      "profile-selection": {
+        "title": "translate profile selection",
+        "transformations": [
+          {
+            "id": "spring-profile",
+            "symbols": [
+              "org.springframework.context.annotation.Profile"
+            ]
+          }
+        ],
+        "acceptance_intent": "the selected profile's beans stay selected and the others stay out; not a claim that repository behaviour works"
+      },
+      "spring-dao-exceptions": {
+        "title": "translate Spring DAO exceptions",
+        "transformations": [
+          {
+            "id": "spring-dao",
+            "symbols": [
+              "org.springframework.dao",
+              "org.springframework.dao.DataAccessException",
+              "org.springframework.dao.EmptyResultDataAccessException"
+            ]
+          }
+        ],
+        "acceptance_intent": "the checked contract is retired while throws/catch behaviour is preserved"
+      },
+      "spring-orm-exceptions": {
+        "title": "translate Spring ORM exceptions",
+        "transformations": [
+          {
+            "id": "spring-orm",
+            "symbols": [
+              "org.springframework.orm",
+              "org.springframework.orm.ObjectRetrievalFailureException"
+            ]
+          }
+        ],
+        "acceptance_intent": "the lookup-failure contract is preserved on the platform exception"
+      },
+      "transaction-annotations": {
+        "title": "translate transaction annotations",
+        "transformations": [
+          {
+            "id": "spring-transactional",
+            "symbols": [
+              "org.springframework.transaction.annotation",
+              "org.springframework.transaction.annotation.Transactional"
+            ]
+          }
+        ],
+        "acceptance_intent": "the source transaction boundaries and propagation are preserved"
+      },
+      "controller-request-boundary": {
+        "title": "translate controller request boundaries",
+        "transformations": [
+          {
+            "id": "spring-validation",
+            "symbols": [
+              "org.springframework.validation",
+              "org.springframework.validation.BindingResult",
+              "org.springframework.validation.Errors",
+              "org.springframework.validation.FieldError"
+            ]
+          },
+          {
+            "id": "spring-uri-builder",
+            "symbols": [
+              "org.springframework.web.util",
+              "org.springframework.web.util.UriComponentsBuilder",
+              "org.springframework.web.util.UriComponents"
+            ]
+          },
+          {
+            "id": "adapter-owned-crossorigin",
+            "symbols": [
+              "org.springframework.web.bind.annotation.CrossOrigin"
+            ]
+          }
+        ],
+        "requirement_rules": [
+          "request-validation",
+          "handler-parameter-binding",
+          "annotation-retirement"
+        ],
+        "acceptance_intent": "guard polarity and connectives, body validation before side effects, the injected URI context and Location, annotation retirement; CORS behaviour stays the adapter's"
+      },
+      "selected-repository-implementation": {
+        "title": "implement the selected repository contract",
+        "requirement_rules": [
+          "repository-architecture"
+        ],
+        "subject": "facts.repository",
+        "fragment_symbol_exception": true,
+        "acceptance_intent": "the source-selected behaviour, no stub bodies, one intended injectable implementation; runtime effects stay owed to verification"
+      }
+    }
   }
 }

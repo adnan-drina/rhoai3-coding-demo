@@ -287,7 +287,8 @@ def graph_projection(plan: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"schema": plan.get("schema"), "kind": plan.get("kind"), "nodes": nodes,
             "ownership": dict(sorted((plan.get("ownership") or {}).items())),
             "dispositions": plan.get("dispositions") or [], "unresolved": plan.get("unresolved") or [],
-            "counts": plan.get("counts") or {}, "requirements": plan.get("requirements") or []}
+            "counts": plan.get("counts") or {}, "requirements": plan.get("requirements") or [],
+            **({"policy": plan["policy"], "composition": plan.get("composition") or {}} if plan.get("policy") else {})}
 
 
 def graph_audit(plan: dict[str, Any] | None) -> dict[str, Any]:
@@ -332,6 +333,7 @@ def initial_graph(root: Path, worklist: dict[str, Any], *, requirements: list[di
     from planner.decisions import load_decisions, max_attempts
     from planner.outcome_graph import PlanError, derive_initial_graph
     from planner.outcome_lifecycle import EP_INVENTORY, _references
+    from planner.outcome_checks import objective_inputs
 
     inv = _read(Path(root) / EP_INVENTORY)
     if not isinstance(inv, dict) or not isinstance(inv.get("entry_points"), list):
@@ -344,7 +346,7 @@ def initial_graph(root: Path, worklist: dict[str, Any], *, requirements: list[di
         g = derive_initial_graph(run_id=run_id, worklist=worklist, entry_points=inv["entry_points"], oracles=oracles,
                                  references=_references(root), max_attempts=max_attempts(dec),
                                  provenance={"snapshot_kind": "admission", "scope_note": "semantic projection of this root's admission-time evidence"},
-                                 requirements=requirements)
+                                 requirements=requirements, objectives=objective_inputs(root, worklist))
     except PlanError as exc:
         return None, "%s: %s" % (exc.code, exc.detail)
     return g, ""

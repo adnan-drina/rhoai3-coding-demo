@@ -564,6 +564,18 @@
           ],
           "description": "v1 makes the initial M3 plan repeatable (lib/planner/plan_semantics.py): compile-obligation identity from the compiler's structured diagnostic in a pinned locale (not localized text), a controlled clean initial analysis (no stale target/ outputs), source-derived migration responsibilities (lib/planner/source_requirements.py) owned by the initial outcome graph, and a semantic plan fingerprint sealed by admission beside the exact evidence digests. off (or absent) keeps today's identities and plan. The golden selects v1 for NEW runs; a run keeps the value its destination's initial commit carried and admission refuses a later flip (PLAN_SEMANTICS_REPINNED), so every earlier run stays off."
         },
+        "compatibility_objectives": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "v1",
+            "off",
+            null
+          ],
+          "description": "v1 composes the initial M3 plan by compatibility objective (lib/planner/compatibility_objectives.py, catalogs/compat-mapping.json objective_families): admitted units of one declared family that share a site become ONE bounded scope issued whole, requirements are owned by their rule's family and semantic subject (never the first file a card holds), every (requirement, check) is planned immediate or later with its prerequisite owners as hard parents, and budgets are conserved as families over the current policy's accounts. Requires plan_semantics v1. off (or absent) keeps the per-unit plan. Pinned like plan_semantics: a run keeps its initial commit's value and admission refuses a later flip (OBJECTIVES_REPINNED)."
+        },
         "adr": {
           "type": [
             "string",

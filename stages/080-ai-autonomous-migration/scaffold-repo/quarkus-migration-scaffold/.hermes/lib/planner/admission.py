@@ -84,6 +84,15 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
         pin = plan_semantics_pin_gap(root, decisions)
         if pin:
             block("PLAN_SEMANTICS_REPINNED", "decisions.loop.plan_semantics", pin)
+        # the objective policy is pinned the same way, and it needs plan
+        # semantics v1 (its requirements, identities and check plan)
+        from planner.decisions import compatibility_objectives as _objectives_mode, loop_pin_gap as _loop_pin_gap
+        opin = _loop_pin_gap(root, decisions, "compatibility_objectives")
+        if opin:
+            block("OBJECTIVES_REPINNED", "decisions.loop.compatibility_objectives", opin)
+        if _objectives_mode(decisions) == "v1" and plan_semantics_mode(decisions) != "v1":
+            block("OBJECTIVES_WITHOUT_PLAN_SEMANTICS", "decisions.loop.compatibility_objectives",
+                  "compatibility-objectives/v1 composes the plan-semantics v1 revision; select loop.plan_semantics: v1")
     for g in activation_gaps(pins, bundle_digest):
         block("PLANNER_NOT_ACTIVATED" if "NOT_ACTIVATED" in g else "PLANNER_PILOT_SEAL", "pins.planner", g)
     for g in pin_gaps(pins, bundle.get("producers") or {}):

@@ -254,14 +254,21 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
                          oracles: dict[str, list[str]] | None, references: dict[str, list[str]] | None,
                          provenance: dict[str, Any], max_attempts: int = 3,
                          satisfied: dict[str, str] | None = None,
-                         requirements: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                         requirements: list[dict[str, Any]] | None = None,
+                         objectives: dict[str, Any] | None = None) -> dict[str, Any]:
     """Plan revision 1 for a run, or PlanError. Never a partial plan.
 
     ``requirements`` (plan semantics v1, planner.source_requirements) are the
     known responsibilities derived from the frozen source. None (every caller
     before v1) leaves the revision exactly as before; a list makes each one
     owned by exactly one outcome, satisfied with its receipt, not applicable,
-    or an explicit unresolved responsibility (attach_requirements)."""
+    or an explicit unresolved responsibility (attach_requirements).
+
+    ``objectives`` (policy compatibility-objectives/v1: {"catalog", "seals",
+    "item_symbols", "structure_types"}) recomposes that revision by
+    compatibility objective (planner.compatibility_objectives.compose); the
+    revision derived above is its budget and conservation baseline. None
+    leaves the revision exactly as before."""
     _req(bool(_s(run_id)) and ":" not in run_id, "ADMISSION_INPUT", "run_id must be a non-empty name without ':'")
     _req(isinstance(max_attempts, int) and max_attempts >= 1, "ADMISSION_INPUT", "max_attempts must be >= 1")
     _validate_provenance(provenance)
@@ -486,6 +493,14 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
         for r in requirements:
             by_status[_s(r.get("status"))] = by_status.get(_s(r.get("status")), 0) + 1
         counts["requirements"] = dict(sorted(by_status.items()))
+    if objectives is not None:
+        from planner.compatibility_objectives import ObjectiveError, compose
+        try:
+            doc = compose(baseline=doc, worklist=worklist, requirements=requirements, catalog=objectives.get("catalog") or {},
+                          seals=objectives.get("seals"), item_symbols=objectives.get("item_symbols"),
+                          structure_types=objectives.get("structure_types"), run_id=run_id)
+        except ObjectiveError as exc:
+            raise PlanError(exc.code, exc.detail)
     doc["digest"] = plan_digest(doc)
     return doc
 
@@ -746,21 +761,26 @@ def _acyclic(nodes: list[dict[str, Any]]) -> None:
 
 
 def topo_order(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Nodes in dependency order (parents first), ties by outcome id."""
+    """Nodes in dependency order (parents first), ties by the node's
+    ``order_hint`` (compatibility-objectives/v1: the work list's leaf-first
+    order, a preference, never a parent) and then by outcome id. A node
+    without a hint sorts exactly as before."""
     ids = {n["outcome_id"]: n for n in nodes}
     done: list[str] = []
     seen: set[str] = set()
+
+    def key(n: str) -> tuple:
+        return (list(ids[n].get("order_hint") or []), n)
 
     def visit(n: str) -> None:
         if n in seen:
             return
         seen.add(n)
-        for p in sorted(ids[n]["parents"]):
-            if p in ids:
-                visit(p)
+        for p in sorted((p for p in ids[n]["parents"] if p in ids), key=key):
+            visit(p)
         done.append(n)
 
-    for n in sorted(ids):
+    for n in sorted(ids, key=key):
         visit(n)
     return [ids[n] for n in done]
 
