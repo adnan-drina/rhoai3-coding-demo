@@ -1171,7 +1171,14 @@ def record_assessment(ctx: Ctx, *, task_id: str, run_id: int, verdict_doc: dict[
                 got = requirement_measurement(ctx.root, plan, n, wl, measured, tree)
                 if got:
                     checks.update(got)
-        record_measurement(ctx, tree=tree, classes=["build", "compile", "tests", "runtime", "parity"], scenarios=measured,
+        # the classes the verification of THIS tree executed (planner.measurement), not a stamp of all five
+        from planner.measurement import classes as _proven, execution as _execution
+        from planner.paths import VERIFY_RUN as _VR
+        try:
+            _run = json.loads((Path(ctx.root) / _VR).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _run = {}
+        record_measurement(ctx, tree=tree, classes=_proven(_execution(wl, _run, tree)), scenarios=measured,
                            open_ids=[o["id"] for o in obligations], source="assessment:%s" % iss["outcome_id"],
                            checks=checks or None, asserted_by=_asserted_by(ctx))
     return {"assessment_seq": seq, "verdict": token, "open_obligations": len(obligations)}

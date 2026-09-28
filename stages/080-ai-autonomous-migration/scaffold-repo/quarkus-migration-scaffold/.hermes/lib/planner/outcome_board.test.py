@@ -1105,7 +1105,11 @@ class AdvanceBridge(unittest.TestCase):
         self.assertEqual(B.record(r.root, "ACCEPTED", cand), 0)              # accept-begin BEFORE the commit
         git(r.root, "commit", "-qam", "accept")
         r.drop("inc:pom:quarkus-bom")
-        self.assertEqual(B.after_accept(r.root, git(r.root, "rev-parse", "HEAD"), cand, {"runtime": {}}, {}), 0)
+        # the verification of THIS candidate (v24: classes are what it executed, never a stamp)
+        wl = {"runtime": {}, "candidate_sha256": cand, "measure": {"compile_errors": 0, "failing_tests": 0}}
+        run_doc = {"candidate_sha256": cand, "mode": "acceptance", "classpath": {"ran": True, "rc": 0},
+                   "diagnostics": {"ran": True, "rc": 0}, "tests": {"ran": False}}
+        self.assertEqual(B.after_accept(r.root, git(r.root, "rev-parse", "HEAD"), cand, wl, run_doc), 0)
         self.assertEqual(L._outcome(Store(r.root), "build:rk:pom")["status"], "accepted")
         self.assertEqual(len([t for t in r.native.tasks.values() if t.get("idempotency_key", "").startswith("outcome:")]),
                          len([n for n in r.plan["nodes"] if n["role"] == "repair"]))  # no card was minted per attempt

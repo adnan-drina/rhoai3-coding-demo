@@ -190,13 +190,29 @@ class Run:
             cls = ("build", "compile", "tests") + {"runtime": ("runtime",), "behavior": ("runtime", "parity")}.get(n["class"], ())
             self.accept(n["outcome_id"], classes=cls, scenarios=n.get("scenarios") or ())
 
-    def assess(self, verdict, *, new_items=(), new_clusters=()):
+    def verified(self, tests="passed"):
+        """The verification of the CURRENT tree as run-verify records it: the
+        worklist and run.json bound to it, the suite executed (``tests``:
+        passed | failed | None for a verification that ran no tests)."""
+        from planner.paths import VERIFY_RUN
+        tree = self.tree()
+        m = dict(self.worklist.get("measure") or {}, compile_errors=0, failing_tests=1 if tests == "failed" else 0)
+        self.worklist.update(candidate_sha256=tree, measure=m,
+                             sources=dict(self.worklist.get("sources") or {}, surefire={"reports": 1} if tests else None))
+        self.save_worklist()
+        run = {"candidate_sha256": tree, "mode": "acceptance", "classpath": {"ran": True, "rc": 0},
+               "diagnostics": {"ran": True, "rc": 0}, "tests": {"ran": bool(tests), "rc": 0 if tests == "passed" else 1}}
+        (self.root / VERIFY_RUN).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / VERIFY_RUN).write_text(json.dumps(run))
+
+    def assess(self, verdict, *, new_items=(), new_clusters=(), tests="passed"):
         tid, run, iss = self.issue("assess:m4:g1")
         for it in new_items:
             self.worklist["items"].append(it)
         for c in new_clusters:
             self.worklist["clusters"].append(c)
         self.save_worklist()
+        self.verified(tests)   # v24: M4 owns the full suite (measure:tests); the positive path carries its evidence
         v = self.root / VERDICT
         v.parent.mkdir(parents=True, exist_ok=True)
         v.write_text(json.dumps({"card_id": tid, "verdict": verdict,
@@ -963,9 +979,16 @@ class AdvanceBridge(unittest.TestCase):
                 git(r.root, "commit", "-qam", "accepted")
                 r.drop(*NC.owned(r.plan(), NC._node(r.plan(), "build:rk:pom")))
                 wl = json.loads((r.root / WORKLIST).read_text())
+                # the verification of THIS candidate, as run-verify records it (v24: classes are what it executed)
+                wl.update(candidate_sha256=cand, measure=dict(wl.get("measure") or {}, compile_errors=0, failing_tests=0))
+                run_doc = {"candidate_sha256": cand, "mode": "acceptance", "classpath": {"ran": True, "rc": 0},
+                           "diagnostics": {"ran": True, "rc": 0}, "tests": {"ran": False}}
                 with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                    self.assertEqual(B.after_accept(r.root, git(r.root, "rev-parse", "HEAD"), cand, wl, {}), 0)
+                    self.assertEqual(B.after_accept(r.root, git(r.root, "rev-parse", "HEAD"), cand, wl, run_doc), 0)
                 self.assertIn("kanban_request_review reviewer=reviewer", out.getvalue())
+                acc = [x for x in r.board.records(tid) if x["kind"] == "accept-commit"][-1]
+                self.assertNotIn("tests", acc["measurement"]["classes"])   # no test ran: no tests class
+                self.assertEqual(acc["measurement"]["execution"]["tests"]["state"], "not-run")
                 self.assertEqual([x["kind"] for x in r.board.records(tid)],
                                  ["issue", "reject", "issue", "accept-begin", "accept-commit"])
             finally:

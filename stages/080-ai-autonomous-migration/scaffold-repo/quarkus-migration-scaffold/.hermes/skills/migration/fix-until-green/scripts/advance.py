@@ -320,6 +320,14 @@ def _decided_repairs_for_baseline(root: Path) -> dict | None:
             "classification": rec.get("classification"), "counts": rec.get("counts")}
 
 
+def _execution(cur: dict, run: object, tree: str) -> dict:
+    """What this step's verification actually executed on its candidate
+    (planner.measurement): the baseline shortcut and every acceptance read
+    it, never a class stamp."""
+    from planner.measurement import execution
+    return execution(cur, run if isinstance(run, dict) else {}, tree)
+
+
 def _commit(root: Path, paths: list[str], message: str) -> str:
     git(root, "reset", "-q")  # nothing staged but what we add now
     if paths:
@@ -405,7 +413,12 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
         return 1
     rec = pipeline.admit(root)
     publish_loop_state(root, rebuilt)
-    print("REVERTED %s attempt %d/%d (budget %s): %s" % (cluster, attempts[key], limit, key, reason), file=sys.stderr)
+    nb = issued.get("native_budget") or {}
+    print("REVERTED %s: rejected attempt %d of %d on the loop-deferral key %s%s: %s"
+          % (cluster, attempts[key], limit, key,
+             ("; the M2-published outcome budget of %s is %d of %d spent%s (the native record counts this rejection)"
+              % (nb.get("key"), int(nb.get("spent") or 0), int(nb.get("limit") or 0), ", SHARED by the family" if nb.get("shared") else ""))
+             if nb.get("key") else "", reason), file=sys.stderr)
     if deleted:
         print("  the revert DELETED new file(s) the candidate wrote: %s (write them again if still owed)" % ", ".join(deleted), file=sys.stderr)
     if mint and rec.get("status") == "ADMITTED":
@@ -596,8 +609,13 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
             continue   # another unit of this card: this candidate is judged normally
         commit = str(row.get("commit") or "")
         same = str(row.get("candidate_sha256") or "") == on_disk
-        print("OK: ACCEPTED already (step %d, commit %s) -- call kanban_complete; this invocation changes nothing about the verdict%s"
-              % (n, commit[:12], "" if same else " (the tree on disk is no longer that candidate: %s vs %s)" % (on_disk[:12], str(row.get("candidate_sha256") or "")[:12])))
+        drift = "" if same else " (the tree on disk is no longer that candidate: %s vs %s)" % (on_disk[:12], str(row.get("candidate_sha256") or "")[:12])
+        if _outcome_bridge.active(root):
+            print("CHECKPOINT ALREADY RECORDED (step %d, commit %s); this invocation changes nothing. Whether the OUTCOME is "
+                  "accepted is on the outcome record: run native_gate.py issue and follow its first line%s" % (n, commit[:12], drift))
+        else:
+            print("OK: ACCEPTED already (step %d, commit %s) -- call kanban_complete; this invocation changes nothing about the verdict%s"
+                  % (n, commit[:12], drift))
         if not same:
             return 0
         # the tail the kill may have interrupted, each step idempotent: the
@@ -740,7 +758,8 @@ def main(argv: list[str] | None = None) -> int:
         changed = product_paths_changed(root)
         sha = _commit(root, changed, "fix-until-green: baseline %s" % cur["measure"]["tuple"])
         snapshot_reports(root)
-        steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline", **({"decided_repairs": repairs_rec} if repairs_rec else {})})
+        steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"],
+                               "execution": _execution(cur, run, on_disk), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline", **({"decided_repairs": repairs_rec} if repairs_rec else {})})
         save_steps(root, steps)
         rec = pipeline.admit(root)
         print("OK: BASELINE recorded commit %s measure=%s admission=%s" % (sha[:12], cur["measure"]["tuple"], rec["status"]))
@@ -1196,7 +1215,11 @@ def main(argv: list[str] | None = None) -> int:
     _phase("verdict: accepted; committing the candidate")
     if _outcome_bridge.record(root, "ACCEPTED", on_disk):
         return 1  # accept-begin must be on the outcome ledger before the commit (crash recovery)
-    sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
+    # the subject names this card's checkpoint number, never the issued attempt key: v23 stamped "attempt 3" on the
+    # first commit of every later repository card (the shared family budget's key), which read as exhaustion
+    checkpoint_n = 1 + sum(1 for s in steps.get("steps") or [] if isinstance(s, dict) and s.get("card") == args.card
+                           and s.get("verdict") == "accepted")
+    sha = _commit(root, changed, "fix-until-green: %s checkpoint %d of %s %s" % (args.cluster, checkpoint_n, args.card, cur["measure"]["tuple"]))
     _phase("snapshotting the tool reports")
     snapshot_reports(root)
     if carried_rows:
@@ -1205,7 +1228,8 @@ def main(argv: list[str] | None = None) -> int:
         # mode this card compared, never the other mode's sealed receipt
         snap_name = parity_receipt_file(parity_mode).name
         write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / snap_name, judged_parity)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"],
+                           "execution": _execution(cur, run, on_disk), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),
                                      "family_key": str(scope_doc.get("family_key") or "")} if unit else {}),
@@ -1237,7 +1261,14 @@ def main(argv: list[str] | None = None) -> int:
         _record_owner_debt(root, debt)
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
-    print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))
+    if _outcome_bridge.active(root):
+        # outcome board: this commit is a CHECKPOINT; whether the outcome is accepted is decided on the outcome
+        # record below, and that line is the one to act on (v23 t_71d9117b read "OK: ACCEPTED" and ignored
+        # "OUTCOME NOT YET ACCEPTED")
+        print("checkpoint %d of %s recorded as commit %s (%s); the outcome state follows" % (checkpoint_n, args.card, sha[:12], reason),
+              file=sys.stderr)
+    else:
+        print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))
     _phase("the verdict is on the record (steps.json); rebuilding the work list on the accepted tree")
     rebuild = build_worklist(root)
     _phase("re-sealing admission")

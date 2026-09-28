@@ -121,14 +121,10 @@ def after_accept(root: Path, commit: str, candidate: str, worklist: dict[str, An
         return None
     from planner import outcome_lifecycle as L
     task, run_id = _ids()
-    parity = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
-    scenarios = [str(s) for s in parity.get("scenarios") or []]
-    classes = ["build", "compile", "tests"] + (["runtime"] if (worklist.get("runtime") or {}).get("ready") else []) + \
-              (["parity"] if scenarios else [])
     try:
         ctx = _ctx(root)
         out = L.accept_commit(ctx, task_id=task, run_id=run_id, attempt=candidate[:16], commit=commit,
-                              measurement={"classes": classes, "scenarios": scenarios})
+                              measurement=_measurement(worklist, run, candidate))
     except Exception as exc:
         return _refuse(exc)
     if out["outcome_accepted"]:
@@ -183,20 +179,17 @@ def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) 
             print(_REVIEW % (out["outcome_id"], "commit " + str(out["commit"])[:12] + ", judged again on the unchanged tree"))
             return 0
         reasons = out.get("not_accepted_because") or ["open obligation %s" % o for o in out["open_owned"][:4]]
-        print("OUTCOME NOT YET ACCEPTED %s (commit %s, judged again on the unchanged tree): %s"
-              % (out["outcome_id"], str(out["commit"])[:12], "; ".join(reasons[:4])), file=sys.stderr)
-        return reissue(root, note="outcome %s is not accepted yet: %s" % (out["outcome_id"], "; ".join(reasons[:3])))
+        print("CHECKPOINT RECORDED; OUTCOME PENDING %s: commit %s (judged again on the unchanged tree) is kept on this card, "
+              "and the outcome is NOT accepted. Remaining: %s. Do not kanban_complete or request review."
+              % (out["outcome_id"], str(out["commit"])[:12], "; ".join(reasons[:4])))
+        return reissue(root, note="outcome %s is pending: %s" % (out["outcome_id"], "; ".join(reasons[:3])))
     if not active(root):
         return None
     from planner import outcome_lifecycle as L
     task, run_id = _ids()
-    parity = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
-    scenarios = [str(s) for s in parity.get("scenarios") or []]
-    classes = ["build", "compile", "tests"] + (["runtime"] if (worklist.get("runtime") or {}).get("ready") else []) + \
-              (["parity"] if scenarios else [])
     try:
         out = L.evaluate_recovered(_ctx(root), task_id=task, run_id=run_id,
-                                   measurement={"classes": classes, "scenarios": scenarios})
+                                   measurement=_measurement(worklist, run))
     except Exception as exc:
         return _refuse(exc)
     if out is None:
@@ -266,12 +259,16 @@ _REVIEW = ("OUTCOME ACCEPTED %s on %s: end this run with kanban_request_review r
            "(another run of this same card). Do not kanban_complete.")
 
 
-def _measurement(worklist: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
-    parity = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
-    scenarios = [str(s) for s in parity.get("scenarios") or []]
-    classes = ["build", "compile", "tests"] + (["runtime"] if ((worklist or {}).get("runtime") or {}).get("ready") else []) + \
-              (["parity"] if scenarios else [])
-    return {"classes": classes, "scenarios": scenarios}
+def _measurement(worklist: dict[str, Any], run: dict[str, Any], candidate: str = "") -> dict[str, Any]:
+    """The classes this verification PROVES (planner.measurement), never a
+    stamp: v23 recorded build/compile/tests on every accept-commit while no
+    test could run on a tree with 94-233 compile errors. ``candidate`` binds
+    the record to the tree being accepted; without it the work list and the
+    run must at least describe the same tree."""
+    from planner.measurement import classes, execution
+    ex = execution(worklist, run, candidate)
+    scenarios = list((((ex.get("stages") or {}).get("parity") or {}).get("scenarios")) or [])
+    return {"classes": classes(ex), "scenarios": scenarios, "execution": ex}
 
 
 def _native_record(root: Path, board, verdict: str, candidate: str, reason: str) -> int:
@@ -301,16 +298,17 @@ def _native_after_accept(root: Path, board, commit: str, candidate: str, worklis
     task, run_id = _ids()
     try:
         out = NC.accept_commit(Path(root), board, task_id=task, run_id=run_id, attempt=candidate[:16], commit=commit,
-                               measurement=_measurement(worklist, run))
+                               measurement=_measurement(worklist, run, candidate))
     except Exception as exc:
         return _refuse(exc)
     if out["outcome_accepted"]:
         print(_REVIEW % (out["outcome_id"], "commit " + commit[:12]))
         return 0
     reasons = out.get("not_accepted_because") or ["an unmeasured check class"]
-    print("OUTCOME NOT YET ACCEPTED %s (commit %s is recorded): %s" % (out["outcome_id"], commit[:12], "; ".join(reasons[:4])),
-          file=sys.stderr)
-    return reissue(root, note="outcome %s is not accepted yet: %s" % (out["outcome_id"], "; ".join(reasons[:3])))
+    print("CHECKPOINT RECORDED; OUTCOME PENDING %s: commit %s is kept on this card, and the outcome is NOT accepted. "
+          "Remaining: %s. Do not kanban_complete or request review; the next scope of this same card follows."
+          % (out["outcome_id"], commit[:12], "; ".join(reasons[:4])))
+    return reissue(root, note="outcome %s is pending: %s" % (out["outcome_id"], "; ".join(reasons[:3])))
 
 
 def _native_reissue(root: Path, board, note: str = "") -> int:

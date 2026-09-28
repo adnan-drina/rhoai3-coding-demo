@@ -488,21 +488,23 @@ def requirement_matrix(root: Path, plan: dict[str, Any], node: dict[str, Any], w
 def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:
     cls = node.get("class")
     have = set(m.get("classes") or [])
+    from planner.measurement import needed_classes
     # plan semantics v1: an outcome owning source requirements is covered only
     # by a measurement that records each of their named checks; an empty live
     # work list or a vanished diagnostic never discharges them
     req = set(((node.get("acceptance") or {}).get("requirement_checks")) or [])
     if req and not req <= set(m.get("checks") or []):
         return False
-    if cls in ("build", "config"):
-        return "build" in have
-    if cls == "source":
-        return {"compile", "tests"} <= have
-    if cls == "runtime":
-        return "runtime" in have
+    if cls not in ("build", "config", "source", "runtime", "behavior"):
+        return False
+    # the node's declared measure:/gate:/parity: checks, as published: a
+    # measure:tests moved to M4 at publication is M4's to discharge
+    # (native_control.defer_runtime_checks), never assumed here
+    if not needed_classes(node) <= have:
+        return False
     if cls == "behavior":
-        return "parity" in have and set(node.get("scenarios") or []) <= set(m.get("scenarios") or [])
-    return False
+        return set(node.get("scenarios") or []) <= set(m.get("scenarios") or [])
+    return True
 
 
 def owner_repair_id(owner: str, dependent: str) -> str:

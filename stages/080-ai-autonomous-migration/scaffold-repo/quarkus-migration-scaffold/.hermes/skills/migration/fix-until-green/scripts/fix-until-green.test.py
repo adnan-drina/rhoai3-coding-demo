@@ -1113,6 +1113,14 @@ def _revert_deletes_new_file_case() -> int:
                             "--section", "previous_attempts"], capture_output=True, text=True)
         if new not in b.stdout or "deleted_by_revert" not in b.stdout:
             return _fail("the retry brief carries deleted_by_revert: rc=%s %s %s" % (b.returncode, b.stdout[-400:], b.stderr[-300:]))
+        # v24 WP4: the current retry state leads the brief -- what the last revert deleted, one line per refusal,
+        # every budget with its label (the loop's deferral count is never presented as the outcome's allowance)
+        b = subprocess.run([sys.executable, str(HERE / "brief.py"), "--root", str(root), "--cluster", cluster["id"],
+                            "--section", "_retry_state"], capture_output=True, text=True)
+        rs = json.loads(b.stdout)["_retry_state"] if b.returncode == 0 else {}
+        if rs.get("deleted_by_last_revert") != [new] or not rs.get("last_rejection") \
+                or (rs.get("budget") or {}).get("loop_deferral", {}).get("spent") != 1 or len(rs.get("refusals") or []) != 1:
+            return _fail("the retry state names the deleted file, the refusal and the labelled budget: %s %s" % (rs, b.stderr[-300:]))
     print("OK: fix-until-green (a rejection names the new files its revert deleted)")
     return 0
 
@@ -1587,6 +1595,10 @@ def _continuation_case() -> int:
         cont = load_json(root / "verification" / "loop" / "continuation.json")
         if "OK: ACCEPTED" not in p.stdout or p.returncode == 0:
             return _fail("the accepted step stands and the refused admission is not a success: rc=%s %s" % (p.returncode, blob[-600:]))
+        # v24 WP4 (v23: every later repository card's first commit said "attempt 3"): the subject counts THIS card's checkpoints
+        subject = _git(root, "log", "-1", "--format=%s").strip()
+        if "checkpoint 1 of t_b8" not in subject or " attempt " in subject:
+            return _fail("the commit subject names this card's checkpoint, not an attempt key: %r" % subject)
         if "LOOP_ADMISSION" not in blob or "PLANNER_NOT_ACTIVATED" not in blob or "kanban_block" not in blob:
             return _fail("the refusal names the missing activation and the block terminator: %s" % blob[-600:])
         if cont.get("state") != "admission-refused" or cont.get("predecessor") != "t_b8" or not cont.get("reasons"):

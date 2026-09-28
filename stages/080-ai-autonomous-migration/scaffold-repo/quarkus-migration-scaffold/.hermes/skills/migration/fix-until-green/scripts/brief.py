@@ -1035,6 +1035,7 @@ def main(argv: list[str] | None = None) -> int:
             "write_set": list(r.get("write_set") or []),
         })
     pending = pending_for(steps, cluster["id"])
+    retry_state = _retry_state(root, steps, cluster, write_set, previous, rk)
     repo = repository_inventory(root, str(cluster.get("path") or ""))
     brief = {
         "schema": "rhoai3.loop-brief/v1",
@@ -1042,6 +1043,10 @@ def main(argv: list[str] | None = None) -> int:
         "write_set": write_set,
         "items": items,
         "not_counted": [n for n in (doc.get("not_counted") or []) if str(n.get("path") or "") in write_set],
+        # read FIRST (the leading underscore sorts it first in the printed JSON):
+        # what the last rollback removed, what is still owed, the budget, in a
+        # few lines -- the full attempt history stays in previous_attempts
+        "_retry_state": retry_state,
         "previous_attempts": previous,
         # the one budget answer (planner.budget): the same numbers the issued
         # card, a rejection and a deferral carry
@@ -1309,14 +1314,86 @@ def _clip(value, n: int = 220) -> str:
     return s if len(s) <= n else s[:n] + " …"
 
 
+def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previous: list, rk: str) -> dict:
+    """The one current, actionable account of this card's retries (v24 WP4).
+
+    v23 t_71d9117b: the revert of a rejected candidate deleted the new
+    PetRepositoryImpl.java, the retry re-applied only the other file, and the
+    worker then blocked believing the file existed; the budget it quoted
+    ("2/3") was the loop's deferral count, while the card's contract said
+    "2 of 12". This names the rollback's effect, the write-set files that do
+    not exist, one line per distinct refusal, and every budget with its label.
+    """
+    last = previous[-1] if previous else {}
+    reasons: list = []
+    for r in previous:
+        head = str(r.get("reason") or "").split(":", 1)[0][:80]
+        if reasons and reasons[-1]["refusal"] == head:
+            reasons[-1]["times"] += 1
+        else:
+            reasons.append({"refusal": head, "times": 1})
+    issued = load_issued(root) or {}
+    loop_b = _budget(steps, cluster["id"], rk, int(_max_attempts(root)))
+    native = issued.get("native_budget") or {}
+    card = os.environ.get("HERMES_KANBAN_TASK") or str(issued.get("task_id") or "")
+    budgets = {"loop_deferral": {"key": loop_b["retry_key"], "spent": loop_b["spent"], "limit": loop_b["limit"],
+                                 "means": "advance.py defers this key when rejected attempts reach the limit"}}
+    if native:
+        budgets["native_outcome"] = dict(native, means=("the M2-published budget of this outcome%s; native_gate.py issue "
+                                                        "refuses at the limit" % (" family, SHARED by every card of the family"
+                                                                                  if native.get("shared") else "")))
+        stops = [(loop_b["limit"] - loop_b["spent"], "loop deferral"), (int(native["limit"]) - int(native["spent"]), "native outcome budget")]
+        budgets["stops_first"] = "%s, after %d more rejected attempt(s)" % (min(stops)[1], max(0, min(stops)[0]))
+    return {
+        "native_run": os.environ.get("HERMES_KANBAN_RUN_ID") or "",
+        "checkpoints_on_this_card": sum(1 for s in steps.get("steps") or [] if isinstance(s, dict) and card and s.get("card") == card
+                                        and s.get("verdict") == "accepted"),
+        "rejected_attempts_listed": len(previous),
+        "last_rejection": ({"card": last.get("card"), "reason": str(last.get("reason") or "")[:300],
+                            "legal_next": last.get("legal_next")} if last else None),
+        "deleted_by_last_revert": list(last.get("deleted_by_revert") or []),
+        "write_set_files_absent": sorted(p for p in write_set if not (root / p).is_file()),
+        "refusals": reasons,
+        "budget": budgets,
+        "history": "previous_attempts holds every rejected patch in full (%d)" % len(previous),
+    }
+
+
 def brief_digest(brief: dict, stem: str) -> str:
     """A readable digest of a large brief: what to edit, what is owed per file,
     how the card is judged, and how to read every section in full. Nothing is
     decided here; the full brief is unchanged on disk."""
     cl = brief.get("cluster") or {}
-    out = ["BRIEF (digest: the full brief is %d characters; nothing below replaces it)" % len(json.dumps(brief)),
-           "cluster %s  kind %s  path %s" % (cl.get("id"), cl.get("kind"), cl.get("path")),
-           "measure %s   attempts left %s   budget %s" % (_clip((brief.get("measure") or {}).get("tuple") or brief.get("measure"), 80),
+    rs = brief.get("_retry_state") or {}
+    out = ["BRIEF (digest: the full brief is %d characters; nothing below replaces it)" % len(json.dumps(brief))]
+    if rs.get("last_rejection") or rs.get("write_set_files_absent"):
+        out += ["RETRY STATE (read first):"]
+        if rs.get("deleted_by_last_revert"):
+            out.append("  the last revert DELETED: %s -- they are not on the tree now" % ", ".join(rs["deleted_by_last_revert"]))
+        if rs.get("write_set_files_absent"):
+            out.append("  write-set files that do not exist: %s" % ", ".join(rs["write_set_files_absent"]))
+        if rs.get("last_rejection"):
+            out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
+            out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
+        out.append("  refusals so far: %s" % ", ".join("%s x%d" % (r["refusal"], r["times"]) for r in rs.get("refusals") or []))
+    # the required shape of each planned requirement, before the first edit (v23: the
+    # PetType/Specialty/Visit briefs named @ApplicationScoped and @Typed-to-the-fragment only
+    # inside planned_requirements, which a 64K brief's digest never showed; each card then
+    # spent two refused checkpoints discovering them)
+    shapes = [r for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and (r.get("recipe") or {}).get("architecture")]
+    if shapes:
+        out += ["REQUIRED SHAPE (planned requirements, judged by these checks now):"]
+        for r in shapes:
+            now = [c for c in r.get("acceptance") or [] if str(c).startswith(("unit:", "structure:", "gate:compile", "config:"))]
+            out.append("  %s -- checks now: %s" % (str(r.get("subject") or r.get("id")).rsplit(".", 1)[-1], ", ".join(now) or "none"))
+            out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), _clip(r["recipe"]["architecture"], 420)))
+    for name, b in sorted((rs.get("budget") or {}).items()):
+        if isinstance(b, dict):
+            out.append("  budget %s: key %s, %s of %s spent (%s)" % (name, b.get("key"), b.get("spent"), b.get("limit"), b.get("means")))
+        else:
+            out.append("  budget: %s stops first" % b)
+    out += ["cluster %s  kind %s  path %s" % (cl.get("id"), cl.get("kind"), cl.get("path")),
+           "measure %s   loop-deferral attempts left %s   budget %s" % (_clip((brief.get("measure") or {}).get("tuple") or brief.get("measure"), 80),
                                                         brief.get("attempts_left"), _clip(brief.get("budget"), 160)),
            "", "WRITE SET (%d file(s) -- edit only these):" % len(brief.get("write_set") or [])]
     out += ["  %s" % w for w in brief.get("write_set") or []]

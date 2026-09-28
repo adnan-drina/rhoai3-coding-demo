@@ -133,8 +133,15 @@ class DeferredChecks(unittest.TestCase):
         self.assertEqual(node["build:rk:pom"]["deferred_checks"], ["parity:request-body"])
         self.assertEqual(node["behavior:http:com.acme.shop.web.ItemController"]["acceptance"]["requirement_checks"],
                          ["parity:item-get"])                                # a behavior outcome measures it itself
+        # v24: each early source outcome's full test suite is owned by M4, naming the outcome and its requirements
+        sources = sorted(n["outcome_id"] for n in out["nodes"] if n.get("class") == "source" and n.get("role") == "repair")
         self.assertEqual(node["assess:m4:g1"]["acceptance"]["deferred_requirement_checks"],
-                         [{"outcome": "build:rk:pom", "requirements": ["req:1"], "check": "parity:request-body"}])
+                         sorted([{"outcome": "build:rk:pom", "requirements": ["req:1"], "check": "parity:request-body"}]
+                                + [{"outcome": o, "requirements": sorted(node[o].get("requirements") or []), "check": "measure:tests"}
+                                   for o in sources], key=lambda d: (d["outcome"], d["check"])))
+        for o in sources:
+            self.assertNotIn("measure:tests", node[o]["acceptance"]["checks"])
+            self.assertIn("measure:tests", node[o]["deferred_checks"])
         self.assertEqual(NC.native_revision(out), out)                       # idempotent
 
     def test_deferred_check_gates_m4_and_becomes_a_followup(self):
@@ -207,6 +214,11 @@ class Satisfied(unittest.TestCase):
         self.assertEqual((iss["cluster"], iss["allowed_paths"]), ("", []))
         self.assertTrue(iss["next"].startswith("SATISFIED: config:rk:cfg"), iss["next"])
         self.assertEqual(iss["satisfied"]["by"]["outcome"], "build:rk:pom")
+        # v24 WP4 (v23 t_dddc1862): the sibling acceptance is a WITNESS that measured this tree, never the cause
+        self.assertEqual(iss["satisfied"]["by"]["relation"], "witness")
+        self.assertIn("already satisfied on this measured tree", iss["next"])
+        self.assertIn("not the change that satisfied it", iss["next"])
+        self.assertNotIn("discharged by", iss["next"])
         self.assertEqual(NC.outcome_acceptance(r.root, r.board, tid, r.plan(), NC._node(r.plan(), "config:rk:cfg"))[0], True)
         again = NC.issue(r.root, r.board, task_id=tid, run_id=run)       # a replayed issue records nothing twice
         self.assertTrue(again["next"].startswith("SATISFIED"))

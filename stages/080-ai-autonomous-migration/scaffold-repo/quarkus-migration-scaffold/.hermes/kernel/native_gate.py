@@ -86,6 +86,14 @@ def write_issued_projection(root: Path, issued: dict) -> str:
         doc = load_json(root / LOOP_ISSUED)
         doc["objective"] = dict(issued["objective"])
         write_canonical(root / LOOP_ISSUED, doc)
+    nb = issued.get("budget") or {}
+    if nb.get("key"):
+        # the native outcome budget as published by M2, for the loop tools' DISPLAY: the loop's own deferral
+        # threshold (decisions max_attempts) is counted against the same key and is shown beside it, never merged
+        doc = load_json(root / LOOP_ISSUED)
+        doc["native_budget"] = {"key": str(nb["key"]), "spent": int(nb.get("spent") or 0), "limit": int(nb.get("limit") or 0),
+                                "shared": str(nb["key"]).startswith("rk:family:")}
+        write_canonical(root / LOOP_ISSUED, doc)
     amends = list(issued.get("amendments") or [])
     if amends:
         doc = load_json(root / LOOP_ISSUED)

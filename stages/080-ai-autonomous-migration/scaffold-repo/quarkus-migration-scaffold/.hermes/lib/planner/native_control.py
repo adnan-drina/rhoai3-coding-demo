@@ -266,22 +266,40 @@ def native_titles(plan: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+TEST_EXECUTION_CHECK = "measure:tests"
+
+
 def defer_runtime_checks(plan: dict[str, Any]) -> dict[str, Any]:
     """Move each runtime check an early outcome cannot measure to the M4
     node's acceptance (``deferred_requirement_checks``: outcome, requirement
     ids, check), and record it on the outcome (``deferred_checks``). The check
     still gates delivery; it no longer blocks a card that runs before the
-    application can start. Idempotent."""
+    application can start. Idempotent.
+
+    The same for a source outcome's ``measure:tests`` (v24): the full test
+    suite cannot run while the application does not compile, so an early
+    compile card cannot measure it. Its scoped compile/structural checks stay
+    immediate; the suite is an explicit M4 obligation naming this outcome and
+    its requirements, measured on M4's candidate (``deferred_checks_status``).
+    A verification that CAN run the tests still runs them at every step, and
+    an introduced failing test is still vetoed there. An owner repair (a node
+    with ``lineage``) runs after the application compiles and keeps it."""
     nodes = [dict(n) for n in plan["nodes"]]
     moved: list[dict[str, Any]] = []
     for n in nodes:
         if n.get("role") != "repair":
             continue
         kept, deferred = _deferred(n)
-        if not deferred:
-            continue
         acc = dict(n.get("acceptance") or {})
-        acc["requirement_checks"] = kept
+        tests_later = (str(n.get("class") or "") == "source" and not n.get("lineage")
+                       and TEST_EXECUTION_CHECK in (acc.get("checks") or []))
+        if not deferred and not tests_later:
+            continue
+        if deferred:
+            acc["requirement_checks"] = kept
+        if tests_later:
+            acc["checks"] = [c for c in acc.get("checks") or [] if c != TEST_EXECUTION_CHECK]
+            deferred = deferred + [TEST_EXECUTION_CHECK]
         n["acceptance"] = acc
         n["deferred_checks"] = sorted(set(list(n.get("deferred_checks") or []) + deferred))
         moved += [{"outcome": n["outcome_id"], "requirements": sorted(n.get("requirements") or []), "check": c}
@@ -702,8 +720,13 @@ def repair_waiting(board: Board, run_id: str, plan: dict[str, Any], task_id: str
 def _baseline_evidence(root: Path, tree: str, head: str) -> dict[str, Any] | None:
     """The loop's recorded M2 baseline as the measurement of THIS tree, or None:
     only when the baseline step's commit is HEAD, its candidate digest is this
-    tree (the same product_tree_sha256) and its measure was fully known. The
-    baseline verification measured build, compile and tests with the rescan."""
+    tree (the same product_tree_sha256) and its measure was fully known. Its
+    classes are what that verification EXECUTED on this tree (the step's
+    recorded execution, planner.measurement), exactly the evidence an ordinary
+    acceptance needs: a known tuple does not show the tests ran (v23's
+    baseline read [4, 233, 0] and no test could run), and a step recorded
+    before executions were kept proves no class at all."""
+    from planner.measurement import classes
     from planner.paths import LOOP_STEPS
     try:
         steps = json.loads((Path(root) / LOOP_STEPS).read_text(encoding="utf-8"))
@@ -713,8 +736,11 @@ def _baseline_evidence(root: Path, tree: str, head: str) -> dict[str, Any] | Non
     if not base or not head or str(base.get("commit") or "") != head or str(base.get("candidate_sha256") or "") != tree \
             or not (base.get("measure") or {}).get("known"):
         return None
+    ex = base.get("execution") if isinstance(base.get("execution"), dict) else None
+    if ex is not None and str(ex.get("tree") or "") != tree:
+        ex = None
     return {"key": "baseline:%s" % head[:12], "task": "M2 baseline", "outcome": CONTROL_M2, "commit": head,
-            "measurement": {"classes": ["build", "compile", "tests"], "scenarios": []}}
+            "measurement": {"classes": classes(ex), "scenarios": [], "execution": ex}}
 
 
 def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
@@ -743,16 +769,22 @@ def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: d
     if evidence is None:
         return None, ["no outcome was accepted on this tree %s: nothing measured it" % tree[:12]]
     em = evidence.get("measurement") or {}
-    m = _measure(root, plan, node, worklist, tree, {"classes": em.get("classes") or [], "scenarios": em.get("scenarios") or []})
-    m["classes_asserted_by"] = "accept-commit %s (%s)" % (evidence["key"], evidence["task"])
+    m = _measure(root, plan, node, worklist, tree, {"classes": em.get("classes") or [], "scenarios": em.get("scenarios") or [],
+                                                    "execution": em.get("execution")})
+    m["classes_asserted_by"] = "%s %s (%s)" % ("baseline step" if evidence["outcome"] == CONTROL_M2 else "accept-commit",
+                                              evidence["key"], evidence["task"])
     gaps = repair_evidence_gaps(root, node, tree)
     reasons = not_accepted_reasons({"measurement": m, "repair_evidence_gaps": gaps})
     if not _covers(node, m) and not reasons:
         reasons = ["the check class of %s was not measured on this tree" % node["outcome_id"]]
     if reasons or m["open_owned"]:
         return None, reasons
+    # the record whose measurement of THIS tree is the evidence: a witness, never
+    # the cause (v23 t_dddc1862 named the unrelated Vet repository commit as the
+    # one that "discharged" a Visit source file it never touched). File overlap
+    # proves neither, so no causal claim is made at all.
     return {"measurement": m, "by": {"task": evidence["task"], "outcome": evidence["outcome"], "commit": evidence.get("commit"),
-                                     "record": evidence["key"]}}, []
+                                     "record": evidence["key"], "relation": "witness"}}, []
 
 
 def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: str = "") -> dict[str, Any]:
@@ -856,10 +888,12 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         board.record(task_id, "accept-commit", "accept-commit:%d:satisfied" % int(run_id), run=int(run_id), commit=head,
                      tree=tree, cluster="", outcome_accepted=True, measurement=satisfied["measurement"],
                      repair_evidence_gaps=[], satisfied_by=satisfied["by"])
-        nxt = ("SATISFIED: %s owns no open obligation on this tree (discharged by %s, %s, commit %s). Nothing to edit: "
-               "run python3 .hermes/kernel/native_gate.py --root . handoff, then kanban_request_review reviewer=reviewer "
-               "with its summary and metadata. Do not run brief.py or advance.py." % (
-                   oid, satisfied["by"]["outcome"], satisfied["by"]["task"], str(satisfied["by"]["commit"] or "")[:12]))
+        nxt = ("SATISFIED: %s is already satisfied on this measured tree %s: it owns no open obligation and its "
+               "checks hold. Witness: the measurement recorded by %s (%s) at commit %s -- the record that measured this "
+               "tree, not the change that satisfied it. Nothing to edit: run python3 .hermes/kernel/native_gate.py "
+               "--root . handoff, then kanban_request_review reviewer=reviewer with its summary and metadata. Do not run "
+               "brief.py or advance.py." % (
+                   oid, tree[:12], satisfied["by"]["task"], satisfied["by"]["outcome"], str(satisfied["by"]["commit"] or "")[:12]))
     elif role == "repair" and not cluster:
         nxt = ("NOTHING ISSUED: %s has no open scope and is not satisfied (%s). kanban_block kind=needs_input naming "
                "these reasons." % (oid, "; ".join(([("planned unit refused: %s" % unit["refusal"])] if unit and unit.get("refusal") else [])
@@ -1081,10 +1115,17 @@ def check_terminator(root: Path, board: Board, *, task_id: str, run_id: int, kin
         if rec.get("candidate") != _product_tree(root):
             raise Refusal("ASSESS_STALE", "the assessment measured another candidate")
         unmet = unmet_deferred(root, board, plan, node, task_id)
-        if unmet:
+        tests = [u for u in unmet if u.split(": ", 1)[0].endswith("|" + TEST_EXECUTION_CHECK)]
+        runtime = [u for u in unmet if u not in tests]
+        if runtime:
             raise Refusal("ASSESS_DEFERRED_CHECKS", "runtime checks deferred to M4 are not met: %s. Run native_gate.py "
                           "m4-repair (each becomes a follow-up of its owning outcome) and end this run with kanban_block "
-                          "kind=dependency" % "; ".join(unmet[:4]))
+                          "kind=dependency" % "; ".join(runtime[:4]))
+        if tests:
+            raise Refusal("ASSESS_TESTS_UNMEASURED", "the full test suite owed to M4 by %d outcome(s) has not passed on "
+                          "this candidate (%s). Run run-verify.sh --mode acceptance on the candidate and record the "
+                          "assessment again; a failing test becomes a work-list obligation of this candidate"
+                          % (len(tests), tests[0][:220]))
         if kind == "complete" and not audit_green():
             raise Refusal("ASSESS_AUDIT_RED", "the paved-road M4 audit has not exited 0 in this reviewer run")
         return {"action": "allow", "code": "ASSESS_%s_ALLOWED" % ("COMPLETE" if kind == "complete" else "REVIEW")}
@@ -1152,9 +1193,14 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
     from planner.requirement_checks import passed
     scenarios = [str(s) for s in measurement.get("scenarios") or []]
     open_now = open_obligations(worklist)
+    ex = measurement.get("execution") if isinstance(measurement.get("execution"), dict) else None
     m = {"tree": tree, "classes": sorted(set(measurement.get("classes") or [])), "scenarios": sorted(set(scenarios)),
          "open_owned": sorted(open_now & owned(plan, node)), "open_count": len(open_now),
-         "classes_asserted_by": "worker-receipts"}
+         "classes_asserted_by": "verification execution" if ex is not None else "worker-receipts"}
+    if ex is not None:
+        m["execution"] = {k: {"state": v.get("state"), "detail": v.get("detail")} for k, v in (ex.get("stages") or {}).items()}
+        m["execution_tree"] = str(ex.get("tree") or "")
+        m["execution_bound"] = bool(ex.get("bound"))
     checks = requirement_measurement(root, plan, node, worklist, scenarios, tree)
     if checks and node.get("check_plan"):
         # compatibility-objectives/v1: judged per (requirement, check); a check
@@ -1177,8 +1223,10 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
         deferred = sorted(k for k, v in checks.items() if k not in kept and v.get("status") != "pass")
         if deferred:
             m["deferred_to_m4"] = deferred
-    need = {"build": {"build"}, "config": {"build"}, "source": {"compile", "tests"}, "runtime": {"runtime"},
-            "behavior": {"parity"}}.get(str(node.get("class") or ""), set())
+    # the classes the node's DECLARED acceptance still requires (a measure:tests
+    # deferred to M4 at publication is not required here; see defer_runtime_checks)
+    from planner.measurement import needed_classes
+    need = needed_classes(node)
     missing = sorted(need - set(m["classes"]))
     if str(node.get("class") or "") == "behavior":
         missing += ["scenario %s" % x for x in sorted(set(node.get("scenarios") or []) - set(m["scenarios"]))]
@@ -1688,10 +1736,25 @@ def deferred_checks_status(root: Path, plan: dict[str, Any], node: dict[str, Any
         return {}
     wl, why = load_worklist(root)
     out: dict[str, dict[str, str]] = {}
+    tests: tuple[str, str] | None = None
     for d in rows:
         key = "%s|%s" % (d.get("outcome"), d.get("check"))
         if wl is None:
             out[key] = {"status": "unknown", "detail": "no measured work list (%s)" % why}
+            continue
+        if d.get("check") == TEST_EXECUTION_CHECK:
+            # the full suite, executed on THIS candidate by the verification
+            # that produced the work list (planner.measurement); a tuple's 0
+            # on a tree that did not compile is not a passing suite
+            if tests is None:
+                from planner.measurement import execution, tests_status
+                from planner.paths import VERIFY_RUN
+                try:
+                    run_doc = json.loads((Path(root) / VERIFY_RUN).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    run_doc = {}
+                tests = tests_status(execution(wl, run_doc, tree))
+            out[key] = {"status": tests[0], "detail": tests[1]}
             continue
         pseudo = {"outcome_id": d.get("outcome"), "requirements": list(d.get("requirements") or []),
                   "acceptance": {"requirement_checks": [d.get("check")]}}
@@ -1753,6 +1816,12 @@ def record_assessment(root: Path, board: Board, *, task_id: str, run_id: int, ve
            "release_blockers": list(verdict_doc.get("release_blockers") or []),
            "qualifications": list(verdict_doc.get("qualifications") or []),
            "parity_scenarios": [str(s) for s in verdict_doc.get("parity_scenarios") or []],
+           # the plan's unresolved responsibilities, owned by this assessment and carried to M5 (v24 WP3):
+           # a verdict never discharges one; only a resolution bound to its id, evidence and candidate does
+           "unresolved_responsibilities": [{"id": str(u.get("id")), "blocks": str(u.get("blocks") or "delivery"),
+                                            "entry_points": len(u.get("entry_points") or []),
+                                            "consequence": "ship: false until resolved (M5 release obligation)"}
+                                           for u in plan.get("unresolved") or [] if isinstance(u, dict)],
            "classes_asserted_by": "worker-receipts"}
     data = canonical_bytes(doc)
     digest = sha256(data)
@@ -1789,8 +1858,17 @@ def m4_repair(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[st
     rec = latest_assessment(board, task_id)
     if rec is None or int(rec.get("run") or 0) != int(run_id):
         raise Refusal("REFUSE_UNRECORDED", "record this run's assessment first (native_gate.py assessment-record)")
-    unmet_def = unmet_deferred(root, board, plan, node, task_id)
+    unmet_all = unmet_deferred(root, board, plan, node, task_id)
+    # the full test suite is measured on THIS candidate, not repaired by its early owners: a failing
+    # test is already a surefire obligation of the assessed work list, and a suite that never ran
+    # is this M4's own missing measurement (run-verify.sh --mode acceptance), never a follow-up card
+    unmet_def = [u for u in unmet_all if u.split(": ", 1)[0].split("|", 1)[-1] != TEST_EXECUTION_CHECK]
+    tests_unmet = [u for u in unmet_all if u not in unmet_def]
     if rec["verdict"] in DELIVERY_OK_VERDICTS and not unmet_def:
+        if tests_unmet:
+            raise Refusal("M4_TESTS_UNMEASURED", "the full test suite owed by %d outcome(s) is not passing on this "
+                          "candidate (%s): run run-verify.sh --mode acceptance on it; failing tests arrive as work-list "
+                          "obligations" % (len(tests_unmet), tests_unmet[0][:200]))
         raise Refusal("REFUSE_NOT_REFUSED", "the assessment is %s: hand it to review" % rec["verdict"])
     tasks = board.run_tasks(run)
     ran = [n["outcome_id"] for n in plan["nodes"] if n.get("role") == "deliver"

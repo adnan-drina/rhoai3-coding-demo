@@ -245,11 +245,16 @@ review; the domain checks guard your native actions.
    outcome's family): `kanban_block kind=needs_input` naming the outcome.
    VERIFICATION_PENDING: `kanban_block kind=needs_input`; after a restart,
    `native_gate.py --root . restore-pending` adopts the retained candidate.
-5. `OUTCOME NOT YET ACCEPTED`: the commit is recorded; the message names each
-   reason (an open obligation, a check with its measured detail, a missing
-   measurement). Work on the reissued scope of this card; a runtime check
-   (`parity:*`, package/startup) is never yours on a build, config or source
-   card — those gate M4.
+5. `CHECKPOINT RECORDED; OUTCOME PENDING`: the commit is kept on this card
+   and the outcome is **not** accepted. The line names each remaining reason
+   (an open obligation, a check with its measured detail, a missing
+   measurement). A checkpoint is not completion: do not complete or request
+   review. Work on the reissued scope of this card. A runtime check
+   (`parity:*`, package/startup) and the full test suite (`measure:tests`,
+   which cannot run while the application does not compile) are never yours
+   on a build, config or source card: the published plan gives them to M4,
+   naming this outcome. A test the verification DID run and your candidate
+   broke is still vetoed here.
 6. Never leave uncommitted product edits behind: before `kanban_block`, run
    `python3 .hermes/kernel/native_gate.py --root . park` (it holds your candidate
    on this card and restores HEAD; K2 refuses the block otherwise). When the card

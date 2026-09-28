@@ -186,16 +186,46 @@ def _baseline_case() -> int:
         NB.git(r.root, "add", "-A")
         NB.git(r.root, "commit", "-qm", "clean file")
         head, tree = NC._head(r.root), NC._product_tree(r.root)
+        from planner.measurement import execution
+        errors = len(r.worklist["items"])
+        # the baseline verification as run-verify records it: the classpath resolved, the compiler ran and
+        # found errors, and the tests could not run (v23: [4, 233, 0])
+        ex = execution({"candidate_sha256": tree, "measure": {"compile_errors": errors, "failing_tests": 0, "known": True},
+                        "sources": {"surefire": None}},
+                       {"candidate_sha256": tree, "mode": "acceptance", "classpath": {"ran": True, "rc": 0},
+                        "diagnostics": {"ran": True, "rc": 1}, "tests": {"ran": False}}, tree)
         steps = {"steps": [{"cluster": "bootstrap", "verdict": "baseline", "commit": head, "candidate_sha256": tree,
-                            "measure": {"known": True, "tuple": [0, len(r.worklist["items"]), 0]}}]}
+                            "measure": {"known": True, "tuple": [0, errors, 0]}, "execution": ex}]}
         (r.root / LOOP_STEPS).parent.mkdir(parents=True, exist_ok=True)
         (r.root / LOOP_STEPS).write_text(json.dumps(steps))
         plan = r.plan()
         clean = next(n for n in plan["nodes"] if "req:annotation-retirement:clean" in (n.get("requirements") or []))
         dirty = next(n for n in plan["nodes"] if "req:annotation-retirement:order-model" in (n.get("requirements") or []))
+        base_ev = NC._baseline_evidence(r.root, tree, head)
+        if sorted(base_ev["measurement"]["classes"]) != ["build", "compile"]:
+            return _fail("the baseline proves only what it executed (no tests on a tree that does not compile): %s"
+                         % base_ev["measurement"]["classes"])
         ev, why = NC._satisfied(r.root, r.board, r.run_id, plan, clean, r.worklist, tree, head)
         if ev is None or ev["by"]["record"] != "baseline:%s" % head[:12]:
             return _fail("a requirement whose checks hold at the admitted baseline is satisfied from it: %s" % why)
+        if "tests" in ev["measurement"]["classes"] or ev["measurement"]["execution"]["tests"]["state"] != "blocked":
+            return _fail("satisfaction at the baseline claims no test execution: %s" % ev["measurement"])
+        # review F4: a baseline step with no execution record proves no class, so nothing is satisfied from it
+        bare = json.loads(json.dumps(steps))
+        bare["steps"][0].pop("execution")
+        (r.root / LOOP_STEPS).write_text(json.dumps(bare))
+        if NC._baseline_evidence(r.root, tree, head)["measurement"]["classes"]:
+            return _fail("a known tuple alone is no class credit")
+        ev2, why2 = NC._satisfied(r.root, r.board, r.run_id, plan, clean, r.worklist, tree, head)
+        if ev2 is not None or not any("not measured" in x for x in why2):
+            return _fail("without an execution record the shortcut is refused on its missing class: %s" % why2)
+        # an execution bound to another tree is not this tree's evidence
+        other = json.loads(json.dumps(steps))
+        other["steps"][0]["execution"]["tree"] = "f" * 64
+        (r.root / LOOP_STEPS).write_text(json.dumps(other))
+        if NC._baseline_evidence(r.root, tree, head)["measurement"]["classes"]:
+            return _fail("a wrong-tree execution proves nothing here")
+        (r.root / LOOP_STEPS).write_text(json.dumps(steps))
         ev, why = NC._satisfied(r.root, r.board, r.run_id, plan, dirty, r.worklist, tree, head)
         if ev is not None or any("nothing measured it" in x for x in why):
             return _fail("a failing requirement is refused ON ITS MEASUREMENT at the baseline: %s" % why)
