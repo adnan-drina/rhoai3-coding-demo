@@ -63,8 +63,10 @@ MTA_RUN_CWD="${MTA_RUN_CWD:-/projects/.tools/mta-run}"; mkdir -p "${MTA_RUN_CWD}
 # the analyzer: a candidate that moved during the scan is a stale input, refused.
 SNAP_BASE="$(mktemp -d "${MTA_RUN_CWD%/}/destination-input.XXXXXX")"
 SNAP="${SNAP_BASE}/$(basename "${ROOT}")"
-cleanup() { rm -rf "${SNAP_BASE}"; }
-trap cleanup EXIT
+# the copy keeps the candidate's modes (evidence/mta is read-only), and cleanup never decides the
+# scan's exit status: bash would otherwise report a failed rm as the rescan's own failure
+cleanup() { chmod -R u+w "${SNAP_BASE}" 2>/dev/null; rm -rf "${SNAP_BASE}" 2>/dev/null || true; }
+trap 'rc_=$?; cleanup; exit ${rc_}' EXIT
 python3 - "${ROOT}" "${SNAP}" "${TREE_SHA256}" <<'PY'
 import os, shutil, sys
 from pathlib import Path
