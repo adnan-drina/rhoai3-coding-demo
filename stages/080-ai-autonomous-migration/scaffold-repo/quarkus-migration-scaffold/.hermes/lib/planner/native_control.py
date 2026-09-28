@@ -1130,6 +1130,49 @@ def not_accepted_reasons(acc: dict[str, Any]) -> list[str]:
     return out
 
 
+UNRESOLVED_DETAIL = "could not fully resolve"
+
+
+def _unmeasurable_yet(m: dict[str, Any]) -> list[str]:
+    """This outcome's own checks that could not be measured ONLY because the
+    file they judge does not fully resolve -- when every owned obligation is
+    already gone, the unresolved diagnostics belong to OTHER outcomes (v21
+    t_0bc6319b: SpringDataVisitRepositoryImpl could not resolve
+    org.springframework.dao.DataAccessException, owned by the dao unit that
+    waits on this card). Empty unless EVERY unmet check is of that kind."""
+    if m.get("open_owned"):
+        return []
+    unmet = m.get("unmet_checks") or {}
+    late = [k for k, v in unmet.items() if v.get("status") == "unknown" and UNRESOLVED_DETAIL in str(v.get("detail") or "")]
+    return sorted(late) if late and len(late) == len(unmet) else []
+
+
+def _covers_or_defers(board: Board, run: str, plan: dict[str, Any], node: dict[str, Any], m: dict[str, Any],
+                      *, record: bool) -> bool:
+    """_covers, where a check this outcome cannot measure YET (_unmeasurable_yet)
+    is judged at M4 instead: recorded on every M4 task as a `defer-check`, read
+    back by unmet_deferred, refused there (ASSESS_DEFERRED_CHECKS) until it passes."""
+    if _covers(node, m):
+        return True
+    late = _unmeasurable_yet(m)
+    if not late or not _covers(node, dict(m, checks=sorted(set(m.get("checks") or []) | set(late)))):
+        return False
+    m["deferred_unresolved"] = late
+    if record:
+        oid = node["outcome_id"]
+        for n in plan.get("nodes") or []:
+            if n.get("role") != "assess":
+                continue
+            m4 = board.task_of(run, n)
+            if not m4:
+                continue
+            for chk in late:
+                board.record(m4, "defer-check", "defer-check:%s:%s" % (oid, chk), outcome=oid, check=chk,
+                             requirements=sorted(node.get("requirements") or []),
+                             reason=str(((m.get("unmet_checks") or {}).get(chk) or {}).get("detail") or "")[:300])
+    return True
+
+
 def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attempt: str, commit: str,
                   measurement: dict[str, Any]) -> dict[str, Any]:
     """Record the committed acceptance of the issued scope and decide whether
@@ -1158,8 +1201,8 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
     m = _measure(root, plan, node, wl, tree, measurement)
-    covered = _covers(node, m)
     evidence_gaps = repair_evidence_gaps(root, node, tree)
+    covered = _covers_or_defers(board, run, plan, node, m, record=not evidence_gaps)
     done = not m["open_owned"] and covered and not evidence_gaps
     board.record(task_id, "accept-commit", "accept-commit:%s" % key, run=int(run_id), commit=commit, tree=tree,
                  cluster=iss.get("cluster") or "", outcome_accepted=done, measurement=m, repair_evidence_gaps=evidence_gaps)
@@ -1219,8 +1262,9 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
     m = _measure(root, plan, node, wl, tree, measurement)
-    covered = _covers(node, m)
-    done = not m["open_owned"] and covered and not repair_evidence_gaps(root, node, tree)
+    gaps = repair_evidence_gaps(root, node, tree)
+    covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
+    done = not m["open_owned"] and covered and not gaps
     board.record(task_id, "accept-evaluated", "accept-evaluated:%s" % last["key"].split(":", 1)[1], run=int(run_id),
                  commit=last.get("commit"), tree=tree, outcome_accepted=done, measurement=m)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "covered": covered,
@@ -1552,11 +1596,11 @@ def refusal_stop(root: Path, task_id: str, run_id: int) -> dict[str, Any] | None
 # ---------------------------------------------------------------------------
 
 def deferred_checks_status(root: Path, plan: dict[str, Any], node: dict[str, Any], scenarios: list[str],
-                           tree: str) -> dict[str, dict[str, str]]:
+                           tree: str, extra: list[dict[str, Any]] | None = None) -> dict[str, dict[str, str]]:
     """The runtime checks deferred to this M4 (defer_runtime_checks), measured
     on the current tree exactly as the owning outcome's checks are
     (requirement_measurement): '<outcome>|<check>' -> {status, detail}."""
-    rows = list(((node.get("acceptance") or {}).get("deferred_requirement_checks")) or [])
+    rows = list(((node.get("acceptance") or {}).get("deferred_requirement_checks")) or []) + list(extra or [])
     if not rows:
         return {}
     wl, why = load_worklist(root)
@@ -1581,7 +1625,9 @@ def unmet_deferred(root: Path, board: Board, plan: dict[str, Any], node: dict[st
             scen = list(_assessment_doc(board, task_id, rec).get("parity_scenarios") or [])
         except Refusal:
             scen = []
-    st = deferred_checks_status(root, plan, node, scen, _product_tree(root))
+    extra = [{"outcome": r.get("outcome"), "requirements": list(r.get("requirements") or []), "check": r.get("check")}
+             for r in board.records(task_id, "defer-check")]
+    st = deferred_checks_status(root, plan, node, scen, _product_tree(root), extra=extra)
     return ["%s: %s (%s)" % (k, v.get("status"), str(v.get("detail") or "")[:160]) for k, v in sorted(st.items())
             if v.get("status") != "pass"]
 

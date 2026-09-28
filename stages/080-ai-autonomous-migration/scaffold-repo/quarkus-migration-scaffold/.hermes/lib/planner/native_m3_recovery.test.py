@@ -252,6 +252,47 @@ class Satisfied(unittest.TestCase):
 
 
 # ===========================================================================
+class UnresolvableYet(unittest.TestCase):
+    """v21 t_0bc6319b: the fragment checks could only be UNKNOWN because
+    SpringDataVisitRepositoryImpl could not resolve DataAccessException, owned
+    by the dao unit that waits on this card -- a deadlock in the plan order."""
+
+    def run_case(self, status, detail):
+        orig = NC.requirement_measurement
+        NC.requirement_measurement = lambda root, plan, node, wl, sc, tree: (
+            {c: {"status": status, "detail": detail} for c in (node.get("acceptance") or {}).get("requirement_checks") or []})
+        r = Run(publish=False)
+        try:
+            with_check(r, "build:rk:pom", "unit:fragment-implementation")
+            r.out = r.publish()
+            r.release()
+            tid, run, iss = r.issue("build:rk:pom")
+            acc = r.accept_on_run(tid, run, iss)
+            m4 = r.tid("assess:m4:g1")
+            return acc, [x for x in r.board.records(m4, "defer-check")], r, m4
+        finally:
+            NC.requirement_measurement = orig
+            self.addCleanup(r.close)
+
+    def test_a_check_unmeasurable_because_others_break_the_file_is_judged_at_m4(self):
+        acc, deferred, r, m4 = self.run_case("unknown", "the compiler could not fully resolve src/X.java")
+        self.assertTrue(acc["outcome_accepted"], acc)
+        self.assertEqual([(d["outcome"], d["check"]) for d in deferred], [("build:rk:pom", "unit:fragment-implementation")])
+        rows = NC.unmet_deferred(r.root, r.board, r.plan(), NC._node(r.plan(), "assess:m4:g1"), m4)
+        self.assertTrue(any("build:rk:pom|unit:fragment-implementation" in x for x in rows), rows)   # M4 still judges it
+
+    def test_a_failing_check_still_blocks(self):
+        acc, deferred, _r, _m4 = self.run_case("fail", "@Typed names the wrong type")
+        self.assertFalse(acc["outcome_accepted"])
+        self.assertEqual(deferred, [])
+
+    def test_another_unknown_still_blocks(self):
+        acc, deferred, _r, _m4 = self.run_case("unknown", "the destination model is unavailable")
+        self.assertFalse(acc["outcome_accepted"])
+        self.assertEqual(deferred, [])
+
+
+# ===========================================================================
 class NotAccepted(unittest.TestCase):
 
     def test_reasons_are_named(self):
