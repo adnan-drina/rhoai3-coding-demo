@@ -1,4 +1,4 @@
-From 468f939a28aa48a8bebe5d14931f206a24c12ec6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Mon, 28 Sep 2026 07:59:32 +0200
 Subject: [PATCH] fix(guardrails): halt near-duplicate tool-call loops
@@ -22,11 +22,20 @@ v21 run (Qwen3.8-27B int4, 2026-09-27/28) five loop shapes each ran
   to -B50 ... -B1500
 
 Near-duplicate guard: every foreground terminal call and every
-idempotent read-tool call is normalised (quoted literals and
-substitutions -> placeholder, digit runs -> #, leading `cd DIR` dropped)
-and compared by difflib token ratio (>= 0.75, same tool). A call makes
-progress when more than half of its output lines are new since the last
-reset; a call with no output makes none. With hard stops enabled the
+idempotent read-tool call is normalised (digit runs -> #, leading
+`cd DIR` dropped) with operand identity kept: the quoted literals, query
+terms and paths a call names. Two calls (same tool) are near-duplicates
+when they are identical after normalisation, or when their shapes
+(quoted text as a placeholder) have a difflib token ratio >= 0.75 and
+either their operands correspond (equal after digit normalisation, or a
+quoted term that grew from / was cut back to the other: run 35, run 44)
+or they share the same first chain element and only a chained part
+differs (run 36). A different search term or a different file is a
+different call. A call makes progress when it names an operand no call
+since the last reset named (an empty answer to a new question is
+information), or when more than half of its output lines are new since
+the last reset.
+With hard stops enabled the
 turn halts with near_duplicate_loop_halt when 12 of the last 16 observed
 calls are non-progressing near-duplicates of the latest one, or when a
 cycle of 2-3 calls repeats 6 times position by position; from 8 a loop
@@ -46,17 +55,26 @@ cycles with identical arguments AND results, so it covers none of the
 five shapes except a strictly identical alternation; it is not
 backported.
 
+Review 2026-09-28 (F2): the first version collapsed every quoted
+literal and required new output lines for progress, so 12 distinct
+empty package searches and 13 reads of different files sharing
+boilerplate halted. Both review probes, 25 distinct empty searches, 25
+files with 90% shared lines and sed paging over new content now run
+unhalted; the five live shapes and an exact ABAB alternation still
+halt. Thresholds are unchanged; run 36 halts up to three calls later
+because each distinct chained tail is a new question the first time.
+
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_015F1AH7itXf3TGfe5dfF7mk
 ---
- agent/tool_guardrails.py                      | 426 ++++++++++++++++++
+ agent/tool_guardrails.py                      | 557 ++++++++++++++++++
  hermes_cli/config_defaults.py                 |  16 +
- .../test_tool_guardrails_near_duplicate.py    | 285 ++++++++++++
- 3 files changed, 727 insertions(+)
+ .../test_tool_guardrails_near_duplicate.py    | 393 ++++++++++++
+ 3 files changed, 966 insertions(+)
  create mode 100644 tests/agent/test_tool_guardrails_near_duplicate.py
 
 diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
-index 1c360d8..a2dee77 100644
+index 1c360d8..4fca31b 100644
 --- a/agent/tool_guardrails.py
 +++ b/agent/tool_guardrails.py
 @@ -8,6 +8,7 @@ turn halts.
@@ -83,7 +101,7 @@ index 1c360d8..a2dee77 100644
          )
  
  
-@@ -221,6 +224,59 @@ class LoopCapConfig:
+@@ -221,6 +224,61 @@ class LoopCapConfig:
          )
  
  
@@ -110,6 +128,8 @@ index 1c360d8..a2dee77 100644
 +      at or above which they are near-duplicates.
 +    - ``new_output_share``: a call makes progress when MORE than this share
 +      of its output lines were not shown since the last edit or transition.
++      A call that names a new operand (query term, literal or path) makes
++      progress whatever its output.
 +    """
 +
 +    enabled: bool = True
@@ -143,7 +163,7 @@ index 1c360d8..a2dee77 100644
  @dataclass(frozen=True)
  class IdenticalCallObservation:
      """Outcome of observing one completed tool call for the stall guards.
-@@ -393,6 +449,10 @@ class ToolCallGuardrailController:
+@@ -393,6 +451,12 @@ class ToolCallGuardrailController:
          self._refusal_count: int = 0
          # Set by request_turn_stop(): every later call this turn is refused.
          self._turn_stop: ToolGuardrailDecision | None = None
@@ -151,10 +171,12 @@ index 1c360d8..a2dee77 100644
 +        # the last edit or board transition, and the output lines they showed.
 +        self._nd_history: list = []
 +        self._nd_seen: set = set()
++        # Operands (query terms, literals, paths) named since the last reset.
++        self._nd_operands: list = []
  
      @property
      def halt_decision(self) -> ToolGuardrailDecision | None:
-@@ -495,6 +555,22 @@ class ToolCallGuardrailController:
+@@ -495,6 +559,22 @@ class ToolCallGuardrailController:
          if family_halt is not None:
              return family_halt
  
@@ -177,7 +199,7 @@ index 1c360d8..a2dee77 100644
          if failed:
              exact_count = self._exact_failure_counts.get(signature, 0) + 1
              self._exact_failure_counts[signature] = exact_count
-@@ -659,6 +735,161 @@ class ToolCallGuardrailController:
+@@ -659,6 +739,183 @@ class ToolCallGuardrailController:
              return decision
          return None
  
@@ -198,14 +220,23 @@ index 1c360d8..a2dee77 100644
 +        10-40 minutes unhalted.
 +
 +        Every foreground terminal call and every idempotent read-tool call is
-+        normalised (see ``_near_duplicate_tokens``: quoted literals and
-+        substitutions become placeholders, digit runs become ``#``, a
-+        leading ``cd DIR &&`` is dropped). Two calls of the same tool are
-+        near-duplicates when the difflib ratio of their token sequences is at
-+        least ``similarity``. A call makes progress when more than
-+        ``new_output_share`` of its output lines were not shown by any
-+        observed call since the last reset; a call with no output makes no
-+        progress. Only non-progressing calls count.
++        normalised (see ``_near_duplicate_call``): digit runs become ``#`` and
++        a leading ``cd DIR &&`` is dropped, while quoted literals, paths and
++        other operands keep their identity. Two calls of the same tool are
++        near-duplicates (``_near_duplicates``) when their normalised token
++        sequences are identical; or when their shapes (quoted text as a
++        placeholder) have a difflib ratio of at least ``similarity`` AND
++        either every operand of one matches an operand of the other (equal
++        after digit normalisation, or a quoted term that grew from / was cut
++        back to the other: the growing-argument loop) or both start with the
++        same chain element and only a chained part differs.
++
++        A call makes progress when it asks something new, i.e. it names an
++        operand (a query term, quoted literal or path) that no call since the
++        last reset named, whatever its output (an empty result for a new
++        query is information); or when more than ``new_output_share`` of its
++        output lines were not shown by any observed call since the last
++        reset. Only non-progressing calls count.
 +
 +        Halts (hard stops only) with ``near_duplicate_loop_halt`` when
 +        ``similar_calls`` of the last ``window`` calls are non-progressing
@@ -237,15 +268,23 @@ index 1c360d8..a2dee77 100644
 +            if _terminal_command_mutates(command):
 +                self._nd_reset()
 +                return None
-+            tokens = _near_duplicate_tokens(command)
-+            workdir = str(args.get("workdir") or "")
-+            if workdir:
-+                tokens = [_normalise_word(workdir)] + tokens
++            entry_parts = _near_duplicate_call(command, str(args.get("workdir") or ""))
 +        elif self._is_idempotent(tool_name):
-+            tokens = _near_duplicate_arg_tokens(args)
++            entry_parts = _near_duplicate_arg_call(args)
 +        else:
 +            return None
 +
++        shape, exact, operands, head = entry_parts
++        # A new operand (query term, literal or path) is a new question: its
++        # answer is information even when empty. A literal that only grew
++        # from (or was cut back to) one already asked is not new.
++        novel = False
++        for operand in operands:
++            if not any(_operands_match(operand, seen) for seen in self._nd_operands):
++                novel = True
++        for operand in operands:
++            if operand not in self._nd_operands:
++                self._nd_operands.append(operand)
 +        lines = _result_content_lines(result)
 +        new = 0
 +        for line in lines:
@@ -253,12 +292,15 @@ index 1c360d8..a2dee77 100644
 +            if digest not in self._nd_seen:
 +                self._nd_seen.add(digest)
 +                new += 1
-+        progressing = bool(lines) and new > cfg.new_output_share * len(lines)
++        progressing = novel or (bool(lines) and new > cfg.new_output_share * len(lines))
 +        entry = _NearDuplicateCall(
 +            tool_name=tool_name,
-+            tokens=tuple(tokens),
++            tokens=shape,
 +            progressing=progressing,
 +            description=_describe_call(tool_name, args),
++            exact=exact,
++            operands=operands,
++            head=head,
 +        )
 +        self._nd_history.append(entry)
 +        keep = max(cfg.window, cfg.cycle_laps * cfg.max_cycle_period)
@@ -296,8 +338,9 @@ index 1c360d8..a2dee77 100644
 +                code=NEAR_DUPLICATE_HALT_CODE,
 +                message=(
 +                    f"Stopped {tool_name}: {loop}, with no new output, no file edit "
-+                    "and no board transition in between. Only numbers, quoted "
-+                    "text or a chained part changed between these calls, so "
++                    "and no board transition in between. Only numbers, a growing "
++                    "quoted argument or a chained part changed between these "
++                    "calls, and none of them asked about a new term or file, so "
 +                    "repeating them cannot find anything new. Nothing on disk was "
 +                    "changed by this stop: the working tree and any retained "
 +                    "candidate stay as they are. Use the content already shown, "
@@ -308,7 +351,7 @@ index 1c360d8..a2dee77 100644
 +                count=count,
 +                signature=ToolCallSignature(
 +                    tool_name=tool_name,
-+                    args_hash=_sha256(json.dumps([tool_name, list(entry.tokens)])),
++                    args_hash=_sha256(json.dumps([tool_name, list(entry.exact)])),
 +                ),
 +                family=loop[:300],
 +            )
@@ -335,11 +378,12 @@ index 1c360d8..a2dee77 100644
 +    def _nd_reset(self) -> None:
 +        self._nd_history.clear()
 +        self._nd_seen.clear()
++        self._nd_operands.clear()
 +
      def _new_phase(self) -> None:
          """An evidence-changing call: reads before it prove nothing about after."""
          self._read_families.clear()
-@@ -1464,6 +1695,201 @@ def _result_content_lines(result: str | None) -> list:
+@@ -1464,6 +1721,306 @@ def _result_content_lines(result: str | None) -> list:
          lines.append(line)
      return lines
  
@@ -393,9 +437,12 @@ index 1c360d8..a2dee77 100644
 +@dataclass(frozen=True)
 +class _NearDuplicateCall:
 +    tool_name: str
-+    tokens: tuple
++    tokens: tuple  # shape: digit runs as ``#``, quoted text as a placeholder
 +    progressing: bool
 +    description: str
++    exact: tuple = ()  # digit runs as ``#``, quoted text kept
++    operands: tuple = ()  # query terms, literals and paths, digit-normalised
++    head: tuple = ()  # exact tokens of the first chain element
 +
 +
 +def _shell_tokens(command: str) -> list:
@@ -420,13 +467,57 @@ index 1c360d8..a2dee77 100644
 +    return _ND_DIGITS.sub("#", word)
 +
 +
-+def _near_duplicate_tokens(command: str) -> list:
-+    """Normalised token sequence of a terminal command.
++# Chain operators: what follows one of these is a separate command.
++_ND_CHAIN = frozenset({"||", "&&", ";", "&", "\n"})
++# Shortest operand for which one containing the other counts as the same
++# question grown or cut back (``spring`` / ``org.springframework``).
++_ND_MIN_CONTAINED = 4
 +
-+    Quoted literals and ``$(...)``/backtick substitutions become ``'…'``,
-+    digit runs become ``#`` and leading ``cd DIR`` segments are dropped.
-+    Operators and every other word are kept, so the programs, their
-+    options, the files and the shape of the pipeline decide similarity.
++
++def _unquote(tok: str) -> str:
++    if tok[:1] in ("'", '"', "`"):
++        body = tok[1:]
++        if body.endswith(tok[0]):
++            body = body[:-1]
++        return body
++    return tok
++
++
++def _segment_operands(seg: list) -> list:
++    """Operands of one simple command: every argument after the program that
++    is not an option, a redirection or a sink. Quoted text is always kept."""
++    k = 0
++    while k < len(seg):
++        if _ENV_ASSIGNMENT.match(seg[k]):
++            k += 1
++        elif seg[k] in _ND_PREFIX_PROGRAMS:
++            k += 1
++            while k < len(seg) and seg[k].startswith("-"):
++                k += 1
++        else:
++            break
++    out = []
++    for tok in seg[k + 1:]:
++        if _is_quoted(tok):
++            value = _unquote(tok)
++        elif tok.startswith("-") or ">" in tok or "<" in tok or tok in _ND_SINKS:
++            continue
++        else:
++            value = tok
++        value = _normalise_word(value)
++        if value:
++            out.append(value)
++    return out
++
++
++def _near_duplicate_call(command: str, workdir: str = "") -> tuple:
++    """``(shape, exact, operands, head)`` of a terminal command.
++
++    Digit runs become ``#`` and leading ``cd DIR`` segments are dropped.
++    ``shape`` also replaces quoted literals and ``$(...)``/backtick
++    substitutions with ``'…'``; ``exact`` keeps them. ``operands`` are the
++    query terms, literals and paths the command names (see
++    ``_segment_operands``); ``head`` is the exact first chain element.
 +    """
 +    tokens = _shell_tokens(command)
 +    while tokens and tokens[0] == "cd":
@@ -434,26 +525,71 @@ index 1c360d8..a2dee77 100644
 +        while k < len(tokens) and tokens[k] not in _ND_SEPARATORS:
 +            k += 1
 +        tokens = tokens[k + 1:]
-+    out = []
++    shape: list = []
++    exact: list = []
 +    for tok in tokens:
-+        if _is_quoted(tok):
-+            out.append("'…'")
-+        elif tok == "\n":
-+            out.append(";")
++        if tok == "\n":
++            shape.append(";")
++            exact.append(";")
++        elif _is_quoted(tok):
++            shape.append("'…'")
++            exact.append("'" + _normalise_word(_unquote(tok)) + "'")
 +        else:
-+            out.append(_normalise_word(tok))
-+    return out
++            word = _normalise_word(tok)
++            shape.append(word)
++            exact.append(word)
++    head: list = []
++    for tok in exact:
++        if tok in _ND_CHAIN or tok == ";":
++            break
++        head.append(tok)
++    operands: list = []
++    if workdir:
++        operands.append(_normalise_word(workdir))
++        shape.insert(0, operands[0])
++        exact.insert(0, operands[0])
++    for seg in _shell_segments(tokens):
++        operands.extend(_segment_operands(seg))
++    return tuple(shape), tuple(exact), tuple(operands), tuple(head)
 +
 +
-+def _near_duplicate_arg_tokens(args: Mapping[str, Any]) -> list:
-+    """Normalised ``key=value`` tokens of a read tool's arguments."""
-+    out = []
++def _near_duplicate_arg_call(args: Mapping[str, Any]) -> tuple:
++    """``(shape, exact, operands, head)`` of a read tool's arguments.
++
++    Tokens are normalised ``key=value`` pairs; the operands are the
++    non-numeric string values (path, pattern, query …), so reading another
++    file or searching another term is a different call.
++    """
++    tokens = []
++    operands = []
 +    for key in sorted(args, key=str):
 +        value = args[key]
 +        if isinstance(value, (dict, list)):
 +            value = canonical_tool_args({"v": value})
-+        out.append(f"{key}={_normalise_word(str(value))}")
-+    return out
++        text = _normalise_word(str(value))
++        tokens.append(f"{key}={text}")
++        if isinstance(value, str) and text.strip("#"):
++            operands.append(text)
++    return tuple(tokens), tuple(tokens), tuple(operands), ()
++
++
++def _operands_match(a: str, b: str) -> bool:
++    """Same operand: equal after digit normalisation, or a term (not a path)
++    that grew from or was cut back to the other."""
++    if a == b:
++        return True
++    if "/" in a or "/" in b:
++        return False
++    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
++    return len(short) >= _ND_MIN_CONTAINED and short in long_
++
++
++def _operands_correspond(a: tuple, b: tuple) -> bool:
++    if len(a) != len(b):
++        return False
++    return all(any(_operands_match(x, y) for y in b) for x in a) and all(
++        any(_operands_match(y, x) for x in a) for y in b
++    )
 +
 +
 +def _terminal_command_mutates(command: str) -> bool:
@@ -506,11 +642,24 @@ index 1c360d8..a2dee77 100644
 +
 +
 +def _near_duplicates(a: _NearDuplicateCall, b: _NearDuplicateCall, threshold: float) -> bool:
++    """Whether two calls ask the same thing (see ``_observe_near_duplicate``).
++
++    Identical after digit normalisation; or a similar shape whose operands
++    correspond (only numbers changed, or a quoted term grew / was cut back);
++    or a similar shape with the same first chain element (only a chained
++    part changed). A different query term, literal or path is a different
++    call however similar the rest of the command is.
++    """
 +    if a.tool_name != b.tool_name:
 +        return False
-+    if a.tokens == b.tokens:
++    if a.exact == b.exact:
 +        return True
-+    return difflib.SequenceMatcher(None, a.tokens, b.tokens, autojunk=False).ratio() >= threshold
++    ratio = difflib.SequenceMatcher(None, a.tokens, b.tokens, autojunk=False).ratio()
++    if ratio < threshold:
++        return False
++    if _operands_correspond(a.operands, b.operands):
++        return True
++    return bool(a.head) and a.head == b.head and len(a.head) < len(a.exact) and len(b.head) < len(b.exact)
 +
 +
 +def _near_duplicate_cycle_laps(history: list, period: int, threshold: float) -> int:
@@ -542,7 +691,7 @@ index 1c360d8..a2dee77 100644
  def _as_bool(value: Any, default: bool) -> bool:
      if value is None:
 diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
-index cf3769c..658a898 100644
+index cf3769c..e382249 100644
 --- a/hermes_cli/config_defaults.py
 +++ b/hermes_cli/config_defaults.py
 @@ -717,6 +717,22 @@ DEFAULT_CONFIG = {
@@ -550,9 +699,9 @@ index cf3769c..658a898 100644
              "max_subagents": 50,      # max subagents spawned per turn (0 = unlimited)
          },
 +        # Near-duplicate loop guard (hard stops only): terminal and read-tool
-+        # calls that differ only in numbers, quoted text or a chained part
-+        # and show no new output, with no file edit or board transition in
-+        # between. Halts (near_duplicate_loop_halt) when similar_calls of the
++        # calls that differ only in numbers, a growing quoted argument or a
++        # chained part, name no new term or file and show no new output, with
++        # no file edit or board transition in between. Halts (near_duplicate_loop_halt) when similar_calls of the
 +        # last window calls are such near-duplicates of the latest one, or a
 +        # cycle of 2..max_cycle_period calls repeats cycle_laps times.
 +        "near_duplicate": {
@@ -570,10 +719,10 @@ index cf3769c..658a898 100644
      "compression": {
 diff --git a/tests/agent/test_tool_guardrails_near_duplicate.py b/tests/agent/test_tool_guardrails_near_duplicate.py
 new file mode 100644
-index 0000000..1b85cf8
+index 0000000..758a634
 --- /dev/null
 +++ b/tests/agent/test_tool_guardrails_near_duplicate.py
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,393 @@
 +"""Near-duplicate loop guard (RHOAI3 V21): the live loops halt, real work does not.
 +
 +The five loop shapes are replays of v21 worker runs (Qwen3.8-27B, 2026-09-27/28)
@@ -678,7 +827,10 @@ index 0000000..1b85cf8
 +        calls.append(_term(f'{head} && echo "---" && {tail}', f"{window}\n---\n{out}"))
 +    index, halt, _ = _replay(_hard_stop(), calls)
 +    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
-+    assert index <= 13
++    # The first time each of the four chained tails appears it names a new
++    # operand (a new question), so it counts as progress; the loop halts
++    # after 12 repeats of the same visible command once the tails cycle.
++    assert index <= len(tails) + 12 - 1
 +
 +
 +def test_sed_window_walk_run37_halts():
@@ -716,6 +868,28 @@ index 0000000..1b85cf8
 +    assert index <= 13
 +
 +
++def test_exact_alternation_run44_halts_even_when_each_call_shows_its_lines():
++    # ABAB of two exact calls: the first lap is new, every later lap repeats it.
++    calls = []
++    for _ in range(20):
++        calls.append(_term('mvn dependency:tree | grep "spring"', "a\nb\nc"))
++        calls.append(_term('mvn dependency:tree | grep "org.springframework"', "a\nb"))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index <= 13
++
++
++def test_growing_literal_counts_as_the_same_question():
++    base = "org.springframework.web"
++    calls = [_term(f'grep -rl "{base}" src/main/java', "")]
++    for part in "abcdefghijklmnop":
++        base += "." + part * 3
++        calls.append(_term(f'grep -rl "{base}" src/main/java', ""))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index == 12
++
++
 +def test_dissimilar_alternating_cycle_halts():
 +    # A cycle of two unrelated read probes, neither showing anything new.
 +    calls = []
@@ -744,6 +918,89 @@ index 0000000..1b85cf8
 +        calls.append(_patch(f"{REPO}/repository/jpa/Impl{i}.java"))
 +        calls.append(_term("bash verification/loop/run-verify.sh", "BUILD SUCCESS\nmeasure [0, 179, 0]"))
 +        calls.append(_term("python3 verification/loop/advance.py", f"ACCEPTED u:{i}, OUTCOME ACCEPTED"))
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert NEAR_DUPLICATE_WARN_CODE not in warnings
++
++
++JAVAX_TERMS = [
++    "javax.servlet", "javax.persistence", "javax.validation", "javax.ws.rs",
++    "javax.annotation", "javax.transaction", "javax.inject", "javax.enterprise",
++    "javax.xml.bind", "javax.xml.ws", "javax.activation", "javax.jms", "javax.ejb",
++    "javax.faces",
++]
++BOILERPLATE = (
++    "package org.example;\n\nimport jakarta.ws.rs.GET;\nimport jakarta.ws.rs.Path;\n"
++    "import jakarta.inject.Inject;\n// Generated adapter\n"
++)
++RESOURCE_NAMES = [
++    "Owner", "Pet", "Visit", "Vet", "Specialty", "PetType", "User", "Role", "Admin",
++    "Address", "Clinic", "Booking", "Order", "Payment",
++]
++
++
++def test_review_probe_distinct_negative_searches_do_not_halt():
++    """Review 2026-09-28 F2 probe, verbatim: 14 package checks, all empty."""
++    calls = [_term(f"rg -n '{t}' src || true", "") for t in JAVAX_TERMS]
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert NEAR_DUPLICATE_WARN_CODE not in warnings
++
++
++def test_review_probe_distinct_boilerplate_files_do_not_halt():
++    """Review 2026-09-28 F2 probe, verbatim: 14 files sharing their imports."""
++    calls = [
++        _term(f"cat 'src/main/java/{n}Resource.java'", BOILERPLATE + f"public class {n}Resource {{}}")
++        for n in RESOURCE_NAMES
++    ]
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert NEAR_DUPLICATE_WARN_CODE not in warnings
++
++
++def test_twenty_five_distinct_empty_searches_do_not_halt():
++    terms = JAVAX_TERMS + [
++        "javax.mail", "javax.batch", "javax.websocket", "javax.json", "javax.security.auth.message",
++        "javax.resource", "javax.interceptor", "javax.decorator", "javax.el", "javax.management.j2ee",
++        "org.hibernate.annotations",
++    ]
++    assert len(set(terms)) == 25
++    calls = [_term(f"rg -n '{t}' src || true", "") for t in terms]
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert NEAR_DUPLICATE_WARN_CODE not in warnings
++
++
++def test_twenty_five_distinct_files_with_ninety_percent_boilerplate_do_not_halt():
++    header = "\n".join(f"import jakarta.common.Shared{i};" for i in range(18))
++    calls = [
++        _term(f"cat {REPO}/web/Controller{chr(65 + i)}x.java",
++              header + f"\npublic class Controller{chr(65 + i)}x {{}}\n}}")
++        for i in range(25)
++    ]
++    for _, _, result in calls[:1]:
++        lines = json.loads(result)["output"].splitlines()
++        assert len(lines) == 20  # 18 shared of 20: 90% boilerplate
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert NEAR_DUPLICATE_WARN_CODE not in warnings
++
++
++def test_repeating_a_search_already_asked_still_counts():
++    # Operand identity is not an escape hatch: asking the same 3 empty
++    # questions over and over is still a loop.
++    calls = [_term(f"rg -n '{t}' src || true", "") for t in JAVAX_TERMS[:3] * 8]
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++
++
++def test_paging_with_sed_windows_showing_new_content_does_not_halt():
++    path = f"{REPO}/repository/jpa/JpaOwnerRepositoryImpl.java"
++    source = [f"    statement {n} of the implementation" for n in range(1, 801)]
++    calls = [
++        _term(f"cat {path} | sed -n '{a},{a + 39}p'", "\n".join(source[a - 1:a + 39]))
++        for a in range(1, 801, 40)
++    ]
 +    index, halt, warnings = _replay(_hard_stop(), calls)
 +    assert halt is None, (index, halt)
 +    assert NEAR_DUPLICATE_WARN_CODE not in warnings

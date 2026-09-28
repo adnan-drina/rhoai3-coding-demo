@@ -51,7 +51,7 @@ Unset => disabled, behaviour unchanged.
  create mode 100644 agent/request_pacer.py
 
 diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
-index 1c89288330..7e20c16d60 100644
+index 1c89288..7e20c16 100644
 --- a/agent/agent_runtime_helpers.py
 +++ b/agent/agent_runtime_helpers.py
 @@ -2591,6 +2591,10 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
@@ -66,7 +66,7 @@ index 1c89288330..7e20c16d60 100644
          "OpenAI client created (%s, shared=%s) %s",
          reason,
 diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
-index a069629e44..0f13e06db7 100644
+index a069629..0f13e06 100644
 --- a/agent/auxiliary_client.py
 +++ b/agent/auxiliary_client.py
 @@ -286,7 +286,9 @@ def _create_openai_client(*, api_key: str, base_url: str, **kwargs: Any) -> Any:
@@ -101,7 +101,7 @@ index a069629e44..0f13e06db7 100644
              logger.warning("resolve_provider_client: cannot create Vertex "
                             "client: %s", exc)
 diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
-index 7af486dc5b..55a61a0d40 100644
+index 7af486d..55a61a0 100644
 --- a/agent/chat_completion_helpers.py
 +++ b/agent/chat_completion_helpers.py
 @@ -3927,6 +3927,19 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
@@ -148,7 +148,7 @@ index 7af486dc5b..55a61a0d40 100644
          if _stale_elapsed > _stream_stale_timeout:
              _est_ctx = estimate_request_context_tokens(api_kwargs)
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index cc8ec3a334..d634cf7c9d 100644
+index cc8ec3a..d634cf7 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
 @@ -3143,6 +3143,19 @@ def run_conversation(
@@ -208,7 +208,7 @@ index cc8ec3a334..d634cf7c9d 100644
                  #   1. Lone surrogates (U+D800..U+DFFF) from clipboard paste
 diff --git a/agent/request_pacer.py b/agent/request_pacer.py
 new file mode 100644
-index 0000000000..5aa3cf7468
+index 0000000..5aa3cf7
 --- /dev/null
 +++ b/agent/request_pacer.py
 @@ -0,0 +1,406 @@
@@ -619,10 +619,10 @@ index 0000000000..5aa3cf7468
 +        http.event_hooks = {**hooks, "request": request_hooks}
 +    return openai_client
 diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
-index 84264b9ded..5ff2cc9bad 100644
+index b2b7159..391e5bb 100644
 --- a/agent/turn_finalizer.py
 +++ b/agent/turn_finalizer.py
-@@ -231,6 +231,15 @@ def record_kanban_turn_stop(agent, result) -> bool:
+@@ -296,6 +296,15 @@ def record_kanban_turn_stop(agent, result) -> bool:
              logger,
              event_payload_extra={"incomplete_output": kind, "output_cap": cap},
          )
@@ -635,6 +635,6 @@ index 84264b9ded..5ff2cc9bad 100644
 +            logger,
 +            event_payload_extra={"model_stop": "MODEL_REQUEST_BUDGET"},
 +        )
-     if result.get("failed") and result.get("failure_reason") == "rate_limit":
-         attempts = result.get("api_attempts") or getattr(agent, "_api_max_retries", None)
-         retry_after = result.get("retry_after") or "none"
+     if result.get("failed") and result.get("failure_reason") in _PROVIDER_THROTTLE_REASONS:
+         # A provider quota wall says nothing about the task: the run leaves
+         # through the native temporary-failure exit (KANBAN_RATE_LIMIT_EXIT_CODE,

@@ -15,6 +15,13 @@ run (kanban_db.block_task with expected_run_id, plus a
 worker_stop_request event), refuses every later tool call in the batch
 and ends the turn before another model request. Files on disk are not
 touched. A resumed run (after unblock) has a new run id and path.
+Only the dispatcher-owned worker reads or acts on the request
+(is_dispatcher_owned_worker_context): a delegate_task child or an
+in-process cron job inherits the path and task id but does not own the
+run. A request that is not live (not this execution's running run) is
+neither recorded nor turned into a halt. HERMES_KANBAN_STOP_REQUEST is
+one of the identity-gated KANBAN_ENV_KEYS, so a delegated child's
+subprocesses do not inherit it (review 2026-09-28, F3).
 
 Read-only log context search family. Same tool, same workdir and the
 same read-only command once only grep's context-size options (-A/-B/-C,
@@ -29,20 +36,38 @@ identical-call guard is unchanged.
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_015F1AH7itXf3TGfe5dfF7mk
 ---
- agent/kanban_stop_request.py | 152 ++++++++++++++
- agent/tool_guardrails.py     | 386 +++++++++++++++++++++++++++++++++++
- agent/turn_finalizer.py      |  45 +++-
- hermes_cli/kanban_db.py      |  17 ++
- run_agent.py                 |  48 +++++
- 5 files changed, 645 insertions(+), 3 deletions(-)
+ agent/delegation_context.py             |   4 +
+ agent/kanban_stop_request.py            | 164 ++++++++++
+ agent/tool_guardrails.py                | 386 ++++++++++++++++++++++++
+ agent/turn_finalizer.py                 |  45 ++-
+ hermes_cli/kanban_db.py                 |  17 ++
+ run_agent.py                            |  53 ++++
+ tests/agent/test_kanban_stop_request.py | 122 ++++++++
+ 7 files changed, 788 insertions(+), 3 deletions(-)
  create mode 100644 agent/kanban_stop_request.py
+ create mode 100644 tests/agent/test_kanban_stop_request.py
 
+diff --git a/agent/delegation_context.py b/agent/delegation_context.py
+index 9b8bce9..e0a99cf 100644
+--- a/agent/delegation_context.py
++++ b/agent/delegation_context.py
+@@ -42,6 +42,10 @@ KANBAN_ENV_KEYS: tuple[str, ...] = (
+     "HERMES_KANBAN_CLAIM_LOCK",
+     "HERMES_KANBAN_BOARD",
+     "HERMES_KANBAN_DB",
++    # Per-run stop-request path (agent/kanban_stop_request.py): acting on it
++    # is the owning worker's alone, so a delegated child's subprocesses must
++    # not inherit it.
++    "HERMES_KANBAN_STOP_REQUEST",
+ )
+ 
+ 
 diff --git a/agent/kanban_stop_request.py b/agent/kanban_stop_request.py
 new file mode 100644
-index 0000000000..6d2cc4759a
+index 0000000..6cd07f5
 --- /dev/null
 +++ b/agent/kanban_stop_request.py
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,164 @@
 +"""Worker stop requests: a documented signal that ends a kanban worker's run.
 +
 +A dispatcher-spawned worker gets ``HERMES_KANBAN_STOP_REQUEST`` in its
@@ -104,9 +129,21 @@ index 0000000000..6d2cc4759a
 +
 +    A file that exists but is malformed still stops the run (it was meant to),
 +    with ``needs_input`` and a reason that says the request was unreadable.
++
++    Only the dispatcher-owned worker reads it: a delegate_task child or an
++    in-process cron job inherits the worker's environment (task id and
++    request path) but does not own the run, so a request there is not theirs
++    to act on (``is_dispatcher_owned_worker_context``).
 +    """
 +    path = request_path()
 +    if not path or not os.environ.get("HERMES_KANBAN_TASK"):
++        return None
++    try:
++        from agent.delegation_context import is_dispatcher_owned_worker_context
++
++        if not is_dispatcher_owned_worker_context():
++            return None
++    except Exception:
 +        return None
 +    try:
 +        if not os.path.isfile(path):
@@ -196,7 +233,7 @@ index 0000000000..6d2cc4759a
 +        logger.warning("Failed to honour worker stop request for %s", task, exc_info=True)
 +        return "error"
 diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
-index 630770cd65..ac145b6750 100644
+index 630770c..ac145b6 100644
 --- a/agent/tool_guardrails.py
 +++ b/agent/tool_guardrails.py
 @@ -10,6 +10,8 @@ from __future__ import annotations
@@ -643,10 +680,10 @@ index 630770cd65..ac145b6750 100644
      if value is None:
          return default
 diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
-index 40e070a1da..18de803b5a 100644
+index 2e9047a..5eb3bf0 100644
 --- a/agent/turn_finalizer.py
 +++ b/agent/turn_finalizer.py
-@@ -247,12 +247,33 @@ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Lo
+@@ -238,12 +238,33 @@ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Lo
      """
      signature = getattr(decision, "signature", None)
      args_hash = getattr(signature, "args_hash", "") or ""
@@ -681,7 +718,7 @@ index 40e070a1da..18de803b5a 100644
              "before another model request; this run did not "
              "complete the task"
          ),
-@@ -460,9 +481,27 @@ def finalize_turn(
+@@ -509,9 +530,27 @@ def finalize_turn(
          # kanban run (see _record_kanban_guardrail_halt) instead of leaving a
          # clean exit for the dispatcher to read as a protocol violation.
          _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
@@ -712,10 +749,10 @@ index 40e070a1da..18de803b5a 100644
  
      # Determine if conversation completed successfully
 diff --git a/hermes_cli/kanban_db.py b/hermes_cli/kanban_db.py
-index e9146610d0..80cc7f59e3 100644
+index 6380be7..2e193f0 100644
 --- a/hermes_cli/kanban_db.py
 +++ b/hermes_cli/kanban_db.py
-@@ -10887,6 +10887,17 @@ def _default_spawn(
+@@ -10952,6 +10952,17 @@ def _default_spawn(
          env["HERMES_KANBAN_BRANCH"] = task.branch_name
      if task.current_run_id is not None:
          env["HERMES_KANBAN_RUN_ID"] = str(task.current_run_id)
@@ -733,7 +770,7 @@ index e9146610d0..80cc7f59e3 100644
      if task.claim_lock:
          env["HERMES_KANBAN_CLAIM_LOCK"] = task.claim_lock
      # Goal-loop mode: the worker reads these and wraps its run in the
-@@ -12018,6 +12029,12 @@ def worker_log_path(task_id: str, *, board: Optional[str] = None) -> Path:
+@@ -12083,6 +12094,12 @@ def worker_log_path(task_id: str, *, board: Optional[str] = None) -> Path:
      return worker_logs_dir(board=board) / f"{task_id}.log"
  
  
@@ -747,7 +784,7 @@ index e9146610d0..80cc7f59e3 100644
      task_id: str, *, tail_bytes: Optional[int] = None,
      board: Optional[str] = None,
 diff --git a/run_agent.py b/run_agent.py
-index a03cf95eb7..d54323db1b 100644
+index a03cf95..65ff863 100644
 --- a/run_agent.py
 +++ b/run_agent.py
 @@ -8242,6 +8242,12 @@ class AIAgent:
@@ -763,7 +800,7 @@ index a03cf95eb7..d54323db1b 100644
          return (
              f"I stopped retrying {tool} because it hit the tool-call guardrail "
              f"({decision.code}) after {decision.count} repeated non-progressing "
-@@ -8321,8 +8327,50 @@ class AIAgent:
+@@ -8321,8 +8327,55 @@ class AIAgent:
                  self._set_tool_guardrail_halt(streak_halt)
          if stall_notice:
              function_result = (function_result or "") + "\n\n" + stall_notice
@@ -794,6 +831,11 @@ index a03cf95eb7..d54323db1b 100644
 +        except Exception as exc:
 +            logger.warning("kanban stop request check failed: %s", exc)
 +            return ""
++        if outcome == "not-live":
++            # Not this execution's live run (a child or cron job, or the run
++            # already ended through the board): nothing was recorded, so
++            # nothing is stopped either.
++            return ""
 +        decision = ToolGuardrailDecision(
 +            action="halt",
 +            code="kanban_stop_request",
@@ -814,6 +856,134 @@ index a03cf95eb7..d54323db1b 100644
      def _result_reference_retrievable(self, messages: list, payload: str) -> bool:
          """Whether the streak's reference result can still be read by the model."""
          guardrails = self._tool_guardrails
+diff --git a/tests/agent/test_kanban_stop_request.py b/tests/agent/test_kanban_stop_request.py
+new file mode 100644
+index 0000000..f045685
+--- /dev/null
++++ b/tests/agent/test_kanban_stop_request.py
+@@ -0,0 +1,122 @@
++"""Worker stop request (RHOAI3 patch 0011): only the owning worker acts on it.
++
++The request path and the task id are in the worker's environment, which a
++delegate_task child and an in-process cron job inherit. Neither owns the run,
++so neither may read the request, block the card or end its own turn on it,
++and a child's subprocesses do not inherit the path.
++"""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++from agent.delegation_context import (
++    KANBAN_ENV_KEYS,
++    delegated_child_context,
++    delegated_child_subprocess_env,
++    non_dispatcher_owned_context,
++    scrub_kanban_env,
++)
++from agent.kanban_stop_request import read_stop_request
++from agent.tool_guardrails import ToolCallGuardrailController
++from hermes_cli import kanban_db as kb
++from run_agent import AIAgent
++
++
++@pytest.fixture
++def running_task(tmp_path, monkeypatch):
++    home = tmp_path / ".hermes"
++    home.mkdir()
++    monkeypatch.setenv("HERMES_HOME", str(home))
++    monkeypatch.setattr(Path, "home", lambda: tmp_path)
++    kb.init_db()
++    conn = kb.connect()
++    try:
++        tid = kb.create_task(conn, title="stop request", assignee="implementer")
++        kb.claim_task(conn, tid, claimer="test-worker")
++        run_id = conn.execute("SELECT current_run_id FROM tasks WHERE id = ?", (tid,)).fetchone()[0]
++    finally:
++        conn.close()
++    stop = tmp_path / "stop-requests" / f"{tid}.run{run_id}.json"
++    stop.parent.mkdir(parents=True)
++    monkeypatch.setenv("HERMES_KANBAN_TASK", tid)
++    monkeypatch.setenv("HERMES_KANBAN_RUN_ID", str(run_id))
++    monkeypatch.setenv("HERMES_KANBAN_STOP_REQUEST", str(stop))
++    return SimpleNamespace(task=tid, run_id=run_id, stop=stop)
++
++
++def _agent():
++    return SimpleNamespace(_tool_guardrails=ToolCallGuardrailController())
++
++
++def _status(tid):
++    conn = kb.connect()
++    try:
++        return conn.execute("SELECT status FROM tasks WHERE id = ?", (tid,)).fetchone()[0]
++    finally:
++        conn.close()
++
++
++def _request(path, reason="VERIFICATION_PENDING c:1"):
++    path.write_text(json.dumps({"kind": "needs_input", "reason": reason}))
++
++
++def test_owned_worker_honours_its_stop_request(running_task):
++    _request(running_task.stop)
++    agent = _agent()
++    note = AIAgent._honour_kanban_stop_request(agent, "terminal")
++    assert "honoured (blocked)" in note
++    assert agent._tool_guardrails.halt_decision.code == "kanban_stop_request"
++    assert _status(running_task.task) == "blocked"
++
++
++def test_no_request_file_is_no_stop(running_task):
++    agent = _agent()
++    assert AIAgent._honour_kanban_stop_request(agent, "terminal") == ""
++    assert agent._tool_guardrails.halt_decision is None
++    assert _status(running_task.task) == "running"
++
++
++@pytest.mark.parametrize("scope", [non_dispatcher_owned_context, delegated_child_context])
++def test_child_or_cron_does_not_read_or_act_on_the_parent_request(running_task, scope):
++    _request(running_task.stop, "parent-only request")
++    agent = _agent()
++    with scope():
++        assert read_stop_request() is None
++        assert AIAgent._honour_kanban_stop_request(agent, "terminal") == ""
++    assert agent._tool_guardrails.halt_decision is None
++    assert agent._tool_guardrails._turn_stop is None
++    # The card is untouched and the owning worker still sees its request.
++    assert _status(running_task.task) == "running"
++    assert read_stop_request() is not None
++
++
++def test_not_live_request_installs_no_halt(running_task):
++    # The run already ended through the board: nothing to record, nothing to stop.
++    conn = kb.connect()
++    try:
++        assert kb.block_task(conn, running_task.task, reason="done elsewhere", kind="needs_input")
++    finally:
++        conn.close()
++    _request(running_task.stop)
++    agent = _agent()
++    assert AIAgent._honour_kanban_stop_request(agent, "terminal") == ""
++    assert agent._tool_guardrails.halt_decision is None
++
++
++def test_stop_request_path_is_identity_gated_and_scrubbed(running_task):
++    assert "HERMES_KANBAN_STOP_REQUEST" in KANBAN_ENV_KEYS
++    import os
++
++    assert "HERMES_KANBAN_STOP_REQUEST" not in scrub_kanban_env(dict(os.environ))
++    # The owning worker's own subprocesses keep inheriting it (a tool it runs
++    # creates the file); a delegated child's subprocesses do not.
++    assert delegated_child_subprocess_env() is None
++    with delegated_child_context():
++        env = delegated_child_subprocess_env()
++    assert env is not None and "HERMES_KANBAN_STOP_REQUEST" not in env
++    assert "HERMES_KANBAN_TASK" not in env
 -- 
 2.54.0 (Apple Git-157)
 

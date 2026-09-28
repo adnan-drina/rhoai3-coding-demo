@@ -2,30 +2,55 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Thu, 24 Sep 2026 18:21:45 +0200
 Subject: [PATCH 6/6] fix(kanban): a persistent provider rate limit ends a
- worker run as a named quota stop
+ worker run as a neutral quota requeue
 
 After the main retry loop gives up on HTTP 429 (Retry-After honoured,
 jittered backoff otherwise, one retry layer: the primary client runs with
 SDK max_retries=0), run_conversation returns failed with
-failure_reason=rate_limit. A non-quiet kanban worker then exits 0 and the
-dispatcher recorded a protocol violation (retry guidance: report the work
-via kanban_complete), not counted toward the failure limit. Record it
-instead as a failed run, STOP MODEL_QUOTA, through the shared worker-stop
-recorder so the native breaker bounds it.
+failure_reason=rate_limit (or billing). The pinned base already maps that
+to the native EX_TEMPFAIL exit (KANBAN_RATE_LIMIT_EXIT_CODE, 75) in the
+quiet `-Q` branch; the dispatcher then books the run `rate_limited`,
+requeues the card without counting a failure, and check_respawn_guard's
+rate_limit_cooldown (HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS, default
+300 s) holds it before the next spawn. The non-quiet `-q` branch, the one
+_default_spawn uses, fell through to rc=0, which the reaper books as a
+protocol violation. Upstream be9d4369 ("one-shot `-q` runs report their
+outcome in the exit code") closes the same gap.
 
-The stop text avoids kanban_db._RESPAWN_BLOCKER_RE on purpose: a matching
-last_failure_error makes check_respawn_guard defer the card on every tick
-without counting a failure, leaving it in ready indefinitely. HTTP status,
-attempts, Retry-After and the provider message are carried in the gave_up
-event payload instead. The rate-limit result now also reports api_attempts
-and the last Retry-After header.
+A dispatcher-owned worker whose turn ends on such a quota wall now records
+a `provider_throttle` event bound to its run (failure reason, HTTP status,
+attempts, last Retry-After, provider message) and asks for exit 75 through
+kanban_worker_exit_code(), honoured in both the quiet and the non-quiet
+branch. The reaper ends a run that carries the record `rate_limited`
+even when its exit status was lost (dispatcher restart), copies the
+evidence into the run metadata and names it in last_failure_error. No
+failure is counted and the card is not blocked. Delegated children and
+in-process cron jobs record nothing for the parent run. Authentication
+and configuration errors are not quota walls and stay failures.
+
+The rate-limit result now also reports api_attempts and the last
+Retry-After header.
+
+Review 2026-09-28 (F1): the first version booked the quota wall as a
+crashed run through _record_task_failure, so two exhausted turns with
+max_retries=2 ended gave_up/blocked. Its worry that a quota-flavoured
+last_failure_error defers the card forever does not apply to this path in
+the pinned base: check_respawn_guard evaluates the rate_limited cooldown
+before the blocker regex and returns early once it has elapsed.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015F1AH7itXf3TGfe5dfF7mk
 ---
- agent/conversation_loop.py | 16 ++++++++++++++++
- agent/turn_finalizer.py    | 27 +++++++++++++++++++++++++++
- 2 files changed, 43 insertions(+)
+ agent/conversation_loop.py                   |  16 ++
+ agent/turn_finalizer.py                      |  90 +++++++++-
+ cli.py                                       |  24 +++
+ hermes_cli/kanban_db.py                      |  67 ++++++-
+ tests/agent/test_kanban_provider_throttle.py | 173 +++++++++++++++++++
+ 5 files changed, 367 insertions(+), 3 deletions(-)
+ create mode 100644 tests/agent/test_kanban_provider_throttle.py
 
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index f87f647d48..cc8ec3a334 100644
+index f87f647..cc8ec3a 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
 @@ -286,6 +286,18 @@ def _moa_client_consumes_prepared_request(client: Any) -> bool:
@@ -59,40 +84,437 @@ index f87f647d48..cc8ec3a334 100644
  
                  # For rate limits, respect the Retry-After header if present
 diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
-index 40f755a4d5..84264b9ded 100644
+index 40f755a..b2b7159 100644
 --- a/agent/turn_finalizer.py
 +++ b/agent/turn_finalizer.py
-@@ -231,6 +231,33 @@ def record_kanban_turn_stop(agent, result) -> bool:
+@@ -126,8 +126,9 @@ def _record_kanban_worker_stop(
+     """Close this worker's kanban run as failed with a named stop reason.
+ 
+     Shared by every runtime stop that ends a worker turn without a board
+-    transition (tool-loop guardrail halt, incomplete model output, persistent
+-    provider rate limit). A worker in that state makes no further model
++    transition (tool-loop guardrail halt, incomplete model output; a provider
++    quota wall is neutral instead, see ``_record_kanban_provider_throttle``).
++    A worker in that state makes no further model
+     request, so it can never call ``kanban_complete`` / ``kanban_block``;
+     without this record its clean exit is classified by the dispatcher as a
+     protocol violation whose retry guidance tells the next worker to verify
+@@ -203,6 +204,70 @@ def _record_kanban_guardrail_halt(kanban_task: str, decision, logger: logging.Lo
+     )
+ 
+ 
++# ``failure_reason`` values of an exhausted turn that are a provider quota
++# wall, not a task error (the pinned quiet CLI branch already maps these two
++# to KANBAN_RATE_LIMIT_EXIT_CODE). Authentication and configuration errors
++# are not in this set and stay failures.
++_PROVIDER_THROTTLE_REASONS = ("rate_limit", "billing")
++
++# Exit code a dispatcher-owned kanban worker must leave with (None = default).
++_kanban_exit_code: "int | None" = None
++
++
++def kanban_worker_exit_code() -> "int | None":
++    """Exit code requested by a kanban turn stop (``KANBAN_RATE_LIMIT_EXIT_CODE``
++    after a provider quota wall), or None."""
++    return _kanban_exit_code
++
++
++def _record_kanban_provider_throttle(
++    kanban_task: str,
++    evidence: dict,
++    logger: logging.Logger,
++) -> bool:
++    """Persist a provider quota stop for this worker run; request exit 75.
++
++    Written while the task is still ``running`` and before the process
++    exits. The task, claim and counters are not touched: the native reaper
++    ends the run ``rate_limited`` and requeues the card without counting a
++    failure (also when the exit status was lost, from this record). No-op
++    (False) for a delegated child or in-process cron job, or when the open
++    run is not this worker's.
++    """
++    global _kanban_exit_code
++    try:
++        from agent.delegation_context import is_dispatcher_owned_worker_context
++
++        if not is_dispatcher_owned_worker_context():
++            return False
++        from hermes_cli import kanban_db as _kb
++
++        _conn = _kb.connect()
++        try:
++            row = _conn.execute(
++                "SELECT status, current_run_id FROM tasks WHERE id = ?",
++                (kanban_task,),
++            ).fetchone()
++            if row is None or row["status"] != "running" or row["current_run_id"] is None:
++                return False
++            expected_run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
++            if expected_run and str(row["current_run_id"]) != expected_run:
++                return False
++            _kb.record_provider_throttle(
++                _conn, kanban_task, int(row["current_run_id"]), evidence,
++            )
++        finally:
++            try:
++                _conn.close()
++            except Exception:
++                pass
++        _kanban_exit_code = _kb.KANBAN_RATE_LIMIT_EXIT_CODE
++        return True
++    except Exception:
++        logger.warning("Failed to record provider quota stop for task %s", kanban_task, exc_info=True)
++        return False
++
++
+ def record_kanban_turn_stop(agent, result) -> bool:
+     """Record a turn that ended early on a model/transport stop (kanban workers).
+ 
+@@ -231,6 +296,27 @@ def record_kanban_turn_stop(agent, result) -> bool:
              logger,
              event_payload_extra={"incomplete_output": kind, "output_cap": cap},
          )
-+    if result.get("failed") and result.get("failure_reason") == "rate_limit":
++    if result.get("failed") and result.get("failure_reason") in _PROVIDER_THROTTLE_REASONS:
++        # A provider quota wall says nothing about the task: the run leaves
++        # through the native temporary-failure exit (KANBAN_RATE_LIMIT_EXIT_CODE,
++        # EX_TEMPFAIL), which the dispatcher books as a ``rate_limited`` run
++        # and requeues WITHOUT counting a failure; its rate-limit cooldown
++        # (HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS) holds the card before
++        # the next spawn. The reason, attempts and Retry-After are persisted
++        # for this run as structured evidence.
 +        attempts = result.get("api_attempts") or getattr(agent, "_api_max_retries", None)
-+        retry_after = result.get("retry_after") or "none"
-+        # The wording deliberately avoids the dispatcher's quota/auth blocker
-+        # pattern (kanban_db._RESPAWN_BLOCKER_RE): a matching
-+        # last_failure_error makes check_respawn_guard defer the task on
-+        # every tick without ever counting another failure, so the card would
-+        # sit in ``ready`` indefinitely instead of reaching the breaker. The
-+        # HTTP status and provider message go into the event payload instead.
-+        return _record_kanban_worker_stop(
++        return _record_kanban_provider_throttle(
 +            kanban_task,
-+            (
-+                f"STOP MODEL_QUOTA: the model endpoint kept throttling this "
-+                f"worker (HTTP status in payload) for all {attempts} attempts, "
-+                f"last Retry-After {retry_after}; the worker stopped before "
-+                "any further model request. Infrastructure capacity stop, not "
-+                "a product-repair verdict"
-+            ),
-+            logger,
-+            event_payload_extra={
++            {
 +                "model_stop": "MODEL_QUOTA",
-+                "http_status": 429,
++                "failure_reason": result.get("failure_reason"),
++                "http_status": 429 if result.get("failure_reason") == "rate_limit" else None,
 +                "api_attempts": attempts,
 +                "retry_after": result.get("retry_after"),
 +                "provider_error": str(result.get("error") or "")[:300],
 +            },
++            logger,
 +        )
      return False
  
  
+diff --git a/cli.py b/cli.py
+index b539063..ae858ae 100644
+--- a/cli.py
++++ b/cli.py
+@@ -21407,6 +21407,16 @@ def main(
+                                     _exit_code = _RL_CODE
+                                 except Exception:
+                                     _exit_code = 1
++                        # RHOAI3: a neutral kanban turn stop (provider quota
++                        # wall recorded for this run) leaves through the
++                        # native temporary-failure exit (EX_TEMPFAIL requeue).
++                        try:
++                            from agent.turn_finalizer import kanban_worker_exit_code
++
++                            if os.environ.get("HERMES_KANBAN_TASK") and kanban_worker_exit_code():
++                                _exit_code = kanban_worker_exit_code()
++                        except Exception:
++                            pass
+                         sys.exit(_exit_code)
+ 
+                 # Exit with error code if credentials or agent init fails
+@@ -21435,6 +21445,20 @@ def main(
+                 cli._print_exit_summary(clear_screen=False)
+         finally:
+             _finalize_single_query(cli)
++        # RHOAI3: the non-quiet branch (the one the dispatcher spawns) fell
++        # through to rc=0 for every outcome, which the reaper reads as a
++        # protocol violation. A neutral kanban turn stop exits with the
++        # native temporary-failure code, as the quiet branch does (upstream
++        # be9d4369 closes the same gap with _single_query_exit_code).
++        try:
++            from agent.turn_finalizer import kanban_worker_exit_code
++
++            if os.environ.get("HERMES_KANBAN_TASK") and kanban_worker_exit_code():
++                sys.exit(kanban_worker_exit_code())
++        except SystemExit:
++            raise
++        except Exception:
++            pass
+         return
+     
+     # Run interactive mode
+diff --git a/hermes_cli/kanban_db.py b/hermes_cli/kanban_db.py
+index 79398b7..2a62238 100644
+--- a/hermes_cli/kanban_db.py
++++ b/hermes_cli/kanban_db.py
+@@ -8097,6 +8097,46 @@ _RECENT_WORKER_EXITS_MAX = 4096
+ _recent_worker_exits: "dict[int, tuple[int, float]]" = {}
+ 
+ 
++# ---------------------------------------------------------------------------
++# RHOAI3: provider quota stop evidence (patch 0006)
++# ---------------------------------------------------------------------------
++# A worker whose turn exhausted its provider retries on a quota wall (HTTP 429
++# rate limit, billing) writes a ``provider_throttle`` event bound to its run
++# before exiting with KANBAN_RATE_LIMIT_EXIT_CODE. The native reaper ends that
++# run ``rate_limited`` (no failure counted) with the reason, attempts and
++# Retry-After in the run metadata; check_respawn_guard's native
++# ``rate_limit_cooldown`` holds the card before the next spawn.
++
++PROVIDER_THROTTLE_EVENT = "provider_throttle"
++
++
++def record_provider_throttle(conn, task_id: str, run_id: int, evidence: dict) -> None:
++    """Persist one provider quota stop record for (task, worker run); idempotent."""
++    with write_txn(conn):
++        exists = conn.execute(
++            "SELECT 1 FROM task_events WHERE task_id = ? AND run_id = ? AND kind = ?",
++            (task_id, int(run_id), PROVIDER_THROTTLE_EVENT),
++        ).fetchone()
++        if exists:
++            return
++        _append_event(conn, task_id, PROVIDER_THROTTLE_EVENT, dict(evidence), run_id=int(run_id))
++
++
++def _provider_throttle_for_run(conn, task_id: str, run_id) -> Optional[dict]:
++    if run_id is None:
++        return None
++    row = conn.execute(
++        "SELECT payload FROM task_events WHERE task_id = ? AND run_id = ? AND kind = ? "
++        "ORDER BY id DESC LIMIT 1",
++        (task_id, int(run_id), PROVIDER_THROTTLE_EVENT),
++    ).fetchone()
++    try:
++        payload = json.loads(row["payload"]) if row and row["payload"] else None
++    except (TypeError, ValueError):
++        payload = None
++    return payload if isinstance(payload, dict) else None
++
++
+ def _record_worker_exit(pid: int, raw_status: int) -> None:
+     """Record a reaped child's exit status for later classification.
+ 
+@@ -8892,7 +8932,7 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
+     exited_hook_payloads: list[dict] = []
+     with write_txn(conn):
+         rows = conn.execute(
+-            "SELECT id, worker_pid, claim_lock, started_at, assignee "
++            "SELECT id, worker_pid, claim_lock, started_at, assignee, current_run_id "
+             "FROM tasks "
+             "WHERE status = 'running' AND worker_pid IS NOT NULL"
+         ).fetchall()
+@@ -8916,6 +8956,13 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
+             pid = int(row["worker_pid"])
+             kind, code = _classify_worker_exit(pid)
+             rate_limited_exit = False
++            # RHOAI3: a worker that recorded a provider quota stop for this
++            # run exits with KANBAN_RATE_LIMIT_EXIT_CODE; the record makes the
++            # run end neutrally even when the exit status was lost (e.g. a
++            # dispatcher restart), and carries the evidence into the run.
++            _throttle = _provider_throttle_for_run(conn, row["id"], row["current_run_id"])
++            if _throttle is not None and kind != "rate_limited":
++                kind = "rate_limited"
+             if kind == "clean_exit":
+                 # Worker subprocess returned 0 but its task is still
+                 # ``running`` in the DB — it exited without calling
+@@ -8963,6 +9010,24 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
+                     "claimer": row["claim_lock"],
+                     "exit_code": code,
+                 }
++                if _throttle is not None:
++                    _attempts = _throttle.get("api_attempts")
++                    _ra = _throttle.get("retry_after") or "none"
++                    error_text = (
++                        f"PROVIDER_THROTTLE: the model endpoint refused this worker "
++                        f"({_throttle.get('failure_reason')}) for all {_attempts} "
++                        f"attempts, last Retry-After {_ra}; requeued without "
++                        "counting a failure, next spawn after the rate-limit "
++                        "cooldown; the previous run's work stays on the tree"
++                    )
++                    event_payload.update({
++                        "provider_throttle": True,
++                        "failure_reason": _throttle.get("failure_reason"),
++                        "http_status": _throttle.get("http_status"),
++                        "api_attempts": _attempts,
++                        "retry_after": _throttle.get("retry_after"),
++                        "provider_error": _throttle.get("provider_error"),
++                    })
+             else:
+                 protocol_violation = False
+                 if kind == "nonzero_exit":
+diff --git a/tests/agent/test_kanban_provider_throttle.py b/tests/agent/test_kanban_provider_throttle.py
+new file mode 100644
+index 0000000..420cc8a
+--- /dev/null
++++ b/tests/agent/test_kanban_provider_throttle.py
+@@ -0,0 +1,173 @@
++"""A provider quota wall ends a kanban worker run neutrally (RHOAI3 patch 0006).
++
++An exhausted provider-429 turn is not a task failure. The worker records the
++evidence for its run and exits KANBAN_RATE_LIMIT_EXIT_CODE (EX_TEMPFAIL); the
++native reaper books the run ``rate_limited``, requeues the card without
++counting a failure, and the native rate-limit cooldown holds the next spawn.
++Authentication and configuration errors stay failures.
++"""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++import agent.turn_finalizer as tf
++from agent.delegation_context import non_dispatcher_owned_context
++from hermes_cli import kanban_db as kb
++
++THROTTLED = {
++    "failed": True,
++    "completed": False,
++    "failure_reason": "rate_limit",
++    "api_attempts": 3,
++    "retry_after": "120",
++    "error": "HTTP 429 rate limited",
++}
++
++
++@pytest.fixture
++def board(tmp_path, monkeypatch):
++    home = tmp_path / ".hermes"
++    home.mkdir()
++    monkeypatch.setenv("HERMES_HOME", str(home))
++    monkeypatch.setattr(Path, "home", lambda: tmp_path)
++    monkeypatch.setenv("HERMES_KANBAN_CRASH_GRACE_SECONDS", "0")
++    monkeypatch.delenv("HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS", raising=False)
++    monkeypatch.setattr(tf, "_kanban_exit_code", None)
++    kb.init_db()
++    conn = kb.connect()
++    yield conn
++    conn.close()
++
++
++def _start_run(conn, tid, monkeypatch, pid):
++    host = kb._claimer_id().split(":", 1)[0]
++    assert kb.claim_task(conn, tid, claimer=f"{host}:worker") is not None
++    kb._set_worker_pid(conn, tid, pid)
++    run_id = conn.execute("SELECT current_run_id FROM tasks WHERE id = ?", (tid,)).fetchone()[0]
++    monkeypatch.setenv("HERMES_KANBAN_TASK", tid)
++    monkeypatch.setenv("HERMES_KANBAN_RUN_ID", str(run_id))
++    monkeypatch.setattr(tf, "_kanban_exit_code", None)
++    return run_id
++
++
++def _reap(conn, monkeypatch, pid, exit_code):
++    if exit_code is not None:
++        kb._record_worker_exit(pid, exit_code << 8)  # W_EXITCODE(code, 0)
++    monkeypatch.setattr(kb, "_pid_alive", lambda p: False)
++    kb.detect_crashed_workers(conn)
++
++
++def _task(conn, tid):
++    return conn.execute(
++        "SELECT status, consecutive_failures, current_run_id FROM tasks WHERE id = ?", (tid,)
++    ).fetchone()
++
++
++def _last_run(conn, tid):
++    return conn.execute(
++        "SELECT outcome, metadata FROM task_runs WHERE task_id = ? ORDER BY id DESC LIMIT 1", (tid,)
++    ).fetchone()
++
++
++def test_two_exhausted_429_turns_are_neutral_requeues_with_cooldown(board, monkeypatch):
++    tid = kb.create_task(board, title="throttled", assignee="implementer", max_retries=2)
++    for attempt, pid in enumerate((91001, 91002), 1):
++        _start_run(board, tid, monkeypatch, pid)
++        assert tf.record_kanban_turn_stop(SimpleNamespace(_api_max_retries=3), dict(THROTTLED)) is True
++        assert tf.kanban_worker_exit_code() == kb.KANBAN_RATE_LIMIT_EXIT_CODE == 75
++        # The worker records evidence only: the run stays open for the reaper.
++        assert _task(board, tid)["status"] == "running"
++        _reap(board, monkeypatch, pid, tf.kanban_worker_exit_code())
++        row = _task(board, tid)
++        assert row["status"] == "ready", attempt
++        assert row["consecutive_failures"] == 0, attempt
++        assert row["current_run_id"] is None
++        run = _last_run(board, tid)
++        assert run["outcome"] == "rate_limited"
++        meta = json.loads(run["metadata"])
++        assert meta["provider_throttle"] is True
++        assert meta["failure_reason"] == "rate_limit"
++        assert meta["api_attempts"] == 3 and meta["retry_after"] == "120"
++        assert meta["http_status"] == 429
++        # The native cooldown holds the card: no immediate respawn.
++        assert kb.check_respawn_guard(board, tid) == "rate_limit_cooldown"
++    events = [r["kind"] for r in board.execute(
++        "SELECT kind FROM task_events WHERE task_id = ? ORDER BY id", (tid,))]
++    assert events.count("provider_throttle") == 2
++    assert "gave_up" not in events and "crashed" not in events
++
++
++def test_cooldown_elapsed_allows_the_next_probe(board, monkeypatch):
++    tid = kb.create_task(board, title="throttled", assignee="implementer", max_retries=2)
++    _start_run(board, tid, monkeypatch, 91003)
++    tf.record_kanban_turn_stop(SimpleNamespace(), dict(THROTTLED))
++    _reap(board, monkeypatch, 91003, tf.kanban_worker_exit_code())
++    assert kb.check_respawn_guard(board, tid) == "rate_limit_cooldown"
++    monkeypatch.setenv("HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS", "0")
++    # The stamped quota text must not re-trap the card as blocker_auth.
++    assert kb.check_respawn_guard(board, tid) is None
++
++
++def test_lost_exit_status_still_ends_the_run_neutrally(board, monkeypatch):
++    # Dispatcher restarted: the reap registry has no status for the pid.
++    tid = kb.create_task(board, title="throttled", assignee="implementer", max_retries=2)
++    _start_run(board, tid, monkeypatch, 91004)
++    tf.record_kanban_turn_stop(SimpleNamespace(), dict(THROTTLED))
++    _reap(board, monkeypatch, 91004, None)
++    row = _task(board, tid)
++    assert (row["status"], row["consecutive_failures"]) == ("ready", 0)
++    assert _last_run(board, tid)["outcome"] == "rate_limited"
++
++
++def test_billing_wall_is_neutral_too(board, monkeypatch):
++    tid = kb.create_task(board, title="billing", assignee="implementer", max_retries=2)
++    _start_run(board, tid, monkeypatch, 91005)
++    result = {"failed": True, "failure_reason": "billing", "error": "credit exhausted"}
++    assert tf.record_kanban_turn_stop(SimpleNamespace(), result) is True
++    _reap(board, monkeypatch, 91005, tf.kanban_worker_exit_code())
++    assert _last_run(board, tid)["outcome"] == "rate_limited"
++    assert _task(board, tid)["consecutive_failures"] == 0
++
++
++@pytest.mark.parametrize("reason", ["auth", "auth_permanent", "model_not_found"])
++def test_auth_or_config_error_still_fails(board, monkeypatch, reason):
++    tid = kb.create_task(board, title="auth", assignee="implementer", max_retries=2)
++    _start_run(board, tid, monkeypatch, 91006)
++    result = {"failed": True, "failure_reason": reason, "error": "HTTP 401 invalid api key"}
++    assert tf.record_kanban_turn_stop(SimpleNamespace(), result) is False
++    assert tf.kanban_worker_exit_code() is None
++    # The quiet branch exits 1 for it: a real failure, counted.
++    _reap(board, monkeypatch, 91006, 1)
++    row = _task(board, tid)
++    assert row["consecutive_failures"] == 1
++    assert _last_run(board, tid)["outcome"] == "crashed"
++    assert not board.execute(
++        "SELECT 1 FROM task_events WHERE task_id = ? AND kind = 'provider_throttle'", (tid,)
++    ).fetchone()
++
++
++def test_child_or_cron_does_not_record_for_the_parent_run(board, monkeypatch):
++    tid = kb.create_task(board, title="parent", assignee="implementer", max_retries=2)
++    _start_run(board, tid, monkeypatch, 91007)
++    with non_dispatcher_owned_context():
++        assert tf.record_kanban_turn_stop(SimpleNamespace(), dict(THROTTLED)) is False
++    assert tf.kanban_worker_exit_code() is None
++    assert not board.execute(
++        "SELECT 1 FROM task_events WHERE task_id = ? AND kind = 'provider_throttle'", (tid,)
++    ).fetchone()
++
++
++def test_record_is_idempotent_per_run(board, monkeypatch):
++    tid = kb.create_task(board, title="twice", assignee="implementer", max_retries=2)
++    _start_run(board, tid, monkeypatch, 91008)
++    tf.record_kanban_turn_stop(SimpleNamespace(), dict(THROTTLED))
++    tf.record_kanban_turn_stop(SimpleNamespace(), dict(THROTTLED))
++    n = board.execute(
++        "SELECT COUNT(*) FROM task_events WHERE task_id = ? AND kind = 'provider_throttle'", (tid,)
++    ).fetchone()[0]
++    assert n == 1
