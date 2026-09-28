@@ -60,6 +60,12 @@ def world():
                    "class": "source", "subject": "com.acme.shop.web.Problem@org.springframework.web.bind.annotation.CrossOrigin",
                    "paths": [CO_T.P + "web/Problem.java"], "acceptance": ["gate:compile"],
                    "facts": {"sites": 1}, "consumers": [], "dependencies": []})
+    # a requirement-only objective: its subject type is owned by no request-boundary unit, so it is
+    # its own objective behind the owner of the compile obligations its check reads (u:fmt)
+    w.reqs.append({"id": "req:annotation-retirement:order-model", "rule": "annotation-retirement/v1", "status": "applicable",
+                   "class": "source", "subject": "com.acme.shop.model.Order@org.springframework.web.bind.annotation.CrossOrigin",
+                   "paths": [CO_T.P + "model/Order.java"], "acceptance": ["gate:compile"],
+                   "facts": {"sites": 1}, "consumers": [], "dependencies": []})
     return w
 
 
@@ -219,9 +225,21 @@ def main() -> int:
         back = NC.restore_parked(r.root, r.board, task_id=tid_b, run_id=run_b)
         if (r.root / CO_T.P / "web/OrderApi.java").read_text() != "// OrderApi second candidate\n":
             return _fail("the parked candidate is restored exactly for re-verification: %s" % back)
+        NC.park(r.root, r.board, task_id=tid_b, run_id=run_b)
+
+        # 6. a requirement-only objective whose planned checks already hold is SATISFIED at issue,
+        #    not handed a planned unit with nothing to repair
+        only = next(n for n in r.plan()["nodes"] if "req:annotation-retirement:order-model" in (n.get("requirements") or []))
+        if only.get("clusters") or fmt_oid not in only.get("parents") or not only.get("check_plan"):
+            return _fail("the Order requirement is its own objective behind u:fmt: %s" % {k: only.get(k) for k in ("clusters", "parents")})
+        tid_d, run_d, iss_d = r.issue(only["outcome_id"])
+        if iss_d.get("cluster") or not iss_d.get("satisfied"):
+            return _fail("a requirement objective whose checks hold is satisfied at issue, not granted: %s %s"
+                         % (iss_d.get("cluster"), iss_d.get("next", "")[:200]))
         print("OK: objective execution (issued whole with one envelope of admitted children; changed/missing child "
               "inventories refuse; out-of-scope writes refuse; acceptance judged per requirement and check; a parked "
-              "objective does not stop an independent one and its wait spends nothing)")
+              "objective does not stop an independent one and its wait spends nothing; a requirement objective whose checks "
+              "already hold is satisfied at issue)")
         return 0
     finally:
         r.close()

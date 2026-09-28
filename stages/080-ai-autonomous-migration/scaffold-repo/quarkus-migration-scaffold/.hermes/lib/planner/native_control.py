@@ -793,13 +793,18 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             allowed = sorted(node["repair_paths"])[:AMEND_MAX_FILES]
             unit = {"refusal": "", "paths": allowed, "basis": "owner repair"}
         elif not cluster and (node.get("planned_units") or node.get("requirements")):
-            from planner.outcome_graph import planned_unit_grant
-            g = planned_unit_grant(node, plan.get("requirements") or [], exists=lambda rel: (root / rel).exists(),
-                                   cluster_open=False)
-            unit = dict(g)
-            if not g.get("refusal"):
-                cluster = planned_cluster_id(oid)
-                allowed = sorted(g.get("paths") or [])
+            # compatibility-objectives/v1: a requirement outcome whose planned checks already hold
+            # on an accepted tree is satisfied, not handed a unit with nothing to repair
+            if node.get("check_plan") and not _changes_requested_since_accept(board, task_id):
+                satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
+            if satisfied is None:
+                from planner.outcome_graph import planned_unit_grant
+                g = planned_unit_grant(node, plan.get("requirements") or [], exists=lambda rel: (root / rel).exists(),
+                                       cluster_open=False)
+                unit = dict(g)
+                if not g.get("refusal"):
+                    cluster = planned_cluster_id(oid)
+                    allowed = sorted(g.get("paths") or [])
         if not cluster and _changes_requested_since_accept(board, task_id):
             paths = _rework_paths(root, board, task_id)
             if paths:
@@ -808,7 +813,7 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                 unit = {"refusal": "", "paths": paths, "basis": "reviewer requested changes"}
         if cluster:
             allowed = sorted(set(allowed) | amended_paths(board, task_id, cluster))
-        elif not (unit and unit.get("refusal")):
+        elif satisfied is None and not (unit and unit.get("refusal")):
             satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
     seq = len([r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]) + 1
     rec = board.record(task_id, "issue", "issue:%d:%d" % (run_id, seq), run=int(run_id), seq=seq, outcome_id=oid,
