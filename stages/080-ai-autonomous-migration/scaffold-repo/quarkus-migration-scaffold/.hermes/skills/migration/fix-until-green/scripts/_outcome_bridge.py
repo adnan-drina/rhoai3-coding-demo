@@ -207,6 +207,25 @@ def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) 
     return reissue(root, note="recovered commit %s; outcome still owns %s" % (out["commit"][:12], ", ".join(out["open_owned"][:4])))
 
 
+def rejection_is_latest(root: Path) -> bool | None:
+    """outcome-board/v2: whether this task's latest verdict record is a rejection
+    that still stands (not voided). A later accept-commit or accept-evaluated
+    supersedes it: v21 t_0bc6319b runs 44-47 were answered "REVERTED already"
+    from a steps.json row older than the unit's accepted commit 5e15102, so the
+    acceptance was never judged again. None when not native."""
+    board = _native(root)
+    if board is None:
+        return None
+    task, _run = _ids()
+    rows = [(r["_id"], kind, r["key"]) for kind in ("reject", "accept-commit", "accept-evaluated", "accept-aborted")
+            for r in board.records(task, kind)]
+    if not rows:
+        return True   # nothing native to order against: the recorded row stands
+    voided = {str(v.get("reject") or "") for v in board.records(task, "reject-voided")}
+    _id, kind, key = max(rows)
+    return kind == "reject" and key not in voided
+
+
 def reissue(root: Path, note: str = "") -> int | None:
     """The next attempt (or the outcome's next cluster) on the SAME card: a
     fresh issue for this run and a fresh issued.json. Never a new card."""

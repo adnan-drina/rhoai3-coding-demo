@@ -613,6 +613,10 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
                 print("DEFERRED already (%s: %s) -- the loop is stopped; kanban_block kind=needs_input naming the cluster"
                       % (cluster, str(deferred.get("reasons", {}).get(cluster) or "")[:160]), file=sys.stderr)
                 return 1
+            if _outcome_bridge.rejection_is_latest(root) is False:
+                # v2: a later acceptance (or a voided rejection) supersedes this row; the
+                # unaccepted acceptance is judged again below (resume_recovered)
+                return None
             if _outcome_bridge.active(root):
                 # outcome board: a rejected attempt keeps THIS card open (no successor card
                 # exists). v21 t_0bc6319b run 38 was told "kanban_complete" here; K2 refused it

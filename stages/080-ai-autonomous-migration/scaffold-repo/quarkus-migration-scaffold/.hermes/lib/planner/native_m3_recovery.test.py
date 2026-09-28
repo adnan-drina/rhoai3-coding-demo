@@ -424,6 +424,17 @@ class UnitIdempotency(unittest.TestCase):
             self.assertNotIn("kanban_complete", err.getvalue())
             self.assertIn("CONTINUE THIS CARD", out.getvalue())
             self.assertEqual([x["kind"] for x in r.board.records(tid)].count("issue"), 2)   # re-issued on the same card
+            # v21 t_0bc6319b runs 44-47: a later acceptance supersedes the row -- no replay, judged normally
+            r.board.record(tid, "reject", "reject:%d:x" % run, run=run)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(A._recorded_verdict(r.root, steps, tid, "c" * 64, mint=False, hermes="hermes"), 0)
+            r.board.record(tid, "accept-commit", "accept-commit:%d:y" % run, run=run, outcome_accepted=False)
+            self.assertIs(B.rejection_is_latest(r.root), False)
+            self.assertIsNone(A._recorded_verdict(r.root, steps, tid, "c" * 64, mint=False, hermes="hermes"))
+            r.board.record(tid, "reject", "reject:%d:z" % run, run=run)
+            self.assertIs(B.rejection_is_latest(r.root), True)
+            NC.void_rejects(r.board, task_id=tid, keys=["reject:%d:z" % run], reason="gate defect", by="operator")
+            self.assertIs(B.rejection_is_latest(r.root), False)                           # a voided rejection is no verdict
         finally:
             NC.board_for = orig
             for k, v in saved.items():
