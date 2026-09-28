@@ -1,0 +1,864 @@
+From 468f939a28aa48a8bebe5d14931f206a24c12ec6 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Mon, 28 Sep 2026 07:59:32 +0200
+Subject: [PATCH] fix(guardrails): halt near-duplicate tool-call loops
+
+Local addition (RHOAI3 V21). identical_call_streak_halt keys on
+byte-identical arguments, and the read-family/read-cycle guards (0011,
+0012) only see recognised read-only pipelines; any other command
+(mvn, find | xargs, a script, sed) starts a new phase for them. In the
+v21 run (Qwen3.8-27B int4, 2026-09-27/28) five loop shapes each ran
+10-40 minutes with no edit and no board call:
+
+- run 44: alternating `mvn dependency:tree | grep "spring"` /
+  `... | grep "org.springframework"` (~10 min)
+- run 35: `find src/main/java -name "*.java" | xargs grep -l "<package>"`
+  with the quoted package growing every call (161+ variants, 23 min)
+- run 36: one `grep -o '...{.\{3900,4250\}' brief.json | cut -c 60-120`
+  with a varying chained tail, 65+ times (30 min)
+- run 37: `cat PetRepository.java | sed -n 'N,N+5p'`, N stepping by one
+  and cycling (30 min)
+- run 39: `brief.py --section previous_attempts | grep -B20 ...` widened
+  to -B50 ... -B1500
+
+Near-duplicate guard: every foreground terminal call and every
+idempotent read-tool call is normalised (quoted literals and
+substitutions -> placeholder, digit runs -> #, leading `cd DIR` dropped)
+and compared by difflib token ratio (>= 0.75, same tool). A call makes
+progress when more than half of its output lines are new since the last
+reset; a call with no output makes none. With hard stops enabled the
+turn halts with near_duplicate_loop_halt when 12 of the last 16 observed
+calls are non-progressing near-duplicates of the latest one, or when a
+cycle of 2-3 calls repeats 6 times position by position; from 8 a loop
+warning is appended to the current result. A file edit (write_file,
+patch, execute_code, delegate_task, skill_manage), a terminal command
+that visibly writes (redirection to a file, rm/mv/cp/tee/..., sed -i,
+perl -pi, writing git subcommands, a script body that writes), a
+background command or a Kanban board transition resets the history.
+Thresholds live in tool_loop_guardrails.near_duplicate. The halt is an
+ordinary after_call halt decision, so the runtime records it like the
+other guardrails (STOP WORKER_TOOL_LOOP ... guardrail
+near_duplicate_loop_halt). No context is mutated: guidance is appended
+to the current tool result only.
+
+Upstream 1fec70ea48 (identical_cycle_halt, periods 2-4) only matches
+cycles with identical arguments AND results, so it covers none of the
+five shapes except a strictly identical alternation; it is not
+backported.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015F1AH7itXf3TGfe5dfF7mk
+---
+ agent/tool_guardrails.py                      | 426 ++++++++++++++++++
+ hermes_cli/config_defaults.py                 |  16 +
+ .../test_tool_guardrails_near_duplicate.py    | 285 ++++++++++++
+ 3 files changed, 727 insertions(+)
+ create mode 100644 tests/agent/test_tool_guardrails_near_duplicate.py
+
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index 1c360d8..a2dee77 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -8,6 +8,7 @@ turn halts.
+ 
+ from __future__ import annotations
+ 
++import difflib
+ import hashlib
+ import json
+ import re
+@@ -128,6 +129,7 @@ class ToolCallGuardrailConfig:
+     idempotent_tools: frozenset[str] = field(default_factory=lambda: IDEMPOTENT_TOOL_NAMES)
+     mutating_tools: frozenset[str] = field(default_factory=lambda: MUTATING_TOOL_NAMES)
+     loop_caps: "LoopCapConfig" = field(default_factory=lambda: LoopCapConfig())
++    near_duplicate: "NearDuplicateConfig" = field(default_factory=lambda: NearDuplicateConfig())
+ 
+     @classmethod
+     def from_mapping(cls, data: Mapping[str, Any] | None) -> "ToolCallGuardrailConfig":
+@@ -171,6 +173,7 @@ class ToolCallGuardrailConfig:
+                 defaults.no_progress_block_after,
+             ),
+             loop_caps=LoopCapConfig.from_mapping(data.get("loop_caps")),
++            near_duplicate=NearDuplicateConfig.from_mapping(data.get("near_duplicate")),
+         )
+ 
+ 
+@@ -221,6 +224,59 @@ class LoopCapConfig:
+         )
+ 
+ 
++@dataclass(frozen=True)
++class NearDuplicateConfig:
++    """Thresholds of the near-duplicate loop guard (RHOAI3 V21, patch 0014).
++
++    Read from ``tool_loop_guardrails.near_duplicate``. The guard only halts
++    when ``hard_stop_enabled`` is set (like every other loop halt) and
++    ``enabled`` is true. See ``_observe_near_duplicate``.
++
++    - ``window`` / ``similar_calls``: halt when ``similar_calls`` of the last
++      ``window`` observed calls are non-progressing near-duplicates of the
++      latest call (16 / 12: the live loops ran 20 to 160+ calls; a
++      fix-until-green iteration edits or transitions within a few calls, and
++      up to 4 interleaved different calls in 16 still halt).
++    - ``cycle_laps`` / ``max_cycle_period``: halt when the latest calls repeat
++      a cycle of 2..``max_cycle_period`` calls ``cycle_laps`` times, position
++      by position near-duplicate and non-progressing (6 laps: 12 calls for a
++      pair, 18 for a triple).
++    - ``warn_after``: from this many near-duplicates on, the current result
++      carries a loop warning (warnings_enabled only).
++    - ``similarity``: token-sequence ratio (difflib) of two normalised calls
++      at or above which they are near-duplicates.
++    - ``new_output_share``: a call makes progress when MORE than this share
++      of its output lines were not shown since the last edit or transition.
++    """
++
++    enabled: bool = True
++    window: int = 16
++    similar_calls: int = 12
++    cycle_laps: int = 6
++    max_cycle_period: int = 3
++    warn_after: int = 8
++    similarity: float = 0.75
++    new_output_share: float = 0.5
++
++    @classmethod
++    def from_mapping(cls, data: Mapping[str, Any] | None) -> "NearDuplicateConfig":
++        if not isinstance(data, Mapping):
++            return cls()
++        d = cls()
++        window = _positive_int(data.get("window"), d.window)
++        similar = min(_positive_int(data.get("similar_calls"), d.similar_calls), window)
++        return cls(
++            enabled=_as_bool(data.get("enabled"), d.enabled),
++            window=window,
++            similar_calls=max(similar, 2),
++            cycle_laps=max(_positive_int(data.get("cycle_laps"), d.cycle_laps), 2),
++            max_cycle_period=max(_positive_int(data.get("max_cycle_period"), d.max_cycle_period), 2),
++            warn_after=_positive_int(data.get("warn_after"), d.warn_after),
++            similarity=_unit_float(data.get("similarity"), d.similarity),
++            new_output_share=_unit_float(data.get("new_output_share"), d.new_output_share),
++        )
++
++
+ @dataclass(frozen=True)
+ class IdenticalCallObservation:
+     """Outcome of observing one completed tool call for the stall guards.
+@@ -393,6 +449,10 @@ class ToolCallGuardrailController:
+         self._refusal_count: int = 0
+         # Set by request_turn_stop(): every later call this turn is refused.
+         self._turn_stop: ToolGuardrailDecision | None = None
++        # Near-duplicate loop guard (see _observe_near_duplicate): calls since
++        # the last edit or board transition, and the output lines they showed.
++        self._nd_history: list = []
++        self._nd_seen: set = set()
+ 
+     @property
+     def halt_decision(self) -> ToolGuardrailDecision | None:
+@@ -495,6 +555,22 @@ class ToolCallGuardrailController:
+         if family_halt is not None:
+             return family_halt
+ 
++        near_duplicate = self._observe_near_duplicate(tool_name, args, result)
++        if near_duplicate is not None and near_duplicate.should_halt:
++            return near_duplicate
++        decision = self._after_call_accounting(tool_name, signature, result, failed)
++        if near_duplicate is not None and decision.action == "allow":
++            return near_duplicate
++        return decision
++
++    def _after_call_accounting(
++        self,
++        tool_name: str,
++        signature: ToolCallSignature,
++        result: str | None,
++        failed: bool,
++    ) -> ToolGuardrailDecision:
++        """Failure and idempotent no-progress accounting of one executed call."""
+         if failed:
+             exact_count = self._exact_failure_counts.get(signature, 0) + 1
+             self._exact_failure_counts[signature] = exact_count
+@@ -659,6 +735,161 @@ class ToolCallGuardrailController:
+             return decision
+         return None
+ 
++    def _observe_near_duplicate(
++        self,
++        tool_name: str,
++        args: Mapping[str, Any],
++        result: str | None,
++    ) -> ToolGuardrailDecision | None:
++        """Near-duplicate loop guard over terminal and read calls (RHOAI3 V21).
++
++        The identical-call guard keys on byte-identical arguments and the
++        read-family/read-cycle guards only see recognised read-only
++        pipelines, so a model that alternates two similar probes, grows a
++        quoted argument, varies a chained tail, walks a ``sed -n`` window one
++        line at a time or keeps widening ``grep -B`` over a script's output
++        (``mvn …``, ``find … | xargs grep``, ``brief.py … | grep``) ran for
++        10-40 minutes unhalted.
++
++        Every foreground terminal call and every idempotent read-tool call is
++        normalised (see ``_near_duplicate_tokens``: quoted literals and
++        substitutions become placeholders, digit runs become ``#``, a
++        leading ``cd DIR &&`` is dropped). Two calls of the same tool are
++        near-duplicates when the difflib ratio of their token sequences is at
++        least ``similarity``. A call makes progress when more than
++        ``new_output_share`` of its output lines were not shown by any
++        observed call since the last reset; a call with no output makes no
++        progress. Only non-progressing calls count.
++
++        Halts (hard stops only) with ``near_duplicate_loop_halt`` when
++        ``similar_calls`` of the last ``window`` calls are non-progressing
++        near-duplicates of the latest call, or when the latest calls repeat
++        a cycle of 2..``max_cycle_period`` calls ``cycle_laps`` times, each
++        position a non-progressing near-duplicate of the same position one
++        lap earlier.
++
++        A file edit (write_file, patch, execute_code, delegate_task,
++        skill_manage), a terminal command that visibly writes (see
++        ``_terminal_command_mutates``), a background command, or a Kanban
++        board transition resets the history: calls before it prove nothing
++        about calls after it. Other tools are neither counted nor reset.
++        """
++        cfg = self.config.near_duplicate
++        if not cfg.enabled:
++            return None
++        if (
++            tool_name in _PHASE_CHANGING_TOOLS
++            or tool_name in _KANBAN_TRANSITION_TOOLS
++        ):
++            self._nd_reset()
++            return None
++        if tool_name == "terminal":
++            command = args.get("command")
++            if not isinstance(command, str) or args.get("background"):
++                self._nd_reset()
++                return None
++            if _terminal_command_mutates(command):
++                self._nd_reset()
++                return None
++            tokens = _near_duplicate_tokens(command)
++            workdir = str(args.get("workdir") or "")
++            if workdir:
++                tokens = [_normalise_word(workdir)] + tokens
++        elif self._is_idempotent(tool_name):
++            tokens = _near_duplicate_arg_tokens(args)
++        else:
++            return None
++
++        lines = _result_content_lines(result)
++        new = 0
++        for line in lines:
++            digest = hashlib.sha256(line.encode("utf-8", "surrogatepass")).digest()[:16]
++            if digest not in self._nd_seen:
++                self._nd_seen.add(digest)
++                new += 1
++        progressing = bool(lines) and new > cfg.new_output_share * len(lines)
++        entry = _NearDuplicateCall(
++            tool_name=tool_name,
++            tokens=tuple(tokens),
++            progressing=progressing,
++            description=_describe_call(tool_name, args),
++        )
++        self._nd_history.append(entry)
++        keep = max(cfg.window, cfg.cycle_laps * cfg.max_cycle_period)
++        if len(self._nd_history) > keep:
++            del self._nd_history[:-keep]
++        if progressing or self._halt_decision is not None:
++            return None
++
++        history = self._nd_history
++        similar = [
++            e for e in history[-cfg.window:]
++            if not e.progressing and _near_duplicates(e, entry, cfg.similarity)
++        ]
++        count = len(similar)
++        loop = ""
++        if count >= cfg.similar_calls:
++            loop = (
++                f"{count} of the last {min(len(history), cfg.window)} {tool_name} calls "
++                f"were near-duplicates of one call ({entry.description})"
++            )
++        else:
++            for period in range(2, cfg.max_cycle_period + 1):
++                laps = _near_duplicate_cycle_laps(history, period, cfg.similarity)
++                if laps >= cfg.cycle_laps:
++                    members = "; ".join(e.description for e in history[-period:])
++                    count = laps
++                    loop = (
++                        f"a cycle of {period} near-duplicate calls was repeated "
++                        f"{laps} times ({members})"
++                    )
++                    break
++        if loop and self.config.hard_stop_enabled:
++            decision = ToolGuardrailDecision(
++                action="halt",
++                code=NEAR_DUPLICATE_HALT_CODE,
++                message=(
++                    f"Stopped {tool_name}: {loop}, with no new output, no file edit "
++                    "and no board transition in between. Only numbers, quoted "
++                    "text or a chained part changed between these calls, so "
++                    "repeating them cannot find anything new. Nothing on disk was "
++                    "changed by this stop: the working tree and any retained "
++                    "candidate stay as they are. Use the content already shown, "
++                    "make the change, or end the run with the card's stated "
++                    "terminator."
++                ),
++                tool_name=tool_name,
++                count=count,
++                signature=ToolCallSignature(
++                    tool_name=tool_name,
++                    args_hash=_sha256(json.dumps([tool_name, list(entry.tokens)])),
++                ),
++                family=loop[:300],
++            )
++            self._halt_decision = decision
++            return decision
++        if self.config.warnings_enabled and (loop or count >= cfg.warn_after):
++            loop = loop or (
++                f"{count} of the last {min(len(history), cfg.window)} {tool_name} "
++                f"calls were near-duplicates of one call ({entry.description})"
++            )
++            return ToolGuardrailDecision(
++                action="warn",
++                code=NEAR_DUPLICATE_WARN_CODE,
++                message=(
++                    f"{loop}, with no new output and no edit in between. This "
++                    "looks like a loop: use what was already shown, make the "
++                    "change, or stop."
++                ),
++                tool_name=tool_name,
++                count=count,
++            )
++        return None
++
++    def _nd_reset(self) -> None:
++        self._nd_history.clear()
++        self._nd_seen.clear()
++
+     def _new_phase(self) -> None:
+         """An evidence-changing call: reads before it prove nothing about after."""
+         self._read_families.clear()
+@@ -1464,6 +1695,201 @@ def _result_content_lines(result: str | None) -> list:
+         lines.append(line)
+     return lines
+ 
++# ── Near-duplicate loop guard (_observe_near_duplicate) ──────────────────
++
++NEAR_DUPLICATE_HALT_CODE = "near_duplicate_loop_halt"
++NEAR_DUPLICATE_WARN_CODE = "near_duplicate_loop_warning"
++# Board transitions: after one of these the model is on a new step. Reads of
++# the board (kanban_show/kanban_list), heartbeats and comments are not.
++_KANBAN_TRANSITION_TOOLS = frozenset(
++    {"kanban_complete", "kanban_block", "kanban_request_review",
++     "kanban_request_changes", "kanban_create", "kanban_unblock", "kanban_link",
++     "kanban_attach", "kanban_attach_url"}
++)
++# Shell tokens: quoted literals (an unterminated one runs to the end),
++# substitutions, redirections, operators, newlines and plain words.
++_ND_TOKEN = re.compile(
++    r"'[^']*'?"
++    r'|"(?:\\.|[^"\\])*"?'
++    r"|\$\((?:[^()]|\([^()]*\))*\)?"
++    r"|`[^`]*`?"
++    r"|\d*>>?[|&]?\d*-?|&>>?|<<<?-?|<"
++    r"|\|\||&&|[|;&()\n]"
++    r"|[^\s'\"|;&<>()`]+"
++)
++_ND_SEPARATORS = frozenset({"|", "||", "&&", ";", "&", "\n", "(", ")"})
++_ND_DIGITS = re.compile(r"\d+")
++_ND_FD_DUP = re.compile(r">&\d*-?$")
++_ND_SINKS = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr"})
++# Programs that change files or the repository whatever their arguments.
++_ND_WRITING_PROGRAMS = frozenset(
++    {"rm", "mv", "cp", "mkdir", "rmdir", "touch", "tee", "ln", "chmod", "chown",
++     "install", "truncate", "patch", "dd", "rsync", "unzip", "tar", "sponge"}
++)
++_ND_IN_PLACE_PROGRAMS = frozenset({"sed", "gsed", "perl", "ruby"})
++_ND_PREFIX_PROGRAMS = frozenset({"sudo", "env", "command", "time", "xargs", "nohup"})
++_ND_GIT_WRITING = frozenset(
++    {"add", "am", "apply", "checkout", "cherry-pick", "clean", "clone", "commit",
++     "init", "merge", "mv", "pull", "rebase", "reset", "restore", "revert", "rm",
++     "stash", "switch", "tag"}
++)
++# A script body (python -c, heredoc) that writes files.
++_ND_SCRIPT_WRITES = re.compile(
++    r"\.write\(|write_text\(|write_bytes\("
++    r"|\bos\.(?:remove|rename|replace|unlink|makedirs|mkdir)\("
++    r"|\bshutil\."
++    r"|\bopen\([^)]*,\s*(?:mode\s*=\s*)?['\"][^'\"]*[wax]"
++)
++
++
++@dataclass(frozen=True)
++class _NearDuplicateCall:
++    tool_name: str
++    tokens: tuple
++    progressing: bool
++    description: str
++
++
++def _shell_tokens(command: str) -> list:
++    return _ND_TOKEN.findall(command)
++
++
++def _shell_segments(tokens: list) -> list:
++    segments: list = [[]]
++    for tok in tokens:
++        if tok in _ND_SEPARATORS:
++            segments.append([])
++        else:
++            segments[-1].append(tok)
++    return [seg for seg in segments if seg]
++
++
++def _is_quoted(tok: str) -> bool:
++    return tok[:1] in ("'", '"', "`") or tok.startswith("$(")
++
++
++def _normalise_word(word: str) -> str:
++    return _ND_DIGITS.sub("#", word)
++
++
++def _near_duplicate_tokens(command: str) -> list:
++    """Normalised token sequence of a terminal command.
++
++    Quoted literals and ``$(...)``/backtick substitutions become ``'…'``,
++    digit runs become ``#`` and leading ``cd DIR`` segments are dropped.
++    Operators and every other word are kept, so the programs, their
++    options, the files and the shape of the pipeline decide similarity.
++    """
++    tokens = _shell_tokens(command)
++    while tokens and tokens[0] == "cd":
++        k = 1
++        while k < len(tokens) and tokens[k] not in _ND_SEPARATORS:
++            k += 1
++        tokens = tokens[k + 1:]
++    out = []
++    for tok in tokens:
++        if _is_quoted(tok):
++            out.append("'…'")
++        elif tok == "\n":
++            out.append(";")
++        else:
++            out.append(_normalise_word(tok))
++    return out
++
++
++def _near_duplicate_arg_tokens(args: Mapping[str, Any]) -> list:
++    """Normalised ``key=value`` tokens of a read tool's arguments."""
++    out = []
++    for key in sorted(args, key=str):
++        value = args[key]
++        if isinstance(value, (dict, list)):
++            value = canonical_tool_args({"v": value})
++        out.append(f"{key}={_normalise_word(str(value))}")
++    return out
++
++
++def _terminal_command_mutates(command: str) -> bool:
++    """Whether a terminal command visibly writes a file or the repository.
++
++    Deliberately generous: a write resets the near-duplicate history, so a
++    false "writes" only delays a halt. Counted as writes: output redirection
++    to a file, a writing program (``rm``, ``mv``, ``cp``, ``tee`` …), an
++    in-place editor (``sed -i``, ``perl -pi``), a writing git subcommand, or
++    a script body that writes (``open(…, 'w')``, ``.write(``, ``shutil.``).
++    """
++    tokens = _shell_tokens(command)
++    for i, tok in enumerate(tokens):
++        if ">" in tok and not _is_quoted(tok):
++            if _ND_FD_DUP.search(tok):
++                continue  # descriptor duplication such as 2>&1
++            target = tokens[i + 1] if i + 1 < len(tokens) else ""
++            if target not in _ND_SINKS:
++                return True
++    for seg in _shell_segments(tokens):
++        k = 0
++        while k < len(seg):
++            if _ENV_ASSIGNMENT.match(seg[k]):
++                k += 1
++            elif seg[k] in _ND_PREFIX_PROGRAMS:
++                k += 1
++                while k < len(seg) and seg[k].startswith("-"):
++                    k += 1
++            else:
++                break
++        if k >= len(seg):
++            continue
++        program = seg[k].rsplit("/", 1)[-1]
++        rest = seg[k + 1:]
++        if program in _ND_WRITING_PROGRAMS:
++            return True
++        if program in _ND_IN_PLACE_PROGRAMS:
++            for a in rest:
++                if a == "--in-place" or a.startswith("--in-place="):
++                    return True
++                if a.startswith("-") and not a.startswith("--") and "i" in a[1:].split(".")[0]:
++                    return True
++        if program == "git":
++            m = 0
++            while m < len(rest) and rest[m].startswith("-"):
++                m += 2 if rest[m] in ("-C", "-c", "--git-dir", "--work-tree") else 1
++            if m < len(rest) and rest[m] in _ND_GIT_WRITING:
++                return True
++    return bool(_ND_SCRIPT_WRITES.search(command))
++
++
++def _near_duplicates(a: _NearDuplicateCall, b: _NearDuplicateCall, threshold: float) -> bool:
++    if a.tool_name != b.tool_name:
++        return False
++    if a.tokens == b.tokens:
++        return True
++    return difflib.SequenceMatcher(None, a.tokens, b.tokens, autojunk=False).ratio() >= threshold
++
++
++def _near_duplicate_cycle_laps(history: list, period: int, threshold: float) -> int:
++    """Laps of the trailing cycle of ``period`` calls: every call in it is
++    non-progressing and a near-duplicate of the call one period earlier."""
++    run = 0
++    j = len(history) - 1
++    while j - period >= 0:
++        a, b = history[j], history[j - period]
++        if a.progressing or b.progressing or not _near_duplicates(a, b, threshold):
++            break
++        run += 1
++        j -= 1
++    if run == 0:
++        return 0
++    return (run + period) // period
++
++
++def _unit_float(value: Any, default: float) -> float:
++    if value is None or isinstance(value, bool):
++        return default
++    try:
++        parsed = float(value)
++    except (TypeError, ValueError):
++        return default
++    return parsed if 0.0 < parsed <= 1.0 else default
++
+ 
+ def _as_bool(value: Any, default: bool) -> bool:
+     if value is None:
+diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
+index cf3769c..658a898 100644
+--- a/hermes_cli/config_defaults.py
++++ b/hermes_cli/config_defaults.py
+@@ -717,6 +717,22 @@ DEFAULT_CONFIG = {
+             "max_web_searches": 50,   # max web_search calls per turn (0 = unlimited)
+             "max_subagents": 50,      # max subagents spawned per turn (0 = unlimited)
+         },
++        # Near-duplicate loop guard (hard stops only): terminal and read-tool
++        # calls that differ only in numbers, quoted text or a chained part
++        # and show no new output, with no file edit or board transition in
++        # between. Halts (near_duplicate_loop_halt) when similar_calls of the
++        # last window calls are such near-duplicates of the latest one, or a
++        # cycle of 2..max_cycle_period calls repeats cycle_laps times.
++        "near_duplicate": {
++            "enabled": True,
++            "window": 16,
++            "similar_calls": 12,
++            "cycle_laps": 6,
++            "max_cycle_period": 3,
++            "warn_after": 8,
++            "similarity": 0.75,
++            "new_output_share": 0.5,
++        },
+     },
+ 
+     "compression": {
+diff --git a/tests/agent/test_tool_guardrails_near_duplicate.py b/tests/agent/test_tool_guardrails_near_duplicate.py
+new file mode 100644
+index 0000000..1b85cf8
+--- /dev/null
++++ b/tests/agent/test_tool_guardrails_near_duplicate.py
+@@ -0,0 +1,285 @@
++"""Near-duplicate loop guard (RHOAI3 V21): the live loops halt, real work does not.
++
++The five loop shapes are replays of v21 worker runs (Qwen3.8-27B, 2026-09-27/28)
++that ran 10-40 minutes because identical_call_streak_halt only matches
++byte-identical arguments. Each replay drives the controller the way
++run_agent._append_guardrail_observation does: after_call, then observe_call.
++"""
++
++import json
++
++from agent.tool_guardrails import (
++    NEAR_DUPLICATE_HALT_CODE,
++    NEAR_DUPLICATE_WARN_CODE,
++    NearDuplicateConfig,
++    ToolCallGuardrailConfig,
++    ToolCallGuardrailController,
++    _terminal_command_mutates,
++)
++
++REPO = "src/main/java/org/springframework/samples/petclinic"
++BRIEF = "verification/loop/brief-u-cd4a81a71d9f.json"
++
++
++def _hard_stop():
++    return ToolCallGuardrailController(ToolCallGuardrailConfig(hard_stop_enabled=True))
++
++
++def _term(command, output="", exit_code=0):
++    return ("terminal", {"command": command}, json.dumps({"output": output, "exit_code": exit_code, "error": None}))
++
++
++def _patch(path):
++    return ("patch", {"path": path, "old_string": "a", "new_string": "b"}, json.dumps({"success": True}))
++
++
++def _replay(controller, calls):
++    """Drive the controller like the runtime; return (index, halt, warnings)."""
++    warnings = []
++    for index, (tool, args, result) in enumerate(calls):
++        decision = controller.after_call(tool, args, result, failed=False)
++        controller.observe_call(tool, args, result)
++        if decision.action == "warn":
++            warnings.append(decision.code)
++        halt = decision if decision.should_halt else controller.halt_decision
++        if halt is not None:
++            return index, halt, warnings
++    return None, None, warnings
++
++
++def _lines(prefix, n, start=0):
++    return "\n".join(f"{prefix} line {i}" for i in range(start, start + n))
++
++
++# ── the five live loop shapes halt ───────────────────────────────────────
++
++
++def test_alternating_pair_run44_halts():
++    spring = "\n".join(
++        [f"[INFO] +- org.springframework:spring-mod{i}:jar:6.1.{i}:compile" for i in range(25)]
++        + [f"[INFO] |  +- io.spring.gradle:spring-extra{i}:jar:1.{i}:compile" for i in range(15)]
++    )
++    org = "\n".join(line for line in spring.splitlines() if "org.springframework" in line)
++    calls = []
++    for _ in range(20):
++        calls.append(_term('mvn dependency:tree | grep "spring"', spring))
++        calls.append(_term('mvn dependency:tree | grep "org.springframework"', org))
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index <= 13  # 12 non-progressing near-duplicates after the first call
++    assert NEAR_DUPLICATE_WARN_CODE in warnings
++    assert "near-duplicate" in halt.message
++
++
++def test_growing_argument_run35_halts():
++    calls = [
++        _term('grep -rn "@Profile" src/main/java', f"{REPO}/repository/jdbc/JdbcOwnerRepositoryImpl.java:52:@Profile(\"jdbc\")"),
++        _term('grep -rln "context.annotation.Profile" src/main/java', f"{REPO}/repository/jpa/JpaOwnerRepositoryImpl.java"),
++    ]
++    package = "springframework.web.servlet.handler"
++    for part in ["support", "converter", "avro", "generic", "datatype", "protobuf", "smile",
++                 "msgpack", "bson", "cbor", "ion", "yaml", "toml", "xml", "json", "csv",
++                 "thrift", "capnp", "flatbuf", "orc"]:
++        package += "." + part
++        calls.append(_term(f'find src/main/java -name "*.java" | xargs grep -l "{package}"', ""))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index <= 2 + 12
++
++
++def test_chained_variant_run36_halts():
++    head = f"grep -o '\"status\":\"open\",\"unit\":{{.\\{{3900,4250\\}}' {BRIEF} | cut -c 60-120"
++    window = '"requirement":"fragment implementation of OwnerRepository'
++    tails = [
++        (f"wc -c {BRIEF}", f"153211 {BRIEF}"),
++        (f"python3 -c \"import json; print(len(json.load(open('{BRIEF}'))['units']))\"", "15"),
++        (f"grep -c '\"unit\"' {BRIEF}", "47"),
++        ("ls -la verification/loop", "total 212\n-rw-r--r-- 1 u u 153211 brief.json"),
++    ]
++    calls = []
++    for i in range(65):
++        tail, out = tails[i % len(tails)]
++        calls.append(_term(f'{head} && echo "---" && {tail}', f"{window}\n---\n{out}"))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index <= 13
++
++
++def test_sed_window_walk_run37_halts():
++    path = f"{REPO}/repository/PetRepository.java"
++    source = [f"    // PetRepository source line {n}" for n in range(1, 81)]
++
++    def window(a, b):
++        return _term(f"cat {path} | sed -n '{a},{b}p'", "\n".join(source[a - 1:b]))
++
++    calls = []
++    for _ in range(3):
++        calls.append(window(45, 80))
++        calls.extend(window(n, n + 5) for n in range(45, 0, -1))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index <= 13
++
++
++def test_widening_context_run39_halts_when_it_keeps_widening():
++    section = [f"attempt record {n}" for n in range(300)]
++    section[290] = "outcome REVERTED: jakarta.enterprise.inject.ApplicationScoped not on the classpath"
++
++    def before(n):
++        cmd = f'python3 verification/loop/brief.py --section previous_attempts | grep -B{n} "REVERTED"'
++        return _term(cmd, "\n".join(section[max(0, 290 - n):291]))
++
++    series = [20, 50, 100, 200, 400, 800, 1500]
++    # The seven logged calls alone stay under the threshold ...
++    index, halt, _ = _replay(_hard_stop(), [before(n) for n in series])
++    assert halt is None
++    # ... the loop halts once the widening goes on without new output.
++    more = [2000, 3000, 5000, 10000, 20000, 50000, 100000, 200000]
++    index, halt, _ = _replay(_hard_stop(), [before(n) for n in series + more])
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert index <= 13
++
++
++def test_dissimilar_alternating_cycle_halts():
++    # A cycle of two unrelated read probes, neither showing anything new.
++    calls = []
++    for _ in range(10):
++        calls.append(_term(f"cat {REPO}/model/Owner.java | sed -n '1,5p'", _lines("owner", 5)))
++        calls.append(_term('mvn -q help:evaluate -Dexpression=project.version -DforceStdout', "3.4.0"))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert "cycle of 2" in halt.message
++    assert index == 13  # 6 laps of 2 after the first (new-output) lap
++
++
++# ── real work does not halt ──────────────────────────────────────────────
++
++
++def test_fix_until_green_sequence_does_not_halt():
++    calls = []
++    brief = _lines("brief digest", 40)
++    for i in range(8):
++        calls.append(_term("python3 verification/loop/brief.py", brief))
++        calls.append(_term(f'grep -n "findById" {REPO}/repository/Repo{i}.java', f"{i}:  Owner findById(int id);"))
++        calls.append(_term(f"cat {REPO}/repository/jpa/Impl{i}.java", _lines(f"impl{i}", 30)))
++        calls.append(_term(f'grep -rn "Repo{i}" {REPO}', _lines(f"usage{i}", 4)))
++        calls.append(_patch(f"{REPO}/repository/jpa/Impl{i}.java"))
++        calls.append(_term("bash verification/loop/run-verify.sh", "BUILD FAILURE\n[ERROR] cannot find symbol", exit_code=1))
++        calls.append(_patch(f"{REPO}/repository/jpa/Impl{i}.java"))
++        calls.append(_term("bash verification/loop/run-verify.sh", "BUILD SUCCESS\nmeasure [0, 179, 0]"))
++        calls.append(_term("python3 verification/loop/advance.py", f"ACCEPTED u:{i}, OUTCOME ACCEPTED"))
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert NEAR_DUPLICATE_WARN_CODE not in warnings
++
++
++def test_rerunning_the_same_verify_command_after_each_edit_does_not_halt():
++    calls = []
++    for i in range(15):
++        calls.append(_patch(f"{REPO}/model/Pet.java"))
++        calls.append(_term("bash verification/loop/run-verify.sh", "BUILD FAILURE\n[ERROR] Pet.java:[42,8] cannot find symbol", exit_code=1))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++
++
++def test_terminal_edits_reset_like_file_tools():
++    calls = []
++    for i in range(15):
++        calls.append(_term(f"sed -i 's/javax/jakarta/' {REPO}/model/Pet.java"))
++        calls.append(_term("mvn -q compile", "[ERROR] Pet.java:[42,8] cannot find symbol", exit_code=1))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++
++
++def test_ten_different_file_reads_do_not_halt():
++    names = ["Owner", "Pet", "Visit", "Vet", "Specialty", "PetType", "Person", "BaseEntity", "NamedEntity", "Vets"]
++    calls = [_term(f"cat {REPO}/model/{n}.java", _lines(n, 60)) for n in names]
++    calls += [
++        ("read_file", {"path": f"{REPO}/model/{n}.java", "offset": 1, "limit": 200},
++         json.dumps({"content": _lines(n + " via read_file", 60)}))
++        for n in names
++    ]
++    index, halt, warnings = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++    assert not warnings
++
++
++def test_paging_through_a_large_file_does_not_halt():
++    source = [f"line {n} of a long generated file" for n in range(1, 2001)]
++    calls = [
++        _term(f"sed -n '{a},{a + 99}p' target/generated/Big.java", "\n".join(source[a - 1:a + 99]))
++        for a in range(1, 2001, 100)
++    ]
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++
++
++def test_edit_or_board_transition_resets_the_count():
++    def probes(start):
++        return [_term(f'find src -name "*.java" | xargs grep -l "missing.pkg{n}"', "") for n in range(start, start + 10)]
++
++    calls = probes(0) + [_term(f"sed -i 's/a/b/' {REPO}/model/Pet.java")] + probes(10)
++    calls += [("kanban_block", {"reason": "x"}, json.dumps({"ok": True}))] + probes(20)
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++
++
++def test_no_halt_without_hard_stop_but_warns():
++    calls = []
++    for _ in range(20):
++        calls.append(_term('mvn dependency:tree | grep "spring"', "org.springframework:spring-core"))
++        calls.append(_term('mvn dependency:tree | grep "org.springframework"', "org.springframework:spring-core"))
++    index, halt, warnings = _replay(ToolCallGuardrailController(), calls)
++    assert halt is None
++    assert NEAR_DUPLICATE_WARN_CODE in warnings
++
++
++def test_disabled_by_config():
++    cfg = ToolCallGuardrailConfig.from_mapping(
++        {"hard_stop_enabled": True, "near_duplicate": {"enabled": False}}
++    )
++    calls = [_term(f'find src -name "*.java" | xargs grep -l "p{"x" * n}"', "") for n in range(30)]
++    index, halt, _ = _replay(ToolCallGuardrailController(cfg), calls)
++    assert halt is None
++
++
++def test_near_duplicate_config_parses_and_clamps():
++    cfg = ToolCallGuardrailConfig.from_mapping(
++        {
++            "near_duplicate": {
++                "window": 20, "similar_calls": 30, "cycle_laps": 4, "max_cycle_period": 4,
++                "warn_after": 6, "similarity": 0.8, "new_output_share": "junk",
++            }
++        }
++    ).near_duplicate
++    assert cfg == NearDuplicateConfig(
++        enabled=True, window=20, similar_calls=20, cycle_laps=4, max_cycle_period=4,
++        warn_after=6, similarity=0.8, new_output_share=0.5,
++    )
++    assert ToolCallGuardrailConfig.from_mapping({}).near_duplicate == NearDuplicateConfig()
++
++
++def test_terminal_write_classifier():
++    writes = [
++        "cat > src/A.java <<'EOF'\nclass A {}\nEOF",
++        "echo x >> notes.txt",
++        "sed -i.bak 's/a/b/' f",
++        "perl -pi -e 's/a/b/' f",
++        "git apply fix.patch",
++        "git -C repo commit -am x",
++        "cp a b",
++        "cd /projects/app && rm -f target/x",
++        "python3 -c \"open('f', 'w').write('x')\"",
++        "grep -l x src | xargs rm",
++    ]
++    reads = [
++        "grep -rn x src 2>/dev/null",
++        "mvn dependency:tree 2>&1 | grep spring",
++        "sed -n '1,5p' f",
++        "git status --short && git diff",
++        "python3 -c \"print(open('f').read()[:100])\"",
++        "grep -n '>' f",
++        "python3 verification/loop/brief.py --section unit",
++    ]
++    assert all(_terminal_command_mutates(c) for c in writes), [c for c in writes if not _terminal_command_mutates(c)]
++    assert not any(_terminal_command_mutates(c) for c in reads), [c for c in reads if _terminal_command_mutates(c)]
+-- 
+2.54.0 (Apple Git-157)
+
