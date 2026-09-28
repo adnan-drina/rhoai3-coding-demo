@@ -1524,5 +1524,103 @@ class CoveragePreservation(unittest.TestCase):
         self.assertIsNone(original_coverage_obligation_ids(root))
 
 
+
+class PlanUnresolvedConservation(unittest.TestCase):
+    """v24 WP3: the admitted plan's seven ship-blocking verification groups
+    (twelve HTTP entry points) stay release obligations through M5; only a
+    bound resolution of the exact id discharges one."""
+
+    GROUPS = [1, 2, 2, 2, 1, 2, 2]
+
+    def _world(self, *, pettype_fail=True):
+        root, tmp = _root()
+        self.addCleanup(tmp.cleanup)
+        _write_closed(root, remaining_gaps=0, outstanding=([
+            {"kind": "capability-gap", "count": 1, "id": "sc:delete-referenced-kinds-1",
+             "detail": "source qualification FAIL (source fixture), not a destination failure"}] if pettype_fail else []))
+        _write_pin(root, passed=True)
+        self.ids = ["unresolved:verification:http:acme.C%d" % i for i in range(len(self.GROUPS))]
+        unresolved = [{"id": uid, "kind": "verification-responsibility", "blocks": "ship",
+                       "entry_points": ["ep:acme.C%d#m%d():http" % (i, j) for j in range(n)],
+                       "requirements": ["req:bv:C%d#%d" % (i, j) for j in range(n)],
+                       "reason": "no captured oracle"} for i, (uid, n) in enumerate(zip(self.ids, self.GROUPS))]
+        write_canonical(root / "evidence/planning/plan-semantics.json",
+                        {"frozen": True, "plan": {"graph": {"unresolved": unresolved}}})
+        self.bundle = {"entry_points": ["x"]}
+        write_canonical(root / "evidence/planning/evidence-bundle.json", self.bundle)
+        # a handoff that DROPPED an id and invented another: not an input to release
+        write_canonical(root / "evidence/handoff/m2-facts.json", {"unresolved": {"ids": self.ids[1:] + ["unrelated-id"]}})
+        self.sha = "cc" * 20
+        prepare_candidate(root, runner=_git(self.sha))
+        _write_bound_delivery(root, self.sha)
+        return root
+
+    def _resolve(self, root, rows):
+        from m5_delivery import UNRESOLVED_RESOLUTIONS
+        write_canonical(root / UNRESOLVED_RESOLUTIONS,
+                        {"schema": "rhoai3.unresolved-resolution/v1", "resolutions": rows})
+
+    def _row(self, root, uid, **kw):
+        from planner.canonical import digest
+        ev = root / "verification/source-oracles/scenarios/resolution-capture.json"
+        ev.parent.mkdir(parents=True, exist_ok=True)
+        if not ev.is_file():
+            ev.write_text('{"captured": true}')
+        row = {"id": uid, "candidate_sha": self.sha, "security_mode": "disabled",
+               "source_bundle_sha256": digest(self.bundle),
+               "evidence": [{"path": str(ev.relative_to(root)), "sha256": sha256_file(ev)}]}
+        row.update(kw)
+        return row
+
+    def _plan_rows(self, root):
+        elig = assess_eligibility(root, runner=_git(self.sha))
+        return elig, [r for r in elig["outstanding"] if r.get("kind") == "plan-unresolved"]
+
+    def test_all_seven_are_accounted_for_and_keep_ship_false(self):
+        root = self._world()
+        elig, rows = self._plan_rows(root)
+        self.assertEqual(sorted(r["id"] for r in rows), sorted(self.ids))        # the handoff's omission changes nothing
+        self.assertEqual(sum(len(r["entry_points"]) for r in rows), 12)
+        self.assertTrue(all(r["owner"].startswith("M4 assessment") for r in rows))
+        self.assertEqual([r.get("kind") for r in elig["outstanding"]].count("capability-gap"), 1)  # the source FAIL, once
+        self.assertFalse(elig["release_eligible"])
+        verdict = compose_verdict(root)
+        self.assertEqual((verdict["verdict"], verdict["ship"], verdict["deployment_status"]), ("INCONCLUSIVE", False, "deployed"))
+
+    def test_unrelated_or_badly_bound_resolutions_resolve_nothing(self):
+        root = self._world()
+        self._resolve(root, [self._row(root, "unrelated-id"),
+                             self._row(root, self.ids[0], candidate_sha="dd" * 20),        # another candidate
+                             self._row(root, self.ids[1], source_bundle_sha256="0" * 64),  # another bundle
+                             self._row(root, self.ids[2], security_mode=""),
+                             self._row(root, self.ids[3], evidence=[{"path": "nope.json", "sha256": "0"}])])
+        _elig, rows = self._plan_rows(root)
+        self.assertEqual(len(rows), 7)
+        self.assertTrue(any("not the delivery candidate" in x for r in rows for x in r.get("refused_resolutions") or []))
+
+    def test_valid_evidence_resolves_only_its_own_responsibility(self):
+        root = self._world(pettype_fail=False)
+        self._resolve(root, [self._row(root, self.ids[4])])
+        _elig, rows = self._plan_rows(root)
+        self.assertEqual(sorted(r["id"] for r in rows), sorted(self.ids[:4] + self.ids[5:]))
+        # the evidence changes after the resolution was recorded: the resolution no longer stands
+        (root / "verification/source-oracles/scenarios/resolution-capture.json").write_text('{"captured": false}')
+        _elig, rows = self._plan_rows(root)
+        self.assertEqual(len(rows), 7)
+
+    def test_all_resolved_releases_only_when_everything_else_is_met(self):
+        root = self._world(pettype_fail=False)
+        self._resolve(root, [self._row(root, uid) for uid in self.ids])
+        elig, rows = self._plan_rows(root)
+        self.assertEqual(rows, [])
+        self.assertTrue(elig["release_eligible"], elig["outstanding"])
+
+    def test_an_unreadable_plan_fails_closed(self):
+        root = self._world(pettype_fail=False)
+        (root / "evidence/planning/plan-semantics.json").write_text("{not json")
+        _elig, rows = self._plan_rows(root)
+        self.assertEqual([r["id"] for r in rows], ["plan-unresolved-unreadable"])
+
+
 if __name__ == "__main__":
     unittest.main()

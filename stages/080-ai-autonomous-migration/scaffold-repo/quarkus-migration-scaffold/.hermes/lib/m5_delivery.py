@@ -91,6 +91,20 @@ G1_PIN_SCRIPT = Path(__file__).resolve().parent.parent / "skills" / "gates" / "c
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 COVERAGE_DISCHARGE = DELIVERY_DIR / "coverage-discharge.json"
 DISCHARGE_SCHEMA = "rhoai3.coverage-discharge/v1"
+# v24 WP3: the admitted plan's unresolved responsibilities (verification groups
+# with no captured oracle, ownership gaps) are release obligations from M2 to
+# here. Nothing between the plan and this module read them on the native board:
+# a coverage account keyed by source path cannot stand for an entry-point group,
+# and a handoff's `unresolved` list is prose. The origin set is the FROZEN
+# admitted plan semantics, never a handoff; each id resolves only by a record
+# naming it, its evidence (file + sha256), the security mode, the evidence
+# bundle it was captured against and the delivery candidate it was assessed on.
+PLAN_SEMANTICS_REL = Path("evidence") / "planning" / "plan-semantics.json"
+EVIDENCE_BUNDLE_REL = Path("evidence") / "planning" / "evidence-bundle.json"
+UNRESOLVED_RESOLUTIONS = DELIVERY_DIR / "unresolved-resolutions.json"
+RESOLUTION_SCHEMA = "rhoai3.unresolved-resolution/v1"
+RELEASE_BLOCKING = ("ship", "delivery")
+
 # M4 close always records ship:false. Those rows, and the M4 verdict's
 # explanatory prose, are historical context — not M5 release obligations.
 HISTORICAL_KINDS = frozenset({"not-shipped", "verdict-reason"})
@@ -114,6 +128,11 @@ QUALIFICATION_META = {
         "owner": "restore-source-response-shape",
         "evidence": "verification/parity/receipt.json cors.gaps",
         "resolution": "named CORS gaps close against the source oracles",
+    },
+    "plan-unresolved": {
+        "owner": "M4 assessment on the delivery candidate (the admitted plan's unresolved responsibility)",
+        "evidence": str(UNRESOLVED_RESOLUTIONS),
+        "resolution": "a resolution naming this exact id with its evidence file and sha256, the security mode, the evidence bundle digest and this delivery candidate; a clean work list or an empty handoff list resolves nothing",
     },
     "g1-kill-ratio": {
         "owner": "check-domain-parity / pin-kill-ratio-from-pit.py",
@@ -923,9 +942,97 @@ def outstanding_from_artifacts(root: Path, *, candidate_sha: str = "") -> list[d
         add({"kind": "parity-receipt", "id": "parity-unmeasured",
              "ids": uncovered, "count": len(uncovered),
              "detail": "%d entry point(s) did not pass" % len(uncovered)})
+    for row in _plan_unresolved_rows(root, candidate_sha):
+        add(row)
     kill = read_g1_kill_ratio(root, candidate_sha=candidate_sha)
     if not (kill.get("pass") and kill.get("pinned")):
         add({"kind": "g1-kill-ratio", "id": "g1-kill-ratio", "count": 0, "detail": kill.get("detail") or ""})
+    return out
+
+
+def plan_unresolved(root: Path) -> list[dict[str, Any]] | None:
+    """The admitted plan's release-blocking unresolved rows (frozen plan
+    semantics); [] when the plan keeps none; None when the file exists but
+    cannot be read as the frozen plan (fail closed)."""
+    p = Path(root) / PLAN_SEMANTICS_REL
+    if not p.is_file():
+        return []
+    try:
+        doc = load_json(p)
+        graph = (doc.get("plan") or {}).get("graph") or {}
+        if doc.get("frozen") is not True or not isinstance(graph.get("unresolved", []), list):
+            return None
+    except Exception:
+        return None
+    return [dict(u) for u in graph.get("unresolved") or [] if isinstance(u, dict)
+            and str(u.get("blocks") or "delivery") in RELEASE_BLOCKING]
+
+
+def unresolved_resolutions(root: Path, candidate_sha: str, ids: set[str]) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """({id: resolution}, refusals). A resolution counts only for an id of the
+    admitted plan, on this delivery candidate, captured against this evidence
+    bundle, in a named security mode, with every evidence file present and
+    equal to its recorded sha256. Anything else is named and ignored."""
+    root = Path(root)
+    p = root / UNRESOLVED_RESOLUTIONS
+    if not p.is_file():
+        return {}, []
+    try:
+        doc = load_json(p)
+    except Exception:
+        return {}, ["%s is not readable JSON" % UNRESOLVED_RESOLUTIONS]
+    if str(doc.get("schema") or "") != RESOLUTION_SCHEMA:
+        return {}, ["%s has schema %r, not %s" % (UNRESOLVED_RESOLUTIONS, doc.get("schema"), RESOLUTION_SCHEMA)]
+    from planner.canonical import digest
+    bundle = digest(load_json(root / EVIDENCE_BUNDLE_REL)) if (root / EVIDENCE_BUNDLE_REL).is_file() else ""
+    ok: dict[str, dict[str, Any]] = {}
+    bad: list[str] = []
+    for row in doc.get("resolutions") or []:
+        rid = str((row or {}).get("id") or "")
+        why = ""
+        if rid not in ids:
+            why = "not an unresolved id of the admitted plan"
+        elif rid in ok:
+            why = "resolved twice"
+        elif not candidate_sha or str(row.get("candidate_sha") or "") != candidate_sha:
+            why = "bound to candidate %r, not the delivery candidate" % str(row.get("candidate_sha") or "")[:12]
+        elif not bundle or str(row.get("source_bundle_sha256") or "") != bundle:
+            why = "captured against another evidence bundle"
+        elif str(row.get("security_mode") or "") not in ("disabled", "enabled"):
+            why = "names no security mode"
+        else:
+            ev = [e for e in row.get("evidence") or [] if isinstance(e, dict)]
+            if not ev:
+                why = "names no evidence"
+            for e in ev:
+                f = root / str(e.get("path") or "")
+                if not str(e.get("path") or "") or not f.is_file() or sha256_file(f) != str(e.get("sha256") or ""):
+                    why = "evidence %s is missing or differs from its sha256" % e.get("path")
+                    break
+        if why:
+            bad.append("%s: %s" % (rid or "(no id)", why))
+        else:
+            ok[rid] = dict(row)
+    return ok, bad
+
+
+def _plan_unresolved_rows(root: Path, candidate_sha: str) -> list[dict[str, Any]]:
+    rows = plan_unresolved(root)
+    if rows is None:
+        return [{"kind": "plan-unresolved", "id": "plan-unresolved-unreadable", "count": 1,
+                 "detail": "%s exists but is not a readable frozen plan: its unresolved responsibilities are unknown"
+                           % PLAN_SEMANTICS_REL}]
+    resolved, refused = unresolved_resolutions(root, candidate_sha, {str(u.get("id")) for u in rows})
+    out = []
+    for u in sorted(rows, key=lambda u: str(u.get("id"))):
+        if str(u.get("id")) in resolved:
+            continue
+        eps = [str(e) for e in u.get("entry_points") or []]
+        out.append({"kind": "plan-unresolved", "id": str(u.get("id")), "blocks": str(u.get("blocks") or "delivery"),
+                    "count": max(1, len(eps)), "entry_points": eps, "requirements": list(u.get("requirements") or []),
+                    "detail": str(u.get("reason") or "")[:300],
+                    **({"refused_resolutions": [r for r in refused if r.startswith(str(u.get("id")) + ":")]}
+                       if any(r.startswith(str(u.get("id")) + ":") for r in refused) else {})})
     return out
 
 
