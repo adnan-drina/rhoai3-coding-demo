@@ -818,6 +818,12 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         if waiting:
             raise Refusal("OWNER_REPAIR_PENDING", "%s waits on the repair %s of its owner; end this run with "
                                                   "kanban_block kind=dependency" % (oid, waiting))
+        # v24 (architect decision 2026-09-28): the M2-published family budget is the ONE limit of a
+        # governed repair card; a card without a published key and limit refuses instead of falling
+        # back to decisions.max_attempts (that stays an input to the initial budget calculation only)
+        if not budget["key"] or int(budget["limit"] or 0) <= 0:
+            raise Refusal("ISSUE_BUDGET_UNPUBLISHED", "%s carries no published family budget (key %r, limit %r): the "
+                          "plan revision is incomplete; kanban_block kind=needs_input" % (oid, budget["key"], budget["limit"]))
         if budget["exhausted"]:
             raise Refusal("ISSUE_BUDGET_EXHAUSTED", "%s spent %d of %d (rejected attempts and change requests, cumulative "
                           "across runs); kanban_block kind=needs_input naming the outcome" % (budget["key"], budget["spent"], budget["limit"]))
@@ -1753,7 +1759,7 @@ def deferred_checks_status(root: Path, plan: dict[str, Any], node: dict[str, Any
                     run_doc = json.loads((Path(root) / VERIFY_RUN).read_text(encoding="utf-8"))
                 except (OSError, ValueError):
                     run_doc = {}
-                tests = tests_status(execution(wl, run_doc, tree))
+                tests = tests_status(execution(wl, run_doc, tree, root))
             out[key] = {"status": tests[0], "detail": tests[1]}
             continue
         pseudo = {"outcome_id": d.get("outcome"), "requirements": list(d.get("requirements") or []),

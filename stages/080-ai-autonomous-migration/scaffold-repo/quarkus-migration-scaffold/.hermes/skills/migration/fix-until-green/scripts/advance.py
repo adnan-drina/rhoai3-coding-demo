@@ -320,12 +320,12 @@ def _decided_repairs_for_baseline(root: Path) -> dict | None:
             "classification": rec.get("classification"), "counts": rec.get("counts")}
 
 
-def _execution(cur: dict, run: object, tree: str) -> dict:
+def _execution(cur: dict, run: object, tree: str, root: Path | None = None) -> dict:
     """What this step's verification actually executed on its candidate
     (planner.measurement): the baseline shortcut and every acceptance read
     it, never a class stamp."""
     from planner.measurement import execution
-    return execution(cur, run if isinstance(run, dict) else {}, tree)
+    return execution(cur, run if isinstance(run, dict) else {}, tree, root)
 
 
 def _commit(root: Path, paths: list[str], message: str) -> str:
@@ -375,7 +375,22 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     else:
         key = str(row.get("retry_key") or cluster)
     attempts = dict(steps.get("attempts") or {})
-    attempts[key] = attempts_spent(steps, cluster, key) + 1
+    governed = str(issued.get("budget_authority") or "") == "native"
+    if governed:
+        # v24: ONE limit and ONE count. The native record (bridge.record above) has already charged
+        # this rejection to the family; the loop projects that count and limit, it never adds its own
+        # (a replay records the same native key and is not counted twice)
+        nb = _outcome_bridge.native_budget(root)
+        if not nb or str(nb.get("key") or "") != key or int(nb.get("limit") or 0) <= 0:
+            print("REFUSE: LOOP_BUDGET_INCONSISTENT the issued card's family budget %r has no matching native "
+                  "account (%s); the candidate is discarded, nothing more is decided: kanban_block kind=needs_input"
+                  % (key, nb), file=sys.stderr)
+            revert_paths(root, changed)
+            return 1
+        attempts[key] = int(nb["spent"])
+        limit = int(nb["limit"])
+    else:
+        attempts[key] = attempts_spent(steps, cluster, key) + 1   # legacy serial/v1 path: decisions.max_attempts
     steps["attempts"] = attempts
     steps.setdefault("retry_keys", {})[cluster] = key
     family = str((issued.get("batch_scope") or {}).get("rule") or "") == CHECKED_FAMILY_RULE
@@ -390,12 +405,15 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
         "changed": changed, "verify": verify, "loci_before": loci_before, "loci_after": loci_after,
         "write_set": list(issued.get("write_set") or []), "legal_next": legal_next,
         "patch_summary": sorted(changed), "deleted_by_revert": deleted, "retry_key": key,
-        "budget": budget(steps, cluster, key, max_attempts(load_decisions(root))),
+        "budget": ({"retry_key": key, "spent": attempts[key], "limit": limit, "left": max(0, limit - attempts[key]),
+                    "authority": "native family budget (M2-published)"} if governed
+                   else budget(steps, cluster, key, max_attempts(load_decisions(root)))),
     })
     save_steps(root, steps)
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
-    limit = attempt_budget(steps, cluster, max_attempts(load_decisions(root)), key)
+    if not governed:
+        limit = attempt_budget(steps, cluster, max_attempts(load_decisions(root)), key)
     rebuilt = build_worklist(root)
     if attempts[key] >= limit:
         deferred = load_deferred(root)
@@ -413,12 +431,9 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
         return 1
     rec = pipeline.admit(root)
     publish_loop_state(root, rebuilt)
-    nb = issued.get("native_budget") or {}
-    print("REVERTED %s: rejected attempt %d of %d on the loop-deferral key %s%s: %s"
-          % (cluster, attempts[key], limit, key,
-             ("; the M2-published outcome budget of %s is %d of %d spent%s (the native record counts this rejection)"
-              % (nb.get("key"), int(nb.get("spent") or 0), int(nb.get("limit") or 0), ", SHARED by the family" if nb.get("shared") else ""))
-             if nb.get("key") else "", reason), file=sys.stderr)
+    print("REVERTED %s: rejected attempt %d of %d on %s %s: %s"
+          % (cluster, attempts[key], limit, "the family budget" if governed else "the loop-deferral key", key, reason),
+          file=sys.stderr)
     if deleted:
         print("  the revert DELETED new file(s) the candidate wrote: %s (write them again if still owed)" % ", ".join(deleted), file=sys.stderr)
     if mint and rec.get("status") == "ADMITTED":
@@ -759,7 +774,7 @@ def main(argv: list[str] | None = None) -> int:
         sha = _commit(root, changed, "fix-until-green: baseline %s" % cur["measure"]["tuple"])
         snapshot_reports(root)
         steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"],
-                               "execution": _execution(cur, run, on_disk), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline", **({"decided_repairs": repairs_rec} if repairs_rec else {})})
+                               "execution": _execution(cur, run, on_disk, root), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline", **({"decided_repairs": repairs_rec} if repairs_rec else {})})
         save_steps(root, steps)
         rec = pipeline.admit(root)
         print("OK: BASELINE recorded commit %s measure=%s admission=%s" % (sha[:12], cur["measure"]["tuple"], rec["status"]))
@@ -1229,7 +1244,7 @@ def main(argv: list[str] | None = None) -> int:
         snap_name = parity_receipt_file(parity_mode).name
         write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / snap_name, judged_parity)
     steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"],
-                           "execution": _execution(cur, run, on_disk), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+                           "execution": _execution(cur, run, on_disk, root), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),
                                      "family_key": str(scope_doc.get("family_key") or "")} if unit else {}),

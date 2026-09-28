@@ -1050,8 +1050,8 @@ def main(argv: list[str] | None = None) -> int:
         "previous_attempts": previous,
         # the one budget answer (planner.budget): the same numbers the issued
         # card, a rejection and a deferral carry
-        "budget": _budget(steps, cluster["id"], rk, int(_max_attempts(root))),
-        "attempts_left": _budget(steps, cluster["id"], rk, int(_max_attempts(root)))["left"],
+        "budget": _governing_budget(root, steps, cluster["id"], rk),
+        "attempts_left": _governing_budget(root, steps, cluster["id"], rk)["left"],
         "measure": doc["measure"],
         "procedure": PROCEDURE,
         "rule": "Edit only the write set as amended on the record (" + SCOPE_RULE + ") Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). A compile item with already_imported is not a missing import. Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
@@ -1314,6 +1314,19 @@ def _clip(value, n: int = 220) -> str:
     return s if len(s) <= n else s[:n] + " …"
 
 
+def _governing_budget(root: Path, steps: dict, cluster: str, rk: str) -> dict:
+    """The one budget answer of this card: on a governed native card the
+    issued projection of the native family budget (key, spent, limit); on the
+    legacy serial/v1 loop the loop's own count against decisions.max_attempts."""
+    issued = load_issued(root) or {}
+    nb = issued.get("native_budget") or {}
+    if str(issued.get("budget_authority") or "") == "native" and nb.get("key"):
+        spent, limit = int(nb.get("spent") or 0), int(nb.get("limit") or 0)
+        return {"retry_key": str(nb["key"]), "spent": spent, "limit": limit, "left": max(0, limit - spent),
+                "authority": "native family budget (M2-published)"}
+    return _budget(steps, cluster, rk, int(_max_attempts(root)))
+
+
 def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previous: list, rk: str) -> dict:
     """The one current, actionable account of this card's retries (v24 WP4).
 
@@ -1333,17 +1346,18 @@ def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previo
         else:
             reasons.append({"refusal": head, "times": 1})
     issued = load_issued(root) or {}
-    loop_b = _budget(steps, cluster["id"], rk, int(_max_attempts(root)))
     native = issued.get("native_budget") or {}
     card = os.environ.get("HERMES_KANBAN_TASK") or str(issued.get("task_id") or "")
-    budgets = {"loop_deferral": {"key": loop_b["retry_key"], "spent": loop_b["spent"], "limit": loop_b["limit"],
-                                 "means": "advance.py defers this key when rejected attempts reach the limit"}}
-    if native:
-        budgets["native_outcome"] = dict(native, means=("the M2-published budget of this outcome%s; native_gate.py issue "
-                                                        "refuses at the limit" % (" family, SHARED by every card of the family"
-                                                                                  if native.get("shared") else "")))
-        stops = [(loop_b["limit"] - loop_b["spent"], "loop deferral"), (int(native["limit"]) - int(native["spent"]), "native outcome budget")]
-        budgets["stops_first"] = "%s, after %d more rejected attempt(s)" % (min(stops)[1], max(0, min(stops)[0]))
+    # v24 (architect decision 2026-09-28): ONE limit. On a governed native card the M2-published
+    # family budget is the limit and the native family accounting the count (rejected candidates
+    # plus reviewer change requests across the family); the issuance gate and the rejection line
+    # show the same numbers. decisions.max_attempts governs only the legacy serial/v1 loop.
+    gb = _governing_budget(root, steps, cluster["id"], rk)
+    budgets = {"family" if native else "loop": dict(gb, shared=bool(native.get("shared")) if native else False,
+                                                    means=("GOVERNS: the M2-published family budget%s; native_gate.py issue "
+                                                           "refuses when it is spent" % (", SHARED by every card of the family"
+                                                                                         if native.get("shared") else "")
+                                                           if native else "legacy loop: advance.py defers at decisions.max_attempts"))}
     return {
         "native_run": os.environ.get("HERMES_KANBAN_RUN_ID") or "",
         "checkpoints_on_this_card": sum(1 for s in steps.get("steps") or [] if isinstance(s, dict) and card and s.get("card") == card

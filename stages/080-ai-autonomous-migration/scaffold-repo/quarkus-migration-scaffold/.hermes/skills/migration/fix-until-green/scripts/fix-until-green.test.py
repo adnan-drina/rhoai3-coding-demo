@@ -1119,7 +1119,7 @@ def _revert_deletes_new_file_case() -> int:
                             "--section", "_retry_state"], capture_output=True, text=True)
         rs = json.loads(b.stdout)["_retry_state"] if b.returncode == 0 else {}
         if rs.get("deleted_by_last_revert") != [new] or not rs.get("last_rejection") \
-                or (rs.get("budget") or {}).get("loop_deferral", {}).get("spent") != 1 or len(rs.get("refusals") or []) != 1:
+                or (rs.get("budget") or {}).get("loop", {}).get("spent") != 1 or len(rs.get("refusals") or []) != 1:
             return _fail("the retry state names the deleted file, the refusal and the labelled budget: %s %s" % (rs, b.stderr[-300:]))
     print("OK: fix-until-green (a rejection names the new files its revert deleted)")
     return 0

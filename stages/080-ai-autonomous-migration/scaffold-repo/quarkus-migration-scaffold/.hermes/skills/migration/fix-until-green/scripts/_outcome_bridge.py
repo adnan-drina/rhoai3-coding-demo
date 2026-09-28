@@ -124,7 +124,7 @@ def after_accept(root: Path, commit: str, candidate: str, worklist: dict[str, An
     try:
         ctx = _ctx(root)
         out = L.accept_commit(ctx, task_id=task, run_id=run_id, attempt=candidate[:16], commit=commit,
-                              measurement=_measurement(worklist, run, candidate))
+                              measurement=_measurement(worklist, run, candidate, root))
     except Exception as exc:
         return _refuse(exc)
     if out["outcome_accepted"]:
@@ -170,7 +170,7 @@ def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) 
         task, run_id = _ids()
         try:
             out = NC.evaluate_recovered(Path(root), board, task_id=task, run_id=run_id,
-                                        measurement=_measurement(worklist, run))
+                                        measurement=_measurement(worklist, run, "", root))
         except Exception as exc:
             return _refuse(exc)
         if out is None:
@@ -189,7 +189,7 @@ def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) 
     task, run_id = _ids()
     try:
         out = L.evaluate_recovered(_ctx(root), task_id=task, run_id=run_id,
-                                   measurement=_measurement(worklist, run))
+                                   measurement=_measurement(worklist, run, "", root))
     except Exception as exc:
         return _refuse(exc)
     if out is None:
@@ -259,16 +259,31 @@ _REVIEW = ("OUTCOME ACCEPTED %s on %s: end this run with kanban_request_review r
            "(another run of this same card). Do not kanban_complete.")
 
 
-def _measurement(worklist: dict[str, Any], run: dict[str, Any], candidate: str = "") -> dict[str, Any]:
+def _measurement(worklist: dict[str, Any], run: dict[str, Any], candidate: str = "", root: Any = None) -> dict[str, Any]:
     """The classes this verification PROVES (planner.measurement), never a
     stamp: v23 recorded build/compile/tests on every accept-commit while no
     test could run on a tree with 94-233 compile errors. ``candidate`` binds
     the record to the tree being accepted; without it the work list and the
     run must at least describe the same tree."""
     from planner.measurement import classes, execution
-    ex = execution(worklist, run, candidate)
+    ex = execution(worklist, run, candidate, root)
     scenarios = list((((ex.get("stages") or {}).get("parity") or {}).get("scenarios")) or [])
     return {"classes": classes(ex), "scenarios": scenarios, "execution": ex}
+
+
+def native_budget(root: Path) -> dict[str, Any] | None:
+    """The governing family budget of this native card, read from the native
+    accounting (rejected candidates plus reviewer change requests across the
+    family): {key, spent, limit, exhausted}; None off the native board."""
+    board = _native(root)
+    if board is None:
+        return None
+    from planner import native_control as NC
+    task, _run = _ids()
+    role, run, _oid, plan, node = NC.node_context(board, task)
+    if role != "repair":
+        return None
+    return NC.budget_state(board, run, plan, node)
 
 
 def _native_record(root: Path, board, verdict: str, candidate: str, reason: str) -> int:
@@ -298,7 +313,7 @@ def _native_after_accept(root: Path, board, commit: str, candidate: str, worklis
     task, run_id = _ids()
     try:
         out = NC.accept_commit(Path(root), board, task_id=task, run_id=run_id, attempt=candidate[:16], commit=commit,
-                               measurement=_measurement(worklist, run, candidate))
+                               measurement=_measurement(worklist, run, candidate, root))
     except Exception as exc:
         return _refuse(exc)
     if out["outcome_accepted"]:

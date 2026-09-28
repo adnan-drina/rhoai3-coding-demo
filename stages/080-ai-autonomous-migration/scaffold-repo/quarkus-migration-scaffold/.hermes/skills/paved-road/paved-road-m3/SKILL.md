@@ -243,6 +243,11 @@ review; the domain checks guard your native actions.
    accepted commits changed (`rework:<outcome>:<run>`).
 4. `OUTCOME_BUDGET_EXHAUSTED` (rejected attempts plus change requests of this
    outcome's family): `kanban_block kind=needs_input` naming the outcome.
+   One limit, one count: the M2-published family budget (the brief's
+   `budget`, key and limit from this card's contract) is shared by every card
+   of the family and counts rejected candidates plus reviewer change
+   requests. Changing cards, a restart or an accepted checkpoint never
+   replenishes it; `decisions.max_attempts` is not a second ceiling here.
    VERIFICATION_PENDING: `kanban_block kind=needs_input`; after a restart,
    `native_gate.py --root . restore-pending` adopts the retained candidate.
 5. `CHECKPOINT RECORDED; OUTCOME PENDING`: the commit is kept on this card

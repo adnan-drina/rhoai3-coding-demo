@@ -54,9 +54,7 @@ class BriefDigest(unittest.TestCase):
             "deleted_by_last_revert": ["a/PetRepositoryImpl.java"],
             "write_set_files_absent": ["a/PetRepositoryImpl.java"],
             "refusals": [{"refusal": "INTRODUCED_COMPILE_DIAGNOSTIC", "times": 2}],
-            "budget": {"loop_deferral": {"key": "rk:family:f", "spent": 2, "limit": 3, "means": "advance.py defers"},
-                       "native_outcome": {"key": "rk:family:f", "spent": 2, "limit": 12, "shared": True, "means": "shared"},
-                       "stops_first": "loop deferral, after 1 more rejected attempt(s)"}},
+            "budget": {"family": {"key": "rk:family:f", "spent": 2, "limit": 12, "shared": True, "means": "GOVERNS"}}},
         "planned_requirements": [{
             "id": "req:repository-architecture:SpringDataPetTypeRepository<-PetTypeRepositoryOverride",
             "subject": "acme.SpringDataPetTypeRepository<-acme.PetTypeRepositoryOverride",
@@ -75,9 +73,8 @@ class BriefDigest(unittest.TestCase):
         self.assertIn("INTRODUCED_COMPILE_DIAGNOSTIC x2", head)
         self.assertIn("@ApplicationScoped and @Typed to the fragment", head)          # both CDI requirements, before any edit
         self.assertIn("checks now: unit:fragment-implementation, structure:single-injectable-implementation", head)
-        self.assertIn("budget loop_deferral: key rk:family:f, 2 of 3", head)
-        self.assertIn("budget native_outcome: key rk:family:f, 2 of 12", head)          # both, labelled; totals untouched
-        self.assertIn("loop deferral, after 1 more rejected attempt(s) stops first", head)
+        self.assertIn("budget family: key rk:family:f, 2 of 12 spent (GOVERNS)", head)   # one limit, one count
+        self.assertNotIn("of 3", head)
 
 
 if __name__ == "__main__":
