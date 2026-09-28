@@ -3,7 +3,7 @@
 Paths under `tmp/` refer to optional local evidence, excluded from Git.
 Previously tracked run records and retired scripts remain available in Git history.
 
-## v24 package: fixes derived from v23 — authored 2026-09-28 (unpublished)
+## v24 package: fixes derived from v23 — golden `95ead23f` published 2026-09-28; review F1–F3 corrections pending republish
 
 Plan: `tmp/v23-run/V24-IMPLEMENTATION-PLAN.md` (architect). Release readiness, identities and the
 publication commands: `tmp/v24-preparation/RELEASE-READINESS.md`. These ship with the next
@@ -204,7 +204,7 @@ Design: `tmp/v21-run/m3-partition-comparison/IMPLEMENTATION-DESIGN.md`
     V17-4).
   - The `errors` objectName `OwnerDto` vs `ownerDto` (handler-validation-
     translation; guidance in bb3dea3c).
-- [ ] Risk, recorded and not changed: the product-tree digest counts
+- [x] (Closed 2026-09-28: the rescan analyzes a disposable copy since `6b09b6c2`; no IDE metadata reached v23's or the replay roots.) Risk, recorded and not changed: the product-tree digest counts
   git-ignored JDT metadata (`.project`, `.settings/`) if a rescan writes it
   into the destination. It happened in the qualification pod, but not in
   v21's live tree.
@@ -235,10 +235,10 @@ SOLUTION-ARCHITECTURE §7.1.
 - [x] 2026-09-26 round 3: the M1 BUILD producer (capture-build-evidence) and
   the structure producer re-run on two clean copies: identical build facts,
   structure and requirements (including the new application-path row).
-- [ ] The pinned MTA CLI 8.2 on the specimen (NOT RUN: host mta-cli 7.3.0 is
+- [x] (Done: pinned 8.2.1 rescans ran in qualification pods and in v21–v23; the v24 rescan reproduced `[4, 233, 0]`.) The pinned MTA CLI 8.2 on the specimen (NOT RUN: host mta-cli 7.3.0 is
   not admissible; the 8.2.1 in the ws-080 image hung under amd64 emulation on
   the arm64 workstation). Run it on an amd64 host or in the workspace.
-- [ ] The M2 destination analysis on FRESH M1 output (bootstrap, destination
+- [x] (Done: fresh-M1 M2 runs in the 2026-09-28 qualification and the v24 replay.) The M2 destination analysis on FRESH M1 output (bootstrap, destination
   compile, rescan) was not re-run: the finding half of the initial plan is
   compared from recorded evidence only.
 - [x] The outcome board's acceptance recomputes an owner's requirement checks
@@ -324,9 +324,9 @@ confirmed by the user (F1 amended for v2). Contract Part A.
 - [x] Stage 050: template default `outcome-board/v2`, skeleton without the
   sidecar, provisioner and producer (v2 matcher, no reconciler),
   run-preflight v2 launch checks.
-- [ ] Publish the golden and the platform (Stage 050 sync + catalog refresh);
+- [x] (Done: v21–v23 ran on published v2 goldens.) Publish the golden and the platform (Stage 050 sync + catalog refresh);
   the ws-080 image is unchanged (6a8a69a3).
-- [ ] First controlled v2 run: a model-driven worker and the native
+- [x] (Done: v21, v23; see their run records.) First controlled v2 run: a model-driven worker and the native
   dispatcher on a live workspace; measure completion, elapsed time, tokens,
   Operator interventions and explained plan revisions.
 
@@ -399,7 +399,7 @@ previous code. Nothing is published or launched; the release mapping is
 - [x] B8 protected writer (R3): the migration-run provisioner writes
   `<run>-run-control`, and it is mounted read-only. A run declared under
   run control refuses when the record is missing (R1).
-- [ ] Before v13: bake and push the ws-080 image with
+- [x] (Done: superseded by image `2ea8ebd6`, Hermes tree `498e2faf`, see hermes-runtime/RELEASE.md.) Before v13: bake and push the ws-080 image with
   `stages/080-ai-autonomous-migration/hermes-runtime` (8 patches, tree
   `101ca3d1`), then repin the devfile digest and `pins.json`
   `workspace_overlay`. Autostart refuses an image whose stamp is not
