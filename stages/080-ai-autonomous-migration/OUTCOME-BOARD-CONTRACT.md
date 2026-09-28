@@ -98,6 +98,22 @@ M3 cards and recovery (after v20, 2026-09-27):
   `acceptance.deferred_requirement_checks` at publication. M4 refuses
   `ASSESS_DEFERRED_CHECKS` while one is unmet; `m4-repair` turns each into a
   follow-up of its owning outcome (class behavior, the owner's budget).
+- **Satisfied elsewhere.** A repair outcome with no open scope whose owned
+  obligations another outcome's accepted commit already discharged (v21: a
+  package unit fixed the type-level outcomes inside it) is accepted by
+  `issue` itself: an `accept-commit` record on HEAD with `satisfied_by`,
+  measured on this tree with the classes another acceptance recorded on it.
+  `issue` answers `next: SATISFIED …` (handoff, then review; no loop), or
+  `NOTHING ISSUED …` with its reasons (block needs_input). The M3 audit
+  grades that record for such a card.
+- **Planned units are judged by their requirements.** A planned unit's
+  issued card carries the `planned-unit` gate: a step is accepted when the
+  measure does not get worse and no mandatory obligation appears; the
+  outcome's requirement checks, recomputed by `accept-commit`, decide the
+  outcome (v21: fragment implementations were refused "measure did not
+  decrease" by the compile tuple they cannot move). A rejection a harness
+  defect caused is taken out of the budget by the Operator's
+  `native_gate.py void-rejects` (a `reject-voided` record; nothing deleted).
 - **One verdict per unit.** advance.py answers "ACCEPTED already" only for
   the issued unit's idempotency key, so the next unit issued on the same card
   is judged.
