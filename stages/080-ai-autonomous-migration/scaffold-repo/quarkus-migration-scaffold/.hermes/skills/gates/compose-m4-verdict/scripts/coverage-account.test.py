@@ -13,6 +13,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 COMPOSER = HERE / "compose-coverage-account.py"
 LINT = HERE.parents[1] / "check-release-readiness" / "scripts" / "assert-coverage-account.py"
+sys.path.insert(0, str(HERE.parents[3] / "lib"))
+from m5_delivery import preserve_m4_coverage_account  # noqa: E402
 
 DECISIONS = """schema: rhoai3.decisions/v2
 
@@ -159,6 +161,15 @@ def main() -> int:
             return _fail("the receipt's coverage gaps are recorded as uncovered capabilities: %s" % doc.get("uncovered_capabilities"))
         if doc["summary"] != {"retired": 7, "tests": 1, "implementations": 6, "replaced": 2, "remaining_gaps": 5, "uncovered_capabilities": 2}:
             return _fail("summary: %s" % doc["summary"])
+        preserve_m4_coverage_account(root, card_id="t_m4fixture", verdict_sha256="a" * 64)
+        frozen = root / "verification" / "loop" / "accepted" / "coverage-account.json"
+        live_p = root / "evidence" / "verdicts" / "coverage-account.json"
+        if not frozen.is_file() or frozen.read_bytes() != live_p.read_bytes():
+            return _fail("bind/close must freeze the M4 coverage account as the product copy")
+        frozen_bytes = frozen.read_bytes()
+        subprocess.run([sys.executable, str(COMPOSER), str(root)], text=True, capture_output=True, check=True)
+        if frozen.read_bytes() != frozen_bytes:
+            return _fail("a later composer run must not rewrite the frozen M4 account")
 
         # a retired test without fresh executed test evidence is a gap
         root2 = _root(Path(td) / "b", surefire_rc=None)
@@ -204,6 +215,23 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(LINT), str(root)], text=True, capture_output=True)
         if p.returncode != 1 or "unaccounted" not in p.stderr:
             return _fail("an absent account must refuse naming the unaccounted retirements: rc=%s %s" % (p.returncode, p.stderr[:300]))
+
+        root_bound = _root(Path(td) / "bound", surefire_rc=0)
+        (root_bound / "verification" / "build").mkdir(parents=True, exist_ok=True)
+        (root_bound / "verification" / "build" / "run.json").write_text(
+            json.dumps({"schema": "rhoai3.verify-run/v1", "candidate_sha256": "ab" * 20}),
+            encoding="utf-8",
+        )
+        p = subprocess.run([sys.executable, str(COMPOSER), str(root_bound)], text=True, capture_output=True)
+        if p.returncode != 0:
+            return _fail("bound composer: %s%s" % (p.stdout, p.stderr))
+        bound = json.loads((root_bound / "evidence" / "verdicts" / "coverage-account.json").read_text())
+        if bound.get("candidate_sha") != "ab" * 20:
+            return _fail("composer must bind the measured candidate without decorating JSON: %s" % bound.get("candidate_sha"))
+        preserve_m4_coverage_account(root_bound, card_id="t_m4bound", verdict_sha256="b" * 64)
+        frozen_bound = json.loads((root_bound / "verification" / "loop" / "accepted" / "coverage-account.json").read_text())
+        if frozen_bound.get("candidate_sha") != "ab" * 20:
+            return _fail("the frozen M4 account must carry the measured candidate")
     print("OK: coverage-account selftest (every retirement rowed; PASS scenario replaces, no scenario / failed scenario / proposed ADR / missing test evidence / a fixture-failed or inconclusive-qualification capability are recorded gaps and the receipt's coverage gaps of every kind are uncovered capabilities; lint PASSes on disclosed gaps and refuses an under-reporting verdict, an edited account and an absent one, without authoring)")
     return 0
 

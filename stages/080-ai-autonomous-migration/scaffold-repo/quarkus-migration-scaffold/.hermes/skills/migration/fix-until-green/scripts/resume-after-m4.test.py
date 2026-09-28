@@ -756,6 +756,14 @@ def case_clean_acceptance_closes() -> int:
             return _fail("the outstanding items must be read from the verdict's own reason and account: %s" % text)
         if "closed is not shipped" not in out:
             return _fail("the terminal line must distinguish closed from shipped: %s" % out[-600:])
+        if "start-m5-delivery.py" not in out or "do not dest-dispatch M5" not in out:
+            return _fail("the close-out must name the M5 entry point without dest-dispatching: %s" % out[-800:])
+        elig = root / "verification" / "delivery" / "eligibility.json"
+        if not elig.is_file():
+            return _fail("the close-out must record M5 eligibility at %s" % elig)
+        start = root / "verification" / "delivery" / "start.json"
+        if start.is_file():
+            return _fail("M4 close must not mint M5 cards: %s exists" % start)
 
         # the comparison the close was made on is the accepted parity baseline
         snap = root / "verification" / "loop" / "accepted" / "parity" / "receipt.json"

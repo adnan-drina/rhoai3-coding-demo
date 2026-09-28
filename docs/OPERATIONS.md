@@ -39,6 +39,90 @@ Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
 
+### Continuing M1 and recovering a pending unit
+
+If a card is ACCEPTED but post-verdict admission refuses, keep that accepted
+step and inspect the next work-list blocker before minting. Do not rerun the
+accepted card or reset its attempts. ADR-024 permits up to 16 sealed method
+symbols for a complete repository-fragment repair (other units: eight), with
+the existing 20-file/160-site limits. Install its tested harness at an idle
+boundary with digests/backups. A decision amendment is a product change:
+with no live issued card and only the intended amendment dirty, record it from
+the destination root, substituting the actual operator and reason:
+
+```bash
+python3 .hermes/skills/migration/fix-until-green/scripts/operator-step.py \
+  --root . --operator WHO --adr ADR-024 --reason 'WHY' --no-mint
+```
+
+Require its recorded commit, known remeasurement, ADMITTED result and clean
+product tree before K4 mints the successor. An installation manifest alone
+does not establish an accepted baseline for changed `decisions.yaml`.
+Package/startup and parity remain separate required evidence; `[0,0,0]` is
+not completion.
+
+When an exhausted worker is superseded by an Operator product repair, preserve
+its budget. Record the repair using `operator-step.py --no-mint`, then use
+`--disposition-only --takeover-deferred <cluster>` with the same Operator.
+This requires the recorded repair at HEAD, a clean, freshly verified tree,
+an empty measured work list, passing package/startup, and admission blocked
+only by the named deferral. It appends a takeover, keeps all attempts and
+clearances unchanged, and mints nothing. This releases the hold so the whole
+artifact can be compared; it does not establish parity. Run the sealed
+`run-parity.py` comparison and `refresh-accepted-parity.py --no-mint` before
+K4 continuation. A failed comparison remains an obligation; the takeover
+grants no new worker attempts.
+
+`AUTO_START_MIGRATION=false` suppresses workspace startup. Once M1 has been
+started, its final step uses `autostart-migration.sh --root /projects/modernized
+--after-m1 "$HERMES_KANBAN_TASK"` to continue that native task. The script verifies
+its phase and workspace; planner authorization still gates M2. Review checks
+M2's actual parent and workspace, so a skipped launcher cannot pass as a handoff.
+An explicitly inactive planner still permits analysis-only M1.
+
+`build-worklist.sh` reports verification and baseline as separate phases, retaining
+the failing exit code. Use one foreground invocation with timeout 600; diagnose
+its recorded failure before retrying. Do not run a second Maven build to find
+which wrapper phase failed.
+
+For a `VERIFICATION_PENDING` unit, preserve its candidate and issued seal. A
+harness repair belongs at the blocked task boundary with backups, exact file
+hashes and regression results. For symbol retirement in a diagnostic-family or package-leaf unit, the
+compiler's complete syntax inventory can prove the retired name absent despite
+unrelated attribution errors (V16-1: an adapter-owned annotation such as
+@CrossOrigin is retired this way; its behaviour stays owed to the adapter). Package retirement requires a complete qualified-name scan with no
+references under the retired namespace. For inherited type names the compiler
+must resolve the complete ancestor chain independently; unknown ancestry or
+static imports still refuse. This does not prove general inheritance or call
+relationships. Restore the retained
+candidate with `restore-pending.py`, unblock the same native card, and re-run real
+verification and `advance.py`. This spends no new attempt and does not approve the
+candidate. Keep the original run deadline and append the intervention record.
+
+Pending recovery takes precedence when the issued cluster disappears from the
+work list. Read the retained diagnostic first: if it identifies an in-scope
+repair, apply it to the restored candidate before fresh acceptance verification.
+An explicit stale-evidence refusal is not an interrupted transaction to retry;
+resolve its precondition. Retry an interrupted `advance.py` once only when its
+verdict is unknown, or inspect the recorded verdict. A nonzero exit alone does
+not justify another acceptance call.
+
+When a retained package candidate exposes an unrelated failure outside its
+scope, a changed first error is not a package PASS. The Operator may repair
+the measured prerequisite on the accepted tree using `operator-step.py
+--no-mint` beside the pending card. First require that the candidate is stored
+away and no worker is active; commit only the prerequisite paths. Then restore
+the candidate and unblock the same card for verification. Neither its scope
+seal nor attempt history changes.
+
+After `block_loop_detected`, check the native status: `unblock` does not
+resume `triage`. Resolve the new diagnosis first. For an already specified,
+sealed card, the shipped native `specify_triage_task` API supports a status-only
+transition with title/body/assignee omitted; it retains recurrence counters
+and runs normal parent gating. Record the diagnosis in a native comment and
+verify those fields and the issued seal remain unchanged. Do not rerun an LLM
+specifier or decomposer over the sealed card, or edit its database directly.
+
 ### Stage 080 run declaration and launch preflight
 
 Every run created by the `app-migration` template after 2026-09-24 carries
@@ -74,6 +158,32 @@ Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and
 not the historical session-local files under tmp/080-operator. The read-only
 v10 preflight consumes a retained isolation receipt bound to the exact platform,
 golden and image pins. It does not bootstrap, reset a database or dispatch work.
+
+The 2026-09-22 qualification failed `workspace_identity`: actual migration
+workers could read another run's database Secret through the Dev Spaces default
+role. The other 12 checks passed. The Operator deferred permission hardening
+for this controlled v10 experiment on 2026-09-22. The launch check preserves
+the measured FAIL as a warning for this run only.
+
+A Stage 050 GitOps repair now provisions a per-run `<run>-worker` identity and
+selects it with destfile pod-overrides. It is **not** live-synced from this
+document. Restricting new workers does not revoke existing `workspace*-sa`
+accounts still bound to `devworkspace-default-role`. Follow
+[WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md)
+for the permission matrix and disposable validation plan before deploying.
+After that focused plan PASSes, requalify all 13 isolation checks against the
+resulting platform revision. Do not launch v11 from the unsynced repair.
+
+Stage 050 reserves three concurrent workspace slots per user for preserved v10
+plus two disposable isolation runs. Start the first disposable alone and prove
+IDE/tool initialization before starting the second. The existing group grant
+still permits GET of the two named MaaS Secrets; other-run parity Secrets must
+remain forbidden. The MaaS route helper loads the cluster guard and refuses to
+change a started workspace. Stop through Dev Spaces before applying that merge,
+then start again; do not interrupt postStart with a pod-template change.
+
+No platform or golden republish is needed for the local v10 launch-policy
+change that warned on the measured FAIL.
 
 The migration template's pre-start initializer clones source onto a separate
 volume and writes `.git/rhoai3-source.json`. The worker mounts it read-only;
@@ -114,6 +224,15 @@ timeout. The pod restarts once and dest-init re-runs; verify with
 
 ### Stage 080: authorizing a run (the pilot seal)
 
+Parity resets resolve the JDBC driver from
+`verification/build/.work/classpath.txt`, with the OS-account Maven cache as
+fallback. Hermes workers have a profile `HOME`; changing it is not the repair
+for a missing driver. A missing jar produces an explicit refusal and supports
+`--driver <jar>`. Diagnose with that refusal or `--print-plan`, without dumping
+environment values or enabling shell tracing. The reset suppresses inherited
+tracing and passes credential environment-variable names to Java, which resolves
+them internally. The database ownership check still runs before any connection.
+
 The golden ships `pins.planner.activation: not-activated` on purpose, and a
 destination that inherits it mints **M1 only** — admission never ADMITs and K4
 emits nothing. A run is authorized by sealing the destination's own
@@ -131,6 +250,15 @@ Admission then admits that bundle and no other, and K4 re-derives the check
 from this file rather than from receipt text or step order. Never overwrite a
 destination's `pins.json` with the golden's when syncing a harness repair: the
 seal lives there and nowhere else. A worker never edits this block.
+
+First M2 verification runs before admission exists. Its before/after admission
+snapshots therefore allow absence, while creation, deletion or changed bytes
+during verification remain recorded changes. An unreadable receipt is a typed
+failure, not absence. For a blocked-run verifier repair, install the tested
+files between tasks with old/new digests and a backup, preserve `pins.json`,
+board history and evidence, then unblock the original task. Record this as an
+assisted continuation without restarting its time budget. See the
+[fresh-M2 recovery](TROUBLESHOOTING.md#fresh-m2-verification-exits-silently-before-producing-its-work-list).
 
 ### Stage 080 loop: Operator actions (no human sign-off)
 

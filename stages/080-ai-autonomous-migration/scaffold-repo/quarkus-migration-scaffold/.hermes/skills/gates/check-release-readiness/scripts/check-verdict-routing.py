@@ -16,6 +16,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: VERDICT_ROUTING .hermes/lib marker missing")
+
+
+_ensure_hermes_lib()
+from m5_delivery import delivery_candidate_sha, read_g1_kill_ratio  # noqa: E402
+
 EXIT_CODES = """Exit codes:
   0  pass — every verdict artifact routes legally, or gate idle (no
      verdict/preflight artifacts)
@@ -168,17 +184,11 @@ def check_composition(label: str, obj: dict, root: Path) -> int:
                 file=sys.stderr,
             )
             bad = 1
-        if kill == "pass" and not pinned:
+        kill_eval = read_g1_kill_ratio(root, candidate_sha=delivery_candidate_sha(root))
+        if not (kill_eval.get("pass") and kill_eval.get("pinned")):
             print(
-                f"FAIL: {label}: g1_kill_ratio=PASS without threshold pin (AD-H §18.0)",
-                file=sys.stderr,
-            )
-            bad = 1
-        if kill != "pass" or not pinned:
-            print(
-                f"FAIL: {label}: M5 ACCEPT needs g1_kill_ratio PASS and "
-                f"threshold pin — if G-1 cannot be computed the verdict is "
-                f"not ACCEPT (B-4)",
+                f"FAIL: {label}: M5 ACCEPT needs verified G-1 pin PASS on the "
+                f"delivery candidate — {kill_eval.get('detail') or 'missing pin'}",
                 file=sys.stderr,
             )
             bad = 1

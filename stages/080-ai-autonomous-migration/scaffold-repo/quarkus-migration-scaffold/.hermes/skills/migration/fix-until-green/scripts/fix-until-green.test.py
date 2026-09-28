@@ -41,9 +41,11 @@ def _fail(msg: str) -> int:
     return 1
 
 
-def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
+def _run(argv: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env.pop("HERMES_KANBAN_TASK", None)
+    env.pop("HERMES_KANBAN_STOP_REQUEST", None)
+    env.update(extra_env or {})
     return subprocess.run(argv, text=True, capture_output=True, env=env)
 
 
@@ -51,8 +53,9 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(root), *args], text=True, capture_output=True).stdout
 
 
-def _advance(root: Path, cluster: str, card: str) -> subprocess.CompletedProcess[str]:
-    return _run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", cluster, "--card", card, "--no-mint"])
+def _advance(root: Path, cluster: str, card: str, extra_env: dict | None = None) -> subprocess.CompletedProcess[str]:
+    return _run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", cluster, "--card", card, "--no-mint"],
+                extra_env)
 
 
 def _seal_gaps(root: Path) -> list[str]:
@@ -278,7 +281,7 @@ def _checked_family_advance_case() -> int:
         _issue_cluster(root, cluster, "t_fam")
         if not all(v.startswith("chk:") for v in load_json(root / LOOP_ISSUED)["item_identities"].values()):
             return _fail("the issued failure carries its line-free identity")
-        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cluster["id"]])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root), "--cluster", cluster["id"]])
         brief = json.loads(p.stdout) if p.returncode == 0 else {}
         if "request-aware URI builder" not in json.dumps(brief.get("batch_scope") or {}) or (brief.get("budget") or {}).get("limit") != 3:
             return _fail("the family brief carries the family's note and the one budget: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
@@ -327,30 +330,47 @@ def _checked_family_advance_case() -> int:
 
 _PARITY_EP = "ep:org.acme.OwnerRestController#getOwners():http"
 _PARITY_SID = "sc:cors-actual-owners"
+_PARITY_ENABLED_SID = "sc:cors-enabled-preflight-7b1a3d9234cd"
 _PARITY_REASON = "header Access-Control-Allow-Origin None vs *; header Access-Control-Expose-Headers None vs errors"
 
 
-def _parity_records(root: Path, verdict: str, binding: dict | None = None) -> None:
+def _parity_records(root: Path, verdict: str, binding: dict | None = None, *,
+                    security_mode: str = "disabled", scenario: str | None = None) -> None:
     """What the M4 comparison leaves on disk: one scenario verdict and the
     receipt composed from it (compose-parity-receipt.py's shape).
 
     ``binding`` is what the records say they are OF. The M4 road leaves none
     (it is the accepted tree under the live seal); the acceptance path leaves
-    the candidate binding compose-parity-receipt.py --issued writes."""
+    the candidate binding compose-parity-receipt.py --issued writes.
+    ``security_mode`` selects receipt.json vs receipt-enabled.json."""
     from planner.paths import PARITY_DIR
+    from planner.worklist import parity_receipt_file
 
+    mode = security_mode if security_mode in ("disabled", "enabled") else "disabled"
+    sid = scenario or (_PARITY_ENABLED_SID if mode == "enabled" else _PARITY_SID)
     pdir = root / PARITY_DIR
-    (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+    sub = "scenarios-enabled" if mode == "enabled" else "scenarios"
+    (pdir / sub).mkdir(parents=True, exist_ok=True)
     extra = {"binding": dict(binding)} if binding else {}
-    write_canonical(pdir / "scenarios" / "sc_cors.json",
-                    dict(extra, schema="rhoai3.scenario-parity/v1", entry_point=_PARITY_EP, scenario=_PARITY_SID,
+    extra["security_mode"] = mode
+    write_canonical(pdir / sub / ("sc_cors_enabled.json" if mode == "enabled" else "sc_cors.json"),
+                    dict(extra, schema="rhoai3.scenario-parity/v1", entry_point=_PARITY_EP, scenario=sid,
                          verdict=verdict, reason=_PARITY_REASON if verdict != "PASS" else ""))
-    write_canonical(pdir / "receipt.json",
+    write_canonical(root / parity_receipt_file(mode),
                     dict(extra, schema="rhoai3.parity-receipt/v1", verdict=verdict, total=1,
                          not_passed=0 if verdict == "PASS" else 1,
                          entry_points=[{"entry_point": _PARITY_EP, "verdict": verdict,
                                         "reason": "" if verdict == "PASS" else _PARITY_REASON,
-                                        "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]))
+                                        "scenarios": [sid], "coverage": {"positive": [sid], "negative": []}}]))
+
+
+def _write_cors_corpus(root: Path, security_mode: str, scenario: str) -> None:
+    rel = ("verification/scenarios-enabled/corpus.json" if security_mode == "enabled"
+           else "verification/scenarios/corpus.json")
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    write_canonical(p, {"scenarios": [{"id": scenario, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+                                       "scenario_type": "browser-preflight"}]})
 
 
 def _candidate_binding(root: Path, card: str) -> dict:
@@ -365,39 +385,47 @@ def _candidate_binding(root: Path, card: str) -> dict:
             "card": card}
 
 
-def _parity_run_record(root: Path, binding: dict | None) -> None:
+def _parity_run_record(root: Path, binding: dict | None, *, security_mode: str = "disabled") -> None:
     """The runner's own record of the comparison this verification made
     (run-parity.py's _run.json): what it was told to measure. run-verify.sh
     hands it the issued card whenever there is one, so on the acceptance path
     the run is candidate-bound and a receipt it composed would say so."""
-    from planner.paths import PARITY_DIR
+    from planner.worklist import parity_run_file
 
-    write_canonical(root / PARITY_DIR / "_run.json",
+    mode = security_mode if security_mode in ("disabled", "enabled") else "disabled"
+    write_canonical(root / parity_run_file(mode),
                     {"schema": "rhoai3.parity-run/v1", "producer": "run-parity.py",
+                     "security_mode": mode,
                      "issued": str(root / "verification" / "loop" / "issued.json") if binding else "",
                      "binding": dict(binding) if binding else {"mode": "sealed"},
                      "receipt": {"composed_by_this_run": True, "reason": ""}})
 
 
 def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: str = "",
-                     run_binding: dict | None = None) -> None:
+                     run_binding: dict | None = None, security_mode: str = "disabled",
+                     scenario: str | None = None) -> None:
     """The acceptance pass for a parity card: run-verify.sh copies the receipt
     it started from, runs the comparison, records runtime.parity in run.json and
     re-measures. Here the comparison is simulated; everything else is real."""
     from planner.paths import VERIFY_RUN
 
+    mode = security_mode if security_mode in ("disabled", "enabled") else "disabled"
+    sid = scenario or (_PARITY_ENABLED_SID if mode == "enabled" else _PARITY_SID)
     # the acceptance path reaches parity through the packaging and startup
     # gates, and runs them on this candidate (a rejection discarded the last
     # candidate's receipts, so they are not inherited)
     specimens.runtime(root, package_rc=0, boot_ready=True)
     specimens.verify(root, errors=[], failures=[], findings=findings)
     doc = load_json(root / VERIFY_RUN)
-    doc.setdefault("runtime", {})["parity"] = {
-        "ran": ran, "rc": 0, "scenarios": [_PARITY_SID] if ran else [],
-        "receipt_verdict": verdict, "ms": 1}
+    par = {
+        "ran": ran, "rc": 0, "scenarios": [sid] if ran else [],
+        "receipt_verdict": verdict, "security_mode": mode, "ms": 1}
+    if mode == "enabled":
+        par["scoped"] = bool(ran)
+    doc.setdefault("runtime", {})["parity"] = par
     write_canonical(root / VERIFY_RUN, doc)
     if ran:
-        _parity_run_record(root, run_binding)
+        _parity_run_record(root, run_binding, security_mode=mode)
 
 
 def _parity_card_case() -> int:
@@ -457,7 +485,7 @@ def _parity_card_case() -> int:
         if card.get("logical_id") != cluster["id"] or issued.get("gate") != "parity" or issued.get("gate_items") != cluster["items"]:
             return _fail("K4 must mint the parity cluster and carry gate=parity and what the gate held onto the issued card: %s | %s"
                          % (card.get("logical_id"), {k: issued.get(k) for k in ("gate", "gate_items", "items")}))
-        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cluster["id"]])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root), "--cluster", cluster["id"]])
         brief = json.loads(p.stdout) if p.returncode == 0 else {}
         if _PARITY_SID not in json.dumps((brief.get("parity") or {})) or "PASS" not in json.dumps(brief.get("parity") or {}):
             return _fail("the parity brief must name the scenarios and what discharges them: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
@@ -610,6 +638,448 @@ def _parity_card_case() -> int:
     return 0
 
 
+def _runtime_owner_attribution_case() -> int:
+    """V17-3 on the serial loop is DIAGNOSIS ONLY (round 2): the runtime cause
+    is classified from the BASELINE's own recorded measurement
+    (planner.runtime_cause) and printed / recorded, and the card is REVERTED
+    with its attempt spent whatever the class -- no charge moves, no pending,
+    no scope. Three baselines through the production advance.py:
+      * the v17 shape: the accepted snapshot, bound to the baseline tree,
+        already failed the scenario identically in the owner's stub ->
+        RUNTIME_CAUSE pre-existing-owner-defect naming the owner;
+      * the counterexample: the baseline PASSED it -> candidate-regression;
+      * no baseline record of the scenario -> ambiguous."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, PARITY_DIR, STRUCTURE, VERIFY_DIR  # noqa: E402
+    from planner.worklist import item_ids, obligation_keys, parity_receipt_file  # noqa: E402
+
+    impl = "src/main/java/org/acme/repo/OwnerStoreImpl.java"
+    frames = [{"class": "org.acme.repo.OwnerStoreImpl", "method": "findAll", "line": 3, "file": impl}]
+    for label, baseline in (("pre-existing", "FAIL"), ("regression", "PASS"), ("ambiguous", None)):
+        with tempfile.TemporaryDirectory(prefix="owner-attr-") as td:
+            root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                        decisions=specimens.admitted_decisions(max_attempts=3))
+            structure = load_json(root / STRUCTURE)
+            for t in structure["types"]:
+                if t["fqn"].endswith(".OwnerController"):
+                    t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                             "values": {"exposedHeaders": ["errors"]}})
+            write_canonical(root / STRUCTURE, structure)
+            specimens.prepare_loop(root)
+            (root / impl).parent.mkdir(parents=True, exist_ok=True)
+            (root / impl).write_text("package org.acme.repo;\npublic class OwnerStoreImpl {\n"
+                                     "    public java.util.List<String> findAll() { throw new UnsupportedOperationException(); }\n}\n",
+                                     encoding="utf-8")
+            _git(root, "add", impl)
+            _git(root, "commit", "-qm", "an earlier card's delegate")
+            findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+            findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items() if v.get("category") != "mandatory"}
+            specimens.runtime(root, package_rc=0, boot_ready=True)
+            _parity_records(root, "FAIL")
+            specimens.verify(root, errors=[], failures=[], findings=findings)
+            pipeline.admit(root)
+            cur = load_json(root / WORKLIST)
+            steps = load_json(root / LOOP_STEPS)
+            base_tree = load_json(root / LOOP_STATE)["candidate_sha256"]
+            steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                      obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                      candidate_sha256=base_tree)
+            # the earlier accepted step of ANOTHER cluster that committed the delegate
+            steps["steps"].append(dict(steps["steps"][-1], cluster="u:repo-fragments", card="t_frag0", verdict="accepted",
+                                       changed=[impl], commit=_git(root, "rev-parse", "HEAD").strip()))
+            write_canonical(root / LOOP_STEPS, steps)
+            pipeline.admit(root)
+            cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["status"] == "open")
+            specimens.issue(root)
+            # the BASELINE's own recorded measurement: the accepted parity snapshot
+            snap = root / LOOP_ACCEPTED / "parity" / "scenarios" / "sc_cors.json"
+            if baseline is not None:
+                write_canonical(snap, {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP, "scenario": _PARITY_SID,
+                                       "verdict": baseline, "reason": "status 500 vs 200" if baseline == "FAIL" else "",
+                                       "security_mode": "disabled", "binding": {"mode": "candidate", "candidate_sha256": base_tree},
+                                       **({"server_error": {"exception": "java.lang.UnsupportedOperationException",
+                                                            "stack_sha256": "ab" * 32, "frames": frames}} if baseline == "FAIL" else {})})
+            elif snap.exists():
+                snap.unlink()
+            _run([sys.executable, str(HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"),
+                  "--root", str(root), "--adapter", "cors"])
+            shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
+            # the comparison ran on the candidate and the scenario answered 500
+            reason = "status 500 vs 200; body type object vs array"
+            write_canonical(root / PARITY_DIR / "scenarios" / "sc_cors.json",
+                            {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP, "scenario": _PARITY_SID,
+                             "verdict": "FAIL", "reason": reason, "security_mode": "disabled",
+                             "server_error": {"status": 500, "expected_status": 200, "exception": "java.lang.UnsupportedOperationException",
+                                              "message": "", "stack_sha256": "ab" * 32, "frames": frames}})
+            write_canonical(root / parity_receipt_file("disabled"),
+                            {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL", "total": 1, "not_passed": 1,
+                             "security_mode": "disabled",
+                             "entry_points": [{"entry_point": _PARITY_EP, "verdict": "FAIL", "reason": reason,
+                                               "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]})
+            _parity_verified(root, findings, verdict="FAIL")
+            spent = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+            p = _advance(root, cluster["id"], "t_cors1")
+            blob = p.stdout + p.stderr
+            after = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+            want = {"pre-existing": "pre-existing-owner-defect", "regression": "candidate-regression", "ambiguous": "ambiguous"}[label]
+            if p.returncode == 0 or "REVERTED" not in blob or after == spent or "VERIFICATION_PENDING" in blob:
+                return _fail("[%s] the serial loop rejects and spends the attempt whatever the cause: %s" % (label, blob[-700:]))
+            if "RUNTIME_CAUSE %s" % want not in blob:
+                return _fail("[%s] the runtime cause is classified %s and shown: %s" % (label, want, blob[-700:]))
+            rows = [d for d in load_json(root / "verification/loop/owner-debts.json").get("debts") or []
+                    if d.get("kind") == "runtime-cause-diagnosis"]
+            if not rows or rows[-1]["class"] != want or not rows[-1]["authority"].startswith("none"):
+                return _fail("[%s] the diagnosis is recorded as observational only: %s" % (label, rows))
+            if label == "pre-existing" and rows[-1]["owner_cluster"] != "u:repo-fragments":
+                return _fail("[%s] the diagnosis names the owner: %s" % (label, rows[-1]))
+            if label != "pre-existing" and rows[-1]["owner_cluster"]:
+                return _fail("[%s] no owner is named without proof: %s" % (label, rows[-1]))
+    return 0
+
+
+def _functional_debt_case() -> int:
+    """V17-3: a unit whose owed implementations carry planned functional
+    verification is accepted as STRUCTURAL progress with an owned debt
+    (covered rows owed, uncovered rows unresolved), never as functional
+    completion."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("adv_fd", HERE / "advance.py")
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)  # type: ignore[union-attr]
+    scope = {"implementation_obligations": [{"path": "src/main/java/p/StoreImpl.java", "verification": [
+        {"member": "p.Store#findAll()", "effect": "read", "scenarios": ["sc:list"], "status": "applicable"},
+        {"member": "p.Store#save(p.E)", "effect": "write", "scenarios": [], "status": "unresolved"}]}]}
+    d = adv._functional_debt(scope, "u:frag", "t_f", "0123456789abcdef")
+    if not d or [r["status"] for r in d["rows"]] != ["owed", "unresolved"] or d["owner_cluster"] != "u:frag":
+        return _fail("the structural acceptance records the owed and unresolved functional rows: %s" % d)
+    if adv._functional_debt({"implementation_obligations": [{"path": "x", "verify": "template"}]}, "u", "t", "c") is not None:
+        return _fail("a unit that owes no behaviour records no functional debt")
+    with tempfile.TemporaryDirectory(prefix="fd-") as td:
+        root = Path(td)
+        adv._record_owner_debt(root, d)
+        adv._record_owner_debt(root, d)
+        doc = load_json(root / "verification/loop/owner-debts.json")
+        if len(doc["debts"]) != 1:
+            return _fail("the same debt recorded twice is one row: %s" % doc)
+    return 0
+
+
+def _enabled_mode_acceptance_case() -> int:
+    """Disabled PASS + enabled FAIL, then an enabled replay must advance on
+    that candidate's enabled receipt -- never the sealed disabled one.
+
+    Missing, stale, wrong-mode or wrong-candidate evidence refuses."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, PARITY_DIR, VERIFY_DIR, VERIFY_RUN  # noqa: E402
+    from planner.worklist import parity_receipt_file  # noqa: E402
+    from _loop_common import snapshot_parity  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="parity-en-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        from planner.paths import STRUCTURE  # noqa: E402
+        import response_adapters as ra  # noqa: E402
+
+        structure = load_json(root / STRUCTURE)
+        for t in structure["types"]:
+            if t["fqn"].endswith(".OwnerController"):
+                t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                         "values": {"exposedHeaders": ["errors"]}})
+        write_canonical(root / STRUCTURE, structure)
+        specimens.prepare_loop(root)
+        findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+        findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items()
+                                  if v.get("category") != "mandatory"}
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        _write_cors_corpus(root, "disabled", _PARITY_SID)
+        _write_cors_corpus(root, "enabled", _PARITY_ENABLED_SID)
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_records(root, "FAIL", security_mode="enabled")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        snapshot_parity(root)
+        from planner.worklist import item_ids, obligation_keys  # noqa: E402
+
+        cur = load_json(root / WORKLIST)
+        steps = load_json(root / LOOP_STEPS)
+        steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                  obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                  candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
+        write_canonical(root / LOOP_STEPS, steps)
+        wl = load_json(root / WORKLIST)
+        cors = [i for i in wl["items"] if i.get("rule_id") == "PARITY_CORS"]
+        if (len(cors) != 1 or cors[0].get("security_mode") != "enabled"
+                or cors[0].get("scenario") != _PARITY_ENABLED_SID):
+            return _fail("the enabled FAIL is the only CORS obligation: %s"
+                         % [{k: i.get(k) for k in ("scenario", "rule_id", "security_mode")} for i in cors])
+        cl = [c for c in wl["clusters"] if c["status"] == "open"]
+        adapter = ra.adapter_path(ra.CORS)
+        if (len(cl) != 1 or cl[0].get("gate") != "parity"
+                or (cl[0].get("unit") or {}).get("family_key") != "source-cors-response-adapter/v1:enabled"):
+            return _fail("the enabled CORS obligation is its own unit, not mixed with disabled: %s" % cl)
+        cluster = cl[0]
+        card = specimens.issue(root)
+        issued = load_json(root / LOOP_ISSUED)
+        if issued.get("security_mode") != "enabled" or card.get("logical_id") != cluster["id"]:
+            return _fail("the issued card carries enabled mode: %s" % {k: issued.get(k) for k in ("security_mode", "cluster")})
+        installer = HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"
+
+        def install_adapter() -> None:
+            ip = _run([sys.executable, str(installer), "--root", str(root), "--adapter", "cors"])
+            if ip.returncode != 0:
+                raise AssertionError("the capability must install on the issued card: %s%s" % (ip.stdout, ip.stderr))
+
+        def keep_disabled_sealed() -> None:
+            _parity_records(root, "PASS", security_mode="disabled")
+
+        def before_enabled() -> None:
+            src = root / parity_receipt_file("enabled")
+            dst = root / VERIFY_DIR / "parity-before-enabled.json"
+            if src.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
+
+        install_adapter()
+
+        attempts_before = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+
+        # 0. silent fallback: runner recorded disabled, disabled PASS, enabled missing
+        live_en = root / PARITY_DIR / "receipt-enabled.json"
+        live_en.unlink(missing_ok=True)
+        keep_disabled_sealed()
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="disabled")
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob:
+            return _fail("disabled PASS beside missing enabled evidence must refuse acceptance: %s" % blob[-600:])
+        if "wrong-security-mode" not in blob and "issuance-scope-missing" not in blob:
+            return _fail("wrong-mode PASS must be a typed pending result: %s" % blob[-600:])
+        if dict(load_json(root / LOOP_STEPS).get("attempts") or {}) != attempts_before:
+            return _fail("wrong-mode PASS must not consume a repair attempt: %s" % load_json(root / LOOP_STEPS).get("attempts"))
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after wrong-mode disabled PASS: %s%s" % (rp.stdout, rp.stderr))
+
+        # 0b. missing issuance scope: no replay, typed pending, no attempt
+        keep_disabled_sealed()
+        live_en.unlink(missing_ok=True)
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")
+        issued_doc = load_json(root / LOOP_ISSUED)
+        saved_mode, saved_sids = issued_doc.get("security_mode"), list(issued_doc.get("scenarios") or [])
+        saved_eps, saved_scope = list(issued_doc.get("entry_points") or []), list(issued_doc.get("item_scope") or [])
+        issued_doc.pop("security_mode", None)
+        issued_doc["scenarios"] = []
+        issued_doc["entry_points"] = []
+        issued_doc["item_scope"] = []
+        write_canonical(root / LOOP_ISSUED, issued_doc)
+        run_doc = load_json(root / VERIFY_RUN)
+        run_doc.setdefault("runtime", {})["parity"] = {
+            "ran": False, "pending": "the issued card does not record a security mode or scenario scope",
+            "cause": "issuance-scope-missing", "scoped": False, "scenarios": []}
+        write_canonical(root / VERIFY_RUN, run_doc)
+        attempts_before = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob or "issuance-scope-missing" not in blob:
+            return _fail("missing issuance scope must pending without replay: %s" % blob[-600:])
+        if dict(load_json(root / LOOP_STEPS).get("attempts") or {}) != attempts_before:
+            return _fail("missing issuance scope must not consume a repair attempt")
+        issued_doc["security_mode"] = saved_mode
+        issued_doc["scenarios"] = saved_sids
+        issued_doc["entry_points"] = saved_eps
+        issued_doc["item_scope"] = saved_scope
+        write_canonical(root / LOOP_ISSUED, issued_doc)
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after missing issuance scope: %s%s" % (rp.stdout, rp.stderr))
+
+        # 1. missing enabled receipt: the sealed disabled PASS is not "now"
+        live_en.unlink(missing_ok=True)
+        keep_disabled_sealed()
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob:
+            return _fail("missing enabled receipt must refuse acceptance: %s" % blob[-600:])
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after missing enabled receipt: %s%s" % (rp.stdout, rp.stderr))
+
+        # 2. stale enabled FAIL, candidate-bound
+        keep_disabled_sealed()
+        _parity_records(root, "FAIL", security_mode="enabled")
+        before_enabled()
+        _parity_verified(root, findings, verdict="FAIL", security_mode="enabled")
+        binding = _candidate_binding(root, "t_en0")
+        _parity_records(root, "FAIL", binding=binding, security_mode="enabled")
+        _parity_run_record(root, binding, security_mode="enabled")
+        p = _advance(root, cluster["id"], "t_en0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "still reported" not in blob:
+            return _fail("a stale enabled FAIL must refuse acceptance: %s" % blob[-600:])
+
+        # REVERT restored the accepted reports, including any mandatory MTA
+        # findings the baseline still carried; re-measure with the same
+        # filtered findings the card was issued under so the enabled CORS
+        # unit is the head again.
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_records(root, "FAIL", security_mode="enabled")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        retry = specimens.issue(root)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == retry.get("logical_id"))
+        if cluster.get("gate") != "parity":
+            return _fail("the reverted enabled card must re-issue a parity cluster: %s" % cluster)
+        install_adapter()
+
+        # 3. wrong-mode: disabled receipt candidate-bound PASS, enabled still FAIL
+        keep_disabled_sealed()
+        _parity_records(root, "FAIL", security_mode="enabled")
+        before_enabled()
+        _parity_verified(root, findings, verdict="FAIL", security_mode="enabled")
+        wrong_disabled = _candidate_binding(root, "t_en1")
+        _parity_records(root, "PASS", binding=wrong_disabled, security_mode="disabled")
+        _parity_run_record(root, wrong_disabled, security_mode="enabled")
+        p = _advance(root, cluster["id"], "t_en1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout:
+            return _fail("wrong-mode evidence (disabled PASS, enabled FAIL) must refuse: %s" % blob[-600:])
+
+        if "REVERTED" in blob:
+            _parity_records(root, "PASS", security_mode="disabled")
+            _parity_records(root, "FAIL", security_mode="enabled")
+            specimens.verify(root, errors=[], failures=[], findings=findings)
+            pipeline.admit(root)
+            retry = specimens.issue(root)
+            cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == retry.get("logical_id"))
+            if cluster.get("gate") != "parity":
+                return _fail("re-issue after wrong-mode revert: %s" % cluster)
+            install_adapter()
+        else:
+            rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+            if rp.returncode != 0 or "restored" not in rp.stdout:
+                return _fail("restore-pending after wrong-mode: %s%s" % (rp.stdout, rp.stderr))
+
+        # 4. wrong-candidate binding on the enabled receipt
+        keep_disabled_sealed()
+        _parity_records(root, "PASS", security_mode="enabled")
+        _parity_verified(root, findings, verdict="PASS", security_mode="enabled")
+        _parity_records(root, "PASS", binding=_candidate_binding(root, "t_somebodyelse"), security_mode="enabled")
+        before_enabled()
+        p = _advance(root, cluster["id"], "t_en1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob:
+            return _fail("wrong-candidate enabled receipt must refuse: %s" % blob[-600:])
+        if "t_somebodyelse" not in blob:
+            return _fail("the refusal names the card the enabled receipt was composed for: %s" % blob[-600:])
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending after wrong-candidate: %s%s" % (rp.stdout, rp.stderr))
+
+        # 5. correctly bound enabled PASS; sealed disabled PASS still on disk
+        keep_disabled_sealed()
+        _parity_records(root, "PASS", security_mode="enabled")
+        _parity_verified(root, findings, verdict="PASS", security_mode="enabled")
+        binding = _candidate_binding(root, "t_en1")
+        _parity_records(root, "PASS", binding=binding, security_mode="enabled")
+        before_enabled()
+        _parity_run_record(root, binding, security_mode="enabled")
+        if load_json(root / parity_receipt_file("disabled")).get("verdict") != "PASS":
+            return _fail("the trap needs the sealed disabled receipt still PASSing")
+        if (load_json(root / parity_receipt_file("disabled")).get("binding") or {}).get("mode") == "candidate":
+            return _fail("the disabled receipt must stay sealed: %s" % load_json(root / parity_receipt_file("disabled")).get("binding"))
+        p = _advance(root, cluster["id"], "t_en1")
+        blob = p.stdout + p.stderr
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout:
+            return _fail("an enabled replay must advance on the enabled receipt: %s" % blob[-800:])
+        step = load_json(root / LOOP_STEPS)["steps"][-1]
+        if (step.get("parity") or {}).get("binding") != binding:
+            return _fail("acceptance recorded the enabled candidate binding, not the disabled seal: %s" % step.get("parity"))
+        snap = root / LOOP_ACCEPTED / "parity" / "receipt-enabled.json"
+        if not snap.is_file() or load_json(snap).get("verdict") != "PASS":
+            return _fail("the accepted snapshot is the enabled receipt: %s" % (load_json(snap) if snap.is_file() else snap))
+        disabled_snap = root / LOOP_ACCEPTED / "parity" / "receipt.json"
+        if disabled_snap.is_file() and (load_json(disabled_snap).get("binding") or {}).get("mode") == "candidate":
+            return _fail("acceptance must not overwrite the disabled snapshot with the enabled candidate")
+    return 0
+
+
+def _mixed_mode_card_refusal_case() -> int:
+    """A residual mixed-mode card is refused and must not write the enabled
+    receipt into the disabled baseline snapshot."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS, VERIFY_DIR  # noqa: E402
+    from planner.worklist import parity_receipt_file  # noqa: E402
+    from _loop_common import snapshot_parity  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="parity-mx-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        from planner.paths import STRUCTURE  # noqa: E402
+
+        structure = load_json(root / STRUCTURE)
+        for t in structure["types"]:
+            if t["fqn"].endswith(".OwnerController"):
+                t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                         "values": {"exposedHeaders": ["errors"]}})
+        write_canonical(root / STRUCTURE, structure)
+        specimens.prepare_loop(root)
+        findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+        findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items()
+                                  if v.get("category") != "mandatory"}
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        _write_cors_corpus(root, "disabled", _PARITY_SID)
+        _write_cors_corpus(root, "enabled", _PARITY_ENABLED_SID)
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_records(root, "FAIL", security_mode="enabled")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        snapshot_parity(root)
+        from planner.worklist import item_ids, obligation_keys  # noqa: E402
+
+        cur = load_json(root / WORKLIST)
+        steps = load_json(root / LOOP_STEPS)
+        steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                  obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                  candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
+        write_canonical(root / LOOP_STEPS, steps)
+        pipeline.admit(root)
+        card = specimens.issue(root)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == card.get("logical_id"))
+        disabled_snap = root / LOOP_ACCEPTED / "parity" / "receipt.json"
+        before = disabled_snap.read_bytes() if disabled_snap.is_file() else b""
+        issued = load_json(root / LOOP_ISSUED)
+        issued["security_mode"] = "mixed"
+        write_canonical(root / LOOP_ISSUED, issued)
+        installer = HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"
+        ip = _run([sys.executable, str(installer), "--root", str(root), "--adapter", "cors"])
+        if ip.returncode != 0:
+            return _fail("the capability must install on the issued card: %s%s" % (ip.stdout, ip.stderr))
+        _parity_records(root, "PASS", security_mode="disabled")
+        _parity_verified(root, findings, ran=True, verdict="PASS", security_mode="enabled")
+        run_doc = load_json(root / VERIFY_RUN)
+        (run_doc.setdefault("runtime", {}).setdefault("parity", {}))["security_mode"] = "mixed"
+        write_canonical(root / VERIFY_RUN, run_doc)
+        binding = _candidate_binding(root, "t_mx")
+        _parity_records(root, "PASS", binding=binding, security_mode="enabled")
+        src = root / parity_receipt_file("enabled")
+        dst = root / VERIFY_DIR / "parity-before-enabled.json"
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        p = _advance(root, cluster["id"], "t_mx")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout:
+            return _fail("a mixed-mode card must refuse acceptance: %s" % blob[-800:])
+        if "LOOP_MIXED_SECURITY_MODE" not in blob or "partition" not in blob:
+            return _fail("the mixed-card refusal must name partitioning: %s" % blob[-800:])
+        if disabled_snap.is_file() and disabled_snap.read_bytes() != before:
+            return _fail("mixed acceptance must not overwrite the disabled baseline snapshot")
+        if disabled_snap.is_file() and (load_json(disabled_snap).get("binding") or {}).get("mode") == "candidate":
+            return _fail("mixed acceptance must not write the enabled candidate into receipt.json")
+    return 0
+
+
 def _introduced_attribution_case() -> int:
     """v9 t_3903f495: the right repair with the wrong import swapped 13
     attribution diagnostics for 13 of the same shape, and equal counts parked
@@ -693,7 +1163,8 @@ _UNIT_CATALOG = {"catalog": "compat-mapping.json", "block": "symbol_renames", "k
 
 
 def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: list[str], *,
-               member_id: str = "") -> dict:
+               member_id: str = "", rule: str = "unit/diagnostic-family/v1", symbol: tuple[str, str] = ("type", _UNIT_RETIRED),
+               targets: list[dict] | None = None, package: str = "org.springframework.samples.petclinic.rest") -> dict:
     """A sealed v4 unit over these files, and the cluster that carries it.
 
     Hand-written on purpose: what is under test here is the TRANSACTION -- the
@@ -702,17 +1173,18 @@ def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: li
     from planner.worklist import batch_scope_digest, batch_scope_path
 
     scope = {
-        "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/diagnostic-family/v1",
+        "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": rule,
         "producer": "worklist.build_unit_scope", "tool": {"model": "jdk-dest-model", "version": "1.2.0"},
-        "cluster": "u:testunit", "unit_id": "u:testunit", "family_key": _UNIT_RETIRED,
+        "cluster": "u:testunit", "unit_id": "u:testunit", "family_key": symbol[1],
         "writable_paths": sorted(paths),
-        "symbols": [{"kind": "type", "fqn": _UNIT_RETIRED, "path": paths[0]}],
-        "target_symbols": [{"from": _UNIT_RETIRED, "to": _UNIT_TARGET, "catalog_row": dict(_UNIT_CATALOG)}],
-        "members": [{"path": p, "type": "org.springframework.samples.petclinic.rest.%s" % Path(p).stem,
+        "symbols": [{"kind": symbol[0], "fqn": symbol[1], "path": paths[0]}],
+        "target_symbols": (targets if targets is not None
+                           else [{"from": _UNIT_RETIRED, "to": _UNIT_TARGET, "catalog_row": dict(_UNIT_CATALOG)}]),
+        "members": [{"path": p, "type": "%s.%s" % (package, Path(p).stem),
                      "member_id": member_id, "occurrence": 0, "state": "reported", "identity": ident,
                      "item": iid}
                     for p, ident, iid in zip(paths, identities, item_ids)],
-        "evidence": [{"kind": "javac", "ref": "%s names %s" % (p, _UNIT_RETIRED)} for p in paths],
+        "evidence": [{"kind": "javac", "ref": "%s names %s" % (p, symbol[1])} for p in paths],
         "completion": [{"check": "identities-gone", "tool": "javac", "identities": sorted(identities),
                         "detail": "every sealed identity is gone"},
                        {"check": "unit-assessment", "tool": "worklist.assess_unit", "detail": "no member violates"}],
@@ -723,7 +1195,7 @@ def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: li
     scope["digest"] = batch_scope_digest(scope)
     sp = batch_scope_path(scope)
     write_canonical(root / sp, scope)
-    return {"id": "u:testunit", "kind": "compile", "path": paths[0], "label": _UNIT_RETIRED,
+    return {"id": "u:testunit", "kind": "compile", "path": paths[0], "label": symbol[1],
             "write_set": sorted(paths), "items": sorted(item_ids), "retry_key": "rk:unit:u:testunit",
             "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
                             "kind": "unit", "unit_id": "u:testunit", "members": len(paths)}}
@@ -921,6 +1393,177 @@ def _unit_checkpoint_case() -> int:
     return 0
 
 
+def _known_before_unknown_case(base: str = "org.acme.clinic") -> int:
+    """B7 (v12 t_b33f25fa): a KNOWN regression is decided before any UNKNOWN.
+
+    A unit whose sealed members include one the model cannot type (so the
+    scope assessment is inconclusive) and whose candidate ALSO introduces an
+    attribution diagnostic the accepted tree did not have -- v12's seven new
+    files importing jakarta.enterprise.inject.ApplicationScoped -- is REVERTED
+    with the symbol named, not parked as unassessable-scope. Control: the same
+    inconclusive member with nothing introduced still pends. Run twice, the
+    second time under renamed packages."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+    from planner.worklist import batch_scope_digest
+
+    _ATTR = "compiler.err.cant.resolve.location"
+
+    def sym(name: str) -> str:
+        return "cannot find symbol\n  symbol:   class %s\n  location: class R" % name
+
+    with tempfile.TemporaryDirectory(prefix="chk-b7-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=8))
+        paths = _write_uri_controllers(root, _BUILDER)
+        sealed = [paths[0], paths[1]]
+        errs = [(p, 3, sym("UriComponentsBuilder"), _ATTR) for p in sealed]
+        specimens.prepare_loop(root, errors=list(errs))
+        findings = load_json(root / MTA_FINDINGS)
+        wl = load_json(root / WORKLIST)
+        rows = sorted([i for i in wl["items"] if str(i.get("source")) == "javac" and str(i.get("path")) in sealed],
+                      key=lambda i: str(i["path"]))
+        cluster = _seal_unit(root, sorted(sealed), [str(r["id"]) for r in rows], [str(r["identity"]) for r in rows])
+        # a sealed member the destination model has no type for: a Java file
+        # that declares nothing (the model cannot type it), so the unit's
+        # assessment is inconclusive whatever the candidate does
+        ghost = "src/main/java/%s/support/Pending%sImpl.java" % (base.replace(".", "/"), "Registry")
+        (root / ghost).parent.mkdir(parents=True, exist_ok=True)
+        (root / ghost).write_text("package %s.support;\n// declared by the unit, not yet written\n" % base, encoding="utf-8")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "fixture: the ghost member's file")
+        scope_p = root / cluster["batch_scope"]["path"]
+        scope = load_json(scope_p)
+        scope["members"].append({"path": ghost, "type": "%s.support.PendingRegistryImpl" % base, "member_id": "",
+                                 "occurrence": 0, "state": "reported", "identity": "ghost", "item": "ghost"})
+        scope["writable_paths"] = sorted(set(scope["writable_paths"]) | {ghost})
+        scope["digest"] = batch_scope_digest(scope)
+        write_canonical(scope_p, scope)
+        cluster["batch_scope"]["digest"] = scope["digest"]
+        cluster["batch_scope"]["members"] = len(scope["members"])
+        cluster["write_set"] = sorted(set(cluster["write_set"]) | {ghost})
+        originals = {p: (root / p).read_text(encoding="utf-8") for p in sealed}
+
+        # (1) inconclusive member AND an introduced diagnostic: REVERTED
+        _issue_cluster(root, cluster, "t_b7a")
+        for p in sealed:
+            (root / p).write_text(originals[p].replace(
+                "import java.net.URI;\n", "import java.net.URI;\nimport jakarta.enterprise.inject.ApplicationScoped;\n"),
+                encoding="utf-8")
+        specimens.verify(root, errors=[(p, 4, sym("ApplicationScoped"), _ATTR) for p in sealed],
+                         failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_b7a")
+        blob = p.stdout + p.stderr
+        if "unassessable-scope" in blob or "VERIFICATION_PENDING" in blob:
+            return _fail("a known introduced diagnostic is decided before an unassessable member (%s): %s" % (base, blob[-700:]))
+        if p.returncode == 0 or "REVERTED" not in blob or "INTRODUCED_COMPILE_DIAGNOSTIC" not in blob or "ApplicationScoped" not in blob:
+            return _fail("the candidate is REVERTED naming the introduced symbol (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        if any((root / q).read_text(encoding="utf-8") != originals[q] for q in sealed):
+            return _fail("the rejected candidate is reverted")
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get("rk:unit:u:testunit") != 1:
+            return _fail("the conclusive regression spends exactly one attempt: %s" % load_json(root / LOOP_STEPS).get("attempts"))
+
+        # (2) control: the same inconclusive member, nothing introduced -- still pends
+        pipeline.admit(root)
+        _issue_cluster(root, cluster, "t_b7b")
+        for p in sealed:
+            (root / p).write_text(originals[p].replace("import java.net.URI;\n", "import java.net.URI;\n// progress\n"),
+                                  encoding="utf-8")
+        specimens.verify(root, errors=list(errs), failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_b7b")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "unassessable-scope" not in blob:
+            return _fail("with nothing introduced an unassessable member still pends (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get("rk:unit:u:testunit") != 1:
+            return _fail("a pending verdict spends no attempt")
+    return 0
+
+
+def _missing_baseline_case() -> int:
+    """B7: without the accepted diagnostics snapshot an undecided diagnostic
+    is not an absent regression. The candidate pends DIAGNOSTIC_BASELINE_MISSING,
+    naming the snapshot, and is never accepted on the fall."""
+    from planner.paths import LOOP_ACCEPTED, MTA_FINDINGS  # noqa: E402
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    with tempfile.TemporaryDirectory(prefix="chk-b7m-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol class UriComponentsBuilder", _ATTR),
+                                             (pet, 3, "cannot find symbol class ResponseEntity", _ATTR)])
+        findings = load_json(root / MTA_FINDINGS)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        snap = root / LOOP_ACCEPTED / VERIFY_DIAGNOSTICS.name
+        if not snap.is_file():
+            return _fail("fixture: the accepted diagnostics snapshot must exist to be removed: %s" % snap)
+        snap.unlink()
+        _issue_cluster(root, cluster, "t_b7m")
+        f = root / owner
+        f.write_text(f.read_text(encoding="utf-8").replace("import java.net.URI;\n", "import java.net.URI;\n// x\n"),
+                     encoding="utf-8")
+        # Owner's diagnostic gone (the count falls), and a NEW one in Pet
+        specimens.verify(root, errors=[(pet, 7, "cannot find symbol class Mystery", _ATTR)], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_b7m")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout:
+            return _fail("a missing diagnostics baseline cannot accept on the fall: rc=%s %s" % (p.returncode, blob[-600:]))
+        if "DIAGNOSTIC_BASELINE_MISSING" not in blob or VERIFY_DIAGNOSTICS.name not in blob:
+            return _fail("the refusal names the missing snapshot: %s" % blob[-600:])
+    return 0
+
+
+def _continuation_case() -> int:
+    """B8 (v12 t_b33f25fa, the legacy path where it happened): an ACCEPTED
+    step whose admission is then refused because the run's activation is gone
+    (pins.json back to not-activated) records the continuation as
+    admission-refused, names the refusal, and tells the card to block -- the
+    accepted commit stands. Once the activation is back, re-running
+    advance.py with the same arguments finishes the continuation (the H9b
+    idempotent path) without a second step."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    with tempfile.TemporaryDirectory(prefix="chk-b8-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        pet_err = (pet, 3, "cannot find symbol class ResponseEntity", _ATTR)
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol class UriComponentsBuilder", _ATTR), pet_err])
+        findings = load_json(root / MTA_FINDINGS)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        _issue_cluster(root, cluster, "t_b8")
+        f = root / owner
+        f.write_text(f.read_text(encoding="utf-8").replace("import java.net.URI;\n", "import java.net.URI;\n// ok\n"),
+                     encoding="utf-8")
+        specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
+        pins_p = root / ".hermes" / "pins.json"
+        pins_doc = load_json(pins_p)
+        activated = json.loads(json.dumps(pins_doc))
+        pins_doc["pins"]["planner"] = {"activation": "not-activated"}   # the v12 loss
+        write_canonical(pins_p, pins_doc)
+        p = _advance(root, cluster["id"], "t_b8")
+        blob = p.stdout + p.stderr
+        cont = load_json(root / "verification" / "loop" / "continuation.json")
+        if "OK: ACCEPTED" not in p.stdout or p.returncode == 0:
+            return _fail("the accepted step stands and the refused admission is not a success: rc=%s %s" % (p.returncode, blob[-600:]))
+        if "LOOP_ADMISSION" not in blob or "PLANNER_NOT_ACTIVATED" not in blob or "kanban_block" not in blob:
+            return _fail("the refusal names the missing activation and the block terminator: %s" % blob[-600:])
+        if cont.get("state") != "admission-refused" or cont.get("predecessor") != "t_b8" or not cont.get("reasons"):
+            return _fail("the continuation is recorded as admission-refused for this card: %s" % cont)
+        write_canonical(pins_p, activated)
+        p = _advance(root, cluster["id"], "t_b8")
+        blob = p.stdout + p.stderr
+        cont = load_json(root / "verification" / "loop" / "continuation.json")
+        if p.returncode != 0 or "ACCEPTED already" not in p.stdout or cont.get("state") != "admitted":
+            return _fail("re-running advance.py finishes the continuation once the activation is back: rc=%s %s %s"
+                         % (p.returncode, cont, blob[-500:]))
+        if sum(1 for s_ in load_json(root / LOOP_STEPS)["steps"] if s_.get("card") == "t_b8") != 1:
+            return _fail("finishing the continuation records no second step")
+    return 0
+
+
 def _disposition_case() -> int:
     """A deferral whose cause was a harness defect is cleared by a disposition,
     not a product change: no commit, no step, the history kept -- and the ONE
@@ -1017,6 +1660,98 @@ def _harness_owned_root_case() -> int:
             return _fail("the product incident is still an obligation: %s" % [i["path"] for i in wl["items"]])
         if wl["measure"]["tuple"][0] != 1:
             return _fail("the incident slot counts only worker obligations: %s" % wl["measure"])
+    return 0
+
+
+def _restore_runner_records_case() -> int:
+    """v10 t_27cea939: rejecting a scoped enabled candidate restores the
+    accepted receipts and cannot leave that candidate's ``_run-enabled.json``
+    to be read as a full-mode comparison. Discarded runner evidence is kept
+    aside. A newer scoped receipt must not acquire an older full-mode runner;
+    check-mode-parity refuses that pairing."""
+    from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED, PARITY_DIR
+    from _loop_common import LOOP_DISCARDED, restore_reports, snapshot_parity
+    from m4_parity import measure
+
+    artifact = "a" * 64
+
+    def receipt(mode, verdict="FAIL"):
+        return {"schema": "rhoai3.parity-receipt/v1", "security_mode": mode, "verdict": verdict,
+                "entry_points": [{"entry_point": "ep:x#y():http", "verdict": verdict, "scenarios": ["sc:one"]}]}
+
+    def full_run(mode):
+        return {"schema": "rhoai3.parity-run/v1", "ok": True, "security_mode": mode,
+                "scenario_filter": [], "artifact": {"sha256": artifact},
+                "receipt": {"composed_by_this_run": True}}
+
+    def scoped_run(mode):
+        return {"schema": "rhoai3.parity-run/v1", "ok": True, "security_mode": mode,
+                "scenario_filter": ["sc:cors-enabled-preflight-7b1a3d9234cd"],
+                "artifact": {"sha256": "b" * 64}, "receipt": {"composed_by_this_run": True},
+                "binding": {"mode": "candidate", "card": "t_27cea939"}}
+
+    with tempfile.TemporaryDirectory(prefix="restore-run-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        pdir.mkdir(parents=True)
+        (root / LOOP_ISSUED).parent.mkdir(parents=True, exist_ok=True)
+        write_canonical(root / LOOP_ISSUED, {"task_id": "t_27cea939", "cluster": "c:cors"})
+        write_canonical(pdir / "receipt.json", receipt("disabled", "INCONCLUSIVE"))
+        write_canonical(pdir / "receipt-enabled.json", receipt("enabled", "FAIL"))
+        write_canonical(pdir / "_run.json", full_run("disabled"))
+        write_canonical(pdir / "_run-enabled.json", full_run("enabled"))
+        snapshot_parity(root)
+        snap_enabled = (root / LOOP_ACCEPTED / "parity" / "_run-enabled.json").read_bytes()
+        if b"scenario_filter" in snap_enabled and b"cors-enabled-preflight" in snap_enabled:
+            return _fail("a full-mode snapshot must not store a scoped filter as the baseline runner")
+        # discard a scoped enabled candidate: leftover runner beside restored receipts
+        write_canonical(pdir / "receipt-enabled.json", dict(receipt("enabled", "INCONCLUSIVE"),
+                                                            binding={"mode": "candidate", "card": "t_27cea939"}))
+        write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
+        live_scoped = (pdir / "_run-enabled.json").read_bytes()
+        restore_reports(root)
+        restored = load_json(pdir / "_run-enabled.json")
+        if list(restored.get("scenario_filter") or []) or restored.get("binding", {}).get("card") == "t_27cea939":
+            return _fail("restore must not present the discarded scoped runner: %s" % restored)
+        if (pdir / "_run-enabled.json").read_bytes() != snap_enabled:
+            return _fail("restore puts the accepted full-mode runner back")
+        if load_json(pdir / "receipt-enabled.json").get("verdict") != "FAIL":
+            return _fail("restore puts the accepted enabled receipt back")
+        discarded = list((root / LOOP_DISCARDED).rglob("_run-enabled.json"))
+        if len(discarded) != 1 or discarded[0].read_bytes() != live_scoped:
+            return _fail("the discarded scoped runner is preserved separately: %s" % discarded)
+        measured = measure(root)
+        if any("did not compose a full-mode comparison" in e for e in measured.get("errors") or []):
+            return _fail("m4_parity must not read a scoped leftover as the restored comparison: %s" % measured)
+        if measured.get("rc") not in (0, 1):
+            return _fail("the restored baseline is a coherent full-mode comparison: %s" % measured)
+        # a newer scoped receipt must never acquire the older full-mode runner
+        write_canonical(pdir / "receipt-enabled.json", dict(receipt("enabled", "INCONCLUSIVE"),
+                                                            binding={"mode": "candidate", "candidate_sha256": "b" * 64,
+                                                                     "card": "t_candidate_b"}))
+        snapshot_parity(root)
+        snap_enabled = root / LOOP_ACCEPTED / "parity" / "_run-enabled.json"
+        if snap_enabled.is_file():
+            kept = load_json(snap_enabled)
+            if (not list(kept.get("scenario_filter") or [])
+                    and (kept.get("artifact") or {}).get("sha256") == artifact):
+                return _fail("snapshot_parity must not keep runner A beside candidate B: %s" % kept)
+        write_canonical(pdir / "_run-enabled.json", full_run("enabled"))
+        measured = measure(root)
+        if measured.get("rc") == 0:
+            return _fail("check-mode-parity must refuse candidate B proven by runner A: %s" % measured)
+        if not any("candidate receipt is paired with a full-mode runner" in e for e in measured.get("errors") or []):
+            return _fail("the refusal names the mismatched provenance: %s" % measured)
+        # legacy snapshot with no runner: leftover scoped file is removed, not read as full-mode
+        (root / LOOP_ACCEPTED / "parity" / "_run-enabled.json").unlink(missing_ok=True)
+        (root / LOOP_ACCEPTED / "parity" / "_run.json").unlink(missing_ok=True)
+        write_canonical(pdir / "_run-enabled.json", scoped_run("enabled"))
+        restore_reports(root)
+        if (pdir / "_run-enabled.json").is_file():
+            return _fail("a snapshot without a runner cannot keep the discarded scoped record live")
+        measured = measure(root)
+        if any("did not compose a full-mode comparison" in e for e in measured.get("errors") or []):
+            return _fail("absence is not a scoped leftover presented as full-mode: %s" % measured)
     return 0
 
 
@@ -1260,16 +1995,431 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
         return 0
 
 
+def _unit_gate_handoff_case(base: str = "p") -> int:
+    """v12 t_b33f25fa, and B6: a unit on the PACKAGE gate is accepted at its
+    checkpoint only when its issued obligation is gone, every sealed member
+    assesses clean, and every failure the gate now reports has POSITIVE
+    evidence: the typed reach test says OUTSIDE_SCOPE (never UNKNOWN) and the
+    failure is shown independent of the candidate -- an accepted step already
+    recorded it, or its file-local expression is unchanged since the accepted
+    commit. Each missing condition keeps it pending (None) and, where the
+    handoff was the question, says GATE_HANDOFF_UNPROVEN with the cause."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_mod", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    root = Path(tempfile.mkdtemp())
+    rel = "src/main/java/%s/RootRestController.java" % base.replace(".", "/")
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    spel_src = 'class RootRestController {\n    @Value("#{servletContext.contextPath}")\n    String path;\n}\n'
+    (root / rel).write_text(spel_src, encoding="utf-8")
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted")
+    accepted = _git(root, "rev-parse", "HEAD").strip()
+    prev = {"commit": accepted, "item_ids": []}
+    steps = {"steps": [prev]}
+    unreached = lambda _r, _s, rel: ("OUTSIDE_SCOPE", "%s declares X, which the unit's sealed symbols do not reach" % rel)
+    reached = lambda _r, _s, rel: ("IN_SCOPE", "sealed: %s implements the sealed parent" % rel)
+    no_type = lambda _r, _s, rel: ("UNKNOWN", "the model has no type for %s" % rel)
+    no_model = lambda _r, _s, rel: ("UNKNOWN", "the destination model is unavailable, so the file's types cannot be named")
+    rows = [{"verdict": "ok", "member": "a#b"}] * 3
+    issued = {"gate_items": ["rt:package:old"]}
+    spel = {"id": "rt:package:new", "gate": "package", "path": rel,
+            "cause": "unsupported-spel", "unlocated": False, "set_wide": []}
+    cur = {"items": [spel], "measure": {"known": True}}
+
+    def call(**kw):
+        a = dict(rows=rows, issued=issued, cur=cur, gate="package", reach=unreached, prev=prev, steps=steps, changed=[])
+        a.update(kw)
+        why: list = []
+        got = adv._unit_gate_handoff(root, {}, a["rows"], a["issued"], a["cur"], a["gate"], reach=a["reach"],
+                                     prev=a["prev"], steps=a["steps"], changed=a["changed"], why=why)
+        return got, why
+
+    h, _ = call()
+    if not h or h["now_reported"][0]["path"] != rel or h["issued"] != ["rt:package:old"] or "closing card" not in h["owed_by"]:
+        return _fail("the unit whose gate now stops on an unreached, unchanged obligation must hand off: %s" % h)
+    if "unsupported-spel" not in h["reason"] or "RootRestController" not in h["reason"]:
+        return _fail("the handoff reason must name the obligation and where it is: %s" % h["reason"])
+    ind = h["now_reported"][0]["independence"]
+    if ind.get("kind") != "unchanged-expression" or "#{servletContext.contextPath}" not in ind.get("expressions", []):
+        return _fail("the handoff records the independence evidence it rests on: %s" % ind)
+    if h.get("accepted_commit") != accepted[:12] or h.get("debt") != {"package": "owed", "boot": "owed"}:
+        return _fail("the handoff records the accepted commit and the package/boot debt: %s" % h)
+    # a pre-existing cause that is NOT file-local may hand off only when an
+    # accepted step already recorded that exact obligation
+    query = dict(spel, id="rt:package:q", cause="query-invalid")
+    h2, _ = call(cur={"items": [query], "measure": {"known": True}},
+                 steps={"steps": [dict(prev, item_ids=["rt:package:q"])]})
+    if not h2 or h2["now_reported"][0]["independence"].get("kind") != "baseline-named":
+        return _fail("a pre-existing unrelated cause an accepted step recorded can continue: %s" % h2)
+    changed_expr = spel_src.replace("#{servletContext.contextPath}", "#{request.contextPath}")
+    for why_name, kw, token in (
+        ("reach is UNKNOWN: the model has no type (B6)", dict(reach=no_type), "reach UNKNOWN"),
+        ("reach is UNKNOWN: the model is unavailable (B6)", dict(reach=no_model), "reach UNKNOWN"),
+        ("a failure in an untouched file whose cause is not file-local and no step recorded (B6)",
+         dict(cur={"items": [query], "measure": {"known": True}}), "independence UNKNOWN"),
+        ("the file the gate names is one the candidate changed", dict(changed=[rel]), "independence UNKNOWN"),
+        ("the measure is not known", dict(cur={"items": [spel], "measure": {"known": False}}), "not known"),
+        ("the new failure is unlocated", dict(cur={"items": [dict(spel, unlocated=True)], "measure": {"known": True}}), "unlocated"),
+        ("the new failure is set-wide", dict(cur={"items": [dict(spel, set_wide=["repositories"])], "measure": {"known": True}}), "set-wide"),
+        ("the new failure is in a file the unit reaches", dict(reach=reached), "reach IN_SCOPE"),
+    ):
+        got, why = call(**kw)
+        if got is not None:
+            return _fail("%s: the unit must stay pending, got a handoff %s" % (why_name, got))
+        if not why or "GATE_HANDOFF_UNPROVEN" not in why[0] or token not in why[0]:
+            return _fail("%s: the refusal names GATE_HANDOFF_UNPROVEN and its cause: %s" % (why_name, why))
+    # the file-local expression changed between the accepted tree and the candidate
+    (root / rel).write_text(changed_expr, encoding="utf-8")
+    got, why = call()
+    (root / rel).write_text(spel_src, encoding="utf-8")
+    if got is not None or not why or "independence UNKNOWN" not in why[0]:
+        return _fail("a changed file-local expression is not independent of the candidate: %s %s" % (got, why))
+    for why_name, kw in (
+        ("the issued obligation is still reported", dict(cur={"items": [spel, dict(spel, id="rt:package:old")], "measure": {"known": True}})),
+        ("a sealed member is inconclusive", dict(rows=rows + [{"verdict": "inconclusive", "member": "c#d"}])),
+        ("a sealed member violates", dict(rows=rows + [{"verdict": "violates", "member": "c#d"}])),
+        ("the gate is not package", dict(gate="boot")),
+        ("the gate reports nothing", dict(cur={"items": [], "measure": {"known": True}})),
+        ("nothing was issued on the gate", dict(issued={"gate_items": []})),
+    ):
+        got, _ = call(**kw)
+        if got is not None:
+            return _fail("%s: the unit must stay pending, got a handoff %s" % (why_name, got))
+    shutil.rmtree(root, ignore_errors=True)
+    return 0
+
+
+def _adapter_owned_retirement_advance_case(base: str = "org.springframework.samples.petclinic.rest") -> int:
+    """V16-1 (v16 t_7074fcda), end to end through the transaction.
+
+    A leaf unit over two controllers retiring @CrossOrigin -- class-level on
+    one, method-level on the other, both with arguments -- whose files also
+    carry an unrelated diagnostic another card owns, so the compiler can only
+    attribute them partially. The candidate that removes the annotations and
+    their import is ACCEPTED through the existing parsed-symbol-absence proof
+    (no shortcut: the step records the proof assess_unit gave); one that
+    leaves a method-level annotation is not. Run twice, the second time under
+    renamed packages."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+    from planner.worklist import adapter_owned_annotations, assess_unit
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    owned = "org.springframework.web.bind.annotation.CrossOrigin"
+    row = adapter_owned_annotations(GOLDEN)[owned]
+
+    def sym(name: str) -> str:
+        return "cannot find symbol\n  symbol:   class %s\n  location: class R" % name
+
+    src = "src/main/java/%s/" % base.replace(".", "/")
+    imp = "import %s;\n" % owned
+
+    def ctl(name: str, *, head: str = "", cls: str = "", meth: str = "") -> str:
+        return ("package %s;\n%s%spublic class %s {\n    %spublic String list() { return \"\"; }\n"
+                "    public PendingType pending() { return null; }\n}\n" % (base, head, cls, name, meth))
+
+    with tempfile.TemporaryDirectory(prefix="chk-owned-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=8))
+        owner, pet = src + "OwnerRestController.java", src + "PetRestController.java"
+        originals = {owner: ctl("OwnerRestController", head=imp, cls='@CrossOrigin(exposedHeaders = "errors, content-type")\n'),
+                     pet: ctl("PetRestController", head=imp, meth='@CrossOrigin(origins = "http://client.example", maxAge = 1800) ')}
+        for rel, text in originals.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        sealed = sorted(originals)
+        unrelated = [(p, 6, sym("PendingType"), _ATTR) for p in sealed]
+        specimens.prepare_loop(root, errors=[(p, 4, sym("CrossOrigin"), _ATTR) for p in sealed] + unrelated)
+        findings = load_json(root / MTA_FINDINGS)
+        wl = load_json(root / WORKLIST)
+        rows = sorted([i for i in wl["items"] if str(i.get("source")) == "javac" and "CrossOrigin" in str(i.get("message"))],
+                      key=lambda i: str(i["path"]))
+        if [r["path"] for r in rows] != sealed:
+            return _fail("the fixture needs one CrossOrigin diagnostic per controller: %s" % rows)
+        retire = [{"from": owned, "to": "", "retire": True, "action": row["action"],
+                   "catalog_row": {"catalog": "compat-mapping.json", "block": "adapter_owned_annotations", "key": owned,
+                                   "kind": "annotation", "adapter": row["adapter"], "contract": row["contract"]}}]
+        cluster = _seal_unit(root, sealed, [str(r["id"]) for r in rows], [str(r["identity"]) for r in rows],
+                             member_id="list", rule="unit/package-leaf/v1", symbol=("annotation", owned), targets=retire,
+                             package=base)
+
+        # (1) a method-level annotation left behind: the sealed diagnostic is
+        # still reported, and the member still names the retired symbol
+        _issue_cluster(root, cluster, "t_own1")
+        (root / owner).write_text(ctl("OwnerRestController"), encoding="utf-8")
+        specimens.verify(root, errors=[(pet, 4, sym("CrossOrigin"), _ATTR)] + unrelated, failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_own1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in blob:
+            return _fail("a candidate that leaves a @CrossOrigin is not accepted (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        for rel, text in originals.items():
+            (root / rel).write_text(text, encoding="utf-8")
+
+        # (2) the retirement: annotations and import gone, handlers and routes
+        # kept, the unrelated diagnostic still standing
+        pipeline.admit(root)
+        _issue_cluster(root, cluster, "t_own2")
+        for rel, name in ((owner, "OwnerRestController"), (pet, "PetRestController")):
+            (root / rel).write_text(ctl(name), encoding="utf-8")
+        scope = load_json(root / cluster["batch_scope"]["path"])
+        proofs = {r.get("proof") for r in assess_unit(root, scope)}
+        if proofs != {"parsed-symbol-absence"}:
+            return _fail("the retirement is decided by the existing parsed-symbol-absence proof (%s): %s" % (base, proofs))
+        specimens.verify(root, errors=list(unrelated), failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_own2")
+        blob = p.stdout + p.stderr
+        if p.returncode != 0 or "ACCEPTED" not in blob:
+            return _fail("the retirement is accepted despite the unrelated partial attribution (%s): rc=%s %s" % (base, p.returncode, blob[-700:]))
+        step = (load_json(root / LOOP_STEPS)["steps"] or [{}])[-1]
+        if (step.get("unit") or {}).get("unit_id") != "u:testunit" or step.get("explained_regressions"):
+            return _fail("the step records the unit and tolerated nothing (%s): %s" % (base, step.get("unit")))
+        after = {str(i.get("identity") or "") for i in load_json(root / WORKLIST)["items"] if str(i.get("source")) == "javac"}
+        if len(after) != len(unrelated):
+            return _fail("the unrelated diagnostics stay obligations of their own (%s): %s" % (base, sorted(after)))
+    return 0
+
+
+def _scope_aware_pending_case(base: str = "org.acme.inventory") -> int:
+    """V16-2 (v16 t_d3f89ded): what the package gate names NOW, against the
+    card's scope. A location outside the write set is not independence: a bean
+    the card added makes an unchanged consumer's injection point ambiguous, and
+    the error names the consumer. So:
+
+    * a card-added bean causing an ambiguity at an outside consumer gets no
+      handoff, and the pending verdict says the candidate may have caused it;
+    * a failure an accepted step already recorded (proven pre-existing) may
+      hand off, with package/boot debt and -- for a unit that owes CDI beans --
+      the bean obligations on the record and the wiring marked unverified;
+    * a failure with no location has an UNKNOWN cause and stays pending;
+    * no pending message ever asks for an edit outside the write set.
+    Run twice, the second time under renamed packages."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_scope", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    src = "src/main/java/%s/" % base.replace(".", "/")
+    delegate, consumer = src + "repository/ItemRepositoryImpl.java", src + "service/StockService.java"
+    card_file = src + "web/RootController.java"
+    ambiguity = ("Build step io.quarkus.arc.deployment.ArcProcessor#validate threw an exception: "
+                 "jakarta.enterprise.inject.AmbiguousResolutionException: Ambiguous dependencies for type "
+                 "%s.repository.ItemRepository and qualifiers [@Default]\n - injection target: %s.service.StockService#items\n"
+                 " - available beans:\n  - CLASS bean [types=[...], target=%s.springdatajpa.SpringDataItemRepository_91a5Impl]\n"
+                 "  - CLASS bean [types=[...], target=%s.repository.ItemRepositoryImpl]" % (base, base, base, base))
+    amb = {"id": "rt:package:amb", "gate": "package", "path": consumer, "cause": "ambiguous-injection",
+           "unlocated": False, "set_wide": [], "message": ambiguity}
+    unit_issued = {"items": ["rt:package:frag"], "gate_items": ["rt:package:frag"], "write_set": [delegate]}
+    card_issued = {"items": ["rt:package:spel"], "gate_items": ["rt:package:spel"], "write_set": [card_file]}
+    forbidden = ("in the same candidate", "repair it in this candidate", "repair the members it now names")
+
+    def unedited(text: str) -> bool:
+        return not any(f in text for f in forbidden) and "must not edit" in text
+
+    root = Path(tempfile.mkdtemp())
+    _git(root, "init", "-q")
+    (root / "README").write_text("x\n", encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted")
+    prev = {"commit": _git(root, "rev-parse", "HEAD").strip(), "item_ids": []}
+    unreached = lambda _r, _s, rel: ("OUTSIDE_SCOPE", "%s is not reached by the unit's sealed symbols" % rel)
+    beans = [{"parent": "%s.repository.ItemRepository" % base, "type": "%s.repository.ItemRepositoryImpl" % base,
+              "path": delegate, "contract": "spring-data-fragment-impl/v1",
+              "cdi": {"scope": "jakarta.enterprise.context.ApplicationScoped", "typed": "jakarta.enterprise.inject.Typed",
+                      "types": ["%s.repository.ItemRepositoryImpl" % base]}}]
+    scope_doc = {"implementation_obligations": beans}
+    rows = [{"verdict": "ok", "member": "a#b"}]
+
+    # (1) the card ADDED the bean the ambiguity names; the consumer is untouched
+    why: list = []
+    h = adv._unit_gate_handoff(root, scope_doc, rows, unit_issued, {"items": [amb], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [prev]}, changed=[delegate], why=why)
+    if h is not None or not why or "independence UNKNOWN" not in why[0]:
+        return _fail("a card-added bean's outside ambiguity gets no independent handoff (%s): %s %s" % (base, h, why))
+    g = adv._gate_scope_guidance(unit_issued, {"items": [amb]}, "package", [delegate])
+    if (not g or g["cause"] != "outside-scope-prerequisite" or g["record"]["caused_by_candidate"] != [delegate]
+            or "may have caused it and no handoff is possible" not in g["reason"] or consumer not in g["reason"]):
+        return _fail("the pending verdict names the outside consumer and the bean this candidate changed (%s): %s" % (base, g))
+    if not unedited(g["reason"]):
+        return _fail("the pending message never asks for an edit outside the write set (%s): %s" % (base, g["reason"]))
+    # the v16 shape: the bean came from an EARLIER accepted card, this card
+    # (RootController) changed nothing the error names -- still no handoff,
+    # and the prerequisite is the Operator's, beside the pending card
+    g = adv._gate_scope_guidance(card_issued, {"items": [amb]}, "package", [card_file])
+    if (not g or g["cause"] != "outside-scope-prerequisite" or g["record"]["caused_by_candidate"]
+            or "operator-step.py beside this pending card" not in g["reason"] or "write set: %s" % card_file not in g["reason"]
+            or [f["path"] for f in g["record"]["failures"]] != [consumer]):
+        return _fail("an outside failure the candidate did not name is an Operator prerequisite (%s): %s" % (base, g))
+    if not unedited(g["reason"]) or delegate not in g["record"]["failures"][0]["beans_named"]:
+        return _fail("the record names the beans, the message no edit (%s): %s" % (base, g))
+
+    # (2) a PROVEN pre-existing failure: an accepted step recorded it
+    spel = {"id": "rt:package:spel", "gate": "package", "path": card_file, "cause": "unsupported-spel",
+            "unlocated": False, "set_wide": []}
+    h = adv._unit_gate_handoff(root, scope_doc, rows, unit_issued, {"items": [spel], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [dict(prev, item_ids=["rt:package:spel"])]},
+                               changed=[delegate], why=[])
+    if not h or h["now_reported"][0]["independence"]["kind"] != "baseline-named" or h["debt"] != {"package": "owed", "boot": "owed"}:
+        return _fail("a proven pre-existing failure hands off with package/boot debt (%s): %s" % (base, h))
+    if ([b["type"] for b in h.get("bean_obligations") or []] != [beans[0]["type"]]
+            or not str(h.get("bean_wiring") or "").startswith("unverified") or "NOT verified" not in h["reason"]):
+        return _fail("the handoff keeps the bean obligations traceable and never claims the wiring (%s): %s" % (base, h))
+    h = adv._unit_gate_handoff(root, {}, rows, unit_issued, {"items": [spel], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [dict(prev, item_ids=["rt:package:spel"])]},
+                               changed=[delegate], why=[])
+    if not h or "bean_obligations" in h or "NOT verified" in h["reason"]:
+        return _fail("a unit that owes no bean records none (%s): %s" % (base, h))
+
+    # (3) UNKNOWN: the gate failed where nothing locates it
+    lost = {"id": "rt:package:lost", "gate": "package", "path": "", "cause": "unclassified", "unlocated": True, "set_wide": []}
+    why = []
+    h = adv._unit_gate_handoff(root, scope_doc, rows, unit_issued, {"items": [lost], "measure": {"known": True}}, "package",
+                               reach=unreached, prev=prev, steps={"steps": [prev]}, changed=[delegate], why=why)
+    g = adv._gate_scope_guidance(card_issued, {"items": [lost]}, "package", [card_file])
+    if h is not None or not g or g["cause"] != "unclassified-gate-failure" or "UNKNOWN" not in g["reason"]:
+        return _fail("an unlocated failure stays pending with an unknown cause (%s): %s %s" % (base, h, g))
+    if not unedited(g["reason"]):
+        return _fail("and asks for no edit (%s): %s" % (base, g["reason"]))
+
+    # (4) the only failure named is INSIDE the write set: that one IS the
+    # candidate's to repair, and only it is named
+    inside = dict(spel, id="rt:package:inside", path=card_file, cause="query-invalid")
+    g = adv._gate_scope_guidance(card_issued, {"items": [inside]}, "package", [card_file])
+    if not g or g["cause"] or card_file not in g["reason"] or "repair it in this candidate" not in g["reason"]:
+        return _fail("a failure inside the write set is the candidate's own remaining work (%s): %s" % (base, g))
+    if adv._gate_scope_guidance(card_issued, {"items": [spel]}, "package", [card_file]) is not None:
+        return _fail("the issued obligation still reported is not a NEW failure to guide on")
+    if adv._gate_scope_guidance(card_issued, {"items": [amb]}, "", [card_file]) is not None:
+        return _fail("only a package or boot card is guided this way")
+    shutil.rmtree(root, ignore_errors=True)
+    return 0
+
+
+def _cdi_wiring_acceptance_case(base: str = "org.acme.inventory") -> int:
+    """V16-4 acceptance rule: compilation cannot establish bean correctness.
+    A candidate that changes CDI wiring -- here, a delegate gaining
+    @Typed(ItemRepositoryImpl.class), and a bean added -- and whose package gate
+    did not pass on THIS candidate is accepted only as unverified wiring with
+    package and boot owed. Packaging that passed on this candidate proves it,
+    packaging of another tree does not, and a change that touches no wiring
+    records nothing. Real git, real compiler models of both trees."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_wiring", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    from planner.paths import VERIFY_PACKAGE
+
+    src = "src/main/java/%s/" % base.replace(".", "/")
+    impl = src + "repository/ItemRepositoryImpl.java"
+    extra = src + "service/Audit.java"
+    stubs = {
+        "src/main/java/jakarta/enterprise/context/ApplicationScoped.java":
+            "package jakarta.enterprise.context;\npublic @interface ApplicationScoped { }\n",
+        "src/main/java/jakarta/enterprise/inject/Typed.java":
+            "package jakarta.enterprise.inject;\npublic @interface Typed { Class<?>[] value() default {}; }\n",
+        src + "repository/ItemRepository.java":
+            "package %s.repository;\npublic interface ItemRepository { int count(); }\n" % base,
+    }
+    body = ("package %s.repository;\n%s@jakarta.enterprise.context.ApplicationScoped\n%spublic class ItemRepositoryImpl "
+            "implements ItemRepository {\n    public int count() { return %d; }\n}\n")
+    root = Path(tempfile.mkdtemp())
+    (root / ".hermes").mkdir()
+    (root / ".hermes" / "pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}', encoding="utf-8")
+    for rel, text in {**stubs, impl: body % (base, "", "", 0)}.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "accepted")
+    accepted = _git(root, "rev-parse", "HEAD").strip()
+
+    # a body change is not wiring
+    (root / impl).write_text(body % (base, "", "", 1), encoding="utf-8")
+    if adv._cdi_wiring_record(root, accepted, [impl], "cand-0"):
+        return _fail("a change that touches no CDI wiring records nothing (%s)" % base)
+    # the delegate restricted, a bean added: wiring changed
+    (root / impl).write_text(body % (base, "", "@jakarta.enterprise.inject.Typed(ItemRepositoryImpl.class)\n", 1), encoding="utf-8")
+    (root / extra).parent.mkdir(parents=True, exist_ok=True)
+    (root / extra).write_text("package %s.service;\n@jakarta.enterprise.context.ApplicationScoped\npublic class Audit { }\n" % base,
+                              encoding="utf-8")
+    rec = adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1")
+    kinds = {r["type"].rsplit(".", 1)[-1]: r["change"] for r in rec.get("changed") or []}
+    if kinds != {"ItemRepositoryImpl": "changed", "Audit": "added"} or rec.get("verified") is not False:
+        return _fail("a wiring change with no packaging is recorded unverified (%s): %s" % (base, rec))
+    if rec.get("debt") != {"package": "owed", "boot": "owed"} or "did not run" not in rec.get("packaging", ""):
+        return _fail("with package and boot owed, and why (%s): %s" % (base, rec))
+    typed_after = next(r for r in rec["changed"] if r["type"].endswith("ItemRepositoryImpl"))["after"]
+    if not any("jakarta.enterprise.inject.Typed(value=%s.repository.ItemRepositoryImpl)" % base in a for a in typed_after):
+        return _fail("the record names the restriction the compiler resolved (%s): %s" % (base, typed_after))
+    # packaging of ANOTHER tree proves nothing about this one
+    (root / VERIFY_PACKAGE).parent.mkdir(parents=True, exist_ok=True)
+    write_canonical(root / VERIFY_PACKAGE, {"ran": True, "rc": 0, "candidate_sha256": "other", "profile": "prod"})
+    if adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1").get("verified") is not False:
+        return _fail("a package receipt of another candidate does not verify this wiring (%s)" % base)
+    write_canonical(root / VERIFY_PACKAGE, {"ran": True, "rc": 1, "candidate_sha256": "cand-1", "profile": "prod",
+                                            "failed_goal": "quarkus-maven-plugin:build"})
+    failed = adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1")
+    if failed.get("verified") is not False or "packaging failed on this candidate" not in failed.get("packaging", ""):
+        return _fail("a failed package on this candidate verifies nothing (%s): %s" % (base, failed))
+    # packaging under the decided profile PASSED on this candidate: proven
+    write_canonical(root / VERIFY_PACKAGE, {"ran": True, "rc": 0, "candidate_sha256": "cand-1", "profile": "prod"})
+    if adv._cdi_wiring_record(root, accepted, [impl, extra], "cand-1"):
+        return _fail("packaging that passed on this candidate leaves no wiring debt (%s)" % base)
+    shutil.rmtree(root, ignore_errors=True)
+    return 0
+
+
+def _stop_request_case() -> int:
+    """V16-3: the stop request belongs to the dispatcher-spawned worker of THIS
+    card. No variable (an older runtime, a manual or Operator run) or another
+    card's id: none, and kanban_block stays the terminator."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advance_stop", ADVANCE)
+    adv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adv)
+    saved = {k: os.environ.get(k) for k in ("HERMES_KANBAN_STOP_REQUEST", "HERMES_KANBAN_TASK")}
+    try:
+        for env, card, want in (({}, "t_a", None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json"}, "t_a", None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json", "HERMES_KANBAN_TASK": "t_b"}, "t_a", None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json", "HERMES_KANBAN_TASK": "t_a"}, "",
+                                 None),
+                                ({"HERMES_KANBAN_STOP_REQUEST": "/b/stop-requests/t_a.run2.json", "HERMES_KANBAN_TASK": "t_a"}, "t_a",
+                                 Path("/b/stop-requests/t_a.run2.json"))):
+            for k in saved:
+                os.environ.pop(k, None)
+            os.environ.update(env)
+            if adv._stop_request_path(card) != want:
+                return _fail("the stop request is raised only for this card's own run: %s %s -> %s" % (env, card, adv._stop_request_path(card)))
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return 0
+
+
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _parity_card_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _restore_runner_records_case() or _parity_card_case() or _runtime_owner_attribution_case() or _functional_debt_case() or _enabled_mode_acceptance_case() or _mixed_mode_card_refusal_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1
-    if _unit_checkpoint_case():
+    if _known_before_unknown_case() or _known_before_unknown_case("com.example.store") or _missing_baseline_case() or _continuation_case():
+        return 1
+    if _adapter_owned_retirement_advance_case() or _adapter_owned_retirement_advance_case("com.example.store.web"):
+        return 1
+    if _scope_aware_pending_case() or _scope_aware_pending_case("com.example.depot"):
+        return 1
+    if _cdi_wiring_acceptance_case() or _cdi_wiring_acceptance_case("com.example.depot"):
+        return 1
+    if _unit_checkpoint_case() or _unit_gate_handoff_case() or _unit_gate_handoff_case("com.example.store.web"):
         return 1
     if _si1_case():
         return 1
     if _pending_classify_case():
+        return 1
+    if _stop_request_case():
         return 1
     if _attempt_budget_case():
         return 1
@@ -1358,7 +2508,7 @@ def main() -> int:
         issued = load_json(root / LOOP_ISSUED)
         if head["kind"] != "build" or issued["cluster"] != head["logical_id"] or issued["write_set"] != ["pom.xml"] or issued["attempt"] != 1:
             return _fail("issued card %s" % issued)
-        p = _run([sys.executable, str(BRIEF), "--root", str(root)])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root)])
         if p.returncode != 0 or "pom.xml" not in p.stdout:
             return _fail("brief: %s" % p.stderr)
         brief = json.loads(p.stdout)
@@ -1464,7 +2614,7 @@ def main() -> int:
             return _fail("revert must restore the file in the working tree AND the index")
         if load_json(root / LOOP_STEPS)["attempts"].get(cl2["id"]) != 1:
             return _fail("rejection must count an attempt")
-        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cl2["id"]])
+        p = _run([sys.executable, str(BRIEF), "--full", "--root", str(root), "--cluster", cl2["id"]])
         b2 = json.loads(p.stdout)
         reason = b2["previous_attempts"][0]["reason"]
         if len(b2.get("previous_attempts") or []) != 1 or b2.get("attempts_left") != 1:
@@ -1770,17 +2920,44 @@ def main() -> int:
                           log="Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException reported at %s" % fqn(two))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         attempts_before = dict((load_json(root / LOOP_STEPS).get("attempts") or {}))
-        p = _advance(root, cl2["id"], "t_pkg3")
+        # V16-3 (runtime 0011): the dispatcher-spawned worker of THIS card is
+        # given the run's stop-request path; the pending verdict raises it
+        stop = t / "board" / "stop-requests" / "t_pkg3.run1.json"
+        p = _advance(root, cl2["id"], "t_pkg3", {"HERMES_KANBAN_STOP_REQUEST": str(stop), "HERMES_KANBAN_TASK": "t_pkg3"})
         # a failing gate cannot discharge an obligation: the repair is RETAINED,
         # not accepted, and no attempt is spent
         blob = p.stdout + p.stderr
+        req = json.loads(stop.read_text(encoding="utf-8")) if stop.is_file() else {}
+        pend = [r for r in (load_json(root / LOOP_STEPS).get("pending") or []) if r.get("cluster") == cl2["id"]]
+        if (req.get("kind") != "needs_input" or req.get("task") != "t_pkg3" or not pend
+                or not str(req.get("reason") or "").startswith("VERIFICATION_PENDING %s cause=outside-scope-prerequisite card=t_pkg3: " % cl2["id"])
+                or "candidate retained (sha256 %s) under verification/loop/pending-files/%s" % (pend[-1]["candidate_sha256"][:16], cl2["id"].replace(":", "_")) not in req["reason"]
+                or not req["reason"].endswith("after the prerequisite: restore-pending.py, run-verify.sh --mode acceptance, advance.py")):
+            return _fail("a pending verdict raises the run's stop request once the pending row is persisted: %s %s" % (req, blob[-400:]))
+        if "The runtime blocks this card" not in blob or "Terminator: kanban_block" in blob:
+            return _fail("with the stop request raised the worker is not told to block again: %s" % blob[-400:])
+        if [x.name for x in stop.parent.iterdir()] != [stop.name]:
+            return _fail("the request is written atomically, no temporary file left: %s" % list(stop.parent.iterdir()))
         if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "not proof it was repaired" not in blob:
             return _fail("an unproven gate repair must be retained, not accepted: %s" % blob[:400])
+        # V16-2 (v16 t_d3f89ded): the gate now fails at `two`, which is outside
+        # this card's write set. The pending verdict names that path, the
+        # card's scope and the Operator prerequisite -- and never tells the
+        # worker to repair it in this candidate.
+        if ("GATE_FAILURE_OUTSIDE_SCOPE" not in blob or two not in blob or "write set: %s" % one not in blob
+                or "Required Operator prerequisite" not in blob or "operator-step.py" not in blob):
+            return _fail("the pending verdict names the outside path, the scope and the Operator prerequisite: %s" % blob[-900:])
+        if "in the same candidate" in blob or "repair the members it now names" in blob or "must not edit those files" not in blob:
+            return _fail("the pending message never asks for an edit outside the write set: %s" % blob[-900:])
         steps_now = load_json(root / LOOP_STEPS)
         if (steps_now.get("attempts") or {}) != attempts_before:
             return _fail("retaining a candidate must not spend an attempt: %s → %s" % (attempts_before, steps_now.get("attempts")))
-        if not [r for r in (steps_now.get("pending") or []) if r.get("cluster") == cl2["id"] and r.get("cause") == "unproven-repair"]:
+        held = [r for r in (steps_now.get("pending") or []) if r.get("cluster") == cl2["id"]]
+        if not held or held[-1].get("cause") != "outside-scope-prerequisite":
             return _fail("the retained candidate must be recorded with its cause: %s" % steps_now.get("pending"))
+        rec = held[-1].get("outside_scope") or {}
+        if [f["path"] for f in rec.get("failures") or []] != [two] or rec.get("scope") != [one] or not rec.get("prerequisite"):
+            return _fail("the record carries the outside paths, the scope and the prerequisite: %s" % rec)
 
         # and the way out is the one the record names: restore the candidate,
         # repair what the gate now reports, and let the gate passing discharge
@@ -1875,7 +3052,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); SCRATCH IN THE TREE (v9 t_46556d5e): untracked files outside this migration's product that appear after the verification (javap's extracted .class files at the root) are a typed refusal naming them -- no attempt, the candidate untouched -- while a product path touched after the verification still REVERTS, and the same candidate is ACCEPTED once the scratch is removed, under a renamed specimen too); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); SCRATCH IN THE TREE (v9 t_46556d5e): untracked files outside this migration's product that appear after the verification (javap's extracted .class files at the root) are a typed refusal naming them -- no attempt, the candidate untouched -- while a product path touched after the verification still REVERTS, and the same candidate is ACCEPTED once the scratch is removed, under a renamed specimen too); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell; a unit on the package gate whose issued obligation is gone, whose members all assess clean and whose gate now stops ONLY on located obligations it does not reach is handed off at its checkpoint (proof owed by the closing card), and any missing condition keeps it pending)")
     return 0
 
 

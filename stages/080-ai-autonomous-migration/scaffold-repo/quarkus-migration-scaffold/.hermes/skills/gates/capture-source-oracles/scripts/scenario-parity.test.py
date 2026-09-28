@@ -1228,6 +1228,52 @@ def _diagnostic_probe_case() -> int:
     return 0
 
 
+def _order_explanation_case() -> int:
+    """B9 (v12 t_91eccd43): an order difference says HOW the order differs,
+    computed on the complete arrays -- reversed or not, and every field both
+    sides are sorted by, with each direction -- without ever making the
+    comparison pass. Run on the specimen's shape and on a renamed one."""
+    from _oracle_common import body_diff, order_explanation
+
+    def entries(rows, key="postedAt", ident="ref"):
+        return [{key: d, ident: i, "note": "n%s" % i} for d, i in rows]
+
+    for key, ident in (("date", "id"), ("postedAt", "ref")):
+        src = entries([("2024-06-%02d" % d, d) for d in range(9, 0, -1)], key, ident)   # newest first, 9 elements
+        dst = list(reversed(src))
+        diff = body_diff(json.dumps({"xs": src}).encode(), json.dumps({"xs": dst}).encode())
+        row = diff["differences"][0]
+        exp = row.get("order") or {}
+        if row["kind"] != "order" or diff.get("order_only") is not True:
+            return _fail("the same elements in another order stay one `order` difference (%s): %s" % (key, row))
+        if exp.get("relation") != "reversed":
+            return _fail("a complete reversal is reported from the full arrays, not the 3-element sample (%s): %s" % (key, exp))
+        keyed = {k["key"]: k for k in exp.get("keys") or []}
+        if keyed.get(key, {}).get("expected") != "desc" or keyed.get(key, {}).get("observed") != "asc":
+            return _fail("the renamed sort field and both directions are reported (%s): %s" % (key, exp))
+        # a real value change is not an order difference at all
+        changed = [dict(x) for x in src]
+        changed[0][key] = "1999-01-01"
+        d2 = body_diff(json.dumps(src).encode(), json.dumps(list(reversed(changed))).encode())
+        if any(r["kind"] == "order" for r in d2["differences"]):
+            return _fail("a changed value is never reported as an order difference (%s)" % key)
+    # a permutation that no single field explains is said to be unexplained
+    xs = [{"k": 1, "v": "c"}, {"k": 2, "v": "a"}, {"k": 3, "v": "b"}]
+    exp = order_explanation(xs, [xs[1], xs[2], xs[0]])
+    if exp["relation"] != "permuted" or exp["keys"] or "not explained" not in exp.get("note", ""):
+        return _fail("an order no field explains is reported as unexplained, not diagnosed: %s" % exp)
+    # ties and duplicates are named, never resolved into an identity
+    tied = [{"at": "2024-01-02", "id": 1}, {"at": "2024-01-02", "id": 2}, {"at": "2024-01-01", "id": 3}]
+    exp = order_explanation(tied, [tied[2], tied[1], tied[0]])
+    at = next((k for k in exp["keys"] if k["key"] == "at"), {})
+    if not at.get("ties"):
+        return _fail("equal sort keys are reported as ties: %s" % exp)
+    dup = order_explanation([1, 1, 2], [2, 1, 1])
+    if not dup.get("duplicates") or dup["relation"] != "reversed":
+        return _fail("duplicate elements are named: %s" % dup)
+    return 0
+
+
 def _body_diff_case() -> int:
     """H1a: a body mismatch says WHERE, not only that.
 
@@ -2245,7 +2291,7 @@ def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
         return 1
     if (_fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case() or _diagnostic_probe_case()
-            or _body_diff_case()):
+            or _order_explanation_case() or _body_diff_case()):
         return 1
     if _acceptance_binding_case():
         return 1

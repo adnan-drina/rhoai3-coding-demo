@@ -41,9 +41,10 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.decisions import DecisionsError, accepted_adrs, load_decisions  # noqa: E402
-from planner.paths import DECIDED_REPAIRS_RECEIPT, DECISIONS, PARITY_DIR  # noqa: E402
+from planner.paths import COVERAGE_ACCOUNT, DECIDED_REPAIRS_RECEIPT, DECISIONS, PARITY_DIR  # noqa: E402
+from m5_delivery import measured_candidate_sha  # noqa: E402
 
-ACCOUNT = Path("evidence") / "verdicts" / "coverage-account.json"
+ACCOUNT = COVERAGE_ACCOUNT
 SUREFIRE_RECEIPT = Path("evidence") / "receipts" / "gates" / "assert-surefire-results.json"
 
 
@@ -170,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root")
     ap.add_argument("--out", default="", help="write the account here instead of evidence/verdicts/coverage-account.json (a checker recomputing the account must not author the product's copy)")
+    ap.add_argument("--candidate-sha", default="", help="measured candidate this account is bound to; default is delivery candidate, verify-run tree, or git HEAD")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     if not (root / DECISIONS).is_file():
@@ -183,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     gaps = [r["path"] for r in rows if r["remaining_gap"]]
     uncovered = uncovered_capabilities(root)
     _, cov_summary = parity_coverage(root)
+    candidate_sha = measured_candidate_sha(root, explicit=args.candidate_sha)
     account = {
         "schema": "rhoai3.coverage-account/v1",
         "producer": "compose-coverage-account.py",
@@ -212,6 +215,9 @@ def main(argv: list[str] | None = None) -> int:
         # (never as coverage achieved)
         "retired_thresholds": retired_thresholds(root),
     }
+    if candidate_sha:
+        account["candidate_sha"] = candidate_sha
+        account["identity"] = {"candidate_sha": candidate_sha}
     out = Path(args.out).resolve() if args.out else root / ACCOUNT
     write_canonical(out, account)
     s = account["summary"]

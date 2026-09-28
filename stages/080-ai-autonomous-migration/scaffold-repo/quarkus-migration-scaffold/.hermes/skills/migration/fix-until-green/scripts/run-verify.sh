@@ -58,13 +58,21 @@ ROOT=""
 RUNTIME=1
 MODE="acceptance"
 FORCE_PARITY=false
+# --initial (build-worklist under decisions.loop.plan_semantics v1): the
+# controlled initial-analysis boundary -- prepare-initial-analysis.py removes
+# the stale build outputs BEFORE the first baseline (never after it), the
+# warm-up regenerates every generated root from its pinned inputs, the
+# diagnostics never read target/classes, and a generated root older than this
+# verification is refused rather than planned from
+INITIAL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
     --mode) MODE="${2:-}"; shift 2 ;;
     --no-runtime) RUNTIME=0; shift ;;
     --parity) FORCE_PARITY=true; shift ;;
-    *) echo "usage: run-verify.sh --root <dest> [--mode acceptance|diagnostic] [--no-runtime] [--parity]" >&2; exit 2 ;;
+    --initial) INITIAL=1; shift ;;
+    *) echo "usage: run-verify.sh --root <dest> [--mode acceptance|diagnostic] [--no-runtime] [--parity] [--initial]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
@@ -72,19 +80,70 @@ done
 [[ "${MODE}" == "diagnostic" ]] && RUNTIME=0
 ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# B10/B4: verification runs only under the harness release and the model
+# profile the run was created with; drift is refused before anything is measured
+HARNESS_LIB="${SCRIPT_DIR}/../../../../lib"
+if [[ -d "${HARNESS_LIB}/planner" ]] && ! DRIFT="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[2]); from planner.run_control import run_gaps; g = run_gaps(sys.argv[1]); print(g[0] if g else ""); raise SystemExit(1 if g else 0)' "${ROOT}" "${HARNESS_LIB}")"; then
+  echo "REFUSE: ${DRIFT}" >&2
+  exit 2
+fi
 WORK="${ROOT}/verification/build/.work"
 rm -rf "${WORK}"; mkdir -p "${WORK}/classes"
 export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
 [[ -n "${JAVA_HOME}" ]] && export PATH="${JAVA_HOME}/bin:${PATH}"
 RELEASE="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["pins"]; print(p.get("quarkus_platform",{}).get("java_release") or 21)' "${ROOT}/.hermes/pins.json")"
 javac -d "${WORK}/classes" "${SCRIPT_DIR}/jdk-diagnostics/JdkDiagnostics.java" >"${WORK}/javac.log" 2>&1 || { echo "FAIL: VERIFY_TOOL_COMPILE" >&2; exit 1; }
+DIAG_EXTRA=()
+# the run's decided plan semantics (decisions.yaml, sealed by admission);
+# anything unreadable is "off", which changes nothing
+PLAN_SEMANTICS="$(python3 - "${ROOT}" "${HARNESS_LIB}" 2>/dev/null <<'PYEOF' || echo off
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2])
+from planner.decisions import load_decisions, plan_semantics
+try:
+    doc = load_decisions(Path(sys.argv[1]))
+except Exception:
+    doc = {}
+print(plan_semantics(doc))
+PYEOF
+)"
+if [[ "${PLAN_SEMANTICS}" == "v1" ]]; then
+  # an orphan class from an earlier build resolves a reference whose source
+  # is gone and hides a real error: the generated roots are compiled from
+  # source, so the analysis never needs target/classes
+  DIAG_EXTRA+=(--exclude-output-classes)
+fi
+INITIAL_BEFORE="${WORK}/initial-before.json"
+INITIAL_AFTER="${WORK}/initial-after.json"
+if [[ "${INITIAL}" -eq 1 ]]; then
+  python3 "${SCRIPT_DIR}/prepare-initial-analysis.py" --root "${ROOT}" --phase before --out "${INITIAL_BEFORE}" >/dev/null || exit $?
+  [[ "${PLAN_SEMANTICS}" == "v1" ]] || DIAG_EXTRA+=(--exclude-output-classes)
+fi
 # H10 (dest v9 t_56adcd76): a mid-card verification NEVER re-seals admission
 # (only advance, rewind, operator-step, refresh and resume do). The receipt's
 # digest is taken here and compared at the end: a change means another
 # process wrote it while this verification ran, and that is recorded in
 # run.json (admission.resealed_during_verify) and said out loud rather than
 # discovered as a parked card three minutes later.
-ADMISSION_BEFORE="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json" 2>/dev/null | cut -c1-64)"
+# Initial M2 verification precedes admission. Absence is a snapshot, not a
+# failed read; other read errors must remain visible and stop verification.
+admission_digest() {
+  python3 - "${ROOT}/evidence/planning/admission-receipt.json" <<'PYEOF'
+import hashlib, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+try:
+    print(hashlib.sha256(p.read_bytes()).hexdigest())
+except OSError as exc:
+    if isinstance(exc, FileNotFoundError) and not p.is_symlink():
+        print("")
+    else:
+        print("FAIL: VERIFY_ADMISSION_READ %s: %s" % (p, exc), file=sys.stderr)
+        raise SystemExit(1)
+PYEOF
+}
+ADMISSION_BEFORE="$(admission_digest)"
 
 now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
 T_ALL="$(now_ms)"
@@ -103,11 +162,43 @@ set +e
 # holds everything and the online pass is skipped (v7 item 9: ~60 s per card).
 WARM_STAMP="${ROOT}/verification/build/warmup.stamp"
 WARM_KEY="$(cat "${ROOT}/pom.xml" "${ROOT}"/.mvn/* 2>/dev/null | sha256sum | cut -c1-64)"
+if [[ "${PLAN_SEMANTICS}" == "v1" ]]; then
+  # a matching pom alone does not prove the generated outputs current: the
+  # key also covers the toolchain and every generator specification the pom
+  # names (<inputSpec>), so a changed spec regenerates instead of reusing
+  WARM_KEY="$( { printf '%s\n' "${WARM_KEY}"; java -version 2>&1; python3 - "${ROOT}" <<'PYEOF'
+import hashlib, sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+root = Path(sys.argv[1])
+try:
+    specs = {(e.text or "").strip() for e in ET.parse(root / "pom.xml").iter() if str(e.tag).rsplit("}", 1)[-1] == "inputSpec"}
+except (OSError, ET.ParseError):
+    specs = {"pom unreadable"}
+for spec in sorted(s for s in specs if s):
+    rel = spec.replace("${project.basedir}/", "").replace("${basedir}/", "")
+    p = root / rel
+    print(spec, hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "absent")
+PYEOF
+} | sha256sum | cut -c1-64)"
+fi
 T0="$(now_ms)"
-if [[ -f "${WARM_STAMP}" && "$(cat "${WARM_STAMP}")" == "${WARM_KEY}" ]]; then
+# The INITIAL analysis never reuses a warm-up (round 3, approved bound): the
+# stamp's key covers the build inputs, the toolchain and the generator specs
+# but not the resolved dependency graph, so a reused warm-up could plan from
+# outputs of another resolution. The initial M2 analysis always rebuilds; the
+# stamp is discarded first so nothing of an earlier warm-up is read as this
+# one's. Routine verification keeps the reuse unchanged.
+WARM_CACHE="rebuilt"
+if [[ "${INITIAL}" -eq 1 ]]; then
+  rm -f "${WARM_STAMP}"
+  WARM_CACHE="not-reused-initial-analysis"
+fi
+if [[ "${INITIAL}" -eq 0 && -f "${WARM_STAMP}" && "$(cat "${WARM_STAMP}")" == "${WARM_KEY}" ]]; then
   echo "warm-up skipped: build inputs unchanged since the last successful warm-up (${WARM_KEY:0:12})" >"${WORK}/warmup.log"
   WARM_RC=0
   WARM_SKIPPED=true
+  WARM_CACHE="reused"
 else
   ( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.warmup.txt" && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
   WARM_RC=$?
@@ -138,12 +229,22 @@ json.dump({"schema": "rhoai3.diagnostics/v1", "files": 0, "classpath_entries": 0
 PYEOF
 else
   set +e
-  java -cp "${WORK}/classes" JdkDiagnostics --source "${ROOT}" --out "${DIAG}" --classpath "${WORK}/classpath.txt" --release "${RELEASE}" 2>"${WORK}/diag.log"
+  # the exports only let the tool READ the compiler's structured diagnostic
+  # arguments (identity without localized text); the text itself is rendered
+  # in the pinned ROOT locale by the tool, whatever this JVM's locale is
+  java --add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED \
+    -cp "${WORK}/classes" JdkDiagnostics --source "${ROOT}" --out "${DIAG}" --classpath "${WORK}/classpath.txt" --release "${RELEASE}" ${DIAG_EXTRA[@]+"${DIAG_EXTRA[@]}"} 2>"${WORK}/diag.log"
   DIAG_RC=$?
   set -e
   [[ "${DIAG_RC}" -eq 0 && -s "${DIAG}" ]] || { echo "FAIL: VERIFY_DIAGNOSTICS_RUN rc=${DIAG_RC}" >&2; exit 1; }
 fi
 DIAG_MS="$(( $(now_ms) - T0 ))"
+if [[ "${INITIAL}" -eq 1 ]]; then
+  # provenance of every generated root the analysis read: regenerated by this
+  # verification's warm-up, or an explicit refusal -- never silently planned from
+  python3 "${SCRIPT_DIR}/prepare-initial-analysis.py" --root "${ROOT}" --phase after --diagnostics "${DIAG}" \
+    --since-ms "${T_ALL}" --out "${INITIAL_AFTER}" >/dev/null || exit $?
+fi
 ERRORS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["errors"] + (1 if d.get("build_unresolvable") else 0))' "${DIAG}")"
 
 TEST_ARGS=()
@@ -205,8 +306,8 @@ for L in "${WORK}/test.log" "${WORK}/warmup.log"; do
 done
 
 TOTAL_MS="$(( $(now_ms) - T_ALL ))"
-export VERIFY_MODE="${MODE}" WARM_RC CP_RC DIAG_RC TEST_RAN TEST_RC RESCAN_RAN RESCAN_RC WARM_SKIPPED
-export WARM_MS CP_MS DIAG_MS TEST_MS RESCAN_MS TOTAL_MS
+export VERIFY_MODE="${MODE}" WARM_RC CP_RC DIAG_RC TEST_RAN TEST_RC RESCAN_RAN RESCAN_RC WARM_SKIPPED WARM_CACHE INITIAL
+export WARM_MS CP_MS DIAG_MS TEST_MS RESCAN_MS TOTAL_MS INITIAL_BEFORE INITIAL_AFTER
 python3 - "${RUN}" "${MVN_COMPILE_FAILED}" "${MVN_COMPILE_DETAIL}" <<'PYEOF'
 import json, os, sys
 def rc(v):
@@ -219,7 +320,8 @@ def ms(k):
         return 0
 doc = {"schema": "rhoai3.verify-run/v1",
        "mode": os.environ.get("VERIFY_MODE") or "acceptance",
-       "warmup": {"ran": True, "rc": rc(os.environ.get("WARM_RC")), "skipped": os.environ.get("WARM_SKIPPED") == "true", "ms": ms("WARM_MS")},
+       "warmup": {"ran": True, "rc": rc(os.environ.get("WARM_RC")), "skipped": os.environ.get("WARM_SKIPPED") == "true", "ms": ms("WARM_MS"),
+                  "cache": os.environ.get("WARM_CACHE") or "rebuilt", "initial": os.environ.get("INITIAL") == "1"},
        "classpath": {"ran": True, "rc": rc(os.environ.get("CP_RC")), "ms": ms("CP_MS")},
        "diagnostics": {"ran": True, "rc": rc(os.environ.get("DIAG_RC")), "ms": ms("DIAG_MS")},
        "tests": {"ran": os.environ.get("TEST_RAN") == "true", "rc": rc(os.environ.get("TEST_RC")), "ms": ms("TEST_MS")},
@@ -227,6 +329,15 @@ doc = {"schema": "rhoai3.verify-run/v1",
        "maven_compile": {"failed": sys.argv[2] == "true", "goal": sys.argv[3]},
        "stages_ms": {"warmup": ms("WARM_MS"), "classpath": ms("CP_MS"), "diagnostics": ms("DIAG_MS"), "tests": ms("TEST_MS"), "rescan": ms("RESCAN_MS"), "runtime": 0},
        "total_ms": ms("TOTAL_MS")}
+# the controlled initial-analysis boundary, when this verification was one
+# (present only then: a loop verification's record is unchanged)
+prep = {}
+for key in ("INITIAL_BEFORE", "INITIAL_AFTER"):
+    p = os.environ.get(key) or ""
+    if p and os.path.isfile(p):
+        prep.update(json.load(open(p)))
+if prep:
+    doc["initial_preparation"] = prep
 json.dump(doc, open(sys.argv[1], "w"))
 PYEOF
 python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
@@ -302,7 +413,8 @@ from pathlib import Path
 root = Path(sys.argv[1])
 force = sys.argv[2] == "true"
 sys.path.insert(0, str(root / ".hermes" / "lib"))
-from planner.paths import LOOP_ISSUED, PARITY_DIR, VERIFY_BOOT, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.paths import LOOP_ISSUED, PARITY_DIR, VERIFY_BOOT, VERIFY_RUN  # noqa: E402
+from planner.worklist import issued_parity_plan  # noqa: E402
 
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 
@@ -364,32 +476,88 @@ if not booted:
     # cannot start one measures nothing
     print("skip:the startup gate did not pass in this verification")
     raise SystemExit(0)
-wanted = {str(i) for i in (issued.get("items") or [])}
-rows = [it for it in (doc(WORKLIST).get("items") or []) if str(it.get("id")) in wanted]
-sids = sorted({str(s) for it in rows for s in (it.get("scenarios") or []) if str(s)})
+# --parity on a non-parity card (or an Operator re-measure) still compares
+# the whole phase. A parity card never takes that path: its issued seal owns
+# mode and scenario ids even when the rebuilt work list dropped the item.
+if force and str(issued.get("gate") or "") != "parity":
+    print("run:")
+    raise SystemExit(0)
+# ADR-014: one repair card compares one security mode. Mixed items cannot
+# share a runner invocation and must be partitioned before comparison.
+# The issued card and the scope sealed at mint own that mode and the
+# scenario ids. The live work list is remaining-work only and is not
+# consulted here: a missing live row must not shrink a two-item seal,
+# print run: (whole corpus), or omit mode: (bash default disabled).
+# A sealed mode plus named read-oracle entry points is a valid comparison
+# with an empty scenario list.
+plan = issued_parity_plan(issued)
+if plan["kind"] in ("skip", "pending"):
+    print("%s:%s" % (plan["kind"], plan["reason"]))
+    raise SystemExit(0)
+sids = list(plan.get("scenarios") or [])
+eps = list(plan.get("entry_points") or [])
+mode = str(plan.get("mode") or "")
+print("run:" + ",".join(sids))
 # H3: the entry points the obligations of this card belong to. A scoped run
 # re-runs their READ ORACLES beside the scenarios, because a read-oracle
 # obligation (no scenario) is re-measured by nothing else (dest v9 t_4d75569c:
 # the scoped run left the entry point FAIL record as the baseline had it, and
 # the card could discharge its scenario obligation and never its read-oracle
 # one). One per line after the head: an entry point id may hold any character
-# but a newline. (No apostrophes in this block: see above.)
-eps = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("entry_point") or "")})
-print("run:" + ",".join(sids))
-for ep in (eps if sids else []):
+# but a newline. Printed even when the scenario list is empty: that is a
+# read-oracle-only card, not an unscoped corpus. (No apostrophes: see above.)
+for ep in eps:
     print("oracle:" + ep)
+print("mode:" + mode)
+print("run-mode:%s:%s" % (mode, ",".join(sids)))
 PYEOF
 )" || PARITY_PLAN="skip:the issued card could not be read"
   # the plan's head is its first line; the lines after it name the read
   # oracles a scoped run re-runs for the card (oracle:<entry point>)
   PLAN_HEAD="${PARITY_PLAN%%$'\n'*}"
   PLAN_ORACLES=()
+  PARITY_MODE=""
+  PARITY_MODE_RUNS=()
   while IFS= read -r plan_line; do
     [[ "${plan_line}" == oracle:* ]] && PLAN_ORACLES+=("${plan_line#oracle:}")
+    [[ "${plan_line}" == mode:* ]] && PARITY_MODE="${plan_line#mode:}"
+    [[ "${plan_line}" == run-mode:* ]] && PARITY_MODE_RUNS+=("${plan_line#run-mode:}")
   done <<< "${PARITY_PLAN}"
   PARITY_PLAN="${PLAN_HEAD}"
   if [[ "${PARITY_PLAN}" == skip:* ]]; then
     echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
+  fi
+  record_parity_pending() {
+    local reason="$1"
+    echo "VERIFICATION_PENDING issuance-scope-missing: ${reason} (no comparison, no attempt)" >&2
+    python3 - "${RUN}" "${ROOT}" "${reason}" <<'PYEOF'
+import json, sys
+from pathlib import Path
+reason = sys.argv[3]
+payload = {
+    "ran": False,
+    "pending": reason,
+    "cause": "issuance-scope-missing",
+    "scoped": False,
+    "scenarios": [],
+    "trigger": "issued-card",
+}
+for p in (Path(sys.argv[1]), Path(sys.argv[2]) / "verification" / "build" / "run.json"):
+    doc = {}
+    if p.is_file():
+        try:
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            loaded = {}
+        if isinstance(loaded, dict):
+            doc = loaded
+    doc.setdefault("runtime", {})["parity"] = payload
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PYEOF
+  }
+  if [[ "${PARITY_PLAN}" == pending:* ]]; then
+    record_parity_pending "${PARITY_PLAN#pending:}"
   fi
   if [[ "${PARITY_PLAN}" == done:* ]]; then
     # not a failure and not this card's obligation: the cost guard. Said out
@@ -400,68 +568,126 @@ PYEOF
     # A card's own comparison is SCOPED to its scenarios; the runtime-feedback
     # sweep is the whole phase, because it is not answering one obligation --
     # it is asking what this candidate did to behaviour at all.
+    PARITY_PENDING_SCOPE=0
     if [[ "${PARITY_PLAN}" == sweep:* ]]; then
       SIDS=""
       PARITY_TRIGGER="runtime-feedback"
       echo "parity: runtime-feedback sweep (decisions.loop.runtime_feedback v1) -- the startup gate passed, comparing the whole phase on this candidate"
+      # a sweep has no issued-mode partition: one unscoped comparison of the default mode
+      PARITY_MODE_RUNS=()
+      PARITY_MODE="${PARITY_MODE:-disabled}"
     else
       SIDS="${PARITY_PLAN#run:}"
       PARITY_TRIGGER="issued-card"
+      if [[ -z "${SIDS}" && -z "${PARITY_MODE}" ]]; then
+        # --parity force / Operator unscoped re-measure: no issued mode to replay
+        PARITY_MODE="disabled"
+      elif [[ -z "${PARITY_MODE}" ]]; then
+        record_parity_pending "the issued card does not record a security mode or scenario scope"
+        PARITY_PENDING_SCOPE=1
+      elif [[ -z "${SIDS}" && ${#PLAN_ORACLES[@]} -eq 0 ]]; then
+        record_parity_pending "the issued card does not record a security mode or scenario scope"
+        PARITY_PENDING_SCOPE=1
+      elif [[ ${#PARITY_MODE_RUNS[@]} -eq 0 ]]; then
+        PARITY_MODE_RUNS+=("${PARITY_MODE}:${SIDS}")
+      fi
     fi
-    PARITY_ARGS=()
-    # The verdicts this comparison produces are of the CANDIDATE, not of the
-    # accepted tree: verify.py above rebuilt the work list on it, so the live
-    # seal's worklist digest is the accepted tree's and can never match. The
-    # issued card is what the verdicts bind to instead (the candidate digest in
-    # run.json, the receipt the card was minted under, the card). Without this,
-    # measured on destination v9 card t_222c582a, every scenario came back
-    # "receipt not authoritative: worklist digest ... != sealed ...", the
-    # composer refused, the stale FAIL stayed on disk and the card was REVERTED
-    # -- and so was every parity card.
     PARITY_ISSUED="${ROOT}/verification/loop/issued.json"
-    if [[ -f "${PARITY_ISSUED}" ]]; then
-      PARITY_ARGS+=(--issued "${PARITY_ISSUED}")
+    PARITY_MS=0
+    PARITY_RC=0
+    ALL_SIDS="${SIDS}"
+    run_one_parity() {
+      local mode="$1"
+      local mode_sids="$2"
+      local args=()
+      local receipt before
+      # The verdicts this comparison produces are of the CANDIDATE, not of the
+      # accepted tree: verify.py above rebuilt the work list on it, so the live
+      # seal's worklist digest is the accepted tree's and can never match. The
+      # issued card is what the verdicts bind to instead (the candidate digest in
+      # run.json, the receipt the card was minted under, the card). Without this,
+      # measured on destination v9 card t_222c582a, every scenario came back
+      # "receipt not authoritative: worklist digest ... != sealed ...", the
+      # composer refused, the stale FAIL stayed on disk and the card was REVERTED
+      # -- and so was every parity card.
+      if [[ -f "${PARITY_ISSUED}" ]]; then
+        args+=(--issued "${PARITY_ISSUED}")
+      else
+        echo "parity: no issued card; the comparison is bound to the seal, not to a candidate"
+      fi
+      if [[ "${mode}" == "enabled" ]]; then
+        args+=(--security-mode enabled)
+        echo "parity: this card's obligations were measured in the enabled security mode; replaying that mode"
+        receipt="${ROOT}/verification/parity/receipt-enabled.json"
+        before="${ROOT}/verification/build/parity-before-enabled.json"
+      else
+        receipt="${PARITY_RECEIPT}"
+        before="${PARITY_BEFORE}"
+      fi
+      if [[ -n "${mode_sids}" ]]; then
+        local IFS=','
+        local -a sid_arr
+        read -r -a sid_arr <<< "${mode_sids}"
+        local s
+        for s in "${sid_arr[@]}"; do
+          [[ -n "${s}" ]] && args+=(--scenario "${s}")
+        done
+        local ep
+        for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
+          [[ -n "${ep}" ]] && args+=(--read-oracle "${ep}")
+        done
+        [[ ${#PLAN_ORACLES[@]} -gt 0 ]] && echo "parity: re-running the read oracle(s) of ${#PLAN_ORACLES[@]} entry point(s) of this card beside its scenarios"
+      elif [[ "${PARITY_TRIGGER}" == "issued-card" && ${#PLAN_ORACLES[@]} -gt 0 ]]; then
+        local ep
+        for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
+          [[ -n "${ep}" ]] && args+=(--read-oracle "${ep}")
+        done
+        echo "parity: read-oracle-only comparison of ${#PLAN_ORACLES[@]} entry point(s); no scenario ids named and none invented"
+      elif [[ "${PARITY_TRIGGER}" == "runtime-feedback" || -z "${PARITY_ISSUED}" || ! -f "${PARITY_ISSUED}" ]]; then
+        echo "parity: unscoped comparison (no scenario filter)"
+      fi
+      # the receipt as it stood BEFORE this candidate's comparison: acceptance
+      # asks of it what was already PASSing, so that a repair that breaks another
+      # scenario is not accepted. It is the accepted tree's receipt, because the
+      # accepted tree's records are what a rejection restored.
+      rm -f "${before}"
+      [[ -f "${receipt}" ]] && cp "${receipt}" "${before}"
+      local t0
+      t0="$(now_ms)"
+      set +e
+      python3 "${PARITY_RUN_PY}" --root "${ROOT}" ${args[@]+"${args[@]}"} >"${WORK}/parity.log" 2>&1
+      PARITY_RC=$?
+      set -e
+      PARITY_MS="$(( PARITY_MS + $(now_ms) - t0 ))"
+      tail -20 "${WORK}/parity.log" || true
+    }
+    if [[ "${PARITY_PENDING_SCOPE}" -eq 1 ]]; then
+      :
+    elif [[ ${#PARITY_MODE_RUNS[@]} -gt 0 && "${PARITY_TRIGGER}" == "issued-card" ]]; then
+      for spec in "${PARITY_MODE_RUNS[@]}"; do
+        run_one_parity "${spec%%:*}" "${spec#*:}"
+      done
+      SIDS="${ALL_SIDS}"
     else
-      # --parity with no issued card: an Operator re-measuring the phase on a
-      # tree nobody minted a card for. There is no candidate to bind to, and
-      # the sealed road is the right one.
-      echo "parity: no issued card; the comparison is bound to the seal, not to a candidate"
+      run_one_parity "${PARITY_MODE:-disabled}" "${SIDS}"
     fi
-    if [[ -n "${SIDS}" ]]; then
-      IFS=',' read -r -a SID_ARR <<< "${SIDS}"
-      for s in "${SID_ARR[@]}"; do
-        [[ -n "${s}" ]] && PARITY_ARGS+=(--scenario "${s}")
-      done
-      # ... and the read oracles of the card's own entry points, re-run beside
-      # them so a read-oracle obligation is re-measured too (H3)
-      for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
-        [[ -n "${ep}" ]] && PARITY_ARGS+=(--read-oracle "${ep}")
-      done
-      [[ ${#PLAN_ORACLES[@]} -gt 0 ]] && echo "parity: re-running the read oracle(s) of ${#PLAN_ORACLES[@]} entry point(s) of this card beside its scenarios"
-    elif [[ "${PARITY_TRIGGER}" == "issued-card" ]]; then
-      # a parity obligation whose entry point declares no scenario is a read
-      # oracle: it is re-measured by the unscoped run, which compares those
-      echo "parity: the issued obligations name no scenario; comparing the whole phase (read oracles included)"
+    if [[ "${PARITY_PENDING_SCOPE}" -ne 1 ]]; then
+    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE
+    PARITY_ORACLES=""
+    if [[ ${#PLAN_ORACLES[@]} -gt 0 ]]; then
+      PARITY_ORACLES="$(IFS=,; printf '%s' "${PLAN_ORACLES[*]}")"
     fi
-    # the receipt as it stood BEFORE this candidate's comparison: acceptance
-    # asks of it what was already PASSing, so that a repair that breaks another
-    # scenario is not accepted. It is the accepted tree's receipt, because the
-    # accepted tree's records are what a rejection restored.
-    rm -f "${PARITY_BEFORE}"
-    [[ -f "${PARITY_RECEIPT}" ]] && cp "${PARITY_RECEIPT}" "${PARITY_BEFORE}"
-    T0="$(now_ms)"
-    set +e
-    python3 "${PARITY_RUN_PY}" --root "${ROOT}" ${PARITY_ARGS[@]+"${PARITY_ARGS[@]}"} >"${WORK}/parity.log" 2>&1
-    PARITY_RC=$?
-    set -e
-    PARITY_MS="$(( $(now_ms) - T0 ))"
-    tail -20 "${WORK}/parity.log" || true
-    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER
+    export PARITY_ORACLES
     python3 - "${RUN}" "${ROOT}" <<'PYEOF'
 import json, os, sys
 from pathlib import Path
 run_p, root = sys.argv[1], Path(sys.argv[2])
-receipt = root / "verification" / "parity" / "receipt.json"
+mode = os.environ.get("PARITY_MODE") or "disabled"
+if mode in ("", "disabled"):
+    suffix = ""
+else:
+    suffix = "-%s" % mode
+receipt = root / "verification" / "parity" / ("receipt%s.json" % suffix)
 verdict = ""
 if receipt.is_file():
     try:
@@ -472,13 +698,17 @@ ms = int(os.environ.get("PARITY_MS") or 0)
 # which read oracles the runner's own record says it RE-RAN for the card (a
 # verdict recorded): read from _run.json rather than from what was asked, so
 # run.json says what was measured, never what was requested
-rec_p = root / "verification" / "parity" / "_run.json"
+# default mode: verification/parity/_run.json; enabled: _run-enabled.json
+rec_name = "_run.json" if mode in ("", "disabled") else "_run-%s.json" % mode
+rec_p = root / "verification" / "parity" / rec_name
 reruns = []
 if rec_p.is_file():
     try:
         reruns = [str(e) for e in ((json.loads(rec_p.read_text(encoding="utf-8")) or {}).get("read_oracles") or {}).get("rerun") or []]
     except ValueError:
         reruns = []
+sids = [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s]
+oracles = [e for e in (os.environ.get("PARITY_ORACLES") or "").split(",") if e]
 doc = json.load(open(run_p))
 doc.setdefault("runtime", {})["parity"] = {
     "ran": True,
@@ -487,12 +717,13 @@ doc.setdefault("runtime", {})["parity"] = {
     # sweep. Both are of the candidate and both bind to the issued card; only
     # the first is scoped, and only the first discharges an obligation.
     "trigger": os.environ.get("PARITY_TRIGGER") or "issued-card",
-    "scoped": bool([s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s]),
-    "scenarios": [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s],
+    "scoped": bool(sids or oracles),
+    "scenarios": sids,
     # H3: the entry points whose read oracle the scoped run re-ran for this
     # card; the work list and acceptance count them as re-measured
     "read_oracles_rerun": sorted(reruns),
     "receipt_verdict": verdict,
+    "security_mode": mode if mode in ("disabled", "enabled") else "disabled",
     "ms": ms,
 }
 doc.setdefault("stages_ms", {})["parity"] = ms
@@ -503,6 +734,7 @@ PYEOF
     # the obligations it still reports are the ones this candidate left
     python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
     VERIFY_RC=$?
+    fi
   fi
 fi
 # The verify count for the issued card and the obligations the rebuilt work
@@ -521,7 +753,7 @@ if line:
     print(line)
 PYEOF
 fi
-ADMISSION_AFTER="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json" 2>/dev/null | cut -c1-64)"
+ADMISSION_AFTER="$(admission_digest)"
 export ADMISSION_BEFORE ADMISSION_AFTER
 python3 - "${ROOT}" <<'PYEOF' || true
 import json, os, sys
@@ -534,9 +766,9 @@ if p.is_file():
     except ValueError:
         doc = None
     if isinstance(doc, dict):
-        doc["admission"] = {"file_sha256_before": before, "file_sha256_after": after, "resealed_during_verify": bool(before) and before != after}
+        doc["admission"] = {"file_sha256_before": before, "file_sha256_after": after, "resealed_during_verify": before != after}
         p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-if before and before != after:
+if before != after:
     print("WARN: ADMISSION_RESEALED_DURING_VERIFY evidence/planning/admission-receipt.json changed while this verification ran "
           "(file %s -> %s). A verification never re-seals admission; another process did (a previous card's advance.py "
           "outliving its terminal timeout, an Operator step). The parity comparison binds to the receipt the issued card was "

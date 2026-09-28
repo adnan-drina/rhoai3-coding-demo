@@ -121,7 +121,106 @@ def scheduled_types(base: str) -> list[dict[str, Any]]:
     ]
 
 
-def specimen(name: str, base: str = "org.acme.clinic") -> dict[str, Any]:
+A_REST_BODY = SPRING + ".web.bind.annotation.RequestBody"
+A_PUT = SPRING + ".web.bind.annotation.PutMapping"
+A_PATH_VAR = SPRING + ".web.bind.annotation.PathVariable"
+A_CROSS_ORIGIN = SPRING + ".web.bind.annotation.CrossOrigin"
+A_PROFILE = SPRING + ".context.annotation.Profile"
+A_VALID = "jakarta.validation.Valid"
+T_BINDING_RESULT = SPRING + ".validation.BindingResult"
+T_URI_BUILDER = SPRING + ".web.util.UriComponentsBuilder"
+S_REPO = SPRING + ".data.repository.Repository"
+
+# The roles of the migration specimen and the PetClinic spelling of each. A
+# structural twin passes other names: every rule the planner applies must
+# come out the same, because no rule may branch on a name.
+PETCLINIC_NAMES = {"app": "PetClinicApplication", "controller": "OwnerRestController", "owner": "Owner", "owners": "owners",
+                   "dto": "OwnerDto", "list": "listOwners", "add": "addOwner", "update": "updateOwner",
+                   "repo": "PetRepository", "fragment": "PetRepositoryOverride", "entity": "Pet", "profile": "spring-data-jpa",
+                   "alt_impl": "JdbcPetRepositoryImpl", "alt_profile": "jdbc", "rest": "rest", "dtopkg": "dto", "data": "repository"}
+LEDGER_NAMES = {"app": "LedgerApplication", "controller": "AccountRestController", "owner": "Account", "owners": "accounts",
+                "dto": "AccountDto", "list": "listAccounts", "add": "openAccount", "update": "reviseAccount",
+                "repo": "EntryRepository", "fragment": "EntryRepositoryAddon", "entity": "Entry", "profile": "spring-data-jpa",
+                "alt_impl": "JdbcEntryRepositoryImpl", "alt_profile": "jdbc", "rest": "api", "dtopkg": "model", "data": "store"}
+
+
+def migration_types(base: str, n: dict[str, str]) -> list[dict[str, Any]]:
+    """A Spring REST application carrying every V16 migration responsibility:
+    a class-level CrossOrigin controller whose handlers ask BindingResult and
+    a UriComponentsBuilder over a GENERATED request body, and a Spring Data
+    repository with a project fragment whose implementation is profile-gated
+    beside an alternative one."""
+    p = "src/main/java/" + base.replace(".", "/")
+    rest = "%s.%s" % (base, n["rest"])
+    dto = "%s.%s.%s" % (rest, n["dtopkg"], n["dto"])
+    data = "%s.%s" % (base, n["data"])
+    body = {"name": "dto", "type": dto, "annotations": [_ann(A_REST_BODY), _ann(A_VALID)]}
+    br = {"name": "bindingResult", "type": T_BINDING_RESULT, "annotations": []}
+    ucb = {"name": "ucBuilder", "type": T_URI_BUILDER, "annotations": []}
+
+    def handler(name: str, sig: str, ann: dict[str, Any], params: list[dict[str, Any]]) -> dict[str, Any]:
+        m = _m(name, sig, annotations=[ann], refs=[dto])
+        m["params"] = params
+        return m
+
+    ctrl = "%s.%s" % (rest, n["controller"])
+    return [
+        _t("%s.%s" % (base, n["app"]), "%s/%s.java" % (p, n["app"]), annotations=[_ann(A_APP)]),
+        _t(ctrl, "%s/%s/%s.java" % (p, n["rest"], n["controller"]),
+           annotations=[_ann(A_REST), _ann(A_REQ, value=["/api"]), _ann(A_CROSS_ORIGIN, exposedHeaders=["errors", "content-type"])],
+           methods=[handler(n["list"], "%s()" % n["list"], _ann(A_GET, value=["/%s" % n["owners"]]), []),
+                    handler(n["add"], "%s(%s,BindingResult,UriComponentsBuilder)" % (n["add"], n["dto"]), _ann(A_POST, value=["/%s" % n["owners"]]), [body, br, ucb]),
+                    handler(n["update"], "%s(int,%s,BindingResult)" % (n["update"], n["dto"]), _ann(A_PUT, value=["/%s/{id}" % n["owners"]]),
+                            [{"name": "id", "type": "int", "annotations": [_ann(A_PATH_VAR)]}, body, br])],
+           refs=[dto, "%s.%s" % (data, n["repo"])]),
+        _t("%s.%s" % (data, n["repo"]), "%s/%s/%s.java" % (p, n["data"], n["repo"]), kind="interface",
+           supertypes=[S_REPO, "%s.%s" % (data, n["fragment"])], refs=["%s.%s" % (data, n["entity"])]),
+        _t("%s.%s" % (data, n["fragment"]), "%s/%s/%s.java" % (p, n["data"], n["fragment"]), kind="interface",
+           methods=[_m("delete", "delete(%s)" % n["entity"], refs=["%s.%s" % (data, n["entity"])])]),
+        _t("%s.%s%s" % (data, n["fragment"], "Impl"), "%s/%s/%sImpl.java" % (p, n["data"], n["fragment"]),
+           annotations=[_ann(A_PROFILE, value=[n["profile"]])], supertypes=["%s.%s" % (data, n["fragment"])],
+           methods=[_m("delete", "delete(%s)" % n["entity"], refs=["%s.%s" % (data, n["entity"])])], refs=["%s.%s" % (data, n["entity"])]),
+        _t("%s.%s" % (data, n["alt_impl"]), "%s/%s/%s.java" % (p, n["data"], n["alt_impl"]),
+           annotations=[_ann(A_PROFILE, value=[n["alt_profile"]])], supertypes=["%s.%s" % (data, n["fragment"])],
+           refs=["%s.%s" % (data, n["entity"])]),
+        _t("%s.%s" % (data, n["entity"]), "%s/%s/%s.java" % (p, n["data"], n["entity"]), annotations=[_ann(A_ENTITY)]),
+    ]
+
+
+GENERATOR_PLUGIN = """      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>5.4.0</version>
+        <executions>
+          <execution>
+            <goals><goal>generate</goal></goals>
+            <configuration>
+              <inputSpec>${project.basedir}/src/main/resources/openapi.yml</inputSpec>
+              <generatorName>spring</generatorName>
+              <library>spring-boot</library>
+              <modelPackage>%s</modelPackage>
+              <apiPackage>%s</apiPackage>
+              <configOptions><interfaceOnly>true</interfaceOnly></configOptions>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+"""
+
+
+def specimen(name: str, base: str = "org.acme.clinic", names: dict[str, str] | None = None) -> dict[str, Any]:
+    if name == "migration":
+        n = dict(names or PETCLINIC_NAMES)
+        types = migration_types(base, n)
+        rest = "%s.%s" % (base, n["rest"])
+        ctrl_path = "src/main/java/%s/%s/%s.java" % (base.replace(".", "/"), n["rest"], n["controller"])
+        pom = LEGACY_POM.replace("    <plugins>\n", "    <plugins>\n" + GENERATOR_PLUGIN % ("%s.%s" % (rest, n["dtopkg"]), "%s.api" % rest))
+        return {"name": name, "base": base, "types": types, "names": n,
+                "resources": ["src/main/resources/application.properties", "src/main/resources/openapi.yml"],
+                "legacy_pom": pom, "generated_source_roots": ["target/generated-sources/openapi"],
+                "probe_beans": {"default": []},
+                "findings": {"springboot-web-to-quarkus-00001": {"category": "mandatory", "effort": 3, "description": "Replace Spring MVC with JAX-RS",
+                                                                 "incidents": [{"uri": "file:///analysis/" + ctrl_path, "lineNumber": 20, "message": "x"}]}}}
     if name == "http":
         types = http_types(base)
         resources = ["src/main/resources/application.properties"]
@@ -219,11 +318,11 @@ spring.jpa.open-in-view=false
 def write_legacy_tree(copy: Path, spec: dict[str, Any]) -> None:
     """A fake frozen analysis copy: pom, properties, one stub file per type."""
     copy.mkdir(parents=True, exist_ok=True)
-    (copy / "pom.xml").write_text(LEGACY_POM, encoding="utf-8")
+    (copy / "pom.xml").write_text(spec.get("legacy_pom") or LEGACY_POM, encoding="utf-8")
     for r in spec["resources"]:
         target = copy / r
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(LEGACY_PROPERTIES, encoding="utf-8")
+        target.write_text("openapi: 3.0.1\n" if r.endswith(".yml") else LEGACY_PROPERTIES, encoding="utf-8")
     for t in spec["types"]:
         target = copy / t["path"]
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -306,7 +405,7 @@ def build_dest(
     prod = root / PRODUCERS_DIR
     prod.mkdir(parents=True, exist_ok=True)
     write_canonical(prod / "freeze.json", _receipt("freeze", "ok", {"name": "freeze-migration-input", "version": "1", "pin_status": "not-applicable"}, {"source_root": "/projects/legacy"}, [{"path": str(SOURCE_MANIFEST), "sha256": manifest["digest"]}], analysis_copy=str(copy), source_digest=manifest["digest"]))
-    write_canonical(prod / "build.json", _receipt("build", "ok" if build_outcome == "success" else "failed", {"name": "maven", "version": "3.9", "pin_status": "not-applicable"}, {"source_digest": manifest["digest"]}, [], outcome=build_outcome, classpath_available=build_outcome == "success", source_roots=["src/main/java"], generated_source_roots=[], toolchain={"java": "21", "maven": "3.9"}, warmup={"attempted": True, "outcome": "success"}, managed_versions=dict(spec.get("managed_versions") or {})))
+    write_canonical(prod / "build.json", _receipt("build", "ok" if build_outcome == "success" else "failed", {"name": "maven", "version": "3.9", "pin_status": "not-applicable"}, {"source_digest": manifest["digest"]}, [], outcome=build_outcome, classpath_available=build_outcome == "success", source_roots=["src/main/java"], generated_source_roots=list(spec.get("generated_source_roots") or []), toolchain={"java": "21", "maven": "3.9"}, warmup={"attempted": True, "outcome": "success"}, managed_versions=dict(spec.get("managed_versions") or {})))
     structure = {"schema": "rhoai3.structure/v1", "producer": {"tool": "jdk-model", "version": "jdk-21", "runtime": "fixture", "mode": "full" if build_outcome == "success" else "partial"}, "source_digest": manifest["digest"], "mode": "full" if build_outcome == "success" else "partial", "types": shuffled(spec["types"])}
     write_canonical(root / STRUCTURE, structure)
     write_canonical(prod / "jdk-model.json", _receipt("jdk-model", structure_status, {"name": "jdk-model", "version": "jdk-21", "pin_status": "pinned"}, {"source_digest": manifest["digest"]}, [{"path": str(STRUCTURE), "sha256": "x" * 64}], mode=structure["mode"]))
@@ -442,7 +541,7 @@ def decisions_yaml(doc: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None) -> dict[str, Any]:
+def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None, *, producer: dict[str, Any] | None = None) -> dict[str, Any]:
     if unresolvable:
         return {"schema": "rhoai3.diagnostics/v1", "files": 0, "classpath_entries": 0, "success": False, "errors": 0, "diagnostics": [], "build_unresolvable": True, "reason": unresolvable}
     rows = []
@@ -450,7 +549,25 @@ def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None) -> dic
         path, line, message = err[0], err[1], err[2]
         code = err[3] if len(err) > 3 else "compiler.err.cant.resolve"
         rows.append({"kind": "ERROR", "path": path, "line": line, "code": code, "message": message})
-    return {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": rows}
+        if producer:
+            # the current producer's per-diagnostic facts: a column (a 5th
+            # tuple member, else 1) and structured args when it says it has them
+            rows[-1]["column"] = int(err[4]) if len(err) > 4 else 1
+            if producer.get("args_available"):
+                rows[-1]["args"] = list(err[5]) if len(err) > 5 else [code, message.split("symbol:", 1)[-1].split("\n", 1)[0].strip()]
+    doc = {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": rows}
+    if producer:
+        # simulator of the current JdkDiagnostics (pinned ROOT rendering,
+        # provenance of generated roots and of the output classes)
+        doc.update({"rendering_locale": "root", "jvm_locale": "en", "output_classes_on_classpath": False,
+                    "generated_roots": [], "args_available": False})
+        doc.update(producer)
+    return doc
+
+
+# What the current JdkDiagnostics records beside its diagnostics; a fixture
+# passes it to prepare_loop(diag_producer=...) to simulate that producer.
+CURRENT_DIAG_PRODUCER = {"rendering_locale": "root", "args_available": True}
 
 
 def surefire_doc(failures: list[tuple[str, str]]) -> dict[str, Any]:
@@ -460,14 +577,14 @@ def surefire_doc(failures: list[tuple[str, str]]) -> dict[str, Any]:
 SIM = Path("verification") / "loop" / "sim"
 
 
-def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, findings: dict[str, Any] | None = None, unresolvable: str | None = None, test_rc: int | None = None) -> dict[str, str]:
+def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, findings: dict[str, Any] | None = None, unresolvable: str | None = None, test_rc: int | None = None, diag_producer: dict[str, Any] | None = None) -> dict[str, str]:
     """Simulate the tools' raw outputs under verification/loop/sim/ and return
     the verify.py arguments that consume them (never written into the
     verification/build/ reports directly — verify.py owns those)."""
     root = Path(root)
     sim = root / SIM
     sim.mkdir(parents=True, exist_ok=True)
-    write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or [], unresolvable))
+    write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or [], unresolvable, producer=diag_producer))
     write_canonical(sim / "surefire.json", surefire_doc(failures or []))
     # the simulator stands in for a full run-verify pass, and says so: an
     # unstated mode is diagnostic and cannot promote (verify.py)
@@ -504,7 +621,7 @@ def issue(root: Path) -> dict[str, Any]:
     return result["payloads"][0]
 
 
-def prepare_loop(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None) -> None:
+def prepare_loop(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, diag_producer: dict[str, Any] | None = None) -> None:
     """bundle → git baseline → bootstrap → simulated verification → work list → step 0 → admission.
 
     Test support only: what paved-road-m2 does on a card, with the tool
@@ -523,7 +640,7 @@ def prepare_loop(root: Path, *, errors: list[tuple[str, int, str]] | None = None
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "scaffold"], check=True)
     subprocess.run([sys.executable, str(skills / "migration" / "bootstrap-destination" / "scripts" / "bootstrap-destination.py"), "--root", str(root)], check=True, capture_output=True)
-    p = verify(root, errors=errors or [], failures=failures or [], findings=load_json(root / MTA_FINDINGS))
+    p = verify(root, errors=errors or [], failures=failures or [], findings=load_json(root / MTA_FINDINGS), diag_producer=diag_producer)
     if p.returncode != 0:
         raise RuntimeError("verify: %s%s" % (p.stdout, p.stderr))
     loop = skills / "migration" / "fix-until-green" / "scripts"

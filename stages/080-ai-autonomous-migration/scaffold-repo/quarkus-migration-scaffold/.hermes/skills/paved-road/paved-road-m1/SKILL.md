@@ -65,25 +65,60 @@ the root of the planner digest chain (SAD §6).
    idle` and the reason and exits 0. That is a **recorded blocker**
    (ADR-014), not a red step and not silence. The reason names the missing
    environment **variable**, never a credential.
-4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized`
+4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized --after-m1 "$HERMES_KANBAN_TASK"`
    — binds the platform-recorded pilot authorization (dest-init wrote who
    authorized this run from the DevWorkspace its creator started) to the
    bundle you just produced, and mints M2. It decides nothing: an unbound
    seal with no named authorizer, one already bound, one not recorded by the
    platform, or an unfit bundle are all refused, and admission still gates
    the plan. Mints nothing under a not-activated planner; idempotent.
-5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
+   `--after-m1` validates this existing native M1; the workspace startup
+   preference cannot silently skip its continuation. The reviewer checks
+   the M2 task, workspace and parent edge, not just the command exit code.
+5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`, with the
+   summary and metadata below), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
 6. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
 7. Reviewer runs `python3 .hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`.
    The official log is `$HERMES_HOME/kanban/logs/<id>.log`. Do not pass `--log` unless that file exists; a workshop path such as `/projects/modernized/kanban/logs/` is not the official log (v9 M1 `t_e84503a8`).
 
+## Progress and review handoff
+
+- **Attachments.** The `kanban-attach` step attaches the KEEP evidence set to
+  this card (native attachments, listed by `kanban_show` and in the worker
+  context): the evidence bundle, findings handoff, inventories, required
+  extensions and MTA findings. The script fixes the set and the 25 MiB cap;
+  the attachment tool alone does not satisfy the audit.
+- **Milestone comments** (`kanban_comment`, at most three, factual, never one
+  per command): after the MTA scan (findings count and any unpinned
+  producer), after the source captures (scenarios captured and qualified, the
+  enabled-mode status), and for a discovered coverage gap or blocker.
+- **Review request.** `summary`: two or three sentences a person can act on —
+  what the evidence establishes about the legacy application, the capture
+  coverage, and the gaps M2/M4 inherit. `metadata`: `attachments` (the
+  attached file names), `evidence_bundle`
+  (`evidence/planning/evidence-bundle.json`), `captures` (per security mode:
+  captured / qualified / idle with its reason), `m2_card` (the id
+  `autostart-migration.sh --after-m1` created), `coverage_gaps` and
+  `limitations`.
+
 ## Gotchas
+
+- Do not invent HTTP routes: paths come from the frozen source and its
+  inventories.
 
 - Silence fails. An unmatched `[exit 1]` on a mandated needle fails.
   A later clean invocation of the *same* needle clears an earlier red.
   Do not last-wins across different needles.
 - `inventory-legacy-surface` precedes `scan-with-mta`: the MTA handoff
   refuses (AR-4.1) without `evidence/entry-point-inventory.json`.
+- Build evidence comes first, and its warm-up runs the same
+  `dependency:build-classpath` goal the offline extraction runs. An empty
+  offline classpath is recorded in the build receipt's reasons and makes the
+  structure partial. Do not work around it.
+- The scenario corpus and its captures are bound to THIS tree's evidence
+  bundle: entry-point ids change when M1 resolves more of the source. A corpus
+  derived against another bundle, or a capture naming another entry point, is
+  refused as a stale binding. Re-derive and re-capture; never relabel.
 - `derive-legacy-boot3` is **not** an M1 step. The baseline is the
   frozen original source; a Boot 3 derivation is an execution-side
   transformation only.

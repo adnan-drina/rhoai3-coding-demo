@@ -20,7 +20,7 @@ from k4_convert import convert_admitted  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.admission import receipt_digest  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
-from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, SCHEMAS_DIR, WORKLIST  # noqa: E402
+from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, SCHEMAS_DIR, SERIAL_ROADMAP, WORKLIST  # noqa: E402
 from planner.schema_lite import load_schema, validate  # noqa: E402
 
 
@@ -49,9 +49,24 @@ def main() -> int:
         p = _run([sys.executable, str(ADMIT), "--root", str(root)])
         if p.returncode != 0 or "ADMITTED" not in p.stdout:
             return _fail("admit: %s%s" % (p.stdout, p.stderr))
+        if "serial-roadmap (informational)" not in p.stdout:
+            return _fail("admit must report the derived serial roadmap: %s" % p.stdout)
         rec = load_json(root / ADMISSION_RECEIPT)
         if validate(rec, load_schema(root / SCHEMAS_DIR / "admission-receipt.schema.json")):
             return _fail("receipt schema")
+        road = load_json(root / SERIAL_ROADMAP)
+        if road.get("schema") != "rhoai3.serial-roadmap/v1":
+            return _fail("admission must write serial-roadmap.json")
+        if road.get("parallel_execution") != "deferred":
+            return _fail("serial roadmap must leave parallel execution deferred")
+        titles = [p.get("title") for p in (road.get("planned") or [])]
+        if "M4 VERIFY" not in titles or "M5 PREFLIGHT" not in titles or "M5 DEPLOY" not in titles or "M5 VALIDATE" not in titles:
+            return _fail("serial roadmap missing planned M4/M5 titles: %s" % titles)
+        claimed = [k for row in (road.get("planned") or []) for k in ("candidate_sha", "candidate_sha256", "receipt_sha256", "card_id") if k in row]
+        if claimed:
+            return _fail("planned milestones claimed %s" % claimed)
+        if len(road.get("executable") or []) > 1:
+            return _fail("serial roadmap must keep one executable task")
         seals = rec["seals"]
         for key in ("evidence_bundle", "worklist", "bootstrap", "pins"):
             if len(seals[key]) != 64:

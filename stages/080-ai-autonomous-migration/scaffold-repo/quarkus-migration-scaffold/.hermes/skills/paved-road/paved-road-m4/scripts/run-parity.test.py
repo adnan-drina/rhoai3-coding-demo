@@ -711,15 +711,71 @@ def main() -> int:
                 return _fail("the repaired read oracle comes back PASS through the same scoped run: %s %s" % (rc7, doc7.get("read_oracles")))
             if load_json(root / PARITY / (slug(vet_ep) + ".json")).get("verdict") != "PASS":
                 return _fail("the re-run record is PASS again")
+            # the read oracle is compared in the state it was CAPTURED in (dest
+            # v12 t_e5c9a129): the owners read was captured after the corpus,
+            # i.e. after its tail sc:create-owner-second left owner 8. A scoped
+            # run of sc:create-owner alone leaves owner 7; without replaying the
+            # tail the unchanged destination FAILs its own list read.
+            list_ep = next(e for e in READ_EPS if "OwnerController#list" in e)
+            tail = ["sc:create-owner-second", "sc:read-root", "sc:read-root-auth"]
+            # B13 (v12 golden 40d96b4f): the replay is for state only. A tail
+            # record whose re-measurement would differ (there, INCONCLUSIVE ->
+            # FAIL) must survive byte for byte, or advance.py reads the change
+            # as an obligation the card introduced and reverts a correct repair.
+            tail_rec = root / SCENARIO_PARITY / (scenario_slug("sc:read-root") + ".json")
+            tail_bodies = root / SCENARIO_PARITY / "_bodies" / scenario_slug("sc:read-root")
+            if not tail_rec.is_file():
+                return _fail("fixture: the tail scenario's record must exist before the scoped run: %s" % tail_rec)
+            sentinel = tail_rec.read_bytes().replace(b'"PASS"', b'"INCONCLUSIVE"')
+            tail_rec.write_bytes(sentinel)
+            bodies_before = sorted((q.relative_to(tail_bodies), q.read_bytes()) for q in tail_bodies.rglob("*") if q.is_file()) \
+                if tail_bodies.is_dir() else None
+            rcT, blobT, docT = _run(root, base, reset, scenarios=("sc:create-owner",), extra=("--read-oracle", list_ep))
+            if tail_rec.read_bytes() != sentinel:
+                return _fail("the tail replay restores state only: a tail scenario's record is put back byte for byte")
+            bodies_after = sorted((q.relative_to(tail_bodies), q.read_bytes()) for q in tail_bodies.rglob("*") if q.is_file()) \
+                if tail_bodies.is_dir() else None
+            if bodies_after != bodies_before:
+                return _fail("the tail replay leaves a tail scenario's kept bodies as they were")
+            restore = docT["read_oracles"].get("state_restore") or {}
+            if restore.get("tail") != tail or [r["id"] for r in restore.get("results") or []] != tail:
+                return _fail("a scoped read oracle is preceded by the corpus tail, in corpus order: %s" % restore)
+            if rcT != 0 or docT["read_oracles"].get("rerun") != [list_ep] \
+                    or load_json(root / PARITY / (slug(list_ep) + ".json")).get("verdict") != "PASS":
+                return _fail("an unchanged destination passes its read oracle after a scoped scenario run: %s %s"
+                             % (rcT, blobT[-800:]))
+            # a tail that cannot be replayed leaves the state unknown: the read
+            # oracle is not compared, and the run says why
+            bad_reset = td / "bad-reset.py"
+            bad_reset.write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
+            before_list = (root / PARITY / (slug(list_ep) + ".json")).read_bytes()
+            rcB, blobB, docB = _run(root, base, bad_reset, scenarios=("sc:create-owner",), extra=("--read-oracle", list_ep))
+            skipped = [r for r in docB["entry_points"]["not_compared"] if r["entry_point"] == list_ep]
+            if (rcB == 0 or len(skipped) != 1 or "could not be restored" not in skipped[0]["reason"]
+                    or docB["read_oracles"].get("rerun")
+                    or (root / PARITY / (slug(list_ep) + ".json")).read_bytes() != before_list):
+                return _fail("an unrestorable tail refuses the read oracle by name and rewrites nothing: rc=%s %s %s"
+                             % (rcB, skipped, docB.get("failures")))
+            _run(root, base, reset)  # the whole phase again, so later cases start from the captured state
             # an entry point nobody admitted is refused, not skipped in silence
             rc8, blob8, doc8 = _run(root, base, reset, scenarios=("sc:create-owner-second",),
                                     extra=("--read-oracle", "ep:org.acme.Nobody#none():http"))
             if rc8 != 1 or not any("read-oracle filter" in f and "Nobody" in f for f in doc8.get("failures") or []):
                 return _fail("an unadmitted --read-oracle refuses by name: rc=%s %s" % (rc8, doc8.get("failures")))
-            # without a scenario filter the whole phase runs and the option adds nothing
+            # named --read-oracle without --scenario is a read-oracle-only
+            # scoped run: no scenario ids invented, only those oracles, not the
+            # whole corpus
+            others9 = {e: (root / PARITY / (slug(e) + ".json")).read_bytes() for e in READ_EPS if e != vet_ep}
             rc9, blob9, doc9 = _run(root, base, reset, extra=("--read-oracle", vet_ep))
-            if rc9 != 0 or not doc9["read_oracles"]["ran"] or doc9["read_oracles"].get("rerun") != [] or doc9["entry_points"]["compared"] != 3:
-                return _fail("an unfiltered run compares every read oracle; --read-oracle is then redundant and recorded as requested only: %s" % doc9.get("read_oracles"))
+            reads9 = doc9.get("read_oracles") or {}
+            sc9 = doc9.get("scenarios") or {}
+            if (rc9 != 0 or reads9.get("ran") or sc9.get("selected") != 0 or sc9.get("run") != 0
+                    or reads9.get("rerun") != [vet_ep] or reads9.get("requested") != [vet_ep]
+                    or (doc9.get("entry_points") or {}).get("compared") != 1):
+                return _fail("a read-oracle-only run executes only the named oracles and invents no scenario ids: %s %s %s"
+                             % (rc9, reads9, sc9))
+            if any((root / PARITY / (slug(e) + ".json")).read_bytes() != b for e, b in others9.items()):
+                return _fail("a read-oracle-only run must not rewrite other entry-point records")
 
             # --- the records a scoped run did not write, and the ones that
             #     belong to nothing --------------------------------------
@@ -1175,7 +1231,7 @@ def main() -> int:
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
           "--read-oracle (H3) re-runs exactly the named entry points' read oracles inside a scoped run, records them "
           "under read_oracles.rerun, names every other entry point as not compared and rewrites none of their records, "
-          "refuses an unadmitted entry point, and is redundant without a scenario filter; "
+          "refuses an unadmitted entry point, and without --scenario is a read-oracle-only scoped run that invents no scenario ids; "
           "a record that belongs to no scenario of this corpus -- the v9 cors-<digest>.json names from an earlier "
           "naming scheme, and a declared scenario under a name that is not its slug -- is MOVED ASIDE before the "
           "composer reads the directory, never deleted, with an index naming where each came from and why, and the "

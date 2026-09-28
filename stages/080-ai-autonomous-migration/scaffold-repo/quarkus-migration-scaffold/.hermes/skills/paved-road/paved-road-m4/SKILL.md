@@ -98,6 +98,12 @@ python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . \
    digest, which is how "one artifact, restarted with the switch changed" is
    shown rather than asserted. KEEP both receipts and both run records.
 
+   The pre-verdict runner measures both modes with `check-mode-parity`.
+   A FAIL in either mode must appear as a failed floor and a REFUSE, even when
+   the other mode passes. It is not a remaining coverage gap. The verdict
+   binder binds both receipt digests; the lint and continuation refuse an
+   accepting verdict over a failed mode. INCONCLUSIVE coverage remains separate.
+
    Two things the enabled run does **not** do, and says so: it does not
    re-compare the read oracles (those captures are not mode-scoped and were
    taken with the switch off — every entry point is named with that reason),
@@ -193,7 +199,13 @@ python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . \
    `evidence/verdicts/coverage-account.json` (`compose-coverage-account.py`)
    and carry its counts in the verdict's `coverage_account`: every source an
    accepted ADR retired gets a row naming its replacement scenario and its
-   remaining gap.
+   remaining gap. The composer binds the measured candidate. The original
+   bind transaction snapshots the M4-era account at
+   `verification/loop/accepted/coverage-account.json` bound to that
+   card/verdict; earlier snapshots are kept. Close and already-bound retry
+   do not copy later live onto a missing freeze. Later composer runs may
+   rewrite the live account; they must not rewrite another card's freeze
+   or the historical M4 verdict.
 
    Then bind the verdict — with the tool, never from memory:
 
@@ -298,6 +310,41 @@ python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --ro
   it, because a pre-specified verdict is not a measurement.
 - `PROVISIONAL_ACCEPT` without a retrievable tree: uncommitted `src/` or
   `pom.xml` means there is nothing to ship.
+
+## Outcome-board runs (new protocol, disabled by default)
+
+The card is one assessment GENERATION (`assess:m4:gN`). The road does not
+change. After the verdict is linted, and before `kanban_request_review`, run
+`python3 .hermes/kernel/outcome_gate.py --root . assessment-record`. It
+records the verdict bound to this card, the candidate, and the measured
+obligations. The reviewer's `kanban_complete` is allowed for EVERY verdict,
+REFUSE included, once the audit is green and the record exists. A REFUSE is
+a valid assessment. The dispatcher's continuation publishes the bounded
+repairs and the next assessment generation, and keeps M5 held. You never
+reopen or rewrite an earlier generation.
+
+## outcome-board/v2 runs (native control)
+
+M4 means verification ACCEPTED. Walk the same road. After the verdict is linted:
+
+1. `python3 .hermes/kernel/native_gate.py --root . issue` at the start of the
+   run, and `native_gate.py --root . assessment-record` after the verdict. It
+   records the verdict, the candidate and the open obligations on this card.
+2. ACCEPT or PROVISIONAL_ACCEPT: `native_gate.py --root . handoff`, then
+   `kanban_request_review` reviewer=reviewer with its `summary` and `metadata`
+   (verdict, candidate, assessment attachment, deferred qualifications).
+   The reviewer completes this card after the audit; that releases M5.
+3. REFUSE (or any other verdict), or `ASSESS_DEFERRED_CHECKS` (a runtime check
+   the plan moved from an early outcome to this card, e.g. a request-body parity
+   check, is not met): `native_gate.py --root . m4-repair`. Each unmet deferred
+   check becomes a follow-up of its owning outcome. It
+   publishes the repairs the verdict needs as native tasks and makes them
+   prerequisites of THIS card. End the run with `kanban_block kind=dependency`.
+   The dispatcher runs this card again when they are done; measure again then.
+   Never request review of a red verdict (K2 refuses it). The fourth REFUSE on
+   this card stops with ASSESSMENT_BOUND: `kanban_block kind=needs_input`.
+
+`resume-after-m4.py` refuses on v2: the card itself is the continuation.
 
 ## Operator
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-verify selftest: the PARITY stage's admission, statically and without Maven.
+# run-verify selftest: admission snapshots and parity routing without Maven.
 #
 # What is asked here is not "does the comparison work" (run-parity.test.py asks
 # that) but "does the acceptance path run it for the right card, and for no
@@ -31,8 +31,8 @@ grep -qF 'parity-before.json' "${SCRIPT}" || fail "the receipt the comparison st
 grep -qF -- '--scenario' "${SCRIPT}" || fail "the comparison must be scoped to the card's scenarios"
 # H10 (dest v9 t_56adcd76): a verification never re-seals admission; a change
 # of the receipt while it ran is recorded and said out loud
-grep -qF 'ADMISSION_BEFORE="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json"' "${SCRIPT}" \
-  || fail "the admission receipt digest must be taken before anything runs"
+python3 "${SCRIPT_DIR}/run-verify-admission.test.py" \
+  || fail "admission snapshots fail the fresh-M2 or receipt-change execution cases"
 grep -qF 'ADMISSION_RESEALED_DURING_VERIFY' "${SCRIPT}" || fail "a re-seal during the verification must be named"
 grep -qF '"resealed_during_verify"' "${SCRIPT}" || fail "run.json must record whether admission was re-sealed during the verification"
 # the verdicts this stage produces are of the CANDIDATE: step 4 above rebuilt
@@ -95,6 +95,10 @@ worklist() {
 JSON
 }
 issued() { printf '{"schema":"rhoai3.loop-issued/v1","cluster":"c:1","gate":"%s","items":%s}' "$2" "$3" >"$1/verification/loop/issued.json"; }
+issued_scope() {
+  printf '{"schema":"rhoai3.loop-issued/v1","cluster":"c:1","gate":"parity","items":%s,"security_mode":"%s","scenarios":%s,"entry_points":%s}' \
+    "$2" "$3" "$4" "${5:-[]}" >"$1/verification/loop/issued.json"
+}
 
 plan() { python3 "${TMP}/plan.py" "$1" "${2:-false}"; }
 
@@ -108,10 +112,13 @@ B="${TMP}/b"; mkroot "${B}"; boot_ok "${B}"; worklist "${B}"; issued "${B}" "pac
 C="${TMP}/c"; mkroot "${C}"; boot_ok "${C}"; worklist "${C}"
 [[ "$(plan "${C}")" == "no" ]] || fail "with no issued card there is nothing to scope a comparison to: $(plan "${C}")"
 
-# a parity card: the comparison runs, scoped to the scenarios ITS OWN
-# obligations are made of -- deduplicated, ordered, and nobody else's
-D="${TMP}/d"; mkroot "${D}"; boot_ok "${D}"; worklist "${D}"; issued "${D}" "parity" '["parity:aaaa","parity:bbbb"]'
-[[ "$(plan "${D}")" == "run:sc:a-first,sc:b-second" ]] || fail "the comparison must be scoped to this card's scenarios: $(plan "${D}")"
+# a parity card: the comparison runs, scoped to the scenarios sealed on the
+# issued card -- deduplicated, ordered, and nobody else's. Live work-list rows
+# do not fill a missing seal.
+D="${TMP}/d"; mkroot "${D}"; boot_ok "${D}"; worklist "${D}"
+issued_scope "${D}" '["parity:aaaa","parity:bbbb"]' "disabled" '["sc:a-first","sc:b-second"]'
+[[ "$(plan "${D}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "the comparison must be scoped to this card's scenarios: $(plan "${D}")"
 
 # H3: the read oracles of the card's own entry points are re-run beside its
 # scenarios (dest v9 t_4d75569c: a read-oracle obligation names no scenario and
@@ -126,13 +133,112 @@ worklist_eps() {
  "clusters":[]}
 JSON
 }
-RO="${TMP}/ro"; mkroot "${RO}"; boot_ok "${RO}"; worklist_eps "${RO}"; issued "${RO}" "parity" '["parity:aaaa","parity:bbbb"]'
-[[ "$(plan "${RO}")" == $'run:sc:a-first\noracle:ep:x.Owner#list():http' ]] \
+RO="${TMP}/ro"; mkroot "${RO}"; boot_ok "${RO}"; worklist_eps "${RO}"
+issued_scope "${RO}" '["parity:aaaa","parity:bbbb"]' "disabled" '["sc:a-first"]' '["ep:x.Owner#list():http"]'
+[[ "$(plan "${RO}")" == $'run:sc:a-first\noracle:ep:x.Owner#list():http\nmode:disabled\nrun-mode:disabled:sc:a-first' ]] \
   || fail "the plan names the card's entry points, one per oracle line, and nobody else's: $(plan "${RO}")"
-grep -qF -- 'PARITY_ARGS+=(--read-oracle "${ep}")' "${SCRIPT}" || fail "the scoped comparison must pass the card's read oracles to the runner"
+grep -qF -- 'args+=(--read-oracle "${ep}")' "${SCRIPT}" || fail "the scoped comparison must pass the card's read oracles to the runner"
 grep -qF '"read_oracles_rerun": sorted(reruns)' "${SCRIPT}" || fail "run.json must carry the read oracles the runner re-ran"
-grep -qF 'rec_p = root / "verification" / "parity" / "_run.json"' "${SCRIPT}" \
+grep -qF '_run.json' "${SCRIPT}" \
   || fail "what was re-run is read from the runner's own record, never from what was asked"
+grep -qF -- '--security-mode' "${SCRIPT}" \
+  || fail "an enabled-mode card must tell the runner which security mode to replay"
+
+# ADR-014: an enabled-mode obligation is scoped to its scenarios AND that mode
+worklist_enabled() {
+  cat >"$1/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:en","source":"parity","gate":"parity","security_mode":"enabled","scenarios":["sc:cors-enabled-preflight-x"]}],
+ "clusters":[]}
+JSON
+}
+EN="${TMP}/en"; mkroot "${EN}"; boot_ok "${EN}"; worklist_enabled "${EN}"
+issued_scope "${EN}" '["parity:en"]' "enabled" '["sc:cors-enabled-preflight-x"]'
+[[ "$(plan "${EN}")" == $'run:sc:cors-enabled-preflight-x\nmode:enabled\nrun-mode:enabled:sc:cors-enabled-preflight-x' ]] \
+  || fail "an enabled-mode card must name its mode so the runner replays that corpus: $(plan "${EN}")"
+
+worklist_mixed() {
+  cat >"$1/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:dis","source":"parity","gate":"parity","security_mode":"disabled","scenarios":["sc:cors-preflight-x"]},
+ {"id":"parity:en","source":"parity","gate":"parity","security_mode":"enabled","scenarios":["sc:cors-enabled-preflight-x"]}],
+ "clusters":[]}
+JSON
+}
+MX="${TMP}/mx"; mkroot "${MX}"; boot_ok "${MX}"; worklist_mixed "${MX}"
+issued_scope "${MX}" '["parity:dis","parity:en"]' "mixed" '[]'
+[[ "$(plan "${MX}")" == skip:*mixes* ]] \
+  || fail "a mixed-mode card must refuse until partitioned: $(plan "${MX}")"
+grep -q 'the issued card mixes security modes; partition into one mode per repair card' "${HERMES}/lib/planner/worklist.py" \
+  || fail "mixed-mode obligations must skip by name requiring partition, never execute both modes"
+grep -qF '"security_mode": mode if mode in ("disabled", "enabled") else "disabled"' "${SCRIPT}" \
+  || fail "run.json runtime.parity must persist the security_mode that was compared"
+grep -qF 'parity-before-enabled.json' "${SCRIPT}" \
+  || fail "an enabled replay must keep the enabled receipt as it stood before the comparison"
+grep -qF 'pending:' "${SCRIPT}" \
+  || fail "missing issuance scope must be a typed pending result, not a silent disabled run"
+
+# sealed issuance owns mode and scenarios when the rebuilt work list dropped the item
+worklist_empty() { printf '{"schema":"rhoai3.worklist/v1","items":[],"clusters":[]}\n' >"$1/evidence/planning/worklist.json"; }
+MISS="${TMP}/miss"; mkroot "${MISS}"; boot_ok "${MISS}"; worklist_empty "${MISS}"
+issued_scope "${MISS}" '["parity:en"]' "enabled" '["sc:en-a","sc:en-b","sc:en-c"]'
+[[ "$(plan "${MISS}")" == $'run:sc:en-a,sc:en-b,sc:en-c\nmode:enabled\nrun-mode:enabled:sc:en-a,sc:en-b,sc:en-c' ]] \
+  || fail "an enabled card must replay its sealed scenarios when the work list dropped the item: $(plan "${MISS}")"
+
+NOSCOPE="${TMP}/noscope"; mkroot "${NOSCOPE}"; boot_ok "${NOSCOPE}"; worklist_empty "${NOSCOPE}"
+issued "${NOSCOPE}" "parity" '["parity:en"]'
+[[ "$(plan "${NOSCOPE}")" == pending:* ]] \
+  || fail "missing issuance scope must pending without replay: $(plan "${NOSCOPE}")"
+case "$(plan "${NOSCOPE}")" in
+  run:*|sweep:*|mode:*|run-mode:*) fail "missing issuance scope must not replay or default a mode: $(plan "${NOSCOPE}")" ;;
+esac
+
+# missing / invalid sealed mode despite live rows: remaining work is not a recovery source
+NOMODE="${TMP}/nomode"; mkroot "${NOMODE}"; boot_ok "${NOMODE}"; worklist_enabled "${NOMODE}"
+issued "${NOMODE}" "parity" '["parity:en"]'
+[[ "$(plan "${NOMODE}")" == pending:* ]] \
+  || fail "missing sealed mode must pending even when the live row is present: $(plan "${NOMODE}")"
+BADMODE="${TMP}/badmode"; mkroot "${BADMODE}"; boot_ok "${BADMODE}"; worklist_enabled "${BADMODE}"
+issued_scope "${BADMODE}" '["parity:en"]' "bogus" '["sc:cors-enabled-preflight-x"]'
+[[ "$(plan "${BADMODE}")" == pending:* ]] \
+  || fail "invalid sealed mode must pending even when the live row is present: $(plan "${BADMODE}")"
+
+# a two-item sealed scope must not shrink to the one remaining work-list row
+PARTIAL="${TMP}/partial"; mkroot "${PARTIAL}"; boot_ok "${PARTIAL}"
+cat >"${PARTIAL}/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:aaaa","source":"parity","gate":"parity","scenarios":["sc:a-first"]}],
+ "clusters":[]}
+JSON
+issued_scope "${PARTIAL}" '["parity:aaaa","parity:bbbb"]' "disabled" '["sc:a-first","sc:b-second"]'
+[[ "$(plan "${PARTIAL}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "partially surviving live rows must not reduce a two-item issued scope: $(plan "${PARTIAL}")"
+
+# a disabled card still scopes from its seal, with or without live rows
+DIS="${TMP}/dis"; mkroot "${DIS}"; boot_ok "${DIS}"; worklist "${DIS}"
+issued_scope "${DIS}" '["parity:aaaa","parity:bbbb"]' "disabled" '["sc:a-first","sc:b-second"]'
+[[ "$(plan "${DIS}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "a disabled card must keep its scoped comparison: $(plan "${DIS}")"
+worklist_empty "${DIS}"
+[[ "$(plan "${DIS}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "a disabled card must replay its sealed scenarios when the work list dropped the item: $(plan "${DIS}")"
+
+# a disabled read-oracle-only card: sealed mode + named entry points, empty
+# scenario list, live row present and absent. Do not invent scenario ids.
+worklist_oracle() {
+  cat >"$1/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:ro","source":"parity","gate":"parity","security_mode":"disabled","entry_point":"ep:x.Vet#list():http","scenarios":[]}],
+ "clusters":[]}
+JSON
+}
+ROONLY="${TMP}/roonly"; mkroot "${ROONLY}"; boot_ok "${ROONLY}"; worklist_oracle "${ROONLY}"
+issued_scope "${ROONLY}" '["parity:ro"]' "disabled" '[]' '["ep:x.Vet#list():http"]'
+[[ "$(plan "${ROONLY}")" == $'run:\noracle:ep:x.Vet#list():http\nmode:disabled\nrun-mode:disabled:' ]] \
+  || fail "a disabled read-oracle-only card with its live row present must execute that oracle and invent no scenario ids: $(plan "${ROONLY}")"
+worklist_empty "${ROONLY}"
+[[ "$(plan "${ROONLY}")" == $'run:\noracle:ep:x.Vet#list():http\nmode:disabled\nrun-mode:disabled:' ]] \
+  || fail "a disabled read-oracle-only card with its live row absent must keep the same sealed oracle scope: $(plan "${ROONLY}")"
 
 # the startup gate did not pass in this verification: there is no started
 # destination to compare, and a stage that cannot measure says so rather than
@@ -180,8 +286,10 @@ bound "${J}" sealed c0ffee
 [[ "$(plan "${J}")" == "sweep:" ]] || fail "a SEALED receipt is the M4 road's, not this candidate's: $(plan "${J}")"
 
 # and a parity CARD is unaffected by the mode: its own comparison stays scoped
-K="${TMP}/k"; mkroot "${K}"; boot_ok "${K}"; worklist "${K}"; issued "${K}" "parity" '["parity:aaaa","parity:bbbb"]'; feedback "${K}" v1
-[[ "$(plan "${K}")" == "run:sc:a-first,sc:b-second" ]] || fail "a parity card keeps its own scoped comparison: $(plan "${K}")"
+K="${TMP}/k"; mkroot "${K}"; boot_ok "${K}"; worklist "${K}"
+issued_scope "${K}" '["parity:aaaa","parity:bbbb"]' "disabled" '["sc:a-first","sc:b-second"]'; feedback "${K}" v1
+[[ "$(plan "${K}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
+  || fail "a parity card keeps its own scoped comparison: $(plan "${K}")"
 
 # what the two triggers are recorded as, and that the sweep is never scoped
 grep -qF 'PARITY_TRIGGER="runtime-feedback"' "${SCRIPT}" || fail "the sweep must record why it ran"
@@ -189,9 +297,9 @@ grep -qF 'PARITY_TRIGGER="issued-card"' "${SCRIPT}" || fail "a card's own compar
 grep -qF '"trigger": os.environ.get("PARITY_TRIGGER")' "${SCRIPT}" || fail "run.json must carry the parity trigger"
 
 echo "OK: run-verify parity stage (acceptance-only and after the runtime gates; not run for a compile or packaging card \
-or with no issued card; run for a parity card scoped to its own scenarios plus the read oracles of its own entry points (H3) and bound to that issued card, so the work \
+or with no issued card; run for a parity card scoped to its own sealed scenarios plus the read oracles of its own entry points (H3) and bound to that issued card, so the work \
 list this verification rebuilt on the candidate is not read as a stale seal; skipped by name when the startup gate did \
-not pass; forced unscoped by --parity) + the RUNTIME TRIGGER (compile-zero: known measure and no compile error, \
+not pass; forced unscoped by --parity; sealed issuance owns mode and scenario ids and is never recovered from the live work list; missing or invalid issuance scope is pending without replay even when live rows remain; a two-item seal is not reduced to a surviving row; a disabled read-oracle-only card runs named oracles with an empty scenario list) + the RUNTIME TRIGGER (compile-zero: known measure and no compile error, \
 whatever the incident and test slots say; an unrun compiler is not zero; recorded in run.json; diagnostic mode still \
 never runs the gates) + the RUNTIME-FEEDBACK SWEEP (decisions.loop.runtime_feedback v1 compares the whole phase on any \
 card once the destination boots, is silent with no boot and with the mode off or absent, is skipped by name when the \

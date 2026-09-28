@@ -2,6 +2,7 @@
 """Exercise the shipped remote launch checks; cluster qualification is separate."""
 import ast
 import contextlib
+import copy
 import hashlib
 import io
 import json
@@ -111,6 +112,47 @@ class Preflight(unittest.TestCase):
     def test_missing_source_receipt_refuses(self):
         (self.root / 'legacy/.git/rhoai3-source.json').unlink()
         with self.assertRaisesRegex(AssertionError, 'source clone receipt'): self.execute()
+
+
+class IsolationLaunchScope(unittest.TestCase):
+    def setUp(self):
+        nodes = [n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name in ('need','check_isolation')]
+        scope = {}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), 'isolation-launch', 'exec'), scope)
+        self.check = scope['check_isolation']
+        self.proof = {'checks': dict.fromkeys([
+            'secret_binding','wrong_targets','assignment_removal','receipt_fields','delayed_resources',
+            'data_independence','credential_independence','workspace_independence','repository_non_authority',
+            'duplicate_delivery','overlapping_retirement','retirement'], 'PASS')}
+        self.proof['checks']['workspace_identity'] = 'FAIL'
+
+    def test_known_v10_failure_is_visible_and_preserved(self):
+        before = copy.deepcopy(self.proof)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.check(self.proof, 'spring-petclinic-rest-legacy-v10')
+        self.assertIn('workspace_identity remains FAIL', output.getvalue())
+        self.assertEqual(before, self.proof)
+
+    def test_every_operational_failure_or_gap_still_blocks(self):
+        for key in self.proof['checks']:
+            if key == 'workspace_identity':
+                continue
+            for status in ('FAIL', 'INCONCLUSIVE', None):
+                proof = copy.deepcopy(self.proof)
+                proof['checks'][key] = status
+                with self.subTest(key=key, status=status), self.assertRaisesRegex(SystemExit, 'operational isolation'):
+                    self.check(proof, 'spring-petclinic-rest-legacy-v10')
+
+    def test_unmeasured_identity_or_other_run_is_not_exempt(self):
+        with self.assertRaisesRegex(SystemExit, 'workspace identity'):
+            self.check(self.proof, 'another-run')
+        for status in (None, 'INCONCLUSIVE'):
+            self.proof['checks']['workspace_identity'] = status
+            with self.assertRaisesRegex(SystemExit, 'workspace identity'):
+                self.check(self.proof, 'spring-petclinic-rest-legacy-v10')
+        self.proof['checks']['workspace_identity'] = 'PASS'
+        self.check(self.proof, 'another-run')
 
 
 if __name__ == '__main__':

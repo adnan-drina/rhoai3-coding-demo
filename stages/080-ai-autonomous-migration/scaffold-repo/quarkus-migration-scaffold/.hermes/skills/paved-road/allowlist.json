@@ -7,7 +7,8 @@
   "dest-init": [
     "dispatch-phase"
   ],
-  "kind-not-yet": [
+    "kind-not-yet": [
+    "compose-serial-roadmap",
     "derive-legacy-boot3",
     "manage-quarkus-extensions",
     "author-destination-pom",

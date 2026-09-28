@@ -44,11 +44,28 @@ lexicographic decrease with no new mandatory incident.
 Under `decisions.loop.unit_formation: v1` a coordinated repair clusters as
 one **unit** instead of per file: a diagnostic family, a declaration and its
 direct implementers and callers, a package nothing outside names, or a
-property and its consumers. What decides those is the compiler's own model —
-a declared member's `type_refs` and resolved `calls`, the supertypes, the
-imports — never a type row's own `type_refs` (the extractor writes none) and
-never a package name. A type the compiler could not fully resolve states no
-relationships, so it can never establish that a package is isolated.
+property and its consumers. What decides those is the compiler's own model,
+never a package name: each type row's declaration walk (`type_refs`: the
+declared types its supertypes, type-parameter bounds, field types and member
+signatures name, through generic arguments, array components, wildcard and
+type-variable bounds, intersections and enclosing types), plus a declared
+member's `type_refs` and resolved `calls`, the supertypes and the imports.
+
+The walk is bounded and says whether it finished: `type_refs_complete` is
+false, with `type_refs_incomplete` naming where and why, when a part is
+unresolved, unsupported or over the depth/node bound. A reference found is
+evidence even on an incomplete row; an absence is evidence only on a complete
+one. So a package is a **leaf** only when every type inside and outside it is
+named, its walk is complete, every outside type is fully resolved, and no
+failed file of the source root is missing from the model. "Isolated" means no
+recorded inbound declaration reference in `src/main/java` — not unreachable,
+unused or safe to delete: framework callbacks, reflection, configuration and
+body-only references are outside the walk. When the evidence is short, the
+leaf rule steps aside and the family, declaration and per-file rules take the
+same obligations; nothing is dropped and nothing becomes writable because a
+reference was found. The same completeness bounds the retirement check: an
+incomplete walk cannot prove a retired symbol gone, though the independent
+parse proof still can.
 
 A unit is bounded at 20 files, 160 sites and 8 symbols. A union narrows by
 dropping whole families, lowest cardinality first, and each dropped
@@ -63,13 +80,34 @@ the new type and file the naming contract fixes for it, which is what lets
 ## Procedure
 
 ```bash
-bash "${HERMES_SKILL_DIR}/scripts/build-worklist.sh" --root /projects/modernized
+bash /projects/modernized/.hermes/skills/planning/build-worklist/scripts/build-worklist.sh --root /projects/modernized
 ```
 
 Runs `fix-until-green/scripts/run-verify.sh` (the real tools) and then
 `advance.py --baseline` (commits the bootstrapped tree as step 0 and
 re-seals admission). A measure that is not fully known is admission
 BLOCK `MEASURE_UNKNOWN`.
+
+When `decisions.yaml` decides `loop.plan_semantics: v1`, the wrapper passes
+`run-verify.sh --initial`: `prepare-initial-analysis.py` removes the stale
+`target/` before the first baseline (and refuses after one), the warm-up
+regenerates every generated root, and `VERIFY_INITIAL_STALE_OUTPUT` names a
+generated root older than the verification. Do not clean or regenerate by
+hand; report that refusal. The golden selects v1 for new runs; a run keeps the
+value its destination was created with, and admission refuses
+`PLAN_SEMANTICS_REPINNED` when `decisions.yaml` has flipped it since. Do not
+edit the key: report the refusal. Under v1 the work list may carry `plan:gb:*`
+items (gate `plan`, V17-4): obligations decided from files on disk before any
+destination failure.
+
+Run once in the foreground with terminal `timeout: 600`. The wrapper
+prints `WORKLIST_PHASE` for verification and baseline. On nonzero exit,
+report the failing phase and read that invocation's output plus
+`verification/build/run.json` if present. Correct one identified invocation
+error and retry once; if the same failure remains, block with its exact
+error and phase. Do not background the command, guess alternative paths,
+repeat Maven separately, or write the missing receipt yourself. Compiler
+diagnostics are measurements; a failed verifier process is a tool failure.
 
 ## Verification
 
@@ -82,5 +120,6 @@ BLOCK `MEASURE_UNKNOWN`.
 
 ## Scripts
 
-- `scripts/build-worklist.sh` — verifier + baseline
+- `scripts/build-worklist.sh` — verifier + baseline (`--initial` verification under plan semantics v1)
+- `scripts/qualify-repeatability.py` — Operator/maintainer tool, not a card step: bounded local qualification of the repeatable initial plan in disposable directories (recorded-evidence and producer replay, SYNTHETIC specimens, FakeNative); never against a live run
 - `scripts/rehearse-legacy.sh` — isolated rehearsal without dispatch (`--legacy <checkout> --root <fresh dir>`): M1 producers → bootstrap → first verification → work-list head; SAD v3 §9 exit 5

@@ -1,0 +1,24 @@
+{
+  "kind": "m5-accept",
+  "artifact": "m5-verdict",
+  "steps": [
+    {
+      "id": "live-acceptance",
+      "backing": "native",
+      "native": "live-acceptance.py",
+      "keep": ["verification/delivery/live.json"]
+    },
+    {
+      "id": "compose-m5-verdict",
+      "backing": "native",
+      "native": "compose-m5-verdict.py",
+      "producer": true,
+      "keep": ["evidence/verdicts/m5-verdict.json"]
+    },
+    {
+      "id": "check-release-readiness",
+      "backing": "skill",
+      "skill": "check-release-readiness"
+    }
+  ]
+}

@@ -629,15 +629,25 @@ check "080 autostart does not pin scan-with-mta on the card" \
 check "080 autostart-migration selftest passes" \
   "python3 '${SCAFFOLD_AUTOSTART}/autostart-migration.selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
-# Run declarations (2026-09-24): the factory writes the run's own run-budget.json
-# into the destination's initial commit; the published golden carries only the
-# shared run-defaults.json. (The golden-side checks live with the golden work.)
+# Run declarations (2026-09-24): the golden is reusable, so it names no run and
+# claims no readiness; the factory writes the run's own run-budget.json into the
+# destination's initial commit. One golden revision must serve v12 and every
+# later run without an edit.
+check "080 the golden carries shared run defaults only (no run identity, timestamp or readiness)" \
+  "S='${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold'; test ! -e \"\$S/run-budget.json\" && test ! -e \"\$S/run-configuration.json\" && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); keys=set(); w=lambda o: [keys.add(k) or w(v) for k,v in o.items()] if isinstance(o,dict) else None; w(d); sys.exit(0 if d['budget']['max_wall_hours']>0 and not keys & {'run_id','declared_at','recorded_at','ready'} else 1)\" \"\$S/run-defaults.json\" && echo GOLDEN_RUN_FREE || echo GOLDEN_CARRIES_A_RUN" \
+  "GOLDEN_RUN_FREE"
+check "080 run_declaration refuses missing, foreign, stale and rewritten declarations" \
+  "python3 '${SCAFFOLD_LIB}/planner/run_declaration.test.py' >/dev/null 2>&1 && echo DECLARATION_SELFTEST_OK || echo DECLARATION_SELFTEST_FAILED" \
+  "DECLARATION_SELFTEST_OK"
 check "080 the launch preflight is run-agnostic and reads the budget through the declaration" \
   "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_OK || echo RUN_PREFLIGHT_FAILED" \
   "RUN_PREFLIGHT_OK"
 check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
   "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
   "FACTORY_DECLARES_RUN"
+check "080 build-worklist reports failures without repeating verification" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/planning/build-worklist/scripts/build-worklist.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 derive default DERIVED_ROOT is inside dest tree" \
   "grep -c '\${MODERNIZED_ROOT}/.derived/legacy-at-3' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.sh' || echo 0" \
   "1"
@@ -827,6 +837,9 @@ check "080 scan-with-mta selftest passes (provenance, canary, never --source)" \
 check "080 worklist selftest passes (order, measure, progress rule)" \
   "python3 '${SCAFFOLD_LIB}/planner/worklist.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 card_title selftest passes (M3 display mapping)" \
+  "python3 '${SCAFFOLD_LIB}/planner/cards.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 dest-model selftest passes (resolved signatures, real inheritance, exact annotation ranges)" \
   "python3 '${SCAFFOLD_LIB}/planner/dest_model.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
@@ -847,6 +860,9 @@ check "app-migration stamp idFields is yamlite block form" \
   "BLOCK"
 check "080 fix-until-green loop selftest passes (bootstrap → baseline → accept/revert/defer → M4)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/fix-until-green.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 verification handles first admission, detects receipt changes and preserves parity routing" \
+  "bash '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.test.sh' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 an M4 verdict is consumed: a REFUSE resumes on its parity obligations, a clean acceptance CLOSES the run (issued card cleared, release blockers rewritten from THIS verdict, what remains before ship named)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/resume-after-m4.test.py' >/dev/null && echo 1 || echo 0" \
@@ -1000,20 +1016,20 @@ check "080 source initializer pins the first clone and refuses changed or unreco
 check "080 versioned launch preflight refuses unready or changed inputs" \
   "bash -n '${SCRIPT_DIR}/v10-preflight.sh' && python3 '${SCRIPT_DIR}/v10-preflight.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 v11 preflight refuses missing isolation or a broad worker identity" \
+check "080 v11 launch preflight requires measured identity PASS and does not inherit the v10 deferral" \
   "bash -n '${SCRIPT_DIR}/v11-preflight.sh' && python3 '${SCRIPT_DIR}/v11-preflight.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 worker identity is platform-managed with minimum per-run permissions" \
+check "080 per-run isolation invariants hold over the platform manifests (watch label, exact targeting, no repo-as-source, retirement)" \
+  "python3 '${SCRIPT_DIR}/assert-run-isolation.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 worker identity is platform-managed and does not inherit DWO default-role verbs" \
   "python3 '${SCRIPT_DIR}/assert-worker-permissions.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
-check "080 worker kubeconfig replacement refuses leftover credentials" \
+check "080 worker kubeconfig is replaced with the current pod identity and refuses leftover credentials" \
   "python3 '${SCRIPT_DIR}/bind-pod-kubeconfig.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 MaaS route changes are guarded and require a stopped workspace" \
   "python3 '${REPO_ROOT}/scripts/patch-workspace-maas-route.test.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 per-run isolation invariants hold over the platform manifests (watch label, exact targeting, no repo-as-source, retirement)" \
-  "python3 '${SCRIPT_DIR}/assert-run-isolation.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
 check "080 trusted platform code renders a run's resources, not the destination repository" \
   "test -f '${PIPELINES_BUILD}/task-provision-migration-run.yaml' && test -f '${PIPELINES_BUILD}/pipeline-provision-migration-run.yaml' && ! test -e '${APP_MIGRATION_TMPL}/skeleton/k8s-run' && ! test -e '${PIPELINES_BUILD}/appproject-migration-run.yaml' && echo 1 || echo 0" \
@@ -1134,7 +1150,7 @@ check "080 bootstrap carries legacy-resolved versions for dependencies the pinne
   "grep -c -E 'VERSION_UNMANAGED|BOM_PROBE_MISSING|pom.pin-legacy-version' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' | awk '{print (\$1>=3)?1:0}'" \
   "1"
 check "080 warm-ups run the measured Maven goals online once (go-offline alone leaves compile/test artifacts unfetched)" \
-  "grep -q -F -- '-Dmaven.test.failure.ignore=true test' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' && grep -q -F 'dependency:go-offline && mvn -q -B compile' '${SCAFFOLD_SKILLS}/analysis/capture-build-evidence/scripts/capture-build-evidence.sh' && echo 1 || echo 0" \
+  "grep -q -F -- '-Dmaven.test.failure.ignore=true test' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' && grep -q -F 'dependency:go-offline && mvn -q -B compile' '${SCAFFOLD_SKILLS}/analysis/capture-build-evidence/scripts/capture-build-evidence.sh' && grep -q -F '&& mvn -q -B dependency:build-classpath' '${SCAFFOLD_SKILLS}/analysis/capture-build-evidence/scripts/capture-build-evidence.sh' && echo 1 || echo 0" \
   "1"
 check "080 run-verify.sh warms the destination up online once, then measures offline, and records the warm-up outcome" \
   "grep -c -E 'dependency:go-offline|\"warmup\": \{\"ran\"' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
@@ -1168,6 +1184,9 @@ check "080 capture-source-oracles selftest passes" \
   "1"
 check "080 K4 producer-skill bar selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_producers.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 mode-aware M4 parity selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/lib/m4_parity.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 compose-m4-verdict selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/gates/compose-m4-verdict/scripts/compose-m4-verdict.test.py' >/dev/null && echo 1 || echo 0" \

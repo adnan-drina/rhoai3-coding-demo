@@ -4,9 +4,11 @@ description: >
   Pin only this on every M3 loop card (K4 stamps it). Index for one step
   of the fix-until-green loop: view the loop procedure, read the brief,
   patch the write set one item at a time, run the real tools, run the
-  acceptance transaction, complete on its verdict. No reviewer seat: the
-  transaction is the audit (K2 lets the implementer complete once the loop
-  record names the card). Never for M1, M2, M4, or story implementation.
+  acceptance transaction, complete on its verdict. No reviewer seat on a
+  serial-loop run: the transaction is the audit (K2 lets the implementer
+  complete once the loop record names the card). On an outcome-board/v2 run
+  the accepted outcome goes to review (section below). Never for M1, M2,
+  M4, or story implementation.
 license: Apache-2.0
 compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+
 metadata:
@@ -125,14 +127,19 @@ rule to `kanban_complete`.
    `REVERTED` even when the measure fell.
 6. Terminator: **`kanban_complete`** after ACCEPTED or REVERTED (K2 allows
    it because the loop record names this card and steps 1, 2, 4, 5 are in
-   this log). `kanban_block` kind=needs_input naming the cluster after
-   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*` (K2 allows that
-   block even when run-verify and advance did not run). `CONTINUE` is not a
+   this log). After VERIFICATION_PENDING: nothing -- `advance.py` raised the
+   run's stop request, and the runtime blocks the card (needs_input) and
+   ends the run; only when `advance.py` printed `Terminator: kanban_block`
+   (no stop-request variable) is `kanban_block` the terminator.
+   `kanban_block` kind=needs_input naming the cluster after DEFERRED or a
+   `REFUSE: LOOP_*` (K2 allows that block even when run-verify and advance
+   did not run). `CONTINUE` is not a
    verdict: neither complete nor block. Never `kanban_request_review` on a loop
    card; never retry inside this card after REVERTED (the retry is the next K4 card).
    After VERIFICATION_PENDING, restore with `restore-pending.py` when the
-   prerequisite changes, then run acceptance verify and advance on **this**
-   card — do not mint a new attempt.
+   prerequisite changes (the Operator's unblock starts a new run; K2 allows
+   the restore whenever this card has a pending record), then run acceptance
+   verify and advance on **this** card — do not mint a new attempt.
 
 ## Evidence, stop, reads (every loop card)
 
@@ -162,6 +169,100 @@ The card body names one per cluster kind: `spring-to-quarkus-patterns`
 for compile / incident / test items (its `references/*.md` are cited per
 symbol in the brief), `configure-quarkus-profiles` for config items. They
 are references, not checklists: the brief's items are the work.
+
+## Outcome-board runs (new protocol, disabled by default)
+
+Only when the run declares `outcome-board/v1` (see `.hermes/LAYOUT.md`). The
+card is an OUTCOME, not one attempt: it stays open across rejected and pending
+attempts, and it completes only when the outcome is accepted.
+
+1. First call: `python3 .hermes/kernel/outcome_gate.py --root . issue`. It
+   binds this native run and writes `verification/loop/issued.json` for the
+   ONE cluster you may edit now. The printed `allowed_paths` is your write
+   set. No issue means no product write (K2 refuses).
+2. Then the same road: brief → patch → run-verify → advance. advance.py
+   records the verdict on the outcome ledger. REVERTED or CONTINUE means
+   read the brief again on this card, because the next attempt is re-issued
+   here and no new card is minted. `OUTCOME ACCEPTED` means
+   `kanban_complete`. `OUTCOME_BUDGET_EXHAUSTED` or VERIFICATION_PENDING
+   means `kanban_block kind=needs_input`.
+3. After a restart (a new native run), run `issue` again. A retained
+   candidate is reported. `outcome_gate.py --root . restore-pending` adopts
+   it and never renews the budget.
+4. `OWNER_RECOVERY` (or `OWNER_REPAIR_PENDING`) from advance.py or `issue`:
+   the runtime failure was proven on the baseline and belongs to an accepted
+   outcome. The authority holds your candidate (no attempt spent) and
+   publishes ONE repair of that outcome as this card's prerequisite. The only
+   terminator is `kanban_block kind=dependency` (K2 refuses `kanban_complete`
+   naming it). When the repair is accepted this card is dispatched again:
+   run `issue`, then `outcome_gate.py --root . restore-held` to put the held
+   candidate back, then run-verify and advance as usual (it is re-verified
+   on the repaired baseline, never carried over).
+5. A planned unit (`cluster` `planned:<outcome>:1`, no finding cluster) is
+   issued like a cluster: its `allowed_paths` are the plan's bounded unit.
+
+`kanban_request_review` is refused on an outcome card: its acceptance is
+the recorded measurement.
+
+## outcome-board/v2 runs (native control)
+
+When the card body names "outcome-board/v2" the card is one
+native task per outcome. Hermes Kanban owns its runs, dependencies and
+review; the domain checks guard your native actions.
+
+1. First call on every run: `python3 .hermes/kernel/native_gate.py --root . issue`.
+   It checks this native run, writes `verification/loop/issued.json` for the
+   ONE scope you may edit now and records the issue on the card. Its
+   `allowed_paths` is your write set. No issue means no product write.
+   Read its `next` field first:
+   - `SATISFIED: …` — another outcome's accepted commit already discharged
+     everything this card owns; the acceptance is recorded. Run `handoff`,
+     then `kanban_request_review` reviewer=reviewer (item 3). Do not run
+     brief.py or advance.py: there is nothing to edit.
+   - `NOTHING ISSUED: …` — no scope and not satisfied: `kanban_block
+     kind=needs_input` naming the reasons it lists. Do not search for work.
+2. The same road: brief, patch, run-verify, advance. A REVERTED attempt stays
+   on this card: advance re-issues the scope (`CONTINUE THIS CARD`), read the
+   brief again.
+   **A compatibility objective** (`cluster` is `objective:<outcome>`): the scope is
+   the whole objective, issued once. The brief's `objective` block lists every
+   constituent's action in order, the checks judged now (`checks_now`) and those
+   left to M4 (`checks_later`). Make ONE candidate that repairs every constituent:
+   the same replacement at each of its sites, or the whole request boundary
+   (validation guard, URI parameter, error payload). Do not split it across runs.
+   advance judges each constituent against its own sealed inventory. A partial
+   repair fails with the unrepaired constituent named, and a later check is
+   never yours on this card.
+3. `OUTCOME ACCEPTED`: run `python3 .hermes/kernel/native_gate.py --root . handoff`
+   and end the run with `kanban_request_review` reviewer=reviewer, passing its
+   `summary` and `metadata` (commit, tree, measurement, attempts, budget,
+   limitations). Add one sentence on what changed if it helps the reviewer.
+   Never `kanban_complete` (K2 refuses it for the implementer). The reviewer
+   runs this road's audit and completes the card, or requests changes: then
+   this card is dispatched to you again, and `issue` grants the paths your
+   accepted commits changed (`rework:<outcome>:<run>`).
+4. `OUTCOME_BUDGET_EXHAUSTED` (rejected attempts plus change requests of this
+   outcome's family): `kanban_block kind=needs_input` naming the outcome.
+   VERIFICATION_PENDING: `kanban_block kind=needs_input`; after a restart,
+   `native_gate.py --root . restore-pending` adopts the retained candidate.
+5. `OUTCOME NOT YET ACCEPTED`: the commit is recorded; the message names each
+   reason (an open obligation, a check with its measured detail, a missing
+   measurement). Work on the reissued scope of this card; a runtime check
+   (`parity:*`, package/startup) is never yours on a build, config or source
+   card — those gate M4.
+6. Never leave uncommitted product edits behind: before `kanban_block`, run
+   `python3 .hermes/kernel/native_gate.py --root . park` (it holds your candidate
+   on this card and restores HEAD; K2 refuses the block otherwise). When the card
+   resumes, `issue` reports `parked_candidate` and
+   `native_gate.py --root . restore-parked` puts it back for re-verification.
+7. `REPEATED_REFUSAL`: the same refusal three times in this run. Your candidate
+   is parked for you; the only legal next step is `kanban_block kind=needs_input`
+   naming the refusal (K2 refuses every other tool). Do not retry it.
+8. `OWNER_RECOVERY` / `OWNER_REPAIR_PENDING`: the runtime failure belongs to an
+   accepted outcome. Your candidate is held on this card and one repair is now
+   this card's prerequisite. End the run with `kanban_block kind=dependency`.
+   When the repair is done the dispatcher runs this card again: `issue`, then
+   `native_gate.py --root . restore-held`, then run-verify and advance.
 
 ## Operator
 

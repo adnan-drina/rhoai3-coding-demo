@@ -281,6 +281,9 @@ def check(doc: dict[str, Any], root: Path) -> list[str]:
         )
     if token == "ACCEPT":
         issues.append("M4_VERDICT_SCHEMA M4 must not emit ACCEPT")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+    from m4_parity import verdict_issues
+    issues.extend(verdict_issues(doc, root))
     return issues
 
 

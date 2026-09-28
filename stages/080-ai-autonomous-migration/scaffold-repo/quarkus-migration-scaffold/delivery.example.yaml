@@ -1,0 +1,23 @@
+# Delivery contract — application values, not harness defaults.
+#
+# Copy to delivery.yaml at the destination root and fill from this project's
+# OpenAPI, decisions.yaml security section, pipeline namespace, and the
+# effective HTTP configuration (quarkus.http.root-path,
+# quarkus.http.non-application-root-path, quarkus.swagger-ui.path /
+# quarkus.smallrye-openapi.path, measured live contract). Leave a field
+# empty until that value is known. Do not assume /api, /q/health,
+# /q/swagger-ui, or /q/openapi. The M5 scripts read these fields; they
+# do not invent PetClinic (or any other specimen) paths.
+delivery:
+  namespace: ""          # OpenShift project that runs app-push (usually <repo>-dev)
+  repo: ""               # Deployment/Service/Route name
+  swagger_path: ""       # derive; unresolved until measured
+  openapi_path: ""       # derive; unresolved until measured
+  reads: []              # [{id, method, path}, ...]
+  crud: {}               # {create: {method, path, body}, ...}; required for M5 VALIDATE
+  auth:
+    mode: ""             # disabled | enabled; must match decisions.yaml
+    header_from_env: ""  # name of the env var that holds the credential reference
+  cors:
+    origin: ""
+    expect_grant: false

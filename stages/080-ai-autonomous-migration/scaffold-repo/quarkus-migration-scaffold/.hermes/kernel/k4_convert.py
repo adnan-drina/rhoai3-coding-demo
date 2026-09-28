@@ -27,14 +27,14 @@ for p in (_KERNEL, _LIB):
 
 from k1_validate import validate_body  # noqa: E402
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
-from k4_schema import CLOSE_ID, IMPL, REMEDY  # noqa: E402
+from k4_schema import CLOSE_ID, IMPL, LOOP_MAX_RETRIES, REMEDY  # noqa: E402
 from planner.admission import artifact_digests_on_disk, verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file  # noqa: E402
 from planner.cards import idempotency_key, next_card, parse_body, pending_cluster_ids, render_body  # noqa: E402
 from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
 from planner.pins import activation_gaps, load_pins, pin_gaps  # noqa: E402
-from planner.worklist import gate_items  # noqa: E402
+from planner.worklist import gate_items, seal_issued_parity_scope  # noqa: E402
 from planner.budget import budget as loop_budget  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 
@@ -188,6 +188,28 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
     return body
 
 
+def _target_ref(t: Any) -> Any:
+    """A target row as the card carries it: its identity and the catalogue row
+    that documents it. The action text, the handler sites and the handlers a
+    rename is not for stay in the sealed batch-scope document and the brief
+    (V16-1/V16-5 rows are prose-sized; K1 refuses a body that inlines them)."""
+    if not isinstance(t, dict):
+        return t
+    row = {k: t[k] for k in ("from", "to") if k in t}
+    cat = t.get("catalog_row") if isinstance(t.get("catalog_row"), dict) else {}
+    row["catalog_row"] = {k: cat[k] for k in ("catalog", "block", "key", "kind") if k in cat}
+    for flag in ("retire", "handler_parameter", "helper_parameter"):
+        if t.get(flag):
+            row[flag] = True
+    if t.get("via_package"):
+        row["via_package"] = str(t["via_package"])
+    if t.get("sites"):
+        row["sites"] = len(t["sites"])
+    if t.get("not_for"):
+        row["not_for"] = len(t["not_for"])
+    return row
+
+
 def _unit_block(card: dict[str, Any]) -> dict[str, Any]:
     """The additive `unit` block, and only for a cluster the former made.
 
@@ -204,7 +226,7 @@ def _unit_block(card: dict[str, Any]) -> dict[str, Any]:
         "rule": str(unit.get("rule") or ""),
         "family_key": str(unit.get("family_key") or ""),
         "symbols": list(unit.get("symbols") or [])[:UNIT_BODY_SYMBOLS],
-        "target_symbols": list(unit.get("target_symbols") or [])[:UNIT_BODY_SYMBOLS],
+        "target_symbols": [_target_ref(t) for t in list(unit.get("target_symbols") or [])[:UNIT_BODY_SYMBOLS]],
         "evidence": list(unit.get("evidence") or [])[:UNIT_BODY_EVIDENCE],
         "size": dict(unit.get("size") or {}),
         "completion": [str(c) for c in (unit.get("completion") or [])],
@@ -223,7 +245,7 @@ def _payload(card: dict[str, Any], body: dict[str, Any], receipt_digest: str, pa
         "body": render_body(body),
         "idempotency_key": idempotency_key(card["id"], card["attempt"], receipt_digest),
         "attempt": card["attempt"],
-        "max_retries": 1,
+        "max_retries": LOOP_MAX_RETRIES,
     }
 
 
@@ -240,7 +262,7 @@ def validate_result(result: Any) -> list[Issue]:
             continue
         if p.get("assignee") != IMPL:
             out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (p.get("logical_id"), p.get("assignee"))))
-        if p.get("max_retries") != 1:
+        if p.get("max_retries") != LOOP_MAX_RETRIES:
             out.append(_issue("K4_MINT_RETRIES", "%s max_retries %s" % (p.get("logical_id"), p.get("max_retries"))))
         if p.get("kind") != "close" and not (parse_body(p["body"]).get("files_writable") or []):
             out.append(_issue("K4_SCOPE", "%s has an empty write set" % p.get("logical_id")))
@@ -308,42 +330,69 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
         return None, issues
     if write_root:
         write_bodies(root, result["payloads"])
-        # the issued card: advance.py promotes a candidate only for this cluster/attempt/key
-        issued_path = root / LOOP_ISSUED
-        prev = load_json(issued_path) if issued_path.is_file() else {}
-        write_canonical(issued_path, {
-            "schema": "rhoai3.loop-issued/v1",
-            "cluster": card["id"],
-            "kind": card["kind"],
-            "attempt": card["attempt"],
-            "idempotency_key": payload["idempotency_key"],
-            "receipt_sha256": receipt["receipt_digest"],
-            "write_set": list(card["write_set"]),
-            "gate": str(card.get("gate") or ""),
-            "items": list(card.get("items") or []),
-            # what the gate held when this card was issued: acceptance compares
-            # against that, not against the last accepted step (a gate can
-            # start failing long after the last acceptance)
-            "gate_items": sorted(gate_items(worklist, str(card.get("gate") or ""))) if card.get("gate") else [],
-            # the sealed scope inventory this card is judged against; acceptance
-            # re-reads it from disk and refuses a digest that is not this one
-            "batch_scope": dict(card.get("batch_scope") or {}),
-            # the formed unit and its SYMBOL seal, beside the file seal: which
-            # diagnostics the checkpoint may tolerate, what assess_unit must
-            # find discharged, what a CONTINUE may move to
-            "unit": dict(card.get("unit") or {}),
-            "unit_symbols": list((card.get("unit") or {}).get("symbols") or []),
-            "retry_key": str(card.get("retry_key") or card["id"]),
-            # the one budget answer (planner.budget), recorded where the card is issued
-            "budget": loop_budget(load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}, card["id"],
-                                  str(card.get("retry_key") or card["id"]), max_attempts(load_decisions(root))),
-            # each issued compile failure's identity WITHOUT its line: acceptance
-            # asks whether THIS is still reported, not whether its err: id is
-            "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
-                                if str(i.get("id")) in set(card.get("items") or []) and i.get("identity")},
-            "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
-        })
+        write_issued(root, worklist, card, receipt["receipt_digest"], payload["idempotency_key"])
     return result, []
+
+
+def write_issued(root: Path, worklist: dict[str, Any], card: dict[str, Any], receipt_digest: str,
+                 idempotency_key: str, task_id: str | None = None) -> None:
+    """verification/loop/issued.json for one cluster card. The serial loop
+    writes it at mint (task_id bound later by k4_mint); an outcome-board issue
+    writes it for the cluster the authority issued, with its own key and the
+    claimed task (outcome_gate.py issue). Same record, same readers."""
+    root = Path(root)
+    # the issued card: advance.py promotes a candidate only for this cluster/attempt/key
+    issued_path = root / LOOP_ISSUED
+    prev = load_json(issued_path) if issued_path.is_file() else {}
+    issued_ids = set(card.get("items") or [])
+    scope = seal_issued_parity_scope(worklist, issued_ids)
+    issued_mode = str(scope.get("security_mode") or "")
+    if not issued_mode:
+        # a non-parity card has no mode of its own; a parity card whose
+        # items were already gone at mint must not invent disabled --
+        # verification pending rather than a silent fallback
+        issued_mode = "" if str(card.get("gate") or "") == "parity" else "disabled"
+    write_canonical(issued_path, {
+        "schema": "rhoai3.loop-issued/v1",
+        "cluster": card["id"],
+        "kind": card["kind"],
+        "attempt": card["attempt"],
+        "idempotency_key": idempotency_key,
+        "receipt_sha256": receipt_digest,
+        "write_set": list(card["write_set"]),
+        "gate": str(card.get("gate") or ""),
+        "items": list(card.get("items") or []),
+        # what the gate held when this card was issued: acceptance compares
+        # against that, not against the last accepted step (a gate can
+        # start failing long after the last acceptance)
+        "gate_items": sorted(gate_items(worklist, str(card.get("gate") or ""))) if card.get("gate") else [],
+        # the sealed scope inventory this card is judged against; acceptance
+        # re-reads it from disk and refuses a digest that is not this one
+        "batch_scope": dict(card.get("batch_scope") or {}),
+        # the formed unit and its SYMBOL seal, beside the file seal: which
+        # diagnostics the checkpoint may tolerate, what assess_unit must
+        # find discharged, what a CONTINUE may move to
+        "unit": dict(card.get("unit") or {}),
+        "unit_symbols": list((card.get("unit") or {}).get("symbols") or []),
+        "retry_key": str(card.get("retry_key") or card["id"]),
+        # the one budget answer (planner.budget), recorded where the card is issued
+        "budget": loop_budget(load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}, card["id"],
+                              str(card.get("retry_key") or card["id"]), max_attempts(load_decisions(root))),
+        # each issued compile failure's identity WITHOUT its line: acceptance
+        # asks whether THIS is still reported, not whether its err: id is
+        "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
+                            if str(i.get("id")) in issued_ids and i.get("identity")},
+        "security_mode": issued_mode,
+        # sealed at mint so a later work-list rebuild that dropped the
+        # item cannot change what this card verifies. item_scope is the
+        # per-item snapshot verification recovers; the live work list is
+        # remaining-work only and is not consulted at verify time.
+        "scenarios": list(scope.get("scenarios") or []),
+        "entry_points": list(scope.get("entry_points") or []),
+        "item_scope": list(scope.get("item_scope") or []),
+        "task_id": (task_id if task_id is not None else
+                    (str(prev.get("task_id") or "") if prev.get("idempotency_key") == idempotency_key else "")),
+    })
 
 
 def format_issues(issues: list[Issue]) -> str:

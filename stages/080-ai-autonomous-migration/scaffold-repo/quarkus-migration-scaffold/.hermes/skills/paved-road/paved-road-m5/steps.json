@@ -1,0 +1,55 @@
+{
+  "kind": "m5-delivery",
+  "artifact": "m5-verdict",
+  "steps": [
+    {
+      "id": "start-m5-delivery",
+      "backing": "native",
+      "native": "start-m5-delivery.py",
+      "keep": ["verification/delivery/start.json", "verification/delivery/eligibility.json"],
+      "note": "Assisted continuation after M4 close. Eligibility-checked mint of M5 PREFLIGHT, M5 DEPLOY, and M5 VALIDATE with receipt-bound idempotency keys. Repeated invocation reuses existing cards. The M4 worker never dest-dispatches this."
+    },
+    {
+      "id": "prepare-release-candidate",
+      "backing": "native",
+      "native": "prepare-release-candidate.py",
+      "keep": ["verification/delivery/candidate.json"],
+      "note": "Bind the closed M4 card, current git HEAD, retained M4 evidence. Record outstanding qualifications from the existing release contract. Empty worklist is not full eligibility."
+    },
+    {
+      "id": "observe-app-push",
+      "backing": "native",
+      "native": "observe-app-push.py",
+      "keep": ["verification/delivery/pipeline.json"],
+      "note": "Observe the app-push PipelineRun for this exact revision. Do not start a duplicate. A commit-named tag is not an image digest."
+    },
+    {
+      "id": "assert-deployed-app",
+      "backing": "native",
+      "native": "assert-deployed-app.py",
+      "keep": ["verification/delivery/deployment.json"],
+      "note": "Require a present ready Deployment, Service endpoints, and HTTPS Route. deploy-app can succeed with no Deployment."
+    },
+    {
+      "id": "live-acceptance",
+      "backing": "native",
+      "native": "live-acceptance.py",
+      "keep": ["verification/delivery/live.json"],
+      "note": "Exercise the deployed Route: Swagger/OpenAPI, representative reads, disposable CRUD, auth/CORS as configured. Localhost is not acceptance."
+    },
+    {
+      "id": "compose-m5-verdict",
+      "backing": "native",
+      "native": "compose-m5-verdict.py",
+      "producer": true,
+      "keep": ["evidence/verdicts/m5-verdict.json"],
+      "note": "Compose deployment status separately from release acceptance. Outstanding qualifications remain. Checkers never author this file."
+    },
+    {
+      "id": "check-release-readiness",
+      "backing": "skill",
+      "skill": "check-release-readiness",
+      "note": "Lint the M5 verdict against the existing routing contract. A reachable app does not become ACCEPT when qualifications remain."
+    }
+  ]
+}

@@ -8,7 +8,18 @@ boundary (never a parent directory).
 
 Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails: a
 later clean invocation of the *same* needle clears an earlier red
-(SOUL self-correction). Last-wins across different needles stays refused.
+(SOUL self-correction). "Clean" is POSITIVE evidence (V17-6b): in the
+execution ledger (``<task>.exec.jsonl``) every terminal INVOCATION has a
+``start`` row (K2 pre hook, before the call runs) and, when it finishes, an
+``end`` row (post_tool_call observer) with the same task, run and
+tool_call_id. A mandated command passes only when its LATEST invocation has a
+recorded completion with exit 0 and the ledger records at least as many
+invocations as the official log shows; a lost, interrupted, refused or
+unrecorded latest invocation is unknown, never an older success. The runtime omits ``[exit N]``
+whenever a result is not JSON with a non-zero exit_code, so an unmarked log
+line alone is unknown, never success. Every audit writes its receipt
+``<task>.audit.json`` (run, profile, graded log/ledger prefixes; ``running``
+first, so an interrupted or failed audit never leaves an old success). Last-wins across different needles stays refused.
 A run of a mandated step is a ``$`` line whose EXECUTABLE is the step's
 script (``run_executables``); a ``grep``/``cat``/``sed`` that names the
 script is a read, not a run, and its exit code is not the step's.
@@ -24,6 +35,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -56,6 +68,8 @@ M4_ORACLES = "capture-source-oracles"
 M4_RUNNER = "run-m4-pre-verdict.sh"
 M4_PRODUCER = "compose-m4-verdict"
 M4_LINT = "check-release-readiness"
+M5_START = "start-m5-delivery.py"
+M5_PRODUCER = "compose-m5-verdict.py"
 M3_ORDER = ("brief.py", "run-verify.sh", "advance.py")
 M3_PRODUCER_NATIVE = "advance.py"
 LOOP_STEPS_REL = "verification/loop/steps.json"
@@ -248,6 +262,24 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
             errors.append("%s: the pre-verdict runner must precede %s (the verdict is composed from measured exits)" % (loc, M4_PRODUCER))
         if idx.get(M4_LINT, 0) < idx.get(M4_PRODUCER, 99):
             errors.append("%s: %s lints the verdict and must follow %s" % (loc, M4_LINT, M4_PRODUCER))
+    if kind == "m5-delivery":
+        prod = next((s for s in steps if isinstance(s, dict) and s.get("producer") is True), None)
+        if prod is not None and prod.get("native") != M5_PRODUCER:
+            errors.append("%s: m5-delivery producer must be native %s (checkers never author the verdict)" % (loc, M5_PRODUCER))
+        natives = [str(s.get("native")) for s in steps if isinstance(s, dict) and s.get("backing") == "native"]
+        for name in (M5_START, "prepare-release-candidate.py", "observe-app-push.py", "assert-deployed-app.py", "live-acceptance.py", M5_PRODUCER):
+            if name not in natives:
+                errors.append("%s: m5-delivery must include native %s" % (loc, name))
+        if natives and natives[0] != M5_START:
+            errors.append("%s: m5-delivery must start with %s (eligibility-checked mint; M4 never dest-dispatches this)" % (loc, M5_START))
+        idx = {}
+        for i, s in enumerate(steps):
+            if not isinstance(s, dict):
+                continue
+            name = str(s.get("skill") or s.get("native") or "")
+            idx.setdefault(name, i)
+        if idx.get(M4_LINT, 0) < idx.get(M5_PRODUCER, 99):
+            errors.append("%s: %s lints the M5 verdict and must follow %s" % (loc, M4_LINT, M5_PRODUCER))
     if kind == "m3-loop":
         first = steps[0] if isinstance(steps[0], dict) else {}
         if first.get("backing") != "skill" or first.get("skill") != M3_SKILL:
@@ -517,7 +549,67 @@ def loop_verdict_for(root: Path, task_id: str) -> str:
     return ""
 
 
-def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
+def phase_card_gaps(root: Path, task_id: str, phase: str, parent: str = "") -> list[str]:
+    """Read the native task, including edges beside task in Hermes show JSON."""
+    from planner.live_board import enrich_card, _card_parents
+    try:
+        result = subprocess.run(["hermes", "kanban", "show", task_id, "--json"],
+                                capture_output=True, text=True, timeout=30, check=True)
+        card = enrich_card({}, json.loads(result.stdout))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ["PHASE_HANDOFF: cannot read native %s task %s" % (phase, task_id)]
+    expected = {"id": task_id, "title": phase, "workspace_kind": "dir"}
+    gaps = ["PHASE_HANDOFF: %s %s mismatch" % (task_id, key)
+            for key, value in expected.items() if card.get(key) != value]
+    workspace = card.get("workspace_path")
+    if (not isinstance(workspace, str) or not Path(workspace).is_absolute()
+            or Path(workspace).resolve() != root.resolve()):
+        gaps.append("PHASE_HANDOFF: %s workspace_path mismatch" % task_id)
+    if parent and _card_parents(card) != [parent]:
+        gaps.append("PHASE_HANDOFF: %s must depend on %s" % (task_id, parent))
+    return gaps
+
+
+def m1_handoff_gaps(root: Path, task_id: str) -> list[str]:
+    """Exit zero from a skipped launcher is not an M1 handoff."""
+    try:
+        status = load_json(root / ".hermes" / "AUTOSTART-STATUS")
+        # the run's activation as every other gate reads it: from the
+        # platform's run control for a governed run (v13+), else pins.json
+        from planner.pins import load_pins
+        pins = load_pins(root)
+        mode = (pins.get("planner") or {}).get("activation", "not-activated")
+        if (not task_id or status.get("state") != "minted"
+                or status.get("m1_id") != task_id or status.get("after_m1") != task_id):
+            return ["PHASE_HANDOFF: M1 continuation missing, skipped or bound to another task"]
+        if mode not in ("activated", "pilot"):
+            if status.get("m2_id") or status.get("planner_activation") != "not-activated":
+                return ["PHASE_HANDOFF: M2 recorded without planner activation"]
+            return []  # An explicitly inactive planner still allows analysis-only M1.
+        from planner.canonical import digest
+        from planner.pins import activation_gaps
+        bundle = load_json(root / "evidence/planning/evidence-bundle.json")
+        gaps = activation_gaps(pins, digest(bundle))
+        if gaps:
+            return ["PHASE_HANDOFF: " + str(gap) for gap in gaps]
+        child = status.get("m2_id")
+        if not child or status.get("planner_activation") != mode:
+            return ["PHASE_HANDOFF: activated M1 has no M2 child"]
+        return phase_card_gaps(root, str(child), "M2 PLAN", task_id)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return ["PHASE_HANDOFF: unreadable continuation status or activation evidence"]
+
+
+def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict[str, Any]] | None = None) -> int:
+    """Grade the official log + KEEP against steps.json.
+
+    ``ledger`` is the execution ledger (``<task>.exec.jsonl``, written by the
+    K2 post_tool_call observer): the positive evidence of what a terminal
+    command exited with. V17-6b: the runtime stamps ``[exit N]`` only when a
+    terminal result parses as JSON with a non-zero exit_code, so an unmarked
+    log line is UNKNOWN; a mandated command passes only on a recorded
+    exit_code 0 for its last execution. None (no ledger) grades every
+    mandated command as unknown."""
     failures: list[str] = []
     task_id = log_task_id(text)
     for step in doc["steps"]:
@@ -563,14 +655,40 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
             failures.append("unmatched [exit 1] on mandated needle %r (step %s, count=%d)" % (needle, sid, len(reds)))
             continue
         last_rc = runs[-1][1]
-        # Hermes stamps ``[exit N]`` on failure and omits the marker on success.
         if last_rc not in (0, None):
             failures.append("last matching line for needle %r is not success (step %s rc=%s)" % (needle, sid, last_rc))
+            continue
+        # V17-6b: an unmarked line is not a success; the last recorded
+        # execution of this command must have exited 0
+        executed = executions_of(ledger, needle)
+        if not executed:
+            failures.append("no positive execution evidence for step %s needle %r: the official log shows %d invocation(s) "
+                            "and the execution ledger records none (an unmarked line is unknown, not success)"
+                            % (sid, needle, len(runs)))
+            continue
+        if len(executed) < len(runs):
+            # the log shows more invocations than the ledger recorded: the
+            # latest one may be the unrecorded one, so no recorded success
+            # stands for it (a preview can hide a run, never invent one)
+            failures.append("step %s needle %r: the official log shows %d invocation(s) and the execution ledger %d; the "
+                            "latest invocation has no recorded result (unknown, not success)" % (sid, needle, len(runs), len(executed)))
+            continue
+        latest = executed[-1]
+        last_exit = (latest["end"] or {}).get("exit_code") if latest["end"] else None
+        if latest["end"] is None:
+            failures.append("the latest invocation of needle %r (step %s, run %s) has no recorded completion: lost, "
+                            "interrupted or refused -- unknown, not success" % (needle, sid, latest["start"].get("run") or "?"))
+            continue
+        if last_exit != 0:
+            failures.append("the latest invocation of needle %r did not exit 0 (step %s exit_code=%s)"
+                            % (needle, sid, "unknown" if last_exit is None else last_exit))
             continue
         missing = keep_missing(root, keep)
         if missing:
             failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
 
+    if doc.get("kind") == "m1-analyze":
+        failures.extend(m1_handoff_gaps(root, task_id))
     if failures:
         return _fail("; ".join(failures))
 
@@ -579,7 +697,129 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
     return 0
 
 
+EXEC_LEDGER_SUFFIX = ".exec.jsonl"
+AUDIT_RECEIPT_SUFFIX = ".audit.json"
+
+
+def exec_ledger_path(log: Path) -> Path:
+    """<logs>/<task>.exec.jsonl beside <logs>/<task>.log (fixtures: official.exec.jsonl)."""
+    return log.with_name(log.stem + EXEC_LEDGER_SUFFIX)
+
+
+def load_exec_ledger(log: Path) -> list[dict[str, Any]] | None:
+    """The execution ledger rows, in order; None when there is no ledger. A
+    malformed row is kept as an execution of nothing (it cannot vouch)."""
+    p = exec_ledger_path(log)
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    rows: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            row = None
+        rows.append(row if isinstance(row, dict) else {"malformed": True})
+    return rows
+
+
+def executions_of(ledger: list[dict[str, Any]] | None, needle: str) -> list[dict[str, Any]]:
+    """The INVOCATIONS of ``needle``, in order, each with its completion:
+    ``{"start": row, "end": row | None}``. An invocation is a ``start`` row
+    (the K2 pre hook, before the call runs) whose command RUNS ``needle`` (a
+    grep/cat naming the script is a read, not a run); its completion is the
+    ``end`` row (the post_tool_call observer) with the same task, run and
+    tool_call_id. A start with no id, or no matching end, has no completion:
+    its result is unknown (lost observer, interrupted or refused call)."""
+    ends: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in ledger or []:
+        if row.get("phase") == "end" and row.get("tool_call_id"):
+            ends[(str(row.get("task") or ""), str(row.get("run") or ""), str(row["tool_call_id"]))] = row
+    out = []
+    for row in ledger or []:
+        if row.get("phase") != "start":
+            continue
+        cmd = str(row.get("command") or "")
+        if not cmd or "--help" in cmd or not is_run_of(cmd, needle):
+            continue
+        cid = str(row.get("tool_call_id") or "")
+        end = ends.get((str(row.get("task") or ""), str(row.get("run") or ""), cid)) if cid else None
+        out.append({"start": row, "end": end})
+    return out
+
+
+def audit_receipt_path(log: Path) -> Path:
+    """<logs>/<task>.audit.json beside <logs>/<task>.log."""
+    return log.with_name(log.stem + AUDIT_RECEIPT_SUFFIX)
+
+
+def _sha256_prefix(path: Path) -> tuple[int, str]:
+    import hashlib
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return 0, ""
+    return len(data), hashlib.sha256(data).hexdigest()
+
+
+def write_audit_receipt(log: Path, rc: int | None, *, steps_path: Path | None = None, root: Path | None = None) -> None:
+    """V17-6: the audit's own result, bound to the native run and profile that
+    ran it AND to the inputs it read (the official log and execution ledger
+    prefixes it graded, the steps file, the root). ``rc`` None is the
+    in-progress/invalidated state written BEFORE anything is read, so an
+    audit that is interrupted, or fails on a missing, unreadable or
+    malformed input, can never leave an earlier success standing. K2's
+    reviewer fence and complete gate read this receipt, never an absent
+    marker. Official logs only: a land-time fixture gets no receipt."""
+    if not _OFFICIAL_KANBAN_LOG.search(str(log).replace("\\", "/")):
+        return
+    log_bytes, log_sha = _sha256_prefix(log)
+    ledger_bytes, ledger_sha = _sha256_prefix(exec_ledger_path(log))
+    doc = {
+        "schema": "rhoai3.paved-road-audit-receipt/v2",
+        "task": log.stem,
+        "rc": None if rc is None else int(rc),
+        "state": "running" if rc is None else "done",
+        "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(),
+        "profile": (os.environ.get("HERMES_PROFILE") or "").strip().lower(),
+        "log": {"bytes": log_bytes, "sha256": log_sha},
+        "ledger": {"bytes": ledger_bytes, "sha256": ledger_sha},
+        "steps_sha256": _sha256_prefix(steps_path)[1] if steps_path else "",
+        "root": str(root.resolve()) if root else "",
+    }
+    target = audit_receipt_path(log)
+    try:
+        tmp = target.with_name(target.name + ".tmp")
+        tmp.write_text(json.dumps(doc, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        # cannot record: remove any earlier receipt so nothing stale stays green
+        try:
+            target.unlink()
+        except OSError:
+            pass
+
+
+def invalidate_audit_receipt(task_id: str | None) -> None:
+    """The audit could not even resolve its log: whatever this task's receipt
+    said before no longer stands."""
+    log = _official_log(task_id)
+    if log is not None:
+        write_audit_receipt(log, 2)
+
+
 def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
+    # invalidate first: an interrupted audit leaves "running", never green
+    write_audit_receipt(log, None, steps_path=steps_path, root=root)
+    rc = _audit_paths(log, root, steps_path)
+    write_audit_receipt(log, rc, steps_path=steps_path, root=root)
+    return rc
+
+
+def _audit_paths(log: Path, root: Path, steps_path: Path) -> int:
     if not is_allowed_audit_log(log):
         return _fail("--log is not an official kanban log (%s); refuse implementer cache/terminal-output" % log)
     if not log.is_file():
@@ -592,7 +832,7 @@ def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
         doc = load_steps(steps_path)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return _fail("steps.json: %s" % exc)
-    return evaluate_audit(text, doc, root)
+    return evaluate_audit(text, doc, root, load_exec_ledger(log))
 
 
 def dest_skill_mds(skills_root: Path) -> list[Path]:
@@ -742,6 +982,7 @@ def _cmd_audit(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     log = resolve_log(args.task_id, args.log)
     if log is None:
+        invalidate_audit_receipt(args.task_id or os.environ.get("HERMES_KANBAN_TASK"))
         print("FAIL: pass a t_* id, $HERMES_KANBAN_TASK, or --log to an existing official kanban log", file=sys.stderr)
         return 2
     return audit_paths(log, args.root, args.steps)

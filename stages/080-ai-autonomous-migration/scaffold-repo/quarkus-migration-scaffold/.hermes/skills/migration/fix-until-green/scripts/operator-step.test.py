@@ -193,6 +193,8 @@ def _beside_pending_case() -> int:
 
 
 def main() -> int:
+    if _takeover_case():
+        return 1
     for name, args, needle in (
         ("no ADR", ("--reviewer", "reviewer"), "names no ADR"),
         ("no reviewer", ("--adr", "ADR-008"), "names no reviewer"),
@@ -261,6 +263,98 @@ def main() -> int:
         return 1
 
     print("OK: operator-step selftest (test-source change refuses without an ADR, without a reviewer, and with the operator as reviewer, before committing; main-source control passes the guard and commits; a deferral that is not open refuses and one whose re-measure failed survives; a metadata-only disposition refuses with a product change or no cluster; a LIVE issued card refuses by name; a step beside a VERIFICATION_PENDING card is recorded with beside_pending, keeps the card, mints nothing, and the retained candidate still restores onto it as the new baseline -- while a stray uncommitted edit, and a commit that touched a path the candidate holds, still refuse the restore)")
+    return 0
+
+
+def _takeover_case() -> int:
+    """An exhausted deferral can close after repair without buying retries.
+
+    Exercise the command against a real fixture repo/admission, including a
+    stale verification and broken admission that must leave history untouched.
+    """
+    sys.path.insert(0, str(GOLDEN / ".hermes/lib"))
+    from planner import specimens, pipeline
+    from planner.canonical import load_json, write_canonical
+    from planner.paths import WORKLIST, MTA_FINDINGS, PARITY_DIR, ADMISSION_RECEIPT
+    from planner.worklist import build_worklist
+    from planner.budget import budget
+    with tempfile.TemporaryDirectory(prefix="resolved-deferral-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        specimens.prepare_loop(root)
+        loop = root / "verification/loop"
+        steps = load_json(loop / "steps.json")
+        steps.update(attempts={"c:exhausted": 6}, rejected=[{"cluster": "c:exhausted", "card": "t_prior"}],
+                     deferral_clearances=[{"cluster": "c:exhausted", "attempts": 3}])
+        steps["steps"][-1].update(verdict="operator", operator="architect:test", changed=[MAIN_SRC])
+        write_canonical(loop / "steps.json", steps)
+        write_canonical(loop / "deferred.json", {"clusters": ["c:exhausted"], "reasons": {"c:exhausted": "6/6"}})
+        findings = load_json(root / MTA_FINDINGS)
+        findings["violations"] = {k: v for k, v in findings["violations"].items() if v.get("category") != "mandatory"}
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        receipt = {"schema": "rhoai3.parity-receipt/v1", "verdict": "PASS", "entry_points": [],
+                   "total": 0, "not_passed": 0, "binding": {"mode": "sealed"}}
+        write_canonical(root / PARITY_DIR / "receipt.json", receipt)
+        p = specimens.verify(root, errors=[], failures=[], findings=findings)
+        if p.returncode:
+            return _fail("takeover fixture verification: " + p.stderr[-400:])
+        build_worklist(root)
+        admission = pipeline.admit(root)
+        if admission.get("status") != "INCONCLUSIVE":
+            return _fail("takeover fixture must be deferred: %s" % admission.get("reasons"))
+        seal = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        receipt["receipt_sha256"] = seal
+        write_canonical(root / PARITY_DIR / "receipt.json", receipt)
+        artifact = load_json(root / "verification/build/package.json")["artifact_sha256"]
+        run = {"scenario_filter": [], "security_mode": "disabled", "receipt_sha256": seal,
+               "receipt": {"composed_by_this_run": True}, "artifact": {"sha256": artifact}}
+        write_canonical(root / PARITY_DIR / "_run.json", run)
+        before_budget = budget(steps, "c:exhausted", "c:exhausted", 3)
+        command = [sys.executable, str(STEP), "--root", str(root), "--operator", "architect:test",
+                   "--reason", "measured repair", "--disposition-only", "--takeover-deferred", "c:exhausted"]
+        original_admission = load_json(root / ADMISSION_RECEIPT)
+        state_path = loop / "state.json"
+        original_state = load_json(state_path)
+        no_operator = json.loads(json.dumps(steps))
+        no_operator["steps"][-1]["verdict"] = "accepted"
+        product = root / "src/main/resources/application.properties"
+        product_before = product.read_bytes()
+        parity_before = (root / PARITY_DIR / "receipt.json").read_bytes()
+        for label, change, restore, needle in (
+            ("unverified product edit", lambda: product.write_bytes(product_before + b"\n# unverified\n"),
+             lambda: product.write_bytes(product_before), "clean accepted tree"),
+            ("not Operator repair", lambda: write_canonical(loop / "steps.json", no_operator),
+             lambda: write_canonical(loop / "steps.json", steps), "recorded product repair"),
+            ("stale verification", lambda: write_canonical(state_path, dict(original_state, candidate_sha256="old")),
+             lambda: write_canonical(state_path, original_state), "current verification"),
+            ("broken admission", lambda: write_canonical(root / ADMISSION_RECEIPT, dict(original_admission, receipt_digest="old")),
+             lambda: write_canonical(root / ADMISSION_RECEIPT, original_admission), "intact admission"),
+        ):
+            change()
+            history_before = (loop / "steps.json").read_bytes()
+            p = subprocess.run(command, capture_output=True, text=True)
+            if p.returncode != 1 or needle not in p.stderr:
+                return _fail("takeover must refuse %s: %s%s" % (label, p.stdout, p.stderr))
+            if (loop / "steps.json").read_bytes() != history_before or load_json(loop / "deferred.json")["clusters"] != ["c:exhausted"]:
+                return _fail("refused takeover changed history")
+            restore()
+        p = subprocess.run(command, capture_output=True, text=True)
+        if p.returncode or "nothing minted" not in p.stdout:
+            return _fail("measured takeover failed: %s%s" % (p.stdout, p.stderr))
+        after = load_json(loop / "steps.json")
+        if budget(after, "c:exhausted", "c:exhausted", 3) != before_budget or before_budget["left"] != 0:
+            return _fail("takeover must preserve the exhausted budget")
+        if any(after.get(k) != steps.get(k) for k in ("steps", "attempts", "rejected", "deferral_clearances")):
+            return _fail("takeover must leave all prior history unchanged")
+        if load_json(loop / "deferred.json")["clusters"] or not after.get("deferral_takeovers"):
+            return _fail("takeover must close the deferral with a separate disposition")
+        if (loop / "issued.json").exists():
+            return _fail("takeover must never mint, even without --no-mint")
+        if (root / PARITY_DIR / "receipt.json").read_bytes() != parity_before or after["deferral_takeovers"][-1]["parity_proven_by_disposition"]:
+            return _fail("takeover must neither change parity nor claim to prove it")
+        if load_json(root / ADMISSION_RECEIPT).get("status") != "ADMITTED":
+            return _fail("takeover must release only the deferral admission hold")
+    print("OK: recorded Operator takeover preserves exhausted budget and refuses stale evidence")
     return 0
 
 

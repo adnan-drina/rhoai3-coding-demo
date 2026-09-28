@@ -1,0 +1,278 @@
+{
+  "entry_points": [
+    {
+      "entry_point_id": "ep:com.acme.shop.web.ItemController#list():http",
+      "file": "src/main/java/com/acme/shop/web/ItemController.java",
+      "kind": "http"
+    },
+    {
+      "entry_point_id": "ep:com.acme.shop.web.ItemController#get(long):http",
+      "file": "src/main/java/com/acme/shop/web/ItemController.java",
+      "kind": "http"
+    },
+    {
+      "entry_point_id": "ep:com.acme.shop.web.OrderController#create(com.acme.shop.dto.OrderDto):http",
+      "file": "src/main/java/com/acme/shop/web/OrderController.java",
+      "kind": "http"
+    },
+    {
+      "entry_point_id": "ep:com.acme.shop.web.AdminController#purge():http",
+      "file": "src/main/java/com/acme/shop/web/AdminController.java",
+      "kind": "http"
+    }
+  ],
+  "oracles": {
+    "ep:com.acme.shop.web.ItemController#get(long):http": [
+      "items-get-1",
+      "items-get-missing"
+    ],
+    "ep:com.acme.shop.web.ItemController#list():http": [
+      "items-list"
+    ],
+    "ep:com.acme.shop.web.OrderController#create(com.acme.shop.dto.OrderDto):http": [
+      "orders-create"
+    ]
+  },
+  "provenance": {
+    "construction": "hand-written for the outcome-board tests; field shapes follow worklist.schema.json and the entry-point inventory v1 rows",
+    "observed_migration_event": false,
+    "scope_note": "constructed admission-time snapshot of a small REST shop: build, configuration, a generated shared mapper, two controllers, a package-gate obligation and HTTP behavior",
+    "snapshot_kind": "synthetic"
+  },
+  "references": {
+    "src/main/java/com/acme/shop/dto/ItemMapper.java": [
+      "src/main/java/com/acme/shop/web/ItemController.java"
+    ],
+    "src/main/java/com/acme/shop/web/ItemController.java": [
+      "src/main/java/com/acme/shop/dto/ItemMapper.java",
+      "src/main/java/com/acme/shop/dto/ItemDto.java"
+    ],
+    "src/main/java/com/acme/shop/web/OrderController.java": [
+      "src/main/java/com/acme/shop/dto/ItemDto.java"
+    ]
+  },
+  "worklist": {
+    "blocked_clusters": [],
+    "clusters": [
+      {
+        "id": "c:pom",
+        "items": [
+          "inc:pom:quarkus-bom"
+        ],
+        "kind": "build",
+        "order_key": [
+          0,
+          0,
+          "pom.xml"
+        ],
+        "path": "pom.xml",
+        "retry_key": "rk:pom",
+        "status": "open",
+        "write_set": [
+          "pom.xml"
+        ]
+      },
+      {
+        "id": "c:cfg",
+        "items": [
+          "inc:cfg:server-port"
+        ],
+        "kind": "config",
+        "order_key": [
+          1,
+          0,
+          "application.properties"
+        ],
+        "path": "src/main/resources/application.properties",
+        "retry_key": "rk:cfg",
+        "status": "open",
+        "write_set": [
+          "src/main/resources/application.properties"
+        ]
+      },
+      {
+        "id": "c:mapper",
+        "items": [
+          "err:dto:generated-mapper"
+        ],
+        "kind": "compile",
+        "order_key": [
+          2,
+          0,
+          "src/main/java/com/acme/shop/dto/ItemMapper.java"
+        ],
+        "path": "src/main/java/com/acme/shop/dto/ItemMapper.java",
+        "status": "open",
+        "unit": {
+          "rule": "unit/throws-surface/v1",
+          "unit_id": "u:dto-mapper"
+        },
+        "write_set": [
+          "src/main/java/com/acme/shop/dto/ItemMapper.java",
+          "src/main/java/com/acme/shop/dto/ItemDto.java"
+        ]
+      },
+      {
+        "id": "c:item",
+        "items": [
+          "err:web:item-uricomponents",
+          "inc:web:optional-logging"
+        ],
+        "kind": "compile",
+        "order_key": [
+          2,
+          1,
+          "src/main/java/com/acme/shop/web/ItemController.java"
+        ],
+        "path": "src/main/java/com/acme/shop/web/ItemController.java",
+        "retry_key": "rk:item",
+        "status": "open",
+        "write_set": [
+          "src/main/java/com/acme/shop/web/ItemController.java"
+        ]
+      },
+      {
+        "id": "c:order",
+        "items": [
+          "err:web:order-uricomponents"
+        ],
+        "kind": "compile",
+        "order_key": [
+          2,
+          1,
+          "src/main/java/com/acme/shop/web/OrderController.java"
+        ],
+        "path": "src/main/java/com/acme/shop/web/OrderController.java",
+        "retry_key": "rk:order",
+        "status": "open",
+        "write_set": [
+          "src/main/java/com/acme/shop/web/OrderController.java"
+        ]
+      },
+      {
+        "gate": "package",
+        "id": "c:root",
+        "items": [
+          "rt:package:unsupported-spel"
+        ],
+        "kind": "compile",
+        "order_key": [
+          2,
+          2,
+          "src/main/java/com/acme/shop/web/RootController.java"
+        ],
+        "path": "src/main/java/com/acme/shop/web/RootController.java",
+        "retry_key": "rk:package:spel",
+        "status": "open",
+        "write_set": [
+          "src/main/java/com/acme/shop/web/RootController.java"
+        ]
+      }
+    ],
+    "deferred": [],
+    "items": [
+      {
+        "category": "mandatory",
+        "id": "inc:pom:quarkus-bom",
+        "kind": "build",
+        "line": 0,
+        "path": "pom.xml",
+        "rule_id": "springboot-parent-pom-to-quarkus-00000",
+        "source": "mta"
+      },
+      {
+        "category": "mandatory",
+        "id": "inc:cfg:server-port",
+        "kind": "config",
+        "line": 0,
+        "path": "src/main/resources/application.properties",
+        "rule_id": "springboot-properties-to-quarkus-00010",
+        "source": "mta"
+      },
+      {
+        "category": "mandatory",
+        "generated": true,
+        "id": "err:dto:generated-mapper",
+        "kind": "compile",
+        "line": 0,
+        "path": "src/main/java/com/acme/shop/dto/ItemMapper.java",
+        "rule_id": "",
+        "source": "javac"
+      },
+      {
+        "category": "mandatory",
+        "id": "err:web:item-uricomponents",
+        "kind": "compile",
+        "line": 0,
+        "path": "src/main/java/com/acme/shop/web/ItemController.java",
+        "rule_id": "",
+        "source": "javac"
+      },
+      {
+        "category": "mandatory",
+        "id": "err:web:order-uricomponents",
+        "kind": "compile",
+        "line": 0,
+        "path": "src/main/java/com/acme/shop/web/OrderController.java",
+        "rule_id": "",
+        "source": "javac"
+      },
+      {
+        "category": "optional",
+        "id": "inc:web:optional-logging",
+        "kind": "incident",
+        "line": 0,
+        "path": "src/main/java/com/acme/shop/web/ItemController.java",
+        "rule_id": "optional-rule",
+        "source": "mta"
+      },
+      {
+        "category": "mandatory",
+        "gate": "package",
+        "id": "rt:package:unsupported-spel",
+        "kind": "compile",
+        "line": 0,
+        "path": "src/main/java/com/acme/shop/web/RootController.java",
+        "rule_id": "",
+        "source": "runtime"
+      },
+      {
+        "category": "mandatory",
+        "id": "inc:unlocatable:jndi",
+        "kind": "incident",
+        "line": 0,
+        "path": "",
+        "rule_id": "jndi-lookup",
+        "source": "mta"
+      }
+    ],
+    "measure": {
+      "blocked": [],
+      "compile_errors": 3,
+      "failing_tests": 0,
+      "known": true,
+      "mandatory_incidents": 2,
+      "parity_mismatches": null,
+      "tuple": [
+        2,
+        3,
+        0
+      ]
+    },
+    "not_counted": [
+      {
+        "by": {
+          "reason": "renamed extension present"
+        },
+        "category": "superseded",
+        "id": "inc:superseded:resteasy"
+      }
+    ],
+    "schema": "rhoai3.worklist/v1",
+    "unlocatable": [
+      {
+        "id": "inc:unlocatable:jndi"
+      }
+    ]
+  }
+}

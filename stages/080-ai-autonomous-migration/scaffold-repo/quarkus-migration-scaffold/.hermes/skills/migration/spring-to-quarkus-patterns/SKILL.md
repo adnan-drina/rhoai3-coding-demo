@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.1"
+  version: "1.5.2"
   hermes:
     tags:
     - migration
@@ -53,11 +53,12 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 
 | File | Use when |
 |------|----------|
-| `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map; Location via a request-aware `@Context UriInfo` builder; `PARITY_CORS` / `cors-response` repairs install the harness CORS adapter through `restore-source-response-shape` (ADR-019), never restored `@CrossOrigin` |
-| `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
+| `references/rest-annotations.md` | Bean Validation / `BindingResult` / `Errors` (`@Valid` versus manual validation, procedure §2); JAX-RS / RESTEasy → `quarkus-rest` annotation map; Location via a request-aware `@Context UriInfo` builder; `PARITY_CORS` / `cors-response` repairs install the harness CORS adapter through `restore-source-response-shape` (ADR-019), never restored `@CrossOrigin` |
+| `references/exception-mapping.md` | Local/global exception handlers; legacy error-body shape; Spring DAO/ORM exception retirement and narrow missing-result handling |
 | `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
 | `references/persistence.md` | Entity / tx / schema cards; this specimen's default is Spring Data JPA (ADR-004) |
 | `references/spring-data-jpa.md` | Supported subset, unsupported methods, one-repository batching; official Quarkus Spring Data JPA guide |
+| `references/sorting.md` | Spring sort idioms (`PropertyComparator`/`MutableSortDefinition`: the 3rd argument is `ascending`, `false` = descending, nulls first; Spring Data `Sort`) → plain Java comparators; read beside the brief's `order_explained` (B9) |
 | `references/transitive-supporting-types.md` | Partitioned DTO/mapper closure — supporting types decision (R-SKILL-A) |
 | `references/jdbc-anti-essay.md` | Raw `JdbcTemplate` on destination — write the Agroal/injection form, do not essay |
 | `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
@@ -87,6 +88,12 @@ This skill's write contract is consult-then-write. W6 bootstrap is a
 1. **Consult order** before touching the destination: packet → brief → legacy RO
    → destination `AGENTS.md` → this skill. Conflicts resolve to AGENTS.
 2. **Classify the construct**, then open only the References rows that match it.
+   Use their exact filenames; do not invent a construct-named reference.
+   For `BindingResult`, `Errors` or validation handlers, read
+   `references/rest-annotations.md` and `references/exception-mapping.md`.
+   For Spring DAO/ORM exception retirement, read `references/exception-mapping.md`
+   before choosing a replacement: unchecked declarations and not-found catches
+   have different contracts.
    Overlays are additive and Hermes does not merge them: for `repository/jdbc/**`
    read the base skill **and** `references/jdbc-anti-essay.md`; for
    `security/**` read `references/security-config.md` **and**
@@ -113,8 +120,10 @@ This skill's write contract is consult-then-write. W6 bootstrap is a
   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/security/golden-basic-authz/`,
   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/testing/golden-rest-controller/`,
   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/testing/golden-test-application.properties`.
-6. **Run `mvn -q test-compile` in-loop** after test writes. Once a pattern is
-   green in this task, copy it — do not restate the map per file.
+6. **Verify through `fix-until-green` on loop cards**: run the official
+   `run-verify.sh`, then `advance.py`. Do not add a separate Maven run;
+   this reference grants no test-write authority. Once a pattern passes,
+   apply it to the remaining authorized sites without re-reading the same map.
 7. **Bootstrap:** if the legacy `@SpringBootApplication` main only calls
    `SpringApplication.run`, do **not** add dest `@QuarkusMain` (Quarkus
    generates main). Run

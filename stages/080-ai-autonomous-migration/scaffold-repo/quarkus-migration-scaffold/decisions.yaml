@@ -74,6 +74,10 @@ adrs:
     status: accepted
     title: Per-run fixture identities (amends ADR-014; architect ruling 2026-09-22) - the PetClinic fixture identities keep their names and values and remain specimen-specific inputs, and move from a namespace-wide Secret into an EXACTLY BOUND per-run Secret; exits - each workspace receives only its assigned fixture Secret, a missing or mismatched binding blocks the relevant captures, and changing or retiring one run does not affect another; refused - overlapping wildcard targeting, namespace-wide fallback, and credential values in the evidence (spring-petclinic-rest, decided 2026-09-22)
 
+  - id: ADR-024
+    status: accepted
+    title: Complete repository-fragment repair bound (amends only ADR-018's symbol limit; architect ruling under the authorized v10 assisted continuation, 2026-09-22) - a model-derived spring-data-fragment-implementations declaration unit may seal at most 16 member symbols, while other units remain limited to 8; the 20-file and 160-site limits remain. v10's first package gate enumerated seven required fragment parents with 16 unimplemented methods, not the seven methods represented by the original test fixture. Keep every method, inheritance relation and owed implementation in the sealed inventory and require the full package gate; do not split a set-wide failure into cards that cannot pass their checkpoint, hide methods from the count, alter retry budgets or waive verification. Excess still refuses as UNIT_OVERSIZE. The rule contains no specimen names. Record its installation and changed decision digest as assisted continuation; this does not establish runtime parity or intervention-free repeatability.
+
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
   adr: ADR-001
@@ -98,9 +102,27 @@ thresholds:
 # Cost-guarded: it is skipped when the tree's parity receipt is already bound
 # to this candidate digest, and a parity CARD still runs its own scoped
 # comparison. Absent means off, which is the v9 behaviour.
+# Plan semantics (v1): the repeatable initial M3 plan -- compile-obligation
+# identity from the compiler's structured diagnostic in a pinned locale, a
+# clean initial analysis, the known migration responsibilities derived from
+# the frozen source before any failure (planner.source_requirements), and a
+# semantic plan fingerprint sealed by admission beside the exact digests.
+# Selected here for NEW runs: a run keeps the value its destination's initial
+# commit carried (admission refuses a later flip, PLAN_SEMANTICS_REPINNED), so
+# every earlier run -- created without the key -- stays off.
+# Compatibility objectives (v1): M2 composes the work list's units into bounded
+# objectives by shared concrete repair objective (the catalog's
+# objective_families: one sorting replacement, one retired configuration rule,
+# one request boundary, one selected repository contract, ...), attaches each
+# requirement by its semantic subject instead of its first path, plans each
+# check's stage and prerequisites before M3, and joins budgets by lineage so
+# the run's total retry allowance is unchanged. Needs plan_semantics v1; pinned
+# at run creation like it (OBJECTIVES_REPINNED), so earlier runs stay per-unit.
 loop:
   unit_formation: v1
   runtime_feedback: v1
+  plan_semantics: v1
+  compatibility_objectives: v1
 
 # Repairs accepted ADRs already made, carried into a FRESH run as bootstrap
 # transformations (ADR-019 sections 2 and 3) instead of mid-run Operator steps.

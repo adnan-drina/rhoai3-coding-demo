@@ -567,6 +567,36 @@ def _methodless_qualification_case() -> int:
     return 0
 
 
+def _stale_entry_point_case() -> int:
+    """Entry-point ids follow M1's resolution (a resolving classpath qualifies
+    the signature). A capture bound to another entry point, or a scenario
+    whose entry point this tree's bundle no longer holds, is UNUSABLE
+    evidence: an old capture is re-captured, never relabelled."""
+    fqn, member = "a.RootRestController", "redirectToSwagger(javax.servlet.http.HttpServletResponse)"
+    with tempfile.TemporaryDirectory(prefix="derive-stale-ep-") as td:
+        root = build_root(Path(td), extra_types=[_mapping_type(fqn, member)], add_eps=[_mapping_ep(fqn, member, "/")])
+        if _derive(root).returncode != 0:
+            return _fail("the fixture must derive")
+        corpus = load_corpus(root)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}["sc:read-root"]
+        _capture(root, dict(sc, entry_point="ep:a.RootRestController#redirectToSwagger(HttpServletResponse):http"),
+                 corpus_digest(corpus), 302, {"Location": BASE + "/swagger-ui/index.html"}, {"ok": True}, {}, {})
+        p, doc = _qualify(root)
+        row = doc["scenarios"]["sc:read-root"]
+        if row["evidence"]["status"] != "UNUSABLE" or not any("stale binding" in r for r in row["evidence"]["reasons"]):
+            return _fail("a capture bound to another entry point must be unusable evidence: %s" % row["evidence"])
+        # the inventory changed after derivation (a refreshed M1): the corpus
+        # binding refuses before any scenario is judged -- the chain guard
+        b = load_json(root / EVIDENCE_BUNDLE)
+        b["entry_points"] = [e for e in b["entry_points"] if str(e.get("id")) != sc["entry_point"]]
+        write_canonical(root / EVIDENCE_BUNDLE, b)
+        p, _doc = _qualify(root)
+        if p.returncode == 0 or "derived against evidence bundle" not in (p.stdout + p.stderr):
+            return _fail("qualification against a changed inventory must refuse the corpus binding: rc=%s %s"
+                         % (p.returncode, (p.stdout + p.stderr)[-300:]))
+    return 0
+
+
 PET_CONTROLLER = "a.PetRestController"
 _PET_DOCS = (
     "openapi: 3.0.1\n"
@@ -2977,7 +3007,7 @@ def main() -> int:
         if rc:
             return rc
         assert root is not None
-        if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case()
+        if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case() or _stale_entry_point_case()
                 or _path_variable_case() or _foreign_key_delete_case() or _authorization_policy_case()
                 or _authorization_grammar_case() or _enabled_mode_case() or _enabled_constants_case()
                 or _enabled_rename_case() or _enabled_decided_case()

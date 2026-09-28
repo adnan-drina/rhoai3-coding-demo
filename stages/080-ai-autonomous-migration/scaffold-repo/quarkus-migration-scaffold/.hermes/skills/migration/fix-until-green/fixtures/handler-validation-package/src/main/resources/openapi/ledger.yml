@@ -1,0 +1,34 @@
+openapi: 3.0.1
+info:
+  title: ledger
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+    Owner:
+      type: object
+      required: [firstName, lastName, pets]
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 0
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 30
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 30
+        pets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'

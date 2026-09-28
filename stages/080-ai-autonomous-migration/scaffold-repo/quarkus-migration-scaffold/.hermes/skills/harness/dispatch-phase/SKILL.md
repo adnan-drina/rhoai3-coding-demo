@@ -28,6 +28,13 @@ metadata:
 writes `.hermes/AUTOSTART-STATUS`. Must not fail the workspace start —
 the destfile/GitOps hook is `|| echo WARN`.
 
+At M1's final step, use `--after-m1 "$HERMES_KANBAN_TASK"`. It checks the
+existing native M1 and continues it, even if `AUTO_START_MIGRATION=false`
+prevented automatic startup. It never creates a replacement M1 or grants
+planner activation. M2 remains dependent on M1 completing review. The M1
+review checks this continuation record and M2's native parent and workspace;
+an exit-zero startup skip cannot satisfy that check.
+
 | pins.planner.activation | Cards minted | Why |
 |---|---|---|
 | `not-activated` (golden default) or absent | **M1 only** | The replacement planner has not passed the activation gate (SOLUTION-ARCHITECTURE §12). M2 stays unavailable; a hand-minted M2 card blocks at its first step. |

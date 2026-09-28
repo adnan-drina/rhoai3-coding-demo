@@ -27,6 +27,7 @@ import datetime
 import importlib.util
 import json
 import shutil
+import os
 import subprocess
 import sys
 import tempfile
@@ -624,6 +625,46 @@ class RunReportTest(unittest.TestCase):
         self.assertIsNone(rep["loop_work"]["clusters_by_kind"]["value"])
         self.assertIsNone(rep["cost"]["time"]["tool_seconds"]["value"])
         self.assertFalse((root / "evidence/reports").exists())                             # --out elsewhere: nothing written in the tree
+
+    def test_factory_declaration_is_composed_and_timed_by_the_initial_commit(self):
+        """run-budget.json v2 (the factory's) binds the golden defaults; its time is
+        the commit that introduced it, and a rewrite reports the refusal, not a budget."""
+        defaults = json.loads((GOLDEN / "run-defaults.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as td:
+            for name, rewrite in (("orders-modernization", False), ("rewritten-run", True)):
+                root = Path(td) / name
+                root.mkdir()
+                _w(root, "run-defaults.json", defaults)
+                _w(root, "run-budget.json", {"schema": "rhoai3.run-budget/v2", "run_id": name,
+                                             "limits": "run-defaults.json#/budget", "declared_at_source": "initial-commit",
+                                             "declared_by": {"factory": "rhdh-scaffolder", "template": "app-migration",
+                                                             "scaffolder_task": "task-1"}})
+                (root / "migration.yaml").write_text("resources:\n  run: %s\n" % name, encoding="utf-8")
+                env = dict(os.environ, GIT_AUTHOR_DATE="@%d +0000" % START, GIT_COMMITTER_DATE="@%d +0000" % START)
+                git = ["git", "-c", "user.name=f", "-c", "user.email=f@example.invalid", "-c", "commit.gpgsign=false",
+                       "-C", str(root)]
+                subprocess.run(git + ["init", "-q"], check=True)
+                subprocess.run(git + ["add", "-A"], check=True)
+                subprocess.run(git + ["commit", "-q", "-m", "scaffold"], check=True, env=env)
+                if rewrite:
+                    doc = load_json(root / "run-budget.json")
+                    doc["max_wall_hours"] = 48
+                    _w(root, "run-budget.json", doc)
+                    subprocess.run(git + ["commit", "-qam", "extend"], check=True, env=env)
+                proc, rep, _ = _run(root)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                e = rep["budget"]["declared"]
+                if rewrite:
+                    self.assertIsNone(e["value"])
+                    self.assertIn("RUN_DECLARATION_ALTERED", e["reason"])
+                    continue
+                self.assertEqual(e["value"]["run_id"], name)
+                self.assertEqual(e["value"]["max_wall_hours"], defaults["budget"]["max_wall_hours"])
+                self.assertEqual(e["value"]["clock"], defaults["budget"]["clock"])
+                self.assertEqual(e["value"]["declared_at"], ISO(START))
+                self.assertIn("run-defaults.json#/budget", e["source"])
+                self.assertTrue(e["declared_by_initial_commit"])
+                self.assertTrue(e["declared_before_launch"])            # the declaring commit starts the clock
 
     def test_enclosing_repository_is_not_this_history(self):
         root = prepared("http", "org.acme.clinic")

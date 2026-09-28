@@ -60,6 +60,42 @@ def expected_cards(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, str
     return expected_from_loop(steps, open_card, mint_map), mint_map, [d for _, d, _ in issues]
 
 
+def native_live(root: Path, receipt: dict[str, Any], args: argparse.Namespace) -> int:
+    """outcome-board/v2: the board must equal the PUBLISHED plan revision, not
+    the serial loop's one open card. The comparison is the native read-back
+    (native_publish.readback: one live task per planned key, bodies, skills,
+    assignees, exact dependencies, contract digests) that M2's completion
+    gate also applies. A snapshot cannot carry attachments: --live only."""
+    if not args.live:
+        print("REFUSE: K3_LIVE outcome-board/v2 compares the live board (--live); a snapshot has no attachments",
+              file=sys.stderr)
+        return 1
+    from planner import native_control as NC
+    from planner.native_publish import readback
+    board = NC.board_for(root)
+    run_id = NC.run_id_of(root, board)
+    try:
+        plan = board.plan(run_id)
+        gaps = readback(board, plan)
+    except NC.Refusal as exc:
+        plan, gaps = None, ["%s: %s" % (exc.code, exc.detail)]
+    verdict = {"schema": "rhoai3.k3-live/v1", "mode": "outcome-board/v2 native read-back", "run_id": run_id,
+               "verdict": "EQUAL" if plan is not None and not gaps else "MISMATCH",
+               "expected_cards": len((plan or {}).get("nodes") or []), "plan_revision": (plan or {}).get("revision"),
+               "plan_digest": (plan or {}).get("digest"), "gaps": gaps, "receipt_sha256": receipt["receipt_digest"]}
+    out = Path(args.out)
+    out = out if out.is_absolute() else root / out
+    write_canonical(out, verdict)
+    if verdict["verdict"] != "EQUAL":
+        for g in gaps[:20]:
+            print("  - %s" % g, file=sys.stderr)
+        print("REFUSE: K3_LIVE board != published plan (%s)" % out, file=sys.stderr)
+        return 1
+    print("OK: K3 live board equals the published plan (%d cards, revision %s) -> %s"
+          % (verdict["expected_cards"], verdict["plan_revision"], out))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
@@ -79,6 +115,9 @@ def main(argv: list[str] | None = None) -> int:
             print("  - " + g, file=sys.stderr)
         print("REFUSE: K3_LIVE receipt not authoritative", file=sys.stderr)
         return 1
+    from planner.outcome_protocol import select_protocol
+    if select_protocol(root).native:
+        return native_live(root, receipt, args)
     try:
         cards = collect_live(args.hermes) if args.live else parse_snapshot(load_json(Path(args.snapshot)))
     except (ValueError, OSError, json.JSONDecodeError) as exc:

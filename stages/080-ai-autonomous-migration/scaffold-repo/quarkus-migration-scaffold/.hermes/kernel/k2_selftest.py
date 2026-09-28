@@ -99,6 +99,24 @@ def main() -> int:
             else:
                 print("ok", name)
 
+        # V16-10 (v16): the > of a quoted sed replacement is text, and the
+        # sed script, awk program and grep pattern are expressions, not paths
+        expect_allow("cd %s && grep -n 'quarkus.profile' src/main/resources/application.properties | sed 's/=.*/=<set>/'" % dest,
+                     "v16_10_sed_expression_not_a_path", cwd=cwd)
+        expect_allow("grep -rn '/api/owners/' src | awk -F: '/Controller/ {print $1}'", "v16_10_grep_awk_expressions_not_paths", cwd=cwd)
+        expect_block("cat /etc/passwd", "v16_10_real_path_still_refused", "outside allow root", cwd=cwd)
+        expect_block("sed 's/=.*/=<set>/' /etc/hosts", "v16_10_sed_file_outside_root_refused", "/etc/hosts", cwd=cwd)
+        expect_block("grep -n /etc/passwd /etc/passwd", "v16_10_grep_file_spelled_like_pattern_refused", "/etc/passwd", cwd=cwd)
+        expect_block("awk -f /etc/prog.awk src/a.txt", "v16_10_awk_program_file_refused", "/etc/prog.awk", cwd=cwd)
+        expect_block("echo '<set>' > /etc/k2probe", "v16_10_unquoted_redirect_refused", "/etc/k2probe", cwd=cwd)
+
+        # V17-1 (v17 M2 t_e4751e37): a path followed directly by a shell
+        # separator (`--root /x; echo`) kept the ; and resolved outside the root
+        expect_allow("python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root %s; echo \"EXIT=$?\"" % dest,
+                     "v17_1_path_then_semicolon_allowed", cwd=cwd)
+        expect_allow("ls %s&& echo ok" % dest, "v17_1_path_then_and_allowed", cwd=cwd)
+        expect_block("cat /etc/passwd; echo x", "v17_1_outside_path_then_semicolon_refused", "/etc/passwd", cwd=cwd)
+
         expect_allow("export JAVA_HOME=/usr/lib/jvm/java-21-openjdk", "java_home")
         expect_allow("export PATH=/bin:$PATH", "path_concat")
         expect_allow("export PATH=/bin:$PATH; ls", "pathless_ls_cwd", cwd=cwd)
@@ -113,6 +131,23 @@ def main() -> int:
         expect_allow("mvn -q verify", "mvn_cwd", cwd=cwd)
         expect_allow("java -version", "java_cwd", cwd=cwd)
         expect_allow("git status", "git_cwd", cwd=cwd)
+        # B8 (v12 t_b33f25fa): a worker reset the run activation with git checkout
+        wk = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+        for i, c in enumerate(("git checkout -- .hermes/pins.json", "git -C /tmp/x restore src/Owner.java",
+                               "git stash", "git reset --hard HEAD", "git clean -fdx", "cd . && git add -A",
+                               "git --no-pager commit -m x")):
+            expect_block(c, "b8_git_mutation_%d" % i, "refused", cwd=cwd, extra_env=wk)
+        for i, c in enumerate(("git status", "git diff .hermes/pins.json", "git log --oneline -3", "git show HEAD:pom.xml",
+                               "git diff --stat")):
+            expect_allow(c, "b8_git_read_%d" % i, cwd=cwd, extra_env=wk)
+        expect_allow("git checkout -- .hermes/pins.json", "b8_git_no_profile_is_not_a_worker", cwd=cwd)
+        # R3: the run-control mount and the write-once binding state are outside
+        # the worker's write sandbox; a direct worker write to either is refused
+        for i, c in enumerate(("echo {} > /projects/.platform/run-control-state/binding.json",
+                               "rm -f /projects/.platform/run-control-state/binding.json",
+                               "cp /tmp/x.json /etc/rhoai3/run-control/contract.json",
+                               "tee /projects/.platform/run-control-state/requests.log < /dev/null")):
+            expect_block(c, "r3_control_write_%d" % i, "", cwd=cwd, extra_env=wk)
         expect_allow(
             "export JAVA_HOME=/usr/lib/jvm/java-21-openjdk; java -version",
             "export_then_java_cwd",
@@ -496,6 +531,37 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_native_complete_uses_request_review")
+        # B8: an accepted card whose continuation did not reach a minted
+        # successor cannot complete; it blocks, and may block
+        cont = dest / "verification" / "loop" / "continuation.json"
+        cont.parent.mkdir(parents=True, exist_ok=True)
+        steps_p = dest / "verification" / "loop" / "steps.json"
+        steps_p.write_text(json.dumps({"steps": [{"card": "t_cont", "verdict": "accepted", "commit": "abc"}]}), encoding="utf-8")
+        cenv = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0", "HERMES_KANBAN_TASK": "t_cont"}
+        for state in ("admission-refused", "no-successor", "mint-failed"):
+            cont.write_text(json.dumps({"predecessor": "t_cont", "state": state,
+                                        "reasons": ["RUN_ACTIVATION_MISSING: run v13 was bound at T"]}), encoding="utf-8")
+            r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=cenv)
+            if r.get("action") != "block" or "no successor" not in (r.get("message") or "") or "RUN_ACTIVATION_MISSING" not in (r.get("message") or ""):
+                print("FAIL b8_complete_refused_%s" % state, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok b8_complete_refused_%s" % state)
+            r = run("", roots, cwd=cwd, tool="kanban_block", extra_env=cenv)
+            if r.get("action") == "block" and "acceptance of this card is recorded" in (r.get("message") or ""):
+                print("FAIL b8_block_allowed_%s" % state, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok b8_block_allowed_%s" % state)
+        cont.write_text(json.dumps({"predecessor": "t_other", "state": "admission-refused", "reasons": ["x"]}), encoding="utf-8")
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=cenv)
+        if "no successor" in (r.get("message") or ""):
+            print("FAIL b8_other_predecessor_ignored", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok b8_other_predecessor_ignored")
+        cont.unlink()
+        steps_p.unlink()
         crumb = dest / "evidence" / "receipts" / "hook" / "complete-invocations.jsonl"
         if not crumb.is_file():
             print("FAIL complete_breadcrumb_written missing", file=sys.stderr)
@@ -598,6 +664,23 @@ def main() -> int:
         (profile_root / "kanban" / "logs" / "t_ok.log").write_text(
             audit_ok, encoding="utf-8"
         )
+
+        def audit_receipt(logs, task, rc, profile="reviewer", run_id="", state="done"):
+            # what paved_road.write_audit_receipt writes beside the official
+            # log: bound to the log and execution-ledger bytes it graded
+            import hashlib
+            ledger = logs / ("%s.exec.jsonl" % task)
+            if not ledger.exists():
+                ledger.write_text('{"command": "audit", "exit_code": 0}\n', encoding="utf-8")
+            bound = {}
+            for name, path in (("log", logs / ("%s.log" % task)), ("ledger", ledger)):
+                data = path.read_bytes()
+                bound[name] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+            (logs / ("%s.audit.json" % task)).write_text(json.dumps(dict(
+                {"schema": "rhoai3.paved-road-audit-receipt/v2", "task": task, "rc": rc, "state": state,
+                 "run": run_id, "profile": profile}, **bound)), encoding="utf-8")
+
+        audit_receipt(profile_root / "kanban" / "logs", "t_ok", 0)
         r = run(
             "hermes kanban complete t_ok",
             roots,
@@ -644,6 +727,7 @@ def main() -> int:
         (profile_root / "kanban" / "logs" / "t_red.log").write_text(
             audit_red, encoding="utf-8"
         )
+        audit_receipt(profile_root / "kanban" / "logs", "t_red", 1)
         r = run(
             "hermes kanban complete t_red",
             roots,
@@ -665,6 +749,49 @@ def main() -> int:
         (default_home / "kanban" / "logs" / "t_def.log").write_text(
             audit_ok.replace("t_ok.log", "t_def.log"), encoding="utf-8"
         )
+        audit_receipt(default_home / "kanban" / "logs", "t_def", 0)
+        # V17-6 (v17 M4 t_4c09775b): an unmarked audit line is not a pass, and
+        # only the CURRENT reviewer run's own audit latches the fence.
+        v17_logs = profile_root / "kanban" / "logs"
+        (v17_logs / "t_v17.log").write_text(audit_ok.replace("t_ok.log", "t_v17.log"), encoding="utf-8")
+        v17_env = {"HERMES_PROFILE": "reviewer", "HERMES_HOME": str(profile_home), "HERMES_KANBAN_TASK": "t_v17",
+                   "HERMES_KANBAN_RUN_ID": "32", "K2_BOUND_GATE_EXIT": "0"}
+        for label, receipt in (("no_receipt_unmarked_line", None),
+                               ("implementer_self_audit", ("implementer", "28", 0)),
+                               ("earlier_reviewer_run", ("reviewer", "30", 0)),
+                               ("current_run_red", ("reviewer", "32", 1))):
+            rp = v17_logs / "t_v17.audit.json"
+            if rp.exists():
+                rp.unlink()
+            if receipt:
+                audit_receipt(v17_logs, "t_v17", receipt[2], profile=receipt[0], run_id=receipt[1])
+            r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
+            r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+            if (r.get("action") == "block" and "already exited 0" in (r.get("message") or "")) or r2.get("action") != "block":
+                print("FAIL v17_6_%s (fence must stay open, complete refused)" % label, r, r2, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok v17_6_%s" % label)
+        # an interrupted audit (state running) and a log rewritten after the
+        # audit are not green either
+        audit_receipt(v17_logs, "t_v17", None, profile="reviewer", run_id="32", state="running")
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        print(("FAIL" if r2.get("action") != "block" else "ok") + " v17_6_interrupted_audit_not_green")
+        fails += r2.get("action") != "block"
+        audit_receipt(v17_logs, "t_v17", 0, profile="reviewer", run_id="32")
+        original = (v17_logs / "t_v17.log").read_text(encoding="utf-8")
+        (v17_logs / "t_v17.log").write_text(original.replace("0.2s", "0.3s"), encoding="utf-8")
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        print(("FAIL" if r2.get("action") != "block" else "ok") + " v17_6_rewritten_log_not_green")
+        fails += r2.get("action") != "block"
+        (v17_logs / "t_v17.log").write_text(original + "  appended after the audit\n", encoding="utf-8")
+        r = run("echo test", roots, cwd=cwd, tool="terminal", extra_env=v17_env)
+        r2 = run("hermes kanban complete t_v17", roots, cwd=cwd, extra_env=v17_env)
+        if r.get("action") != "block" or "already exited 0" not in (r.get("message") or "") or r2.get("action") == "block":
+            print("FAIL v17_6_current_reviewer_green (fence latches, complete allowed)", r, r2, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v17_6_current_reviewer_green")
         r = run(
             "hermes kanban complete t_def",
             roots,
@@ -1101,6 +1228,70 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_complete_loop_pending_refused")
+        # V16-6 (v16 t_d3f89ded): the card log spans runs. The run that
+        # ended VERIFICATION_PENDING left advance.py [exit 1] in it, and the
+        # Operator-resumed run could run neither restore-pending.py (K2) nor
+        # advance.py (LOOP_PENDING_NOT_RESTORED): deadlock.
+        pend_env = {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(loop_home), "HERMES_KANBAN_TASK": "t_pend"}
+        restore = "python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster c:1"
+        r = run(restore, roots, cwd=cwd, extra_env=pend_env)
+        if r.get("action") == "block":
+            print("FAIL v16_6_restore_allowed_with_pending_record", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_restore_allowed_with_pending_record")
+        r = run(restore, roots, cwd=cwd, extra_env=dict(pend_env, HERMES_KANBAN_TASK="t_loop"))
+        if r.get("action") != "block":
+            print("FAIL v16_6_restore_refused_without_pending_record", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_restore_refused_without_pending_record")
+        # the bound-gate memory is THIS run: a resumed run starts clean, and
+        # a red needle inside it still binds
+        read = "cat pom.xml"
+        r = run(read, roots, cwd=cwd, extra_env=pend_env)
+        if r.get("action") != "block":
+            print("FAIL v16_6_same_run_still_bound", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_same_run_still_bound")
+        run2 = dict(pend_env, HERMES_KANBAN_RUN_ID="2")
+        seq = [restore, "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance",
+               "python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_pend", read]
+        got = [run(c, roots, cwd=cwd, extra_env=run2).get("action") for c in seq]
+        if "block" in got:
+            print("FAIL v16_6_resumed_run_restore_verify_advance", got, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_resumed_run_restore_verify_advance")
+        with open(loop_root / "kanban" / "logs" / "t_pend.log", "a", encoding="utf-8") as fh:
+            fh.write("  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_pend  7.4s [exit 1]\n")
+        r = run(read, roots, cwd=cwd, extra_env=run2)
+        if r.get("action") != "block" or "advance" not in str(r.get("message")):
+            print("FAIL v16_6_red_needle_in_this_run_binds", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_red_needle_in_this_run_binds")
+        r = run(read, roots, cwd=cwd, extra_env=dict(pend_env, HERMES_KANBAN_RUN_ID="3"))
+        if r.get("action") == "block":
+            print("FAIL v16_6_next_run_starts_clean", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v16_6_next_run_starts_clean")
+        # V16-3: the stop request is raised by advance.py, never by a tool call
+        stop_req = loop_root / "kanban" / "stop-requests" / "t_pend.run3.json"
+        stop_env = dict(pend_env, HERMES_KANBAN_RUN_ID="3", HERMES_KANBAN_STOP_REQUEST=str(stop_req))
+        for label, cmd_, tool_, extra_ in (
+                ("write_file", "", "write_file", {"path": str(stop_req), "content": "{}"}),
+                ("redirect", "echo {} > %s" % stop_req, "terminal", None),
+                ("touch", "touch %s" % stop_req, "terminal", None),
+                ("python_open", "python3 -c \"open(\\\"%s\\\", \\\"w\\\").write(\\\"{}\\\")\"" % stop_req, "terminal", None)):
+            r = run(cmd_, roots, cwd=cwd, tool=tool_, extra_env=stop_env, extra_input=extra_)
+            if r.get("action") != "block" or "stop-requests" not in str(r.get("message")):
+                print("FAIL v16_3_stop_request_write_refused_%s" % label, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok v16_3_stop_request_write_refused_%s" % label)
         # v9 t_cc3b6aac: brief.py LOOP_WRONG_CARD / LOOP_CLUSTER_NOT_OPEN is a
         # legal stop. kanban_block must work without run-verify/advance in
         # the log; rummage and the rest of the road must not.
@@ -1587,5 +1778,78 @@ def scratch_removal_checks() -> int:
     return fails
 
 
+def v17_1_qualification() -> int:
+    """V17-1 qualification (2353a4d4): trimming a separator written against a
+    path must not weaken path or command enforcement. An outside path glued to
+    each of ; && || | & is refused; an allowed path glued to each (followed by
+    a space) is allowed; a second outside command, an opaque decode, a git
+    mutation or a traversal behind a separator is still refused. A separator
+    glued on BOTH sides of an allowed path (`ls /x;echo ok`) is still refused
+    by this hook (fail-closed; recorded as an open item, not asserted here)."""
+    fails = 0
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "mod"
+        (dest / "src").mkdir(parents=True)
+        roots = [str(dest)]
+        cwd = str(dest)
+        wk = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+
+        def expect(cmd: str, name: str, block: bool, needle: str = "", **kw) -> None:
+            nonlocal fails
+            r = run(cmd, roots, cwd=cwd, **kw)
+            got = r.get("action") == "block" and needle in (r.get("message") or "")
+            if got != block or (not block and r.get("action") == "block"):
+                print("FAIL", name, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok", name)
+
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect("cat /etc/passwd%s echo x" % sep, "v17_1_q_outside_glued_%d" % i, True, "/etc/passwd")
+            expect("ls %s%s echo ok" % (dest, sep), "v17_1_q_allowed_glued_%d" % i, False)
+        expect("ls %s; cat /etc/shadow" % dest, "v17_1_q_second_command_outside", True, "/etc/shadow")
+        expect("ls %s;cat /etc/shadow" % dest, "v17_1_q_second_command_outside_nospace", True, "outside allow root")
+        expect("ls %s|cat /etc/shadow" % dest, "v17_1_q_outside_after_glued_pipe", True, "outside allow root")
+        expect("ls %s; echo L2V0Yy9wYXNzd2Q= | base64 -d | xargs cat" % dest, "v17_1_q_opaque_after_separator", True, "opaque")
+        expect("ls %s; git checkout -- .hermes/pins.json" % dest, "v17_1_q_git_mutation_after_separator", True, "refused",
+               extra_env=wk)
+        expect("cat %s/../../etc/passwd; echo x" % dest, "v17_1_q_traversal_then_separator", True, "outside allow root")
+        for i, sep in enumerate((";", "&&", "||", "|", "&")):
+            expect("ls %s%secho ok" % (dest, sep), "v17_1_q_allowed_glued_both_%d" % i, False)
+            expect("ls %s%scat /etc/shadow" % (dest, sep), "v17_1_q_outside_glued_both_%d" % i, True, "outside allow root")
+        expect("ls %s/src;%s/../../etc/passwd" % (dest, dest), "v17_1_q_traversal_glued_both", True, "outside allow root")
+    return fails
+
+
+def v17_6b_invocation_record() -> int:
+    """V17-6b (review of 660c1c03): the hook writes the INVOCATION row the
+    audit pairs with the observer COMPLETION by tool_call_id -- for an allowed
+    and for a refused terminal call alike (a refused call never completes, so
+    the audit reads it as unknown) -- and never for another tool."""
+    fails = 0
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        (home / "kanban" / "logs").mkdir(parents=True)
+        dest = Path(td) / "mod"
+        dest.mkdir()
+        env = {"HERMES_HOME": str(home / "profiles" / "reviewer"), "HERMES_KANBAN_TASK": "t_inv1",
+               "HERMES_KANBAN_RUN_ID": "5", "HERMES_PROFILE": "reviewer", "K2_BOUND_GATE_EXIT": "0"}
+        (home / "profiles" / "reviewer").mkdir(parents=True)
+        run("ls %s" % dest, [str(dest)], cwd=str(dest), extra_env=env, extra_payload={"extra": {"tool_call_id": "call-a"}})
+        run("cat /etc/shadow", [str(dest)], cwd=str(dest), extra_env=env, extra_payload={"extra": {"tool_call_id": "call-b"}})
+        run("", [str(dest)], cwd=str(dest), tool="write_file", extra_env=env, extra_input={"path": str(dest / "x")},
+            extra_payload={"extra": {"tool_call_id": "call-c"}})
+        ledger = home / "kanban" / "logs" / "t_inv1.exec.jsonl"
+        rows = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()] if ledger.exists() else []
+        got = [(r.get("phase"), r.get("tool_call_id"), r.get("run"), r.get("profile")) for r in rows]
+        want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer")]
+        if got != want:
+            print("FAIL v17_6b_invocation_record", got, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok v17_6b_invocation_record")
+    return fails
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record())

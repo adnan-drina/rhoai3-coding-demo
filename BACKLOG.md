@@ -1,5 +1,58 @@
 # Backlog
 
+## Compatibility objectives and the M1 classpath fix — 2026-09-28
+
+Design: `tmp/v21-run/m3-partition-comparison/IMPLEMENTATION-DESIGN.md`
+(evidence, cases and probe under the same directory, gitignored). Branch
+`integ/planner-objectives-20260928`. The golden `decisions.yaml` selects
+`loop.compatibility_objectives: v1` for NEW runs (run-pinned,
+`OBJECTIVES_REPINNED`). See Stage 080 SOLUTION-ARCHITECTURE §7.1–§7.2.
+
+- [x] M1: the build warm-up resolves the classpath goal the offline
+  extraction runs. From an empty cache: 131 classpath entries, 100/100 types
+  and 437/437 methods fully resolved. An empty offline classpath is a
+  recorded reason.
+- [x] Corpus and captures are bound to this tree's evidence bundle and entry
+  points. The fix changed 14 entry-point ids, and a stale binding is refused
+  instead of silently losing oracles.
+- [x] Fresh M1 → M2 twice, locally (producers re-run; MTA findings recorded):
+  identical requirements and logical plan (`qualify-repeatability.py
+  --fresh`); bootstrap and the destination compile match v21.
+- [x] M2 composes bounded objectives by shared concrete repair. Requirements
+  attach by semantic subject, checks are planned by stage with prerequisites,
+  and budgets are conserved.
+- [x] Architect review of 6b923d49 (F1–F3), fixed in b4796865:
+  - one scope validator over the final envelope, recomputed at issuance;
+  - symbols counted as source symbols, not transformation names;
+  - an oversized connected component is a typed COMPOSITION_OVERSIZE refusal,
+    never an unproved split.
+- [x] M3 issues an objective whole, judges each constituent, parks without
+  spending, and satisfies a requirement objective whose checks already hold.
+- [x] Pinned MTA 8.2.1 rescan (disposable pod, ws-080 image): the next run's
+  inventory is `[4, 233, 0]` with 24 clusters. A plans 32 outcomes and O
+  plans 30 (14 objectives); the budget is 96 = 96. Two M2 derivations gave
+  identical work lists.
+- [x] The four PetClinic cases ran through run-verify.sh (every verification
+  with the rescan) and advance.py; only the board and the reviewer were
+  simulated. Persistence: A left three cards unfinished on the repository
+  checks it could not meet; O accepted all 11.
+- [x] Target runtime (pinned Red Hat build of Quarkus): a duplicate
+  injectable refuses at augmentation (already fragment-cdi-package). A no-op
+  save, an inverted guard, `&&` and a kept `@Valid` are caught over real HTTP.
+- [ ] Live Hermes board, M4 packaging, startup and parity on the migrated
+  application (it does not build yet), and the decided PostgreSQL.
+- [ ] Product defects, attributed to their owners and due at M4 parity:
+  - The source override fragments' column-name JPQL, which Hibernate 7
+    rejects (spring-data-fragment-impl; guidance in bb3dea3c).
+  - The generated DTO's required `pets` (generated-body-binding, owned since
+    V17-4).
+  - The `errors` objectName `OwnerDto` vs `ownerDto` (handler-validation-
+    translation; guidance in bb3dea3c).
+- [ ] Risk, recorded and not changed: the product-tree digest counts
+  git-ignored JDT metadata (`.project`, `.settings/`) if a rescan writes it
+  into the destination. It happened in the qualification pod, but not in
+  v21's live tree.
+
 ## Repeatable initial M3 plan (plan semantics v1) — 2026-09-26
 
 Plan: `tmp/m2-repeatability-20260926/IMPLEMENTATION-PLAN.md`. Selected by the
@@ -231,6 +284,21 @@ previous code. Nothing is published or launched; the release mapping is
   admission accepts the stamped alias and refuses the v7-style value; the
   preflight passes v12 and its gate refuses the public answer.
 
+## v12 isolation qualification — 2026-09-24
+
+- [x] Fresh `iso-v12-qual` / `iso-v12-qual-retry` created through the Developer
+  Hub form as ai-developer with Auto-start off. All 13 isolation checks PASS for
+  platform `63c173885a4fce50d4f04196895e91e75473ec16` + golden
+  `78b3e9dbca1ab917affe97680f4008233b6a65ec` + pinned images. Receipt
+  `tmp/v12-qualification-20260924/isolation-receipt.json` (SHA-256 `6fda37d9…`,
+  84 evidence files). Verified by run-preflight's own receipt-validation block,
+  which also refuses the v11 receipt, a different platform and a tampered file.
+- [x] Disposables retired with tombstones kept and workspaces deleted. v10/v11
+  unchanged. v11 receipt unchanged. A dashboard misclick briefly started v9: it
+  was stopped with init containers only and no dest-init (recorded in the
+  packet).
+- [ ] v12 not created. Handoff and checklist: Stage 080 `V12-HANDOFF.md`.
+
 ## Run declarations: one golden for every run — 2026-09-24
 
 - [x] Root cause: the published golden carried `run-budget.json` and
@@ -283,12 +351,15 @@ previous code. Nothing is published or launched; the release mapping is
 
 ## v11 late credential injection — 2026-09-24
 
-- [ ] `iso-worker-b` normal restart reproduced human-token injection after
-  Ready, despite the pod's restricted SA. Keep that `workspace_identity` FAIL.
-  Authoring adds a dedicated ephemeral kubeconfig directory mount, honoring
-  the installed Dev Spaces 3.30.1 Dashboard exclusion. Requalify startup,
-  restart and explicit reinjection on fresh disposables before v11. No v10
-  change, second disposable creation, or isolation PASS claimed.
+- [x] Dedicated ephemeral kubeconfig directory mount published at platform
+  `080d2585ce49682b604a3d022beca4265932bb66`, Synced/Healthy. Fresh
+  `iso-worker-c` / `iso-worker-c-retry` passed startup, restart, explicit
+  Dashboard reinjection refusal, and all 13 isolation checks. Receipt:
+  `tmp/v11-readiness-20260924/isolation-receipt.json` (46 evidence files).
+  Historical `iso-worker-b` restart FAIL remains preserved. Disposable run
+  resources retired and workspaces deleted; evidence repositories retained.
+  V10 unchanged. See Stage 080 `V11-PLAN.md` for pins,
+  evidence digest and the manual creation/preflight handoff. V11 not created.
 
 ## v11 preparation publication — 2026-09-24
 
@@ -313,7 +384,412 @@ previous code. Nothing is published or launched; the release mapping is
   sync stalled on `job-prepare-maas-gateway-tls` with `ImagePullBackOff`,
   because Red Hat's registry no longer serves a `latest` tag for `ose-cli`.
 
+## Stage 080 v11 repeatability — planned 2026-09-23
+
+- [x] **Expose the serial migration roadmap after M2.** Derive known work,
+  dependencies, acceptance checks, and unresolved questions from existing
+  M1/M2 evidence and the work list. Show M4 VERIFY and M5 PREFLIGHT / DEPLOY /
+  VALIDATE as planned milestones. Keep planned scope distinct from executable
+  admission: future milestones must not claim a candidate or receipt before
+  one exists. Retain one active M3 implementation task for v11; reconcile
+  discovered repairs and obligations resolved by earlier work against the plan.
+  Producer `compose-serial-roadmap` writes derived
+  `evidence/planning/serial-roadmap.json`. The work list remains the only plan;
+  this view is not sealed, not an M2 KEEP/audit step, and not an M5 gate.
+  Parallel M3 execution stays deferred.
+
+- [ ] **Demonstrate a clean v11 migration through delivery.** First finish
+  the confirmed reusable acceptance and delivery fixes, validate them, and
+  publish the exact golden revision needed for the run. Authoring for M5
+  eligibility, G-1 producer binding, coverage freeze/discharge, and
+  check-factory-m5 canonical G-1 evaluation is complete, including PIT
+  measurement provenance (XML digest tied to the measured Git commit and
+  product tree before a release-eligible pin; M5 consumption requires the
+  producer-written PIT receipt with complete candidate/tree/report bindings
+  on pin and receipt, not an embedded digest string) and per-M4
+  coverage snapshots taken in the original bind transaction. Include the
+  validated M3/M5 display titles (PREFLIGHT / DEPLOY / VALIDATE and BUILD /
+  CONFIGURE / COMPILE / MIGRATE / TEST / REPAIR) in this golden; internal
+  kinds, idempotency keys, and historical v10 card titles stay as written.
+  v11 publication mapping (golden force-pushed; v11 not launched). This
+  supersedes the stale recorded selection
+  `8c8cc1952271cfc232659a58bc781a27012c12f4` (a platform commit, not a golden
+  SHA) and the pending `d93c8482` mapping:
+  - source commit: `1082d51e230e378c1f71032d6e834b00e641a997` (naming
+    `264bcf95` + release-evidence `8c8cc195` + G-1 required bindings
+    `1a22ba10` + serial roadmap + post-admission roadmap write + v11
+    budget/runtime freeze)
+  - scaffold git tree: `5fed3d349297887d76ea8a004647f3e0d519425a`
+    (`git rev-parse SOURCE:stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold`)
+  - scaffold tree sha256: `d2d6166104f5a69b31a9b1a276190ef8e8b077af4ca5d044267f4a9d2d5411f7`
+    (613 files; dest omit `.hermes/_park`; matches published golden tree)
+  - golden repository: `github.com/adnan-drina/quarkus-migration-scaffold-v2`
+  - golden commit: `80b47c6ca5cf605a25145df18d39cb13fb6ad49a`
+    (`scripts/bootstrap-scaffold-repos.sh` of that source tree)
+  Record the source,
+  runtime/model configuration, finite budgets, and v11 deadline before
+  launch. Use a fresh workspace and the supported entrypoint; preserve v10.
+  Verify automatic phase handoffs, both-mode parity on the same packaged
+  artifact, and the candidate-to-pipeline-to-running-image-to-live-check chain.
+  Do not copy v10 destination fixes or verdicts into v11. Freeze the harness
+  during the run; record any intervention as assisted continuation rather
+  than clean replication. Report functional deployment and full release
+  qualification separately, retaining predeclared gaps and any new failures.
+
+- [ ] **Deferred: parallel M3 execution.** Outside v11 scope. Revisit after
+  the serial workflow has a clean replication. Requires demonstrated task
+  independence, isolated workspaces/reports/runtime resources, and serialized
+  integration with verification of the combined result. A future two-worker
+  pilot must measure elapsed time, token cost, rework, and evidence integrity
+  against serial execution before increasing concurrency.
+
 ## Stage 080 v10 readiness — 2026-09-22
+
+- Bounded M5 delivery is an assisted continuation after M4 close, not an
+  extension of the original migration deadline. `resume-after-m4.py` records
+  `verification/delivery/eligibility.json` and names
+  `start-m5-delivery.py`; the M4 worker still must not dest-dispatch M5.
+  Duplicate start reuses `m5:<stage>:<close_card>:<candidate16>`. Proof is
+  candidate SHA → app-push PipelineRun → image digest → ready Deployment →
+  HTTPS Route → live checks. A green PipelineRun is not enough (`deploy-app`
+  can exit 0 with no Deployment). Image identity is the build TaskRun
+  `IMAGE_DIGEST`, not a commit tag. A reachable app does not erase outstanding
+  qualifications and is not a full M5 `ACCEPT`. M4 `ship: false` is historical
+  context, not an M5 gate; the composer reads the pinned G-1 kill-ratio from
+  evidence instead of hardcoding empty values. Application values live in
+  `delivery.yaml`. Future M5 mints use titles M5 PREFLIGHT / M5 DEPLOY /
+  M5 VALIDATE; closed v10 card titles, logs, and receipts stay as written.
+  Preserve the closed v10 migration record; do not reopen it
+  for harness-only copies. Do not mint a repair campaign from this
+  decision-logic correction alone.
+
+- v10 dest is an **assisted overlay** beyond published golden `61ac38db`.
+  Provenance/navigation recovery and CORS bare-gating are installed. On
+  packaged artifact `c66b1e9d…` both ADR-014 modes measure 0 FAIL: enabled
+  CORS actual-anonymous and preflight are 401 + Basic challenge with no
+  CORS grants, and enabled documentation navigation is 302 then 200 at
+  `/petclinic/swagger-ui/index.html` while `/` and `/api` stay authenticated.
+  PetType `sc:auth-allowed-delete-referenced-pettypes-1` stays a
+  qualification INCONCLUSIVE (`after_effect_status` 404 vs 200), not a
+  destination FAIL. M4 `t_bf98503f` bound `PROVISIONAL_ACCEPT` and
+  `resume-after-m4.py` CLOSED the run (not shipped; coverage gaps remain).
+  Completed M4 still does not automatically run `resume-after-m4.py`
+  (repeatability defect; the protocol nudge also re-claimed the close card
+  from review — consume through that path, do not redesign dispatch).
+  Historical nav card `t_977f2281` remains blocked (attempt 7 of 6); do
+  not dest-complete. No release claimed. Silent security-mode fallback
+  (empty work-list rows printing `run:` with no `mode:`, bash defaulting
+  disabled and comparing the whole corpus) is corrected in authoring:
+  issued.json seals mode, scenario ids, entry points and a per-item
+  `item_scope` snapshot at mint. Verification recovers that snapshot only;
+  the live work list is remaining-work and is not consulted. Missing,
+  invalid, inconsistent, or incomplete issuance evidence is
+  `VERIFICATION_PENDING` without an attempt. A two-item issued scope is
+  not reduced to the one remaining work-list row. A sealed mode plus
+  named read-oracle entry points is a valid empty-scenario comparison
+  (execute those oracles only; invent no scenario ids). A wrong-mode PASS
+  cannot discharge the card. Not installed on the closed v10 dest; do not
+  reopen that run merely to copy it. CI/CD delivery is independent unless
+  it invokes this verification path.
+
+- Visit attempt 3 (`t_c707fd48`, commit `86bb017c4925`) repaired deletion in
+  the actual repository fragment. M4's fresh replay passes **18/18 disabled
+  scenarios**. Enabled mode measures **65 PASS, 1 INCONCLUSIVE, 1 FAIL**:
+  anonymous preflight gets destination 200 with CORS permission headers, while
+  the source returns 401 with its Basic challenge and no CORS headers. M4
+  incorrectly bound a provisional acceptance treating that FAIL as coverage.
+  The parent blocked its handoff and stopped its task-bound processes, preserving
+  the bound verdict and all attempts. Local repair adds a measured mode-parity
+  floor, binds both receipts, and refuses accepting or closing over either mode's
+  FAIL. That floor is published (source `ee5f50a3`, golden `c13e482c`) and is not
+  yet installed on v10. Enabled-mode FAILs now mint a mode-stamped repair
+  obligation from `scenarios-enabled/`; a disabled PASS cannot discharge it.
+  The CORS producer renders `preflight-authenticated-when` only from a
+  declared `security.request_policy: authenticated` plus a qualified enabled
+  anonymous preflight that is an authentication rejection (401 with a challenge
+  and no CORS grant). Missing response headers and a CORS-typed 403 leave
+  ordering unknown. A decided switch names when security is enabled; it does
+  not establish what security requires. Explicit `permitAll()` is never
+  overridden, and an empty `configure()` graph is unknown. Enabled-mode FAILs
+  mint a mode-stamped repair obligation from `scenarios-enabled/`; acceptance
+  carries that mode through the verification record, receipt, runner record
+  and baseline snapshot, so a sealed disabled `receipt.json` cannot discharge
+  an enabled replay. Mixed-mode CORS obligations partition into one unit per
+  mode; a residual mixed card is refused until partitioned.
+  Installation of these producer and handoff bytes, anonymous-preflight
+  repair against the packaged artifact, and corrected M4 continuation remain
+  pending. No release claimed.
+
+- M4's work-log resolver used the profile `HERMES_HOME`; native Kanban logs
+  live under the shared home. A read-only walk with the shared home resolved
+  all 25 ancestor logs. The local fix reuses the existing base-home resolver
+  and honors `HERMES_KANBAN_HOME`. Seven tests and the pre-verdict regression
+  pass, including self-log exclusion and refusal on genuinely missing logs.
+  The live worker recovered by rerunning the gate; the reusable fix is not yet
+  installed. The fence-evasion check remains required.
+
+- Visit task `t_73d4942e` read the effect diff `status 200 vs 404` backwards
+  in its opening reasoning. The generated brief preserved the comparator's
+  correct order but did not label the two sides. Native guidance corrected
+  the worker before any observed patch. The next brief generation explicitly
+  labels status/body/effect differences as observed destination versus expected
+  source and points to both structured effect fields. It also warns that a
+  failed compile cannot establish new HTTP behaviour from a retained parity
+  file. Comparison values, obligation identities and acceptance remain unchanged.
+  This wording update is prepared locally; the active Visit worker retains its
+  installed harness generation.
+
+- Specialty attempt 3 (`t_511cd973`) copied the complete source error body
+  into a broad exception handler. It was intercepted before acceptance; its
+  patch remains in the destination installation records. The normal gate
+  rejected its unverified edit, leaving all three attempts spent. Assisted
+  Operator step `8d735ca9349a` replaces that candidate with a specific foreign-key
+  exception translation after the service transaction rolls back. The response
+  reads the constraint identity from the exception; PostgreSQL's corresponding
+  constraint now retains the name declared by the frozen source schema.
+  Focused JDK 21 probes verify two distinct constraint names, escaping, propagation
+  of unrelated failures, and the existing 204/404 paths. Package and boot pass.
+  The fresh full disabled-mode replay passes Specialty's exact response and
+  unchanged read-back: **17/18 scenarios PASS**, with only Visit deletion's
+  read-back differing (204 response but the row remains). The no-budget-increase
+  takeover releases the deferral for continuation; it does not prove parity or
+  complete the old task. Source expectations and comparator rules are unchanged.
+  Evidence: `.hermes/installations/specialty-assisted-repair/` in v10. This is
+  assisted application repair, not an autonomous worker success or full migration
+  completion; enabled-mode and coverage exits remain outstanding.
+
+- Specialty run 47 exposed a brief defect: after re-measurement the brief
+  showed only the controller although `issued.json` still granted both
+  repository amendments. The brief now retains the matching issued card's
+  scope. Its generated procedure also contradicted the installed skill by
+  forbidding `_run.json` reads; it now names the bound comparison and the
+  acceptance-only counter fields. The regression reproduces the scope loss
+  before the fix. No scope grant, verification limit or acceptance rule changes.
+  Commit `a1d7f4bf` is installed on v10 with its regression passing and 1,148
+  protected files unchanged. The first installation rolled back when rendering
+  the brief rewrote its derived JSON; the successful installation checked the
+  live scope through read-only functions. Receipt:
+  `.hermes/installations/brief-issued-scope-a1d7f4bf-retry1.json`.
+  The same card resumed with the measured remaining failure: unhandled integrity
+  exception (500 rather than the source's 400), requiring a new scoped mapping
+  edit before another verification. Both earlier verification runs remain.
+
+- Specialty task `t_19857de6` stopped twice on provider HTTP 429 (native
+  runs 45 and 46); run 46 performed no application repair. The governed Qwen
+  route recorded six throttled calls under the Dev Spaces subscription,
+  whose measured configuration is 20 million tokens per hour. A 63-token
+  probe through v10's existing endpoint and injected credential passed at
+  03:18:58 UTC on September 23, then the same task was unblocked at 03:19:48.
+  No quota, credential, application retry budget or expected response changed.
+  The preserved Specialty candidate still needs to reproduce the source's
+  refused delete and unchanged read-back; provider recovery is not acceptance.
+
+- Owner validation task `t_7661cc51` confused three total verifier invocations
+  with two acceptance runs. The retained records showed diagnostic,
+  acceptance, diagnostic; the existing counter already reports one acceptance
+  and no stop condition. Native guidance clarified that the corrected candidate
+  may take its second acceptance verification. The skill now explicitly names
+  `acceptance_count` and `stop_rule_applies`; no counter logic, limit or budget
+  changed. Both procedure clarifications were installed while Specialty task
+  `t_19857de6` was blocked with no worker, with exact digests and backups under
+  `.hermes/installations/parity-skill-clarification-0dec91d7.json`. All 469
+  protected files, including its dirty product candidate, remained unchanged.
+
+- POM parity attempt 1 (`t_844e2bdd`) removed the generated-body rejection:
+  the candidate-bound comparison then reported only Content-Type parameter
+  differences for Owner create/update. Acceptance correctly refused the two
+  newly reported obligations and restored the candidate; the attempt remains
+  spent. Retry `t_e5264d79` received native guidance to use the existing
+  controller scope amendment and verify the complete response contract.
+  The worker procedure now directs parity diagnosis to the current bound
+  runner results, distinguishes body agreement from full parity, and forbids
+  repeating an unchanged candidate after a new-obligation rejection. This
+  procedure clarification was installed at the blocked Specialty task boundary
+  described above; it changes no acceptance rule or retry budget.
+
+- Root attempt 6 was DEFERRED with a doubled Location; all six attempts remain
+  spent. Operator step `5b4deef1eebd` changes only the Root redirect and Swagger
+  UI properties. Package and startup pass on the repaired artifact. The fresh full
+  replay passes the Root scenario and navigation (HTTP 200). An Operator takeover disposition now releases only the
+  deferral admission hold after a recorded, verified product repair, preserving
+  the exhausted budget and making no parity claim. It never mints. Local tests
+  cover dirty/stale evidence, a non-Operator predecessor, admission integrity,
+  unchanged attempt history and unchanged parity evidence. Destination installation passed
+  its selftest with 193 protected files unchanged. The takeover preserved the
+  budget at six spent out of six and minted nothing. The full comparison
+  records 5/18 scenarios PASS, 13 FAIL; entry points are 15 PASS, 7 FAIL and
+  12 INCONCLUSIVE. It becomes the accepted parity baseline with 13 obligations
+  in seven clusters. The earlier two-mismatch count did not describe the
+  whole application. K4 board equality passed (27/27), then native continuation
+  started with `t_844e2bdd` (POM parity repair). Migration remains incomplete.
+
+- Root attempt 5 introduced an unavailable Servlet API and was REVERTED.
+  The queued final card `t_55f6cb24` was held through native Kanban before
+  dispatch to install the concrete redirect guidance. The same guidance is
+  in the procedure workers load, because the current card's sealed work-list
+  advice is not regenerated by installing producer code. This changes no
+  expected status, card identity or budget; the five failures remain spent.
+  Installation passed its destination check with 192 protected files unchanged;
+  the same attempt 6 was unblocked with one attempt remaining.
+- The Root scope repair was exercised by attempt 4: the full-ID amendment
+  admitted `application.properties` before its edit. The worker then repeated
+  attempt 1's incomplete `ResponseBuilder` return and was correctly REVERTED.
+  Attempt 5 followed. Response advice now includes a completed JAX-RS builder
+  using the captured status and distinguishes the 303/307 convenience methods;
+  this guidance was tested locally and installed while attempt 6 was held.
+- Both scope corrections passed destination tests. A metadata-only disposition
+  cleared the Root deferral with the accepted product tree unchanged; all three
+  rejected attempts stayed recorded and the existing clearance rule raised the
+  total budget to six. K4's board comparator was EQUAL (24/24), then minted
+  `t_f68eca8d` as attempt 4. This is assisted continuation, not a fresh run.
+- Root attempt 2 was REVERTED with 303/302 and dead-navigation differences.
+  Its scope requests used a full parity ID, but the parser required a redundant
+  `parity:parity:` prefix and refused before checking the file relationship.
+  The local correction accepts both spellings, while refusing foreign and
+  combined IDs and preserving all relationship checks. A native comment on
+  attempt 3 gave the prior syntax; attempts remain spent and no scope was
+  widened by the architect. Installed with the reset and pending-brief fixes
+  at the subsequent blocked boundary; destination selftests passed and 191
+  protected product/loop files stayed unchanged.
+- Root attempt 3 fixed the first response (302 and literal Location) but was
+  DEFERRED when navigation still failed. The response-advice producer named
+  Swagger properties only in prose, so even a correctly parsed scope request
+  could not reach their file until a separate navigation obligation appeared.
+  UI redirect advice now carries the same configuration locus its repair
+  instructions require. Tests cover the actual producer through amend-scope,
+  including a renamed specimen; ordinary responses gain no configuration
+  authority. The three failed attempts remain recorded.
+- Parity steps `4877892e` (CORS), `1ad2532d` (Owner) and `abb778b9` (Pet)
+  were accepted after package and boot recovery. The Pet step records two
+  parity mismatches remaining and known tuple `[0,0,0]`; the root-controller
+  card is next. This is progress, not full migration acceptance.
+- Worker reset diagnostics exposed a reusable tooling defect: driver discovery
+  searched the Hermes profile's empty Maven cache instead of the cache Maven
+  used, and `find` with `pipefail` could exit silently. The local correction
+  uses the verifier classpath and OS-account fallback, emits a named missing
+  driver refusal, suppresses tracing and passes credential references to Java.
+  Tests exercise an empty profile cache, a custom Maven cache, shell tracing,
+  missing jars and the real Java runner with a nonconnecting fixture driver;
+  ownership checks remain mandatory. Installed at the Root deferral boundary;
+  destination regression checks passed without resetting the live database.
+- A proposed containment of Owner run 31 stopped at its PID check because the
+  worker had already exited. No task was blocked, no process was stopped, and
+  no database reset was performed by that intervention; its accepted step and
+  successor were subsequently confirmed from receipts.
+- v10 reached compile `[0,0,0]`, then its first package repair could not mint:
+  seven fragment parents owe 16 methods (14 files / 23 sites), beyond ADR-018's
+  eight-symbol limit. The fixture had only one method per parent. ADR-024
+  permits 16 sealed members for this complete, model-derived fragment set;
+  other units keep eight and the file/site limits stay 20/160. Every member
+  and the package gate remain mandatory. This is a recorded architecture
+  amendment during assisted continuation, not a false-count correction or a
+  claim that compilation completes migration.
+- The ADR-024 installation left `decisions.yaml` uncommitted before dispatch.
+  Packaging attempt `t_42192320` was therefore correctly REVERTED for an
+  out-of-scope path. This was an architect intervention error, not a worker
+  repair failure. Rejection also restored the decision file; retry
+  `t_d240a3ca` began from a clean decision file. The installation manifest
+  retains the amendment and digests. Operator step `ac03d997` subsequently
+  recorded it beside the retained retry, with known measure `[0,0,0]` and the
+  issued seal unchanged. Recovery instructions now require that record and a
+  clean product tree before minting. The rejected attempt remains spent.
+- Packaging retry `t_d240a3ca` retained seven fragment adapters when the next
+  package failure named an unrelated root-controller SpEL expression. The
+  same Operator step `ac03d997` replaced that expression with the documented
+  root-path property and a slash-safe redirect join on the accepted tree;
+  it did not accept the adapters. Shared DI guidance now covers this mapping
+  and permits the decided Spring compatibility extension. Combined packaging,
+  startup and redirect parity still require the resumed card's verification.
+- The resumed fragment candidate exposed seven ambiguous CDI injections:
+  each new implementation and generated Spring Data repository supplied the
+  shared interface. The full diagnostic was already in `package.log`, but
+  the worker blocked citing only the console summary. The skill now directs
+  workers to the retained gate log and distinguishes a consumer named by
+  the error from the in-scope delegate that caused it. Fragment guidance
+  describes a concrete-class `@Typed` restriction, grounded in the versioned
+  generator and CDI contract. Guidance `4da42ff3` is installed and the same
+  card resumed as native run 28 after status-only triage resolution; its
+  specification, issued seal, recurrence count and loop budget are preserved.
+  Run 29 subsequently applied all seven restrictions and was ACCEPTED as
+  `2c87dac062bd`: package and boot passed on the same artifact (`dfb404a8…`).
+  The known compile/test tuple remains `[0,0,0]`; 16 parity mismatches remain.
+  K4 minted CORS/config parity card `t_70e899f4`, and native run 30 started
+  its required brief. Packaging and startup are proven; migration is not complete.
+- Native run 28 crashed before its first tool action after six MaaS timeouts.
+  The gateway pod was unready while Qwen 3.8 remained healthy; replacing the
+  gateway restored internal access, but the public path still timed out.
+  Applying the documented internal-route hostAlias restarted v10, with all
+  683 protected product, harness and loop files unchanged. An authenticated
+  request from the restarted workspace returned 200 in 0.19 seconds, and the
+  same card was unblocked with its candidate and loop attempt preserved.
+  This was platform recovery, not another application repair or a package pass.
+  The gateway stall's underlying cause remains unproven; no OOM was recorded.
+- Run 29 retried stale acceptance before applying the diagnosed CDI repair,
+  then recovered and began editing the delegates. It had not read the brief
+  before those retries. A separate inspection reproduced contradictory brief
+  guidance: every nonzero advance prompted another call, and a missing issued
+  cluster overrode pending recovery with ordinary acceptance continuation.
+  The brief now prioritizes the pending diagnosis and a fresh verification;
+  only an interrupted invocation with an unknown verdict merits one retry.
+  Tests cover present/absent clusters with and without retained candidates.
+  This is a guidance correction, not a changed acceptance rule or a proven
+  explanation for run 29; installed at the Root deferral boundary.
+- Luna's v10 observations reproduced two more harness defects. M1's last
+  dispatch step could exit zero after skipping M2 because startup was off;
+  explicit `--after-m1` now continues a verified native M1, and review checks
+  its recorded continuation plus M2's native parent/workspace. Planner
+  activation remains mandatory. Work-list failures now name the failed phase;
+  worker skills require one foreground invocation and an evidence-based retry.
+- v10's first diagnostic-family unit removed 30 compiler errors (233 → 203)
+  but parked because unrelated errors made four sealed rows partially resolved.
+  A complete javac parse now proves absence of a retired type/annotation for
+  diagnostic-family assessment without claiming the file fully resolves.
+  Parse errors, missing inventory, remaining names and unresolved declaration
+  closures still refuse. The sealed type and members must remain. Pending
+  receipts retain all assessment rows, beyond the short log excerpt. Real-JDK
+  regression cases cover the failure and negative controls; live recovery is
+  recorded separately with the same card, candidate and original deadline.
+- The next v10 unit exposed the package form of that deadlock: removing
+  `org.springframework.validation` left seven controllers unresolved on the
+  separately scoped `@CrossOrigin`. Package retirement now uses javac's complete
+  qualified-name inventory, with namespace boundaries preserved. The sorting
+  unit exposed the inherited-type variant (Pet/Owner partial, Vet resolved):
+  the compiler now resolves ancestor/member-type namespaces independently of
+  unrelated field errors. Unknown ancestors, anonymous types, static imports
+  and missing evidence still refuse. Real-JDK controls include wildcard imports,
+  qualified/nested references, lookalike namespaces, inherited retired names
+  and unrelated errors. This does not mark general inheritance/calls resolved.
+  This changes only assessment of retirement, not the write set or other vetoes.
+- Luna observed a later compile retry spending over 12 minutes investigating
+  adjacent runtime behavior without a patch or verification, with no gate
+  forcing that investigation. The repair skill now directs a known replacement
+  into a candidate/checkpoint, distinguishes the file boundary from an obligation
+  to fix every behavior, and retains responsibility for introduced regressions.
+  This is workflow guidance; reduced time/token use has not been measured.
+- v10's accepted DAO unit reduced compiler errors 148 → 50 but broadened six
+  not-found catches to `PersistenceException`. The following ORM unit selected
+  `OptimisticLockException` for absence and was reverted for new diagnostics.
+  Exception guidance now distinguishes unchecked declarations, missing results
+  and unrelated persistence failures, with shipped-API constructor checks.
+  Its package-qualified names make the existing brief reference lookup find it
+  for both DAO and ORM units. Compile acceptance does not establish correct
+  HTTP behavior; the broad-catch finding remains open until the affected code
+  is corrected and the relevant runtime behavior is measured.
+- The transaction unit's first attempt changed imports but left Spring-only
+  `readOnly` attributes; the retry consulted the facade reference and accepted
+  38 → 7 compiler errors. The package lookup previously returned no reference.
+  That reference now names the package, directs imports and attributes to be
+  repaired together, and removes advice to change transaction type to simulate
+  read-only behavior. This guidance does not establish runtime parity.
+
+- v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
+  before first admission aborted under `set -euo pipefail`. The verifier now
+  treats absence as a valid snapshot, records creation/change/deletion during
+  verification, and refuses other read failures with `VERIFY_ADMISSION_READ`.
+  Eight subprocess cases execute the shipped shell control flow; six failed
+  before the fix and all eight pass after it. Existing parity-routing checks
+  also pass. Live recovery is an assisted continuation on the same M2 card,
+  preserving its blocked attempt, run authorization and original deadline.
 
 - During live-isolation preparation, the ownership CLI was found to omit its
   typed reason on refusal, although the operation correctly exited nonzero.
@@ -333,9 +809,37 @@ previous code. Nothing is published or launched; the release mapping is
 - The first live signed scaffolding event created one provisioning run, but
   the CLI step was OOMKilled at its 256Mi limit before a receipt. The provisioner
   now requests 256Mi and is limited to 1Gi; database sizing is unchanged.
-- Live isolation qualification, publication/sync of this generation and the
-  official v10 launch remain outstanding. Closed v9 stays provisional; coverage
-  gaps and prior assistance remain in the comparison. No new signature gate.
+- Published golden `eab9efd9406ed6226724e1bd9f928548ca1f1b52`; Stage 050 is
+  Synced/Healthy at `af7c389c7a333476e3481c4b150c3439c9ec9551`. The live
+  demonstration completed with **12 checks passing and `workspace_identity`
+  failing**: both actual workspace service accounts can read the other run's
+  database Secret through `devworkspace-default-role`. Reset/restart, concurrent
+  replay, interrupted retirement, tombstones and cleanup passed. Both disposable
+  runs are retired and removed; official v10 remains uncreated. See
+  [the measured result](stages/080-ai-autonomous-migration/ISOLATION-RESULT-2026-09-22.md).
+  **Operator scope decision, 2026-09-22:** defer permission hardening for the
+  controlled v10 experiment. Keep the measured identity FAIL, require the other
+  12 checks, and freeze the platform/harness for migration execution. Targeted
+  mounts do not restrict API access; no security-confinement claim is made.
+  Closed v9 stays provisional, with coverage gaps and prior assistance retained.
+  **Repair in Git, 2026-09-23:** Stage 050 now provisions a per-run
+  `<run>-worker` identity and selects it with destfile pod-overrides rather
+  than DWO `disableCreation` (that path still binds the named SA to the
+  operator default role). Generated kubeconfig is a replacement Config bound
+  to the current pod `tokenFile`; `oc login` is not used. The provisioner Role
+  is namespace-wide for the listed resources; run labels constrain the Task
+  script, not API authorization. Not live-synced. Restricting new workers does
+  not revoke existing legacy workspace accounts. Follow
+  [WORKER-IDENTITY-REPAIR.md](stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md)
+  before deploy; requalify all 13 checks only after that focused plan PASSes.
+  **v11 handoff completion in authoring:** named MaaS GET group exceptions are
+  documented; three workspace slots preserve v10 during the two-run trial;
+  the route helper is cluster-guarded and refuses changes during startup;
+  v11 preflight verifies the receipt/pod/CLI worker identity and rejects the
+  default-role binding. The retired `iso-worker-a` trial's exit 137 is retained
+  as an unresolved startup failure, not proof of timer expiry. Use fresh
+  `iso-worker-b` names through Developer Hub/Dev Spaces with migration off,
+  after normal GitOps publication. No live PASS or v11 creation is claimed.
 - The template now uses a dedicated source initializer and a read-only worker
   mount. Initial live testing exposed Git's PVC ownership check; the initializer
   now trusts only the exact clone path. The launch preflight also rejects
@@ -356,7 +860,8 @@ previous code. Nothing is published or launched; the release mapping is
 - `pipelines/build/tekton-triggers-core-config.yaml` supplies the exact upstream
   empty enterprise-host allowlist through GitOps. No feature flag or certificate
   verification is disabled. The v10 preflight checks actual TektonConfig and
-  listener deployment readiness. Live recovery is being qualified.
+  listener deployment readiness. Live recovery passed two actual template
+  creation deliveries and concurrent signed test replays on 2026-09-22.
 - Remove this workaround after a fixed operator includes and owns the map,
   all three components become ready, and a signed GitHub scaffolding event
   automatically provisions its run. Do not infer recovery from Argo health alone.
@@ -572,9 +1077,9 @@ Track B (waves 1–5) is retired. The v2 kernel and skills tree live in `stages/
 - [ ] **Stage 080 loop activation (SAD v3 §9)** — 2026-09-08: Spec Kit removed; the capability planner (ownership map, DAG, context probe, jQAssistant) replaced by the fix-until-green loop (freeze → build → JDK-model extractor → MTA → bundle → deterministic compat bootstrap → tool-computed work list → admission → one K4 card per step → verify/accept/revert/defer → M4 parity), implemented and fixture-tested on two specimens. Still required before `pins.planner.activation` can be flipped: `decisions.yaml` (platform ADR, attempt threshold ADR); the MTA CLI 8.2 binary in the overlay (digest frozen from a measured receipt); a live M1 + bootstrap + first verify on PetClinic REST **with admissible `mta-cli-8.2-artifact` provenance**; a live K3 board proof; one accepted loop step and M4 parity. Until then dest-init mints M1 only and M2 refuses.
 - [x] **v7 performance backlog P0–P1 (scaffold, 2026-09-11)** — ADR-004 persistence guidance aligned (`spring-data-jpa.md`, not Panache). `VERIFICATION_PENDING` retains inconclusive candidates (no attempt counted; K4 does not mint; restore then acceptance verify). Repository brief inventories methods for one-file batches. `run-verify.sh --mode diagnostic|acceptance` records per-stage ms in `run.json`. Extra Maven / `advance.py` profiling and the 30% matched-slice evaluation remain open (P2 / eval).
 - [x] **v8 compile loop rebuilt on the compiler model (golden harness, 2026-09-11)** — javac reports one unhandled checked exception per compilation, so the compile count cannot see how many a transformation introduced: t_cef8a0f6 took v8 from `[0,29,0]` to `[0,16,0]` while writing six unhandled `new URI(String)` and was accepted. Now: (1) **veto** — `DestModel` enumerates every unhandled checked-exception site (catches and declared throws accounted for; a line-free key), and `advance.py` models the last accepted commit and the candidate under the same compiler configuration (classpath, release, generated sources) and REVERTS a proven introduction even when the tuple falls; a site the baseline had is *exposed*, not introduced; incomplete baseline coverage the parse tree cannot settle is INCONCLUSIVE (`unassessable-exceptions`). Demonstrated on v8's own commits: `d529025` vs its parent = 6 introduced (proved from the baseline parse tree, whose controllers did not attribute), `c4a0270` vs `fbe01cf` = 6 resolved, 0 introduced. (2) "still reported" is a line-free identity (file, member, call site, exception). (3) the family is `checked-exception-family/v1`: the sites of one signature that ONE accepted step introduced, bound to that commit, one retry key, each member assessed from the compiled tree (callee gone, nothing caught or declared, consumer such as `setLocation` kept); the regex `uri-location-constructor/v1` inventory is gone. (4) inside the family the card CONTINUES in place (exit 3; at most one per member; a stalled continuation rejects); outside it is `exposed-outside-scope`. (5) one budget answer (`planner/budget.py`) for planner, issued card, brief, rejection and deferral; a clearance records cluster, retry key and what was spent; `operator-step.py --disposition-only` clears a harness-caused deferral with no commit. Tests: dest_model, worklist, fix-until-green, operator-step.
-- [x] **Parity header contract (golden harness, 2026-09-11)** — captures record the FIRST response (redirects not followed) with the raw `Location`; the comparator maps only the declared source and destination origins in `Location` (path, escaping, query, fragment untouched); list-valued CORS headers compare as token sets; an exchange that asserts `Location` (201/3xx) or CORS permission headers, compared against a capture with NO header map, is INCONCLUSIVE rather than a quiet skip — coverage, not per-header values, since a recorded null (no credential permission) is a legitimate observation and `Expose-Headers` is the actual request's set, not the preflight's; an OPTIONS carrying `Origin` + `Access-Control-Request-Method` is a preflight (no effects, no credentials); CORS coverage is counted per policy — an actual cross-origin exchange and a preflight with the needed request headers, the source's policies read from M1's structure model — or the parity receipt is INCONCLUSIVE; the capture producer archives the receipt it replaces. **Corpus contract change:** a scenario that sends `Origin` must name a declared `cors_policy`. Tests: scenario-parity. **2026-09-14:** the headers the source exposes via `@CrossOrigin(exposedHeaders=…)` are asserted as well (`_scenarios.source_exposed_headers`, from M1's model; recorded on each capture as `asserted_headers_extra` and replayed by the comparator), added with the corpus's new validation-failure scenario `sc:create-owner-invalid` (400 with field errors in the source's exposed `errors` header) — the five-scenario packet has now been reviewed against live v9 M1 evidence, and `proposals/corpus-review-results.json` regenerated (unsigned canonical digest `f60e4373…`, three body digests, five request digests). The invalid telephone exercises the request DTO's `@Pattern`, not the entity's `@Digits`; body bytes are unchanged. Ready for the Operator's signature, with exact Content-Type comparison approved as a strict representation contract. **Capture qualification remains pending:** require fresh complete extra-header maps (older maps can omit assertions), and retain complete before/after owner lists or semantic checks bound to their digests (the producer at the original review saved only 200-character samples; the retention follow-up below supersedes that limit). `CAPTURED` alone is not qualification. See the 2026-09-14 addendum in `proposals/REVIEW-2026-09-12.md`; no v9 installation or capture performed by this review.
+- [x] **Parity header contract (golden harness, 2026-09-11)** — captures record the FIRST response (redirects not followed) with the raw `Location`; the comparator maps only the declared source and destination origins in `Location` (path, escaping, query, fragment untouched); list-valued CORS headers compare as token sets; an exchange that asserts `Location` (201/3xx) or CORS permission headers, compared against a capture with NO header map, is INCONCLUSIVE rather than a quiet skip — coverage, not per-header values, since a recorded null (no credential permission) is a legitimate observation and `Expose-Headers` is the actual request's set, not the preflight's; an OPTIONS carrying `Origin` + `Access-Control-Request-Method` is a preflight (no effects, no credentials); CORS coverage is counted per policy — an actual cross-origin exchange and a preflight with the needed request headers, the source's policies read from M1's structure model — or the parity receipt is INCONCLUSIVE; the capture producer archives the receipt it replaces. **Corpus contract change:** a scenario that sends `Origin` must name a declared `cors_policy`. Tests: scenario-parity. **2026-09-14:** the headers the source exposes via `@CrossOrigin(exposedHeaders=…)` are asserted as well (`_scenarios.source_exposed_headers`, from M1's model; recorded on each capture as `asserted_headers_extra` and replayed by the comparator), added with the corpus's new validation-failure scenario `sc:create-owner-invalid` (400 with field errors in the source's exposed `errors` header) — the five-scenario packet has now been reviewed against live v9 M1 evidence, and `stages/080-ai-autonomous-migration/history/v8-proposal-packet-2026-09-12/corpus-review-results.json` regenerated (unsigned canonical digest `f60e4373…`, three body digests, five request digests). The invalid telephone exercises the request DTO's `@Pattern`, not the entity's `@Digits`; body bytes are unchanged. Ready for the Operator's signature, with exact Content-Type comparison approved as a strict representation contract. **Capture qualification remains pending:** require fresh complete extra-header maps (older maps can omit assertions), and retain complete before/after owner lists or semantic checks bound to their digests (the producer at the original review saved only 200-character samples; the retention follow-up below supersedes that limit). `CAPTURED` alone is not qualification. See the 2026-09-14 addendum in `stages/080-ai-autonomous-migration/history/v8-proposal-packet-2026-09-12/REVIEW-2026-09-12.md`; no v9 installation or capture performed by this review.
 - [x] **The decided build profiles reach the build (golden harness, 2026-09-11)** — `.mvn/maven.config` carried only `-s .mvn/settings.xml`, so no `mvn` the loop, CI or a person runs passed the build profiles `decisions.yaml` decided and `application.properties` declares. Bootstrap now writes `-Dquarkus.profile=<decided build profiles>` there (change op `maven-config.build-profile`), and dest v8 has it as Operator step `2f2388f`. It is ADR-011 implementation and **not** a repair for any packaging failure. **Correction:** an earlier version of this entry, the commit `469954ec` message and a memory all claimed a measured A/B showed the flag changing a Quarkus Spring Data failure from `OwnerRepository` to `UserRepository`. That was one build per arm. Six controlled builds on the same v8 accepted tree — no flag (×3), `prod,spring-data-jpa` (×2), `prod` alone, and `quarkus.profile` commented out of `application.properties` — failed in **every** arm at `SpringDataJPAProcessor`, naming a different repository each time (Owner, User, Visit, PetType, Pet, Specialty). The claim is withdrawn; whether `application.properties` selects the build profile is unproven either way, because every arm dies at the same processor first.
-- [ ] **Fragment repair on dest v8 — scope fixed by the architect's review 2026-09-12** (`stages/080-ai-autonomous-migration/proposals/REVIEW-2026-09-12.md`) — Quarkus Spring Data (`FragmentMethodsUtil`, verified byte-identical to upstream 3.27.3 in the pinned Red Hat artifact) requires an implementation for every non-Spring-Data parent a repository extends, so the seven base contracts fail as ONE set. **Preserve the seven base interfaces** (`ClinicServiceImpl` and `UserServiceImpl` inject those types) and the seven `SpringData*` specializations; a marker-only change does not help, because the generator recognises entity-returning saves while the base contracts declare `void save(Entity)`. One concrete adapter per entity under `repository/springdatajpa/`: **add** `OwnerRepositoryImpl`, `VetRepositoryImpl`, `UserRepositoryImpl`; **extend** `SpringDataPetRepositoryImpl`, `SpringDataPetTypeRepositoryImpl`, `SpringDataSpecialtyRepositoryImpl`, `SpringDataVisitRepositoryImpl` to also implement their base contract (one class may implement both; the generator deduplicates). In scope, not cleanup: restrict each adapter's CDI bean types to its concrete class (`@Typed(ConcreteImpl.class)`) so the generated repository stays the sole bean for each service injection — proven by augmentation and injection tests, not by the annotation; and inventory the concrete implementation of every method (`void save`, owner fetch/search queries, `Pet.findPetTypes`, `Visit.findByPetId`, the four custom deletes), because fragment methods are generated before stock and annotated query methods and an adapter can shadow a leaf `@Query`. Behaviour comes from the frozen source. Also verify the `User` entity's `@Id` (frozen source: `String username`; live `SpringDataUserRepository`: `Integer`) and correct that specialization in the same bounded scope — no Integer template across all seven. Exit: full configured verification with tests enabled; augmentation resolves all seven contracts and the service injections; then start the packaged artifact against the decided isolated database and exercise save/create/update and each custom delete through real transactions with read-back, plus representative reads. Packaging success alone proves nothing; HTTP parity stays a separate gate. No controller, service, schema, dependency, profile or security redesign belongs in this repair. **Status: not started — the cluster API has been unreachable since 2026-09-12 ~10:30, so the patch cannot be prepared against the live interfaces or validated in isolation.**
+- [ ] **Fragment repair on dest v8 — scope fixed by the architect's review 2026-09-12** (`stages/080-ai-autonomous-migration/history/v8-proposal-packet-2026-09-12/REVIEW-2026-09-12.md`) — Quarkus Spring Data (`FragmentMethodsUtil`, verified byte-identical to upstream 3.27.3 in the pinned Red Hat artifact) requires an implementation for every non-Spring-Data parent a repository extends, so the seven base contracts fail as ONE set. **Preserve the seven base interfaces** (`ClinicServiceImpl` and `UserServiceImpl` inject those types) and the seven `SpringData*` specializations; a marker-only change does not help, because the generator recognises entity-returning saves while the base contracts declare `void save(Entity)`. One concrete adapter per entity under `repository/springdatajpa/`: **add** `OwnerRepositoryImpl`, `VetRepositoryImpl`, `UserRepositoryImpl`; **extend** `SpringDataPetRepositoryImpl`, `SpringDataPetTypeRepositoryImpl`, `SpringDataSpecialtyRepositoryImpl`, `SpringDataVisitRepositoryImpl` to also implement their base contract (one class may implement both; the generator deduplicates). In scope, not cleanup: restrict each adapter's CDI bean types to its concrete class (`@Typed(ConcreteImpl.class)`) so the generated repository stays the sole bean for each service injection — proven by augmentation and injection tests, not by the annotation; and inventory the concrete implementation of every method (`void save`, owner fetch/search queries, `Pet.findPetTypes`, `Visit.findByPetId`, the four custom deletes), because fragment methods are generated before stock and annotated query methods and an adapter can shadow a leaf `@Query`. Behaviour comes from the frozen source. Also verify the `User` entity's `@Id` (frozen source: `String username`; live `SpringDataUserRepository`: `Integer`) and correct that specialization in the same bounded scope — no Integer template across all seven. Exit: full configured verification with tests enabled; augmentation resolves all seven contracts and the service injections; then start the packaged artifact against the decided isolated database and exercise save/create/update and each custom delete through real transactions with read-back, plus representative reads. Packaging success alone proves nothing; HTTP parity stays a separate gate. No controller, service, schema, dependency, profile or security redesign belongs in this repair. **Status: not started — the cluster API has been unreachable since 2026-09-12 ~10:30, so the patch cannot be prepared against the live interfaces or validated in isolation.**
 - [x] **A set-wide gate failure is a typed blocker, never a one-file card (golden harness, 2026-09-12)** — the packaging obligation above names whichever repository the extension reaches first, and that name changes run to run (six builds, six names; on v8 the head cluster churned `c:e22f2926b684` → `c:55b91c8dd385` → `c:1ef036cb0ccb` with no product change). `worklist.set_wide_scope` recognises the raising PROCESSOR plus the closed-vocabulary cause (`io.quarkus.spring.data.deployment` + `missing-implementation` → `spring-data-fragment-implementations`); such a failure drops the arbitrary file and member from its identity, is marked unlocated so it can never cluster or mint, keeps the raw message and the types it named as observations, and reaches the work list as one `unlocatable` blocker whose `blocked` reason says SET-WIDE. Counterexamples: permuted first-reported names yield one identity and no card (`worklist.test.py`), the same through `build_worklist` end to end (`fix-until-green.test.py`), and a per-file cause at a named type still locates. Two older cases that used this cause as their vehicle were re-vehicled onto per-file causes, not deleted.
 - [x] **Parity mismatches are typed by their own diffs, and scenario verdicts finally become obligations (golden harness, 2026-09-14)** — `worklist.parity_items` read only `verification/parity/*.json` (the read-oracle verdicts): every corpus scenario (CORS, Location, the 400 path) could FAIL at M4 with nothing for the loop to repair, and the same glob swallowed `receipt.json` into a phantom obligation at GLOBAL. It now reads `verification/parity/scenarios/*.json` too, skips the receipt by schema, and types each FAIL from its diffs: `header Access-Control-*` diffs are a `cors-config` obligation on `src/main/resources/application.properties` (kind config, rule `PARITY_CORS`) whose message quotes the source's recorded values and names `quarkus.http.cors*` — on Quarkus no controller can grant a CORS permission, and the pattern card removes `@CrossOrigin`, so a controller-located card would have been unfixable (three reverts, a deferral); Location, exposed-header (`errors`), status, body and effect diffs stay at the entry point's controller as `response`; a verdict carrying both kinds is two obligations, each with only its own diffs; the message carries the diffs so the brief says what differs. Counterexample in `worklist.test.py`. Needed on v9 before M4: the loop there has already removed `@CrossOrigin` from all eight controllers (`t_b54ee38d`) and rewritten the `BindingResult` path (`t_e30ffdd3`).
 - [x] **Captures retain full bodies as digest-bound evidence, and a capture that cannot learn the source's exposed headers fails closed (golden harness, 2026-09-14)** — the architect's review of the five-scenario packet found that capture receipts keep 200-character body samples, so qualification could not show the created owner in the list or the rejected owner absent; digests alone name neither. `capture-source-scenarios.py` now writes every response and read-back body to `verification/source-oracles/scenarios/bodies/<scenario>/{response,before-<effect>,after-<effect>}.body` (cap 1 MiB, `truncated` recorded). **Review correction:** JSON `body_sha256` is canonical, so it is not the raw file digest. The locally tested amendment adds `raw_body_sha256` and `retained_sha256` separately; qualification rechecks both byte hashes and canonical normalization, and refuses truncated lists. The amendment must be published after the `76e110e6` base. Each capture row records `evidence`; an unreadable exposed-header model is now a refusal (`FAIL: SOURCE_SCENARIOS …`), not a WARN, since a capture asserting too little reads as complete. The architect's regenerated `corpus-review-results.json` (canonical corpus digest `f60e4373…`, five requests, three bodies, live v9 binding, qualification criteria) and the review addendum are committed alongside as the reviewed, still-unsigned state; `approved_by` stays null until the Operator signs, which changes the digest once more. The Operator identified golden `76e110e6` as the replacement base (loop code plus gate scripts). The local `rest-cors` amendment now permits typed application-config repair, forbids restoring `@CrossOrigin`, requires qualified source actual/preflight parity, and uses `quarkus.http.cors.enabled=true` in the row and obligation message. Publish the retention correction and guidance/message amendments before installing their successor between cards; preserve pins/home/config and record the installation manifest separately. The unsigned manifest now records this sequence and reviewed code hashes; its final approval-bound recompute awaits the Operator. Local scenario-parity/worklist tests pass; no live installation or capture by this review.
@@ -584,8 +1089,8 @@ Track B (waves 1–5) is retired. The v2 kernel and skills tree live in `stages/
 - [x] **The qualification gate is an M1 step and a FAIL is a recorded verdict, not a refusal (golden harness, 2026-09-14)** — measured on dest v9 against the frozen source's own OpenAPI document and `initDB.sql`/`populateDB.sql`: `qualify-source-captures.py` was documented as the M1 step after capture but `paved-road-m1/steps.json` listed only the derivation and the capture, so nobody ran it and `compose-parity-receipt.py` answered "captures not qualified" on every entry point; it is now the third `capture-source-oracles` step (keeping `verification/source-oracles/scenarios/_qualification.json`), it exits 0 on PASS, FAIL and INCONCLUSIVE alike (`OK: qualification FAIL (n of m not qualified)`) and exits 1 only on a refusal to judge (no corpus, a provenance that does not bind, no capture at all), because a FAIL is a fact about the SOURCE that M4 turns into a coverage gap and never into a destination card. Capability is now judged over the predicates that could be judged (a 400 with a well-formed `errors` header is usable evidence, so its `expect_status` miss is FAIL even beside a `creates_one_entity` the document leaves unanswerable), an INCONCLUSIVE qualification reaches `coverage_gaps` as `kind: inconclusive-qualification` for `compose-coverage-account.py`, the operationId adapter refuses to bind an operation whose path variables the route cannot supply (`POST /owner/{ownerId}/pet` ↔ `/api/pets`: typed gap, no scenario), and a delete now reads the seed schema's FOREIGN KEY constraints — the positive delete takes the lowest unreferenced row, an all-referenced table is a typed gap, and a referenced row with no `ON DELETE CASCADE`/`SET NULL` earns one negative `sc:delete-referenced-<resource>-<id>` expecting any 4xx with the row still readable.
 - [x] **An Operator step is recordable beside a VERIFICATION_PENDING card, because an issued card with a retained candidate is not live (golden harness, 2026-09-14)** — dest v9 `t_7b8663f5` (`c:fb2e558f39a5`, attempt 2) was VERIFICATION_PENDING with its candidate retained under `verification/loop/pending-files/` and the accepted tree back on disk, waiting on a prerequisite the Operator owns (ADR-008: the port of `ValidatorTests` to Jakarta Validation, because Maven fails at default-testCompile on the retained Spring test). `operator-step.py` refused it — "an issued card is open; close it before recording an operator step" — so the protocol the SKILL itself prescribes (restore-pending → run-verify → advance "when the prerequisite changes") could never resume: closing the card would discard the candidate the record promises to keep. The refusal now says what is true of each case. An issued card is LIVE only when no uncleared pending row names its cluster (`pending_for`), and refuses by name — "an issued card is live (t_…, cluster …); let it finish or revert it" — because a worker's candidate may be on the tree. With the candidate retained the step is recorded BESIDE the card: the same checks (the tree is the accepted tree plus the Operator's change, committed exactly, re-measured, refused if the measure is not fully known), the card kept byte-identical, `beside_pending` {cluster, card, cause} in the step, and NOTHING minted whatever `--no-mint` says, since the pending card still owns the head. Second defect, found by the same case: the retained candidate would no longer restore — `restore_pending_candidate` compared a whole-tree digest taken on the baseline the candidate was written on, so the Operator's own commit made the candidate "not the candidate this record names". Identity is now checked where it is claimed (the candidate's own paths are the retained bytes, its deletions are gone, no other product path differs from the committed tree) — the same statement as the digest when the baseline did not move, still true when it did — and the case the digest could never have told, an Operator commit touching a file the candidate also holds, is refused by name instead of silently dropped (`head_commit` is now recorded on the pending row). `advance.py` needed no change: it already reads `steps[-1]` and the refreshed `verification/loop/accepted/` snapshot, so the operator step is the baseline the restored candidate is judged against. Counterexample + controls in `operator-step.test.py` (a real pending fixture: the step records and mints nothing, the live card refuses before committing, the candidate restores over the Operator's change, and both a stray uncommitted edit and a commit into the candidate's own path still refuse the restore).
 - [ ] **Autonomous handling of the fragment set (harness, not implemented)** — for automatic dispatch to resume, the complete fragment-contract set must be derived and sealed from the type model (leaf, parent, entity/ID and implementation relationships), keeping one family identity and budget as members resolve, assessing all members (the first exception name disappearing proves nothing about the others), and routing a candidate that exposes a different packaging cause under the pending protocol rather than reverting it or marking packaging PASS. An incomplete type model must yield unknown/blocker, never an invented set. Required counterexample: repeated builds with permuted first-reported names on one tree give the same family identity, scope and budget — to be run from the INSTALLED destination code before dispatch resumes.
-- [ ] **dest v8 recovery (`spring-petclinic-rest-legacy-v8`)** — Operator-assisted recovery recorded 2026-09-11/12 under the architect's decisions. Steps: `fbe01cf` (ADR-008 ValidatorTests port), `c4a0270` (the six Location operations → `@Context UriInfo` + `getBaseUriBuilder().path(<source template>).build(id)`; deferral `c:8397dd073219` cleared as a disposition; the three rejected attempts kept; `t_20b6b083` superseded and still blocked on the board), `2f2388f` (ADR-011: `-Dquarkus.profile=prod,spring-data-jpa` in `.mvn/maven.config`). Measure `[0,0,0]`; admission ADMITTED; **nothing minted** — automatic dispatch stays paused. Harness install: golden `29b69b5` code copied onto the dest (29 files replaced, `lib/planner/budget.py` added, backup at `/tmp/hermes-backup-20260911T214256Z`, 0 files differing from golden afterwards); `pins.json` (planner `pilot` authorization), `.hermes/home` (38M board/logs), `config`, `planning`, `dashboard` and `AUTOSTART-STATUS` preserved untouched; the loop, compiler-model, parity and bootstrap counterexamples all pass from the installed code in dest scratch under the workspace's own Python 3.9.25 and JDK 21. Packaging still REFUSEs, and the reason is the Spring Data fragment obligation above — not the build profile, and not the repository the message happens to name. Open, in order: (a) the fragment repair scope is an architect/ADR decision; (b) corpus — v7's approved corpus was retrieved **read-only from the stopped workspace's volume** (no v7 start needed: a reader pod with `fsGroup 1001040000`), and holds one scenario (`sc:update-owner-1-city`, PUT, two effects, approver `operator:adnan.drina`) whose capture predates the header contract (no `headers` map) and no `cors_policies`; v7 has no capture receipt at all, and v8's idle `_capture.json` is present and now archived automatically by the producer. the architect's **amended, unsigned** packet is mirrored byte-identically in `stages/080-ai-autonomous-migration/proposals/` (corpus, both bodies, review, `corpus-review-results.json`). The current kernel reproduces its manifest exactly: canonical corpus digest `a27a93eb…`, policy id `crossorigin:7b1a3d9234cd` computed from the source's `exposedHeaders`, all four request digests, both body digests, no coverage gaps, and `approved_by: null` refusing to load. Before signing: bind the source digest, entry-point rows and annotation values to v8's frozen bundle, record the Operator approval, recompute the digest (any approval-field edit changes it), archive the idle `_capture.json` and capture afresh. Capture must DEMONSTRATE creation with an absolute Location under the source context path, the created owner in the list, a successful cross-origin request carrying the source's permission/exposure headers, and a successful anonymous preflight permitting the paired POST; a 400/403 or absent headers is evidence, not qualification. Literal Location comparison after origin mapping only — weakening it or normalizing generated ids is NOT approved; align and verify reset/sequence state first. Four scenarios over three owner operations are not coverage of 34 entry points or six Location operations; (c) resuming automatic acceptance also needs the arbitrary-locus defect above addressed, since the head cluster still churns with no product change. **2026-09-14 (workspace restarted by the Operator; the restart minted nothing — AUTOSTART `minted`, 19 mints, no issued card, no cron):** golden `647c616` installed (5 files, the `e9c7cdf0` delta; identical to golden in both directions; pin/home/config preserved; manifest `evidence/harness/install-manifest-647c616.json`); worklist, fix-until-green, k3, k4-mint and parity suites pass from the installed code; two full re-measures on the live tree now yield **no package cluster and nothing to mint** — one typed blocker `rt:package:32affeeb7d2abd4b` (scope `spring-data-fragment-implementations`, observed `UserRepository` both times; the pre-install run on the same tree had pinned `SpecialtyRepository`) with a SET-WIDE blocked reason; the separate harness-install commit `6871401` records 36 files by explicit manifest, product digest `a890ce8b…` and the accepted-step ledger unchanged, `pins.json` left uncommitted for separate review. Decision taken with the Operator: v8 is parked here; **v9 from golden `647c616` is the run of record** — the fragment repair lands once, on v9, when its loop blocks with this same typed blocker.
-- [ ] **ADR-008 reviewer independence on v8 step `fbe01cf`** — 2026-09-11: the architect independently reviewed the port against ADR-008 (inputs, assertions, subject and the validation call preserved; one test, zero failures/errors/skips) and approved it **technically**. Independence of the recorded reviewer is NOT established: the port itself was authored in commit `2154896c` (2026-09-10) whose trailers name `Claude-Session: …session_015F1AH7itXf3TGfe5dfF7mk`, the same session that later recorded `--reviewer claude` on v8, so author and reviewer are one seat. `operator-step.py` enforces only reviewer ≠ operator, which this satisfied while still not being independent. The dest entry stays as recorded (dest evidence is never hand-edited); this row is the additional evidence. Open: either a reviewer seat with no authorship of the patch re-reviews it, or the record carries the architect's review as the independent one, with Adnan retaining human accountability. Harness follow-up to consider: record the authoring seat/session on the operator step and refuse a reviewer that matches it. The architect's independent review of this exact patch and its test evidence is attached at `stages/080-ai-autonomous-migration/proposals/REVIEW-2026-09-12.md`, with its own identity and date; the original Claude entry stays as historical evidence and is not independent; human accountability remains with Adnan.
+- [ ] **dest v8 recovery (`spring-petclinic-rest-legacy-v8`)** — Operator-assisted recovery recorded 2026-09-11/12 under the architect's decisions. Steps: `fbe01cf` (ADR-008 ValidatorTests port), `c4a0270` (the six Location operations → `@Context UriInfo` + `getBaseUriBuilder().path(<source template>).build(id)`; deferral `c:8397dd073219` cleared as a disposition; the three rejected attempts kept; `t_20b6b083` superseded and still blocked on the board), `2f2388f` (ADR-011: `-Dquarkus.profile=prod,spring-data-jpa` in `.mvn/maven.config`). Measure `[0,0,0]`; admission ADMITTED; **nothing minted** — automatic dispatch stays paused. Harness install: golden `29b69b5` code copied onto the dest (29 files replaced, `lib/planner/budget.py` added, backup at `/tmp/hermes-backup-20260911T214256Z`, 0 files differing from golden afterwards); `pins.json` (planner `pilot` authorization), `.hermes/home` (38M board/logs), `config`, `planning`, `dashboard` and `AUTOSTART-STATUS` preserved untouched; the loop, compiler-model, parity and bootstrap counterexamples all pass from the installed code in dest scratch under the workspace's own Python 3.9.25 and JDK 21. Packaging still REFUSEs, and the reason is the Spring Data fragment obligation above — not the build profile, and not the repository the message happens to name. Open, in order: (a) the fragment repair scope is an architect/ADR decision; (b) corpus — v7's approved corpus was retrieved **read-only from the stopped workspace's volume** (no v7 start needed: a reader pod with `fsGroup 1001040000`), and holds one scenario (`sc:update-owner-1-city`, PUT, two effects, approver `operator:adnan.drina`) whose capture predates the header contract (no `headers` map) and no `cors_policies`; v7 has no capture receipt at all, and v8's idle `_capture.json` is present and now archived automatically by the producer. the architect's **amended, unsigned** packet is mirrored byte-identically in `stages/080-ai-autonomous-migration/history/v8-proposal-packet-2026-09-12/` (corpus, both bodies, review, `corpus-review-results.json`). The current kernel reproduces its manifest exactly: canonical corpus digest `a27a93eb…`, policy id `crossorigin:7b1a3d9234cd` computed from the source's `exposedHeaders`, all four request digests, both body digests, no coverage gaps, and `approved_by: null` refusing to load. Before signing: bind the source digest, entry-point rows and annotation values to v8's frozen bundle, record the Operator approval, recompute the digest (any approval-field edit changes it), archive the idle `_capture.json` and capture afresh. Capture must DEMONSTRATE creation with an absolute Location under the source context path, the created owner in the list, a successful cross-origin request carrying the source's permission/exposure headers, and a successful anonymous preflight permitting the paired POST; a 400/403 or absent headers is evidence, not qualification. Literal Location comparison after origin mapping only — weakening it or normalizing generated ids is NOT approved; align and verify reset/sequence state first. Four scenarios over three owner operations are not coverage of 34 entry points or six Location operations; (c) resuming automatic acceptance also needs the arbitrary-locus defect above addressed, since the head cluster still churns with no product change. **2026-09-14 (workspace restarted by the Operator; the restart minted nothing — AUTOSTART `minted`, 19 mints, no issued card, no cron):** golden `647c616` installed (5 files, the `e9c7cdf0` delta; identical to golden in both directions; pin/home/config preserved; manifest `evidence/harness/install-manifest-647c616.json`); worklist, fix-until-green, k3, k4-mint and parity suites pass from the installed code; two full re-measures on the live tree now yield **no package cluster and nothing to mint** — one typed blocker `rt:package:32affeeb7d2abd4b` (scope `spring-data-fragment-implementations`, observed `UserRepository` both times; the pre-install run on the same tree had pinned `SpecialtyRepository`) with a SET-WIDE blocked reason; the separate harness-install commit `6871401` records 36 files by explicit manifest, product digest `a890ce8b…` and the accepted-step ledger unchanged, `pins.json` left uncommitted for separate review. Decision taken with the Operator: v8 is parked here; **v9 from golden `647c616` is the run of record** — the fragment repair lands once, on v9, when its loop blocks with this same typed blocker.
+- [ ] **ADR-008 reviewer independence on v8 step `fbe01cf`** — 2026-09-11: the architect independently reviewed the port against ADR-008 (inputs, assertions, subject and the validation call preserved; one test, zero failures/errors/skips) and approved it **technically**. Independence of the recorded reviewer is NOT established: the port itself was authored in commit `2154896c` (2026-09-10) whose trailers name `Claude-Session: …session_015F1AH7itXf3TGfe5dfF7mk`, the same session that later recorded `--reviewer claude` on v8, so author and reviewer are one seat. `operator-step.py` enforces only reviewer ≠ operator, which this satisfied while still not being independent. The dest entry stays as recorded (dest evidence is never hand-edited); this row is the additional evidence. Open: either a reviewer seat with no authorship of the patch re-reviews it, or the record carries the architect's review as the independent one, with Adnan retaining human accountability. Harness follow-up to consider: record the authoring seat/session on the operator step and refuse a reviewer that matches it. The architect's independent review of this exact patch and its test evidence is attached at `stages/080-ai-autonomous-migration/history/v8-proposal-packet-2026-09-12/REVIEW-2026-09-12.md`, with its own identity and date; the original Claude entry stays as historical evidence and is not independent; human accountability remains with Adnan.
 - [ ] **v8 accepted-tree quality evidence (not dest product claims)** — Location is request-aware since Operator step `c4a0270`; that it equals the source's absolute form under the context path is still parity's to prove. Still unproven until header-asserting captures against the frozen v8 source: CORS (the source's `@CrossOrigin(exposedHeaders=…)`; the destination sets no `quarkus.http.cors`), BindingResult `@Valid`+catch timing, DAO `IllegalArgumentException` not-found. Root mappings remain (leftover SpEL `#{servletContext.contextPath}`); Find methods lost `readOnly` on `@Transactional` (the boundary stayed). Pet/Visit unused `DateTimeFormat` imports were removable. A capture without a header map is now INCONCLUSIVE for these, never a pass.
 - [ ] **v7 matched-slice evaluation (P1 leftover)** — 30% reduction in median time to complete a fixed repository-heavy scope, same frozen source / toolchain / corpus / DB reset / model settings / cache. Primary metrics: time and verification calls per completed repair set. Provider latency and tokens are dest Hermes log fields, not `run.json`. Do not dest-complete leftover overlay dests for this item.
 - [x] **dest-init `kantra-assert-exec` rejected MTA CLI 8.2.1** — 2026-09-09 PetClinic dest M1 (`spring-petclinic-rest-legacy-v1`, card `t_1189be04`): overlay `/opt/mta-cli` is product 8.2.1 and `mta-cli version` works, but dest-init `kantra-assert-exec` treated `rulesets/go/fips/tests/data/build/build.sh` (non-executable shebang fixture, overlay uid 10001 not chmod-able) as an analysis sibling, marked the pinned CLI unusable, and fell through to community kantra (`provenance=kantra-fallback`, admission `MTA_PROVENANCE`). Fix: dest-init checker skips shebang files under `rulesets/`; `assert-ensure-cli-path.sh` covers the fixture. Does **not** change overlay image digest. Existing dest `~/.local/bin/kantra-assert-exec` is the old checker until dest-init re-runs after ConfigMap sync. Do not hand-edit dest `evidence/`.

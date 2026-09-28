@@ -7,18 +7,23 @@
 set -euo pipefail
 
 ROOT=""
+AFTER_M1=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root)
       ROOT="${2:-}"
       shift 2
       ;;
+    --after-m1)
+      AFTER_M1="${2:?--after-m1 requires the existing M1 task id}"
+      shift 2
+      ;;
     -h|--help)
-      echo "usage: autostart-migration.sh --root <project>" >&2
+      echo "usage: autostart-migration.sh --root <project> [--after-m1 <task-id>]" >&2
       exit 2
       ;;
     *)
-      echo "usage: autostart-migration.sh --root <project>" >&2
+      echo "usage: autostart-migration.sh --root <project> [--after-m1 <task-id>]" >&2
       exit 2
       ;;
   esac
@@ -57,6 +62,10 @@ fail_status() {
   exit 1
 }
 
+# The startup preference controls starting a run, not continuing a native M1
+# already started by the Operator. Continuation validates that task below;
+# it does not grant planner activation or release M2 before M1 review.
+if [[ -z "${AFTER_M1}" ]]; then
 case "${AUTO_START_MIGRATION:-true}" in
   false|False|FALSE|0|off|OFF|no|NO)
     export AUTOSTART_JSON
@@ -66,9 +75,70 @@ case "${AUTO_START_MIGRATION:-true}" in
     exit 0
     ;;
 esac
+fi
+
+# Run declaration: this run's name and budget, as the factory declared them in
+# the destination's initial commit (planner/run_declaration.py). Checked on
+# every start and on continuation, never renewed: a restart re-reads the same
+# committed bytes. A refusal stops the run before any card exists -- a missing,
+# foreign, stale or rewritten declaration means this repository would run on
+# a budget that is not its own. The explicit off switch above still wins.
+if ! DECLARATION_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.run_declaration --root "${ROOT}" 2>&1)"; then
+  fail_status "${DECLARATION_OUT#REFUSE: }"
+fi
+
+# B1: the in-cluster MaaS route is a prerequisite of every dispatch, start and
+# continuation alike (v12 was created without its hostAlias and its model
+# traffic took the public load balancer). The one shared check
+# (planner.maas_route, also used by the Operator preflight): the platform's
+# expected gateway host and Service address are set, the worker endpoint is
+# that host, it resolves here to that address, and TLS verifies through it.
+# A refusal mints nothing. The explicit off switch above still wins.
+if [[ -f "${ROOT}/.hermes/lib/planner/maas_route.py" ]]; then
+  if ! ROUTE_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.maas_route --root "${ROOT}" 2>&1)"; then
+    fail_status "${ROUTE_OUT#REFUSE }"
+  fi
+  echo "${ROUTE_OUT}"
+fi
+
+# R1/R3: a run the factory declared under run control starts only with the
+# platform's record present and intact: the contract, the pinned release and
+# the pinned model profile (planner.run_control.run_gaps). A legacy run has no
+# such declaration and passes through unchanged.
+if ! RUNCTL_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -c 'import sys; from planner.run_control import run_gaps; g = run_gaps(sys.argv[1]); print(g[0] if g else "run control: ok or not declared"); raise SystemExit(1 if g else 0)' "${ROOT}" 2>&1)"; then
+  fail_status "${RUNCTL_OUT}"
+fi
+# ... and on the Hermes runtime the harness was qualified on: the image stamp
+# names the pinned patched tree (loop halt, truncation/quota stops, pacer).
+if ! RUNTIME_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -c 'import sys; from planner.run_control import runtime_gaps; g = runtime_gaps(sys.argv[1]); print(g[0] if g else "hermes runtime: ok or not declared"); raise SystemExit(1 if g else 0)' "${ROOT}" 2>&1)"; then
+  fail_status "${RUNTIME_OUT}"
+fi
+# The board protocol (planner.outcome_protocol.launch_gaps): a run that
+# requested the outcome board starts only when its initial-commit request and
+# the read-only run control agree and its execution gate is open. A missing,
+# inconsistent or downgraded selection refuses here; the serial loop is never
+# started instead. A run that requested nothing (v12-v17) or the serial loop
+# passes unchanged.
+if ! PROTOCOL_OUT="$(PYTHONPATH="${ROOT}/.hermes/lib" python3 -m planner.outcome_protocol --root "${ROOT}" launch-check 2>&1)"; then
+  fail_status "$(printf '%s\n' "${PROTOCOL_OUT}" | grep -m1 '^REFUSE' || printf '%s' "${PROTOCOL_OUT}" | tail -1)"
+fi
 
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
+fi
+
+if [[ -n "${AFTER_M1}" ]]; then
+  python3 - "${ROOT}" "${AFTER_M1}" <<'PYCONTINUE' || fail_status "M1 continuation task mismatch"
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / ".hermes/lib"))
+from paved_road import phase_card_gaps
+gaps = phase_card_gaps(root, sys.argv[2], "M1 ANALYZE")
+if gaps:
+    print("FAIL: " + "; ".join(gaps), file=sys.stderr)
+    raise SystemExit(1)
+PYCONTINUE
 fi
 
 # Bind a platform-authorized pilot seal to the bundle on disk (SAD section 12).
@@ -98,6 +168,23 @@ except Exception as exc:
     raise SystemExit(0)
 pins_path = root / ".hermes" / "pins.json"
 bundle_path = root / "evidence" / "planning" / "evidence-bundle.json"
+# B8/R3: a run governed by run control (its initial-commit declaration says so)
+# is authorized by the PLATFORM's read-only record; the harness's one narrow
+# operation is the write-once binding of this bundle's digest. A legacy run
+# binds in pins.json exactly as before v13.
+from planner import run_control
+if run_control.in_use(root):
+    if not bundle_path.is_file():
+        print("bind: no evidence bundle yet; M1 has not produced one")
+        raise SystemExit(0)
+    bundle = load_json(bundle_path)
+    unfit = bundle_fitness_gaps(bundle)
+    if unfit:
+        print("REFUSE: BIND_UNFIT_BUNDLE %s" % "; ".join(unfit[:3]))
+        raise SystemExit(0)
+    ok, msg = run_control.bind(root, digest(bundle), "M1 evidence bundle")
+    print(("bind: %s (run control)" if ok else "REFUSE: %s") % msg)
+    raise SystemExit(0)
 try:
     doc = load_json(pins_path)
 except Exception as exc:
@@ -135,7 +222,9 @@ from pathlib import Path
 root = Path(sys.argv[1])
 sys.path.insert(0, str(root / ".hermes" / "lib"))
 try:
-    pins = json.load(open(root / ".hermes" / "pins.json", encoding="utf-8"))
+    # load_pins takes the activation from run control when it governs this run (B8)
+    from planner.pins import load_pins
+    pins = {"pins": load_pins(root)}
 except Exception:
     pins = {}
 mode = str(((pins.get("pins") or {}).get("planner") or {}).get("activation") or "").strip().lower()
@@ -155,9 +244,50 @@ else:
 PY
 )"
 
-M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json in order: freeze-migration-input, capture-build-evidence, inventory-legacy-surface, scan-with-mta, assemble-evidence-bundle. Attach the KEEP artifacts by running .hermes/kernel/kanban_attach.py via terminal (python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec). That script fixes the file set and the 25 MiB cap, so the set is not your decision. The kanban_attach tool does not satisfy the paved-road audit. The original frozen legacy source is the only baseline; do not derive or upgrade it first. A producer that records status unpinned is evidence, not a defect to repair: kanban_block kind=needs_input naming the pin. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
+# The card bodies say what each phase delivers and how it is done, for the
+# person reading the board. The ordered commands, pins, exceptions and audit
+# mechanics live in the pinned skill (paved-road-m1 / paved-road-m2), never
+# here. M2 names the procedure of the protocol this run selected
+# (planner.outcome_protocol, checked above); it never changes a selection.
+BOARD_PROTOCOL="$(printf '%s\n' "${PROTOCOL_OUT:-}" | python3 -c 'import json,sys
+for line in sys.stdin:
+    line = line.strip()
+    if line.startswith("{"):
+        try:
+            print(json.loads(line).get("protocol") or "serial-loop/v1")
+            raise SystemExit(0)
+        except ValueError:
+            pass
+print("serial-loop/v1")' 2>/dev/null || echo serial-loop/v1)"
 
-M2_BODY='Follow paved-road-m2. First step is the activation gate (python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized); then skill_view bootstrap-destination, build-worklist and admit-migration-plan in that order, then python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board, then skill_view verify-live-kanban-loop. The plan is the work list the tools compute; you never author it. An INCONCLUSIVE admission is a legal stop: kanban_block kind=needs_input naming the BLOCK classes; do not hand-author anything under evidence/planning or verification/, and never edit decisions.yaml. K4 mints exactly one card (the head cluster) and zero unless the receipt is ADMITTED. Happy-path terminator is kanban_request_review with reviewer set to reviewer and created_cards equal to the native t_* list from mint. Never kanban swarm, decompose, link, triage, or daemon --force.'
+M1_BODY="Establish the legacy application's baseline for migration planning.
+
+Produce the frozen source reference, build evidence, MTA findings, the application inventories and the source's recorded behavior (baseline captures). Attach the evidence set to this card and record any coverage gaps.
+
+Done when: the evidence bundle and the captures exist for this run, M2 PLAN exists as this card's child, and the reviewer approves the audit.
+
+Procedure: paved-road-m1."
+
+case "${BOARD_PROTOCOL}" in
+  outcome-board/v2|outcome-board/v1)
+    M2_BODY="Publish the migration plan from the reviewed M1 evidence.
+
+Make every known repair outcome and the M4/M5 milestones visible on the board as their own cards, with their dependencies and attached contracts; the plan itself is attached to this card. Record unresolved responsibilities.
+
+Done when: the plan is ADMITTED, the published board reads back equal to the admitted plan, and the reviewer approves.
+
+Procedure: paved-road-m2 (${BOARD_PROTOCOL})."
+    ;;
+  *)
+    M2_BODY="Admit the migration plan from the reviewed M1 evidence and start the fix-until-green loop.
+
+Compute the work list, admit it, and create the first loop card for the head of the list.
+
+Done when: the plan is ADMITTED, the live board equals the loop's expected cards, and the reviewer approves.
+
+Procedure: paved-road-m2 (serial-loop/v1)."
+    ;;
+esac
 
 create_card() {
   local title="$1"
@@ -176,6 +306,9 @@ print(tid)
 '
 }
 
+if [[ -n "${AFTER_M1}" ]]; then
+  M1_ID="${AFTER_M1}"
+else
 M1_JSON="$(
   create_card "M1 ANALYZE" \
     --assignee implementer \
@@ -187,6 +320,7 @@ M1_JSON="$(
     --body "${M1_BODY}"
 )" || fail_status "M1 create failed"
 M1_ID="$(parse_id <<<"${M1_JSON}")" || fail_status "M1 create JSON missing t_* id"
+fi
 
 M2_ID=""
 if [[ "${PLANNER_ACTIVATION}" == "activated" || "${PLANNER_ACTIVATION}" == "pilot" ]]; then
@@ -219,7 +353,10 @@ export AUTOSTART_JSON
 AUTOSTART_JSON="$(python3 -c '
 import json, sys
 m1, m2, planner, reused = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
-if reused and m2:
+after_m1 = sys.argv[5]
+if after_m1:
+    reason = "Existing M1 continued; %s (planner %s)" % ("M2 ensured as child" if m2 else "M2 not minted", planner)
+elif reused and m2:
     reason = "M1 reused; M2 reused as child (planner %s)" % planner
 elif reused:
     reason = "M1 reused; M2 not minted (planner %s)" % planner
@@ -233,13 +370,16 @@ print(json.dumps({
   "planner_activation": planner,
   "m1_id": m1,
   "m2_id": m2,
+  "after_m1": after_m1,
   "reused": reused,
-  "argv_m1": ["hermes","kanban","create","--json","M1 ANALYZE","--idempotency-key","m1-analyze"],
+  "argv_m1": ([] if after_m1 else ["hermes","kanban","create","--json","M1 ANALYZE","--idempotency-key","m1-analyze"]),
   "argv_m2": (["hermes","kanban","create","--json","M2 PLAN","--parent",m1,"--idempotency-key","m2-plan"] if m2 else []),
 }))
-' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}" "${REUSED}")"
+' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}" "${REUSED}" "${AFTER_M1}")"
 write_status
-if [[ "${REUSED}" == "1" && -n "${M2_ID}" ]]; then
+if [[ -n "${AFTER_M1}" ]]; then
+  echo "OK: autostart continued M1=${M1_ID} M2=${M2_ID:-not-minted} (planner ${PLANNER_ACTIVATION})"
+elif [[ "${REUSED}" == "1" && -n "${M2_ID}" ]]; then
   echo "OK: autostart reused M1=${M1_ID} M2=${M2_ID} (planner ${PLANNER_ACTIVATION}; dest-init idempotent, not a new mint)"
 elif [[ "${REUSED}" == "1" ]]; then
   echo "OK: autostart reused M1=${M1_ID} (planner ${PLANNER_ACTIVATION}; dest-init idempotent, not a new mint)"

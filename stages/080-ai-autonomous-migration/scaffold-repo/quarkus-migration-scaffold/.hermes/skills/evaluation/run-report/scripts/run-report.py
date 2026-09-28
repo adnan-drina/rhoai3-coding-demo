@@ -1455,22 +1455,57 @@ def contract(tree: Tree) -> Dict[str, Any]:
     return out
 
 
+def factory_budget(tree: Tree, clock: Clock) -> Optional[Dict[str, Any]]:
+    """The factory's declaration (run-budget.json v2) composed with the golden
+    defaults it binds, timed by the initial commit that introduced it. None
+    when the destination carries no such declaration (v10/v11 and earlier keep
+    their own self-contained budgets and are read as before)."""
+    rel = "run-budget.json"
+    doc, _ = tree.json(rel)
+    if not isinstance(doc, dict) or doc.get("schema") != "rhoai3.run-budget/v2":
+        return None
+    ensure_hermes_lib()
+    try:
+        from planner import run_declaration
+    except ImportError as exc:
+        return U("run-budget.json is a factory declaration, but planner.run_declaration is unavailable (%s)" % exc,
+                 rel)
+    # A report reads the record: the identity witness is the repository's own
+    # assignment, not the environment of whoever runs the report.
+    d = run_declaration.load(tree.root, environ={})
+    if not d.ok:
+        return U(str(d), [rel, "run-defaults.json"])
+    e = V(d.budget, [rel, "run-defaults.json#/budget", "initial commit %s" % d.initial_commit])
+    at = parse_time(d.declared_at)
+    # The declaring commit IS the destination's first commit, which is one of
+    # the two events the clock starts from: it can equal the start, never follow it.
+    e["declared_before_launch"] = (at <= clock.start) if (at is not None and clock.start is not None) else None
+    if e["declared_before_launch"] is None:
+        e["declared_before_launch_reason"] = "the clock start is unknown"
+    e["declared_by_initial_commit"] = True
+    return e
+
+
 def budget(tree: Tree, budget_file: Optional[Path], decisions: Any, dec_why: str, clock: Clock) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
+    if budget_file is None:
+        declared = factory_budget(tree, clock)
+        if declared is not None:
+            out["declared"] = declared
     cands: List[Tuple[str, Path]] = []
     if budget_file is not None:
         cands.append(("budget:%s" % budget_file.name, budget_file))
     cands += [(rel, tree.path(rel)) for rel in BUDGET_CANDIDATES]
     doc = None
     src = None
-    for name, p in cands:
+    for name, p in ([] if "declared" in out else cands):
         if p.is_file():
             doc, why = load_doc(p)
             src = name
             if doc is None:
                 out["declared"] = U(why, name)
             break
-    if doc is None and isinstance(decisions, dict) and isinstance(decisions.get("budget"), dict):
+    if "declared" not in out and doc is None and isinstance(decisions, dict) and isinstance(decisions.get("budget"), dict):
         doc, src = decisions["budget"], DECISIONS + "#budget"
     if isinstance(doc, dict):
         e = V(doc, src)

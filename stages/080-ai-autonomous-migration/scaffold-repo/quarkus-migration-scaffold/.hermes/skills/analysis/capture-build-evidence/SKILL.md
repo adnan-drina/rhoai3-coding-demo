@@ -47,7 +47,9 @@ The wrapper, in order:
 
 1. Reads `evidence/producers/freeze.json` for `analysis_copy` and
    `source_digest`; refuses without them.
-2. **Warm-up** (network allowed): `mvn -q -B dependency:go-offline`.
+2. **Warm-up** (network allowed): `mvn -q -B dependency:go-offline`,
+   then every goal the offline passes measure, online once (`compile`
+   and `dependency:build-classpath`, which also resolves test scope).
    Recorded separately as `warmup.outcome`; it is not the build.
 3. **Offline build**: `mvn -q -B -o compile`. Exit code and the last
    lines of output go to `evidence/build/compile.log`.
@@ -64,6 +66,9 @@ The wrapper, in order:
   `success|failure`, `classpath_available` true only when
   `evidence/build/classpath.txt` is non-empty, `warmup.outcome`
   recorded separately, and `toolchain.java` / `toolchain.maven` set.
+- A successful compile with a failed classpath extraction keeps
+  `outcome: success`, sets `classpath_available: false` and names the
+  extraction failure in `reasons`; the structural model is then partial.
 - A `failure` outcome exits 0 from the wrapper (the fact was recorded)
   but exits 1 from the paved-road audit's admission later — do not
   "fix" it here.

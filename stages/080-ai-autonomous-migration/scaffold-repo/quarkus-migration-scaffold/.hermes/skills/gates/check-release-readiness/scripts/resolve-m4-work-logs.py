@@ -19,10 +19,16 @@ import sys
 from collections import deque
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+from paved_road import kanban_root_home
+
 
 def _log_home() -> Path:
-    home = os.environ.get("HERMES_HOME") or "/projects/modernized/.hermes/home"
-    return Path(home) / "kanban" / "logs"
+    # Native kanban_home() shares the board across profile workers. A worker's
+    # HERMES_HOME names its profile, not the dispatcher-owned log directory.
+    home = (os.environ.get("HERMES_KANBAN_HOME") or "").strip()
+    home = home or kanban_root_home() or "/projects/modernized/.hermes/home"
+    return Path(home).expanduser() / "kanban" / "logs"
 
 
 def _self_id() -> str:

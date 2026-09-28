@@ -9,6 +9,7 @@ invalidates the receipt.
 | `schemas/evidence-bundle.schema.json` | M1 evidence bundle (source manifest, structure, entry points, MTA obligations, producer receipts) |
 | `schemas/worklist.schema.json` | the only plan: tool-computed items, file clusters, fixed order, measure |
 | `schemas/admission-receipt.schema.json` | receipt v2: seals (bundle, work list, bootstrap, decisions, contracts, pins), blocks, activation, measure |
+| `schemas/serial-roadmap.schema.json` | derived serial view after M2 (`evidence/planning/serial-roadmap.json`); not sealed; planned M4/M5 must not claim a candidate or receipt |
 | `schemas/decisions.schema.json` | `decisions.yaml` v2: destination platform, attempt threshold, ADR-retired items |
 | `schemas/decided-repairs-manifest.schema.json` | ADR-019 specimen manifest of decided repairs (the transformations, their applicability and the independent review records), named and pinned by `decisions.yaml` `decided_repairs` |
 | `schemas/decided-repairs-receipt.schema.json` | `evidence/producers/decided-repairs.json`: one row per transformation (applied / already-applied / refused + type), the repair inventory, review reuse, retired thresholds, effective-pom check |
@@ -19,6 +20,13 @@ invalidates the receipt.
 | `catalogs/destination-platforms.json` | platform ids (`decisions.destination_platform.id`) → BOM pin key, compat mapping |
 | `catalogs/framework-generated.json` | generated-source markers |
 | `catalogs/cross-cutting.json` | cross-cutting annotation/supertype catalog (retained for the entry-point derivation) |
+| `catalogs/compat-mapping.json` `migration_recipes` | plan semantics v1: qualified recipes for source-derived requirements (fixed architecture, the existing checks that refuse the broken forms, refusal conditions); `planner/source_requirements.py` cites them |
+| `worklist.json` `plan:gb:*` items and `planned_unresolved` (plan semantics v1 only) | V17-4: the V16-8 generated-body obligation on pom.xml planned from files on disk (`worklist.static_generated_body_items`: the qualified destination/source generator pair from `pom.xml` and `.derived/frozen-input/pom.xml`, the spec's `required` lists, the corpus's accepted captures), gate `plan` -- discharged only when the condition no longer holds on the candidate; an unqualified pair is named in `planned_unresolved`, never planned |
+| `evidence/planning/plan-semantics.json` (written, not a contract) | plan semantics v1 only: input fingerprint per producer, the projected work list, requirements and initial graph; frozen by the first ADMITTED receipt and sealed as `seals.plan_semantics` beside the exact digests |
+| `catalogs/compat-mapping.json` `repository_behaviour`, `persistence_behaviour_translations` | V17-3: where an owed fragment member's behaviour comes from in the source (decided profiles; override fragment, `@Query`, CRUD default, derived query; `write_calls` decide a write) and the persistence-provider translations a literal port does not preserve (Hibernate 6 flush-before-query); read by `planner.source_requirements.repository_behaviour` |
+| `catalogs/compat-mapping.json` `application_paths` | round 3: the source keys that set where the application serves (context path, MVC servlet path, management base path) and the destination key owed each value; read by `planner.source_requirements.application_paths`, measured as `config:application-path` |
+| `verification/loop/owner-debts.json` (written, observational) | V17-3: per owner, the functional verification a structurally accepted unit still owes (`functional-verification`) and the runtime-cause classification of a card's runtime failures (`runtime-cause-diagnosis`, `planner/runtime_cause.py`); nothing reads it back as authority |
+| `evidence/planning/plan-view.json` (written, not a contract) | derived human view of the initial plan; grants nothing; observational on a serial-loop run |
 | `mta-rules/ruleset.yaml`, `mta-rules/rhoai3-canary.yaml` | custom rules + the canary that proves the effective ruleset |
 | `decisions.example.yaml` | fail-closed template for the project-root `decisions.yaml` |
 

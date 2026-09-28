@@ -42,6 +42,11 @@ Or with a snapshot (`--snapshot FILE`, the JSON of `hermes kanban list
    A matching title or a body carrying the receipt digest proves nothing.
    Exempting this M2 card exempts its ancestors (the M1 it descends from).
 4. Anything else on the board is foreign → `MISMATCH`, exit 1.
+5. **outcome-board/v2** (`--live` only): the board must equal the PUBLISHED
+   plan revision instead — one live card per planned key, its body, skill,
+   assignee, exact dependencies and contract digest (the native read-back M2's
+   completion gate applies). The receipt records `mode`, `plan_revision` and
+   every gap.
 
 ## Verification
 

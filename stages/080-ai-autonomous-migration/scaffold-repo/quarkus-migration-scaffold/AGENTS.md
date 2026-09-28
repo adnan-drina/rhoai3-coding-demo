@@ -32,9 +32,13 @@ repository (`/projects/modernized`).
 - Prefer constructor injection; config via `@ConfigProperty` / `%profile` keys
   (or `QUARKUS_PROFILE`) — do not invent Spring-style `application-*.properties`
   trees on the destination.
-- REST resources under `/api/`; JSON via Jackson. If health exists, it
-  belongs at `/q/health` (`/q/*` deliberately sits outside the application
-  root path). That is a target convention, not a story to invent.
+- JSON via Jackson. Derive HTTP paths from the effective
+  `quarkus.http.root-path`, `quarkus.http.non-application-root-path`,
+  Swagger/OpenAPI configuration, and the measured application contract
+  (`delivery.yaml`, OpenAPI, source oracles). Do not invent `/api/` or
+  `/q/health` as specimen defaults. Health, when present, follows the
+  non-application root. Fill `delivery.yaml` from that measured contract,
+  not from this file.
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 - Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
   versions in `.hermes/pins.json` only).
@@ -81,7 +85,7 @@ workspace state.
 | M4 retrievable `src/` + `pom.xml` | skill `assert-retrievable-tree` |
 | Fence-evasion detector (observation, not a boundary) | skill `assert-no-fence-evasion` |
 | Run / phase data | `evidence/` |
-| Planning contracts | `.hermes/planning/` (schemas, catalogs incl. `compat-mapping.json`, MTA rules, `decisions.example.yaml`); the work-list planner `.hermes/lib/planner/`; the only human input is `decisions.yaml` (platform, attempt threshold, ADR-retired items) |
+| Planning contracts | `.hermes/planning/` (schemas, catalogs incl. `compat-mapping.json`, MTA rules, `decisions.example.yaml`); the work-list planner `.hermes/lib/planner/`; the only human input is `decisions.yaml` (platform, attempt threshold, ADR-retired items); the run budget is `run-defaults.json` (shared) bound by the factory's `run-budget.json` (this run, initial commit) — never edit either |
 | Destination POM authoring | skill `author-destination-pom` |
 | Seat config template | `.hermes/config/config.yaml.template` (no secrets) |
 | Dest worker profiles | `.hermes/config/profiles/{orchestrator,implementer,reviewer}.yaml.template` plus sibling `{name}.SOUL.md` |
@@ -160,6 +164,16 @@ M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_K
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
 
+On an **outcome-board/v2** run (the card body names "outcome-board/v2") the M2 card publishes the whole known plan as native tasks (one per
+outcome, M4 VERIFY, the three M5 stages) and every card starts with
+`python3 .hermes/kernel/native_gate.py --root . issue`. An accepted outcome,
+an accepted M4 verdict and a finished M5 stage end with
+`kanban_request_review` (reviewer=`reviewer`); the reviewer completes the card
+after its audit or requests changes (another run of the same card). A REFUSE
+on M4 runs `native_gate.py m4-repair` and ends with `kanban_block
+kind=dependency`. The card body names its procedure; the paved-road skills
+hold the detail.
+
 When a tool result is `Blocked terminal` or `repeated_exact_failure_warning`,
 there is no legal next command: `kanban_block --kind needs_input` naming that
 command and its last refusal. Do not exit 0 with the card still running.
@@ -182,18 +196,28 @@ retains the candidate (`VERIFICATION_PENDING`, no attempt counted);
 otherwise it discards the candidate (index and working tree) and re-issues the cluster; at the ADR
 threshold it defers to a human and the loop stops. Three sealed artifacts under
 `evidence/planning/` (evidence-bundle → worklist → admission-receipt).
+`compose-serial-roadmap` may write a derived `serial-roadmap.json` after M2
+so M4 VERIFY and M5 PREFLIGHT / DEPLOY / VALIDATE are visible as planned
+milestones; it is not a fourth sealed plan and does not mint.
 Ordering, verification, acceptance and termination are mechanical; a
 worker may run the tools, edit inside its write set, report, and request
 review — never author the list, the measure, or a decision. A missing
 decision is an admission BLOCK (`kanban_block kind=needs_input`), not
 something to infer.
 
-Until `.hermes/pins.json` `pins.planner.activation` is `activated` (SAD §12
-gate) — or `pilot` with an Operator seal bound to this exact evidence
-bundle — M2 and downstream are unavailable: dest-init mints **M1 ANALYZE
-only**, `assert-planner-activated.py` refuses M2, admission never ADMITS,
-and K4 re-derives the same verdict from `pins.json` so a receipt cannot
-bypass it. Do not invent a replacement path on a card. A worker never
+Until the run's activation is `activated` (SAD §12 gate) — or `pilot`
+with a seal bound to this exact evidence bundle — M2 and downstream are
+unavailable: dest-init mints **M1 ANALYZE only**,
+`assert-planner-activated.py` refuses M2, admission never ADMITS, and K4
+re-derives the same verdict so a receipt cannot bypass it. For a run whose
+initial-commit `run-budget.json` declares `run_control`, the activation is the
+**platform's** record (`/etc/rhoai3/run-control`, written by the migration-run
+provisioner, mounted read-only) plus the write-once M1 binding; `.hermes/pins.json`
+is only the golden default and is never read for activation. A missing or
+damaged record refuses; nothing in the workspace can write or re-bless it.
+Mutating git (`checkout`, `restore`, `reset`, `stash`, `clean`, `add`,
+`commit`, …) is refused to workers: the loop tools own the index and the
+tree. Do not invent a replacement path on a card. A worker never
 creates or links cards (K2 vetoes `kanban_create`/`kanban_link` and
 direct `hermes kanban create`); cards come from `k4_mint.py --exec`.
 
@@ -230,6 +254,7 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | M2 deterministic compat-path baseline (pom, properties, main class) | `bootstrap-destination` |
 | M2 the plan: tool-computed work list + baseline step | `build-worklist` |
 | M2 admission receipt + activation gate | `admit-migration-plan` |
+| M2 derived serial roadmap (planned M4/M5; not KEEP) | `compose-serial-roadmap` |
 | M2 live board equals the loop's expected cards (K3) | `verify-live-kanban-loop` |
 | M3 loop procedure (brief → edit → verify → accept/revert/defer) | `fix-until-green` (pinned via `paved-road-m3`) |
 | M4 VERIFY road (oracles → parity → pre-verdict → verdict → lint) | `paved-road-m4` |

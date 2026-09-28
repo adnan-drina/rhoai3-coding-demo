@@ -16,6 +16,7 @@ sys.path.insert(0, str(KERNEL))
 sys.path.insert(0, str(KERNEL.parent / "lib"))
 from k1_validate import validate_body  # noqa: E402
 from k4_convert import convert_admitted, main as convert_main  # noqa: E402
+from k4_schema import LOOP_MAX_RETRIES  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, WORKLIST  # noqa: E402
@@ -51,6 +52,17 @@ def main() -> int:
             s = line.strip()
             if s.startswith(("import ", "from ")) and "create_task" in s:
                 return _fail("%s imports create_task" % label)
+    # V16-1/V16-5 target rows carry prose (the action) and handler sites; the
+    # card body names the row and counts the sites, and the seal keeps the rest
+    from k4_convert import _target_ref
+    ref = _target_ref({"from": "a.B", "to": "", "handler_parameter": True, "action": "x" * 600,
+                       "sites": [{"path": "p%d" % i} for i in range(7)],
+                       "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
+                                       "key": "a.B", "kind": "type", "source": "s" * 200}})
+    if ref != {"from": "a.B", "to": "", "handler_parameter": True, "sites": 7,
+               "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented", "key": "a.B",
+                               "kind": "type"}}:
+        return _fail("a card body carries a target row's identity, never its prose: %s" % ref)
     with tempfile.TemporaryDirectory(prefix="k4-") as tmp:
         t = Path(tmp).resolve()
         root = specimens.build_dest(t / "http", specimens.specimen("http"), decisions=specimens.admitted_decisions())
@@ -67,9 +79,9 @@ def main() -> int:
         wl = load_json(root / WORKLIST)
         head_cluster = next(c for c in wl["clusters"] if c["id"] == wl["head"])
         from planner.cards import card_title  # noqa: E402
-        if p["logical_id"] != wl["head"] or p["title"] != card_title(head_cluster, 1) or not p["title"].startswith("M3 build pom.xml (") or p["kind"] != "build" or p["phase"] != "M3":
+        if p["logical_id"] != wl["head"] or p["title"] != card_title(head_cluster, 1) or not p["title"].startswith("M3 BUILD \u2014 pom.xml (") or p["kind"] != "build" or p["phase"] != "M3":
             return _fail("head payload %s" % {k: p[k] for k in ("logical_id", "title", "kind", "phase")})
-        if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != 1 or p["assignee"] != "implementer":
+        if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != LOOP_MAX_RETRIES or p["assignee"] != "implementer":
             return _fail("key/retries/assignee %s" % p["idempotency_key"])
         if p["skills"] != ["paved-road-m3"]:
             return _fail("a loop card carries exactly one skill: %s" % p["skills"])

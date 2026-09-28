@@ -341,6 +341,19 @@ An ability to create workloads or use a privileged user token limits the securit
 claim even when the repository webhook path is safe. Never generalize the default
 service account's permissions to the worker.
 
+For a **new** factory workspace after the Stage 050 worker-identity repair,
+the pod ServiceAccount must be `<run>-worker`. Repeat `oc auth can-i` for
+that account **and** every other kube credential inside the container
+(projected token, `~/.kube/config`, extra kubeconfigs). Expect **no** on:
+get/list Secrets; patch ConfigMaps (receipts/locks); create/patch Roles,
+RoleBindings, ServiceAccounts; patch DevWorkspaces; `create pods
+--subresource=exec`; create PipelineRuns in the build namespace. Expect
+**yes** only on `get configmaps/devspace-ai-tools-init`. The leftover
+DWO `workspace*-sa` may still have default-role verbs; that is not the
+pod identity. Restricting new workers does not revoke v10's generated
+account. The focused matrix and regain-via-destfile attempts are in
+[WORKER-IDENTITY-REPAIR.md](WORKER-IDENTITY-REPAIR.md).
+
 ---
 
 ## Step 7 — duplicate and reordered events cannot re-provision
@@ -392,7 +405,7 @@ EOF
 Then:
 
 ```bash
-oc get secret,deploy,svc -n "$WS" -l rhoai3.io/migration-run=iso-demo-v10 -o name
+oc get secret,deploy,svc,sa,role,rolebinding -n "$WS" -l rhoai3.io/migration-run=iso-demo-v10 -o name
 oc get cm migration-run-iso-demo-v10 -n "$WS" -o jsonpath='{.data.phase}{"\n"}'
 oc get secret -n "$WS" | grep '^iso-demo-v10-' | grep -v retry || echo "none left"
 ```
@@ -448,8 +461,11 @@ receipt to reuse a retired identity; use new names for a later demonstration.
 | Retirement accounts for every generated resource | Step 8 |
 | Post-retirement pushes cannot resurrect a run | Step 8 |
 
-Any FAIL is a v10 blocker. Record the step, the exact output and the finding;
-do not work around it in the cluster.
+Record every FAIL with its exact output. For the controlled v10 experiment,
+the Operator's 2026-09-22 scope decision defers the observed workspace-identity
+permission failure; the other 12 checks remain launch requirements. Preserve
+that FAIL and its evidence. This is an explicit experiment-scope change, not a
+passing security-isolation result or a cluster workaround.
 
 
 ## Additional mandatory checks from the second review
@@ -501,5 +517,8 @@ Required check names: `secret_binding`, `wrong_targets`, `assignment_removal`,
 `receipt_fields`, `delayed_resources`, `data_independence`,
 `credential_independence`, `workspace_independence`, `repository_non_authority`,
 `duplicate_delivery`, `overlapping_retirement`, `retirement`, `workspace_identity`.
-The preflight refuses missing results, anything other than PASS, different
-release/image pins, or changed/missing evidence. No signature field is used.
+The preflight refuses missing results, non-PASS operational results, different
+release/image pins, or changed/missing evidence. Only the measured
+`workspace_identity: FAIL` is deferred for `spring-petclinic-rest-legacy-v10`,
+under the Operator's 2026-09-22 scope decision; it remains visible as a warning.
+An absent or inconclusive identity result is not covered. No signature field is used.

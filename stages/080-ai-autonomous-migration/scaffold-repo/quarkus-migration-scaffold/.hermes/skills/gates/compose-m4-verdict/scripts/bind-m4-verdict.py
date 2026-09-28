@@ -222,8 +222,21 @@ def main(argv: list[str] | None = None) -> int:
     verdict["card_id"] = card_id
     verdict["receipt_sha256"] = receipt_sha
     verdict["parity_receipt_sha256"] = parity_sha
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+    from m4_parity import measure
+    mode_bindings = measure(root)["receipt_sha256_by_mode"]
+    if "enabled" in mode_bindings:
+        verdict["parity_receipt_sha256_by_mode"] = mode_bindings
     _write_canonical(vp, verdict)
     written = write_binding_record(root, vp, verdict, previous=record)
+    from m5_delivery import preserve_m4_coverage_account
+    preserve_m4_coverage_account(
+        root,
+        card_id=card_id,
+        verdict_sha256=str(written.get("verdict_sha256") or ""),
+        receipt_sha256=receipt_sha,
+        parity_receipt_sha256=parity_sha,
+    )
 
     changed = [k for k, v in was.items() if v != str(verdict[k])]
     print("OK: m4-verdict bound (card=%s receipt=%s parity=%s); %s; recorded %s (verdict %s%s)"

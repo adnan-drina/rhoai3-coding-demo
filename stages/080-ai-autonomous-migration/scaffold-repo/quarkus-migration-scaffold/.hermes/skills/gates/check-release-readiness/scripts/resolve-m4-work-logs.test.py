@@ -8,10 +8,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import importlib.util
+from unittest.mock import patch
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 RESOLVE = HERE / "resolve-m4-work-logs.py"
+SPEC = importlib.util.spec_from_file_location("resolve_m4_work_logs", RESOLVE)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
 
 
 class ResolveM4WorkLogs(unittest.TestCase):
@@ -29,6 +34,7 @@ class ResolveM4WorkLogs(unittest.TestCase):
             **env,
         }
         for key in (
+            "HERMES_KANBAN_HOME",
             "FENCE_EVASION_LOG",
             "FENCE_EVASION_LOGS",
             "HERMES_KANBAN_TASK",
@@ -43,6 +49,32 @@ class ResolveM4WorkLogs(unittest.TestCase):
             env=merged,
             cwd=str(tmp),
         ), logs
+
+    def test_profile_worker_uses_shared_logs_and_excludes_self(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "home"
+            logs = base / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            for name in ("t_m4.log", "t_m3.log"):
+                (logs / name).write_text("official worker log\n")
+            with patch.dict(os.environ, {
+                "HERMES_HOME": str(base / "profiles" / "implementer"),
+                "HERMES_KANBAN_TASK": "t_m4",
+            }, clear=True):
+                self.assertEqual(MODULE._log_home(), logs)
+                self.assertEqual(MODULE._finalize([
+                    str(logs / "t_m4.log"), str(logs / "t_m3.log")
+                ]), [str(logs / "t_m3.log")])
+                with self.assertRaises(SystemExit) as caught:
+                    MODULE._finalize([str(logs / "missing.log")])
+                self.assertEqual(caught.exception.code, 2)
+
+    def test_explicit_shared_home_takes_precedence_over_profile(self):
+        with patch.dict(os.environ, {
+            "HERMES_HOME": "/unrelated/profiles/reviewer",
+            "HERMES_KANBAN_HOME": "/shared/board-home",
+        }, clear=True):
+            self.assertEqual(MODULE._log_home(), Path("/shared/board-home/kanban/logs"))
 
     def test_missing_everything_refuses(self):
         proc, _ = self._run({})

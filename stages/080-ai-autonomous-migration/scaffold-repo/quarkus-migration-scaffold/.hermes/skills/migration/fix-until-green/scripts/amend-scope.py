@@ -44,13 +44,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _outcome_bridge  # noqa: E402  outcome-board protocol; a no-op on serial-loop runs
 from _loop_common import ensure_hermes_lib, load_issued, product_paths_changed  # noqa: E402
 
 ensure_hermes_lib()
 
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import LOOP_ISSUED, WORKLIST, is_product_path  # noqa: E402
-from planner.dest_model import DestModelUnavailable, dest_model, types_of  # noqa: E402
+from planner.dest_model import AnnotationShapeError, DestModelUnavailable, annotation_literals, dest_model, types_of  # noqa: E402
 from planner.worklist import APP_PROPERTIES, UNIT_KIND, UNIT_MAX_FILES, batch_scope_digest, resolve_compile_symbol  # noqa: E402
 
 # How far one card may reach beyond the file it was issued for. Two is enough
@@ -64,6 +65,16 @@ AMENDMENT_LIMIT = 2
 # a width the former would have refused to mint.
 UNIT_AMENDMENT_LIMIT = 4
 EVIDENCE_KINDS = ("javac", "model", "runtime", "parity")
+
+
+def _parse_evidence(raw: str) -> tuple[str, str]:
+    kind, _, ref = str(raw or "").partition(":")
+    kind, ref = kind.strip(), ref.strip()
+    # Parity IDs already carry their evidence kind. Accept the verbatim ID
+    # as well as the older parity:parity:<id> form; ownership checks stay below.
+    if kind == "parity" and ref and not ref.startswith("parity:"):
+        ref = "parity:" + ref
+    return kind, ref
 
 
 def _refuse(msg: str) -> int:
@@ -102,8 +113,7 @@ def _evidence(root: Path, scope: dict, raw: str) -> tuple[dict, str]:
     the current work list carries. A stale identity is refused by name -- an
     amendment justified by a diagnostic nobody reports any more is justified by
     nothing."""
-    kind, _, ref = str(raw or "").partition(":")
-    kind, ref = kind.strip(), ref.strip()
+    kind, ref = _parse_evidence(raw)
     if kind not in EVIDENCE_KINDS or not ref:
         return {}, ("--evidence must be <kind>:<ref> with kind one of %s; %r is not"
                     % ("|".join(EVIDENCE_KINDS), raw))
@@ -146,8 +156,20 @@ def _implementation_obligation(scope: dict, rel: str) -> dict:
     return {}
 
 
-def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
-    """Why this file is part of the UNIT the card carries, or why not.
+IN_SCOPE, OUTSIDE_SCOPE, UNKNOWN = "IN_SCOPE", "OUTSIDE_SCOPE", "UNKNOWN"
+
+
+def unit_reach(root: Path, scope: dict, rel: str) -> tuple[str, str]:
+    """Whether this file is part of the UNIT the card carries: a TYPED answer (B6).
+
+    IN_SCOPE -- one of the shapes below holds, with the relationship named.
+    OUTSIDE_SCOPE -- the model typed the file and EVERY shape was checked and
+    none holds: positive evidence of non-reach, the only answer a gate handoff
+    may rest on. UNKNOWN -- the question could not be asked (no model, no type
+    for the file, no sealed symbol, an unreadable annotation, a promised
+    relationship the model does not state): never evidence either way. Before,
+    both OUTSIDE and UNKNOWN came back as ("", reason), and a handoff accepted
+    "the model has no type" as proof the unit did not reach the file.
 
     Shapes, each read from the SEALED inventory and the model -- never from a
     reference the candidate has just written:
@@ -167,69 +189,89 @@ def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     fqns, members, sealed_paths = _sealed_symbols(scope)
     obligation = _implementation_obligation(scope, rel)
     if not fqns and not sealed_paths and not obligation:
-        return "", "the unit seal carries no symbol and no member, so nothing in it can show a file is in scope"
+        return UNKNOWN, "the unit seal carries no symbol and no member, so nothing in it can show a file is in scope"
     if rel in sealed_paths:
-        return "sealed: %s is a member of the unit's own inventory" % rel, ""
+        return IN_SCOPE, "sealed: %s is a member of the unit's own inventory" % rel
     try:
         model = dest_model(root)
     except DestModelUnavailable as exc:
-        return "", "the destination model is unavailable, so the file's types cannot be named (%s)" % exc
+        return UNKNOWN, "the destination model is unavailable, so the file's types cannot be named (%s)" % exc
     here = types_of(model, rel)
     if obligation and obligation.get("verify") == "template":
         want = str(obligation["type"])
         if not here:
-            return ("sealed: %s is owed at %s under %s (the harness template, sha256 %s)"
-                    % (want, rel, obligation.get("contract") or "naming contract",
-                       str(obligation.get("template_sha256") or "")[:12])), ""
+            return IN_SCOPE, ("sealed: %s is owed at %s under %s (the harness template, sha256 %s)"
+                              % (want, rel, obligation.get("contract") or "naming contract",
+                                 str(obligation.get("template_sha256") or "")[:12]))
         if not any(str(t.get("fqn") or "") == want for t in here):
-            return "", ("%s was authorized to declare %s and declares %s instead; the naming contract is what made the "
+            return UNKNOWN, ("%s was authorized to declare %s and declares %s instead; the naming contract is what made the "
                         "path admissible" % (rel, want, ", ".join(sorted(str(t.get("fqn")) for t in here))))
-        return "sealed: %s declares %s, the adapter its obligation names" % (rel, want), ""
+        return IN_SCOPE, "sealed: %s declares %s, the adapter its obligation names" % (rel, want)
     if obligation:
         want, parent = str(obligation["type"]), str(obligation["parent"])
         if not here:
             # before creation: the obligation and the contract are the authority
-            return ("sealed: %s is owed a concrete implementation and %s names %s at %s (%s)"
-                    % (parent, "the unit's seal", want, rel, obligation.get("contract") or "naming contract")), ""
+            return IN_SCOPE, ("sealed: %s is owed a concrete implementation and %s names %s at %s (%s)"
+                              % (parent, "the unit's seal", want, rel, obligation.get("contract") or "naming contract"))
         # after creation: the promised relationship is a fact or it is not
         typ = next((t for t in here if str(t.get("fqn") or "") == want), None)
         if typ is None:
-            return "", ("%s was authorized to declare %s and declares %s instead; the naming contract is what made the "
+            return UNKNOWN, ("%s was authorized to declare %s and declares %s instead; the naming contract is what made the "
                         "path admissible" % (rel, want, ", ".join(sorted(str(t.get("fqn")) for t in here))))
         if parent not in [str(s).split("<", 1)[0] for s in (typ.get("supertypes") or [])]:
-            return "", ("%s does not implement %s; the path was authorized on that relationship and the model does not "
+            return UNKNOWN, ("%s does not implement %s; the path was authorized on that relationship and the model does not "
                         "state it" % (want, parent))
-        return "sealed: %s implements %s, the parent its obligation names" % (want, parent), ""
+        return IN_SCOPE, "sealed: %s implements %s, the parent its obligation names" % (want, parent)
     if not here:
-        return "", "the model has no type for %s" % rel
+        return UNKNOWN, "the model has no type for %s" % rel
     for t in here:
         for sup in (t.get("supertypes") or []):
             base = str(sup).split("<", 1)[0]
             if base in fqns or any(base == f for f, _s in members):
-                return "sealed: %s extends or implements %s, which this unit seals" % (t.get("fqn"), base), ""
+                return IN_SCOPE, "sealed: %s extends or implements %s, which this unit seals" % (t.get("fqn"), base)
         for m in (t.get("declared") or []):
             for call in (m.get("calls") or []):
                 for fqn, sig in members:
                     if str(call).startswith(fqn + ".") and str(call).endswith(sig):
-                        return "sealed: %s.%s calls %s, a member this unit seals" % (t.get("fqn"), m.get("name"), call), ""
+                        return IN_SCOPE, "sealed: %s.%s calls %s, a member this unit seals" % (t.get("fqn"), m.get("name"), call)
     annotations: dict = {}
     for it in _worklist_items(root):
         if str(it.get("source") or "") != "javac" or str(it.get("path") or "") != rel:
             continue
         key, _kind = resolve_compile_symbol(model, it, annotations)
         if key and key in fqns:
-            return "sealed: javac reports %s at %s, and %s is a symbol this unit seals" % (it.get("rule_id"), rel, key), ""
-    for t in here:
-        for m in (t.get("declared") or []):
-            for ann in (m.get("annotations") or []):
-                for value in (ann.get("values") or {}).values():
-                    if str(value) in fqns:
-                        return "sealed: %s.%s reads %s, the property this unit seals" % (t.get("fqn"), m.get("name"), value), ""
-    return "", ("%s declares %s, which the unit's sealed symbols do not reach: it does not implement or extend one, does "
+            return IN_SCOPE, "sealed: javac reports %s at %s, and %s is a symbol this unit seals" % (it.get("rule_id"), rel, key)
+    shape_gaps: list[str] = []
+    for ti, t in enumerate(here):
+        for mi, m in enumerate(t.get("declared") or []):
+            for ai, ann in enumerate(m.get("annotations") or []):
+                # annotation_literals reads both models' shapes (the
+                # destination's literal list, the source's named map) at the
+                # model boundary (v12 t_b33f25fa crashed on the list); a shape
+                # neither produces is an UNKNOWN, never "nothing matched"
+                try:
+                    literals = annotation_literals(ann)
+                except AnnotationShapeError as exc:
+                    shape_gaps.append("%s#/types/%d/declared/%d/annotations/%d%s" % (rel, ti, mi, ai, str(exc).split(" has ")[0]))
+                    continue
+                for value in literals:
+                    if value in fqns:
+                        return IN_SCOPE, "sealed: %s.%s reads %s, the property this unit seals" % (t.get("fqn"), m.get("name"), value)
+    if shape_gaps:
+        return UNKNOWN, ("MODEL_ANNOTATION_SHAPE: %s has a shape neither model produces; expected the source named map or "
+                         "the destination literal list, so whether it reads a sealed property is not assessed"
+                         % ", ".join(shape_gaps[:3]))
+    return OUTSIDE_SCOPE, ("%s declares %s, which the unit's sealed symbols do not reach: it does not implement or extend one, does "
                 "not call one, is named by no javac diagnostic about one, and reads no sealed property. A relationship "
                 "the repair itself introduced authorizes nothing; a card that needs this file is a card the planner has "
                 "not minted yet." % (rel, ", ".join(sorted(str(t.get("fqn")) for t in here)) or "no type"))
 
+
+def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
+    """(why in, why not) for the authorization path: only IN_SCOPE authorizes,
+    and OUTSIDE and UNKNOWN both refuse the amendment exactly as before."""
+    status, detail = unit_reach(root, scope, rel)
+    return (detail, "") if status == IN_SCOPE else ("", detail)
 
 def _locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     """Why this file is part of the failure the card carries, or why not.
@@ -280,7 +322,7 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
     500 was thrown in the repository implementation behind the service
     interface). A request alone never does."""
     if evidence_ref not in {str(i) for i in (issued.get("items") or [])}:
-        return "", "parity:%s is not an obligation this card was issued" % evidence_ref
+        return "", "%s is not an obligation this card was issued; pass one complete issued item ID" % evidence_ref
     item = next((i for i in _worklist_items(root) if str(i.get("id") or "") == evidence_ref), None)
     if item is None:
         return "", "no parity obligation %r is in the current work list" % evidence_ref
@@ -395,6 +437,8 @@ def _parity_amend(root: Path, issued: dict, args: argparse.Namespace, ref: str) 
     amendments.append({"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
                        "granted_before_sha256": sha256_file(root / rel), "dirty_at_grant": False, "locus": locus,
                        "evidence": {"kind": "parity", "ref": ref, "tool_named": True}})
+    if _outcome_bridge.amend(root, args.cluster, rel, amendments[-1]):
+        return 1  # outcome board: the governing permission refused; the projection is not written
     issued["amendments"] = amendments
     issued["write_set"] = sorted(set(issued.get("write_set") or []) | {rel})
     write_canonical(root / LOOP_ISSUED, issued)
@@ -424,7 +468,7 @@ def main(argv: list[str] | None = None) -> int:
     if issued.get("task_id") and args.card and args.card != issued["task_id"]:
         return _refuse("--card %r is not the minted card %s" % (args.card, issued["task_id"]))
     scope_ref = issued.get("batch_scope") or {}
-    evidence_kind, _, evidence_ref = str(args.evidence or "").partition(":")
+    evidence_kind, evidence_ref = _parse_evidence(args.evidence)
     if not scope_ref and str(issued.get("gate") or "") == "parity" and evidence_kind == "parity":
         return _parity_amend(root, issued, args, evidence_ref.strip())
     if not scope_ref:
@@ -525,6 +569,8 @@ def main(argv: list[str] | None = None) -> int:
                           "contract": obligation.get("contract") or "", "source": obligation.get("source") or ""}
         if obligation.get("verify") == "template":
             row["creates"]["template_sha256"] = str(obligation.get("template_sha256") or "")
+    if _outcome_bridge.amend(root, args.cluster, rel, row):
+        return 1  # outcome board: the governing permission refused; the projection is not written
     amendments.append(row)
     issued["amendments"] = amendments
     if unit:

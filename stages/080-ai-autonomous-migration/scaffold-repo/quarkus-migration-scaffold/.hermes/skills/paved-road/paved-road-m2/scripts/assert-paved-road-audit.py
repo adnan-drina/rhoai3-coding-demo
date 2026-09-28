@@ -7,6 +7,7 @@ skill's ``steps.json``.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -24,7 +25,7 @@ def _ensure_hermes_lib() -> None:
 
 
 _ensure_hermes_lib()
-from paved_road import audit_paths, resolve_log  # noqa: E402
+from paved_road import audit_paths, invalidate_audit_receipt, resolve_log  # noqa: E402
 
 SKILL = Path(__file__).resolve().parents[1]
 STEPS = SKILL / "steps.json"
@@ -53,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     log = resolve_log(args.task_id, args.log)
     if log is None:
+        # V17-6: no log to audit is not "still green from last time"
+        invalidate_audit_receipt(args.task_id or os.environ.get("HERMES_KANBAN_TASK"))
         print("FAIL: pass a t_* id, $HERMES_KANBAN_TASK, or --log to an existing official kanban log", file=sys.stderr)
         return 2
     return audit_paths(log, args.root, args.steps)

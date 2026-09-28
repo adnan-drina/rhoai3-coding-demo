@@ -29,6 +29,17 @@ Kinds (each atomic: a refused transformation writes nothing):
                             site inventory, and only the literal token changes
   java_member_annotation    one annotation added to one declaration (a type or
                             a field) plus the imports it needs
+  java_retire_annotation    every site of ONE qualified adapter-owned annotation
+                            (compat-mapping adapter_owned_annotations; recipe
+                            retire-adapter-owned-annotation/v1) removed with
+                            its arguments, and its single-type import: the
+                            destination must carry exactly the frozen source's
+                            sites (bound by their structure digest) or none;
+                            a partial set is REPAIR_SITE_MISMATCH, a name the
+                            parse tree cannot resolve REPAIR_ANNOTATION_UNRESOLVED,
+                            and a site left after the edit restores every file
+                            (REPAIR_POSTCONDITION). Another package's
+                            annotation of the same simple name is never touched
   pom_dependency            one dependency row (XML DOM); an existing row with a
                             different version/scope/type is a conflict
   property                  one key=value row; an existing different value --
@@ -85,7 +96,7 @@ ENGINE_VERSION = "1.0.0"
 TOOL = Path(__file__).resolve().parent / "java-structure" / "JavaStructure.java"
 APPLIED, ALREADY, REFUSED = "applied", "already-applied", "refused"
 KINDS = ("add_file", "replace_reviewed_file", "java_annotation_expression", "java_member_annotation",
-         "pom_dependency", "property", "pom_retire_execution")
+         "java_retire_annotation", "pom_dependency", "property", "pom_retire_execution")
 
 
 class Refusal(Exception):
@@ -679,6 +690,104 @@ class Engine:
         row["outputs"] = {p: _file_sha(self.root / p) for p in paths}
         return APPLIED if applied else ALREADY
 
+    def retire_structure(self, base: Path, t: dict) -> list[dict]:
+        """The applicable structure of a retirement: every site of the
+        qualified annotation in `base`, with its declaration and source text."""
+        roots = [str(r) for r in (t.get("roots") or ["src/main/java"])]
+        sites, _ = self._sites(base, roots, str(t.get("annotation") or ""), "")
+        return sorted([{"path": s["path"], "type": s["type"], "member_kind": s["member_kind"], "member": s["member"],
+                        "params": s["params"], "source": " ".join(str(s["annotation"].get("source") or "").split())} for s in sites],
+                      key=lambda r: json.dumps(r, sort_keys=True))
+
+    def java_retire_annotation(self, t: dict, row: dict) -> str:
+        """Retire one qualified annotation everywhere the frozen source put it
+        (the compile half of an adapter-owned annotation, ADR-019): all of the
+        source's sites or none, never a partial set, and nothing else."""
+        roots = [str(r) for r in (t.get("roots") or ["src/main/java"])]
+        ann = str(t.get("annotation") or "")
+        if "." not in ann:
+            raise Refusal("REPAIR_MANIFEST_INVALID", "%s: the annotation must be a qualified identity, not %r" % (t["id"], ann))
+
+        def key(s: dict) -> tuple:
+            return (s["path"], s["type"], s["member_kind"], s["member"])
+
+        src_rows = self.retire_structure(self.copy, t)
+        appl = t.get("applicability") or {}
+        observed = digest(src_rows)
+        row["applicability"] = {"expected": appl.get("structure_sha256"), "observed": observed, "sites": len(src_rows)}
+        if not src_rows or observed != appl.get("structure_sha256") or len(src_rows) != int(appl.get("sites", -1)):
+            raise Refusal("REPAIR_NOT_APPLICABLE", "the frozen source carries %d @%s site(s) with structure %s; the decision was made for %s site(s) with %s"
+                          % (len(src_rows), ann.rsplit(".", 1)[-1], observed[:12], appl.get("sites"), str(appl.get("structure_sha256") or "")[:12]))
+        dst_sites, files = self._sites(self.root, roots, ann, "")
+        want = sorted(key(r) for r in src_rows)
+        have = sorted(key(s) for s in dst_sites)
+        paths = sorted({r["path"] for r in src_rows})
+        row["files"] = paths
+        row["symbols"] = sorted({"%s%s @%s" % (k[1], ("#" + k[3]) if k[3] else "", ann) for k in want})
+        row["inputs"] = {p: _file_sha(self.root / p) for p in paths}
+        if have and have != want:
+            raise Refusal("REPAIR_SITE_MISMATCH", "the destination carries %d @%s site(s) and the source %d; a partial retirement is never completed by guesswork"
+                          % (len(have), ann.rsplit(".", 1)[-1], len(want)))
+        edits: dict[str, list[tuple[int, int, str]]] = {}
+        for s in dst_sites:
+            text = (self.root / s["path"]).read_text(encoding="utf-8")
+            a = s["annotation"]
+            start, end = _pyidx(text, int(a["start"])), _pyidx(text, int(a["end"]))
+            line_start = text.rfind("\n", 0, start) + 1
+            j = end
+            while j < len(text) and text[j] in " \t":
+                j += 1
+            if not text[line_start:start].strip() and (j >= len(text) or text[j] == "\n"):
+                # the annotation is its own line: the whole line goes
+                start, end = line_start, min(j + 1, len(text))
+            else:
+                end = j
+            u = lambda i, tx=text: len(_units(tx[:i])) // 2  # noqa: E731
+            edits.setdefault(s["path"], []).append((u(start), u(end), ""))
+        removed_imports: list[str] = []
+        for rel in paths:
+            f = files.get(rel) or self.java.files(self.root, [rel]).get(rel) or {}
+            text = (self.root / rel).read_text(encoding="utf-8") if (self.root / rel).is_file() else ""
+            for imp in f.get("imports") or []:
+                if imp["static"] or imp["on_demand"] or imp["name"] != ann:
+                    continue
+                start, end = _pyidx(text, int(imp["start"])), _pyidx(text, int(imp["end"]))
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                u = lambda i, tx=text: len(_units(tx[:i])) // 2  # noqa: E731
+                edits.setdefault(rel, []).append((u(start), u(end), ""))
+                removed_imports.append("%s: import %s" % (rel, ann))
+        originals = {rel: (self.root / rel).read_text(encoding="utf-8") for rel in edits}
+
+        def shape(base_files: dict[str, dict]) -> list:
+            # every declaration and every OTHER annotation and import: what the
+            # retirement must leave exactly as it was
+            out = []
+            for rel in sorted(base_files):
+                f = base_files[rel]
+                out.append((rel, sorted((i["name"], i["static"], i["on_demand"]) for i in f.get("imports") or [] if i["name"] != ann or i["on_demand"])))
+                for ty in f.get("types") or []:
+                    for kind, name, holder in [("type", "", ty)] + [(m["kind"], m["name"], m) for m in ty.get("members") or []]:
+                        keep = [" ".join(str(a.get("source") or "").split()) for a in holder.get("annotations") or []
+                                if resolve_annotation(a["name"], f, ann, self.root, roots) != "yes"]
+                        out.append((rel, ty["fqn"], kind, name, json.dumps(holder.get("params"), sort_keys=True), keep))
+            return out
+
+        before = shape(self.java.files(self.root, sorted(edits))) if edits else []
+        self._write_java(edits)
+        left = [s for s in self._sites(self.root, roots, ann, "")[0] if s["path"] in paths] if edits else dst_sites
+        after = shape(self.java.files(self.root, sorted(edits))) if edits else []
+        if left or before != after:
+            for rel, text in originals.items():
+                (self.root / rel).write_text(text, encoding="utf-8")
+            raise Refusal("REPAIR_POSTCONDITION", ("%d @%s site(s) remain after the retirement" % (len(left), ann.rsplit(".", 1)[-1])) if left else
+                          "the edit changed a declaration, annotation or import other than @%s" % ann.rsplit(".", 1)[-1]
+                          + "; every file was restored")
+        row["details"] = {"annotation": ann, "sites": len(want), "retired": len(dst_sites), "imports_removed": sorted(removed_imports),
+                          "discharges_adapter_obligation": False}
+        row["outputs"] = {p: _file_sha(self.root / p) for p in paths}
+        return APPLIED if edits else ALREADY
+
     def _write_java(self, edits: dict[str, list[tuple[int, int, str]]]) -> None:
         originals: dict[str, str] = {}
         for rel, es in sorted(edits.items()):
@@ -953,7 +1062,7 @@ class Engine:
         reads, instead of one per question."""
         roots: set[str] = set()
         for t in self.manifest.get("transformations") or []:
-            if t.get("kind") == "java_annotation_expression":
+            if t.get("kind") in ("java_annotation_expression", "java_retire_annotation"):
                 roots.update(str(r) for r in (t.get("roots") or ["src/main/java"]))
             elif t.get("kind") == "java_member_annotation":
                 roots.add(str(t.get("root") or "src/main/java"))
@@ -1202,6 +1311,9 @@ def describe_source(root: Path, copy: Path, manifest: dict, retired: set[str] | 
                     row.update({"sites": len(rows), "structure_sha256": digest(rows)})
                 elif kind == "java_member_annotation":
                     row["structure_sha256"] = eng.member_structure(t)
+                elif kind == "java_retire_annotation":
+                    rows = eng.retire_structure(copy, t)
+                    row.update({"sites": len(rows), "structure_sha256": digest(rows)})
                 elif kind == "pom_retire_execution":
                     _t, proj, ns = parse_pom(copy / "pom.xml")
                     s = execution_structure(proj, ns, t)

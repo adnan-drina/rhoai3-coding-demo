@@ -1,0 +1,101 @@
+{
+  "_proposal_note": "DRAFT for Operator approval - not installed on any dest, not a corpus until approved. Revision of the v7-approved corpus (approved_by operator:adnan.drina) for v8: the v7 scenario is carried over unchanged; a cors_policies block and three scenarios are ADDED so the Location form and each CORS policy are covered under the 2026-09-11 capture contract. Approving this approves a CHANGED contract: the corpus digest changes, so the source must be re-captured against the v8 frozen baseline (v7 captures do not transfer). TWO FIELDS ARE UNRESOLVED and must be filled from v8 before capture: every entry_point marked TODO (read them from v8's evidence-bundle.json; the id form is the one the carried-over scenario shows), and the cors_policies entry (confirm the source's actual @CrossOrigin configuration from M1's structure model - one policy per distinct configuration - and set request_headers to what the actual requests send). REVIEW POINT: sc:create-owner-location asserts a Location containing the id the database assigned, so it only compares meaningfully if the reset leaves the identity sequence in the same state on both sides; if it does not, weaken the scenario or normalize the id rather than let a sequence difference read as a Location regression.",
+  "schema": "rhoai3.scenario-corpus/v1",
+  "approved_by": "TODO: operator seat approving THIS revision",
+  "initial_state": {
+    "reset": ".hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . restores the destination's isolated PostgreSQL instance (drop and recreate the schema, then apply the schema and seed assets decisions.yaml names); the frozen source restores the same dataset by restarting, because its baseline engine is in-memory HSQLDB",
+    "dataset": "the specimen's own seeded dataset, equivalent on both engines"
+  },
+  "path_vars": {
+    "ownerId": "1",
+    "petId": "1",
+    "petTypeId": "1",
+    "specialtyId": "1",
+    "vetId": "1",
+    "visitId": "1",
+    "lastName": "Franklin"
+  },
+  "cors_policies": [
+    {
+      "id": "controllers-crossorigin",
+      "note": "TODO confirm against M1's structure model for v8: the source's @CrossOrigin on the REST controllers (exposedHeaders). One policy per distinct configuration.",
+      "request_headers": [
+        "Content-Type"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "sc:update-owner-1-city",
+      "_note": "carried over from the v7-approved corpus, unchanged",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#updateOwner(int,org.springframework.samples.petclinic.model.Owner,org.springframework.validation.BindingResult):http",
+      "method": "PUT",
+      "path": "/api/owners/1",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body_file": "verification/scenarios/bodies/update-owner-1-city.json",
+      "reset_before": true,
+      "effects": [
+        {
+          "id": "eff:owner-1-after-update",
+          "method": "GET",
+          "path": "/api/owners/1"
+        },
+        {
+          "id": "eff:owners-list-after-update",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ]
+    },
+    {
+      "id": "sc:create-owner-location",
+      "_note": "ADDED: the Location form. The source answers 201 with an ABSOLUTE Location under its context path; the comparator maps only the declared origins, so the path, escaping and context path are compared as the source wrote them.",
+      "entry_point": "TODO: the v8 bundle's id for OwnerRestController#addOwner",
+      "method": "POST",
+      "path": "/api/owners",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body_file": "verification/scenarios/bodies/create-owner.json",
+      "reset_before": true,
+      "effects": [
+        {
+          "id": "eff:owners-list-after-create",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ],
+      "_body_draft": "proposals/bodies/create-owner.json in this repo; copy it to the dest path above at capture time"
+    },
+    {
+      "id": "sc:cors-actual-owners",
+      "_note": "ADDED: an actual cross-origin request for the controllers policy. Checks the permission and exposed headers the source returns.",
+      "entry_point": "TODO: the v8 bundle's id for OwnerRestController#getOwners",
+      "method": "GET",
+      "path": "/api/owners",
+      "headers": {
+        "Origin": "http://petclinic.example.test:4200"
+      },
+      "cors_policy": "controllers-crossorigin",
+      "body_absent": true,
+      "reset_before": false
+    },
+    {
+      "id": "sc:cors-preflight-owners",
+      "_note": "ADDED: the preflight for the same policy. No identity: a browser sends a preflight without credentials. It declares no effects because it writes nothing.",
+      "entry_point": "TODO: the v8 bundle's id for OwnerRestController#addOwner",
+      "method": "OPTIONS",
+      "path": "/api/owners",
+      "headers": {
+        "Origin": "http://petclinic.example.test:4200",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+      },
+      "cors_policy": "controllers-crossorigin",
+      "body_absent": true,
+      "reset_before": false
+    }
+  ]
+}

@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.serial-roadmap/v1",
+  "title": "Serial migration roadmap after M2 (evidence/planning/serial-roadmap.json). Derived view; not sealed by admission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "worklist_sha256",
+    "admission_digest",
+    "admission_status",
+    "parallel_execution",
+    "note",
+    "known_work",
+    "executable",
+    "planned",
+    "unresolved",
+    "reconciled"
+  ],
+  "properties": {
+    "schema": {
+      "const": "rhoai3.serial-roadmap/v1"
+    },
+    "worklist_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "admission_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "admission_status": {
+      "type": "string"
+    },
+    "parallel_execution": {
+      "const": "deferred"
+    },
+    "note": {
+      "type": "string"
+    },
+    "known_work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tuple", "known", "open_clusters", "head", "order_policy"],
+      "properties": {
+        "tuple": {
+          "type": "array",
+          "items": {"type": "integer"}
+        },
+        "known": {"type": "boolean"},
+        "mandatory_incidents": {"type": ["integer", "null"]},
+        "compile_errors": {"type": ["integer", "null"]},
+        "failing_tests": {"type": ["integer", "null"]},
+        "parity_mismatches": {"type": ["integer", "null"]},
+        "open_clusters": {"type": "integer"},
+        "head": {"type": "string"},
+        "order_policy": {"type": "string"}
+      }
+    },
+    "executable": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {"$ref": "#/definitions/executable_task"}
+    },
+    "planned": {
+      "type": "array",
+      "minItems": 3,
+      "items": {"$ref": "#/definitions/planned_milestone"}
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/unresolved_item"}
+    },
+    "reconciled": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/reconciled_item"}
+    }
+  },
+  "definitions": {
+    "executable_task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "role", "title", "admitted", "acceptance"],
+      "properties": {
+        "class": {"const": "executable"},
+        "role": {"type": "string", "enum": ["M3", "M4"]},
+        "kind": {"type": "string"},
+        "title": {"type": "string"},
+        "admitted": {"const": true},
+        "cluster_id": {"type": "string"},
+        "item_count": {"type": "integer"},
+        "acceptance": {"type": "array", "items": {"type": "string"}},
+        "task_id": {"type": "string", "pattern": "^t_"}
+      }
+    },
+    "planned_milestone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "role", "title", "admitted", "depends_on", "acceptance"],
+      "properties": {
+        "class": {"const": "planned"},
+        "role": {"type": "string", "enum": ["M3", "M4", "M5"]},
+        "kind": {"type": "string"},
+        "stage": {"type": "string"},
+        "title": {"type": "string"},
+        "admitted": {"const": false},
+        "cluster_id": {"type": "string"},
+        "item_count": {"type": "integer"},
+        "depends_on": {"type": "array", "items": {"type": "string"}},
+        "acceptance": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "unresolved_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "subject", "detail"],
+      "properties": {
+        "class": {"type": "string"},
+        "subject": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "reconciled_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "adr", "status"],
+      "properties": {
+        "id": {"type": "string"},
+        "adr": {"type": "string"},
+        "status": {"type": "string", "enum": ["applied", "already-applied"]}
+      }
+    }
+  }
+}

@@ -30,7 +30,8 @@ for p in (_KERNEL, _LIB):
 
 from k4_convert import convert_admitted, format_issues, validate_result  # noqa: E402
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
-from k4_schema import IMPL, KEY_PREFIX, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
+from k4_schema import IMPL, KEY_PREFIX, LOOP_MAX_RETRIES, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
+from planner.cards import loop_title_ok  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.live_board import collect_board, compare_board, expected_from_loop, mint_map_from_receipts  # noqa: E402
 from planner.paths import LOOP_CARDS, LOOP_ISSUED, LOOP_STEPS  # noqa: E402
@@ -139,14 +140,13 @@ def argv_for_payload(payload: dict[str, Any], mapping: dict[str, str], *, hermes
     kind = str(payload.get("kind") or "")
     if lid in {WRITER_ID, VERIFIER_ID}:
         _fail([_issue("K4_FACTORY", "%s dest factory card is retired" % lid)])
-    # Titles are readable ("M3 build pom.xml (14 items, attempt 1)"); the
+    # Display titles are "M3 BUILD — pom.xml (14 items, attempt 1)"; the
     # cluster id lives in the body and the idempotency key, never in the title.
-    ok_title = (title == "M4 VERIFY") if kind == "close" else (title.startswith("M3 ") and ", attempt " in title)
-    if not lid or not ok_title:
+    if not lid or not loop_title_ok(title, kind):
         _fail([_issue("K4_MINT_TITLE", "%s title %r is not a loop-card title" % (lid, title))])
     if assignee != IMPL:
         _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
-    if payload.get("max_retries") != 1:
+    if payload.get("max_retries") != LOOP_MAX_RETRIES:
         _fail([_issue("K4_MINT_RETRIES", "%s max_retries %s" % (lid, payload.get("max_retries")))])
     key = str(payload.get("idempotency_key") or "").strip()
     attempt = payload.get("attempt")
@@ -163,7 +163,7 @@ def argv_for_payload(payload: dict[str, Any], mapping: dict[str, str], *, hermes
         argv.extend(["--parent", parent])
     argv.extend(["--idempotency-key", key])
     argv.extend(["--max-runtime", max_runtime_flag()])
-    argv.extend(["--max-retries", "1"])
+    argv.extend(["--max-retries", str(LOOP_MAX_RETRIES)])
     argv.extend(["--workspace", workspace_flag()])
     skills = [str(s).strip() for s in (payload.get("skills") or []) if str(s).strip()]
     if not skills:
@@ -365,6 +365,39 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: pass --root PATH", file=sys.stderr)
         return 1
     root = root.resolve()
+    # Outcome board (OUTCOME-BOARD-CONTRACT.md): the protocol is fixed at run
+    # creation. An outcome-board run publishes its whole graph through
+    # k4_graph (worker identity retained); serial minting refuses there, and
+    # an outcome store on a serial run refuses both.
+    from planner.outcome_protocol import describe, mixed_state, select_protocol
+    sel = select_protocol(root)
+    if sel.native:
+        # outcome-board/v2: the plan is published as native tasks (native_gate.py
+        # publish, under the open M2 card); the harness-release drift check first
+        from planner.run_control import run_gaps
+        drift = run_gaps(root)
+        if drift:
+            print("REFUSE: %s" % drift[0], file=sys.stderr)
+            print("native publication REFUSED before any native operation.", file=sys.stderr)
+            return 1
+        import native_gate
+        os.environ["HERMES_BIN"] = hermes
+        return native_gate.main(["--root", str(root), "publish" if execute else "preview"])
+    if sel.outcome:
+        import k4_graph
+        return k4_graph.main(["--root", str(root), "publish" if execute else "preview", "--hermes", hermes])
+    mixed = mixed_state(root, sel)
+    if mixed:
+        print(describe(mixed), file=sys.stderr)
+        print("K4 mint REFUSED before emitting any command (0 creates).", file=sys.stderr)
+        return 1
+    from planner.run_control import run_gaps
+    drift = run_gaps(root)
+    if drift:
+        # B10: a run mints only under the harness release it was created with
+        print("REFUSE: %s" % drift[0], file=sys.stderr)
+        print("K4 mint REFUSED before emitting any command (0 creates).", file=sys.stderr)
+        return 1
     control = register_control_cards(root)
     result, issues = convert_admitted(root)
     if issues or result is None:

@@ -66,6 +66,10 @@ def _fail(msg: str) -> int:
 
 def _tree(root: Path, *, with_baseline: bool) -> Path:
     root = specimens.build_dest(root, specimens.specimen("http"), decisions=specimens.admitted_decisions())
+    with (root / "migration.yaml").open("a") as f:
+        f.write("\nresources:\n  run: fixture\n  namespace: fixture-ns\n"
+                "  parity_database:\n    instance: fixture-isolated-postgres.fixture-ns\n"
+                "    database: fixture\n    port: 5432\n")
     db = root / "src" / "main" / "resources" / "db"
     (db / "postgresql").mkdir(parents=True, exist_ok=True)
     (db / "postgresql" / "initDB.sql").write_text(SCHEMA, encoding="utf-8")
@@ -365,8 +369,100 @@ def _revert_case() -> int:
     return 0
 
 
+def _worker_cache_and_trace_case() -> int:
+    """Execute the real shell wrapper with a profile HOME and fake Java tools.
+
+    A resolved classpath may point into any Maven cache. The reset must reach
+    Java there, keep credential values out of xtrace/argv, and name a missing
+    explicit driver without connecting. No database is contacted by this case.
+    """
+    import zipfile
+    with tempfile.TemporaryDirectory(prefix="reset-worker-") as td:
+        t = Path(td)
+        root = _tree(t / "dest", with_baseline=True)
+        cache = t / "custom-cache" / "org/postgresql/postgresql/42.7.0"
+        cache.mkdir(parents=True)
+        jar = cache / "postgresql-42.7.0.jar"
+        with zipfile.ZipFile(jar, "w") as z:
+            z.writestr("META-INF/services/java.sql.Driver", "example.Driver")
+        cp = root / "verification/build/.work/classpath.txt"
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        cp.write_text(str(jar))
+        tools = t / "bin"
+        tools.mkdir()
+        (tools / "javac").write_text("#!/bin/sh\nexit 0\n")
+        # The shell wrapper must pass references, not values, to the runner.
+        (tools / "java").write_text(
+            "#!/bin/sh\n[ \"$4\" = FIXTURE_DB_URL ] && "
+            "[ \"$5\" = FIXTURE_DB_USER ] && [ \"$6\" = FIXTURE_DB_PASSWORD ] || exit 31\n"
+            "echo reset-runner-reached\n")
+        for f in tools.iterdir():
+            f.chmod(0o755)
+        env = dict(os.environ, HOME=str(t / "profile-home"), PATH=str(tools) + os.pathsep + os.environ["PATH"],
+                   FIXTURE_DB_URL="jdbc:postgresql://fixture-isolated-postgres.fixture-ns/fixture", FIXTURE_DB_USER="fixture_user",
+                   FIXTURE_DB_PASSWORD="sentinel-reset-password")
+        # Exercise the real ownership guard, using a committed synthetic assignment.
+        for args in (["init", "-q"], ["add", "migration.yaml"],
+                     ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture"]):
+            subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+        sha = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+        env.update(DEVWORKSPACE_NAME="fixture", DEVWORKSPACE_NAMESPACE="fixture-ns", MIGRATION_RUN_NAME="fixture",
+                   PARITY_RUN_RECEIPT="run=fixture;namespace=fixture-ns;host=fixture-isolated-postgres;database=fixture;"
+                   "port=5432;workspace=fixture;engine=postgresql;scaffold=" + sha)
+        p = subprocess.run(["bash", "-x", str(RESET), "--root", str(root)], env=env, text=True, capture_output=True)
+        if "this destination is not bound" in p.stderr:
+            return _fail("reset fixture failed ownership before exercising the driver: " + p.stderr[-600:])
+        if p.returncode or "reset-runner-reached" not in p.stdout:
+            return _fail("profile-home reset must use the resolved JDBC jar and reach the runner with references; rc=%s" % p.returncode)
+        if env["FIXTURE_DB_PASSWORD"] in p.stdout + p.stderr:
+            return _fail("bash -x leaked the fixture password")
+        p = subprocess.run(["bash", str(RESET), "--root", str(root), "--driver", str(t / "missing.jar")],
+                           env=env, text=True, capture_output=True)
+        if p.returncode != 1 or "FAIL: RESET no postgresql JDBC driver" not in p.stderr:
+            return _fail("missing explicit driver must fail visibly before the runner")
+        # Real Java must resolve the references too. This driver checks them
+        # and refuses before any database connection or SQL execution.
+        driver_source = t / "FixtureDriver.java"
+        driver_source.write_text('''import java.sql.*;
+import java.util.Properties;
+import java.util.logging.Logger;
+public class FixtureDriver implements Driver {
+    public boolean acceptsURL(String url) { return url.startsWith("jdbc:postgresql:"); }
+    public Connection connect(String url, Properties p) throws SQLException {
+        if (!acceptsURL(url)) return null;
+        if (!url.equals(System.getenv("FIXTURE_DB_URL")) ||
+            !p.getProperty("user").equals(System.getenv("FIXTURE_DB_USER")) ||
+            !p.getProperty("password").equals(System.getenv("FIXTURE_DB_PASSWORD")))
+            throw new SQLException("fixture references were not resolved");
+        throw new SQLException("fixture credentials verified; no database contacted");
+    }
+    public DriverPropertyInfo[] getPropertyInfo(String u, Properties p) { return new DriverPropertyInfo[0]; }
+    public int getMajorVersion() { return 1; }
+    public int getMinorVersion() { return 0; }
+    public boolean jdbcCompliant() { return false; }
+    public Logger getParentLogger() { return Logger.getGlobal(); }
+    static { try { DriverManager.registerDriver(new FixtureDriver()); }
+             catch (SQLException e) { throw new RuntimeException(e); } }
+}
+''')
+        subprocess.run(["javac", "-d", str(t), str(driver_source), str(HERE / "reset-db/ResetDb.java")],
+                       check=True, capture_output=True)
+        service = t / "META-INF/services/java.sql.Driver"
+        service.parent.mkdir(parents=True)
+        service.write_text("FixtureDriver\n")
+        # subprocess uses the child's PATH; name the real runtime explicitly.
+        import shutil
+        p = subprocess.run([shutil.which("java"), "-cp", str(t), "ResetDb", "FIXTURE_DB_URL", "FIXTURE_DB_USER", "FIXTURE_DB_PASSWORD"],
+                           env=env, text=True, capture_output=True)
+        if p.returncode != 1 or "fixture credentials verified; no database contacted" not in p.stderr:
+            return _fail("Java runner did not resolve the declared credential references")
+        if env["FIXTURE_DB_PASSWORD"] in p.stdout + p.stderr:
+            return _fail("Java runner leaked the fixture password")
+    return 0
+
+
 def main() -> int:
-    if _plan_case() or _verification_case() or _variant_case() or _revert_case():
+    if _worker_cache_and_trace_case() or _plan_case() or _verification_case() or _variant_case() or _revert_case():
         return 1
     print("OK: reset-parity-db (the plan loads the derived baseline and not the per-engine seed; an older tree keeps the "
           "previous behaviour and says the baseline is unverified; every existing flag still holds; a declared fixture "

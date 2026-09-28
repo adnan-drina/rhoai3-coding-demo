@@ -132,6 +132,12 @@ def build_receipt(root: Path, copy: Path, raw: Path) -> dict:
         reasons.append("dependency warm-up rc=%s" % warm_rc)
     if eff_rc not in (None, 0):
         reasons.append("effective pom rc=%s (legacy dependency versions unavailable to the bootstrap)" % eff_rc)
+    if cp_rc is not None and (cp_rc != 0 or not classpath):
+        # a successful compile does not make the classpath known: without it
+        # the structural model runs partial, so the gap is named, not silent
+        tail = [ln for ln in _text(raw, "classpath.log").strip().splitlines() if ln.strip()][:3]
+        reasons.append("offline classpath extraction rc=%s%s: %s" % (
+            cp_rc, "" if classpath else " (no classpath written)", " | ".join(tail)[:400] or "no output"))
     outputs = []
     for name in ("compile.log", "warmup.log", "classpath.txt", "java-version.txt", "mvn-version.txt", "generated-roots.txt", "effective-pom.xml"):
         p = raw / name

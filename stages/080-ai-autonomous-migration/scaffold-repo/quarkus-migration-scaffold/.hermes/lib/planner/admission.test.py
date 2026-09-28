@@ -94,8 +94,166 @@ def _unit_mode_switch_case() -> int:
     return 0
 
 
+def _plan_semantics_pin_case() -> int:
+    """The plan semantics is the RUN's: a destination created without the key
+    stays off, one created with v1 stays v1, and a later decisions.yaml edit
+    that flips it is PLAN_SEMANTICS_REPINNED -- never a silent re-plan. No git
+    history (a local fixture) has no pin."""
+    import subprocess
+    import tempfile
+    from planner.decisions import plan_semantics_pin_gap
+
+    def git(root: Path, *a: str) -> None:
+        subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True)
+
+    base = "schema: rhoai3.decisions/v2\nloop:\n  unit_formation: v1\n%s"
+    for created, now, want in (("", "", False), ("", "  plan_semantics: v1\n", True),
+                               ("  plan_semantics: v1\n", "  plan_semantics: v1\n", False),
+                               ("  plan_semantics: v1\n", "", True)):
+        with tempfile.TemporaryDirectory(prefix="adm-pin-") as td:
+            root = Path(td)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "t@t")
+            git(root, "config", "user.name", "t")
+            (root / "decisions.yaml").write_text(base % created, encoding="utf-8")
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "scaffold")
+            (root / "decisions.yaml").write_text(base % now + "# an Operator step's later ADR\n", encoding="utf-8")
+            doc = {"loop": {"unit_formation": "v1", **({"plan_semantics": "v1"} if now else {})}}
+            gap = plan_semantics_pin_gap(root, doc)
+            if bool(gap) != want:
+                return _fail("created %r, now %r: pin gap %r, expected %s" % (created.strip(), now.strip(), gap, want))
+    with tempfile.TemporaryDirectory(prefix="adm-nogit-") as td:
+        if plan_semantics_pin_gap(Path(td), {"loop": {"plan_semantics": "v1"}}):
+            return _fail("a tree with no history has no pin to compare")
+    return 0
+
+
+def _objectives_pin_case() -> int:
+    """compatibility-objectives/v1 is pinned like plan semantics: a destination
+    created without it stays per-unit, a later flip either way is
+    OBJECTIVES_REPINNED, and selecting it without plan semantics v1 is
+    OBJECTIVES_WITHOUT_PLAN_SEMANTICS. Both are blocks_for's own classes."""
+    import subprocess
+    import tempfile
+    from unittest.mock import patch
+    from planner import admission as ADM
+    from planner.decisions import compatibility_objectives, loop_pin_gap
+
+    def git(root: Path, *a: str) -> None:
+        subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True)
+
+    base = "schema: rhoai3.decisions/v2\nloop:\n  plan_semantics: v1\n%s"
+    for created, now, want in (("", "", False), ("", "  compatibility_objectives: v1\n", True),
+                               ("  compatibility_objectives: v1\n", "  compatibility_objectives: v1\n", False),
+                               ("  compatibility_objectives: v1\n", "", True)):
+        with tempfile.TemporaryDirectory(prefix="adm-obj-") as td:
+            root = Path(td)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "t@t")
+            git(root, "config", "user.name", "t")
+            (root / "decisions.yaml").write_text(base % created, encoding="utf-8")
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "scaffold")
+            doc = {"loop": {"plan_semantics": "v1", **({"compatibility_objectives": "v1"} if now else {})}}
+            gap = loop_pin_gap(root, doc, "compatibility_objectives")
+            if bool(gap) != want:
+                return _fail("objectives created %r, now %r: pin gap %r, expected %s" % (created.strip(), now.strip(), gap, want))
+            with patch.object(ADM, "missing_decisions", return_value=[]), patch.object(ADM, "activation_gaps", return_value=[]), \
+                    patch.object(ADM, "pin_gaps", return_value=[]):
+                got = {b["class"] for b in ADM.blocks_for(root, {"structure": {"available": True}}, {}, doc, {}, "")}
+            if ("OBJECTIVES_REPINNED" in got) != want:
+                return _fail("blocks_for %s for objectives created %r, now %r" % (sorted(got), created.strip(), now.strip()))
+    if compatibility_objectives({"loop": {"compatibility_objectives": "v2"}}) != "off" or compatibility_objectives(None) != "off":
+        return _fail("an unknown or absent objective policy is off")
+    with tempfile.TemporaryDirectory(prefix="adm-obj-nogit-") as td:
+        doc = {"loop": {"compatibility_objectives": "v1"}}
+        if loop_pin_gap(Path(td), doc, "compatibility_objectives"):
+            return _fail("a tree with no history has no objective pin to compare")
+        with patch.object(ADM, "missing_decisions", return_value=[]), patch.object(ADM, "activation_gaps", return_value=[]), \
+                patch.object(ADM, "pin_gaps", return_value=[]):
+            got = {b["class"] for b in ADM.blocks_for(Path(td), {"structure": {"available": True}}, {}, doc, {}, "")}
+        if "OBJECTIVES_WITHOUT_PLAN_SEMANTICS" not in got:
+            return _fail("objectives without plan semantics v1 must block: %s" % sorted(got))
+        doc["loop"]["plan_semantics"] = "v1"
+        with patch.object(ADM, "missing_decisions", return_value=[]), patch.object(ADM, "activation_gaps", return_value=[]), \
+                patch.object(ADM, "pin_gaps", return_value=[]):
+            got = {b["class"] for b in ADM.blocks_for(Path(td), {"structure": {"available": True}}, {}, doc, {}, "")}
+        if got & {"OBJECTIVES_WITHOUT_PLAN_SEMANTICS", "OBJECTIVES_REPINNED"}:
+            return _fail("objectives with plan semantics v1 and no history must not block: %s" % sorted(got))
+    return 0
+
+
+def _composition_oversize_case() -> int:
+    """An oversized connected objective is a typed planning refusal that
+    reaches admission: the real planner raises COMPOSITION_OVERSIZE, the real
+    plan-semantics projection keeps its reason (initial_graph), and the plan
+    contract blocks PLAN_CONTRACT naming it, with the accounted clusters,
+    obligations and budget accounts. Nothing is published, split or issued."""
+    import importlib.util
+    import tempfile
+    from unittest.mock import patch
+    from planner import outcome_graph as OG
+    from planner import plan_semantics as PS
+    spec = importlib.util.spec_from_file_location("co_selftest", Path(__file__).with_name("compatibility_objectives.test.py"))
+    CO_T = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(CO_T)
+    w = CO_T.World()
+    files = ["b/F%02d.java" % i for i in range(21)]
+    w.unit("u:tx-a", "org.springframework.transaction.annotation", "package", files[:11], 0)
+    w.unit("u:tx-b", "org.springframework.transaction.annotation.Transactional", "annotation", files[10:], 1)
+    real = OG.derive_initial_graph
+    try:
+        CO_T.derive(w)   # the real planner on the oversized component
+    except OG.PlanError as exc:
+        refusal = exc
+    else:
+        return _fail("a 21-file connected component must not be planned")
+
+    def raise_real(**_kw):
+        raise refusal
+    with tempfile.TemporaryDirectory(prefix="adm-oversize-") as td:
+        root = Path(td)
+        (root / "evidence").mkdir()
+        (root / "evidence/entry-point-inventory.json").write_text('{"entry_points": []}', encoding="utf-8")
+        with patch.object(OG, "derive_initial_graph", raise_real):
+            graph, why = PS.initial_graph(root, w.worklist(), requirements=[], oracles=None, run_id="r")
+    if graph is not None or not why.startswith("COMPOSITION_OVERSIZE:") or "Accounted:" not in why:
+        return _fail("the planner's refusal must reach the projection with its accounting: %r" % why[:200])
+    if OG.derive_initial_graph is not real:
+        return _fail("the patch leaked")
+    doc = {"unknowns": ["graph: %s" % why], "plan": {"requirements": []}}   # from_root records exactly this
+    with patch.object(PS, "from_root", return_value=doc):
+        _doc, blocks = PS.contract(Path("."))
+    got = [(b["class"], b["subject"]) for b in blocks]
+    if got != [("PLAN_CONTRACT", "COMPOSITION_OVERSIZE")] or "u:tx-a, u:tx-b" not in blocks[0]["detail"]:
+        return _fail("admission blocks the oversized composition by name: %s" % blocks)
+    return 0
+
+
+def _recipe_rules_case() -> int:
+    """PLAN_RECIPE_MISSING is for REPAIR requirements only: an applicable
+    behaviour verification (a captured oracle) or decided configuration has
+    checks, not a recipe, and must not refuse admission."""
+    from unittest.mock import patch
+    from planner import plan_semantics as PS
+
+    def req(rule: str, rid: str) -> dict:
+        return {"id": rid, "rule": rule + "/v1", "status": "applicable", "acceptance": ["x"], "recipe": None}
+
+    doc = {"unknowns": [], "plan": {"requirements": [req("behavior-verification", "req:bv"), req("configuration-decision", "req:sec"),
+                                                     req("adapter-behavior", "req:ab"), req("request-validation", "req:rv")]}}
+    with patch.object(PS, "from_root", return_value=doc):
+        _doc, blocks = PS.contract(Path("."))
+    got = sorted((b["class"], b["subject"]) for b in blocks)
+    if got != [("PLAN_RECIPE_MISSING", "req:rv")]:
+        return _fail("only a repair requirement without a recipe blocks: %s" % got)
+    return 0
+
+
 def main() -> int:
-    if _typed_class_case() or _unit_oversize_case() or _unit_mode_switch_case():
+    if (_typed_class_case() or _unit_oversize_case() or _unit_mode_switch_case() or _plan_semantics_pin_case()
+            or _objectives_pin_case() or _composition_oversize_case() or _recipe_rules_case()):
         return 1
     print("OK: admission block classes (a bounded-out unit is UNIT_OVERSIZE carrying the former's own refusal, a "
           "cluster with no derivable scope is still SCOPE_UNDERIVED with its own wording, a refused formation flip is "

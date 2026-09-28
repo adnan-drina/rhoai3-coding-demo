@@ -26,13 +26,15 @@ every record on disk, so the receipt a scoped run composes still states the
 verdict of every entry point -- the scoped ones from this run, the rest from
 the records their last full run left. The record says what was skipped and why.
 
---read-oracle (repeatable) re-runs step 2 for the named admitted entry points
-inside a --scenario run (H3, dest v9 t_4d75569c): a parity obligation that
+--read-oracle (repeatable) re-runs step 2 for the named admitted entry points.
+Inside a --scenario run that is H3 (dest v9 t_4d75569c): a parity obligation that
 came from an entry point's READ ORACLE (the method-and-path replay, which
 declares no scenario) is re-measured only by that replay, and a scoped run that
 skipped every read oracle left the entry point's FAIL record on disk exactly as
 the baseline had it -- so the card's repair could discharge its scenario
-obligation and never its read-oracle one. The acceptance path names the entry
+obligation and never its read-oracle one. Without --scenario, named
+--read-oracle is a read-oracle-only scoped run: no scenario ids are invented
+and the rest of the corpus is not compared. The acceptance path names the entry
 points of the issued card's obligations here; the record says which read
 oracles this run re-ran (``read_oracles.rerun``) and names every other entry
 point as not compared, with the reason. A read oracle NOT named keeps the
@@ -216,6 +218,9 @@ ORPHAN_INDEX_SCHEMA = "rhoai3.parity-orphans/v1"
 # their last full run recorded (the composer reads those records, not this run).
 READ_ORACLES_FILTERED = ("skipped: this run compares only the scenarios it was scoped to (%s)%s; the read-oracle verdicts "
                          "on disk are the ones the last unfiltered run recorded")
+READ_ORACLES_ONLY = ("skipped: this run re-runs only the issued read oracle(s) (%s); no scenario ids were named and none "
+                     "were invented; the read-oracle verdicts on disk for every other entry point are the ones the last "
+                     "unfiltered run recorded")
 # ... and what an enabled-mode run does NOT measure, for a reason that is not a
 # choice: the read oracles live in an oracle directory that is NOT mode-scoped
 # (verification/source-oracles/<slug>.json) and were captured with the switch
@@ -441,6 +446,45 @@ def _composed_by_this_run(before: dict[str, Any], after: dict[str, Any], doc: An
         return ("it names receipt %s and this run is bound to %s"
                 % (str(doc.get("receipt_sha256") or "")[:12] or "none", receipt_sha[:12]))
     return ""
+
+
+
+def _scenario_files(parity: Path, sid: str) -> list[Path]:
+    """Every file a scenario comparison writes for one scenario: its verdict,
+    the destination bodies it keeps, and the server-error excerpt beside it."""
+    stem = scenario_slug(sid)
+    return [parity / (stem + ".json"), parity / "_bodies" / stem, parity / "_server-errors" / (stem + ".log")]
+
+
+def _snapshot_scenario_files(parity: Path, sids: list[str]) -> dict[Path, Any]:
+    kept: dict[Path, Any] = {}
+    for sid in sids:
+        for p in _scenario_files(parity, sid):
+            if p.is_dir():
+                kept[p] = {q.relative_to(p): q.read_bytes() for q in sorted(p.rglob("*")) if q.is_file()}
+            elif p.is_file():
+                kept[p] = p.read_bytes()
+            else:
+                kept[p] = None
+    return kept
+
+
+def _restore_scenario_files(kept: dict[Path, Any]) -> int:
+    """Put every snapshotted path back exactly: bytes, directory contents, or absence."""
+    import shutil
+    for p, was in kept.items():
+        if p.is_dir():
+            shutil.rmtree(p)
+        elif p.exists():
+            p.unlink()
+        if isinstance(was, bytes):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(was)
+        elif isinstance(was, dict):
+            for rel, data in was.items():
+                (p / rel).parent.mkdir(parents=True, exist_ok=True)
+                (p / rel).write_bytes(data)
+    return len(kept)
 
 
 def _run_child(argv: list[str], label: str) -> subprocess.CompletedProcess:
@@ -793,13 +837,14 @@ def main(argv: list[str] | None = None) -> int:
                          "disk that belongs to this corpus -- so the scenarios this run did not compare keep the "
                          "verdicts their last run recorded")
     ap.add_argument("--read-oracle", action="append", default=[], metavar="ENTRY_POINT",
-                    help="repeatable, with --scenario: ALSO re-run the read oracle (the method-and-path replay) of this "
-                         "admitted entry point, so a scoped acceptance run re-measures a card's read-oracle obligation "
-                         "and not only its scenario ones (dest v9 t_4d75569c). _run.json names the entry points whose "
-                         "read oracle this run re-ran under read_oracles.rerun; the read-oracle records of every other "
-                         "entry point are left exactly as their last run wrote them. Default-mode only, like the "
-                         "phase itself. An entry point nobody admitted is refused; without --scenario the whole "
-                         "phase runs and every read oracle with it")
+                    help="repeatable: re-run the read oracle (the method-and-path replay) of this admitted entry "
+                         "point. With --scenario that is H3 (dest v9 t_4d75569c): a scoped acceptance run re-measures "
+                         "a card's read-oracle obligation and not only its scenario ones. Without --scenario this is "
+                         "a read-oracle-only scoped run: no scenario ids are invented and the rest of the corpus is "
+                         "not compared. _run.json names the entry points whose read oracle this run re-ran under "
+                         "read_oracles.rerun; the read-oracle records of every other entry point are left exactly as "
+                         "their last run wrote them. Default-mode only, like the phase itself. An entry point nobody "
+                         "admitted is refused")
     ap.add_argument("--issued", default="", metavar="PATH",
                     help="verification/loop/issued.json: this run measures the CANDIDATE that issued card was verified on, "
                          "not the accepted tree. The binding is passed to both comparators and the composer, which then do not "
@@ -899,18 +944,19 @@ def main(argv: list[str] | None = None) -> int:
     # and it refuses rather than running a smaller set in silence.
     wanted_ids = sorted({str(s) for s in (args.scenario or []) if str(s)})
     unknown_ids = [s for s in wanted_ids if s not in {str(sc["id"]) for sc in declared}]
-    scenarios = [sc for sc in declared if str(sc["id"]) in set(wanted_ids)] if wanted_ids else declared
-    # The read oracles a SCOPED run re-runs beside its scenarios: the entry
-    # points the caller named, selected from the admitted set exactly as the
-    # scenario filter selects from the corpus -- an entry point nobody admitted
-    # is a comparison that cannot be made, refused rather than skipped.
     oracle_ids = sorted({str(e) for e in (args.read_oracle or []) if str(e)})
     unknown_oracles = [e for e in oracle_ids if e not in set(wanted)]
-    # whole phase (no scenario filter, default mode): every read oracle runs
-    # and the option adds nothing; scoped: only the named ones; another mode:
-    # none, whatever was named (the captures are default-mode)
-    reads_all = not wanted_ids and security_mode == DEFAULT_SECURITY_MODE
-    reads_some = sorted(e for e in oracle_ids if e in set(wanted)) if (wanted_ids and security_mode == DEFAULT_SECURITY_MODE) else []
+    # named scenarios select from the corpus; named oracles without scenarios
+    # are a read-oracle-only scoped run (empty scenario list, not the corpus);
+    # neither named is the whole phase in the default mode.
+    if wanted_ids:
+        scenarios = [sc for sc in declared if str(sc["id"]) in set(wanted_ids)]
+    elif oracle_ids:
+        scenarios = []
+    else:
+        scenarios = declared
+    reads_all = not wanted_ids and not oracle_ids and security_mode == DEFAULT_SECURITY_MODE
+    reads_some = sorted(e for e in oracle_ids if e in set(wanted)) if (oracle_ids and security_mode == DEFAULT_SECURITY_MODE) else []
 
     # --- what the destination is started with, and as whom it is asked ------
     # Both are read BEFORE anything is started: a switch nobody declared and a
@@ -983,6 +1029,8 @@ def main(argv: list[str] | None = None) -> int:
                              ([READ_ORACLES_FILTERED % (", ".join(wanted_ids),
                                                         (" except the read oracle(s) of %s, re-run for the card" % ", ".join(reads_some))
                                                         if reads_some else "")] if wanted_ids else [])
+                             + ([READ_ORACLES_ONLY % ", ".join(oracle_ids)] if (oracle_ids and not wanted_ids
+                                                                              and security_mode == DEFAULT_SECURITY_MODE) else [])
                              + ([READ_ORACLES_MODE % (DEFAULT_SECURITY_MODE, (ORACLES / "<slug>.json").as_posix(),
                                                       security_mode, DEFAULT_SECURITY_MODE)]
                                 if security_mode != DEFAULT_SECURITY_MODE else [])))},
@@ -1131,6 +1179,64 @@ def main(argv: list[str] | None = None) -> int:
         #    issued card's own); every other entry point is named as not
         #    compared, with the reason, and its record on disk is not touched
         to_compare = list(wanted) if reads_all else list(reads_some)
+        # A read oracle was captured through the running source AFTER the whole
+        # corpus replayed, so it describes the state the corpus leaves behind:
+        # the last reset_before scenario and everything after it. A whole-phase
+        # run reaches that state by construction; a scoped run does not -- it
+        # replays the card's scenarios on their own, and a scenario that now
+        # WORKS (a delete that deletes) leaves a state the source never read in.
+        # Dest v12 t_e5c9a129: a correct PetRepositoryImpl.delete() made
+        # sc:delete-pets-1 delete pet 1, and the getPets read oracle re-run
+        # beside it then saw 12 pets of 13, an obligation no repair could
+        # discharge. So before a scoped run re-runs a read oracle, the corpus
+        # tail is replayed in corpus order, the same way step 1 replays it; if
+        # that state cannot be restored the read oracles are not compared.
+        # The replay is for STATE only (v12 golden 40d96b4f, B13): it re-measured
+        # the tail's own scenarios and rewrote their records, and advance.py then
+        # read an unrelated record's change as an obligation the card introduced
+        # and reverted a correct repair. So every file the replay writes for a
+        # tail scenario is put back byte for byte, and a scenario counts as
+        # restored when it made its request (an observed destination response,
+        # which the comparator records only after its resets succeeded) -- its
+        # comparison verdict is not this step's business.
+        restore_gap = ""
+        restore_skipped: set[str] = set()
+        if to_compare and not reads_all:
+            starts = [i for i, sc in enumerate(declared) if sc.get("reset_before", True)]
+            tail = declared[starts[-1]:] if starts else declared
+            doc["read_oracles"]["state_restore"] = {"tail": [str(sc["id"]) for sc in tail], "results": []}
+            kept = _snapshot_scenario_files(root / parity_dir, [str(sc["id"]) for sc in tail])
+            try:
+                if not starts:
+                    proc = subprocess.run(shlex.split(reset_cmd), text=True, capture_output=True)
+                    if proc.returncode != 0:
+                        restore_gap = "the reset before the corpus tail exited %d" % proc.returncode
+                for sc in ([] if restore_gap else tail):
+                    sid = str(sc["id"])
+                    argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
+                               "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
+                    proc = _run_child(argv_sc, "scenario %s (restores the state the read oracles were captured in)" % sid)
+                    rec = root / parity_dir / (scenario_slug(sid) + ".json")
+                    observed = ((load_json(rec) if rec.is_file() else {}).get("observed") or {}).get("status")
+                    doc["read_oracles"]["state_restore"]["results"].append({"id": sid, "rc": proc.returncode,
+                                                                              "observed_status": observed})
+                    if not observed:
+                        restore_gap = ("scenario %s of the corpus tail made no request (rc %d): %s"
+                                       % (sid, proc.returncode, (_verdict_of(rec)[1] or "no record")[:200]))
+                        break
+            finally:
+                doc["read_oracles"]["state_restore"]["records_restored"] = _restore_scenario_files(kept)
+            if restore_gap:
+                reason = ("not compared: the state the read oracles were captured in (the corpus tail %s) "
+                          "could not be restored: %s" % (", ".join(doc["read_oracles"]["state_restore"]["tail"]),
+                                                         restore_gap))
+                doc["read_oracles"]["state_restore"]["gap"] = restore_gap
+                failures.append(reason)
+                for ep in to_compare:
+                    doc["entry_points"]["skipped"] += 1
+                    doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": reason})
+                restore_skipped = set(to_compare)
+                to_compare = []
         for ep in to_compare:
             gap = read_oracle_gap(root, ep)
             if gap:
@@ -1160,7 +1266,7 @@ def main(argv: list[str] | None = None) -> int:
         if not reads_all:
             compared_now = set(to_compare)
             for ep in wanted:
-                if ep in compared_now:
+                if ep in compared_now or ep in restore_skipped:
                     continue
                 doc["entry_points"]["skipped"] += 1
                 doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": doc["read_oracles"]["reason"]})
@@ -1224,7 +1330,8 @@ def main(argv: list[str] | None = None) -> int:
     summary = ("%s%s%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
                "(%d not compared)%s; %s; receipt %s%s"
                % (("%s mode: " % security_mode) if security_mode != DEFAULT_SECURITY_MODE else "",
-                  ("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
+                  ("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else
+                  ("read-oracle-only %s: " % ", ".join(oracle_ids)) if oracle_ids else "",
                   doc["scenarios"]["run"], doc["scenarios"]["selected"], doc["scenarios"]["passed"],
                   doc["scenarios"]["failed"], doc["scenarios"]["inconclusive"], doc["entry_points"]["compared"],
                   doc["entry_points"]["admitted"], doc["entry_points"]["skipped"], reruns, nav_summary,

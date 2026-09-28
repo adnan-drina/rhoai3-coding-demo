@@ -23,11 +23,17 @@ MTA_FINDINGS = Path("evidence") / "mta-findings.json"
 FINDINGS_HANDOFF = Path("evidence") / "findings-handoff.json"
 REQUIRED_EXTENSIONS = Path("evidence") / "required-extensions.json"
 
-# planning artifacts (three, in chain order)
+# planning artifacts (three sealed, in chain order, plus a derived serial view)
 PLANNING_OUT = Path("evidence") / "planning"
 EVIDENCE_BUNDLE = PLANNING_OUT / "evidence-bundle.json"
 WORKLIST = PLANNING_OUT / "worklist.json"
 ADMISSION_RECEIPT = PLANNING_OUT / "admission-receipt.json"
+SERIAL_ROADMAP = PLANNING_OUT / "serial-roadmap.json"
+# plan semantics v1 (decisions.loop.plan_semantics): the semantic identity of
+# the initial plan, sealed by admission BESIDE the exact digests (never
+# instead of them), and its derived human-readable view (no authority)
+PLAN_SEMANTICS = PLANNING_OUT / "plan-semantics.json"
+PLAN_VIEW = PLANNING_OUT / "plan-view.json"
 BOOTSTRAP_RECEIPT = PRODUCERS_DIR / "bootstrap.json"
 # decided repairs applied by the bootstrap (ADR-019): one row per transformation
 DECIDED_REPAIRS_RECEIPT = PRODUCERS_DIR / "decided-repairs.json"
@@ -50,12 +56,31 @@ VERIFY_BOOT = VERIFY_DIR / "boot.json"
 LOOP_ISSUED = Path("verification") / "loop" / "issued.json"
 LOOP_CARDS = Path("verification") / "loop" / "cards.json"
 LOOP_ACCEPTED = Path("verification") / "loop" / "accepted"
+FROZEN_COVERAGE_ACCOUNT = LOOP_ACCEPTED / "coverage-account.json"
+FROZEN_COVERAGE_SOURCE = LOOP_ACCEPTED / "coverage-account.source.json"
+FROZEN_COVERAGE_HISTORY = LOOP_ACCEPTED / "coverage" / "history"
+COVERAGE_ACCOUNT = Path("evidence") / "verdicts" / "coverage-account.json"
+PIT_MEASUREMENT = Path("evidence") / "derived" / "pit-measurement.json"
 PARITY_DIR = VERIFICATION_DIR / "parity"
 LOOP_DIR = VERIFICATION_DIR / "loop"
 LOOP_STEPS = LOOP_DIR / "steps.json"
 LOOP_DEFERRED = LOOP_DIR / "deferred.json"
+# V17-3: diagnostics per OWNER (observational, never read back as authority):
+# functional completion a unit owes after its structural acceptance, and the
+# runtime-cause classification (planner.runtime_cause) of failures a card met
+LOOP_OWNER_DEBTS = LOOP_DIR / "owner-debts.json"
 LOOP_STATE = LOOP_DIR / "state.json"
 LOOP_PENDING_FILES = LOOP_DIR / "pending-files"
+DELIVERY_DIR = VERIFICATION_DIR / "delivery"
+DELIVERY_ELIGIBILITY = DELIVERY_DIR / "eligibility.json"
+DELIVERY_START = DELIVERY_DIR / "start.json"
+DELIVERY_CANDIDATE = DELIVERY_DIR / "candidate.json"
+DELIVERY_PIPELINE = DELIVERY_DIR / "pipeline.json"
+DELIVERY_DEPLOYMENT = DELIVERY_DIR / "deployment.json"
+DELIVERY_LIVE = DELIVERY_DIR / "live.json"
+DELIVERY_BUDGET = DELIVERY_DIR / "budget.json"
+M5_VERDICT = Path("evidence") / "verdicts" / "m5-verdict.json"
+DELIVERY_CONTRACT = Path("delivery.yaml")
 
 PRODUCER_NAMES = ("freeze", "build", "jdk-model", "mta", "bootstrap")
 

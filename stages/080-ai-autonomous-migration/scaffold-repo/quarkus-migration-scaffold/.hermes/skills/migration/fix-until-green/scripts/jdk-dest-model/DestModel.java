@@ -17,6 +17,7 @@
 // than guess.
 //
 //   java DestModel --source <dir> --out <json> --release <n> [--classpath <file>] [--also-source <dir>]...
+//                  [--type-ref-budget <nodes>]   (tests only: force the node bound)
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -37,8 +38,16 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.TypeParameterElement;
+import javax.lang.model.element.Parameterizable;
+import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
+import javax.lang.model.type.UnionType;
+import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -72,9 +81,17 @@ public final class DestModel {
             "compiler.err.missing.ret.stmt",
             "compiler.err.unreachable.stmt"));
 
+    // The declaration-reference walk (types[].type_refs) is FINITE by
+    // construction: a mirror deeper than this, or more mirrors than this in one
+    // type's declarations, ends the walk as INCOMPLETE -- never as an empty,
+    // complete answer. Both are far above any declaration a person writes.
+    static final int TYPE_REF_MAX_DEPTH = 32;
+    static final int TYPE_REF_MAX_NODES = 20000;
+
     public static void main(String[] args) throws Exception {
         Path source = null, out = null, classpath = null;
         String release = "21";
+        int typeRefBudget = TYPE_REF_MAX_NODES;
         List<Path> alsoSources = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -86,6 +103,7 @@ public final class DestModel {
                 case "--out": out = Paths.get(args[++i]); break;
                 case "--release": release = args[++i]; break;
                 case "--classpath": classpath = Paths.get(args[++i]); break;
+                case "--type-ref-budget": typeRefBudget = Integer.parseInt(args[++i]); break;
                 default: throw new IllegalArgumentException("unknown argument " + args[i]);
             }
         }
@@ -115,7 +133,53 @@ public final class DestModel {
         }
         JavacTask task = (JavacTask) compiler.getTask(null, fm, diags,
                 options, null, fm.getJavaFileObjectsFromPaths(files));
-        Iterable<? extends CompilationUnitTree> units = task.parse();
+        List<CompilationUnitTree> units = new ArrayList<>();
+        task.parse().forEach(units::add);
+        // Parse evidence is independent of attribution. A migration unit can
+        // retire an annotation while unrelated unresolved types remain. Save
+        // every identifier BEFORE analyze mutates the AST; a parse error never
+        // supplies evidence that a name is absent.
+        TreeSet<String> parseBroken = new TreeSet<>();
+        for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() != null) {
+                parseBroken.add(rel(source, Paths.get(d.getSource().toUri())));
+            }
+        }
+        Map<String, List<String>> syntaxNames = new LinkedHashMap<>();
+        Map<String, List<String>> syntaxQualifiedNames = new LinkedHashMap<>();
+        Map<String, Boolean> syntaxImplicitTypes = new LinkedHashMap<>();
+        for (CompilationUnitTree unit : units) {
+            TreeSet<String> names = new TreeSet<>();
+            TreeSet<String> qualified = new TreeSet<>();
+            if (unit.getPackageName() != null) { qualified.add(unit.getPackageName().toString()); }
+            boolean[] implicitTypes = {false};
+            for (com.sun.source.tree.ImportTree imp : unit.getImports()) {
+                if (imp.isStatic()) { implicitTypes[0] = true; }
+            }
+            new com.sun.source.util.TreeScanner<Void, Void>() {
+                @Override public Void visitClass(ClassTree n, Void v) {
+                    names.add(n.getSimpleName().toString());
+                    // Inherited/anonymous member types and static imports can
+                    // name a foreign type without naming its package. A
+                    // package-absence proof must not guess their attribution.
+                    if (n.getExtendsClause() != null || !n.getImplementsClause().isEmpty()
+                            || n.getSimpleName().length() == 0) { implicitTypes[0] = true; }
+                    return super.visitClass(n, v);
+                }
+                @Override public Void visitIdentifier(com.sun.source.tree.IdentifierTree n, Void v) {
+                    names.add(n.getName().toString());
+                    return super.visitIdentifier(n, v);
+                }
+                @Override public Void visitMemberSelect(com.sun.source.tree.MemberSelectTree n, Void v) {
+                    names.add(n.getIdentifier().toString());
+                    qualified.add(n.toString());
+                    return super.visitMemberSelect(n, v);
+                }
+            }.scan(unit, null);
+            syntaxNames.put(rel(source, Paths.get(unit.getSourceFile().toUri())), new ArrayList<>(names));
+            syntaxQualifiedNames.put(rel(source, Paths.get(unit.getSourceFile().toUri())), new ArrayList<>(qualified));
+            syntaxImplicitTypes.put(rel(source, Paths.get(unit.getSourceFile().toUri())), implicitTypes[0]);
+        }
         task.analyze();
         Trees trees = Trees.instance(task);
         Elements elements = task.getElements();
@@ -138,6 +202,7 @@ public final class DestModel {
 
         List<Map<String, Object>> types = new ArrayList<>();
         Path root = source;
+        final int refBudget = typeRefBudget;
         for (CompilationUnitTree unit : units) {
             Path file = Paths.get(unit.getSourceFile().toUri());
             if (!file.toAbsolutePath().normalize().startsWith(sourceRoot)) { continue; }  // an --also-source unit
@@ -147,9 +212,25 @@ public final class DestModel {
             // to its type even in a tree that cannot yet be compiled against
             // its dependencies (the bootstrap runs before the first build).
             List<String> imports = new ArrayList<>();
+            boolean[] implicitComplete = {true};
             for (com.sun.source.tree.ImportTree imp : unit.getImports()) {
                 imports.add(imp.getQualifiedIdentifier().toString());
+                if (imp.isStatic()) { implicitComplete[0] = false; }
             }
+            // A broken field or annotation need not make the hierarchy of
+            // member TYPE names unknowable. Resolve that narrower question
+            // independently; do not promote method/call/inheritance evidence
+            // below to full resolution. Include every nested class's scope.
+            TreeSet<String> implicitNames = new TreeSet<>();
+            TreeSet<String> implicitResolved = new TreeSet<>();
+            new TreePathScanner<Void, Void>() {
+                @Override public Void visitClass(ClassTree node, Void unused) {
+                    Element el = trees.getElement(getCurrentPath());
+                    if (!(el instanceof TypeElement) || !collectImplicitTypeNames(task, el.asType(),
+                            implicitNames, new TreeSet<>(), implicitResolved)) { implicitComplete[0] = false; }
+                    return super.visitClass(node, unused);
+                }
+            }.scan(unit, null);
             new TreePathScanner<Void, Void>() {
                 @Override public Void visitClass(ClassTree node, Void unused) {
                     TreePath path = getCurrentPath();
@@ -161,6 +242,12 @@ public final class DestModel {
                     row.put("fqn", type.getQualifiedName().toString());
                     row.put("kind", type.getKind().toString().toLowerCase());
                     row.put("resolution", ok ? "full" : "partial");
+                    row.put("syntax_complete", !parseBroken.contains(relPath));
+                    row.put("syntax_names", syntaxNames.get(relPath));
+                    row.put("syntax_qualified_names", syntaxQualifiedNames.get(relPath));
+                    row.put("syntax_implicit_types", syntaxImplicitTypes.get(relPath));
+                    row.put("implicit_type_scope_complete", implicitComplete[0]);
+                    row.put("implicit_type_names", new ArrayList<>(implicitNames));
                     row.put("imports", imports);
                     List<String> supers = new ArrayList<>();
                     if (type.getSuperclass() != null && type.getSuperclass().getKind().name().equals("DECLARED")) {
@@ -169,6 +256,15 @@ public final class DestModel {
                     for (TypeMirror itf : type.getInterfaces()) { supers.add(itf.toString()); }
                     row.put("supertypes", supers);
                     row.put("annotations", annotationsOf(node.getModifiers(), path, unit, relPath));
+                    // What this type's DECLARATIONS name, from the compiler's
+                    // mirrors: the supertypes, the type parameters' bounds, and
+                    // below every field type and member signature.
+                    RefWalk refWalk = new RefWalk(refBudget);
+                    refWalk.walk(type.getSuperclass(), "extends");
+                    for (TypeMirror itf : type.getInterfaces()) { refWalk.walk(itf, "implements"); }
+                    for (TypeParameterElement tp : type.getTypeParameters()) {
+                        refWalk.walk(tp.asType(), "type-parameter:" + tp.getSimpleName());
+                    }
 
                     List<Map<String, Object>> declared = new ArrayList<>();
                     List<Map<String, Object>> fields = new ArrayList<>();
@@ -192,6 +288,9 @@ public final class DestModel {
                             String constant = stringConstant(v, path);
                             if (constant != null) { frow.put("constant", constant); }
                             frow.put("annotations", annotationsOf(v.getModifiers(), new TreePath(path, member), unit, relPath));
+                            Element fieldEl = trees.getElement(new TreePath(path, member));
+                            if (fieldEl == null) { refWalk.unknown("field:" + v.getName(), "unattributed"); }
+                            else { refWalk.walk(fieldEl.asType(), "field:" + v.getName()); }
                             fields.add(frow);
                             if (v.getInitializer() != null) {
                                 scanBody(task, trees, elements, positions, unit,
@@ -223,6 +322,13 @@ public final class DestModel {
                             refs.add(ee.getReturnType().toString());
                             for (Element pe : ee.getParameters()) { refs.add(pe.asType().toString()); }
                             for (TypeMirror th : ee.getThrownTypes()) { refs.add(th.toString()); }
+                            String locus = "member:" + signature(ee);
+                            refWalk.walk(ee.getReturnType(), locus);
+                            for (Element pe : ee.getParameters()) { refWalk.walk(pe.asType(), locus); }
+                            for (TypeMirror th : ee.getThrownTypes()) { refWalk.walk(th, locus); }
+                            for (TypeParameterElement tp : ee.getTypeParameters()) { refWalk.walk(tp.asType(), locus); }
+                        } else {
+                            refWalk.unknown("member:" + m.getName(), "unattributed");
                         }
                         mrow.put("type_refs", refs);
                         // the CHECKED exceptions this member declares. Adding one to an
@@ -294,6 +400,17 @@ public final class DestModel {
                             }.scan(m.getBody(), null);
                         }
                         mrow.put("call_names", callNames);
+                        // V17-3: what the WHOLE body amounts to, from the
+                        // attributed tree (a stub is a shape, not a name)
+                        if (m.getBody() != null) {
+                            mrow.put("body_shape", bodyShape(trees, new TreePath(mp, m.getBody()), type, task));
+                        }
+                        List<String> guards = m.getBody() == null ? List.of()
+                                : validationGuards(task, trees, unit, new TreePath(mp, m.getBody()));
+                        if (!guards.isEmpty()) { mrow.put("validation_guards", guards); }
+                        List<Map<String, Object>> expansions = m.getBody() == null ? List.of()
+                                : uriExpansions(task, trees, unit, new TreePath(mp, m.getBody()), m);
+                        if (!expansions.isEmpty()) { mrow.put("uri_expansions", expansions); }
                         declared.add(mrow);
                     }
                     row.put("declared", declared);
@@ -332,6 +449,11 @@ public final class DestModel {
                     }
                     row.put("supertype_methods", supertypeMethods);
                     row.put("inherited_known", ok);
+                    // Additive facts. `type_refs_complete` is about THIS walk
+                    // only; `resolution` above stays the compiler's own answer.
+                    row.put("type_refs", new ArrayList<>(refWalk.refs));
+                    row.put("type_refs_complete", refWalk.incomplete.isEmpty());
+                    row.put("type_refs_incomplete", refWalk.incompleteRows());
                     types.add(row);
                     return super.visitClass(node, unused);
                 }
@@ -357,14 +479,30 @@ public final class DestModel {
                         // be a guess. An attribute whose argument is not a string
                         // literal is absent from the map, never present-and-wrong.
                         Map<String, Object> named = new LinkedHashMap<>();
+                        // the CLASS LITERALS an attribute was written with,
+                        // each as the type the compiler resolved it to:
+                        // @Typed(PetRepositoryImpl.class) restricts a bean's
+                        // types to exactly that class (CDI 4.1, Restricting
+                        // the bean types of a bean), and only a resolved type
+                        // can be compared with the one an obligation names.
+                        // An attribute with any other kind of element, or a
+                        // literal the compiler could not resolve, is absent.
+                        Map<String, Object> classes = new LinkedHashMap<>();
                         boolean literal = true;
                         for (ExpressionTree arg : a.getArguments()) {
                             String attr = "value";
                             Tree expr = arg;
+                            TreePath argPath = new TreePath(ap, arg);
+                            TreePath exprPath = argPath;
                             if (arg.getKind() == Tree.Kind.ASSIGNMENT) {
                                 com.sun.source.tree.AssignmentTree as = (com.sun.source.tree.AssignmentTree) arg;
                                 attr = as.getVariable().toString();
                                 expr = as.getExpression();
+                                exprPath = new TreePath(argPath, expr);
+                            }
+                            List<String> classLiterals = new ArrayList<>();
+                            if (collectClassLiterals(exprPath, classLiterals) && !classLiterals.isEmpty()) {
+                                classes.put(attr, classLiterals);
                             }
                             List<String> mine = new ArrayList<>();
                             // `values` keeps the String literals it always
@@ -381,6 +519,7 @@ public final class DestModel {
                         if (a.getArguments().isEmpty()) { literal = true; }
                         row.put("values", values);
                         row.put("named", named);
+                        if (!classes.isEmpty()) { row.put("classes", classes); }
                         // an argument that is not a string literal is a
                         // question this tool cannot answer, and it says so
                         row.put("resolution", (fqn.isEmpty() || !literal) ? "inconclusive" : "full");
@@ -415,6 +554,26 @@ public final class DestModel {
                     if (!(init instanceof LiteralTree)) { return null; }
                     Object value = ((LiteralTree) init).getValue();
                     return value instanceof String ? (String) value : null;
+                }
+
+                private boolean collectClassLiterals(TreePath p, List<String> out) {
+                    Tree t = p.getLeaf();
+                    if (t instanceof com.sun.source.tree.MemberSelectTree
+                            && ((com.sun.source.tree.MemberSelectTree) t).getIdentifier().contentEquals("class")) {
+                        TypeMirror tm = trees.getTypeMirror(
+                                new TreePath(p, ((com.sun.source.tree.MemberSelectTree) t).getExpression()));
+                        if (tm == null || tm.getKind() == TypeKind.ERROR) { return false; }
+                        out.add(task.getTypes().erasure(tm).toString());
+                        return true;
+                    }
+                    if (t.getKind() == Tree.Kind.NEW_ARRAY) {
+                        boolean all = true;
+                        for (ExpressionTree e : ((com.sun.source.tree.NewArrayTree) t).getInitializers()) {
+                            all &= collectClassLiterals(new TreePath(p, e), out);
+                        }
+                        return all;
+                    }
+                    return false;
                 }
 
                 private boolean collectLiterals(Tree t, List<String> strings, List<String> scalars) {
@@ -453,6 +612,424 @@ public final class DestModel {
         doc.put("types", types);
         Files.createDirectories(out.toAbsolutePath().getParent());
         try (Writer w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) { writeJson(w, doc); }
+    }
+
+    /**
+     * V17-3: the SHAPE of one member body, from the attributed tree -- what an
+     * implementation obligation needs to tell a stub from an implementation:
+     *
+     *   empty               no statement at all, or only a bare `return;`
+     *   throw               the whole body is one throw (any exception type)
+     *   placeholder-return  every statement is a return of a placeholder:
+     *                       null, a literal, "", a zero-argument empty
+     *                       factory of java.util / java.util.stream
+     *                       (Collections.emptyList(), List.of(),
+     *                       Optional.empty(), Stream.empty(), ...) or a
+     *                       zero-argument java.util collection constructor
+     *   delegate            one statement that invokes (or returns the
+     *                       invocation of) a method declared by THIS type;
+     *                       `delegate` is that method's signature, so the
+     *                       reader can follow a private helper
+     *   substantive         anything else
+     *
+     * `statements` is the number of top-level statements; `exception` the
+     * erased thrown type of a `throw` body.
+     */
+    private static Map<String, Object> bodyShape(Trees trees, TreePath body, TypeElement owner, JavacTask task) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        com.sun.source.tree.BlockTree block = (com.sun.source.tree.BlockTree) body.getLeaf();
+        List<? extends com.sun.source.tree.StatementTree> stmts = block.getStatements();
+        out.put("statements", stmts.size());
+        if (stmts.isEmpty() || (stmts.size() == 1 && stmts.get(0) instanceof com.sun.source.tree.ReturnTree
+                && ((com.sun.source.tree.ReturnTree) stmts.get(0)).getExpression() == null)) {
+            out.put("kind", "empty");
+            return out;
+        }
+        if (stmts.size() == 1 && stmts.get(0) instanceof com.sun.source.tree.ThrowTree) {
+            out.put("kind", "throw");
+            TypeMirror tm = trees.getTypeMirror(new TreePath(new TreePath(body, stmts.get(0)),
+                    ((com.sun.source.tree.ThrowTree) stmts.get(0)).getExpression()));
+            out.put("exception", tm == null ? "" : task.getTypes().erasure(tm).toString());
+            return out;
+        }
+        boolean allPlaceholder = true;
+        for (com.sun.source.tree.StatementTree s : stmts) {
+            if (!(s instanceof com.sun.source.tree.ReturnTree)) { allPlaceholder = false; break; }
+            ExpressionTree e = ((com.sun.source.tree.ReturnTree) s).getExpression();
+            if (e == null || !placeholder(trees, new TreePath(new TreePath(body, s), e))) { allPlaceholder = false; break; }
+        }
+        if (allPlaceholder) {
+            out.put("kind", "placeholder-return");
+            return out;
+        }
+        if (stmts.size() == 1) {
+            ExpressionTree e = null;
+            com.sun.source.tree.StatementTree s = stmts.get(0);
+            if (s instanceof com.sun.source.tree.ExpressionStatementTree) {
+                e = ((com.sun.source.tree.ExpressionStatementTree) s).getExpression();
+            } else if (s instanceof com.sun.source.tree.ReturnTree) {
+                e = ((com.sun.source.tree.ReturnTree) s).getExpression();
+            }
+            if (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                Element callee = trees.getElement(new TreePath(new TreePath(body, s), e));
+                if (callee instanceof ExecutableElement && owner != null && owner.equals(callee.getEnclosingElement())) {
+                    out.put("kind", "delegate");
+                    out.put("delegate", signature((ExecutableElement) callee));
+                    return out;
+                }
+            }
+        }
+        out.put("kind", "substantive");
+        return out;
+    }
+
+    private static final java.util.Set<String> EMPTY_FACTORIES = java.util.Set.of(
+            "java.util.Collections#emptyList", "java.util.Collections#emptySet", "java.util.Collections#emptyMap",
+            "java.util.Collections#emptySortedSet", "java.util.Collections#emptySortedMap",
+            "java.util.Collections#emptyNavigableSet", "java.util.Collections#emptyNavigableMap",
+            "java.util.Collections#emptyIterator", "java.util.List#of", "java.util.Set#of", "java.util.Map#of",
+            "java.util.Optional#empty", "java.util.OptionalInt#empty", "java.util.OptionalLong#empty",
+            "java.util.OptionalDouble#empty", "java.util.stream.Stream#empty", "java.util.stream.IntStream#empty",
+            "java.util.stream.LongStream#empty", "java.util.stream.DoubleStream#empty");
+
+    /** A returned expression that carries no computed value (bodyShape). */
+    private static boolean placeholder(Trees trees, TreePath p) {
+        Tree t = p.getLeaf();
+        switch (t.getKind()) {
+            case PARENTHESIZED:
+                return placeholder(trees, new TreePath(p, ((com.sun.source.tree.ParenthesizedTree) t).getExpression()));
+            case TYPE_CAST:
+                return placeholder(trees, new TreePath(p, ((com.sun.source.tree.TypeCastTree) t).getExpression()));
+            case NULL_LITERAL: case BOOLEAN_LITERAL: case INT_LITERAL: case LONG_LITERAL: case FLOAT_LITERAL:
+            case DOUBLE_LITERAL: case CHAR_LITERAL:
+                return true;
+            case STRING_LITERAL:
+                return String.valueOf(((com.sun.source.tree.LiteralTree) t).getValue()).isEmpty();
+            case METHOD_INVOCATION: {
+                com.sun.source.tree.MethodInvocationTree mi = (com.sun.source.tree.MethodInvocationTree) t;
+                if (!mi.getArguments().isEmpty()) { return false; }
+                Element el = trees.getElement(p);
+                if (!(el instanceof ExecutableElement) || !(el.getEnclosingElement() instanceof TypeElement)) { return false; }
+                String key = ((TypeElement) el.getEnclosingElement()).getQualifiedName() + "#" + el.getSimpleName();
+                return EMPTY_FACTORIES.contains(key);
+            }
+            case NEW_CLASS: {
+                com.sun.source.tree.NewClassTree nc = (com.sun.source.tree.NewClassTree) t;
+                if (!nc.getArguments().isEmpty() || nc.getClassBody() != null) { return false; }
+                Element el = trees.getElement(p);
+                Element cls = el == null ? null : el.getEnclosingElement();
+                if (!(cls instanceof TypeElement)) { return false; }
+                String q = ((TypeElement) cls).getQualifiedName().toString();
+                return q.startsWith("java.util.") && q.lastIndexOf('.') == "java.util".length();
+            }
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * The VALIDATION GUARDS of one member body: every `if` condition that
+     * decides on bean-validation errors, as a boolean skeleton the Spring
+     * source and its Quarkus translation can be compared by (V16-8).
+     *
+     * `bindingResult.hasErrors()` (org.springframework.validation Errors or
+     * BindingResult) is the atom INVALID; `validator.validate(x).isEmpty()`
+     * (jakarta/javax.validation.Validator), directly or through a local the
+     * member initialized from validate(), is !INVALID. `!`, `||`, `&&` and
+     * parentheses keep their structure; every other operand is its own
+     * compiler-printed source text, so `x.getId() != null` stays itself. A
+     * type the compiler could not resolve (a source tree modelled without its
+     * classpath) is named through the file's own single-type imports.
+     */
+    private static List<String> validationGuards(JavacTask task, Trees trees, CompilationUnitTree unit, TreePath body) {
+        Map<String, String> imports = new LinkedHashMap<>();
+        for (com.sun.source.tree.ImportTree it : unit.getImports()) {
+            if (it.isStatic()) { continue; }
+            String q = it.getQualifiedIdentifier().toString();
+            if (!q.endsWith(".*")) { imports.put(q.substring(q.lastIndexOf('.') + 1), q); }
+        }
+        java.util.Set<String> violationLocals = new java.util.HashSet<>();
+        List<String> out = new ArrayList<>();
+        new TreePathScanner<Void, Void>() {
+            @Override public Void visitVariable(com.sun.source.tree.VariableTree v, Void x) {
+                ExpressionTree init = v.getInitializer();
+                if (init != null && isValidate(new TreePath(getCurrentPath(), init))) {
+                    violationLocals.add(v.getName().toString());
+                }
+                return super.visitVariable(v, x);
+            }
+            @Override public Void visitIf(com.sun.source.tree.IfTree n, Void x) {
+                String g = skeleton(new TreePath(getCurrentPath(), n.getCondition()));
+                if (g.contains("INVALID")) { out.add(g); }
+                return super.visitIf(n, x);
+            }
+            private String typeOf(TreePath p) {
+                TypeMirror tm = trees.getTypeMirror(p);
+                if (tm == null) { return ""; }
+                String t = task.getTypes().erasure(tm).toString();
+                return t.contains(".") ? t : imports.getOrDefault(t, t);
+            }
+            private boolean invokes(TreePath p, String name, String... owners) {
+                Tree t = p.getLeaf();
+                if (!(t instanceof com.sun.source.tree.MethodInvocationTree)) { return false; }
+                ExpressionTree sel = ((com.sun.source.tree.MethodInvocationTree) t).getMethodSelect();
+                if (!(sel instanceof com.sun.source.tree.MemberSelectTree)
+                        || !((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().contentEquals(name)) { return false; }
+                Element el = trees.getElement(p);
+                String owner = (el != null && el.getEnclosingElement() instanceof TypeElement)
+                        ? ((TypeElement) el.getEnclosingElement()).getQualifiedName().toString() : "";
+                String recv = typeOf(new TreePath(new TreePath(p, sel), ((com.sun.source.tree.MemberSelectTree) sel).getExpression()));
+                for (String o : owners) { if (o.equals(owner) || o.equals(recv)) { return true; } }
+                return false;
+            }
+            private boolean isValidate(TreePath p) {
+                return invokes(p, "validate", "jakarta.validation.Validator", "javax.validation.Validator");
+            }
+            private boolean isViolations(TreePath p) {
+                Tree t = p.getLeaf();
+                if (t instanceof com.sun.source.tree.IdentifierTree) {
+                    return violationLocals.contains(((com.sun.source.tree.IdentifierTree) t).getName().toString());
+                }
+                return isValidate(p);
+            }
+            private String neg(String s) {
+                return s.startsWith("!") && !s.startsWith("!(") ? s.substring(1)
+                        : (s.startsWith("!(") && s.endsWith(")") && balanced(s.substring(2, s.length() - 1)))
+                          ? s.substring(2, s.length() - 1) : (s.startsWith("(") || !s.contains(" ") ? "!" + s : "!(" + s + ")");
+            }
+            private boolean balanced(String s) {
+                int d = 0;
+                for (char c : s.toCharArray()) { if (c == '(') { d++; } else if (c == ')') { if (--d < 0) { return false; } } }
+                return d == 0;
+            }
+            private String skeleton(TreePath p) {
+                Tree t = p.getLeaf();
+                switch (t.getKind()) {
+                    case PARENTHESIZED:
+                        return skeleton(new TreePath(p, ((com.sun.source.tree.ParenthesizedTree) t).getExpression()));
+                    case LOGICAL_COMPLEMENT:
+                        return neg(skeleton(new TreePath(p, ((com.sun.source.tree.UnaryTree) t).getExpression())));
+                    case CONDITIONAL_OR:
+                    case CONDITIONAL_AND: {
+                        com.sun.source.tree.BinaryTree b = (com.sun.source.tree.BinaryTree) t;
+                        return "(" + skeleton(new TreePath(p, b.getLeftOperand()))
+                                + (t.getKind() == Tree.Kind.CONDITIONAL_OR ? " || " : " && ")
+                                + skeleton(new TreePath(p, b.getRightOperand())) + ")";
+                    }
+                    case METHOD_INVOCATION: {
+                        if (invokes(p, "hasErrors", "org.springframework.validation.Errors",
+                                "org.springframework.validation.BindingResult")) { return "INVALID"; }
+                        ExpressionTree sel = ((com.sun.source.tree.MethodInvocationTree) t).getMethodSelect();
+                        if (sel instanceof com.sun.source.tree.MemberSelectTree
+                                && ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().contentEquals("isEmpty")
+                                && isViolations(new TreePath(new TreePath(p, sel),
+                                        ((com.sun.source.tree.MemberSelectTree) sel).getExpression()))) {
+                            return "!INVALID";
+                        }
+                        return "{" + t.toString().replaceAll("\\s+", " ") + "}";
+                    }
+                    default:
+                        return "{" + t.toString().replaceAll("\\s+", " ") + "}";
+                }
+            }
+        }.scan(body, null);
+        return out;
+    }
+
+    private static final java.util.Set<String> SPRING_URI_OWNERS = new java.util.HashSet<>(Arrays.asList(
+            "org.springframework.web.util.UriComponentsBuilder", "org.springframework.web.util.UriComponents",
+            "org.springframework.web.util.UriBuilder",
+            "org.springframework.web.servlet.support.ServletUriComponentsBuilder"));
+    private static final java.util.Set<String> JAXRS_URI_OWNERS = new java.util.HashSet<>(Arrays.asList(
+            "jakarta.ws.rs.core.UriBuilder", "javax.ws.rs.core.UriBuilder"));
+    private static final java.util.Set<String> JAXRS_BUILDER_FACTORIES = new java.util.HashSet<>(Arrays.asList(
+            "getBaseUriBuilder", "getAbsolutePathBuilder", "getRequestUriBuilder", "fromUri", "fromPath", "fromResource"));
+
+    /**
+     * V17-5: the URI TEMPLATE EXPANSIONS of one member body, so the Location a
+     * create handler builds can be compared between the frozen source and the
+     * candidate. Spring's UriComponentsBuilder.buildAndExpand(args...) expands a
+     * null argument as an EMPTY segment; JAX-RS UriBuilder.build(args...) throws
+     * IllegalArgumentException for it (v17: 500 after the row was committed).
+     *
+     * Per call: api (spring | jaxrs), the method, whether the compiler resolved
+     * its owner, the literal templates the receiver chain passes to path(...),
+     * and per argument its text, whether it is a non-null literal, whether a
+     * null value is expanded as "" (`a == null ? "" : a`, `a != null ? a : ""`,
+     * `Objects.toString(a, "")`, `Objects.requireNonNullElse(a, "")`), and the
+     * guarded BASE expression described by its root (a parameter, with its
+     * declared type's simple name; a local; anything else) and the selector
+     * text after the root. A Spring type the tree was modelled without is named
+     * through the file's own single-type imports, as validationGuards does.
+     */
+    private static List<Map<String, Object>> uriExpansions(JavacTask task, Trees trees, CompilationUnitTree unit,
+                                                           TreePath body, MethodTree method) {
+        Map<String, String> imports = new LinkedHashMap<>();
+        for (com.sun.source.tree.ImportTree it : unit.getImports()) {
+            if (it.isStatic()) { continue; }
+            String q = it.getQualifiedIdentifier().toString();
+            if (!q.endsWith(".*")) { imports.put(q.substring(q.lastIndexOf('.') + 1), q); }
+        }
+        final Map<String, String> paramTypes = new LinkedHashMap<>();
+        for (com.sun.source.tree.VariableTree pv : method.getParameters()) {
+            String t = pv.getType() == null ? "" : pv.getType().toString();
+            int lt = t.indexOf('<');
+            if (lt >= 0) { t = t.substring(0, lt); }
+            paramTypes.put(pv.getName().toString(), t.substring(t.lastIndexOf('.') + 1));
+        }
+        final Map<String, String> localTypes = new LinkedHashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+        new TreePathScanner<Void, Void>() {
+            @Override public Void visitClass(ClassTree n, Void v) { return null; }
+            @Override public Void visitVariable(com.sun.source.tree.VariableTree v, Void x) {
+                String t = v.getType() == null ? "" : v.getType().toString();
+                int lt = t.indexOf('<');
+                if (lt >= 0) { t = t.substring(0, lt); }
+                localTypes.put(v.getName().toString(), t.substring(t.lastIndexOf('.') + 1));
+                return super.visitVariable(v, x);
+            }
+            private ExpressionTree strip(ExpressionTree e) {
+                while (e instanceof com.sun.source.tree.ParenthesizedTree) {
+                    e = ((com.sun.source.tree.ParenthesizedTree) e).getExpression();
+                }
+                return e;
+            }
+            private String ownerOf(TreePath p) {
+                // an unresolved type attributes to an error class spelled by its
+                // simple name: that is no owner at all
+                Element el = trees.getElement(p);
+                if (el == null || !(el.getEnclosingElement() instanceof TypeElement)
+                        || el.getEnclosingElement().asType().getKind() == TypeKind.ERROR) { return ""; }
+                String q = ((TypeElement) el.getEnclosingElement()).getQualifiedName().toString();
+                return q.contains(".") ? q : "";
+            }
+            private boolean emptyString(ExpressionTree e) {
+                e = strip(e);
+                return e.getKind() == Tree.Kind.STRING_LITERAL && "".equals(((LiteralTree) e).getValue());
+            }
+            private String rootName(ExpressionTree e) {
+                e = strip(e);
+                while (true) {
+                    if (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                        e = strip(((com.sun.source.tree.MethodInvocationTree) e).getMethodSelect());
+                    } else if (e instanceof com.sun.source.tree.MemberSelectTree) {
+                        e = strip(((com.sun.source.tree.MemberSelectTree) e).getExpression());
+                    } else if (e instanceof com.sun.source.tree.IdentifierTree) {
+                        return ((com.sun.source.tree.IdentifierTree) e).getName().toString();
+                    } else {
+                        return "";
+                    }
+                }
+            }
+            private String rootType(String root) {
+                String simple = paramTypes.containsKey(root) ? paramTypes.get(root)
+                        : localTypes.containsKey(root) ? localTypes.get(root) : root;
+                return imports.getOrDefault(simple, simple);
+            }
+            private Map<String, Object> skeleton(ExpressionTree a) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                ExpressionTree e = strip(a);
+                row.put("text", a.toString().replaceAll("\\s+", " "));
+                boolean nonNull = e instanceof LiteralTree && e.getKind() != Tree.Kind.NULL_LITERAL;
+                boolean tolerant = nonNull;
+                ExpressionTree base = e;
+                if (e instanceof com.sun.source.tree.ConditionalExpressionTree) {
+                    com.sun.source.tree.ConditionalExpressionTree c = (com.sun.source.tree.ConditionalExpressionTree) e;
+                    ExpressionTree cond = strip(c.getCondition());
+                    if (cond instanceof com.sun.source.tree.BinaryTree
+                            && (cond.getKind() == Tree.Kind.EQUAL_TO || cond.getKind() == Tree.Kind.NOT_EQUAL_TO)) {
+                        com.sun.source.tree.BinaryTree b = (com.sun.source.tree.BinaryTree) cond;
+                        ExpressionTree l = strip(b.getLeftOperand()), r = strip(b.getRightOperand());
+                        ExpressionTree tested = l.getKind() == Tree.Kind.NULL_LITERAL ? r
+                                : (r.getKind() == Tree.Kind.NULL_LITERAL ? l : null);
+                        if (tested != null) {
+                            ExpressionTree whenNull = cond.getKind() == Tree.Kind.EQUAL_TO ? c.getTrueExpression() : c.getFalseExpression();
+                            ExpressionTree whenSet = cond.getKind() == Tree.Kind.EQUAL_TO ? c.getFalseExpression() : c.getTrueExpression();
+                            if (emptyString(whenNull) && strip(whenSet).toString().equals(tested.toString())) {
+                                tolerant = true;
+                                base = tested;
+                            }
+                        }
+                    }
+                } else if (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                    com.sun.source.tree.MethodInvocationTree mi = (com.sun.source.tree.MethodInvocationTree) e;
+                    ExpressionTree sel = mi.getMethodSelect();
+                    if (sel instanceof com.sun.source.tree.MemberSelectTree && mi.getArguments().size() == 2
+                            && emptyString(mi.getArguments().get(1))) {
+                        String name = ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().toString();
+                        String recv = strip(((com.sun.source.tree.MemberSelectTree) sel).getExpression()).toString();
+                        String owner = ownerOf(new TreePath(body, mi));
+                        boolean objects = "java.util.Objects".equals(owner) || (owner.isEmpty()
+                                && ("java.util.Objects".equals(recv) || ("Objects".equals(recv)
+                                    && "java.util.Objects".equals(imports.getOrDefault("Objects", "java.util.Objects")))));
+                        if (objects && ("toString".equals(name) || "requireNonNullElse".equals(name))) {
+                            tolerant = true;
+                            base = strip(mi.getArguments().get(0));
+                        }
+                    }
+                }
+                String baseText = base.toString().replaceAll("\\s+", " ");
+                String root = rootName(base);
+                row.put("non_null", nonNull);
+                row.put("null_tolerant", tolerant);
+                row.put("base", baseText);
+                row.put("root_kind", root.isEmpty() ? "other" : paramTypes.containsKey(root) ? "parameter"
+                        : localTypes.containsKey(root) ? "local" : "other");
+                row.put("root_type", paramTypes.containsKey(root) ? paramTypes.get(root)
+                        : localTypes.containsKey(root) ? localTypes.get(root) : "");
+                row.put("selectors", !root.isEmpty() && baseText.startsWith(root) ? baseText.substring(root.length()) : baseText);
+                return row;
+            }
+            @Override public Void visitMethodInvocation(com.sun.source.tree.MethodInvocationTree n, Void v) {
+                ExpressionTree sel = n.getMethodSelect();
+                if (sel instanceof com.sun.source.tree.MemberSelectTree) {
+                    String name = ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().toString();
+                    if ("buildAndExpand".equals(name) || "build".equals(name) || "buildFromMap".equals(name)) {
+                        String owner = ownerOf(getCurrentPath());
+                        List<String> templates = new ArrayList<>();
+                        List<String> chain = new ArrayList<>();
+                        ExpressionTree e = strip(((com.sun.source.tree.MemberSelectTree) sel).getExpression());
+                        while (e instanceof com.sun.source.tree.MethodInvocationTree) {
+                            com.sun.source.tree.MethodInvocationTree mi = (com.sun.source.tree.MethodInvocationTree) e;
+                            ExpressionTree s = mi.getMethodSelect();
+                            String id = s instanceof com.sun.source.tree.MemberSelectTree
+                                    ? ((com.sun.source.tree.MemberSelectTree) s).getIdentifier().toString() : s.toString();
+                            chain.add(0, id);
+                            if ("path".equals(id) && mi.getArguments().size() == 1
+                                    && strip(mi.getArguments().get(0)).getKind() == Tree.Kind.STRING_LITERAL) {
+                                templates.add(0, String.valueOf(((LiteralTree) strip(mi.getArguments().get(0))).getValue()));
+                            }
+                            e = s instanceof com.sun.source.tree.MemberSelectTree
+                                    ? strip(((com.sun.source.tree.MemberSelectTree) s).getExpression()) : null;
+                            if (e == null) { break; }
+                        }
+                        String rootT = e == null ? "" : rootType(rootName(e));
+                        String api = "";
+                        if ("buildAndExpand".equals(name)
+                                && (SPRING_URI_OWNERS.contains(owner) || (owner.isEmpty() && rootT.startsWith("org.springframework.web.")))) {
+                            api = "spring";
+                        } else if (("build".equals(name) || "buildFromMap".equals(name))
+                                && (JAXRS_URI_OWNERS.contains(owner) || (owner.isEmpty() && (rootT.startsWith("jakarta.ws.rs.")
+                                    || rootT.startsWith("javax.ws.rs.") || chain.stream().anyMatch(JAXRS_BUILDER_FACTORIES::contains))))) {
+                            api = "jaxrs";
+                        }
+                        if (!api.isEmpty()) {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            row.put("api", api);
+                            row.put("method", name);
+                            row.put("resolved", !owner.isEmpty());
+                            row.put("templates", templates);
+                            List<Map<String, Object>> args = new ArrayList<>();
+                            for (ExpressionTree a : n.getArguments()) { args.add(skeleton(a)); }
+                            row.put("args", args);
+                            out.add(row);
+                        }
+                    }
+                }
+                return super.visitMethodInvocation(n, v);
+            }
+        }.scan(body, null);
+        return out;
     }
 
     /** Resolved calls and unhandled checked-exception sites in one member body. */
@@ -577,6 +1154,165 @@ public final class DestModel {
                 sites.add(row);
             }
         }.scan(start, null);
+    }
+
+    /**
+     * The declared types one type's DECLARATIONS name, asked of the compiler's
+     * mirrors: generic arguments, array components, wildcard bounds, type
+     * variable bounds, every bound of an intersection and the enclosing type of
+     * a nested parameterized type. A field spelled {@code java.util.List<inside.A>}
+     * names inside.A; its source spelling, erased, names only java.util.List
+     * (rgctl offline evaluation 2026-09-25, G03G/G03A/G03N).
+     *
+     * Three outcomes, never conflated: a resolved reference (in {@link #refs}),
+     * a complete walk that found nothing more, and incomplete evidence (in
+     * {@link #incomplete}, with where and why). An unknown part never removes
+     * a reference already established, and an error spelling is never emitted
+     * as a resolved name.
+     *
+     * Termination does not rest on mirror identity (the API does not promise
+     * one mirror per type): a type variable is expanded once per walk, keyed by
+     * the declaration that binds it and its position there, so {@code T extends
+     * Comparable<T>} ends where it began and two different {@code T}s are two
+     * keys. The walk is an explicit stack with a depth and a node bound; hitting
+     * either is recorded as incomplete. It reads only what the declarations
+     * state -- never the members or ancestors of a referenced type, which would
+     * turn a direct reference into a transitive closure.
+     */
+    static final class RefWalk {
+        final java.util.TreeSet<String> refs = new java.util.TreeSet<>();
+        final java.util.TreeSet<String> incomplete = new java.util.TreeSet<>();
+        private final java.util.Set<List<Object>> expanded = new java.util.HashSet<>();
+        private final int budget;
+        private int nodes;
+
+        RefWalk(int budget) { this.budget = budget; }
+
+        void unknown(String locus, String reason) { incomplete.add(locus + "\u0000" + reason); }
+
+        List<Map<String, Object>> incompleteRows() {
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (String s : incomplete) {
+                int i = s.indexOf('\u0000');
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("locus", s.substring(0, i));
+                row.put("reason", s.substring(i + 1));
+                out.add(row);
+            }
+            return out;
+        }
+
+        void walk(TypeMirror start, String locus) {
+            if (start == null) { unknown(locus, "unattributed"); return; }
+            java.util.ArrayDeque<Object[]> stack = new java.util.ArrayDeque<>();
+            stack.push(new Object[] {start, 0});
+            while (!stack.isEmpty()) {
+                Object[] frame = stack.pop();
+                TypeMirror tm = (TypeMirror) frame[0];
+                int depth = (Integer) frame[1];
+                if (tm == null) { continue; }  // an absent optional part (a wildcard's missing bound)
+                if (nodes >= budget) { unknown(locus, "node-limit"); return; }
+                nodes++;
+                if (depth > TYPE_REF_MAX_DEPTH) { unknown(locus, "depth-limit"); continue; }
+                TypeKind kind = tm.getKind();
+                if (kind.isPrimitive() || kind == TypeKind.VOID || kind == TypeKind.NONE || kind == TypeKind.NULL) {
+                    continue;  // an expected terminal: no declared dependency
+                }
+                switch (kind) {
+                    case DECLARED: {
+                        DeclaredType dt = (DeclaredType) tm;
+                        Element el = dt.asElement();
+                        if (!(el instanceof TypeElement)) { unknown(locus, "undeclared-element"); break; }
+                        String fqn = ((TypeElement) el).getQualifiedName().toString();
+                        // a local or anonymous class is resolved but has no
+                        // name another file could use; nothing to emit
+                        if (!fqn.isEmpty()) { refs.add(fqn); }
+                        for (TypeMirror arg : dt.getTypeArguments()) { stack.push(new Object[] {arg, depth + 1}); }
+                        TypeMirror owner = dt.getEnclosingType();
+                        if (owner != null && owner.getKind() != TypeKind.NONE) { stack.push(new Object[] {owner, depth + 1}); }
+                        break;
+                    }
+                    case ERROR: {
+                        // an error spelling is not a resolved name: record it,
+                        // keep whatever its arguments still establish
+                        String spelled = tm.toString();
+                        unknown(locus, "unresolved " + (spelled.length() > 120 ? spelled.substring(0, 120) : spelled));
+                        if (tm instanceof DeclaredType) {
+                            for (TypeMirror arg : ((DeclaredType) tm).getTypeArguments()) { stack.push(new Object[] {arg, depth + 1}); }
+                        }
+                        break;
+                    }
+                    case ARRAY:
+                        stack.push(new Object[] {((ArrayType) tm).getComponentType(), depth + 1});
+                        break;
+                    case WILDCARD: {
+                        WildcardType wt = (WildcardType) tm;
+                        stack.push(new Object[] {wt.getExtendsBound(), depth + 1});
+                        stack.push(new Object[] {wt.getSuperBound(), depth + 1});
+                        break;
+                    }
+                    case TYPEVAR: {
+                        List<Object> key = typeVariableKey((TypeVariable) tm);
+                        if (key == null) { unknown(locus, "unidentified-type-variable " + tm); break; }
+                        if (!expanded.add(key)) { break; }  // a back-edge or an already-read bound: done
+                        stack.push(new Object[] {((TypeVariable) tm).getUpperBound(), depth + 1});
+                        stack.push(new Object[] {((TypeVariable) tm).getLowerBound(), depth + 1});
+                        break;
+                    }
+                    case INTERSECTION:
+                        for (TypeMirror b : ((IntersectionType) tm).getBounds()) { stack.push(new Object[] {b, depth + 1}); }
+                        break;
+                    case UNION:
+                        for (TypeMirror b : ((UnionType) tm).getAlternatives()) { stack.push(new Object[] {b, depth + 1}); }
+                        break;
+                    default:
+                        unknown(locus, "unsupported-kind " + kind);
+                }
+            }
+        }
+
+        /** (the declaration that binds this variable, its position there), or
+         *  null when that cannot be stated -- e.g. a captured variable. */
+        private static List<Object> typeVariableKey(TypeVariable tv) {
+            try {
+                Element e = tv.asElement();
+                if (!(e instanceof TypeParameterElement)) { return null; }
+                Element generic = ((TypeParameterElement) e).getGenericElement();
+                if (!(generic instanceof Parameterizable)) { return null; }
+                int index = ((Parameterizable) generic).getTypeParameters().indexOf(e);
+                return index < 0 ? null : Arrays.asList(generic, index);
+            } catch (RuntimeException unidentified) {
+                return null;
+            }
+        }
+    }
+
+    private static boolean collectImplicitTypeNames(JavacTask task, TypeMirror start,
+                                                    java.util.Set<String> names, java.util.Set<String> visiting,
+                                                    java.util.Set<String> resolved) {
+        if (start == null || start.getKind() != TypeKind.DECLARED) { return false; }
+        Element el = task.getTypes().asElement(start);
+        if (!(el instanceof TypeElement)) { return false; }
+        TypeElement type = (TypeElement) el;
+        String fqn = type.getQualifiedName().toString();
+        // Local/anonymous types and erroneous/cyclic ancestry stay unknown.
+        if (fqn.isEmpty()) { return false; }
+        if (resolved.contains(fqn)) { return true; }
+        if (!visiting.add(fqn)) { return false; }
+        names.add(fqn);
+        for (Element member : type.getEnclosedElements()) {
+            if (member instanceof TypeElement) {
+                names.add(((TypeElement) member).getQualifiedName().toString());
+            }
+        }
+        try {
+            for (TypeMirror parent : task.getTypes().directSupertypes(start)) {
+                if (!collectImplicitTypeNames(task, parent, names, visiting, resolved)) { return false; }
+            }
+        } catch (RuntimeException unresolved) { return false; }
+        visiting.remove(fqn);
+        resolved.add(fqn);
+        return true;
     }
 
     private static void collectSupertypeMethods(JavacTask task, TypeMirror start, TypeElement self,

@@ -49,7 +49,7 @@ set -euo pipefail
 K2_HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export K2_HOOK_DIR
 exec python3 -c '
-import json, os, re, sys, time
+import hashlib, json, os, re, sys, time
 
 def block(reason):
     print(json.dumps({"action": "block", "message": reason}))
@@ -80,6 +80,38 @@ for src in (data, extra, inp, args):
             break
     if hook_cwd:
         break
+
+# V17-6b (review of 660c1c03): the execution ledger pairs every terminal
+# INVOCATION (written here, before the call can run) with its COMPLETION
+# (written by the post_tool_call observer) by tool_call_id, so the audit can
+# tell a latest invocation whose result was lost or never came from a success.
+# Recording is best effort and never decides anything here: a missing start row
+# makes the audit read the call as unknown, never as a pass.
+def record_invocation():
+    if tool not in ("terminal", "bash", "shell"):
+        return
+    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
+    if not task or not home:
+        return
+    parent, name = os.path.split(home)
+    root, prof = os.path.split(parent)
+    if prof == "profiles" and name and root:
+        home = root
+    row = {"schema": "rhoai3.exec-ledger/v1", "phase": "start", "task": task,
+           "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(), "profile": profile,
+           "tool_call_id": str(extra.get("tool_call_id") or ""), "command": cmd,
+           "command_sha256": hashlib.sha256(cmd.encode("utf-8", errors="replace")).hexdigest()}
+    try:
+        fd = os.open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, (json.dumps(row, sort_keys=True) + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+record_invocation()
 
 def resolve_rp(p):
     s = (p or "").strip()
@@ -160,6 +192,18 @@ if profile in {"implementer", "reviewer", "orchestrator"}:
               "python3 .hermes/kernel/k4_mint.py --root . --exec (K4) instead")
     if re.search(r"\bkanban\s+daemon\b", _blob) and "--force" in _blob:
         block("hermes kanban daemon --force refused (OBJECT)")
+    # outcome-board/v2: the domain records on the board ([native-control] comments,
+    # plan/contract/held attachments) are written by native_gate.py and advance.py
+    # only. Cooperative guardrail, not a boundary (the worker user can reach kanban.db).
+    _nc_reserved = re.compile(r"(contract|plan[.]r[0-9]+|held[.][0-9a-f]+|assessment[.][0-9]+[.][0-9a-f]+)[.]json")
+    if (tool in {"kanban_comment", "comment_task"} and "[native-control]" in json.dumps(inp)) or \
+            (re.search(r"\bhermes\s+kanban\s+comment\b", cmd or "") and "[native-control]" in (cmd or "")):
+        block("[native-control] records are written by .hermes/kernel/native_gate.py and advance.py only")
+    if re.search(r"\bhermes\s+kanban\s+attach-rm\b", cmd or "") or \
+            (re.search(r"\bhermes\s+kanban\s+attach\b", cmd or "") and _nc_reserved.search(cmd or "")) or \
+            (tool in {"kanban_attach", "kanban_attach_url"} and _nc_reserved.search(json.dumps(inp))):
+        block("attaching or removing native-control artifacts (contract, plan revisions, held candidates, "
+              "assessments) is refused: native_gate.py owns them")
 
 def is_complete():
     if tool in {"kanban_complete", "complete_task"}:
@@ -266,32 +310,49 @@ def paved_road_audit_green():
     home = kanban_root_home()
     if not task or not home:
         return False
-    log = os.path.join(home, "kanban", "logs", "%s.log" % task)
+    # V17-6 (v17 M4 t_4c09775b): green is read from the receipt the audit
+    # writes itself (paved_road.write_audit_receipt), bound to the native run
+    # and profile that ran it -- never from the official log. The log reading
+    # (an unmarked invocation line = exit 0) was false twice over: the runtime
+    # stamps "[exit N]" only when the terminal result parses as JSON with a
+    # non-zero exit_code, so the run 30 reviewer audit exited 1 twice with
+    # unmarked lines; and the log holds every run of the card, so the
+    # implementer self-audit of run 28 latched this fence for reviewer runs 29
+    # and 32 against a candidate the reviewer had found red. Run 29 crashed on
+    # the identical-refusal halt; run 32 could not even echo. Only the current
+    # reviewer run and its own audit count; a receipt from another run, another
+    # profile, or none at all is "not green": the fence stays open (the
+    # reviewer may investigate) and kanban_complete stays refused.
+    # (No apostrophes in this block: the hook body is a single-quoted -c.)
+    receipt = os.path.join(home, "kanban", "logs", "%s.audit.json" % task)
     try:
-        text = open(log, encoding="utf-8", errors="replace").read()
-    except OSError:
+        doc = json.load(open(receipt, encoding="utf-8"))
+    except (OSError, ValueError):
         return False
-    # Same convention as .hermes/lib/paved_road.py: the dispatcher stamps
-    # "[exit N]" on failure only, so an omitted marker on a terminal line is
-    # a PASS, not "no information". Reading it as no-information latched this
-    # gate closed on v18 t_6320c956: the first invocation used a wrong --log
-    # path and stamped [exit 1]; every later green run emitted no marker,
-    # matched no branch, and left last_rc at 1 forever. Neither seat could
-    # then terminate -- the implementer is refused kanban_complete and the
-    # reviewer was refused here. SOUL says correcting your own invocation and
-    # re-running green is legal; the old reading made it permanently fatal.
-    #
-    # Only a real invocation counts. Prose that names the script, and other
-    # commands that merely reference the path (find -newer .../audit.py,
-    # head -80 .../audit.py), are not runs of it.
-    last_rc = None
-    invoke = re.compile(r"python3\s+\S*assert-paved-road-audit\.py")
-    for line in text.splitlines():
-        if "$" not in line or not invoke.search(line):
-            continue
-        m = re.search(r"\[exit (\d+)\]", line)
-        last_rc = int(m.group(1)) if m else 0
-    return last_rc == 0
+    if not isinstance(doc, dict) or str(doc.get("task") or "") != task:
+        return False
+    if str(doc.get("profile") or "") != profile:
+        return False
+    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    if str(doc.get("run") or "") != run:
+        return False
+    if doc.get("rc") != 0 or doc.get("state") != "done":
+        return False
+    # bound to the inputs it graded: the official log and the execution
+    # ledger must still begin with exactly the bytes the audit read
+    for name, suffix in (("log", ".log"), ("ledger", ".exec.jsonl")):
+        seen = doc.get(name) if isinstance(doc.get(name), dict) else {}
+        size, want = seen.get("bytes"), str(seen.get("sha256") or "")
+        if not isinstance(size, int) or size <= 0 or not want:
+            return False
+        try:
+            with open(os.path.join(home, "kanban", "logs", task + suffix), "rb") as fh:
+                head = fh.read(size)
+        except OSError:
+            return False
+        if len(head) != size or hashlib.sha256(head).hexdigest() != want:
+            return False
+    return True
 
 LOOP_VERDICTS = ("OK: ACCEPTED", "REVERTED ", "DEFERRED ")
 
@@ -316,6 +377,26 @@ def loop_record_names_task(task):
             for row in doc.get(key) or []:
                 if isinstance(row, dict) and str(row.get("card") or "") == task:
                     return True
+    return False
+
+def loop_pending_for_task(task):
+    """verification/loop/steps.json (under an allow root) holds a
+    VERIFICATION_PENDING row for this card: a retained candidate that only
+    restore-pending.py puts back (V16-6)."""
+    if not task:
+        return False
+    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots:
+        if not r:
+            continue
+        p = os.path.join(r, "verification", "loop", "steps.json")
+        try:
+            doc = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and any(isinstance(row, dict) and str(row.get("card") or "") == task
+                                         for row in (doc.get("pending") or [])):
+            return True
     return False
 
 LOOP_ROAD = ("brief.py", "run-verify.sh", "advance.py")
@@ -395,8 +476,41 @@ def loop_verdict_recorded():
             return True
     return False
 
+def this_run_text(log, task, text):
+    """The part of the card log THIS run wrote (V16-6, v16 t_d3f89ded).
+
+    The dispatcher appends every run of a card to one log, so an advance.py
+    [exit 1] from the run that ended VERIFICATION_PENDING still stood in the
+    run the Operator resumed: K2 allowed only advance.py or kanban_block,
+    advance.py refused LOOP_PENDING_NOT_RESTORED until restore-pending.py ran,
+    and the documented resume deadlocked. The first hook call of a run
+    (HERMES_KANBAN_RUN_ID) records the log size beside the log; the bound
+    gates are read from there on. No run id, or a mark that cannot be kept:
+    the whole log, as before."""
+    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    if not run:
+        return text
+    mark = os.path.join(os.path.dirname(log), "%s.k2-run.json" % task)
+    try:
+        doc = json.load(open(mark, encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = None
+    if isinstance(doc, dict) and str(doc.get("run") or "") == run and isinstance(doc.get("offset"), int):
+        start = doc["offset"]
+    else:
+        start = len(text.encode("utf-8", errors="replace"))
+        try:
+            tmp = mark + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump({"run": run, "offset": start}, fh)
+            os.replace(tmp, mark)
+        except OSError:
+            return text
+    raw = text.encode("utf-8", errors="replace")
+    return raw[start:].decode("utf-8", errors="replace") if start <= len(raw) else text
+
 def bound_gates_red():
-    """Needles whose last invocation is still [exit 1].
+    """Needles whose last invocation is still [exit 1] in THIS run.
 
     Same last-wins-within-needle rule as paved_road.unmatched_exit1:
     omitted success marker is green. Skip FAIL:/REFUSE prose (reviewer
@@ -416,6 +530,7 @@ def bound_gates_red():
         text = open(log, encoding="utf-8", errors="replace").read()
     except OSError:
         return []
+    text = this_run_text(log, task, text)
     names = (
         "assert-planner-activated", "bootstrap-destination", "build-worklist", "admit-migration-plan",
         "verify-admission-receipt", "verify-live-kanban-loop", "k3_live",
@@ -460,6 +575,78 @@ def review_reviewer():
         m = re.search(r"--reviewer[= ]+(\S+)", cmd)
         rv = m.group(1).strip(chr(34)) if m else ""
     return rv
+
+# Outcome board (stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md).
+# On an outcome-board run the terminators and product writes are decided from
+# the authority record and the native board, never from the card body or K2_*
+# overrides. A serial-loop run (no store, run-defaults not naming the protocol)
+# passes through unchanged. Not claimed control (cooperative store, F1).
+OB_ROOT = ""
+for _c in [(os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()] + [x.strip() for x in allow.split(os.pathsep)]:
+    if _c:
+        OB_ROOT = os.path.realpath(_c)
+        break
+# outcome-board/v2: native_gate.py records a refusal repeated in one run
+# (verification/native-board/refusals/<task>.json); at the third, only the
+# terminator remains (v20 t_686c715b repeated one refused command 181 times).
+if OB_ROOT and hook_task_id():
+    try:
+        _rs = json.load(open(os.path.join(OB_ROOT, "verification", "native-board", "refusals", "%s.json" % hook_task_id()), encoding="utf-8"))
+    except (OSError, ValueError):
+        _rs = None
+    if isinstance(_rs, dict) and str(_rs.get("run")) == (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip() \
+            and int(_rs.get("count") or 0) >= 3 and not is_block():
+        block("REPEATED_REFUSAL: %s was refused %d times in this run; the only legal next step is kanban_block "
+              "kind=needs_input naming it" % (_rs.get("code"), int(_rs.get("count") or 0)))
+# outcome-board/v2: a session whose native run has ended (review requested,
+# completed, blocked, reclaimed) is answered once, whatever it calls: end the turn
+# (v21 t_051c4490: a nudged ended session tried park, block, checkout, write).
+if OB_ROOT and hook_task_id() and (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip():
+    for _d in (os.path.join(OB_ROOT, ".hermes", "kernel"), os.path.join(OB_ROOT, ".hermes", "lib")):
+        if os.path.isdir(_d) and _d not in sys.path:
+            sys.path.insert(0, _d)
+    try:
+        from planner import outcome_hook as _OBE
+        _ended = _OBE.run_ended(OB_ROOT, dict(os.environ))
+    except Exception:
+        _ended = ""
+    if _ended:
+        block(_ended)
+OB = None
+if OB_ROOT:
+    # any record that can select the protocol: the golden defaults, the run
+    # request in run-budget.json, the platform run-control contract
+    _ob_hit = os.path.exists(os.path.join(OB_ROOT, "verification", "outcome-board", "authority.sqlite3"))
+    for _ob_f in (os.path.join(OB_ROOT, "run-defaults.json"), os.path.join(OB_ROOT, "run-budget.json"),
+                  "/etc/rhoai3/run-control/contract.json"):
+        if _ob_hit:
+            break
+        try:
+            with open(_ob_f, "rb") as _ob_fh:
+                _ob_d = _ob_fh.read()
+            _ob_hit = b"outcome-board/v" in _ob_d or b"\x22outcome_board\x22" in _ob_d
+        except OSError:
+            pass
+    if _ob_hit:
+        for _d in (os.path.join(OB_ROOT, ".hermes", "kernel"), os.path.join(OB_ROOT, ".hermes", "lib")):
+            if _d and os.path.isdir(_d) and _d not in sys.path:
+                sys.path.insert(0, _d)
+        try:
+            from planner import outcome_hook as OB
+        except Exception as exc:
+            block("outcome-board hook unavailable (fail closed): %s" % exc)
+        _ob_kind = "complete" if is_complete() else ("request_review" if is_request_review() else ("block" if is_block() else ""))
+        if _ob_kind == "request_review" and review_reviewer() != "reviewer":
+            block("kanban_request_review refused: name the reviewer (reviewer=reviewer)")
+        if _ob_kind:
+            _ob_d = OB.terminator(OB_ROOT, kind=_ob_kind, profile=profile, env=dict(os.environ), audit_green=paved_road_audit_green)
+            if _ob_d is not None:
+                if _ob_kind == "complete":
+                    record_complete_invocation("outcome_%s" % str(_ob_d.get("code") or "").lower())
+                if _ob_d.get("action") == "block":
+                    block(_ob_d.get("message") or "outcome-board refusal")
+                print("{}")
+                raise SystemExit(0)
 
 # A review handed to nobody is dispatched back to the implementer: pilot v6
 # t_b2fe5a8d (2026-09-10) sent reviewer=None, the implementer re-ran advance.py
@@ -506,7 +693,28 @@ def loop_step_accepted():
                 return n, str(row.get("commit") or "")
     return None
 
-if profile == "implementer" and is_block() and is_loop_card() is False and loop_step_accepted() is not None:
+def loop_continuation():
+    """(state, reasons) of verification/loop/continuation.json when it names
+    this task as the predecessor of the accept -> admit -> mint transition
+    (B8); None when it names another task or is absent."""
+    task = hook_task_id()
+    if not task:
+        return None
+    roots_ = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots_:
+        if not r:
+            continue
+        try:
+            doc = json.load(open(os.path.join(r, "verification", "loop", "continuation.json"), encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("predecessor") or "") == task:
+            return str(doc.get("state") or ""), list(doc.get("reasons") or [])
+    return None
+
+_cont = loop_continuation()
+if profile == "implementer" and is_block() and is_loop_card() is False and loop_step_accepted() is not None \
+        and not (_cont and _cont[0] != "minted"):
     _n, _c = loop_step_accepted()
     block("kanban_block refused: the acceptance of this card is recorded (verification/loop/steps.json step %d, commit %s); "
           "kanban_complete is the terminator. A killed or repeated advance.py does not undo an acceptance: run "
@@ -529,6 +737,24 @@ if profile == "implementer" and tool in {"terminal", "bash", "shell"} and cmd an
           "activates other beans and config). Run run-verify.sh --mode acceptance: it packages, starts, "
           "replays the scenarios of this card and re-runs its read oracles, and leaves the verdicts, the destination "
           "log and any exception under verification/parity; the brief is their digest.")
+
+# B8 (v12 t_b33f25fa): a worker ran `git checkout -- .hermes/pins.json` and
+# the run activation, an uncommitted platform edit, was gone; no write rule
+# saw it, because no git subcommand was a "write". The index and the working
+# tree belong to the loop tools -- advance.py commits or reverts the
+# candidate, restore-pending.py restores it, commit-destination-tree.py makes
+# the harvest commit -- and harness files are never for a worker to reset.
+GIT_MUTATION = re.compile(
+    r"(?:^|[\s;&|(])git\b(?:\s+-[Cc]\s+\S+|\s+--[A-Za-z][\w-]*(?:=\S+)?)*\s+"
+    r"(add|checkout|restore|reset|stash|clean|rm|mv|revert|switch|apply|am|merge|rebase|pull|cherry-pick|commit|"
+    r"update-index|read-tree|checkout-index|worktree|filter-branch|filter-repo|update-ref|replace)\b")
+if profile and tool in {"terminal", "bash", "shell"} and cmd and GIT_MUTATION.search(cmd):
+    _sub = GIT_MUTATION.search(cmd).group(1)
+    block("git %s refused: the index and the working tree belong to the loop tools (advance.py commits or reverts "
+          "the candidate, restore-pending.py restores it, commit-destination-tree.py makes the harvest commit), and "
+          "harness and run-control files are never for a worker to reset (v12: git checkout -- .hermes/pins.json removed "
+          "the run activation). Read with git diff/status/log/show; if the card needs this, kanban_block "
+          "kind=needs_input naming the command." % _sub)
 
 # A green paved-road audit IS the review: the road declares that audit as the
 # whole check (it reads the official log and every KEEP artifact). the v6 M1
@@ -562,6 +788,15 @@ if is_request_review() and profile == "implementer" and loop_verdict_recorded():
           "no reviewer seat runs for a loop step.")
 
 if is_complete():
+    _cont = loop_continuation()
+    if profile == "implementer" and _cont and _cont[0] != "minted":
+        # B8 (v12 t_b33f25fa): the accepted step had no successor and the card
+        # was completed anyway; the board then sat idle with nothing to say why
+        record_complete_invocation("refuse_continuation_%s" % (_cont[0] or "unknown"))
+        block("kanban_complete refused: the acceptance of this card has no successor yet (continuation %s: %s). "
+              "kanban_block kind=needs_input naming that reason; re-running advance.py with the same arguments "
+              "finishes the admission and the mint once the prerequisite is restored."
+              % (_cont[0] or "unknown", "; ".join(_cont[1][:2]) or "see verification/loop/continuation.json"))
     if profile == "implementer":
         if loop_verdict_recorded() and loop_road_ran():
             # paved-road-m3: the transaction is the audit; brief, run-verify and
@@ -657,17 +892,111 @@ if tool == "patch" and isinstance(inp.get("patch"), str):
         _pth = _m.group(1) or _m.group(2)
         if _pth and _pth not in paths:
             paths.append(_pth)
+SHELL_SEPS = ("&&", "||", ";", "|", "|&")
+_PERL_INPLACE = re.compile(r"^-[pnlaw]*i(?:[.~][^\s]*)?$")
+
+def _command_segments(c):
+    """The command text split into simple commands, each a token list (shlex;
+    a quoting error falls back to whitespace), leading env assignments dropped."""
+    try:
+        import shlex
+        toks = shlex.split(c, posix=True)
+    except ValueError:
+        toks = c.split()
+    out, seg = [], []
+    for t in toks:
+        if t in SHELL_SEPS:
+            if seg:
+                out.append(seg)
+            seg = []
+        else:
+            seg.append(t)
+    if seg:
+        out.append(seg)
+    cleaned = []
+    for seg in out:
+        k = 0
+        while k < len(seg) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", seg[k]):
+            k += 1
+        if k < len(seg):
+            cleaned.append(seg[k:])
+    return cleaned
+
+def expression_args(c):
+    """The EXPRESSION arguments of sed, awk and grep in the command: a sed
+    script, an awk program, a grep pattern. They are text the tool
+    interprets, never a file it opens (V16-10: s/=.*/=<set>/ was read as a
+    path). A file operand -- and awk -f / grep -f / sed -f FILE -- stays a
+    path. Returned as the shell reads them (unquoted)."""
+    out = []
+    for seg in _command_segments(c) if c else []:
+        base, args = seg[0].rsplit("/", 1)[-1], seg[1:]
+        if base in ("sed", "gsed"):
+            given, i = False, 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-e", "--expression") and i + 1 < len(args):
+                    out.append(args[i + 1]); given = True; i += 2; continue
+                if a.startswith("--expression="):
+                    out.append(a.split("=", 1)[1]); given = True; i += 1; continue
+                if a in ("-f", "--file", "-l", "--line-length"):
+                    given = given or a in ("-f", "--file"); i += 2; continue
+                if a.startswith("-") and a != "-":
+                    i += 1; continue
+                if not given:
+                    out.append(a)
+                break
+        elif base in ("awk", "gawk", "mawk", "nawk"):
+            i = 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-f", "--file"):
+                    break
+                if a in ("-v", "-F", "--assign", "--field-separator") and i + 1 < len(args):
+                    i += 2; continue
+                if a.startswith("-") and a != "-":
+                    i += 1; continue
+                out.append(a)
+                break
+        elif base in ("grep", "egrep", "fgrep", "rg"):
+            given, i = False, 0
+            while i < len(args):
+                a = args[i]
+                if a in ("-e", "--regexp") and i + 1 < len(args):
+                    out.append(args[i + 1]); given = True; i += 2; continue
+                if a.startswith("--regexp="):
+                    out.append(a.split("=", 1)[1]); given = True; i += 1; continue
+                if a in ("-f", "--file"):
+                    given = True; i += 2; continue
+                if a in ("-m", "-A", "-B", "-C", "--max-count", "--after-context", "--before-context", "--context",
+                         "-g", "--glob", "-t", "--type") and i + 1 < len(args):
+                    i += 2; continue
+                if a.startswith("-") and a != "-":
+                    i += 1; continue
+                if not given:
+                    out.append(a)
+                break
+    return [e for e in out if e]
+
 cmd_for_paths = strip_env_assignments(cmd) if cmd else ""
+for _expr in expression_args(cmd):
+    # the first occurrence only: the expression precedes the file operands,
+    # and a file operand spelled the same way must still be read as a path
+    cmd_for_paths = cmd_for_paths.replace(_expr, " ", 1)
 if cmd_for_paths:
-    for tok in cmd_for_paths.split():
-        if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
-            if not looks_like_http_route(tok):
-                paths.append(tok)
+    for word in cmd_for_paths.split():
+        # V17-1: a separator written against the path (`--root /x; echo`,
+        # `ls /x&& …`, `ls /x;cat /y`) is shell syntax, not part of the name:
+        # every piece between separators is its own operand and is checked
+        for tok in re.split(r"[;&|]+", word):
+            if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
+                if not looks_like_http_route(tok):
+                    paths.append(tok)
     cmd_scan = re.sub(r"https?://\S+", " ", cmd_for_paths)
-    for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}()]+", cmd_scan):
+    for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}();&|]+", cmd_scan):
         span = m.group(0)
         span = span.split(",")[0]
-        while span and span[-1] in ".,;:" + chr(39) + chr(34):
+        while span and span[-1] in ".,;:&|" + chr(39) + chr(34):
             span = span[:-1]
         if span.startswith("~"):
             span = os.path.expanduser(span)
@@ -730,36 +1059,6 @@ def write_effect_paths(c):
     for m in re.finditer(path_re, c):
         found.append(m.group(1))
     return found
-
-SHELL_SEPS = ("&&", "||", ";", "|", "|&")
-_PERL_INPLACE = re.compile(r"^-[pnlaw]*i(?:[.~][^\s]*)?$")
-
-def _command_segments(c):
-    """The command text split into simple commands, each a token list (shlex;
-    a quoting error falls back to whitespace), leading env assignments dropped."""
-    try:
-        import shlex
-        toks = shlex.split(c, posix=True)
-    except ValueError:
-        toks = c.split()
-    out, seg = [], []
-    for t in toks:
-        if t in SHELL_SEPS:
-            if seg:
-                out.append(seg)
-            seg = []
-        else:
-            seg.append(t)
-    if seg:
-        out.append(seg)
-    cleaned = []
-    for seg in out:
-        k = 0
-        while k < len(seg) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", seg[k]):
-            k += 1
-        if k < len(seg):
-            cleaned.append(seg[k:])
-    return cleaned
 
 def inplace_edit_targets(c):
     """Files an IN-PLACE EDITOR in the command text would rewrite: sed -i /
@@ -833,14 +1132,38 @@ def inplace_edit_targets(c):
             found.extend(f for f in files if f)
     return found
 
+def _shell_words(c):
+    """The command as the shell reads it: quoted text is one word and an
+    operator (>, >>, &&, |, ...) is a word of its own only where it is not
+    quoted. None when the text does not parse (unbalanced quotes)."""
+    try:
+        import shlex
+        lex = shlex.shlex(c, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        return list(lex)
+    except ValueError:
+        return None
+
 def redirect_targets(c):
     """Files a shell REDIRECTION in the command text would create or extend
     (> and >>), by name. Relative operands were invisible before: the path
     collector reads only absolute, ./ and ../ tokens, so `echo x > src/A.java`
     was a write the write set never saw (H4). /dev/*, `>&n` and process
-    substitutions are not files."""
+    substitutions are not files. Only an UNQUOTED operator redirects (V16-10:
+    the > of a quoted sed replacement such as s/=.*/=<set>/ is text, and read
+    as a redirection it named the path /)."""
     found = []
     if not c:
+        return found
+    words = _shell_words(c)
+    if words is not None:
+        for i, w in enumerate(words):
+            if not w or set(w) - set("<>|&") or ">" not in w or w.startswith("<") or w.endswith("&"):
+                continue
+            target = words[i + 1] if i + 1 < len(words) else ""
+            if not target or target.startswith("/dev/") or target.startswith("&") or not (set(target) - set("<>|&;")):
+                continue
+            found.append(target)
         return found
     for m in re.finditer(r"(?<![<>])>>?\s*([^\s|;&<>()]+)", c):
         target = m.group(1).strip(chr(34) + chr(39))
@@ -1108,7 +1431,11 @@ def looks_like_write_cmd(c):
         return False
     if inplace_edit_targets(c):
         return True
-    if re.search(r"(?:^|[^=])>(?!>)", c) and ">/dev/null" not in c.replace(" ", ""):
+    if _shell_words(c) is not None:
+        # the shell reading of the command decides what redirects (V16-10)
+        if redirect_targets(c):
+            return True
+    elif re.search(r"(?:^|[^=])>(?!>)", c) and ">/dev/null" not in c.replace(" ", ""):
         if re.search(r">\s*/dev/null\b", c):
             pass
         elif re.search(r"[^0-9]>\s*\S+", c) or re.search(r"^\s*>\s*\S+", c):
@@ -1231,6 +1558,19 @@ def scratch_removal_allowed(c, unmatched):
             return False
     return True
 
+# V16-3 (runtime 0011): the stop request of a run is raised by advance.py, a
+# loop tool, after a VERIFICATION_PENDING is persisted. A model-issued write
+# to the stop-requests/ directory of the board (or the request path of the run) is
+# refused: the block it asks for must name a verdict the loop recorded.
+_stop_req = (os.environ.get("HERMES_KANBAN_STOP_REQUEST") or "").strip()
+_stop_marks = ["stop-requests"] + ([_stop_req, os.path.dirname(_stop_req)] if _stop_req else [])
+_stop_targets = " ".join([cmd or "", str(inp.get("path") or ""), str(inp.get("file_path") or ""),
+                          " ".join(str(x) for x in (effect or []))])
+if (tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect or re.search(r"\btouch\b", cmd or "")) \
+        and any(m and m in _stop_targets for m in _stop_marks):
+    block("write to the kanban stop-requests directory refused: the stop request is raised by advance.py "
+          "after a VERIFICATION_PENDING is recorded (runtime 0011), never by a tool call")
+
 scratch_ok = False
 
 # dest-22 P0-B: after a mandated needle last-exited 1, the implementer
@@ -1249,6 +1589,10 @@ if profile == "implementer" and not is_block() and not is_complete():
             # cleared by re-measuring and advancing again: run-verify.sh is the
             # step before advance on the loop road (v6 t_57aef986 was refused
             # run-verify here and could only block)
+            pass
+        elif "fix-until-green/scripts/restore-pending.py" in blob and loop_pending_for_task(hook_task_id()):
+            # V16-6: the card has a retained candidate, and restore-pending.py
+            # is the only way back to it; run-verify.sh and advance.py follow
             pass
         elif scratch_removal_allowed(cmd, unmatched):
             # the removal advance.py LOOP_SCRATCH_IN_TREE asked for, of exactly
@@ -1405,7 +1749,21 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
         if dest_root() and not in_dest_write_sandbox(pr):
             block("write pom.xml is outside the dest write sandbox (legacy is read-only)")
 
-writeset = load_writeset()
+OB_WRITES = None
+if OB is not None and (tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect):
+    _ob_rels = []
+    for p in (paths if tool in WRITE_TOOLS else (list(effect) if effect else list(paths))):
+        _rp = resolve_rp(p)
+        if tool not in WRITE_TOOLS and (toolchain_read(_rp) or toolchain_read(str(p).replace("\\", "/"))):
+            continue
+        _rel = dest_rel(_rp)
+        if _rel:
+            _ob_rels.append(_rel)
+    OB_WRITES = OB.writes(OB_ROOT, rel_paths=_ob_rels, env=dict(os.environ))
+    if OB_WRITES is not None and OB_WRITES.get("action") == "block":
+        block(OB_WRITES.get("message") or "outcome-board refusal")
+# on an outcome-board run the authority decided the write above; the body and K2_* never select a write set or phase
+writeset = load_writeset() if OB_WRITES is None else None
 # H4 (dest v9 t_4d75569c): the files_writable of the card body is the write
 # set as MINTED. amend-scope.py widens the write set of the ISSUED card on the
 # record (verification/loop/issued.json), and the body is never re-minted, so
@@ -1417,7 +1775,7 @@ writeset = load_writeset()
 _issued_ws = loop_write_set()
 if writeset is not None and _issued_ws:
     writeset = list(writeset) + [w for w in _issued_ws if w not in writeset]
-phase = load_phase()
+phase = load_phase() if OB_WRITES is None else ""
 if phase in {"M4", "VERDICT"}:
     if looks_like_write_cmd(cmd) and (
         "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)

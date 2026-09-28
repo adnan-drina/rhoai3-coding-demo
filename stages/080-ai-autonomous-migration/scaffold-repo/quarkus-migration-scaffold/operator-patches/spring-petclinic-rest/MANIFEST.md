@@ -1,6 +1,19 @@
 # ADR-014 patch set — the source's security switch, in both modes
 
-One bounded Operator step. Nothing here has been applied.
+**Historical evidence, not a current recovery procedure.** The v9 Operator
+step this describes was applied on dest v9;
+`decided-repairs/spring-petclinic-rest/manifest.json` records that application
+history. The six digest-bound bootstrap payloads remain in this directory.
+The eleven whole-file controller, entity, POM, and `application.properties`
+snapshots were removed from the published scaffold; recover those bytes from
+Git history at `operator-patches/spring-petclinic-rest/<path>` (added
+`ca3160b776464959671c830a4bce036a32ee1008`; last content
+`fa411a5f9ba7076cfce4e302c5f279154443704e` for `User.java` and
+`application.properties`, otherwise the add commit). Do not copy this
+directory onto a fresh run as a patch set.
+
+One bounded Operator step. The remaining files here are bootstrap payloads,
+not an unapplied whole-file patch set.
 
 ## The baseline this binds to
 
@@ -59,6 +72,10 @@ amendments.
 | 14 | `src/main/java/.../security/DisabledAccountAugmentor.java` | **amendment 2** — `users.enabled` enforced within authentication |
 | 15 | `pom.xml` | one added dependency |
 | 16 | `src/main/resources/application.properties` | configuration |
+
+Rows 1 and 11–14 remain in this directory as digest-bound bootstrap payloads.
+Rows 2–10, 15 and 16 are historical whole-file snapshots and are not in the
+published scaffold; recover them from Git as noted above.
 
 33 `@PreAuthorize` sites across 7 controllers, every original role expression
 preserved verbatim as the second term of its conditional. No expression is

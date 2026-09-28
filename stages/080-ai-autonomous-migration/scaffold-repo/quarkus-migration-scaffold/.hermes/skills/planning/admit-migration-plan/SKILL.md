@@ -8,8 +8,9 @@ description: >
   decisions, bootstrap receipt, fully known measure), seal bundle + work
   list + bootstrap + decisions.yaml + contracts + pins, and record ADMITTED
   / INCONCLUSIVE / COMPAT_FAIL. K4 mints only from ADMITTED; the first step
-  of every M2 card is this skill's assert-planner-activated.py. Never edits
-  an artifact; never infers a decision.
+  of every M2 card is this skill's assert-planner-activated.py. After the
+  receipt it also writes the derived serial roadmap (informational). Never
+  edits a sealed artifact; never infers a decision.
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+
 metadata:
@@ -23,7 +24,7 @@ metadata:
     kind: guidance
     paths:
       reads: ["/projects/modernized/evidence/planning", "/projects/modernized/decisions.yaml", "/projects/modernized/.hermes/planning", "/projects/modernized/.hermes/pins.json"]
-      writes: ["/projects/modernized/evidence/planning/admission-receipt.json"]
+      writes: ["/projects/modernized/evidence/planning/admission-receipt.json", "/projects/modernized/evidence/planning/serial-roadmap.json"]
 ---
 # Admit the migration plan (M2 producer of `m2-admission`)
 
@@ -71,11 +72,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/verify-admission-receipt.py" --root /projec
 `admit-migration-plan.py` exits 0 only on `ADMITTED`; `INCONCLUSIVE`
 exits 1 with the BLOCK list on stderr; `COMPAT_FAIL` exits 2. In every
 case the receipt file is written — the verdict is evidence, not a crash.
+When the work list and receipt are readable, admission also writes
+`evidence/planning/serial-roadmap.json` (derived; not sealed; not KEEP).
 
 ## Verification
 
 - `scripts/admit-migration-plan.test.py` proves: an unblocked specimen
-  is ADMITTED; a hand-edited work list is COMPAT_FAIL; every negative from the
+  is ADMITTED and writes the derived serial roadmap (planned M4/M5, no
+  candidate claims); a hand-edited work list is COMPAT_FAIL; every negative from the
   planner test yields INCONCLUSIVE; `verify-admission-receipt.py` refuses
   after `decisions.yaml` or an artifact changes; the receipt digest is
   stable across reruns; the activation gate refuses on the golden

@@ -18,18 +18,40 @@ E-20260808T125536Z):
 
 Usage:
   pin-kill-ratio-from-pit.py <mutations.xml> -o evidence/derived/g1-kill-ratio-pin.json \\
+    --root <product-tree> \\
     --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \\
     --source ratchet_from_measured \\
     --rationale "Architect E-… ratchet margins under live pack"
+
+  --candidate-sha may be passed explicitly; otherwise --root resolves the
+  expected delivery candidate from verification/delivery/candidate.json or
+  git HEAD. A product-tree SHA-256 (verify-run candidate_sha256 /
+  product_tree_sha256) is a different identity from a Git commit and is
+  not compared to it as a string. --root does not assign a delivery
+  identity to an arbitrary mutations.xml: pin emission requires
+  evidence/derived/pit-measurement.json tying the XML digest to the
+  measured Git commit and product tree. Record that receipt after the PIT
+  run (never by the pin itself):
+
+  pin-kill-ratio-from-pit.py <mutations.xml> --record-measurement --root . \\
+    [--candidate-sha <git-commit>]
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
+
+PIT_MEASUREMENT_SCHEMA = "migration/pit-measurement/v1"
+PIT_MEASUREMENT_REL = Path("evidence") / "derived" / "pit-measurement.json"
+GIT_SHA_HEX = 40
+TREE_SHA_HEX = 64
+_HEX = "0123456789abcdef"
 
 
 def count_mutations(path: Path) -> dict:
@@ -110,28 +132,251 @@ def evaluate(
     }
 
 
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _load_json(path: Path) -> dict:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def is_git_sha(value: str) -> bool:
+    sha = str(value or "").strip().lower()
+    return len(sha) == GIT_SHA_HEX and all(c in _HEX for c in sha)
+
+
+def is_tree_digest(value: str) -> bool:
+    sha = str(value or "").strip().lower()
+    return len(sha) == TREE_SHA_HEX and all(c in _HEX for c in sha)
+
+
+def _product_tree_sha256(root: Path) -> str:
+    lib = Path(__file__).resolve().parents[4] / "lib"
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+    from planner.canonical import product_tree_sha256
+
+    return product_tree_sha256(root)
+
+
+def _sha_from_doc(doc: dict, keys: tuple[str, ...]) -> str:
+    for key in keys:
+        got = str(doc.get(key) or "").strip()
+        if got:
+            return got
+    return ""
+
+
+def delivery_candidate_from_root(root: Path) -> str:
+    path = root / "verification/delivery/candidate.json"
+    if not path.is_file():
+        return ""
+    return _sha_from_doc(_load_json(path), ("candidate_sha",))
+
+
+def verify_run_sha_from_root(root: Path) -> str:
+    path = root / "verification/build/run.json"
+    if not path.is_file():
+        return ""
+    return _sha_from_doc(_load_json(path), ("candidate_sha256", "candidate_sha"))
+
+
+def git_head_sha(root: Path) -> str:
+    top = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if top.returncode != 0:
+        return ""
+    try:
+        if Path(top.stdout.strip()).resolve() != root.resolve():
+            return ""
+    except OSError:
+        return ""
+    proc = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return (proc.stdout or "").strip()
+    return ""
+
+
+def resolve_measured_candidate_sha(explicit: str, root: Path | None) -> str:
+    """Expected delivery Git commit. A product-tree digest is not this identity."""
+    sha = str(explicit or "").strip()
+    if sha:
+        return sha
+    if root is None:
+        return ""
+    root = root.resolve()
+    delivery = delivery_candidate_from_root(root)
+    if delivery:
+        return delivery
+    git = git_head_sha(root)
+    if git:
+        return git
+    run = verify_run_sha_from_root(root)
+    if run and not is_tree_digest(run):
+        return run
+    return ""
+
+
+def measured_git_sha(explicit: str, root: Path | None) -> str:
+    """Git commit the PIT execution is bound to. Tree digests are not Git commits."""
+    sha = str(explicit or "").strip()
+    if sha and not is_tree_digest(sha):
+        return sha
+    if root is None:
+        return ""
+    root = root.resolve()
+    git = git_head_sha(root)
+    if git:
+        return git
+    delivery = delivery_candidate_from_root(root)
+    if delivery and not is_tree_digest(delivery):
+        return delivery
+    run = verify_run_sha_from_root(root)
+    if run and not is_tree_digest(run):
+        return run
+    return ""
+
+
+def git_identities(explicit: str, root: Path | None) -> list[str]:
+    found: list[str] = []
+
+    def add(sha: str) -> None:
+        sha = str(sha or "").strip()
+        if sha and not is_tree_digest(sha) and sha not in found:
+            found.append(sha)
+
+    add(explicit)
+    if root is not None:
+        root = root.resolve()
+        add(delivery_candidate_from_root(root))
+        add(git_head_sha(root))
+        run = verify_run_sha_from_root(root)
+        if not is_tree_digest(run):
+            add(run)
+    return found
+
+
+def pit_measurement_path(root: Path | None, xml: Path) -> Path:
+    if root is not None:
+        return root.resolve() / PIT_MEASUREMENT_REL
+    return xml.resolve().parent / "pit-measurement.json"
+
+
+def write_pit_measurement(
+    xml: Path,
+    candidate_sha: str,
+    root: Path | None,
+    *,
+    git_sha: str = "",
+    tree_sha256: str = "",
+) -> Path:
+    digest = sha256_hex(xml.read_bytes())
+    path = pit_measurement_path(root, xml)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "schema": PIT_MEASUREMENT_SCHEMA,
+        "candidate_sha": candidate_sha,
+        "mutations_xml_sha256": digest,
+        "source": str(xml),
+    }
+    if git_sha:
+        doc["git_sha"] = git_sha
+    if tree_sha256:
+        doc["tree_sha256"] = tree_sha256
+    path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def load_pit_measurement(root: Path | None, xml: Path) -> dict:
+    path = pit_measurement_path(root, xml)
+    if not path.is_file():
+        return {}
+    doc = _load_json(path)
+    if str(doc.get("schema") or "") != PIT_MEASUREMENT_SCHEMA:
+        return {}
+    return doc
+
+
+def provenance_error(
+    xml: Path, expected_sha: str, root: Path | None, explicit: str = ""
+) -> str:
+    git_ids = git_identities(explicit, root)
+    if len(git_ids) > 1:
+        return "conflicting candidate identities"
+    receipt = load_pit_measurement(root, xml)
+    if not receipt:
+        return "missing measurement provenance"
+    measured = str(receipt.get("candidate_sha") or receipt.get("git_sha") or "").strip()
+    digest = str(receipt.get("mutations_xml_sha256") or "").strip()
+    if not measured or not digest:
+        return "missing measurement provenance"
+    if measured != expected_sha:
+        return "measurement provenance does not match the delivery candidate"
+    if digest != sha256_hex(xml.read_bytes()):
+        return "measurement provenance does not match the PIT report digest"
+    if root is not None:
+        computed = _product_tree_sha256(root)
+        receipt_tree = str(receipt.get("tree_sha256") or "").strip()
+        if receipt_tree and computed and receipt_tree != computed:
+            return "measurement provenance does not match the product tree"
+        receipt_git = str(receipt.get("git_sha") or "").strip()
+        head = git_head_sha(root)
+        if receipt_git and head and receipt_git != head:
+            return "measurement provenance does not match the Git commit"
+    return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("mutations_xml", type=Path)
-    ap.add_argument("-o", "--output", type=Path, required=True)
+    ap.add_argument("-o", "--output", type=Path, default=None)
+    ap.add_argument(
+        "--record-measurement",
+        action="store_true",
+        help="write execution evidence tying this mutations.xml digest to the measured tree; do not emit a pin",
+    )
+    ap.add_argument(
+        "--candidate-sha",
+        default="",
+        help="delivery candidate this PIT measurement is bound to (written into the pin; M5 does not decorate afterwards)",
+    )
+    ap.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="product tree used to resolve the expected delivery candidate from candidate.json, verify-run, or git HEAD",
+    )
     ap.add_argument("--story-id", default="B-OWNER-PET-1")
     ap.add_argument(
         "--scope",
         default="measured live PIT slice",
     )
-    ap.add_argument("--coverage-min", type=float, required=True)
-    ap.add_argument("--kill-attempted-min", type=float, required=True)
+    ap.add_argument("--coverage-min", type=float, default=None)
+    ap.add_argument("--kill-attempted-min", type=float, default=None)
     ap.add_argument(
         "--kill-generated-min",
         type=float,
         default=None,
         help="optional stringency floor killed/generated (Architect before first M5 ACCEPT)",
     )
-    ap.add_argument("--rationale", required=True)
+    ap.add_argument("--rationale", default="")
     ap.add_argument(
         "--source",
         choices=("ratchet_from_measured", "declared_engineering_target"),
-        required=True,
+        default="",
         help="AD-H §18.0¶5 bar source (Architect E-20260808T125536Z)",
     )
     ap.add_argument(
@@ -142,6 +387,45 @@ def main() -> int:
     if not args.mutations_xml.is_file():
         print(f"FAIL: missing {args.mutations_xml}", file=sys.stderr)
         return 1
+    if args.record_measurement:
+        git_sha = measured_git_sha(args.candidate_sha, args.root)
+        tree_sha256 = _product_tree_sha256(args.root) if args.root is not None else ""
+        measured = git_sha or str(args.candidate_sha or "").strip()
+        if not measured:
+            print(
+                "FAIL: --record-measurement needs --candidate-sha or --root with a Git commit identity",
+                file=sys.stderr,
+            )
+            return 1
+        path = write_pit_measurement(
+            args.mutations_xml, measured, args.root,
+            git_sha=git_sha, tree_sha256=tree_sha256,
+        )
+        print(
+            f"OK: recorded PIT measurement candidate={measured} git_sha={git_sha or '-'} "
+            f"tree_sha256={tree_sha256 or '-'} digest={sha256_hex(args.mutations_xml.read_bytes())} → {path}",
+            file=sys.stderr,
+        )
+        return 0
+    if args.output is None or args.coverage_min is None or args.kill_attempted_min is None or not args.source or not args.rationale:
+        print(
+            "FAIL: pin emission requires -o, --coverage-min, --kill-attempted-min, --source, and --rationale",
+            file=sys.stderr,
+        )
+        return 1
+    candidate_sha = resolve_measured_candidate_sha(args.candidate_sha, args.root)
+    if not candidate_sha:
+        print(
+            "FAIL: --candidate-sha or --root with a resolvable measured candidate is required to bind the measurement",
+            file=sys.stderr,
+        )
+        return 1
+    why = provenance_error(args.mutations_xml, candidate_sha, args.root, args.candidate_sha)
+    if why:
+        print(f"FAIL: {why}", file=sys.stderr)
+        return 1
+    receipt = load_pit_measurement(args.root, args.mutations_xml)
+    xml_digest = str(receipt.get("mutations_xml_sha256") or "")
     if args.coverage_min <= 0 or args.coverage_min > 1:
         print("FAIL: coverage-min must be in (0,1]", file=sys.stderr)
         return 1
@@ -239,6 +523,12 @@ def main() -> int:
         + pin_authority_extra,
         "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "story_id": args.story_id,
+        "candidate_sha": candidate_sha,
+        "identity": {
+            "candidate_sha": candidate_sha,
+            **({"git_sha": receipt.get("git_sha")} if receipt.get("git_sha") else {}),
+            **({"tree_sha256": receipt.get("tree_sha256")} if receipt.get("tree_sha256") else {}),
+        },
         "scope": args.scope,
         "tool": "pitest-maven",
         "pinned_version": "1.25.5",
@@ -249,7 +539,19 @@ def main() -> int:
             "defect": "coverage_min=0.25 admitted ~75% NO_COVERAGE; stringency "
             "required before first M5 ACCEPT",
         },
-        "measurement": stats,
+        "measurement": {
+            **stats,
+            "candidate_sha": candidate_sha,
+            "mutations_xml_sha256": xml_digest,
+        },
+        "provenance": {
+            "schema": PIT_MEASUREMENT_SCHEMA,
+            "candidate_sha": candidate_sha,
+            "mutations_xml_sha256": xml_digest,
+            "source": str(receipt.get("source") or args.mutations_xml),
+            **({"git_sha": receipt.get("git_sha")} if receipt.get("git_sha") else {}),
+            **({"tree_sha256": receipt.get("tree_sha256")} if receipt.get("tree_sha256") else {}),
+        },
         "threshold": threshold,
         "evaluation_against_measurement": ev,
         "waiver_path": {

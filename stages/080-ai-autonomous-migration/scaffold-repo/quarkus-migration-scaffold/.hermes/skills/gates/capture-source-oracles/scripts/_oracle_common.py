@@ -264,6 +264,61 @@ def _kind_of(value: Any) -> str:
     return {dict: "object", list: "array", str: "string"}.get(type(value), type(value).__name__)
 
 
+def _direction(values: list[Any]) -> str:
+    """'asc', 'desc', 'equal' or '' (not monotone), with ties allowed."""
+    if len(values) < 2:
+        return ""
+    try:
+        asc = all(values[i] <= values[i + 1] for i in range(len(values) - 1))
+        desc = all(values[i] >= values[i + 1] for i in range(len(values) - 1))
+    except TypeError:
+        return ""
+    if asc and desc:
+        return "equal"
+    return "asc" if asc else ("desc" if desc else "")
+
+
+def _comparable(values: list[Any]) -> bool:
+    if any(v is None or isinstance(v, (dict, list)) for v in values):
+        return False
+    kinds = {"number" if isinstance(v, (int, float)) and not isinstance(v, bool) else type(v).__name__ for v in values}
+    return len(kinds) == 1
+
+
+def order_explanation(expected: list[Any], observed: list[Any]) -> dict[str, Any]:
+    """Why two arrays with the same elements differ in order (B9), computed on
+    the complete arrays. `relation` is `reversed` only when the observed array
+    is exactly the expected one backwards; otherwise `permuted`. `keys` lists
+    EVERY scalar field (or the values themselves) by which both arrays are
+    monotone, with each side's direction: one candidate is a diagnosis, several
+    are an ambiguity left explicit, none means the order is not a sort by any
+    single visible key. Ties and duplicate elements are named, never guessed
+    away; nothing here makes the comparison pass."""
+    canon_e, canon_o = [_canon(x) for x in expected], [_canon(x) for x in observed]
+    out: dict[str, Any] = {"relation": "reversed" if canon_o == canon_e[::-1] else "permuted", "keys": []}
+    if len(set(canon_e)) != len(canon_e):
+        out["duplicates"] = True
+    if all(isinstance(x, dict) for x in expected + observed):
+        fields = sorted(set.intersection(*[set(x) for x in expected + observed])) if expected else []
+        columns = [(f, [x[f] for x in expected], [x[f] for x in observed]) for f in fields]
+    else:
+        columns = [("(value)", list(expected), list(observed))]
+    for field, ev, ov in columns:
+        if not _comparable(ev + ov):
+            continue
+        de, do = _direction(ev), _direction(ov)
+        if de in ("asc", "desc") and do in ("asc", "desc", "equal") and de != do:
+            row = {"key": field, "expected": de, "observed": do}
+            if len(set(json.dumps(v, sort_keys=True) for v in ev)) != len(ev):
+                row["ties"] = True
+            out["keys"].append(row)
+    if not out["keys"]:
+        out["note"] = "neither array is sorted by any single visible field in opposite directions; the order is not explained"
+    elif len(out["keys"]) > 1:
+        out["note"] = "several fields are sorted the same way; which one the source sorts by is ambiguous from the bodies alone"
+    return out
+
+
 def _json_differences(expected: Any, observed: Any, path: str, out: list[dict[str, Any]]) -> None:
     ek, ok = _kind_of(expected), _kind_of(observed)
     if ek != ok:
@@ -283,8 +338,10 @@ def _json_differences(expected: Any, observed: Any, path: str, out: list[dict[st
         if _canon(expected) == _canon(observed):
             return
         if sorted(_canon(x) for x in expected) == sorted(_canon(x) for x in observed):
-            # the same elements, in another order: one difference for the list
-            out.append({"path": path, "kind": "order", "expected": _short(expected[:3]), "observed": _short(observed[:3])})
+            # the same elements, in another order: one difference for the list,
+            # explained from the COMPLETE sequences before any sample is cut
+            out.append({"path": path, "kind": "order", "expected": _short(expected[:3]), "observed": _short(observed[:3]),
+                        "order": order_explanation(expected, observed)})
             return
         if len(expected) != len(observed):
             out.append({"path": path, "kind": "length", "expected": len(expected), "observed": len(observed)})

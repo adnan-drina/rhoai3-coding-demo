@@ -51,7 +51,14 @@
         "decisions_yaml",
         "contracts",
         "pins"
-      ]
+      ],
+      "properties": {
+        "plan_semantics": {
+          "type": "object",
+          "description": "Plan semantics v1 only (decisions.loop.plan_semantics): the input and plan fingerprints of the FROZEN initial plan (evidence/planning/plan-semantics.json, planner.plan_semantics), sealed beside the exact digests, never instead of them.",
+          "required": ["schema", "input_fingerprint", "plan_fingerprint", "semantic_digest"]
+        }
+      }
     },
     "counts": {
       "type": "object"

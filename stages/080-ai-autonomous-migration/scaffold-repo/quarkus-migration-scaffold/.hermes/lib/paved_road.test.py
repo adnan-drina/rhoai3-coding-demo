@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
+from unittest.mock import patch
 from pathlib import Path
 
 from paved_road import (
@@ -16,12 +18,14 @@ from paved_road import (
     HERMES_DIR,
     audit_bytes,
     audit_paths,
+    load_exec_ledger,
     coverage,
     evaluate_audit,
     generate_audit,
     is_allowed_audit_log,
     load_steps,
     matching_terminal_lines,
+    m1_handoff_gaps,
     resolve_log,
     run_executables,
     sync_audit,
@@ -38,11 +42,129 @@ M2_SKILLS = "  ┊ 📚 skill  bootstrap-destination\n  ┊ 📚 skill  build-wo
 M2_MINT = "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s\n"
 
 
+def intent_ledger(text: str, run: str = "1") -> list[dict]:
+    """The execution ledger a log line's AUTHOR intended: one start/end pair
+    per invocation, the end carrying the marker's code (else 0), for tests of
+    OTHER audit semantics. V17-6b tests edit these pairs explicitly: in
+    production an unmarked line proves nothing."""
+    import re as _re
+    rows = []
+    for i, ln in enumerate(text.splitlines()):
+        m = _re.search(r"\$\s+(?P<cmd>.*?)\s+\d+(?:\.\d+)?s(?:\s+\[(?P<tag>[^\]]*)\])?\s*$", ln)
+        if "$" not in ln or not m:
+            continue
+        em = _re.fullmatch(r"exit (\d+)", m.group("tag") or "")
+        base = {"task": "t", "run": run, "tool_call_id": "c%d" % i, "command": m.group("cmd")}
+        rows.append(dict(base, phase="start"))
+        rows.append(dict(base, phase="end", exit_code=int(em.group(1)) if em else (0 if m.group("tag") is None else 1)))
+    return rows
+
+
 def _eval_msg(text: str, doc: dict, root: Path) -> tuple[int, str]:
     buf = io.StringIO()
     with redirect_stderr(buf):
-        rc = evaluate_audit(text, doc, root)
+        rc = evaluate_audit(text, doc, root, intent_ledger(text))
     return rc, buf.getvalue()
+
+
+class TestM1Handoff(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / ".hermes").mkdir()
+        (self.root / "evidence/planning").mkdir(parents=True)
+        (self.root / "evidence/planning/evidence-bundle.json").write_text("{}")
+        self.status = {"state": "minted", "m1_id": "t_m1", "after_m1": "t_m1",
+                       "m2_id": "t_m2", "planner_activation": "activated"}
+        self.pins = {"pins": {"planner": {"activation": "activated"}}}
+        self.card = {"task": {"id": "t_m2", "title": "M2 PLAN", "workspace_kind": "dir", "workspace_path": str(self.root)},
+                     "parents": [{"id": "t_m1"}]}
+
+    def check_handoff(self):
+        (self.root / ".hermes/AUTOSTART-STATUS").write_text(json.dumps(self.status))
+        (self.root / ".hermes/pins.json").write_text(json.dumps(self.pins))
+        result = subprocess.CompletedProcess([], 0, json.dumps(self.card), "")
+        real_run = subprocess.run
+        # `paved_road.subprocess` is the shared module: pass git (run control
+        # reading the run's initial commit) through, fake only the kanban CLI
+        fake = lambda argv, *a, **k: real_run(argv, *a, **k) if argv[:1] == ["git"] else result  # noqa: E731
+        with patch("paved_road.subprocess.run", side_effect=fake) as run:
+            gaps = m1_handoff_gaps(self.root, "t_m1")
+        return gaps, run
+
+    def test_governed_pilot_m2_passes_m1_audit(self):
+        # v14 (2026-09-25): a governed run's activation is the platform record
+        # plus the M1 binding; pins.json stays not-activated. The audit read
+        # pins.json directly and refused "M2 recorded without planner
+        # activation" although autostart had minted M2 as pilot.
+        from planner import run_control
+        from planner.canonical import digest
+        run = "orders-service-v3"
+        control, state = self.root / "control", self.root / "state"
+        control.mkdir()
+        (self.root / "run-budget.json").write_text(json.dumps({"schema": "rhoai3.run-budget/v2", "run_id": run,
+            "run_control": {"contract": run_control.CONTRACT_SCHEMA, "root": str(control), "state": str(state)}}))
+        git = lambda *a: subprocess.run(["git", "-C", str(self.root), "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                        check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        git("add", "-A")
+        git("commit", "-q", "-m", "scaffold")
+        (control / "contract.json").write_text(json.dumps({"schema": run_control.CONTRACT_SCHEMA, "run_id": run,
+            "scaffold_commit": git("rev-parse", "HEAD"), "activation": "pilot", "authorized_by": "provision-migration-run:tr-1",
+            "authorization": {"event": "scaffolding push"}}))
+        ok, msg = run_control.bind(self.root, digest(json.loads("{}")), "M1")
+        self.assertTrue(ok, msg)
+        self.pins = {"pins": {"planner": {"activation": "not-activated"}}}
+        self.status["planner_activation"] = "pilot"
+        gaps, _ = self.check_handoff()
+        self.assertEqual(gaps, [])
+
+    def test_skipped_exit_zero_does_not_pass_m1_audit(self):
+        self.status = {"state": "skipped", "reason": "AUTO_START_MIGRATION off"}
+        self.check_handoff()
+        # Reproduce v10: the mandated command ran and returned zero.
+        doc = {"kind": "m1-analyze", "steps": [{"id": "dispatch-next-phase", "backing": "native",
+                                                    "native": "autostart-migration.sh"}]}
+        text = "Query: work kanban task t_m1\n  ┊ 💻 $ bash .hermes/autostart-migration.sh --root .  0.1s\n"
+        rc, msg = _eval_msg(text, doc, self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("PHASE_HANDOFF", msg)
+
+    def test_native_parent_beside_task_passes(self):
+        gaps, run = self.check_handoff()
+        self.assertEqual(gaps, [])
+        self.assertEqual(run.call_args.args[0], ["hermes", "kanban", "show", "t_m2", "--json"])
+
+    def test_wrong_parent_or_workspace_refuses(self):
+        for field in ("parent", "workspace"):
+            with self.subTest(field=field):
+                if field == "parent":
+                    self.card["parents"] = [{"id": "t_other"}]
+                else:
+                    self.card["parents"] = [{"id": "t_m1"}]
+                    self.card["task"]["workspace_path"] = "/another-run"
+                self.assertTrue(self.check_handoff()[0])
+
+    def test_stale_continuation_refuses(self):
+        self.status["after_m1"] = "t_old"
+        self.assertTrue(self.check_handoff()[0])
+
+    def test_missing_child_refuses(self):
+        self.status["m2_id"] = ""
+        self.assertTrue(self.check_handoff()[0])
+
+    def test_explicit_analysis_only_does_not_require_m2(self):
+        self.pins["pins"]["planner"]["activation"] = "not-activated"
+        self.status.update(m2_id="", planner_activation="not-activated")
+        gaps, run = self.check_handoff()
+        self.assertEqual(gaps, [])
+        self.assertFalse([c for c in run.call_args_list if c.args[0][:1] != ["git"]], "no M2 card lookup")
+
+    def test_unbound_pilot_cannot_claim_analysis_only(self):
+        self.pins["pins"]["planner"]["activation"] = "pilot"
+        self.status.update(m2_id="", planner_activation="not-activated")
+        self.assertTrue(self.check_handoff()[0])
 
 
 class TestStepsContract(unittest.TestCase):
@@ -112,18 +234,78 @@ class TestAuditSemantics(unittest.TestCase):
 
     def test_green_passes(self):
         text = (self.keep / "official.log").read_text(encoding="utf-8")
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 0)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, load_exec_ledger(self.keep / "official.log")), 0)
 
     def test_green_fixtures_match_dispatcher_success_format(self):
         for path in (M1 / "fixtures" / "green-m1" / "official.log", M2 / "fixtures" / "green-m2" / "official.log"):
             self.assertNotIn("[exit 0]", path.read_text(encoding="utf-8"))
 
-    def test_omitted_exit_marker_is_success(self):
-        self.assertEqual(evaluate_audit(GATE + M2_SKILLS + M2_MINT, self.doc, self.keep), 0)
+    def test_omitted_exit_marker_is_unknown_without_a_ledger(self):
+        # V17-6b: the runtime omits the marker whenever a result is not JSON
+        # with a non-zero exit_code; an unmarked line alone proves nothing
+        text = GATE + M2_SKILLS + M2_MINT
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 0)
+
+    def test_unmarked_failed_command_refuses(self):
+        # V17-6b, the v17 shape: the log line is unmarked, the command exited 1
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-1]["exit_code"] = 1
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_unknown_exit_code_refuses(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-1]["exit_code"] = None
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_red_then_recorded_clean_passes(self):
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-3]["exit_code"] = 1  # the first mint's end: red, then the second is clean
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 0)
+
+    def test_read_of_the_script_is_not_an_execution(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        for row in ledger[-2:]:
+            row["command"] = "cat .hermes/kernel/k4_mint.py"
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_review_repro_latest_invocation_unrecorded_refuses(self):
+        # review of 660c1c03: log shows two invocations, ledger records only
+        # the first (exit 0) -- the older success must not stand for the latest
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        ledger = intent_ledger(text)[:-2]
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_lost_observer_result_refuses(self):
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        ledger = intent_ledger(text)[:-1]  # second mint started, its end never recorded
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
+
+    def test_unfinished_invocation_refuses(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger.append(dict(ledger[-2], tool_call_id="c-unfinished"))  # a later start, still running
+        self.assertEqual(evaluate_audit(text + M2_MINT, self.doc, self.keep, ledger), 1)
+
+    def test_earlier_run_success_does_not_stand_for_a_later_run(self):
+        text = GATE + M2_SKILLS + M2_MINT + M2_MINT
+        first = intent_ledger(GATE + M2_SKILLS + M2_MINT, run="28")
+        later = [dict(r, run="30", tool_call_id="late") for r in intent_ledger(M2_MINT, run="30") if r["phase"] == "start"]
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, first + later), 1)
+
+    def test_end_from_another_run_does_not_complete(self):
+        text = GATE + M2_SKILLS + M2_MINT
+        ledger = intent_ledger(text)
+        ledger[-1]["run"] = "other"
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 1)
 
     def test_explicit_exit_2_refuses(self):
         text = GATE + M2_SKILLS + M2_MINT.replace("  1.2s\n", "  1.2s [exit 2]\n")
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 1)
 
     def test_silence_refuses(self):
         self.assertEqual(evaluate_audit("no mandated needles\n", self.doc, self.keep), 1)
@@ -136,7 +318,7 @@ class TestAuditSemantics(unittest.TestCase):
 
     def test_exit1_not_cleared_by_other_needle(self):
         text = GATE.replace("  0.1s\n", "  0.1s [exit 1]\n") + M2_SKILLS + M2_MINT
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 1)
 
     def test_same_needle_later_success_clears_exit1(self):
         text = GATE + M2_SKILLS + M2_MINT.replace("  1.2s\n", "  1.2s [exit 1]\n") + M2_MINT
@@ -151,7 +333,7 @@ class TestAuditSemantics(unittest.TestCase):
 
     def test_path_mention_is_not_skill_view(self):
         text = GATE + "load .hermes/skills/migration/bootstrap-destination/SKILL.md\n  ┊ 📚 skill  build-worklist\n  ┊ 📚 skill  admit-migration-plan\n  ┊ 📚 skill  verify-live-kanban-loop\n" + M2_MINT
-        self.assertEqual(evaluate_audit(text, self.doc, self.keep), 1)
+        self.assertEqual(evaluate_audit(text, self.doc, self.keep, intent_ledger(text)), 1)
 
     def test_worker_receipt_is_not_proof(self):
         with tempfile.TemporaryDirectory(prefix="paved-forge-") as tmp:
@@ -169,9 +351,12 @@ class TestAutostartAndCoverage(unittest.TestCase):
         for leaf in ("freeze-migration-input", "scan-with-mta", "inventory-legacy-surface", "bootstrap-destination", "build-worklist", "admit-migration-plan", "derive-legacy-boot3"):
             self.assertNotIn("--skill %s" % leaf, src)
         self.assertIn("--max-retries 1", src)
-        self.assertIn("kanban_request_review", src)
-        self.assertIn("kanban_block", src)
-        self.assertIn("skill_view", src)
+        # the terminators and step order live in the pinned skills the card bodies name
+        for leaf in ("paved-road-m1", "paved-road-m2"):
+            self.assertIn("Procedure: %s" % leaf, src)
+            skill = (HERMES_DIR / "skills" / "paved-road" / leaf / "SKILL.md").read_text(encoding="utf-8")
+            for needed in ("kanban_request_review", "kanban_block", "skill_view"):
+                self.assertIn(needed, skill, (leaf, needed))
         self.assertIn("planner_activation", src)
         self.assertIn("reused", src)
         self.assertNotIn("speckit", src.lower())
@@ -273,6 +458,118 @@ class TestAuditLogMustBeOfficial(unittest.TestCase):
         self.assertFalse(is_allowed_audit_log(Path("/tmp/worker.log")))
 
 
+class TestAuditReceipt(unittest.TestCase):
+    """V17-6: the audit writes its own result, bound to the native run and
+    profile, beside the official log; K2 reads that, never an absent marker."""
+
+    def _audit_into(self, logs: Path, fixture: str, env: dict) -> tuple[int, dict]:
+        log = logs / "t_rcpt0001.log"
+        log.write_text((M2 / "fixtures" / fixture / "official.log").read_text(encoding="utf-8"), encoding="utf-8")
+        (logs / "t_rcpt0001.exec.jsonl").write_text(
+            (M2 / "fixtures" / fixture / "official.exec.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+        with patch.dict(os.environ, env, clear=False):
+            with redirect_stderr(io.StringIO()):
+                rc = audit_paths(log, M2 / "fixtures" / fixture, M2 / "steps.json")
+        return rc, json.loads((logs / "t_rcpt0001.audit.json").read_text(encoding="utf-8"))
+
+    def test_green_audit_receipt_names_run_and_profile(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            rc, doc = self._audit_into(logs, "green-m2", {"HERMES_KANBAN_RUN_ID": "32", "HERMES_PROFILE": "Reviewer"})
+            self.assertEqual(rc, 0)
+            self.assertEqual((doc["task"], doc["rc"], doc["run"], doc["profile"]), ("t_rcpt0001", 0, "32", "reviewer"))
+
+    def test_red_audit_receipt_records_the_red(self):
+        red = [p.name for p in sorted((M2 / "fixtures").iterdir()) if p.is_dir() and p.name != "green-m2"
+               and (p / "official.log").is_file()]
+        self.assertTrue(red, "paved-road-m2 has no red fixture to audit")
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            rc, doc = self._audit_into(logs, red[0], {"HERMES_KANBAN_RUN_ID": "30", "HERMES_PROFILE": "reviewer"})
+            self.assertNotEqual(rc, 0)
+            self.assertEqual(doc["rc"], rc)
+
+    def _receipt(self, logs: Path) -> dict:
+        return json.loads((logs / "t_rcpt0001.audit.json").read_text(encoding="utf-8"))
+
+    def _cli(self, env: dict, *extra) -> int:
+        cli = M2 / "scripts" / "assert-paved-road-audit.py"
+        return subprocess.run([sys.executable, str(cli), "t_rcpt0001", "--root", str(M2 / "fixtures" / "green-m2"), *extra],
+                              env=dict(os.environ, **env), capture_output=True, text=True).returncode
+
+    def test_green_then_red_replaces_the_receipt(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "32", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            rc, doc = self._audit_into(logs, "red-no-rerun", env)
+            self.assertNotEqual(rc, 0)
+            self.assertEqual((doc["rc"], doc["state"]), (rc, "done"))
+
+    def test_green_then_missing_log_is_not_green(self):
+        # the user's counterexample: first audit 0, second audit (log gone) 1,
+        # the stored same-run receipt must not still say 0
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            (logs / "t_rcpt0001.log").unlink()
+            self.assertNotEqual(self._cli(env), 0)
+            self.assertNotEqual(self._receipt(logs)["rc"], 0)
+
+    def test_green_then_missing_ledger_is_not_green(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            (logs / "t_rcpt0001.exec.jsonl").unlink()
+            self.assertNotEqual(self._cli(env), 0)
+            self.assertNotEqual(self._receipt(logs)["rc"], 0)
+
+    def test_green_then_malformed_steps_is_not_green(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            bad = Path(td) / "steps.json"
+            bad.write_text("{not json", encoding="utf-8")
+            with patch.dict(os.environ, env, clear=False), redirect_stderr(io.StringIO()):
+                self.assertNotEqual(audit_paths(logs / "t_rcpt0001.log", M2 / "fixtures" / "green-m2", bad), 0)
+            self.assertNotEqual(self._receipt(logs)["rc"], 0)
+
+    def test_interrupted_audit_leaves_running_not_green(self):
+        from paved_road import write_audit_receipt
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            env = {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer", "HERMES_HOME": td}
+            self.assertEqual(self._audit_into(logs, "green-m2", env)[0], 0)
+            with patch.dict(os.environ, env, clear=False):
+                write_audit_receipt(logs / "t_rcpt0001.log", None)  # the first thing a new audit does
+            doc = self._receipt(logs)
+            self.assertEqual((doc["rc"], doc["state"]), (None, "running"))
+
+    def test_receipt_binds_the_audited_inputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            logs = Path(td) / "kanban" / "logs"
+            logs.mkdir(parents=True)
+            _, doc = self._audit_into(logs, "green-m2", {"HERMES_KANBAN_RUN_ID": "7", "HERMES_PROFILE": "reviewer"})
+            log_bytes = (logs / "t_rcpt0001.log").read_bytes()
+            import hashlib
+            self.assertEqual(doc["log"], {"bytes": len(log_bytes), "sha256": hashlib.sha256(log_bytes).hexdigest()})
+            self.assertTrue(doc["ledger"]["sha256"] and doc["steps_sha256"])
+
+    def test_fixture_log_gets_no_receipt(self):
+        audit_paths(M2 / "fixtures" / "green-m2" / "official.log", M2 / "fixtures" / "green-m2", M2 / "steps.json")
+        self.assertFalse((M2 / "fixtures" / "green-m2" / "official.audit.json").exists())
+
+
 M4 = HERMES_DIR / "skills" / "paved-road" / "paved-road-m4"
 RUNNER_REL = ".hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh"
 RUNNER_LINE = "  ┊ 💻 $         bash %s /projects/modernized  44.8s\n" % RUNNER_REL
@@ -350,7 +647,8 @@ class TestM1Green(unittest.TestCase):
     def test_m1_green_passes(self):
         doc = load_steps(M1 / "steps.json")
         root = M1 / "fixtures" / "green-m1"
-        self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root), 0)
+        self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root,
+                                        load_exec_ledger(root / "official.log")), 0)
 
 
 if __name__ == "__main__":

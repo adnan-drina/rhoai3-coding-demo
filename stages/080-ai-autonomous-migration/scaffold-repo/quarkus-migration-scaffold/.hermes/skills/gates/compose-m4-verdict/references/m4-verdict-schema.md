@@ -31,6 +31,14 @@ Write `evidence/verdicts/m4-verdict.json`. One object.
 
 Optional: `reason` (must not call a failed floor idle).
 
+When an enabled-mode comparison exists, the binder also writes
+`parity_receipt_sha256_by_mode` with the exact disabled and enabled receipt
+digests. The lint and continuation check both. `check-mode-parity` measures
+both receipts: rc 1 for a parity FAIL, rc 2 for unusable evidence, rc 0 when
+neither mode fails. INCONCLUSIVE coverage remains explicit. An accepting
+verdict over either non-zero result refuses with `ACCEPT_WITH_PARITY_FAILURE`;
+a changed or missing mode binding refuses with `M4_MODE_PARITY_BINDING`.
+
 ## The three bindings
 
 The binder records the verdict as bound in `evidence/verdicts/m4-verdict.bound.json`

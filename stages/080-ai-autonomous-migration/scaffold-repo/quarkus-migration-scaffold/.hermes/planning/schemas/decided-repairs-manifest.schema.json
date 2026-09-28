@@ -173,6 +173,7 @@
             "replace_reviewed_file",
             "java_annotation_expression",
             "java_member_annotation",
+            "java_retire_annotation",
             "pom_dependency",
             "property",
             "pom_retire_execution"

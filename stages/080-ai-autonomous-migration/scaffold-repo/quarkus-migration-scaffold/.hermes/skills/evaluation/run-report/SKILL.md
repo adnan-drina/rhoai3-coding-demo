@@ -59,7 +59,7 @@ Markdown goes to stdout; the JSON (`rhoai3.run-report/v1`) to `--out`.
 | `cost` | verification count and time from the verify records, warmup, `run.json` cache fields; wall time, card run/queue time, time outside card runs, tool time from the logs; provider time only if recorded (it is not today) |
 | `final_state` | loop state, admission, package/boot receipts; parity per security mode with the entry-point denominator (receipt) and the scenario denominators (run record, scenario records); M4 verdict; release blockers; generated-test execution from the latest TEST-*.xml; coverage account |
 | `contract` | entry points (bundle) and scenarios (corpus) with content digests - the input of `--compare` |
-| `budget` | `--budget`, `run-budget.*`, `evidence/run/budget.*`, `decisions.yaml#budget`; otherwise `"undeclared"`; the loop's own stopping rule (ADR-002 threshold) |
+| `budget` | a factory declaration (`run-budget.json` schema v2) composed with the golden `run-defaults.json#/budget` it binds and timed by the initial commit that introduced it (`planner/run_declaration.py`; a rewritten or foreign one reports its refusal, never a budget); else `--budget`, `run-budget.*`, `evidence/run/budget.*`, `decisions.yaml#budget` as recorded (v10/v11); otherwise `"undeclared"`; the loop's own stopping rule (ADR-002 threshold) |
 | `board` | card counts, statuses, run/queue durations per phase, cards the record has no row for; log token counts (blocked, protocol_violation, REFUSE, non-zero exits) - "not provided" without the inputs |
 | `comparison` | with `--compare`: the common unchanged entry points and scenarios, changed and extra ones per run, parity counts on the common entry points, headline metrics side by side |
 

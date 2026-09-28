@@ -1399,6 +1399,27 @@ A live comment of the pin on an already-running dest is not dest-init. Next dest
 
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; Architect `221730ZA`
 
+## Fresh M2 verification exits silently before producing its work list
+
+**Affected stage:** Stage 080, first `build-worklist.sh` after bootstrap.
+
+**Cause:** The verifier previously hashed `admission-receipt.json` with an
+unguarded pipeline. First admission follows work-list creation, so the file
+does not yet exist; `set -euo pipefail` terminated the script before measurement.
+
+**Diagnose:** The official task log or shell trace ends at `ADMISSION_BEFORE`.
+The bootstrap receipt exists, but the first admission receipt does not.
+
+**Recover:** Install the tested verifier repair while the task is blocked,
+retaining the old file and recording both digests. The fixed verifier snapshots
+absence explicitly and still detects receipt creation, deletion and changes;
+other read errors produce `VERIFY_ADMISSION_READ`. Do not fabricate an admission
+receipt or suppress every hashing error. Run `run-verify.test.sh`, then unblock
+the same M2 task with the repair reference using native Kanban. Preserve prior
+attempts and the run deadline; read the official worker log after dispatch.
+
+**Related docs:** [Stage 080 operations](OPERATIONS.md#stage-080-golden).
+
 ## M3 worker `REFUSE: LOOP_NO_OPEN_CLUSTER` then rummages `verification/loop/`
 
 **Affected stage:** Stage 080 dest loop card (measured live v9 `t_cc3b6aac`, 2026-09-15, after a workspace bounce)
@@ -1680,6 +1701,36 @@ oc get authpolicy -n models-as-a-service \
 ```
 
 Confirm the new pod stays `1/1` and that an unauthenticated model request returns 401. Do not raise the operator to RHCL 1.4 to get past this.
+
+## Hermes API timeouts while the model is healthy
+
+**Affected stages:** Stage 040 gateway and Stage 080 workers.
+
+**Observed on v10, 2026-09-22:** six model connection timeouts ended a worker
+before its first tool action. The Qwen 3.8 workload was ready, but the MaaS
+gateway pod had failed readiness for over 30 minutes. Its Service had only an
+unready endpoint. Gateway/HTTPRoute accepted conditions and model readiness
+therefore did not prove the consumer path worked. RHCL remained at 1.3.5;
+this was not the version-drift case below. Gateway memory was near its 1 GiB
+limit, but cgroup OOM counters were zero; the underlying stall cause is unknown.
+
+**Diagnose:** check the gateway pod's readiness and events, its Service's
+EndpointSlices, and a tiny authenticated request from the affected workspace.
+Keep the key inside that workspace and report only status/timing. Collect
+aggregate gateway errors rather than raw request logs, which can contain private
+data. Compare the public path with the internal gateway using the same hostname,
+TLS SNI, credential and model; do not bypass MaaS by calling vLLM directly.
+
+**Recover:** retain failure evidence, then replace the specific stalled gateway
+pod under its existing controller. Verify the replacement is ready and an
+authenticated request succeeds. In this incident, the internal request returned
+200 in 0.25 seconds while the public path still timed out. V10 lacked the
+documented hostAlias; apply `scripts/patch-workspace-maas-route.sh` as described
+in Operations, at an idle/blocked task boundary with candidate and run-state
+backups. Verify protected digests after the workspace restart, then unblock the
+same native task. Preserve migration attempts, acceptance gates and deadline.
+A recovered request establishes availability, not a permanent gateway fix;
+retain any recurrence as a platform issue.
 
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
@@ -2119,6 +2170,41 @@ and its pod are stopped before platform cleanup. A `retiring` receipt permits
 only retirement recovery; a `retired` identity is never provisioned again.
 See the versioned Stage 080 isolation demonstration for the live qualification.
 
+### Correct Secret mounts but failed workspace identity isolation
+
+The 2026-09-22 live demonstration found that both actual workspace service
+accounts could read the other run's database Secret. `devworkspace-default-role`
+grants namespace-wide Secret access, ConfigMap writes, pod execution and
+DevWorkspace updates. Targeted automount only selects what enters a workspace;
+it does not remove these API permissions. Inspect the actual worker identity
+and its bindings, not the namespace's `default` service account. Use name-only
+output for read probes; never print Secret data or tokens.
+
+Keep `workspace_identity: FAIL` on the 2026-09-22 v10 measurement. The Operator
+deferred this hardening for the controlled v10 experiment; its launch preflight
+warns on that measured failure while retaining the other checks. That exception
+makes no claim of worker security confinement.
+
+The Stage 050 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
+destfile pod-overrides; operator-owned `devworkspace-default-role` unpatched)
+is documented in
+[WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md).
+Do not hand-edit the operator-reconciled default role or broaden another
+identity to make startup pass. Restricting new workers does not revoke existing
+legacy `workspace*-sa` accounts. Run the focused disposable plan in that file
+after sync; only then requalify all 13 isolation checks. DWO
+`serviceAccount.disableCreation` still binds the named account to the default
+role and is not the repair.
+
+The September 23 `iso-worker-a` trial failed postStart with exit 137, which DWO
+labelled a timeout. Retained events show tooling failing within seconds of
+start; that does not establish timer expiry or OOM. Use Dev Spaces **Open in
+Debug mode** and preserve hook output, admitted lifecycle, exit status, events,
+and controller logs before another attempt. DWO reads the metadata annotation
+set by that action; a devfile `debug-start` attribute does not enable it.
+Never patch MaaS hostAliases during startup. The guarded route helper now
+requires a stopped workspace for changes.
+
 ### Restricted pod account but human CLI identity after restart
 
 If the pod uses `<run>-worker` but `oc whoami` becomes the human developer
@@ -2126,8 +2212,9 @@ after Ready, inspect kubeconfig **user names and auth field names only**.
 Dev Spaces 3.30.1 Dashboard merges a human login after startup. Migration
 workspaces require the dedicated ephemeral `/home/user/.kube` directory mount
 in the current factory devfile; a one-time replacement config is insufficient.
-See [the worker identity procedure](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md)
-for the pinned implementation and restart checks. A previously passing initial matrix does not qualify this failure.
+See `WORKER-IDENTITY-REPAIR.md` above for the pinned implementation and restart
+checks. A previously passing initial matrix does not qualify this failure.
+
 ### Migration source initializer refuses its PVC
 
 `SOURCE_INPUT_REFUSED` means the retained checkout is changed, incomplete, or
@@ -2169,8 +2256,50 @@ Preserve the failed TaskRun. If its per-run lock exists, prove the holder TaskRu
 and pod are stopped before releasing it. A failed task is not a provisioning
 receipt and must not be bypassed with manually created database resources.
 
-## v11 identity and postStart failures
+### Stage 080: accepted compile repair leaves no successor
 
-A per-run Secret automount is not API isolation. DWO 0.43 still binds a named ServiceAccount to the default Role when `disableCreation` is used. The repair selects the platform worker account with pod-overrides instead. Do not patch the operator-owned default Role or broaden the new worker permissions to make startup pass. The named MaaS Secret GET exception comes from the existing group binding; report effective permissions including that exception.
+An ACCEPTED step can be followed by a nonzero `advance.py` exit if its replan
+cannot admit the next unit. On v10, `UNIT_OVERSIZE` described seven repository
+fragments owing 16 methods, beyond the old eight-symbol limit; the board was
+idle after the accepted compile-zero commit. Preserve that commit and receipt.
+ADR-024 amends only the complete fragment-set symbol limit to 16. Install the
+tested harness at an idle boundary, then record the decision amendment through
+`operator-step.py --no-mint` with the operator, ADR and reason. Require its
+commit, known remeasurement, ADMITTED result and a clean product tree before
+K4 mints the successor. Do not bypass admission, discard inventory rows or
+call the migration complete. Sets beyond 16 symbols or 20 files/160 sites
+still refuse.
 
-The retired September 23 `iso-worker-a` trial failed postStart with exit 137, which DWO labelled a timeout. Retained events show tooling failing within seconds of start; that does not establish timer expiry or OOM. Use Dev Spaces **Open in Debug mode** and preserve hook output, admitted lifecycle, exit status, events, and controller logs before another attempt. DWO reads the metadata annotation set by that action; a devfile `debug-start` attribute does not enable it. Never patch MaaS hostAliases during startup. The guarded route helper requires a stopped workspace for changes. See [the bounded validation procedure](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md).
+If a worker is rejected for an out-of-scope `decisions.yaml`, check whether an
+Operator left an uncommitted amendment before dispatch. That happened on v10
+packaging attempt `t_42192320`: the installation manifest recorded ADR-024,
+but the accepted product baseline did not. The scope guard correctly reverted
+the amendment with the candidate. Preserve the rejection and inspect the
+current tree before intervening; a clean retry must not be interrupted on the
+assumption that the dirty amendment remains. Record the amendment at the next
+idle boundary, without committing a worker's candidate or resetting attempts.
+
+### Stage 080: a diagnostic-family repair is pending despite lower compile errors
+
+**Symptom:** `VERIFICATION_PENDING cause=unassessable-scope` says a sealed file
+could not fully resolve, although the retired symbol's diagnostics disappeared.
+On v10 the Profile unit reduced 233 compiler errors to 203; unrelated errors in
+two files made four inventory rows inconclusive.
+The validation-package unit then hit the same boundary in seven controllers
+whose separate `@CrossOrigin` references were unresolved.
+The sorting unit exposed the inherited-type case in Pet/Owner: resolved ancestor
+names can prove namespace absence even while unrelated field errors remain.
+
+**Check:** inspect the pending row in `verification/loop/steps.json`, its sealed
+scope and `scope_assessment` (new receipts). Older receipts contain only the first
+three failures in `reason`. A lower count alone is insufficient to accept.
+
+**Recover:** the assessor now accepts a diagnostic-family absence proof from a
+complete javac syntax scan. A parse error, missing scan or remaining retired name
+still refuses. Packages require qualified names, not the package's last segment;
+inherited type names require their own resolved ancestor chain, and unknown
+ancestry/static imports still refuse. Install the tested
+repair only while the worker is stopped,
+restore the retained candidate through `restore-pending.py`, then unblock that
+same card for verification and advance. Do not broaden its write set, mint a new
+budget, waive the assessment, or repeat the product edits.

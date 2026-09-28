@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tarfile
 from pathlib import Path
@@ -98,6 +99,87 @@ def _sources_digest(root: Path, source_root: str) -> str:
             h.update(p.read_bytes())
             h.update(b"\0")
     return h.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# where the analyzer runs from and writes to
+# ---------------------------------------------------------------------------
+# Worker-side (default): verification/build/.dest-model in the destination tree,
+# a cache the worker's own tools share.
+#
+# Outcome authority (bound once by the service at start): an authority-PRIVATE
+# directory under its store, which the worker cannot reach. The authority never
+# executes, reads or writes analyzer artifacts in the destination tree: the
+# compiled DestModel classes, the raw tool output, the model cache and the
+# extracted commit trees all live there, and the classes are compiled from the
+# tool source baked beside this module. Architect reproduction (2026-09-27): a
+# replacement verification/build/.dest-model/classes/DestModel.class with the
+# expected .tool-sha256 stamp EXECUTED inside requirement_measurement -- a stamp
+# the worker can write authenticates nothing, and hash-then-execute of the same
+# worker-writable file cannot be made safe. The destination tree stays an INPUT
+# (sources, classpath list, generated roots), read under -proc:none.
+_PRIVATE_WORK: Path | None = None
+_PRIVATE_ROOT: str = ""
+
+
+class DestModelUnsafe(DestModelUnavailable):
+    """The authority's private analyzer directory is not private."""
+
+
+def bind_private_work(d: Path, root: Path) -> Path:
+    """Authority service only, once at start: every later analyzer run of this
+    process compiles, executes, caches and extracts under ``d`` and nowhere in
+    the destination tree. ``d`` must be absolute, real (no symlink component),
+    outside ``root``, owned by this uid and closed to everyone else."""
+    global _PRIVATE_WORK, _PRIVATE_ROOT
+    d = Path(d)
+    r = os.path.realpath(root)
+    if not d.is_absolute() or os.path.realpath(d) != str(d):
+        raise DestModelUnsafe("the analyzer directory %s is not absolute and real" % d)
+    if str(d) == r or str(d).startswith(r + os.sep):
+        raise DestModelUnsafe("the analyzer directory %s lies inside the destination tree %s" % (d, r))
+    if _PRIVATE_WORK is not None and _PRIVATE_WORK != d:
+        raise DestModelUnsafe("the analyzer directory is already bound to %s" % _PRIVATE_WORK)
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+    _check_private(d, r)
+    if _tool_inside(r):
+        raise DestModelUnsafe("the analyzer source %s lies inside the destination tree %s" % (_TOOL, r))
+    _PRIVATE_WORK, _PRIVATE_ROOT = d, r
+    return d
+
+
+def _tool_inside(root_real: str) -> bool:
+    t = os.path.realpath(_TOOL)
+    return t == root_real or t.startswith(root_real + os.sep)
+
+
+def _check_private(d: Path, root_real: str) -> None:
+    """Re-checked before every use: a real directory (never a symlink), owned
+    by this uid, closed to group and others, outside the destination tree."""
+    try:
+        st = os.lstat(d)
+    except OSError as exc:
+        raise DestModelUnsafe("the analyzer directory %s is gone (%s)" % (d, exc))
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+        raise DestModelUnsafe("the analyzer directory %s is not a real directory" % d)
+    if st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise DestModelUnsafe("the analyzer directory %s is not private (uid %d, mode %o)" % (d, st.st_uid, st.st_mode & 0o777))
+    if os.path.realpath(d) != str(d) or str(d).startswith(root_real + os.sep):
+        raise DestModelUnsafe("the analyzer directory %s resolves into or through another location" % d)
+
+
+def _work(root: Path) -> Path:
+    """The analyzer directory for ``root``: the worker cache, or the
+    authority's private one (per destination root, never shared)."""
+    if _PRIVATE_WORK is None:
+        return Path(root) / "verification" / "build" / ".dest-model"
+    _check_private(_PRIVATE_WORK, _PRIVATE_ROOT)
+    if _tool_inside(os.path.realpath(root)):
+        raise DestModelUnsafe("the analyzer source %s lies inside the destination tree" % _TOOL)
+    w = _PRIVATE_WORK / hashlib.sha256(os.path.realpath(root).encode("utf-8")).hexdigest()[:16]
+    w.mkdir(mode=0o700, exist_ok=True)
+    return w
 
 
 def _release(root: Path) -> str:
@@ -182,7 +264,7 @@ def dest_model(root: Path, *, source_root: str = "src/main/java", refresh: bool 
     if not src.is_dir():
         raise DestModelUnavailable("%s is not a directory of this tree" % source_root)
     key = _sources_digest(root, source_root)
-    work = root / "verification" / "build" / ".dest-model"
+    work = _work(root)
     cache = work / ("%s-%s.json" % (source_root.replace("/", "-"), key[:16]))
     if cache.is_file() and not refresh:
         try:
@@ -309,7 +391,7 @@ def tree_model(root: Path, tree: Path, *, source_root: str = "src/main/java",
         h.update(p.read_bytes())
         h.update(b"\0")
     key = h.hexdigest()
-    work = root / "verification" / "build" / ".dest-model"
+    work = _work(root)
     cache = work / ("tree-%s.json" % key[:16])
     if cache.is_file() and not refresh:
         try:
@@ -335,6 +417,64 @@ def above_members(typ: dict[str, Any]) -> list[dict[str, Any]]:
     how an override is written; comparing the declared form would miss every
     generic override and comparing names would match every overload."""
     return list(typ.get("supertype_methods") or []) + list(typ.get("inherited") or [])
+
+
+class AnnotationShapeError(ValueError):
+    """An annotation row whose values have a shape neither model produces."""
+
+
+def _flatten_literals(value: Any, pointer: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, bool):
+        return ["true" if value else "false"]
+    if isinstance(value, (str, int, float)):
+        return [str(value)]
+    if isinstance(value, (list, tuple)):
+        out: list[str] = []
+        for i, v in enumerate(value):
+            out.extend(_flatten_literals(v, "%s/%d" % (pointer, i)))
+        return out
+    raise AnnotationShapeError("%s has %s" % (pointer, type(value).__name__))
+
+
+def annotation_literals(ann: dict[str, Any]) -> list[str]:
+    """Every literal an annotation row carries, from EITHER model (B5).
+
+    The destination model (DestModel.java) writes ``values`` as a flat list of
+    string literals and ``named`` as attribute -> literals; the source model
+    writes ``values`` as attribute -> value. Both are read here, so no caller
+    has to guess (v12 t_b33f25fa crashed calling .values() on the list).
+    Booleans, numbers and nested arrays are kept, spelled as written; absent
+    and empty both give []. Any other outer or inner shape raises
+    AnnotationShapeError naming its JSON pointer: an unreadable row is an
+    unknown, never an empty mapping that reads as "nothing matched"."""
+    if not isinstance(ann, dict):
+        raise AnnotationShapeError("/ has %s" % type(ann).__name__)
+    vals = ann.get("values")
+    if isinstance(vals, dict):
+        out: list[str] = []
+        for k, v in vals.items():
+            out.extend(_flatten_literals(v, "/values/%s" % k))
+        return out
+    if vals is None or isinstance(vals, list):
+        return _flatten_literals(vals, "/values")
+    raise AnnotationShapeError("/values has %s; expected the destination literal list or the source named map"
+                               % type(vals).__name__)
+
+
+def annotation_named(ann: dict[str, Any], attr: str) -> list[str] | None:
+    """The literals written for ONE attribute, or None when the row does not
+    say. Read from the destination's ``named`` map or the source's ``values``
+    map; a flat ``values`` list is never guessed into an attribute, because it
+    cannot say whether its first literal was the name or the default."""
+    if not isinstance(ann, dict):
+        raise AnnotationShapeError("/ has %s" % type(ann).__name__)
+    for key in ("named", "values"):
+        m = ann.get(key)
+        if isinstance(m, dict) and attr in m:
+            return _flatten_literals(m[attr], "/%s/%s" % (key, attr))
+    return None
 
 
 def types_of(model: dict[str, Any], rel_from_root: str, source_root: str = "src/main/java") -> list[dict[str, Any]]:
@@ -593,7 +733,7 @@ def model_at_commit(root: Path, ref: str, *, source_root: str = "src/main/java")
     _digest_generated(h, root)
     h.update(_tool_sha().encode("utf-8"))
     key = h.hexdigest()
-    work = root / "verification" / "build" / ".dest-model"
+    work = _work(root)
     cache = work / ("commit-%s-%s.json" % (sha[:12], key[:16]))
     if cache.is_file():
         try:

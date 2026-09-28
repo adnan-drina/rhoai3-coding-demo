@@ -133,6 +133,7 @@ from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E
 from planner.cards import CLOSE_ID  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_DIR, LOOP_ISSUED, PARITY_DIR  # noqa: E402
 from planner.worklist import build_worklist, head_cluster, parity_items  # noqa: E402
+from m5_delivery import ENTRY_CMD, load_preserved_coverage_account, record_eligibility, remaining_ids_from_coverage  # noqa: E402
 
 M4_VERDICT = Path("evidence") / "verdicts" / "m4-verdict.json"
 # bind-m4-verdict.py's record of the verdict AS BOUND (digest + copy + bindings)
@@ -183,6 +184,7 @@ _UNAUTHORIZED = re.compile(r"status 40[13] vs")
 # that owns each and the seat that discharges it. Specimen-agnostic: these are
 # harness floor names and ADR ids, never a specimen's files or symbols.
 DECISION_FLOORS = {
+    "check-mode-parity": ("ADR-014", "runtime parity repair", "a recorded security mode has an unresolved parity failure or unusable measurement; repair the measured difference and remeasure both modes on one artifact before closing; coverage gaps cannot discharge this floor"),
     "check-empty-security": (SECURITY_ADR, SECURITY_OWNER, "method security is declared with no identity provider behind it, so every guarded request answers 401/403; ADR-014 owns the conditional authorization adapter and the Basic/JPA identity mapping in ONE bounded Operator step, and refuses deleting an authorization semantic, permitting all, or manufacturing a privileged identity"),
     "check-product-tests": ("ADR-015", "harness capability", "the product acceptance tests are generated deterministically from qualified source scenarios; a worker card gets no authority to author or weaken them"),
     "assert-surefire-results": ("ADR-015", "harness capability", "the surefire floor needs its own evidence-based diagnosis; a fresh report with zero skips is a harness output, not a patch"),
@@ -226,7 +228,7 @@ def already_closed(steps: dict, card: str) -> bool:
     return any(str(r.get("card") or "") == card and r.get("closed") for r in close_rows(steps))
 
 
-def outstanding_rows(verdict: dict, preceipt: dict) -> list:
+def outstanding_rows(verdict: dict, preceipt: dict, root: Path | None = None) -> list:
     """What a CLOSED run still owes before it could ship.
 
     `ship: false` on a PROVISIONAL_ACCEPT says the floors were met, not that
@@ -234,7 +236,9 @@ def outstanding_rows(verdict: dict, preceipt: dict) -> list:
     Every row is READ off an artifact -- the parity receipt's own verdict and
     coverage summary, the capability gaps it recorded, the coverage account the
     verdict carries, the verdict's own reason -- so nothing here asserts a
-    completeness the evidence does not hold."""
+    completeness the evidence does not hold. Close does not snapshot a missing
+    historical coverage account from later live evidence.
+    """
     out: list = []
     rows = [r for r in (preceipt.get("entry_points") or []) if isinstance(r, dict)]
     rv = str(preceipt.get("verdict") or "")
@@ -260,9 +264,17 @@ def outstanding_rows(verdict: dict, preceipt: dict) -> list:
     except (TypeError, ValueError):
         remaining, retired = 0, 0
     if remaining:
-        out.append({"kind": "coverage-account", "count": remaining,
-                    "detail": "%d of %d retired source(s) still have a remaining gap (evidence/verdicts/coverage-account.json)"
-                              % (remaining, retired)})
+        row = {"kind": "coverage-account", "count": remaining,
+               "detail": "%d of %d retired source(s) still have a remaining gap (evidence/verdicts/coverage-account.json)"
+                         % (remaining, retired)}
+        ids: list[str] = []
+        if root is not None:
+            snap = load_preserved_coverage_account(root)
+            if snap is not None:
+                ids = remaining_ids_from_coverage(snap)
+        if ids:
+            row["ids"] = ids
+        out.append(row)
     reason = str(verdict.get("reason") or "").strip()
     if reason:
         out.append({"kind": "verdict-reason", "count": 0, "detail": reason[:400]})
@@ -462,7 +474,7 @@ def close_out(root: Path, args: Any, verdict: dict, preceipt: dict, steps: dict,
          explicit empty record saying which verdict cleared it and when -- and
          what is still outstanding, which is not the same thing."""
     now = _now()
-    left = outstanding_rows(verdict, preceipt)
+    left = outstanding_rows(verdict, preceipt, root)
     blockers = {
         "schema": BLOCKERS_SCHEMA,
         "at": now,
@@ -522,6 +534,10 @@ def close_out(root: Path, args: Any, verdict: dict, preceipt: dict, steps: dict,
         print("  - outstanding (%s): %s" % (row["kind"], row["detail"]))
     print("OK: run CLOSED on %s for card %s — closed is not shipped: %d item(s) remain before a release → %s"
           % (token, card_id, len(left), path))
+    elig_path = record_eligibility(root)
+    print("M5 delivery is a separate assisted continuation (do not dest-dispatch M5 from this card): %s"
+          % ENTRY_CMD)
+    print("  eligibility → %s" % elig_path)
     return 0
 
 
@@ -533,6 +549,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--operator", default="", help="who ran this, recorded on the close row and in release-blockers.json")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    from planner.outcome_protocol import select_protocol
+    sel = select_protocol(root)
+    if sel.native:
+        # outcome-board/v2: a REFUSE keeps the SAME M4 task open; its repairs become
+        # native prerequisites (native_gate.py m4-repair) and the dispatcher resumes it
+        return _refuse("PROTOCOL_NOT_SERIAL: this run uses outcome-board/v2; after a REFUSE the M4 task itself "
+                       "publishes its repairs (python3 .hermes/kernel/native_gate.py --root . m4-repair) and waits "
+                       "on them with kanban_block kind=dependency, never this serial resume")
+    if sel.outcome:
+        # the outcome board continues after M4 through its dispatcher-tick reconciler
+        # (kernel/outcome_reconcile.py): bounded repairs and a successor assessment
+        return _refuse("PROTOCOL_NOT_SERIAL: this run uses outcome-board/v1; the continuation after M4 is the "
+                       "reconciler on the dispatcher tick, never this serial resume")
 
     # --- the verdict, and that it is THIS run's -------------------------------
     vp = root / M4_VERDICT
@@ -635,6 +664,11 @@ def main(argv: list[str] | None = None) -> int:
                        % (bound_sha[:12], record.get("bound_at") or "?", on_disk_sha[:12], ", ".join(drift) or "(byte-level only)"))
 
     # --- no live worker holds the tree ---------------------------------------
+    from m4_parity import verdict_issues
+    mode_issues = verdict_issues(verdict, root)
+    if mode_issues:
+        return _refuse("; ".join(mode_issues))
+
     # Asked BEFORE the seal is examined, because the contract re-seal below
     # writes to the tree: nothing is re-sealed while a candidate is retained or
     # while the product tree carries a change nobody measured.

@@ -752,13 +752,18 @@ def _parity_advice_case() -> int:
             for needed in (want_loc, raw_loc, have_loc, "ORIGIN mapped",
                            "%r" % spec["root_path"], "already carries its slashes",
                            "quarkus.swagger-ui.always-include=true", "quarkus.swagger-ui.path",
-                           "packaged", "amend-scope.py"):
+                           "packaged", "amend-scope.py", "Response.status(302).location(target).build()",
+                           "seeOther selects 303", "temporaryRedirect selects 307", "ResponseBuilder is not a Response"):
                 if needed not in blob:
                     return _fail("the redirect advice must state %r: %s" % (needed, blob[:900]))
+            if red["advice"].get("config_locus") != APP_PROPERTIES:
+                return _fail("the UI redirect's property advice must carry the configuration locus amend-scope checks")
             if "following the redirect" not in blob or "404" not in blob or "another redirect status" not in blob:
                 return _fail("the redirect advice must refuse 303, redirect following and a dead URL: %s" % blob[:900])
 
             plain = items.get((ep_api, "sc:plain-" + spec["api_member"], "response"))
+            if plain and "config_locus" in plain["advice"]:
+                return _fail("an ordinary response difference must not authorize configuration")
             if not plain or "swagger" in json.dumps(plain["advice"]) or "redirect" in json.dumps(plain["advice"]["refused"]):
                 return _fail("a status-only difference is not a redirect and gets no redirect advice: %s" % plain)
 
@@ -826,6 +831,9 @@ def _parity_navigation_case() -> int:
             if it.get("gate") != "parity" or it.get("scenarios") != [spec["scenario"]]:
                 return _fail("it is measured by the parity gate, over the scenarios its row declares: %s"
                              % {k: it.get(k) for k in ("gate", "scenarios")})
+            if it.get("verdict_file") != "verification/parity/receipt.json" or it.get("security_mode") != "disabled":
+                return _fail("a disabled-mode navigation names receipt.json: %s"
+                             % {k: it.get(k) for k in ("verdict_file", "security_mode")})
             if target not in it["message"] or "dead" not in it["detail"]:
                 return _fail("the brief must name the address and what became of it: %s | %s" % (it["message"][:200], it["detail"]))
             blob = json.dumps(it["advice"])
@@ -993,12 +1001,25 @@ def _dm_member(name: str, signature: str, *, has_body: bool = False, calls=(), t
 
 
 def _dm_type(fqn: str, path: str, *, kind: str = "class", imports=(), supertypes=(), annotations=(),
-             declared=(), type_refs=(), resolution: str = "full") -> dict:
-    return {"path": path, "fqn": fqn, "kind": kind, "resolution": resolution,
-            "imports": list(imports), "supertypes": list(supertypes),
-            "annotations": [dict(a) for a in annotations], "declared": [dict(d) for d in declared],
-            "fields": [], "unhandled_throws": [], "inherited": [], "supertype_methods": [],
-            "inherited_known": True, "type_refs": sorted(set(type_refs))}
+             declared=(), type_refs=(), resolution: str = "full", refs_complete=True) -> dict:
+    # a hand-written row states a COMPLETE declaration walk unless the case
+    # says otherwise: the real extractor writes `type_refs_complete` on every
+    # row, and a row without it is unknown evidence (_leaf_evidence_case)
+    row = {"path": path, "fqn": fqn, "kind": kind, "resolution": resolution,
+           "imports": list(imports), "supertypes": list(supertypes),
+           "annotations": [dict(a) for a in annotations], "declared": [dict(d) for d in declared],
+           "fields": [], "unhandled_throws": [], "inherited": [], "supertype_methods": [],
+           "inherited_known": True, "type_refs": sorted(set(type_refs))}
+    if refs_complete is not None:
+        row["type_refs_complete"] = refs_complete
+        row["type_refs_incomplete"] = [] if refs_complete is True else [{"locus": "field:x", "reason": "unresolved"}]
+    return row
+
+
+def _dm_model(types) -> dict:
+    """A hand-written model in the real document's shape: its rows, and the
+    compiler's per-file failures (none unless the case adds one)."""
+    return {"types": list(types), "unresolved_files": []}
 
 
 def _javac(path: str, token: str, n: int, *, kind: str = "class") -> dict:
@@ -1149,7 +1170,7 @@ def _unit_world(n: dict) -> tuple[dict, list[dict], dict]:
         "frag_write_set": sorted([p for p in frag_files if p not in set(frag_children)] + frag_adapters),
         "exc": n["exc"], "gated": n["gated"],
     }
-    return {"types": types}, items, expect
+    return _dm_model(types), items, expect
 
 
 def _set_wide_item(scope: str = "spring-data-fragment-implementations") -> dict:
@@ -1265,7 +1286,7 @@ def _unit_formation_case() -> int:
             return _fail("[B] a renamed world matches no catalog row, so it has no documented target: %s" % sorted(targets))
 
         # the set the model cannot enumerate stays the typed blocker it was
-        bare, bare_claimed = form_units([_set_wide_item()], {}, set(), model={"types": []}, root=GOLDEN)
+        bare, bare_claimed = form_units([_set_wide_item()], {}, set(), model=_dm_model([]), root=GOLDEN)
         if bare or bare_claimed:
             return _fail("[%s] a set the model cannot enumerate mints nothing; the blocker stands" % label)
         other, _ = form_units(items + [_set_wide_item("some-other-set")], {}, set(), model=model, root=GOLDEN)
@@ -1288,7 +1309,7 @@ def _unit_bound_case() -> int:
                            type_refs=["%s.outside.Anchor" % base]) for i in range(UNIT_MAX_FILES + 5)]
     wide_types.append(_dm_type("%s.outside.Anchor" % base, "%s/outside/Anchor.java" % pkg,
                                type_refs=["%s.w.W00" % base]))
-    units, _ = form_units(wide_items, {}, set(), model={"types": wide_types}, root=None)
+    units, _ = form_units(wide_items, {}, set(), model=_dm_model(wide_types), root=None)
     if len(units) != 1 or units[0]["status"] != "blocked":
         return _fail("a family wider than the bound is a blocked cluster: %s" % [(c["unit"]["family_key"], c["status"]) for c in units])
     block = units[0]["block"]
@@ -1308,7 +1329,7 @@ def _unit_bound_case() -> int:
         # family i has i+1 sites, so the drop order is fixed by cardinality
         for k in range(i + 1):
             many.append(_javac("src/main/java/%s/leaf/%s.java" % (pkg, name), "S%02d" % i, 1000 * i + k))
-    units, _ = form_units(many, {}, set(), model={"types": many_types}, root=None)
+    units, _ = form_units(many, {}, set(), model=_dm_model(many_types), root=None)
     leaf = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
     if len(leaf) != 1:
         return _fail("the leaf unions the families: %s" % [c["unit"]["rule"] for c in units])
@@ -1320,7 +1341,7 @@ def _unit_bound_case() -> int:
     kept = {str(s["fqn"]) for s in seal["symbols"]}
     if "org.springframework.sym.S00" in kept or "org.springframework.sym.S11" not in kept:
         return _fail("the lowest-cardinality families are the ones dropped: %s" % sorted(kept))
-    again, _ = form_units(list(reversed(many)), {}, set(), model={"types": list(reversed(many_types))}, root=None)
+    again, _ = form_units(list(reversed(many)), {}, set(), model=_dm_model(list(reversed(many_types))), root=None)
     twin = [c for c in again if c["unit"]["rule"] == RULE_PACKAGE_LEAF][0]
     if twin["id"] != leaf[0]["id"] or twin["write_set"] != leaf[0]["write_set"]:
         return _fail("narrowing is deterministic: %s vs %s" % (twin["id"], leaf[0]["id"]))
@@ -1342,7 +1363,7 @@ def _unit_bound_case() -> int:
                                declared=[_dm_member("go", "go()", has_body=True, calls=["%s.%s" % (svc, sig)])],
                                type_refs=[svc]))
     citems = [_javac("src/main/java/%s/s/Wide.java" % pkg, "DataAccessException", 1)]
-    units, _ = form_units(citems, {}, set(), model={"types": ctypes}, root=None)
+    units, _ = form_units(citems, {}, set(), model=_dm_model(ctypes), root=None)
     closure = [c for c in units if c["unit"]["rule"] == RULE_DECLARATION_CLOSURE]
     if len(closure) != 1 or closure[0]["status"] != "blocked":
         return _fail("a closure wider than the bound is refused, never narrowed by dropping callers: %s"
@@ -1362,7 +1383,7 @@ def _unit_bound_case() -> int:
     # and a narrowing that DOES happen retains every obligation it excluded:
     # the dropped families' items are claimed by no unit, so the work list
     # still carries them as their own items
-    dropped_units, dropped_claimed = form_units(many, {}, set(), model={"types": many_types}, root=None)
+    dropped_units, dropped_claimed = form_units(many, {}, set(), model=_dm_model(many_types), root=None)
     leaf_seal = [c for c in dropped_units if c["unit"]["rule"] == RULE_PACKAGE_LEAF][0]["_unit_seal"]
     excluded = leaf_seal["bounds"].get("excluded") or []
     if not excluded or not all(r.get("items") for r in excluded):
@@ -1605,7 +1626,7 @@ def _uri_world(n: dict, imports: tuple[str, ...]) -> tuple[dict, list[str]]:
         rel = "%s/%s/%s.java" % (pkg, n["pkg"], c)
         types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=list(imports)))
         paths.append("src/main/java/" + rel)
-    return {"types": types}, paths
+    return _dm_model(types), paths
 
 
 def _uri_unit(n: dict) -> tuple[dict, list[dict], list[str]]:
@@ -1635,7 +1656,7 @@ def _leaf_unit(n: dict) -> tuple[dict, list[str]]:
         types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=[sym]))
         paths.append("src/main/java/" + rel)
         items.append(_javac(paths[-1], sym.rsplit(".", 1)[-1], 70 + i))
-    units, _ = form_units(items, {}, set(), model={"types": types}, root=GOLDEN)
+    units, _ = form_units(items, {}, set(), model=_dm_model(types), root=GOLDEN)
     leaf = next(c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF)
     with tempfile.TemporaryDirectory(prefix="unit-leaf-") as d:
         return build_unit_scope(Path(d), leaf, items, {"candidate_sha256": "c1"}), paths
@@ -1859,7 +1880,7 @@ def _unit_config_case() -> int:
                     "cause": "config-value", "set_wide": "", "path": "src/main/resources/application.properties",
                     "category": "mandatory", "line": 0, "rule_id": "RUNTIME_APPLICATION_CONFIGURATION",
                     "message": "Failed to load config value of type class java.lang.String for: %s" % prop}
-            units, claimed = form_units([item], {}, set(), model={"types": types}, root=root)
+            units, claimed = form_units([item], {}, set(), model=_dm_model(types), root=root)
             cfg = [c for c in units if c["unit"]["rule"] == RULE_CONFIG_CONSUMERS]
             if len(cfg) != 1 or "rt:boot:cfg" not in claimed:
                 return _fail("[%s] one unit over the property and its consumers: %s" % (label, [c["unit"]["rule"] for c in units]))
@@ -1878,7 +1899,7 @@ def _unit_config_case() -> int:
             if unit.get("gate") != "boot" or not any(c["check"] == "gate" for c in unit["_unit_seal"]["completion"]):
                 return _fail("[%s] a gate obligation carries its gate as a completion check: %s" % (label, unit["_unit_seal"]["completion"]))
             # nothing reads it: no consumer, no unit, and today's path stands
-            alone, alone_claimed = form_units([item], {}, set(), model={"types": []}, root=root)
+            alone, alone_claimed = form_units([item], {}, set(), model=_dm_model([]), root=root)
             if alone or alone_claimed:
                 return _fail("[%s] a property with no annotated consumer forms no unit" % label)
     return 0
@@ -1968,12 +1989,14 @@ def _real_leaf_case() -> int:
             with tempfile.TemporaryDirectory(prefix="wl-real-leaf-") as d:
                 root = _jdk_root(d, _real_sources(n, consumer=consumer))
                 model = dest_model(root)
-                # the shape itself: the extractor writes no type-level type_refs,
-                # and the reference is under the member
+                # the shape itself: the reference is under the member, AND on
+                # the type row's declaration walk, which is complete here
                 if consumer:
                     con = next(t for t in model["types"] if str(t["fqn"]).endswith("." + n["consumer"]))
-                    if con.get("type_refs"):
-                        return _fail("[%s] the real extractor writes no type-level type_refs: %s" % (label, con.get("type_refs")))
+                    helper = "%s.%s.%s" % (n["base"], n["leaf_pkg"], n["helper_a"])
+                    if helper not in (con.get("type_refs") or []) or con.get("type_refs_complete") is not True:
+                        return _fail("[%s] the real extractor's declaration walk names %s, completely: %s %s"
+                                     % (label, helper, con.get("type_refs"), con.get("type_refs_complete")))
                     if not any(str(n["helper_a"]) in str(r) for m in con["declared"] for r in (m.get("type_refs") or [])):
                         return _fail("[%s] the reference is under the declared member: %s" % (label, con["declared"]))
                     if not any(str(x).endswith("." + n["helper_a"]) for x in unit_type_refs(con)):
@@ -1994,14 +2017,526 @@ def _real_leaf_case() -> int:
             partial = [dict(t, resolution="partial") if not _dm_is_leaf(t, n) else t for t in model["types"]]
             if any(unit_states_relationships(t) for t in partial if not _dm_is_leaf(t, n)):
                 return _fail("[%s] a partially resolved type states no relationships" % label)
-            units, _ = form_units(_real_items(n), {}, set(), model={"types": partial}, root=GOLDEN)
+            units, _ = form_units(_real_items(n), {}, set(), model=_dm_model(partial), root=GOLDEN)
             if [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
                 return _fail("[%s] isolation is not established by a type that could not say what it names" % label)
     return 0
 
 
+# --- declared references through generics, arrays and bounds ---------------
+#
+# rgctl offline evaluation 2026-09-25 (G03G/G03A/G03N/G09): a holder naming a
+# package's type ONLY inside a generic argument or an array component left no
+# edge the planner could read, and a package whose own evidence was partial
+# was minted as a leaf with nothing outside to check. The extractor now writes
+# the declaration walk on the type row (`type_refs`, `type_refs_complete`), and
+# isolation requires complete walks on BOTH sides. Classification may change;
+# scope, bounds, order policy and conservation may not.
+
+_GEN_A = {"base": "org.acme.clinic", "leaf_pkg": "util", "api_pkg": "rest", "consumer": "OwnerResource",
+          "helper_a": "SortDefinition", "helper_b": "ToStringCreator", "sym": "MutableSortDefinition"}
+_GEN_B = {"base": "com.example.warehouse", "leaf_pkg": "helper", "api_pkg": "api", "consumer": "CrateEndpoint",
+          "helper_a": "OrderSpec", "helper_b": "DescriptionMaker", "sym": "AttributeRanker"}
+
+# (label, class header suffix, body) with {q} the helper's fully qualified name
+# and {s} its simple name; nothing is imported unless the shape says so
+_GENERIC_SHAPES = (
+    ("qualified-list", "", "    java.util.List<{q}> xs;\n"),
+    ("multi-dim-array", "", "    {q}[][] grid;\n"),
+    ("nested-map", "", "    java.util.Map<String, java.util.List<{q}>> nested;\n"),
+    ("wildcard-extends", "", "    java.util.List<? extends {q}> up;\n"),
+    ("wildcard-super", "", "    java.util.List<? super {q}> down;\n"),
+    ("method-return", "", "    public java.util.Optional<{q}> find() {{ return null; }}\n"),
+    ("method-param", "", "    public void put(java.util.Set<{q}[]> s) {{ }}\n"),
+    ("class-bound", "<T extends {q}>", ""),
+    ("method-bound", "", "    public <T extends {q}> void m() {{ }}\n"),
+    ("intersection-bound", "<T extends java.lang.Object & java.lang.Comparable<{q}>>", "    T value;\n"),
+    ("generic-supertype", " extends java.util.ArrayList<{q}>", ""),
+    ("imported-list", "", "    java.util.List<{s}> xs;\n"),
+)
+
+
+def _generic_sources(n: dict, shape: tuple | None) -> dict[str, str]:
+    base, src = n["base"], "src/main/java/" + n["base"].replace(".", "/")
+    files = {
+        "%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_a"]):
+            "package %s.%s;\npublic class %s {\n    public int rank() { return 1; }\n}\n" % (base, n["leaf_pkg"], n["helper_a"]),
+        "%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_b"]):
+            "package %s.%s;\npublic class %s {\n    public String render() { return \"\"; }\n}\n" % (base, n["leaf_pkg"], n["helper_b"]),
+    }
+    q = "%s.%s.%s" % (base, n["leaf_pkg"], n["helper_a"])
+    if shape is None:
+        # the disconnected control: an outside type naming nothing inside
+        body, header, imports = "    int n;\n", "", ""
+    else:
+        label, header, body = shape
+        imports = "import %s;\n" % q if label.startswith("imported") else ""
+        header, body = header.format(q=q, s=n["helper_a"]), body.format(q=q, s=n["helper_a"])
+    files["%s/%s/%s.java" % (src, n["api_pkg"], n["consumer"])] = (
+        "package %s.%s;\n%spublic class %s%s {\n%s}\n" % (base, n["api_pkg"], imports, n["consumer"], header, body))
+    return files
+
+
+def _ownership(items: list[dict], clusters: list[dict]) -> tuple[list[str], list[str]]:
+    """(obligations no cluster owns, obligations more than one cluster owns)."""
+    owners: dict[str, list[str]] = {}
+    for c in clusters:
+        for i in c.get("items") or []:
+            owners.setdefault(str(i), []).append(str(c["id"]))
+    ids = {str(i["id"]) for i in items}
+    return sorted(ids - set(owners)), sorted(k for k, v in owners.items() if len(v) > 1)
+
+
+def _real_generic_leaf_case() -> int:
+    """Real extraction to formation: a consumer that names a leaf helper only
+    through a generic argument, an array component, a wildcard or a bound
+    prevents the leaf -- because the EDGE is in the model, not because the
+    completeness guard declined. Every row here is fully resolved and complete,
+    so removing the collector would make each case form a false leaf. The
+    disconnected control still forms one; the consumer never becomes
+    writable; every obligation keeps exactly one owner."""
+    import tempfile
+
+    from planner.worklist import unit_type_refs
+
+    for label, n in (("A", _GEN_A), ("B", _GEN_B)):
+        leaf_dir = "src/main/java/%s/%s" % (n["base"].replace(".", "/"), n["leaf_pkg"])
+        consumer_path = "src/main/java/%s/%s/%s.java" % (n["base"].replace(".", "/"), n["api_pkg"], n["consumer"])
+        helper = "%s.%s.%s" % (n["base"], n["leaf_pkg"], n["helper_a"])
+        items = _real_items(n)
+        control_key = None
+        for shape in (None,) + _GENERIC_SHAPES:
+            name = "control" if shape is None else shape[0]
+            with tempfile.TemporaryDirectory(prefix="wl-gen-leaf-") as d:
+                model = dest_model(_jdk_root(d, _generic_sources(n, shape)))
+            con = next(t for t in model["types"] if str(t["fqn"]).endswith("." + n["consumer"]))
+            if any(t.get("resolution") != "full" or t.get("type_refs_complete") is not True for t in model["types"]):
+                return _fail("[%s/%s] the fixture must be fully resolved and complete, so only the edge decides: %s"
+                             % (label, name, [(t["fqn"], t.get("resolution"), t.get("type_refs_complete")) for t in model["types"]]))
+            names_helper = helper in unit_type_refs(con)
+            if names_helper != (shape is not None):
+                return _fail("[%s/%s] the consumer's references %s the helper: %s"
+                             % (label, name, "must name" if shape else "must not name", sorted(unit_type_refs(con))))
+            units, _claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
+            clusters = cluster_items(items, {}, set(), units=units)
+            leaves = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
+            if shape is None:
+                if [c["unit"]["family_key"] for c in leaves] != [leaf_dir]:
+                    return _fail("[%s] the disconnected control IS a leaf: %s" % (label, [c["unit"]["rule"] for c in units]))
+                control_key = (sorted(leaves[0]["write_set"]), leaves[0].get("order_key"))
+            else:
+                if leaves:
+                    return _fail("[%s/%s] a reference through %s prevents the leaf: %s" % (label, name, name, leaves[0]["write_set"]))
+                fam = [c for c in units if c["unit"]["rule"] == RULE_DIAGNOSTIC_FAMILY]
+                # the SAME repair under the existing family rule: same files,
+                # same order key, the consumer not added to anything
+                if len(fam) != 1 or (sorted(fam[0]["write_set"]), fam[0].get("order_key")) != control_key:
+                    return _fail("[%s/%s] the obligations regroup under the existing family rule with the leaf's scope and order: %s vs %s"
+                                 % (label, name, [(c["unit"]["rule"], c["write_set"], c.get("order_key")) for c in units], control_key))
+            if any(consumer_path in (c.get("write_set") or []) for c in clusters):
+                return _fail("[%s/%s] a reference makes nothing writable: %s" % (label, name, consumer_path))
+            unowned, twice = _ownership(items, clusters)
+            if unowned or twice:
+                return _fail("[%s/%s] every obligation has exactly one owner: unowned %s, twice %s" % (label, name, unowned, twice))
+    return 0
+
+
+_G03_HOLDERS = {
+    "G03G": "    java.util.List<{i}.{a}> values;\n",
+    "G03A": "    {i}.{b}[] values;\n",
+    "G03N": ("    java.util.Map<java.lang.String, java.util.List<{i}.{a}>> nested;\n"
+             "    java.util.List<? extends {i}.{a}> wild;\n    java.util.List<? super {i}.{b}> wildSuper;\n"),
+    "control": "    int values;\n",
+}
+_G03_NAMES = ({"i": "inside", "o": "outside", "a": "A", "b": "B", "ann": "MissingAnn", "lib": "com.missing.Lib", "g": "g09"},
+              {"i": "vault.core", "o": "gate.web", "a": "Ledger", "b": "Tally", "ann": "Vanished", "lib": "org.gone.Thing", "g": "h09"})
+_DIAG_CLASSES: list[Path] = []
+
+
+def _jdk_items(root: Path) -> list[dict]:
+    """The compiler's own diagnostics over the tree (JdkDiagnostics, as
+    run-verify.sh runs it), as work-list items with their line-free identity."""
+    import json
+    import subprocess
+    import tempfile
+
+    if not _DIAG_CLASSES:
+        tool = Path(__file__).resolve().parents[2] / "skills/migration/fix-until-green/scripts/jdk-diagnostics/JdkDiagnostics.java"
+        classes = Path(tempfile.mkdtemp(prefix="wl-diag-classes-"))
+        subprocess.run(["javac", "-d", str(classes), str(tool)], check=True, capture_output=True)
+        _DIAG_CLASSES.append(classes)
+    out = root / "verification/build/diag.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["java", "-cp", str(_DIAG_CLASSES[0]), "JdkDiagnostics", "--source", str(root), "--out", str(out),
+                    "--release", "21"], check=True, capture_output=True, timeout=120)
+    items = compile_items(json.loads(out.read_text(encoding="utf-8")))
+    for i in items:
+        i["identity"] = diagnostic_identity(None, i)
+    return items
+
+
+def _real_partial_leaf_case() -> int:
+    """The recorded G03 variants and G09 with the compiler's own diagnostics.
+
+    G03: the inside files are PARTIAL (an unresolved annotation) but their
+    declaration walks are complete, and the fully resolved holder names them
+    only through a generic argument, an array or a wildcard: no leaf, and the
+    same two files regroup as one diagnostic family. G09: the only file's walk
+    is incomplete and nothing is outside it; the empty outside set is not
+    evidence of isolation. Both run on a twin that shares no identifier."""
+    import tempfile
+
+    for n in _G03_NAMES:
+        ip, op = n["i"].replace(".", "/"), n["o"].replace(".", "/")
+        inside = {"src/main/java/%s/%s.java" % (ip, c): "package %s;\n\npublic class %s { @%s int mark; }\n" % (n["i"], c, n["ann"])
+                  for c in (n["a"], n["b"])}
+        write = sorted(inside)
+        control = None
+        for case in ("control", "G03G", "G03A", "G03N"):
+            holder = "src/main/java/%s/Holder.java" % op
+            files = dict(inside, **{holder: "package %s;\n\npublic class Holder {\n%s}\n" % (n["o"], _G03_HOLDERS[case].format(**n))})
+            with tempfile.TemporaryDirectory(prefix="wl-g03-") as d:
+                root = _jdk_root(d, files)
+                items = _jdk_items(root)
+                model = dest_model(root)
+            rows = {t["fqn"]: t for t in model["types"]}
+            h = rows["%s.Holder" % n["o"]]
+            if h.get("resolution") != "full" or h.get("type_refs_complete") is not True:
+                return _fail("[%s/%s] the holder is fully resolved and complete: %s" % (n["i"], case, h))
+            for c in (n["a"], n["b"]):
+                r = rows["%s.%s" % (n["i"], c)]
+                if r.get("resolution") != "partial" or r.get("type_refs_complete") is not True:
+                    return _fail("[%s/%s] an unresolved ANNOTATION leaves the inside declaration walk complete: %s" % (n["i"], case, r))
+            if len(items) != 2:
+                return _fail("[%s/%s] javac reports the two annotation sites: %s" % (n["i"], case, [i["detail"] for i in items]))
+            units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+            clusters = cluster_items(items, {}, set(), units=units)
+            shape = [(c["unit"]["rule"], sorted(c["write_set"]), c.get("order_key"), sorted(c["items"])) for c in units]
+            if case == "control":
+                if len(shape) != 1 or shape[0][0] != RULE_PACKAGE_LEAF or shape[0][1] != write:
+                    return _fail("[%s] the disconnected control forms the leaf: %s" % (n["i"], shape))
+                control = shape[0]
+            elif len(shape) != 1 or shape[0][0] != RULE_DIAGNOSTIC_FAMILY or shape[0][1:] != control[1:]:
+                return _fail("[%s/%s] no false leaf; the same files, order and obligations regroup as one family: %s vs %s"
+                             % (n["i"], case, shape, control))
+            if any(holder in (c.get("write_set") or []) for c in clusters):
+                return _fail("[%s/%s] the holder is not made writable" % (n["i"], case))
+            unowned, twice = _ownership(items, clusters)
+            if unowned or twice:
+                return _fail("[%s/%s] conservation: unowned %s, twice %s" % (n["i"], case, unowned, twice))
+
+        # G09: a single partial file, no outside types at all
+        pkg = n["g"]
+        uses = "src/main/java/%s/Uses.java" % pkg
+        lib_simple = n["lib"].rsplit(".", 1)[-1]
+        src = ("package %s;\n\nimport %s;\npublic class Uses {\n    %s lib;\n    public void go() { lib.run(); }\n}\n"
+               % (pkg, n["lib"], lib_simple))
+        with tempfile.TemporaryDirectory(prefix="wl-g09-") as d:
+            root = _jdk_root(d, {uses: src})
+            items = _jdk_items(root)
+            model = dest_model(root)
+        row = model["types"][0]
+        if row.get("type_refs_complete") is not False or len(model["types"]) != 1:
+            return _fail("[%s] the unresolved field makes the only walk incomplete: %s" % (pkg, row))
+        if len(items) < 2:
+            return _fail("[%s] javac reports the missing package and the missing type: %s" % (pkg, [i["detail"] for i in items]))
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
+            return _fail("[%s] an empty outside set with incomplete inside evidence is not isolation: %s"
+                         % (pkg, [(c["unit"]["rule"], c["unit"]["symbols"]) for c in units]))
+        clusters = cluster_items(items, {}, set(), units=units)
+        unowned, twice = _ownership(items, clusters)
+        if unowned or twice or any(sorted(c["write_set"]) != [uses] for c in clusters):
+            return _fail("[%s] every obligation stays owned, inside its own file: %s" % (pkg, [(c["id"], c["write_set"], c["items"]) for c in clusters]))
+    return 0
+
+
+def _leaf_evidence_case() -> int:
+    """Missing, malformed or incomplete evidence can never establish isolation,
+    on either side, and refusing the leaf drops nothing: the families still
+    own every obligation exactly once. A complete empty outside set does."""
+    from planner.worklist import package_leaf_units, unit_states_relationships, unit_type_refs
+
+    base, pkg = "org.acme.leafy", "org/acme/leafy"
+    leaf_dir = "src/main/java/%s/leaf" % pkg
+
+    def world() -> tuple[dict, list[dict]]:
+        types = [_dm_type("%s.leaf.H%d" % (base, i), "%s/leaf/H%d.java" % (pkg, i), imports=["x.legacy.Sym%d" % i])
+                 for i in range(2)]
+        types.append(_dm_type("%s.api.Out" % base, "%s/api/Out.java" % pkg, type_refs=["java.lang.Object"]))
+        items = [_javac("%s/H%d.java" % (leaf_dir, i), "Sym%d" % i, i) for i in range(2)]
+        return {"types": types, "unresolved_files": []}, items
+
+    def leaf_of(model: dict, items: list[dict]) -> bool:
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        clusters = cluster_items(items, {}, set(), units=units)
+        unowned, twice = _ownership(items, clusters)
+        if unowned or twice:
+            raise AssertionError("conservation: unowned %s, twice %s" % (unowned, twice))
+        return any(c["unit"]["rule"] == RULE_PACKAGE_LEAF and c["unit"]["family_key"] == leaf_dir for c in units)
+
+    def mutate(fn) -> tuple[dict, list[dict]]:
+        model, items = world()
+        fn(model)
+        return model, items
+
+    def out_row(m: dict) -> dict:
+        return next(t for t in m["types"] if t["fqn"].endswith(".api.Out"))
+
+    def in_row(m: dict) -> dict:
+        return next(t for t in m["types"] if t["fqn"].endswith(".leaf.H0"))
+
+    try:
+        if not leaf_of(*world()):
+            return _fail("control: complete evidence on both sides forms the leaf")
+        refused = (
+            ("inside walk incomplete", lambda m: in_row(m).update(type_refs_complete=False)),
+            ("inside walk unknown (old-shaped row)", lambda m: in_row(m).pop("type_refs_complete")),
+            ("inside identity missing", lambda m: in_row(m).update(fqn="")),
+            ("outside walk incomplete", lambda m: out_row(m).update(type_refs_complete=False)),
+            ("outside walk unknown (old-shaped row)", lambda m: out_row(m).pop("type_refs_complete")),
+            ("outside walk malformed", lambda m: out_row(m).update(type_refs_complete="true")),
+            ("outside refs malformed", lambda m: out_row(m).update(type_refs=None)),
+            ("outside partially resolved", lambda m: out_row(m).update(resolution="partial")),
+            ("unresolved outside file without a row", lambda m: m.update(unresolved_files=["%s/api/Broken.java" % pkg])),
+            ("unresolved inside file without a row", lambda m: (m["types"].remove(in_row(m)),
+                                                                m.update(unresolved_files=["%s/leaf/H0.java" % pkg]))),
+            ("union file without a row", lambda m: m["types"].remove(in_row(m))),
+            ("unresolved_files malformed", lambda m: m.update(unresolved_files="x")),
+        )
+        for label, fn in refused:
+            if leaf_of(*mutate(fn)):
+                return _fail("%s cannot establish a package leaf" % label)
+        # G09's shape: the inside walk is incomplete and NOTHING is outside
+        g09 = mutate(lambda m: (m["types"].remove(out_row(m)), in_row(m).update(type_refs_complete=False)))
+        if leaf_of(*g09):
+            return _fail("an empty outside set does not vacuously prove isolation for an incomplete inside")
+        # while a COMPLETE empty outside set is a valid (vacuous) isolation
+        if not leaf_of(*mutate(lambda m: m["types"].remove(out_row(m)))):
+            return _fail("a complete inside with nothing outside is a leaf: the guard is about evidence, not emptiness")
+        # an incomplete row keeps the positive edges it did establish
+        known = _dm_type("%s.api.Out" % base, "%s/api/Out.java" % pkg, type_refs=["%s.leaf.H1" % base], refs_complete=False)
+        if "%s.leaf.H1" % base not in unit_type_refs(known) or unit_states_relationships(known):
+            return _fail("an incomplete row keeps its known references and states no absence")
+        model, items = world()
+        families = [{"key": "k%d" % i, "symbol_kind": "type", "items": [items[i]], "files": [items[i]["path"]]} for i in range(2)]
+        if not package_leaf_units(families, model, set()):
+            return _fail("control: the leaf helper agrees with form_units")
+        # deterministic under reversed enumeration
+        m1, i1 = world()
+        u1, _ = form_units(i1, {}, set(), model=m1, root=GOLDEN)
+        m2, i2 = world()
+        m2["types"].reverse()
+        u2, _ = form_units(list(reversed(i2)), {}, set(), model=m2, root=GOLDEN)
+        if [(c["id"], c["write_set"], c.get("order_key")) for c in u1] != [(c["id"], c["write_set"], c.get("order_key")) for c in u2]:
+            return _fail("formation is independent of enumeration order")
+    except AssertionError as exc:
+        return _fail(str(exc))
+    return 0
+
+
+def _real_leaf_bound_case() -> int:
+    """The bounds under corrected classification, on the real model: 20/21
+    files, 160/161 sites and 8/9 symbols for an ordinary unit, with the
+    current narrowing and typed-block semantics, and every obligation owned
+    exactly once. A generic consumer outside changes which rule claims the
+    obligations, never the bound they meet or the files they may write. (The
+    16/17 fragment exception is _real_fragment_bound_case, unchanged.)"""
+    import tempfile
+
+    base = "org.acme.bulk"
+    pkg = base.replace(".", "/")
+
+    def tree(n_files: int, consumer: bool) -> dict[str, str]:
+        files = {"src/main/java/%s/leaf/F%02d.java" % (pkg, i): "package %s.leaf;\npublic class F%02d {\n}\n" % (base, i)
+                 for i in range(n_files)}
+        if consumer:
+            files["src/main/java/%s/api/Use.java" % pkg] = (
+                "package %s.api;\npublic class Use {\n    java.util.List<%s.leaf.F00> xs;\n}\n" % (base, base))
+        return files
+
+    def path(i: int) -> str:
+        return "src/main/java/%s/leaf/F%02d.java" % (pkg, i)
+
+    def plan(n_files: int, items: list[dict], consumer: bool) -> tuple[list[dict], list[dict]]:
+        with tempfile.TemporaryDirectory(prefix="wl-leaf-bound-") as d:
+            model = dest_model(_jdk_root(d, tree(n_files, consumer)))
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        clusters = cluster_items(items, {}, set(), units=units)
+        unowned, twice = _ownership(items, clusters)
+        if unowned or twice:
+            raise AssertionError("conservation: unowned %s, twice %s" % (unowned, twice))
+        if any(p.endswith("/api/Use.java") for c in clusters for p in (c.get("write_set") or [])):
+            raise AssertionError("the consumer became writable")
+        return units, clusters
+
+    try:
+        for consumer in (False, True):
+            rule = RULE_DIAGNOSTIC_FAMILY if consumer else RULE_PACKAGE_LEAF
+            # files: one family over 20 files is open, over 21 is a typed block
+            for n_files, status in ((UNIT_MAX_FILES, "open"), (UNIT_MAX_FILES + 1, "blocked")):
+                items = [_javac(path(i), "Legacy", i) for i in range(n_files)]
+                units, _ = plan(n_files, items, consumer)
+                if [(c["unit"]["rule"], c["status"], len(c["write_set"])) for c in units] != [(rule, status, n_files)]:
+                    return _fail("[consumer=%s] %d files: %s" % (consumer, n_files, [(c["unit"]["rule"], c["status"], len(c["write_set"])) for c in units]))
+                if status == "blocked" and not units[0]["block"].startswith("UNIT_OVERSIZE: "):
+                    return _fail("[consumer=%s] the oversize block is typed: %r" % (consumer, units[0]["block"]))
+            # sites: one family over two files, 160 sites open, 161 blocked
+            for n_sites, status in ((UNIT_MAX_SITES, "open"), (UNIT_MAX_SITES + 1, "blocked")):
+                items = [_javac(path(i % 2), "Legacy", i) for i in range(n_sites)]
+                units, _ = plan(2, items, consumer)
+                if [(c["unit"]["rule"], c["status"], c["unit"]["size"]["sites"]) for c in units] != [(rule, status, n_sites)]:
+                    return _fail("[consumer=%s] %d sites: %s" % (consumer, n_sites, [(c["unit"]["rule"], c["status"], c["unit"]["size"]) for c in units]))
+        # symbols: a leaf of 8 families is whole; of 9 it narrows to 8 and the
+        # dropped family's obligations stay owned by their own cluster
+        for n_sym, narrowed in ((UNIT_MAX_SYMBOLS, False), (UNIT_MAX_SYMBOLS + 1, True)):
+            items = [_javac(path(i), "Sym%d" % i, 100 * i + k) for i in range(n_sym) for k in range(i + 1)]
+            units, clusters = plan(n_sym, items, False)
+            leaf = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
+            if len(leaf) != 1 or leaf[0]["status"] != "open" or leaf[0]["unit"]["size"]["symbols"] != UNIT_MAX_SYMBOLS:
+                return _fail("%d symbols: %s" % (n_sym, [(c["unit"]["rule"], c["status"], c["unit"]["size"]) for c in units]))
+            if ("narrowed" in leaf[0]["_unit_seal"]["bounds"]) != narrowed:
+                return _fail("%d symbols: narrowed is recorded only when a family was dropped: %s" % (n_sym, leaf[0]["_unit_seal"]["bounds"]))
+            if narrowed:
+                dropped = {str(i["id"]) for i in items if i["path"] == path(0)}
+                if dropped & set(leaf[0]["items"]) or not any(dropped <= set(c["items"]) for c in clusters if c is not leaf[0]):
+                    return _fail("the lowest-cardinality family is dropped and retained as its own work")
+            # and with a generic consumer the same obligations are claimed by
+            # the existing rules, still inside the bound or typed-blocked
+            units_c, _ = plan(n_sym, items, True)
+            if [c for c in units_c if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
+                return _fail("%d symbols: the generic consumer prevents the leaf" % n_sym)
+            for c in units_c:
+                s = c["unit"]["size"]
+                if c["status"] == "open" and (s["files"] > UNIT_MAX_FILES or s["sites"] > UNIT_MAX_SITES or s["symbols"] > UNIT_MAX_SYMBOLS):
+                    return _fail("an open unit is inside the bound: %s" % s)
+    except AssertionError as exc:
+        return _fail(str(exc))
+    return 0
+
+
+def _real_generic_retirement_case() -> int:
+    """assess_unit, on the real model: a retired type left only inside a
+    generic argument or an array is still named; a truncated declaration walk
+    cannot prove it absent; and the independent parsed-retirement proof still
+    answers on a partial or truncated row whose syntax no longer names it."""
+    import tempfile
+
+    from planner.worklist import unit_retired_symbols
+
+    retired = "com.legacy.Retired"
+    stub = {"src/main/java/com/legacy/Retired.java": "package com.legacy;\npublic class Retired {\n}\n",
+            "src/main/java/other/Retired.java": "package other;\npublic class Retired {\n}\n"}
+    a, b = "src/main/java/app/UsesA.java", "src/main/java/app/UsesB.java"
+
+    def cls(name: str, body: str, head: str = "") -> str:
+        return "package app;\n%spublic class %s {\n%s}\n" % (head, name, body)
+
+    before = {a: cls("UsesA", "    Retired r;\n", "import com.legacy.Retired;\n"),
+              b: cls("UsesB", "    Retired r;\n", "import com.legacy.Retired;\n")}
+    with tempfile.TemporaryDirectory(prefix="wl-gen-ret-form-") as d:
+        root = _jdk_root(d, {**stub, **before})
+        model = dest_model(root)
+        items = [_javac(a, "Retired", 1), _javac(b, "Retired", 2)]
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if len(units) != 1:
+            return _fail("the two files are one unit: %s" % [(c["unit"]["rule"], c["unit"]["family_key"]) for c in units])
+        scope = build_unit_scope(root, units[0], items, {"candidate_sha256": "c0"})
+    if [s for s, _k in unit_retired_symbols(scope)] != [retired]:
+        return _fail("the unit retires %s: %s" % (retired, scope["symbols"]))
+    scopes = {RULE_PACKAGE_LEAF: dict(scope, rule=RULE_PACKAGE_LEAF), RULE_DIAGNOSTIC_FAMILY: dict(scope, rule=RULE_DIAGNOSTIC_FAMILY)}
+    deep = "java.util.List<" * 40 + "%s" + ">" * 40
+    clean_b = cls("UsesB", "    int r;\n")
+    cases = (
+        # (label, UsesA, verdict for UsesA, proof when ok)
+        ("retired", cls("UsesA", "    int r;\n"), "ok", "parsed-symbol-absence"),
+        # the parse still spells a same-named other type, so only the complete
+        # resolved walk can answer, and it does
+        ("resolved-absent", cls("UsesA", "    java.util.List<other.Retired> r;\n"), "ok", "resolved-model"),
+        ("generic-left", cls("UsesA", "    java.util.List<com.legacy.Retired> r;\n"), "violates", ""),
+        ("array-left", cls("UsesA", "    com.legacy.Retired[][] r;\n"), "violates", ""),
+        ("wildcard-left", cls("UsesA", "    java.util.List<? super com.legacy.Retired> r;\n"), "violates", ""),
+        ("bound-left", cls("UsesA", "    public <T extends com.legacy.Retired> void m() { }\n"), "violates", ""),
+        # a full compiler row whose walk was truncated: no absence proof from it
+        ("truncated-left", cls("UsesA", "    %s r;\n" % (deep % retired)), "inconclusive", ""),
+        # the parse no longer names it: the independent proof still answers
+        ("truncated-absent", cls("UsesA", "    %s r;\n" % (deep % "String")), "ok", "parsed-symbol-absence"),
+        ("partial-absent", cls("UsesA", "    Missing m;\n"), "ok", "parsed-symbol-absence"),
+        ("partial-generic-left", cls("UsesA", "    Missing m;\n    java.util.List<com.legacy.Retired> r;\n"), "inconclusive", ""),
+    )
+    for label, text, verdict, proof in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-gen-ret-") as d:
+            root = _jdk_root(d, {**stub, a: text, b: clean_b})
+            for rule, sc in scopes.items():
+                rows = [r for r in assess_unit(root, sc) if r["path"] == a]
+                if [r["verdict"] for r in rows] != [verdict]:
+                    return _fail("%s [%s]: UsesA must be %s: %s" % (label, rule, verdict, rows))
+                if verdict == "ok" and [r.get("proof") for r in rows] != [proof]:
+                    return _fail("%s [%s] is decided by the %s proof: %s" % (label, rule, proof, rows))
+    return 0
+
+
 def _dm_is_leaf(typ: dict, n: dict) -> bool:
     return ("%s.%s." % (n["base"], n["leaf_pkg"])) in str(typ.get("fqn") or "")
+
+
+def _real_fragment_bound_case() -> int:
+    """Seven multi-method parents, rather than seven single-method stubs.
+
+    The real compiler model must keep all 16 obligations. A renamed specimen
+    behaves identically; 17 symbols, excessive files/sites and ordinary
+    declaration closures still refuse under their respective bounds.
+    """
+    import copy
+    import tempfile
+    from planner.worklist import _bound_unit
+
+    for package, stem in (("org.acme.inventory", "Inventory"), ("com.example.shipping", "Shipment")):
+        files = {}
+        for index, count in enumerate((3, 3, 2, 2, 1, 3, 2)):
+            name = "%s%d" % (stem, index)
+            prefix = "src/main/java/" + package.replace(".", "/") + "/"
+            methods = " ".join("void persist%d(String value);" % n for n in range(count))
+            files[prefix + name + ".java"] = "package %s; public interface %s { %s }" % (package, name, methods)
+            files[prefix + name + "Store.java"] = "package %s; public interface %sStore extends %s {}" % (package, name, name)
+        with tempfile.TemporaryDirectory(prefix="wl-fragment-bound-") as d:
+            model = dest_model(_jdk_root(d, files))
+            item = dict(_set_wide_item(), gate="package")
+            units, claimed = form_units([item], {}, set(), model=model, root=GOLDEN)
+            if len(units) != 1 or item["id"] not in claimed:
+                return _fail("multi-method fragment set must remain one conserved unit")
+            unit = units[0]
+            seal = unit["_unit_seal"]
+            if unit["status"] != "open" or unit["unit"]["size"] != {"files": 14, "sites": 23, "symbols": 16}:
+                return _fail("16-symbol real fragment set must mint without dropping members: %s" % unit["unit"]["size"])
+            if len(seal["symbols"]) != 16 or sum(len(r["members"]) for r in seal["implementation"]) != 16:
+                return _fail("each method stays sealed and owed, not just each parent")
+            if seal["bounds"].get("max_symbols") != 16 or seal["bounds"].get("adr") != "ADR-024" or unit.get("gate") != "package":
+                return _fail("the amended bound is recorded; full packaging remains the gate")
+            # Explicitly reproduce the previous bound on these real rows.
+            for label, changed in (("ordinary-closure", {"implementation": []}),
+                                   ("other-runtime-set", {"items": [dict(item, set_wide="other")]}),
+                                   ("17-symbols", {"symbols": seal["symbols"] + [dict(seal["symbols"][0], signature="extra()")]}),
+                                   ("21-files", {"files": ["src/main/java/P%d.java" % i for i in range(21)]}),
+                                   ("161-sites", {"members": [dict(seal["members"][0], occurrence=i) for i in range(161)]})):
+                candidate = copy.deepcopy(seal)
+                candidate.update(changed)
+                _bound_unit(candidate)
+                if "UNIT_OVERSIZE" not in candidate.get("block", ""):
+                    return _fail("%s must still refuse" % label)
+                if label in ("ordinary-closure", "other-runtime-set") and candidate["bounds"]["max_symbols"] != 8:
+                    return _fail("non-fragment bounds must remain eight")
+    return 0
+
+
+# the platform's CDI annotations, present so an import of them binds (the
+# destination's classpath carries them through quarkus-arc)
+_CDI_STUBS = {
+    "src/main/java/jakarta/enterprise/context/ApplicationScoped.java":
+        "package jakarta.enterprise.context;\npublic @interface ApplicationScoped { }\n",
+    "src/main/java/jakarta/enterprise/inject/Typed.java":
+        "package jakarta.enterprise.inject;\npublic @interface Typed { Class<?>[] value() default {}; }\n",
+}
 
 
 def _real_fragment_case() -> int:
@@ -2011,6 +2546,7 @@ def _real_fragment_case() -> int:
 
     Every verdict is repeated on a tree that shares no package, type, member or
     identifier with the first."""
+    import json
     import tempfile
 
     for label, n in (("A", _REAL_A), ("B", _REAL_B)):
@@ -2021,7 +2557,7 @@ def _real_fragment_case() -> int:
         child_path = "%s/%s/%s.java" % (src, n["store_pkg"].replace(".", "/"), n["store"])
         adapter = "%s/%s/%sImpl.java" % (src, n["frag_pkg"].replace(".", "/"), n["frag"])
         with tempfile.TemporaryDirectory(prefix="wl-real-frag-") as d:
-            root = _jdk_root(d, _real_sources(n, consumer=True))
+            root = _jdk_root(d, {**_real_sources(n, consumer=True), **_CDI_STUBS})
             model = dest_model(root)
             items = _real_items(n) + [_set_wide_item()]
             units, claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
@@ -2060,12 +2596,51 @@ def _real_fragment_case() -> int:
             if wrong["verdict"] != "violates" or "does not implement" not in wrong["detail"]:
                 return _fail("[%s] the promised relationship is checked, not assumed: %s" % (label, wrong))
 
-            # THE REPAIR: the adapter implements the parent and answers the
-            # member it owed
-            (root / adapter).write_text(
-                "package %s.%s;\nimport java.util.List;\npublic class %sImpl implements %s {\n"
-                "    public List<String> %s(String clause) { return List.of(); }\n}\n"
-                % (base, n["frag_pkg"], n["frag"], n["frag"], n["member"]), encoding="utf-8")
+            # V16-4 (v16 t_1118e877): the adapter implements the parent and
+            # answers the member it owed, but it is a bean of the parent's type
+            # too, beside the generated repository -- every injection of the
+            # parent is ambiguous at augmentation. The obligation names the
+            # CDI exposure it is owed under, and the model checks it.
+            impl = n["frag"] + "Impl"
+
+            def write_adapter(annotations: str) -> None:
+                (root / adapter).write_text(
+                    "package %s.%s;\nimport java.util.List;\n%spublic class %s implements %s {\n"
+                    "    public List<String> %s(String clause) { return List.of(clause); }\n}\n"
+                    % (base, n["frag_pkg"], annotations, impl, n["frag"], n["member"]), encoding="utf-8")
+
+            cdi = owed[0].get("cdi") or {}
+            if (cdi.get("scope"), cdi.get("typed"), cdi.get("types")) != (
+                    "jakarta.enterprise.context.ApplicationScoped", "jakarta.enterprise.inject.Typed", [frag + "Impl"]):
+                return _fail("[%s] the fragment obligation names the concrete-only CDI exposure it is owed: %s" % (label, owed[0]))
+            if "@Typed(%s.class)" % impl not in json.dumps(unit["_unit_seal"]["completion"]):
+                return _fail("[%s] the completion check states the exposure: %s" % (label, unit["_unit_seal"]["completion"]))
+            for why_name, annotations, verdict, token in (
+                    ("no CDI annotation", "", "violates", "@jakarta.enterprise.inject.Typed(%s.class)" % impl),
+                    ("the scope alone", "@jakarta.enterprise.context.ApplicationScoped\n", "violates", "ambiguous"),
+                    ("@Typed alone", "@jakarta.enterprise.inject.Typed(%s.class)\n" % impl, "violates", "ApplicationScoped"),
+                    ("@Typed naming the parent too", "@jakarta.enterprise.context.ApplicationScoped\n"
+                     "@jakarta.enterprise.inject.Typed({%s.class, %s.class})\n" % (impl, n["frag"]), "violates", frag),
+                    ("@Typed with no type", "@jakarta.enterprise.context.ApplicationScoped\n@jakarta.enterprise.inject.Typed\n",
+                     "violates", "no type")):
+                write_adapter(annotations)
+                got = next(r for r in assess_unit(root, scope) if r.get("state") == "implementation")
+                if got["verdict"] != verdict or token not in got["detail"]:
+                    return _fail("[%s] %s: the delegate's CDI exposure is checked from the model: %s" % (label, why_name, got))
+
+            # THE REPAIR: scope kept, bean types restricted to the concrete class
+            write_adapter("import jakarta.enterprise.context.ApplicationScoped;\nimport jakarta.enterprise.inject.Typed;\n"
+                          "@ApplicationScoped\n@Typed(%s.class)\n" % impl)
+            # a model that cannot read the class literal proves nothing
+            from unittest.mock import patch
+            blind = dest_model(root)
+            for t in blind["types"]:
+                for a in t.get("annotations") or []:
+                    a.pop("classes", None)
+            with patch("planner.worklist.dest_model", return_value=blind):
+                got = next(r for r in assess_unit(root, scope) if r.get("state") == "implementation")
+            if got["verdict"] != "inconclusive":
+                return _fail("[%s] unresolved @Typed literals are inconclusive, never a pass: %s" % (label, got))
             after = assess_unit(root, scope)
             bad = [r for r in after if r["verdict"] != "ok"]
             if bad:
@@ -2281,6 +2856,17 @@ def _owed_adapter_case() -> int:
             return _fail("a restrictive source policy is rendered as it is, never widened: %s" % props)
         if any(k.startswith("rhoai3.source-cors.rule.") and v == "*" and ".0." in k for k, v in props.items()):
             return _fail("no wildcard enters a policy whose source names its values: %s" % props)
+
+        split_items = [dict(cors_item, id=str(cors_item["id"]) + "-disabled", security_mode="disabled"),
+                       dict(cors_item, id=str(cors_item["id"]) + "-enabled", security_mode="enabled")]
+        split_units, _claimed = owed_adapter_units(split_items, root, {}, set())
+        keys = sorted(u["unit"]["family_key"] for u in split_units)
+        if keys != ["source-cors-response-adapter/v1", "source-cors-response-adapter/v1:enabled"]:
+            return _fail("CORS obligations of different modes are two units, not one mixed card: %s" % keys)
+        by_key = {u["unit"]["family_key"]: set(u["items"]) for u in split_units}
+        if (by_key["source-cors-response-adapter/v1"] != {str(cors_item["id"]) + "-disabled"}
+                or by_key["source-cors-response-adapter/v1:enabled"] != {str(cors_item["id"]) + "-enabled"}):
+            return _fail("each mode's unit claims only its own items: %s" % by_key)
 
         # the checkpoint, before and after the capability ran
         row = impl[0]
@@ -2807,6 +3393,14 @@ def _generated_body_case() -> int:
                 or "Generated body type %s requires pets" % dto_fqn not in a["message"] or a["scenarios"] != ["sc:create-1"]):
             return _fail("the obligation is a BUILD item on pom.xml that keeps its parity gate and scenario: %s"
                          % {k: a.get(k) for k in ("path", "kind", "rule_id", "gate", "cause", "line", "missing_required", "generated_type", "scenarios")})
+        # V16-8: the catalog's conditional rule is the ITEM's first action, and
+        # its message says it -- the option, where, and what to keep
+        if (a.get("first_action") != first
+                or "FIRST ACTION (compat-mapping build_plugins org.openapitools:openapi-generator-maven-plugin, generator jaxrs-spec): "
+                   "set <generateJsonCreator>false</generateJsonCreator> under the plugin's <configOptions> in pom.xml (line 24); "
+                   "keep <useBeanValidation>true</useBeanValidation>." not in a["message"]
+                or "keep <useBeanValidation>true</useBeanValidation>" not in first):
+            return _fail("a generated-body item carries the generator rule as its first action: %s | %s" % (a.get("first_action", "")[:120], a["message"][-400:]))
         cl = cluster_items([a], {}, set())
         if len(cl) != 1 or cl[0]["path"] != "pom.xml" or cl[0]["kind"] != "build" or cl[0]["write_set"] != ["pom.xml"] or cl[0]["status"] != "open":
             return _fail("it forms the pom build cluster with pom.xml in the write set: %s" % cl)
@@ -3170,7 +3764,7 @@ def _receipt_v2_case() -> int:
         if len(nav) != 1 or nav[0]["path"] != ctl or nav[0]["scenarios"] != ["sc:read-entry"]:
             return _fail("a navigation obligation is read from navigation_obligations[]: %s" % nav)
         st = parity_state(json.loads((pdir / "receipt.json").read_text()))
-        if st["obligations"][parity_obligation_id(ep, "", "navigation")]["verdict"] != "FAIL" or st["entry_points"][ep] != "PASS":
+        if st["obligations"][parity_obligation_id(ep, "", "navigation", "disabled")]["verdict"] != "FAIL" or st["entry_points"][ep] != "PASS":
             return _fail("a passing redirect with a dead target keeps PASS and its navigation obligation is FAIL: %s" % st["entry_points"])
         pre = by.get(("sc:cors-enabled-preflight-p1", "PARITY_CORS"))
         if not pre or "WWW-Authenticate" not in pre["detail"] or ("sc:cors-enabled-preflight-p1", "PARITY") in by:
@@ -3185,6 +3779,276 @@ def _receipt_v2_case() -> int:
             return _fail("a destination granting what a preventing source did not is still owed (control)")
         if any(k[0] == "sc:refuse-delete-accounts" for k in by) or not any(n["kind"] == "source-effect-unobserved" for n in notes):
             return _fail("an effect judged without the source's own effect is a note, never a repair card: %s" % sorted(by))
+    return 0
+
+
+def _enabled_mode_handoff_case() -> int:
+    """Enabled-mode FAIL under scenarios-enabled/ is a repair obligation.
+    A disabled-mode PASS of a different id cannot mint it or discharge it."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+    from planner.worklist import cors_scenarios, parity_items, parity_obligation_discharged, scenario_record
+
+    ep = "ep:org.springframework.samples.petclinic.rest.controller.OwnerRestController#addOwner():http"
+    ctl = "src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRestController.java"
+    enabled_sid = "sc:cors-enabled-preflight-7b1a3d9234cd"
+    disabled_sid = "sc:cors-preflight-7b1a3d9234cd"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}]}
+    reason = ("status 200 vs 401; header WWW-Authenticate None vs Basic realm=\"Realm\"; "
+              "header Access-Control-Allow-Origin * vs None")
+    with tempfile.TemporaryDirectory(prefix="enabled-handoff-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        (pdir / "scenarios-enabled").mkdir(parents=True)
+        for rel, scenarios in (
+            ("verification/scenarios/corpus.json", [
+                {"id": disabled_sid, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+                 "scenario_type": "browser-preflight"}]),
+            ("verification/scenarios-enabled/corpus.json", [
+                {"id": enabled_sid, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+                 "scenario_type": "browser-preflight"}]),
+        ):
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"scenarios": scenarios}))
+        (pdir / "receipt.json").write_text(json.dumps({
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+            "entry_points": [{"entry_point": ep, "verdict": "PASS", "scenarios": [disabled_sid]}]}))
+        (pdir / "receipt-enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "enabled", "verdict": "FAIL",
+            "entry_points": [{"entry_point": ep, "verdict": "FAIL", "reason": reason, "scenarios": [enabled_sid]}],
+            "cors": {"outcomes": {enabled_sid: {"browser_access": "prevents", "type": "browser-preflight"}}}}))
+        (pdir / "scenarios" / "disabled.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "disabled",
+            "entry_point": ep, "scenario": disabled_sid, "verdict": "PASS", "reason": ""}))
+        (pdir / "scenarios-enabled" / "enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep, "scenario": enabled_sid, "verdict": "FAIL", "reason": reason}))
+        co = cors_scenarios(root)
+        if disabled_sid not in co or enabled_sid not in co:
+            return _fail("both mode corpora contribute cross-origin scenarios: %s" % sorted(co))
+        items = parity_items(root, bundle)
+        cors = [i for i in items if i.get("rule_id") == "PARITY_CORS"]
+        if (len(cors) != 1 or cors[0].get("scenario") != enabled_sid
+                or cors[0].get("security_mode") != "enabled"):
+            return _fail("the enabled preflight FAIL is the CORS obligation, stamped with its mode: %s"
+                         % [{k: i.get(k) for k in ("scenario", "rule_id", "security_mode")} for i in items])
+        if any(i.get("scenario") == disabled_sid for i in items):
+            return _fail("a disabled PASS must not mint and must not discharge the enabled FAIL: %s" % items)
+        rec = scenario_record(pdir, enabled_sid)
+        if rec.get("verdict") != "FAIL" or rec.get("security_mode") != "enabled":
+            return _fail("scenario_record finds the enabled verdict, not the disabled PASS: %s" % rec)
+        row = dict(cors[0], what="cors")
+        ok, why = parity_obligation_discharged(root, row, {"cors-preflight-7b1a3d9234cd"})
+        if ok:
+            return _fail("remeasuring the disabled preflight cannot discharge the enabled one: %s" % why)
+        (pdir / "scenarios-enabled" / "enabled.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep, "scenario": enabled_sid, "verdict": "PASS", "reason": ""}))
+        ok, why = parity_obligation_discharged(root, row, {"cors-enabled-preflight-7b1a3d9234cd"})
+        if not ok or "PASS" not in why:
+            return _fail("the enabled record coming back PASS discharges its own obligation: %s" % why)
+    return 0
+
+
+def _enabled_navigation_issuance_baseline_case() -> int:
+    """v10 CORS t_27cea939 / parity:a79db752: an enabled-mode navigation FAIL
+    lives on receipt-enabled.json, not as a scenario file. Issuance that
+    judged the disabled receipt still records it in gate_items. A CORS
+    candidate that does not re-measure that redirect is not a regression; a
+    genuine new FAIL still refuses. progress() itself is unchanged: the dest
+    shape (nav absent from the issuance baseline) still vetoes."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR, VERIFY_RUN
+    from planner.worklist import judged_parity_receipt, parity_obligation_id
+
+    ep_nav = "ep:org.springframework.samples.petclinic.rest.RootRestController#redirectToSwagger(HttpServletResponse):http"
+    ep_cors = "ep:org.springframework.samples.petclinic.rest.controller.OwnerRestController#addOwner():http"
+    ep_other = "ep:org.springframework.samples.petclinic.rest.controller.PetRestController#addPet():http"
+    nav_path = "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java"
+    cors_path = "src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRestController.java"
+    other_path = "src/main/java/org/springframework/samples/petclinic/rest/controller/PetRestController.java"
+    enabled_sid = "sc:cors-enabled-preflight-7b1a3d9234cd"
+    other_sid = "sc:add-pet-1"
+    cors_reason = ("status 200 vs 401; header WWW-Authenticate None vs Basic realm=\"Realm\"; "
+                   "header Access-Control-Allow-Origin * vs None")
+    nav_reason = "redirect target http://127.0.0.1:8081/petclinic/swagger-ui/index.html is dead on the destination (401)"
+    bundle = {"entry_points": [
+        {"id": ep_nav, "path": nav_path},
+        {"id": ep_cors, "path": cors_path},
+        {"id": ep_other, "path": other_path},
+    ]}
+    cors_id = parity_obligation_id(ep_cors, enabled_sid, "cors")
+    nav_id = parity_obligation_id(ep_nav, "", "navigation", "enabled")
+    other_id = parity_obligation_id(ep_other, other_sid, "response")
+    with tempfile.TemporaryDirectory(prefix="nav-issuance-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        (pdir / "scenarios-enabled").mkdir(parents=True)
+        (root / "verification/scenarios-enabled").mkdir(parents=True)
+        (root / VERIFY_RUN).parent.mkdir(parents=True)
+        (root / "verification/scenarios-enabled/corpus.json").write_text(json.dumps({"scenarios": [
+            {"id": enabled_sid, "method": "OPTIONS", "cors_policy": "crossorigin:1",
+             "scenario_type": "browser-preflight"}]}))
+        disabled = {"schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+                    "receipt_sha256": "disabled",
+                    "entry_points": [{"entry_point": ep_nav, "verdict": "PASS", "navigation": "ok",
+                                      "scenarios": ["sc:read-root"]}]}
+        enabled_fail = {
+            "schema": "rhoai3.parity-receipt/v1", "security_mode": "enabled", "verdict": "FAIL",
+            "receipt_sha256": "enabled-fail",
+            "entry_points": [
+                {"entry_point": ep_nav, "verdict": "PASS", "navigation": "failed",
+                 "scenarios": ["sc:auth-allowed-read-root"],
+                 "navigation_failures": [{"scenario": "sc:auth-allowed-read-root",
+                                          "target": "http://127.0.0.1:8081/petclinic/swagger-ui/index.html",
+                                          "terminal": "dead", "final_status": 401}]},
+                {"entry_point": ep_cors, "verdict": "FAIL", "reason": cors_reason, "scenarios": [enabled_sid]},
+            ],
+            "navigation_obligations": [{"entry_point": ep_nav, "kind": "navigation", "verdict": "FAIL",
+                                        "scenarios": ["sc:auth-allowed-read-root"], "reason": nav_reason,
+                                        "navigation_failures": [{"scenario": "sc:auth-allowed-read-root",
+                                                                 "target": "http://127.0.0.1:8081/petclinic/swagger-ui/index.html",
+                                                                 "terminal": "dead", "final_status": 401}]}],
+        }
+        (pdir / "receipt.json").write_text(json.dumps(disabled))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(enabled_fail))
+        (pdir / "scenarios-enabled" / "cors.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep_cors, "scenario": enabled_sid, "verdict": "FAIL", "reason": cors_reason}))
+        # issuance shape: last verification judged the disabled receipt
+        (root / VERIFY_RUN).write_text(json.dumps({"runtime": {"parity": {"ran": True, "security_mode": "disabled"}}}))
+        judged, _ = judged_parity_receipt(root)
+        if judged.get("security_mode") != "disabled":
+            return _fail("issuance judges the disabled receipt: %s" % judged.get("security_mode"))
+        items = parity_items(root, bundle, receipt=judged)
+        ids = {i["id"] for i in items}
+        if cors_id not in ids:
+            return _fail("the enabled CORS FAIL is still an obligation: %s" % sorted(ids))
+        if nav_id not in ids:
+            return _fail("the enabled navigation FAIL is in the issuance baseline even when judged is disabled: %s"
+                         % sorted(ids))
+        nav = next(i for i in items if i["id"] == nav_id)
+        if nav.get("security_mode") != "enabled" or nav.get("cause") != "redirect-target-dead":
+            return _fail("the omitted obligation is the enabled dead redirect: %s" % nav)
+        if nav.get("verdict_file") != "verification/parity/receipt-enabled.json":
+            return _fail("the enabled navigation names receipt-enabled.json: %s" % nav.get("verdict_file"))
+        # dest rejection reproduced: that id outside the (wrong) issuance set still vetoes
+        m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 1}
+        common = dict(gate="parity", issued_items=[cors_id], prev_runtime={}, cur_runtime={},
+                      prev_parity=enabled_fail, cur_parity=enabled_fail)
+        ok, why = progress(m, m, set(), set(), prev_gate_items={cors_id}, cur_gate_items={nav_id}, **common)
+        if ok is not False or nav_id not in why or "gate did not hold" not in why:
+            return _fail("progress still refuses a nav FAIL that was not in the issuance baseline: %s %s" % (ok, why))
+        # after the accounting fix: same nav FAIL is in prev_gate; CORS PASS accepts
+        enabled_pass = dict(enabled_fail, verdict="FAIL", receipt_sha256="enabled-pass",
+                            entry_points=[
+                                dict(enabled_fail["entry_points"][0]),
+                                {"entry_point": ep_cors, "verdict": "PASS", "reason": "", "scenarios": [enabled_sid]},
+                            ])
+        (pdir / "scenarios-enabled" / "cors.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep_cors, "scenario": enabled_sid, "verdict": "PASS", "reason": ""}))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(enabled_pass))
+        (root / VERIFY_RUN).write_text(json.dumps({"runtime": {"parity": {
+            "ran": True, "scoped": True, "security_mode": "enabled", "scenarios": [enabled_sid]}}}))
+        judged_on, _ = judged_parity_receipt(root)
+        cur = {i["id"] for i in parity_items(root, bundle, receipt=judged_on)}
+        discharged = {cors_id: (True, "PASS")}
+        ok, why = progress(m, m, set(), set(), gate="parity", issued_items=[cors_id], prev_gate_items={cors_id, nav_id},
+                           cur_gate_items=cur, prev_runtime={}, cur_runtime={}, prev_parity=enabled_fail,
+                           cur_parity=enabled_pass, parity_remeasured={"cors-enabled-preflight-7b1a3d9234cd"},
+                           parity_discharged=discharged)
+        if ok is not True or cors_id in cur or nav_id not in cur:
+            return _fail("a CORS repair that leaves the pre-existing nav FAIL is accepted: %s %s %s" % (ok, why, sorted(cur)))
+        # genuine unrelated regression still refuses
+        (pdir / "scenarios-enabled" / "other.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "security_mode": "enabled",
+            "entry_point": ep_other, "scenario": other_sid, "verdict": "FAIL", "reason": "status 500 vs 200"}))
+        cur_reg = {i["id"] for i in parity_items(root, bundle, receipt=judged_on)}
+        ok, why = progress(m, m, set(), set(), gate="parity", issued_items=[cors_id], prev_gate_items={cors_id, nav_id},
+                           cur_gate_items=cur_reg, prev_runtime={}, cur_runtime={}, prev_parity=enabled_fail,
+                           cur_parity=enabled_pass, parity_remeasured={"cors-enabled-preflight-7b1a3d9234cd"},
+                           parity_discharged=discharged)
+        if ok is not False or other_id not in why or "gate did not hold" not in why:
+            return _fail("a genuine new FAIL still refuses: %s %s %s" % (ok, why, sorted(cur_reg)))
+    return 0
+
+
+def _navigation_mode_independence_case() -> int:
+    """Disabled and enabled navigation FAILs at the same endpoint stay
+    independently addressable. Each points at its own receipt. Passing one
+    mode leaves the other. A dest card already issued under the historical
+    no-mode digest keeps that id."""
+    import json
+    import tempfile
+
+    from planner.paths import LOOP_ISSUED, PARITY_DIR
+    from planner.worklist import parity_obligation_id, parity_obligation_id_legacy
+
+    ep = "ep:org.springframework.samples.petclinic.rest.RootRestController#redirectToSwagger(HttpServletResponse):http"
+    path = "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java"
+    bundle = {"entry_points": [{"id": ep, "path": path}]}
+    disabled_id = parity_obligation_id(ep, "", "navigation", "disabled")
+    enabled_id = parity_obligation_id(ep, "", "navigation", "enabled")
+    legacy_id = parity_obligation_id_legacy(ep, "", "navigation")
+
+    def nav_receipt(mode, verdict="FAIL"):
+        fail = verdict == "FAIL"
+        sid = "sc:read-root" if mode == "disabled" else "sc:auth-allowed-read-root"
+        doc = {"schema": "rhoai3.parity-receipt/v1", "security_mode": mode,
+               "verdict": "FAIL" if fail else "PASS", "receipt_sha256": mode + verdict,
+               "entry_points": [{"entry_point": ep, "verdict": "PASS",
+                                 "navigation": "failed" if fail else "ok", "scenarios": [sid]}]}
+        if fail:
+            doc["navigation_obligations"] = [{"entry_point": ep, "kind": "navigation", "verdict": "FAIL",
+                                              "scenarios": [sid], "reason": "redirect target http://d/ui is dead (404)",
+                                              "navigation_failures": [{"terminal": "dead", "final_status": 404,
+                                                                       "target": "http://d/ui"}]}]
+        else:
+            doc["navigation_obligations"] = []
+        return doc
+
+    with tempfile.TemporaryDirectory(prefix="nav-modes-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        pdir.mkdir(parents=True)
+        (pdir / "receipt.json").write_text(json.dumps(nav_receipt("disabled")))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(nav_receipt("enabled")))
+        nav = [i for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"]
+        ids = {i["id"] for i in nav}
+        if ids != {disabled_id, enabled_id} or disabled_id == enabled_id:
+            return _fail("both modes mint distinct ids: %s" % sorted(ids))
+        by = {i["security_mode"]: i for i in nav}
+        if by["disabled"].get("verdict_file") != "verification/parity/receipt.json":
+            return _fail("disabled names receipt.json: %s" % by["disabled"].get("verdict_file"))
+        if by["enabled"].get("verdict_file") != "verification/parity/receipt-enabled.json":
+            return _fail("enabled names receipt-enabled.json: %s" % by["enabled"].get("verdict_file"))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(nav_receipt("enabled", "PASS")))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {disabled_id}:
+            return _fail("enabled PASS leaves the disabled obligation: %s" % sorted(remain))
+        (pdir / "receipt.json").write_text(json.dumps(nav_receipt("disabled", "PASS")))
+        (pdir / "receipt-enabled.json").write_text(json.dumps(nav_receipt("enabled")))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {enabled_id}:
+            return _fail("disabled PASS leaves the enabled obligation: %s" % sorted(remain))
+        (root / LOOP_ISSUED).parent.mkdir(parents=True, exist_ok=True)
+        (root / LOOP_ISSUED).write_text(json.dumps({"task_id": "t_fd744fef", "security_mode": "enabled",
+                                                    "items": [legacy_id], "gate_items": [legacy_id]}))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {legacy_id}:
+            return _fail("issued historical id is preserved: %s" % sorted(remain))
+        (pdir / "receipt.json").write_text(json.dumps(nav_receipt("disabled")))
+        remain = {i["id"] for i in parity_items(root, bundle) if i.get("cause") == "redirect-target-dead"}
+        if remain != {disabled_id, legacy_id}:
+            return _fail("issued enabled legacy plus independent disabled: %s" % sorted(remain))
     return 0
 
 
@@ -3240,7 +4104,7 @@ def _split_discharge_case() -> int:
             items = parity_items(root, bundle, receipt=judged)
             cur = {i["id"] for i in items}
             return progress(m, m, set(), set(), gate="parity", issued_items=[issued],
-                            prev_gate_items={rep_id, body_id, parity_obligation_id(nav_ep, "", "navigation")},
+                            prev_gate_items={rep_id, body_id, parity_obligation_id(nav_ep, "", "navigation", "disabled")},
                             cur_gate_items=cur, prev_runtime={}, cur_runtime={}, prev_parity=before,
                             cur_parity=(root / PARITY_DIR / "receipt.json").read_text() and json.loads((root / PARITY_DIR / "receipt.json").read_text()),
                             parity_remeasured={"cors-actual-accounts"}, parity_discharged=discharged), cur
@@ -3248,7 +4112,7 @@ def _split_discharge_case() -> int:
         (ok, why), cur = attempt("body 11aa vs 22bb", rep_id)
         if ok is not True:
             return _fail("the charset card that removed only the charset is ACCEPTED: %s" % why)
-        if parity_obligation_id(nav_ep, "", "navigation") not in cur or body_id not in cur or rep_id in cur:
+        if parity_obligation_id(nav_ep, "", "navigation", "disabled") not in cur or body_id not in cur or rep_id in cur:
             return _fail("G2: the rebuild from the scoped receipt keeps the carried navigation and the body obligation: %s" % sorted(cur))
         (ok, why), _ = attempt("body 33cc vs 22bb", rep_id)
         if ok is not False or "33cc" not in why:
@@ -3544,17 +4408,1046 @@ def _server_error_advice_case() -> int:
     return 0
 
 
+def _partial_diagnostic_scope_case():
+    """Real javac: retiring one symbol must not require unrelated types to resolve."""
+    import tempfile
+    from unittest.mock import patch
+    path = "src/main/java/example/Store.java"
+    scope = {"rule": RULE_DIAGNOSTIC_FAMILY,
+             "symbols": [{"kind": "annotation", "fqn": "legacy.Flag"}],
+             "members": [{"path": path, "type": "example.Store", "member_id": "read", "state": "reported"}]}
+    support = {"src/main/java/legacy/Flag.java": "package legacy; public @interface Flag {}",
+               "src/main/java/modern/Replacement.java": "package modern; public @interface Replacement {}"}
+    cases = [
+        ("unrelated-unresolved", "@modern.Replacement public class Store { public Missing read() { return null; } }", True),
+        ("literal-comment", '@modern.Replacement public class Store { /* Flag */ String text = "Flag"; public Missing read() { return null; } }', True),
+        ("retired-qualified", "@legacy.Flag public class Store { public Missing read() { return null; } }", False),
+        ("retired-qualified-resolved", "@legacy.Flag public class Store { public String read() { return null; } }", False),
+        ("retired-import", "import legacy.Flag; @modern.Replacement public class Store { public Missing read() { return null; } }", False),
+        ("parse-error", "@modern.Replacement public class Store { public Missing read( { return null; } }", False),
+        ("deleted-member", "@modern.Replacement public class Store { Missing value; }", False),
+        ("renamed-type", "@modern.Replacement class Other { public Missing read() { return null; } }", False),
+        ("nested-retired", "@modern.Replacement public class Store { public Missing read() { return null; } @legacy.Flag class Nested {} }", False),
+    ]
+    for label, text, allowed in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-partial-scope-") as d:
+            root = _jdk_root(d, {**support, path: "package example; " + text})
+            model = dest_model(root)
+            rows = assess_unit(root, scope)
+            if (all(r["verdict"] == "ok" for r in rows)) != allowed:
+                return _fail("%s: partial diagnostic scope assessment %s" % (label, rows))
+            if allowed:
+                typ = next(t for t in model["types"] if t["fqn"] == "example.Store")
+                if typ["resolution"] != "partial" or rows[0].get("proof") != "parsed-symbol-absence":
+                    return _fail("%s must exercise partial attribution and parsed absence" % label)
+                # Old/missing parse inventory cannot silently become proof.
+                typ.pop("syntax_names")
+                with patch("planner.worklist.dest_model", return_value=model):
+                    if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, scope)):
+                        return _fail("missing syntax inventory must remain inconclusive")
+                # The relaxation is not authority for inheritance/call closure.
+                closure = dict(scope, rule=RULE_DECLARATION_CLOSURE)
+                if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, closure)):
+                    return _fail("partial declaration closure must remain inconclusive")
+    return 0
+
+
+def _partial_package_scope_case():
+    """Real javac: a removed namespace is assessable beside another broken import."""
+    import tempfile
+    from unittest.mock import patch
+    path = "src/main/java/example/Store.java"
+    scope = {"rule": RULE_DIAGNOSTIC_FAMILY,
+             "symbols": [{"kind": "package", "fqn": "legacy.validation"}],
+             "members": [{"path": path, "type": "example.Store", "member_id": "read", "state": "reported"}]}
+    support = {
+        "src/main/java/legacy/validation/Errors.java": "package legacy.validation; public class Errors {}",
+        "src/main/java/modern/validation/Errors.java": "package modern.validation; public class Errors {}",
+        "src/main/java/legacy/validationextra/Errors.java": "package legacy.validationextra; public class Errors {}",
+        "src/main/java/other/Base.java": "package other; public class Base {}",
+        "src/main/java/other/PartialBase.java": "package other; public class PartialBase { Missing value; }",
+        "src/main/java/other/Contract.java": "package other; public interface Contract {}",
+        "src/main/java/other/BrokenBase.java": "package other; public class BrokenBase extends Missing {}",
+        "src/main/java/legacy/validation/Ancestor.java": "package legacy.validation; public class Ancestor { public static class Inherited {} }",
+        "src/main/java/other/Bridge.java": "package other; public class Bridge extends legacy.validation.Ancestor {}",
+    }
+    cases = [
+        ("unrelated-wildcard", "import missing.web.*; import modern.validation.Errors; @CrossOrigin public class Store { public Errors read() { return null; } }", True),
+        ("literal-comment", 'public class Store { /* legacy.validation.Errors */ String text = "legacy.validation.Errors"; public Missing read() { return null; } }', True),
+        ("prefix-boundary", "import legacy.validationextra.Errors; public class Store { public Errors read() { Missing x; return null; } }", True),
+        ("retired-import", "import legacy.validation.Errors; public class Store { public Missing read() { return null; } }", False),
+        ("retired-wildcard", "import legacy.validation.*; public class Store { public Missing read() { return null; } }", False),
+        ("retired-qualified", "public class Store { public legacy.validation.Errors read() { Missing x; return null; } }", False),
+        ("retired-qualified-spaced", "public class Store { public legacy . validation . Errors read() { Missing x; return null; } }", False),
+        ("retired-nested", "public class Store { public Missing read() { return null; } class Nested { legacy.validation.Errors value; } }", False),
+        ("implicit-inherited", "public class Store extends other.Base { public Missing read() { return null; } }", True),
+        ("parent-field-unresolved", "public class Store extends other.PartialBase { public Missing read() { return null; } }", True),
+        ("interface-resolved", "public class Store implements other.Contract { public Missing read() { return null; } }", True),
+        ("parent-unresolved", "public class Store extends Missing { public Missing read() { return null; } }", False),
+        ("ancestor-unresolved", "public class Store extends other.BrokenBase { public Missing read() { return null; } }", False),
+        ("inherited-retired", "public class Store extends other.Bridge { public Inherited read() { Missing x; return null; } }", False),
+        ("nested-parent-unresolved", "public class Store { public Missing read() { return null; } class Nested extends Missing {} }", False),
+        ("implicit-anonymous", "public class Store { Object value = new Object() {}; public Missing read() { return null; } }", False),
+        ("implicit-static-import", "import static other.Base.*; public class Store { public Missing read() { return null; } }", False),
+        ("parse-error", "public class Store { public Missing read( { return null; } }", False),
+        ("deleted-member", "public class Store { Missing value; }", False),
+        ("renamed-type", "class Other { public Missing read() { return null; } }", False),
+    ]
+    for label, text, allowed in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-package-scope-") as d:
+            root = _jdk_root(d, {**support, path: "package example; " + text})
+            model = dest_model(root)
+            rows = assess_unit(root, scope)
+            if all(r["verdict"] == "ok" for r in rows) != allowed:
+                return _fail("%s: partial package assessment %s" % (label, rows))
+            if allowed:
+                typ = next(t for t in model["types"] if t["fqn"] == "example.Store")
+                if typ["resolution"] != "partial" or rows[0].get("proof") != "parsed-symbol-absence":
+                    return _fail("%s must prove namespace absence despite partial attribution" % label)
+                if typ.get("inherited_known"):
+                    return _fail("partial package proof must not promote general inheritance evidence")
+                required = ["syntax_qualified_names", "syntax_implicit_types", "syntax_complete"]
+                if typ["syntax_implicit_types"]:
+                    required += ["implicit_type_scope_complete", "implicit_type_names"]
+                for key in required:
+                    value = typ.pop(key)
+                    with patch("planner.worklist.dest_model", return_value=model):
+                        if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, scope)):
+                            return _fail("missing %s must not prove package absence" % key)
+                    typ[key] = value
+                closure = dict(scope, rule=RULE_DECLARATION_CLOSURE)
+                if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, closure)):
+                    return _fail("package absence cannot prove declaration closure")
+    return 0
+
+
+def _issued_parity_plan_case() -> int:
+    """Issued card + sealed scope own mode and scenarios. The live work list
+    is not a recovery source: a missing or remaining row must not default
+    disabled, shrink a two-item seal, or broaden to the corpus."""
+    from planner.worklist import issued_parity_plan, parity_discharge_scope, parity_remeasured, seal_issued_parity_scope
+
+    item = {"id": "parity:en", "security_mode": "enabled",
+            "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"], "entry_point": "ep:x"}
+    seal = seal_issued_parity_scope({"items": [item]}, ["parity:en"])
+    want_scope = [{"id": "parity:en", "security_mode": "enabled",
+                   "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"], "entry_point": "ep:x"}]
+    if seal != {"security_mode": "enabled", "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"],
+                "entry_points": ["ep:x"], "item_scope": want_scope}:
+        return _fail("mint seals the issued mode, scenario ids and item_scope: %s" % seal)
+    empty = seal_issued_parity_scope({"items": []}, ["parity:en"])
+    if empty.get("security_mode") or empty.get("scenarios") or empty.get("item_scope"):
+        return _fail("a missing live row at mint must not invent disabled or a corpus: %s" % empty)
+
+    issued = {"gate": "parity", "items": ["parity:en"], "security_mode": "enabled",
+              "scenarios": ["sc:en-a", "sc:en-b", "sc:en-c"], "item_scope": want_scope}
+    live = {"items": [item]}
+    plan = issued_parity_plan(issued, {"items": []})
+    if plan.get("kind") != "run" or plan.get("mode") != "enabled" or plan.get("scenarios") != ["sc:en-a", "sc:en-b", "sc:en-c"]:
+        return _fail("enabled card, item gone from the work list, still replays the three issued scenarios: %s" % plan)
+    if issued_parity_plan(issued, live) != plan:
+        return _fail("live work-list rows must not change a sealed plan")
+    missing = issued_parity_plan({"gate": "parity", "items": ["parity:en"]}, live)
+    if missing.get("kind") != "pending" or missing.get("scenarios"):
+        return _fail("missing issuance scope must pending without replay even with live rows: %s" % missing)
+    invalid = issued_parity_plan({"gate": "parity", "items": ["parity:en"], "security_mode": "bogus",
+                                 "scenarios": ["sc:en-a"]}, live)
+    if invalid.get("kind") != "pending" or invalid.get("scenarios"):
+        return _fail("invalid sealed mode must pending without replay even with live rows: %s" % invalid)
+    disabled = {"gate": "parity", "items": ["parity:a"], "security_mode": "disabled",
+                "scenarios": ["sc:a-first", "sc:b-second"]}
+    dplan = issued_parity_plan(disabled, {"items": []})
+    if dplan.get("kind") != "run" or dplan.get("mode") != "disabled" or dplan.get("scenarios") != ["sc:a-first", "sc:b-second"]:
+        return _fail("a disabled card still replays its sealed scenarios: %s" % dplan)
+
+    two = [{"id": "parity:a", "security_mode": "disabled", "scenarios": ["sc:a-first"], "entry_point": "ep:a"},
+           {"id": "parity:b", "security_mode": "disabled", "scenarios": ["sc:b-second"], "entry_point": "ep:b"}]
+    partial_issued = {"gate": "parity", "items": ["parity:a", "parity:b"], "security_mode": "disabled",
+                      "item_scope": two}
+    leftover = {"items": [two[0]]}
+    partial = issued_parity_plan(partial_issued, leftover)
+    if (partial.get("kind") != "run" or partial.get("mode") != "disabled"
+            or partial.get("scenarios") != ["sc:a-first", "sc:b-second"]):
+        return _fail("a two-item sealed scope must not shrink to the one remaining work-list row: %s" % partial)
+
+    oracle_item = {"id": "parity:ro", "security_mode": "disabled", "scenarios": [], "entry_point": "ep:x.Vet#list():http"}
+    oracle_issued = {"gate": "parity", "items": ["parity:ro"], "security_mode": "disabled",
+                     "scenarios": [], "entry_points": ["ep:x.Vet#list():http"], "item_scope": [oracle_item]}
+    o_present = issued_parity_plan(oracle_issued, {"items": [oracle_item]})
+    o_absent = issued_parity_plan(oracle_issued, {"items": []})
+    for label, oplan in (("present", o_present), ("absent", o_absent)):
+        if (oplan.get("kind") != "run" or oplan.get("mode") != "disabled"
+                or oplan.get("scenarios") or oplan.get("entry_points") != ["ep:x.Vet#list():http"]):
+            return _fail("read-oracle-only card (%s) must run named oracles with an empty scenario list: %s" % (label, oplan))
+
+    incomplete = issued_parity_plan(
+        {"gate": "parity", "items": ["parity:a", "parity:b"], "security_mode": "disabled",
+         "scenarios": ["sc:a-first", "sc:b-second"], "entry_points": ["ep:a", "ep:b"],
+         "item_scope": [two[0]]}, {"items": []})
+    if incomplete.get("kind") != "pending" or incomplete.get("scenarios"):
+        return _fail("item_scope covering one of two issued items must pending without replay: %s" % incomplete)
+    disagree = issued_parity_plan(
+        {"gate": "parity", "items": ["parity:a", "parity:b"], "security_mode": "disabled",
+         "scenarios": ["sc:a-first"], "entry_points": ["ep:a", "ep:b"],
+         "item_scope": two}, {"items": []})
+    if disagree.get("kind") != "pending" or disagree.get("scenarios"):
+        return _fail("aggregates that disagree with item_scope must pending without replay: %s" % disagree)
+
+    scoped_run = {"runtime": {"parity": {"ran": True, "scoped": True, "scenarios": [],
+                                         "read_oracles_rerun": ["ep:x.Vet#list():http"]}}}
+    if parity_remeasured(scoped_run) != {"ep:x.Vet#list():http"}:
+        return _fail("acceptance must treat a read-oracle-only run as scoped: %s" % parity_remeasured(scoped_run))
+    if parity_discharge_scope(scoped_run) != {"ep:x.Vet#list():http"}:
+        return _fail("acceptance must not broaden a read-oracle-only run to the whole phase: %s"
+                     % parity_discharge_scope(scoped_run))
+    return 0
+
+
+# --- V16-1: an annotation whose behaviour a harness adapter owns ----------
+#
+# v16 t_7074fcda (u:8c368f6e97b9, 7 controllers): the catalogued
+# UriComponentsBuilder row took the unit from 20 diagnostics to 7, and the 7
+# were `cannot find symbol: class CrossOrigin`. The catalogue had no row, so
+# the brief offered no action and the card parked as unassessable-scope. The
+# annotation's behaviour is owned by the CORS response adapter (ADR-019),
+# which renders the SOURCE policy; the compile action is to retire it.
+_OWNED = "org.springframework.web.bind.annotation.CrossOrigin"
+_OWNED_A = {"base": "org.acme.clinic", "pkg": "rest", "controllers": ("OwnerRestController", "PetRestController"),
+            "unrelated": "org.acme.clinic.web.CrossOrigin"}
+_OWNED_B = {"base": "com.example.warehouse", "pkg": "api", "controllers": ("CrateEndpoint", "PalletEndpoint"),
+            "unrelated": "com.example.warehouse.cors.CrossOrigin"}
+
+
+def _owned_world(n: dict, fqn: str) -> tuple[dict, list[dict], list[str]]:
+    """(a model, the javac items, the paths): the first controller carries the
+    annotation at class level, the second on a handler method -- both with
+    arguments, both bound by an explicit import of `fqn`."""
+    pkg = n["base"].replace(".", "/")
+    ann = dict(_dm_ann(fqn), values={"exposedHeaders": ["errors, content-type"]})
+    types, paths = [], []
+    for i, c in enumerate(n["controllers"]):
+        rel = "%s/%s/%s.java" % (pkg, n["pkg"], c)
+        handler = _dm_member("list", "list()", has_body=True, annotations=[ann] if i == 1 else [])
+        types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=[fqn],
+                              annotations=[ann] if i == 0 else [], declared=[handler]))
+        paths.append("src/main/java/" + rel)
+    items = [_javac(p, fqn.rsplit(".", 1)[-1], 40 + i) for i, p in enumerate(paths)]
+    return _dm_model(types), items, paths
+
+
+def _adapter_owned_retirement_case() -> int:
+    """The compile half of ADR-019 ownership, and only that half.
+
+    A unit over @CrossOrigin carries the catalogue's retirement row -- no
+    replacement, the adapter contract that keeps the behaviour, the documented
+    action -- keyed by the QUALIFIED name, so another package's CrossOrigin
+    gets nothing. The retirement is no target, so it widens no checkpoint; and
+    once the controllers no longer carry the annotation the CORS parity
+    obligation is still produced, still owed to the same adapter, and its unit
+    still renders the source policy from M1's structural model."""
+    import json
+    import tempfile
+
+    import response_adapters as ra
+    from planner.paths import PARITY_DIR
+    from planner.worklist import adapter_owned_annotations, owed_adapter_units, unit_retired_symbols
+
+    cors = ra.contract(ra.CORS)
+    rows = adapter_owned_annotations(GOLDEN)
+    row = rows.get(_OWNED)
+    if row is None or row.get("adapter") != ra.CORS or row.get("contract") != cors["contract"]:
+        return _fail("compat-mapping carries an adapter_owned_annotations row for %s naming the registered CORS contract: %s" % (_OWNED, rows))
+    if not row.get("action") or not row.get("source") or not row.get("policy_evidence") or row.get("kind") != "annotation":
+        return _fail("the row documents its kind, source, policy evidence and action: %s" % row)
+    if any("." not in k for k in rows) or any(k.rsplit(".", 1)[-1] == "CrossOrigin" and k != _OWNED for k in rows):
+        return _fail("keys are qualified identities and there is no generic rule: %s" % sorted(rows))
+    for label, n in (("A", _OWNED_A), ("B", _OWNED_B)):
+        model, items, paths = _owned_world(n, _OWNED)
+        units, claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
+        if len(units) != 1 or set(claimed) != {i["id"] for i in items}:
+            return _fail("[%s] the two controllers form one unit: %s" % (label, [c["unit"]["family_key"] for c in units]))
+        unit = units[0]
+        retire = [t for t in unit["unit"]["target_symbols"] if t.get("retire")]
+        if len(retire) != 1 or retire[0]["from"] != _OWNED or retire[0]["to"] != "" or retire[0]["action"] != row["action"]:
+            return _fail("[%s] the unit carries the retirement row and its action, and no replacement: %s" % (label, unit["unit"]["target_symbols"]))
+        cat = retire[0]["catalog_row"]
+        if (cat.get("block"), cat.get("key"), cat.get("contract"), cat.get("adapter")) != ("adapter_owned_annotations", _OWNED, cors["contract"], ra.CORS):
+            return _fail("[%s] the row names its catalogue block and the adapter that keeps the behaviour: %s" % (label, cat))
+        if not any("retired; its behaviour is owed to %s" % cors["contract"] in e["ref"] for e in unit["unit"]["evidence"]):
+            return _fail("[%s] the evidence records the retirement and who owes the behaviour: %s" % (label, unit["unit"]["evidence"]))
+        with tempfile.TemporaryDirectory(prefix="owned-seal-") as d:
+            scope = build_unit_scope(Path(d), unit, items, {"candidate_sha256": "c0"})
+        if [s for s, _k in unit_retired_symbols(scope)] != [_OWNED] or scope["target_symbols"] != unit["unit"]["target_symbols"]:
+            return _fail("[%s] the sealed symbols retire the annotation and the seal carries the row: %s" % (label, scope["symbols"]))
+        if unit.get("gate") or any(c.get("check") == "gate" for c in unit["_unit_seal"]["completion"]):
+            return _fail("[%s] a retirement is a compile obligation: it carries no gate" % label)
+        # the retirement is no target: a diagnostic about anything else in the
+        # sealed files is still explained by nothing
+        other_model, _i, _p = _owned_world(n, "jakarta.ws.rs.core.Context")
+        rows_x, why = unit_explained_regressions(scope, [_javac(paths[0], "Context", 9)], other_model)
+        if rows_x:
+            return _fail("[%s] a retirement row explains no other diagnostic: %s" % (label, rows_x))
+
+        # another package's annotation spelled the same way: its own family,
+        # no row, no action
+        model_u, items_u, _paths_u = _owned_world(n, n["unrelated"])
+        units_u, _ = form_units(items_u, {}, set(), model=model_u, root=GOLDEN)
+        if any(t.get("retire") for c in units_u for t in c["unit"]["target_symbols"]):
+            return _fail("[%s] %s is not %s and gets no retirement row: %s" % (label, n["unrelated"], _OWNED,
+                                                                            [c["unit"]["target_symbols"] for c in units_u]))
+        if [s["fqn"] for c in units_u for s in c["unit"]["symbols"]] != [n["unrelated"]]:
+            return _fail("[%s] the unrelated annotation is its own sealed symbol: %s" % (label, [c["unit"]["symbols"] for c in units_u]))
+
+    # compile acceptance is not behavioural acceptance: with the annotation
+    # retired from the destination, the CORS obligation and its owed adapter
+    # unit still stand, rendered from the SOURCE policy
+    fixture = Path(__file__).resolve().parents[2] / "skills" / "migration" / "restore-source-response-shape" / "fixtures" / "runtime"
+    ep = "ep:org.example.shop.rest.ItemController#create():http"
+    ctl = "src/main/java/org/example/shop/rest/ItemController.java"
+    with tempfile.TemporaryDirectory(prefix="owned-handoff-") as td:
+        root = Path(td)
+        (root / "evidence" / "structure").mkdir(parents=True)
+        shutil.copy2(fixture / "evidence" / "structure" / "structure.json", root / "evidence" / "structure" / "structure.json")
+        (root / ctl).parent.mkdir(parents=True)
+        (root / ctl).write_text("package org.example.shop.rest;\npublic class ItemController {\n    public String create() { return \"\"; }\n}\n", encoding="utf-8")
+        (root / APP_PROPERTIES).parent.mkdir(parents=True)
+        (root / APP_PROPERTIES).write_text("quarkus.http.root-path=/shop/\n", encoding="utf-8")
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        (root / PARITY_DIR / "receipt.json").write_text(json.dumps({"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
+                                                                     "cors": {"source_policies": ["crossorigin:7b1a3d9234cd"], "gaps": []}}))
+        (root / PARITY_DIR / "scenarios" / "pre.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:pre", "verdict": "FAIL",
+            "reason": "header Access-Control-Allow-Origin http://client.example vs None; header Access-Control-Expose-Headers errors, content-type vs None"}))
+        parity = [i for i in parity_items(root, {"entry_points": [{"id": ep, "path": ctl}]}) if i["rule_id"] == "PARITY_CORS"]
+        if len(parity) != 1 or (parity[0].get("owed") or {}).get("contract") != cors["contract"]:
+            return _fail("the CORS obligation is still produced, owed to the contract the retirement row names: %s" % parity)
+        adapters, _claimed = owed_adapter_units(parity, root, {}, set())
+        if len(adapters) != 1 or adapters[0]["unit"]["family_key"] != cors["contract"] or adapters[0].get("gate") != "parity":
+            return _fail("the owed adapter unit is still minted with its parity gate: %s" % [c["unit"]["family_key"] for c in adapters])
+        impl = adapters[0]["unit"]["implementation"][0]
+        rendered = [tuple(p) for p in impl["properties"]]
+        if not rendered or rendered != ra.cors_properties(ra.cors_policy(root)) or adapters[0].get("block"):
+            return _fail("the adapter still renders the preserved source policy: %s" % rendered)
+    return 0
+
+
+def _real_adapter_owned_retirement_case() -> int:
+    """Real javac: the planner's unit over @CrossOrigin, and the existing
+    parsed-symbol-absence proof deciding its retirement.
+
+    The unit is formed from the model of the tree as it was (a class-level and
+    a method-level @CrossOrigin with arguments, and an unrelated diagnostic
+    that keeps attribution partial), so it is the LEAF rule that claims it --
+    the shape v16 t_7074fcda had. The candidate that removes only the
+    annotations and their import is proven by the parse; every other candidate
+    is not: an annotation left, the import left, a qualified spelling left, a
+    handler deleted, or a parse the compiler could not complete."""
+    import tempfile
+    from unittest.mock import patch
+
+    from planner.worklist import unit_retired_symbols
+
+    base, src = "example.rest", "src/main/java/example/rest"
+    owner, pet = "%s/OwnerRestController.java" % src, "%s/PetRestController.java" % src
+    support = {
+        "src/main/java/org/springframework/web/bind/annotation/RestController.java":
+            "package org.springframework.web.bind.annotation; public @interface RestController {}",
+        "src/main/java/com/acme/web/CrossOrigin.java":
+            "package com.acme.web; public @interface CrossOrigin { String[] exposedHeaders() default {}; }",
+    }
+    rc = "import org.springframework.web.bind.annotation.RestController;\n"
+    imp = "import org.springframework.web.bind.annotation.CrossOrigin;\n"
+
+    def ctl(name: str, *, head: str = "", cls: str = "", meth: str = "", pending: bool = True, handler: bool = True) -> str:
+        return ("package %s;\n%s%s%s@RestController\npublic class %s {\n%s%s}\n"
+                % (base, head, rc, cls, name,
+                   ("    %spublic String list() { return \"\"; }\n" % meth) if handler else "",
+                   "    public Missing pending() { return null; }\n" if pending else ""))
+
+    before = {owner: ctl("OwnerRestController", head=imp, cls='@CrossOrigin(exposedHeaders = "errors, content-type")\n'),
+              pet: ctl("PetRestController", head=imp, meth='@CrossOrigin(origins = "http://client.example", maxAge = 1800) ')}
+    with tempfile.TemporaryDirectory(prefix="wl-owned-form-") as d:
+        root = _jdk_root(d, {**support, **before})
+        model = dest_model(root)
+        items = [_javac(owner, "CrossOrigin", 1), _javac(pet, "CrossOrigin", 2)]
+        units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+        # `Missing pending()` leaves each controller's declaration walk
+        # INCOMPLETE, so the package-leaf rule steps aside (isolation needs
+        # complete inside evidence, rgctl offline evaluation 2026-09-25) and the
+        # same two files are one diagnostic family. The retirement assessment
+        # below is asked under BOTH rules, as v16 t_7074fcda's leaf was.
+        if len(units) != 1 or units[0]["unit"]["rule"] != RULE_DIAGNOSTIC_FAMILY or sorted(units[0]["write_set"]) != sorted([owner, pet]):
+            return _fail("the two controllers are one family unit: %s" % [(c["unit"]["rule"], c["unit"]["family_key"], c["write_set"]) for c in units])
+        if any(t.get("type_refs_complete") is not False for t in model["types"] if t["fqn"].startswith(base)):
+            return _fail("the unresolved return type makes the controllers' walks incomplete")
+        if not any(t.get("retire") and t["from"] == _OWNED for t in units[0]["unit"]["target_symbols"]):
+            return _fail("the real model binds the token to %s and the unit carries its retirement: %s" % (_OWNED, units[0]["unit"]["target_symbols"]))
+        family = build_unit_scope(root, units[0], items, {"candidate_sha256": "c0"})
+    if [s for s, _k in unit_retired_symbols(family)] != [_OWNED]:
+        return _fail("the unit seals the annotation as the symbol it retires: %s" % family["symbols"])
+    for m in family["members"]:
+        m["member_id"] = "list"  # the handler the method-level annotation sat on must survive
+    leaf = dict(family, rule=RULE_PACKAGE_LEAF)
+    retired_ok = {owner: ctl("OwnerRestController"), pet: ctl("PetRestController")}
+    cases = [
+        ("retired", retired_ok, True, "parsed-symbol-absence"),
+        ("class-level-left", dict(retired_ok, **{owner: before[owner]}), False, ""),
+        ("method-level-left", dict(retired_ok, **{pet: before[pet]}), False, ""),
+        ("import-left", dict(retired_ok, **{owner: ctl("OwnerRestController", head=imp)}), False, ""),
+        ("qualified-left", dict(retired_ok, **{pet: ctl("PetRestController", meth="@org.springframework.web.bind.annotation.CrossOrigin(maxAge = 1800) ")}), False, ""),
+        ("handler-deleted", dict(retired_ok, **{pet: ctl("PetRestController", handler=False)}), False, ""),
+        ("parse-error", dict(retired_ok, **{owner: ctl("OwnerRestController").replace("list()", "list(")}), False, ""),
+        # another package's CrossOrigin, left untouched: while attribution is
+        # partial the parse cannot tell the two apart and refuses; resolved,
+        # the model can, and the member is clean
+        ("unrelated-partial", dict(retired_ok, **{owner: ctl("OwnerRestController", head="import com.acme.web.CrossOrigin;\n", cls='@CrossOrigin(exposedHeaders = "x")\n')}), False, ""),
+        ("unrelated-resolved", {owner: ctl("OwnerRestController", head="import com.acme.web.CrossOrigin;\n", cls='@CrossOrigin(exposedHeaders = "x")\n', pending=False),
+                                pet: ctl("PetRestController", pending=False)}, True, "resolved-model"),
+    ]
+    for label, files, allowed, proof in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-owned-assess-") as d:
+            root = _jdk_root(d, {**support, **files})
+            model = dest_model(root)
+            for rule, scope in ((RULE_PACKAGE_LEAF, leaf), (RULE_DIAGNOSTIC_FAMILY, family)):
+                rows = assess_unit(root, scope)
+                if all(r["verdict"] == "ok" for r in rows) != allowed:
+                    return _fail("%s [%s]: retirement assessment %s" % (label, rule, rows))
+                # the owner file carries the annotation under test: its row
+                # names the proof that decided it
+                if allowed and [r.get("proof") for r in rows if r["path"] == owner] != [proof]:
+                    return _fail("%s [%s] is decided by the %s proof: %s" % (label, rule, proof, rows))
+            if label != "retired":
+                continue
+            if {t["resolution"] for t in model["types"] if t["fqn"].startswith(base)} != {"partial"}:
+                return _fail("the retired candidate must exercise partial attribution")
+            # incomplete syntax evidence refuses: the proof is the parse, and a
+            # parse that is missing or incomplete proves nothing
+            for key, value in (("syntax_names", None), ("syntax_complete", False)):
+                typ = next(t for t in model["types"] if t["fqn"] == base + ".OwnerRestController")
+                saved = typ.pop(key)
+                if value is not None:
+                    typ[key] = value
+                with patch("planner.worklist.dest_model", return_value=model):
+                    if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, leaf)):
+                        return _fail("%s %r must leave the retirement inconclusive" % (key, value))
+                typ[key] = saved
+            # and the relaxation is not authority for a declaration closure
+            if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, dict(leaf, rule=RULE_DECLARATION_CLOSURE))):
+                return _fail("a declaration closure never takes the parsed proof")
+    return 0
+
+
+def _real_handler_parameter_precedence_case() -> int:
+    """V16-5 (v16 t_7074fcda, then t_d3f89ded run #25): a sealed symbol that
+    is the type of an HTTP HANDLER PARAMETER gets the handler_parameters row's
+    action ahead of the generic symbol_renames target. The rename left seven
+    handlers with an unannotated UriBuilder, which compiled and was refused at
+    augmentation as a second request body.
+
+    Real javac, twice under renamed packages: handlers (one of them never
+    uses the parameter) get the UriInfo action and are named; a helper
+    builder in the SAME file keeps the ordinary mapping; a handler whose
+    parameter is another package's UriComponentsBuilder is not matched. At
+    the checkpoint, the bare rename at a handler violates and the documented
+    repair -- @Context UriInfo at the handler, UriBuilder in the helper --
+    is clean."""
+    import tempfile
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    for base, lookalike in (("org.acme.shop", "org.acme.shop.util.UriComponentsBuilder"),
+                            ("com.example.depot", "com.example.depot.links.UriComponentsBuilder")):
+        src = "src/main/java/%s/rest/" % base.replace(".", "/")
+        owner, visit, other = src + "OwnerController.java", src + "VisitController.java", src + "PetController.java"
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            "src/main/java/jakarta/ws/rs/core/Context.java": "package jakarta.ws.rs.core;\npublic @interface Context { }\n",
+            "src/main/java/jakarta/ws/rs/core/UriBuilder.java": "package jakarta.ws.rs.core;\npublic abstract class UriBuilder { }\n",
+            "src/main/java/jakarta/ws/rs/core/UriInfo.java": "package jakarta.ws.rs.core;\npublic interface UriInfo { }\n",
+            "src/main/java/%s.java" % lookalike.replace(".", "/"):
+                "package %s;\npublic class UriComponentsBuilder { }\n" % lookalike.rsplit(".", 1)[0],
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\n" % base)
+
+        def owner_src(handler_param: str, helper_param: str, imports: str, handlers: bool = True) -> str:
+            return (head + imports + "public class OwnerController {\n"
+                    + (('    @PostMapping("/owners")\n    public String addOwner(@RequestBody String body, %s) { return link(null); }\n'
+                        '    @PostMapping("/owners/touch")\n    public String touch(@RequestBody String body, %s) { return ""; }\n')
+                       % (handler_param, handler_param) if handlers else "")
+                    + "    static String link(%s) { return \"\"; }\n}\n" % helper_param)
+
+        def visit_src(handler_param: str, imports: str) -> str:
+            return (head + imports + "public class VisitController {\n"
+                    '    @PostMapping("/visits")\n    public String addVisit(@RequestBody String body, %s) { return ""; }\n}\n'
+                    % handler_param)
+
+        spring = "import %s;\n" % retired
+        before = {**stubs,
+                  owner: owner_src("UriComponentsBuilder ucBuilder", "UriComponentsBuilder b", spring),
+                  visit: visit_src("UriComponentsBuilder ucBuilder", spring),
+                  other: head + "import %s;\npublic class PetController {\n    @PostMapping(\"/pets\")\n"
+                                "    public String addPet(@RequestBody String body, UriComponentsBuilder ucBuilder) { return \"\"; }\n}\n"
+                                % lookalike}
+        with tempfile.TemporaryDirectory(prefix="wl-v165-") as d:
+            root = _jdk_root(d, before)
+            model = dest_model(root)
+            items = [_javac(owner, "UriComponentsBuilder", 1), _javac(owner, "UriComponentsBuilder", 2),
+                     _javac(visit, "UriComponentsBuilder", 3)]
+            units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            if unit is None:
+                return _fail("[%s] the UriComponentsBuilder family forms a unit: %s" % (base, [c["unit"]["family_key"] for c in units]))
+            targets = unit["unit"]["target_symbols"]
+            first = targets[0] if targets else {}
+            sites = sorted((x["type"].rsplit(".", 1)[-1], x["member"], x["parameter"]) for x in first.get("sites") or [])
+            if (not first.get("handler_parameter") or first.get("from") != retired or first.get("to") != ""
+                    or (first.get("catalog_row") or {}).get("block") != "handler_parameters.undocumented"
+                    or "@Context jakarta.ws.rs.core.UriInfo" not in str(first.get("action"))):
+                return _fail("[%s] the handler-parameter row is the unit's FIRST target, with its action: %s" % (base, targets))
+            if sites != [("OwnerController", "addOwner", "ucBuilder"), ("OwnerController", "touch", "ucBuilder"),
+                         ("VisitController", "addVisit", "ucBuilder")]:
+                return _fail("[%s] every handler parameter is named (the unused one too), the helper and the lookalike "
+                             "are not: %s" % (base, sites))
+            rename = [t for t in targets if t.get("to") == "jakarta.ws.rs.core.UriBuilder"]
+            if (len(rename) != 1 or rename[0].get("not_for") != first["sites"]
+                    or "other than the HTTP handler parameters" not in str(rename[0].get("applies_to"))):
+                return _fail("[%s] the helper's builder keeps the ordinary mapping, scoped away from the handlers: %s" % (base, rename))
+            if not any("handler parameter(s)" in e["ref"] and "precedes any rename" in e["ref"] for e in unit["unit"]["evidence"]):
+                return _fail("[%s] the evidence records the precedence: %s" % (base, unit["unit"]["evidence"]))
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+
+            def assess(files: dict[str, str]) -> dict[tuple[str, str], str]:
+                for rel, text in files.items():
+                    (root / rel).write_text(text, encoding="utf-8")
+                return {(r["member"].split("#", 1)[1].split("(")[0], r["member"].split("(")[1].rstrip(")")): r["verdict"]
+                        for r in assess_unit(root, scope) if r.get("state") == "handler-parameter"}
+
+            ctx = "import jakarta.ws.rs.core.Context;\nimport jakarta.ws.rs.core.UriBuilder;\nimport jakarta.ws.rs.core.UriInfo;\n"
+            # the bare rename, as t_7074fcda wrote it: compiles, and violates
+            bare = assess({owner: owner_src("UriBuilder ucBuilder", "UriBuilder b", ctx), visit: visit_src("UriBuilder ucBuilder", ctx)})
+            if set(bare.values()) != {"violates"} or len(bare) != 3:
+                return _fail("[%s] a handler left with an unannotated UriBuilder violates, the unused one too: %s" % (base, bare))
+            # the documented repair: the handler takes @Context UriInfo, the
+            # helper in the same file keeps its UriBuilder
+            good = assess({owner: owner_src("@Context UriInfo uriInfo", "UriBuilder b", ctx), visit: visit_src("@Context UriInfo uriInfo", ctx)})
+            if set(good.values()) != {"ok"} or len(good) != 3:
+                return _fail("[%s] @Context UriInfo at the handler with the helper's UriBuilder kept is clean: %s" % (base, good))
+            # a handler repaired by deleting it is not repaired
+            gone = assess({owner: owner_src("", "UriBuilder b", ctx, handlers=False)})
+            if gone.get(("addOwner", "ucBuilder")) != "violates" or gone.get(("addVisit", "ucBuilder")) != "ok":
+                return _fail("[%s] a deleted handler violates: %s" % (base, gone))
+
+            # a symbol no handler takes keeps its row exactly as before
+            helper_only = {**stubs, owner: owner_src("", "UriComponentsBuilder b", spring, handlers=False),
+                           visit: head + spring + "public class VisitController {\n    static void h(UriComponentsBuilder b) { }\n}\n"}
+            for rel, text in helper_only.items():
+                (root / rel).write_text(text, encoding="utf-8")
+            units2, _ = form_units([_javac(owner, "UriComponentsBuilder", 1), _javac(visit, "UriComponentsBuilder", 2)],
+                                   {}, set(), model=dest_model(root), root=GOLDEN)
+            t2 = [t for c in units2 for t in c["unit"]["target_symbols"] if t["from"] == retired]
+            if len(t2) != 1 or t2[0].get("to") != "jakarta.ws.rs.core.UriBuilder" or t2[0].get("not_for") or t2[0].get("handler_parameter"):
+                return _fail("[%s] ordinary builder uses outside handler parameters keep their mapping: %s" % (base, t2))
+    return 0
+
+
+def _real_binding_result_translation_case() -> int:
+    """V16-8 (v16: `validator.validate(x).isEmpty()` at 13 sites, and `&&` for
+    `||`): the BindingResult translation, checked from the compiler models of
+    the frozen source and the candidate. bindingResult.hasErrors() is
+    !validator.validate(<body>).isEmpty(), negated as negated, the rest of the
+    guard verbatim; a handler that validates itself keeps no @Valid on its
+    parameter. Real javac, twice under renamed packages; the frozen source is
+    modelled WITHOUT its classpath, so BindingResult is named through its
+    imports."""
+    import shutil as _sh
+    import tempfile
+
+    from planner.worklist import frozen_source_model
+
+    retired = "org.springframework.validation.BindingResult"
+    for base in ("org.acme.clinic", "com.example.depot"):
+        pkg = base.replace(".", "/")
+        owner, visit = "src/main/java/%s/rest/OwnerController.java" % pkg, "src/main/java/%s/rest/VisitController.java" % pkg
+        dto = "src/main/java/%s/dto/OwnerDto.java" % pkg
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            "src/main/java/jakarta/validation/Valid.java": "package jakarta.validation;\npublic @interface Valid { }\n",
+            "src/main/java/jakarta/validation/Validator.java":
+                "package jakarta.validation;\npublic interface Validator { <T> java.util.Set<Object> validate(T t); }\n",
+            dto: "package %s.dto;\npublic class OwnerDto { public Integer getId() { return null; } }\n" % base,
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\nimport jakarta.validation.Valid;\n"
+                "import %s.dto.OwnerDto;\n" % (base, base))
+        spring = "import org.springframework.validation.BindingResult;\n"
+        valid_imp = "import jakarta.validation.Validator;\nimport jakarta.inject.Inject;\n"
+
+        def src_owner() -> str:
+            return (head + spring + "public class OwnerController {\n"
+                    '    @PostMapping("/owners")\n    public String addOwner(@RequestBody @Valid OwnerDto dto, BindingResult bindingResult) {\n'
+                    '        if (bindingResult.hasErrors() || dto.getId() != null) { return "400"; }\n        return "201";\n    }\n'
+                    '    @PostMapping("/owners/1")\n    public String updateOwner(@RequestBody @Valid OwnerDto dto, BindingResult bindingResult) {\n'
+                    '        if (!bindingResult.hasErrors()) { return "204"; }\n        return "400";\n    }\n}\n')
+
+        def src_visit() -> str:
+            return (head + spring + "public class VisitController {\n"
+                    '    @PostMapping("/visits")\n    public String addVisit(@RequestBody @Valid OwnerDto dto, BindingResult errors) {\n'
+                    '        if (errors.hasErrors()) { return "400"; }\n        return "201";\n    }\n}\n')
+
+        def dst_owner(add_guard: str, update_guard: str, valid: str = "") -> str:
+            return (head + "import jakarta.validation.Validator;\npublic class OwnerController {\n    Validator validator;\n"
+                    '    @PostMapping("/owners")\n    public String addOwner(@RequestBody %sOwnerDto dto) {\n'
+                    "        var violations = validator.validate(dto);\n"
+                    '        if (%s) { return "400"; }\n        return "201";\n    }\n'
+                    '    @PostMapping("/owners/1")\n    public String updateOwner(@RequestBody OwnerDto dto) {\n'
+                    '        if (%s) { return "204"; }\n        return "400";\n    }\n}\n' % (valid, add_guard, update_guard))
+
+        def dst_visit(guard: str = "!validator.validate(dto).isEmpty()") -> str:
+            return (head + "import jakarta.validation.Validator;\npublic class VisitController {\n    Validator validator;\n"
+                    '    @PostMapping("/visits")\n    public String addVisit(@RequestBody OwnerDto dto) {\n'
+                    '        if (%s) { return "400"; }\n        return "201";\n    }\n}\n' % guard)
+
+        frozen = {".derived/frozen-input/" + rel: text for rel, text in
+                  {**stubs, owner: src_owner(), visit: src_visit()}.items()
+                  if not rel.startswith("src/main/java/jakarta/validation/Validator")}
+        with tempfile.TemporaryDirectory(prefix="wl-v168-") as d:
+            root = _jdk_root(d, {**stubs, **frozen, owner: src_owner(), visit: src_visit()})
+            src_model, gap = frozen_source_model(root)
+            if src_model is None:
+                return _fail("[%s] the frozen source is modelled: %s" % (base, gap))
+            sg = {(t["fqn"].rsplit(".", 1)[-1], m["name"]): m.get("validation_guards")
+                  for t in src_model["types"] for m in t.get("declared") or [] if m.get("validation_guards")}
+            if sg != {("OwnerController", "addOwner"): ["(INVALID || {dto.getId() != null})"],
+                      ("OwnerController", "updateOwner"): ["!INVALID"], ("VisitController", "addVisit"): ["INVALID"]}:
+                return _fail("[%s] the source's hasErrors() guards are read through its imports, without a classpath: %s" % (base, sg))
+            items = [_javac(owner, "BindingResult", 1), _javac(owner, "BindingResult", 2), _javac(visit, "BindingResult", 3)]
+            units, _ = form_units(items, {}, set(), model=dest_model(root), root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            first = (unit or {}).get("unit", {}).get("target_symbols", [{}])[0]
+            if not first.get("handler_parameter") or not isinstance(first.get("translation"), dict):
+                return _fail("[%s] the BindingResult unit leads with the handler row and its translation rule: %s" % (base, first))
+            if "!validator.validate(<body>).isEmpty()" not in first["action"] or "remove @Valid" not in first["action"]:
+                return _fail("[%s] the action states the translation and the handler-owned validation: %s" % (base, first["action"]))
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+
+            def assess(o: str, v: str) -> dict[str, dict]:
+                (root / owner).write_text(o, encoding="utf-8")
+                (root / visit).write_text(v, encoding="utf-8")
+                return {r["member"].split("#", 1)[1].split("(")[0]: r for r in assess_unit(root, scope)
+                        if r.get("state") == "handler-parameter"}
+
+            good_add, good_update = "!violations.isEmpty() || dto.getId() != null", "validator.validate(dto).isEmpty()"
+            rows = assess(dst_owner(good_add, good_update), dst_visit())
+            if {k: r["verdict"] for k, r in rows.items()} != {"addOwner": "ok", "updateOwner": "ok", "addVisit": "ok"}:
+                return _fail("[%s] the faithful translation (a local, the inline call, the negated form) is clean: %s" % (base, rows))
+            for label, o, v, bad, token in (
+                    ("inverted (v16, 13 sites)", dst_owner("violations.isEmpty() || dto.getId() != null", good_update), dst_visit(),
+                     "addOwner", "INVERTED"),
+                    ("|| turned into &&", dst_owner("!violations.isEmpty() && dto.getId() != null", good_update), dst_visit(),
+                     "addOwner", "the candidate on (INVALID && {dto.getId() != null})"),
+                    ("negated form inverted", dst_owner(good_add, "!validator.validate(dto).isEmpty()"), dst_visit(),
+                     "updateOwner", "INVERTED"),
+                    ("plain form inverted", dst_owner(good_add, good_update), dst_visit("validator.validate(dto).isEmpty()"),
+                     "addVisit", "INVERTED"),
+                    ("@Valid kept on a handler that validates", dst_owner(good_add, good_update, "@Valid "), dst_visit(),
+                     "addOwner", "remove @Valid"),
+                    ("validation dropped", dst_owner("dto.getId() != null", good_update), dst_visit(), "addOwner",
+                     "no validation guard")):
+                rows = assess(o, v)
+                if rows[bad]["verdict"] != "violates" or token not in rows[bad]["detail"]:
+                    return _fail("[%s] %s is refused at %s: %s" % (base, label, bad, rows[bad]))
+                if any(r["verdict"] != "ok" for k, r in rows.items() if k != bad):
+                    return _fail("[%s] %s: only %s is refused: %s" % (base, label, bad, rows))
+            # without a readable frozen source no guard is claimed either way;
+            # the @Valid rule is the candidate's own and still holds
+            _sh.rmtree(root / ".derived")
+            rows = assess(dst_owner("violations.isEmpty() || dto.getId() != null", good_update), dst_visit())
+            if rows["addOwner"]["verdict"] != "ok":
+                return _fail("[%s] no source model, no guard claim: %s" % (base, rows["addOwner"]))
+            rows = assess(dst_owner(good_add, good_update, "@Valid "), dst_visit())
+            if rows["addOwner"]["verdict"] != "violates":
+                return _fail("[%s] @Valid on a self-validating handler is refused without the source too" % base)
+    return 0
+
+
+def _real_package_validation_unit_case() -> int:
+    """V17-2 (v17 t_c67c0185): a unit sealed on the PACKAGE
+    org.springframework.validation ("package ... does not exist") names no
+    type, and the BindingResult translation is keyed on the type, so the brief
+    had no first action. The unit now resolves the types its members use from
+    that package -- through a single-type import and through a wildcard import
+    -- and renders their rows: the handler_parameters BindingResult row with
+    its translation at the handlers, and the validation_helpers rows at the
+    error-response helper that takes BindingResult and FieldError. An
+    unrelated package-level unit gets nothing extra. Real javac, twice under
+    renamed packages."""
+    import tempfile
+
+    pkg = "org.springframework.validation"
+    for base in ("org.acme.clinic", "com.example.depot"):
+        src = "src/main/java/%s/rest/" % base.replace(".", "/")
+        owner, visit, helper = src + "OwnerController.java", src + "VisitController.java", src + "BindingErrorsResponse.java"
+        util = src + "Names.java"
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\n" % base)
+        files = {
+            **stubs,
+            owner: head + "import %s.BindingResult;\npublic class OwnerController {\n"
+                          '    @PostMapping("/owners")\n    public String addOwner(@RequestBody String dto, BindingResult bindingResult) {\n'
+                          '        if (bindingResult.hasErrors()) { return new BindingErrorsResponse(bindingResult).toString(); }\n'
+                          '        return "201";\n    }\n}\n' % pkg,
+            visit: head + "import %s.*;\npublic class VisitController {\n"
+                          '    @PostMapping("/visits")\n    public String addVisit(@RequestBody String dto, BindingResult errors) {\n'
+                          '        return errors.hasErrors() ? "400" : "201";\n    }\n}\n' % pkg,
+            helper: "package %s.rest;\nimport %s.BindingResult;\nimport %s.FieldError;\n"
+                    "public class BindingErrorsResponse {\n    public BindingErrorsResponse(BindingResult result) { }\n"
+                    "    void addError(FieldError error) { }\n}\n" % (base, pkg, pkg),
+            util: "package %s.rest;\nimport org.springframework.util.StringUtils;\npublic class Names {\n"
+                  "    static boolean blank(String s) { return !StringUtils.hasText(s); }\n}\n" % base,
+        }
+
+        def pkg_item(path: str, n: int, package: str) -> dict:
+            return {"id": "err:%s:%d" % (path.rsplit("/", 1)[-1], n), "source": "javac", "kind": "compile",
+                    "identity": "diag:%s|pkg|%d" % (path, n), "category": "mandatory", "path": path, "line": 2,
+                    "rule_id": "compiler.err.doesnt.exist", "message": "package %s does not exist" % package}
+
+        with tempfile.TemporaryDirectory(prefix="wl-v172-") as d:
+            root = _jdk_root(d, files)
+            model = dest_model(root)
+            items = [pkg_item(owner, 1, pkg), pkg_item(visit, 2, pkg), pkg_item(helper, 3, pkg)]
+            units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == pkg and s["kind"] == "package" for s in c["unit"]["symbols"])), None)
+            if unit is None:
+                return _fail("[%s] the package family forms a unit: %s" % (base, [(c["unit"]["family_key"], c["unit"]["symbols"]) for c in units]))
+            ts = unit["unit"]["target_symbols"]
+            first = ts[0] if ts else {}
+            sites = sorted((x["type"].rsplit(".", 1)[-1], x["member"]) for x in first.get("sites") or [])
+            if (first.get("from") != pkg + ".BindingResult" or not first.get("handler_parameter") or first.get("via_package") != pkg
+                    or not isinstance(first.get("translation"), dict)
+                    or sites != [("OwnerController", "addOwner"), ("VisitController", "addVisit")]):
+                return _fail("[%s] the package unit leads with the BindingResult handler row and its translation, at both "
+                             "handlers (single-type and wildcard import): %s" % (base, ts[:1]))
+            helpers = {t["from"].rsplit(".", 1)[-1]: sorted((x["type"].rsplit(".", 1)[-1], x["member"]) for x in t["sites"])
+                       for t in ts if t.get("helper_parameter")}
+            if helpers != {"BindingResult": [("BindingErrorsResponse", "<init>")], "FieldError": [("BindingErrorsResponse", "addError")]}:
+                return _fail("[%s] the helper that takes BindingResult and FieldError gets the validation_helpers rows: %s" % (base, helpers))
+            if any(t.get("helper_parameter") and "ConstraintViolation" not in t["action"] for t in ts):
+                return _fail("[%s] a helper row says how to replace the type: %s" % (base, ts))
+            if not any("used from sealed package %s" % pkg in e["ref"] for e in unit["unit"]["evidence"]):
+                return _fail("[%s] the evidence records where the types came from: %s" % (base, unit["unit"]["evidence"]))
+            # an unrelated package-level unit gets nothing extra
+            other = [pkg_item(util, 4, "org.springframework.util"), pkg_item(owner, 5, "org.springframework.util")]
+            units2, _ = form_units(other, {}, set(), model=model, root=GOLDEN)
+            if not any(s["fqn"] == "org.springframework.util" for c in units2 for s in c["unit"]["symbols"]):
+                return _fail("[%s] the control needs the unrelated package unit to form: %s" % (base, units2))
+            extra = [t for c in units2 for t in c["unit"]["target_symbols"]]
+            if extra:
+                return _fail("[%s] an unrelated package unit gets no validation rows: %s" % (base, extra))
+    return 0
+
+
+def _real_location_null_argument_case() -> int:
+    """V17-5 (v17 PetTypeRestController.addPetType): the source built the
+    Location with ucBuilder.path(...).buildAndExpand(dto.getId()) on the
+    REQUEST DTO, whose id is null on a create -- Spring expands it as an empty
+    segment (201); the migrated uriInfo.getBaseUriBuilder().path(...)
+    .build(dto.getId()) throws IllegalArgumentException (500 after the row was
+    committed). The handler-parameter unit carries the catalogue's
+    location_translation, and its checkpoint compares the candidate's JAX-RS
+    expansion arguments with the frozen source handler's: a bare argument and
+    a substituted value (the saved entity's id) violate; the null guard and
+    Objects.toString(x, "") are clean; String.valueOf is not null-tolerant; an
+    ACCEPTED-ADR substitution in decisions.yaml is honoured. Real javac, the
+    frozen source modelled without its classpath, twice under renamed
+    packages and members."""
+    import tempfile
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    for base, ctl, dto_cls, member, var in (("org.acme.clinic", "PetTypeController", "PetTypeDto", "addPetType", "petType"),
+                                            ("com.example.depot", "CrateEndpoint", "CrateForm", "register", "form")):
+        pkg = base.replace(".", "/")
+        ctl_path = "src/main/java/%s/rest/%s.java" % (pkg, ctl)
+        dto_path = "src/main/java/%s/dto/%s.java" % (pkg, dto_cls)
+        stubs = {
+            "src/main/java/org/springframework/web/bind/annotation/PostMapping.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface PostMapping { String[] value() default {}; }\n",
+            "src/main/java/org/springframework/web/bind/annotation/RequestBody.java":
+                "package org.springframework.web.bind.annotation;\npublic @interface RequestBody { }\n",
+            dto_path: "package %s.dto;\npublic class %s { public Integer getId() { return null; } }\n" % (base, dto_cls),
+        }
+        jaxrs = {
+            "src/main/java/jakarta/ws/rs/core/Context.java": "package jakarta.ws.rs.core;\npublic @interface Context { }\n",
+            "src/main/java/jakarta/ws/rs/core/UriBuilder.java":
+                "package jakarta.ws.rs.core;\npublic abstract class UriBuilder {\n"
+                "    public abstract UriBuilder path(String p);\n    public abstract java.net.URI build(Object... v);\n}\n",
+            "src/main/java/jakarta/ws/rs/core/UriInfo.java":
+                "package jakarta.ws.rs.core;\npublic interface UriInfo { UriBuilder getBaseUriBuilder(); }\n",
+        }
+        head = ("package %s.rest;\nimport org.springframework.web.bind.annotation.PostMapping;\n"
+                "import org.springframework.web.bind.annotation.RequestBody;\nimport %s.dto.%s;\n" % (base, base, dto_cls))
+        spring = (head + "import %s;\npublic class %s {\n"
+                  '    @PostMapping("/api/things")\n'
+                  "    public String %s(@RequestBody %s %s, UriComponentsBuilder ucBuilder) {\n"
+                  '        return ucBuilder.path("/api/things/{id}").buildAndExpand(%s.getId()).toUri().toString();\n'
+                  "    }\n}\n" % (retired, ctl, member, dto_cls, var, var))
+
+        def dst(arg: str) -> str:
+            return (head + "import jakarta.ws.rs.core.Context;\nimport jakarta.ws.rs.core.UriInfo;\nimport java.util.Objects;\n"
+                    "public class %s {\n"
+                    '    @PostMapping("/api/things")\n'
+                    "    public String %s(@RequestBody %s %s, @Context UriInfo uriInfo) {\n"
+                    "        %s saved = %s;\n"
+                    '        return uriInfo.getBaseUriBuilder().path("/api/things/{id}").build(%s).toString();\n'
+                    "    }\n}\n" % (ctl, member, dto_cls, var, dto_cls, var, arg))
+
+        # a second create handler (a unit spans more than one file): its source
+        # expands a LOCAL, which is not provably non-null either
+        other_path = "src/main/java/%s/rest/Other%s.java" % (pkg, ctl)
+        other_src = (head + "import %s;\npublic class Other%s {\n"
+                     '    @PostMapping("/api/others")\n'
+                     "    public String add(@RequestBody %s body, UriComponentsBuilder b) {\n"
+                     "        %s kept = body;\n"
+                     '        return b.path("/api/others/{id}").buildAndExpand(kept.getId()).toUri().toString();\n'
+                     "    }\n}\n" % (retired, ctl, dto_cls, dto_cls))
+        other_dst = (head + "import jakarta.ws.rs.core.Context;\nimport jakarta.ws.rs.core.UriInfo;\npublic class Other%s {\n"
+                     '    @PostMapping("/api/others")\n'
+                     "    public String add(@RequestBody %s body, @Context UriInfo info) {\n"
+                     "        %s kept = body;\n"
+                     '        return info.getBaseUriBuilder().path("/api/others/{id}").build(kept.getId() == null ? "" : kept.getId()).toString();\n'
+                     "    }\n}\n" % (ctl, dto_cls, dto_cls))
+        frozen = {".derived/frozen-input/" + rel: text for rel, text in {**stubs, ctl_path: spring, other_path: other_src}.items()}
+        with tempfile.TemporaryDirectory(prefix="wl-v175-") as d:
+            root = _jdk_root(d, {**stubs, **jaxrs, **frozen, ctl_path: spring, other_path: other_src})
+            items = [_javac(ctl_path, "UriComponentsBuilder", 1), _javac(other_path, "UriComponentsBuilder", 2)]
+            units, _ = form_units(items, {}, set(), model=dest_model(root), root=GOLDEN)
+            unit = next((c for c in units if any(s["fqn"] == retired for s in c["unit"]["symbols"])), None)
+            first = (unit or {}).get("unit", {}).get("target_symbols", [{}])[0]
+            if not first.get("handler_parameter") or not isinstance(first.get("location_translation"), dict):
+                return _fail("[%s] the UriComponentsBuilder unit leads with the handler row and its location_translation: %s" % (base, first))
+            if "null-tolerantly" not in str(first.get("action")):
+                return _fail("[%s] the action states the null-tolerant Location: %s" % (base, first.get("action")))
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+
+            def assess(arg: str) -> dict:
+                (root / ctl_path).write_text(dst(arg), encoding="utf-8")
+                (root / other_path).write_text(other_dst, encoding="utf-8")
+                rows = {r["member"].split("#", 1)[1].split("(")[0]: r for r in assess_unit(root, scope)
+                        if r.get("state") == "handler-parameter"}
+                if (rows.get("add") or {}).get("verdict") != "ok":
+                    raise AssertionError("the null-guarded local expansion is clean: %s" % rows.get("add"))
+                return rows.get(member) or {}
+
+            src_arg = "%s.getId()" % var
+            for label, arg in (("the null guard", '%s == null ? "" : %s' % (src_arg, src_arg)),
+                               ("the inverted null guard", '%s != null ? %s : ""' % (src_arg, src_arg)),
+                               ("Objects.toString", 'Objects.toString(%s, "")' % src_arg),
+                               ("Objects.requireNonNullElse", 'Objects.requireNonNullElse(%s, "")' % src_arg)):
+                r = assess(arg)
+                if r.get("verdict") != "ok":
+                    return _fail("[%s] %s keeps the source's Location: %s" % (base, label, r))
+            for label, arg, token in (("the bare argument (v17 addPetType)", src_arg, "passed bare"),
+                                      ("the saved entity substituted", "saved.getId()", "behaviour change"),
+                                      ("String.valueOf", "String.valueOf(%s)" % src_arg, "behaviour change")):
+                r = assess(arg)
+                if r.get("verdict") != "violates" or token not in r.get("detail", ""):
+                    return _fail("[%s] %s is refused (%s): %s" % (base, label, token, r))
+            # an accepted-ADR substitution is honoured; an unaccepted one is not
+            (root / ".hermes/planning/schemas").mkdir(parents=True, exist_ok=True)
+            shutil.copy(GOLDEN / ".hermes/planning/schemas/decisions.schema.json", root / ".hermes/planning/schemas/decisions.schema.json")
+            golden_dec = (GOLDEN / "decisions.yaml").read_text(encoding="utf-8")
+            for status, want in (("accepted", "ok"), ("proposed", "violates")):
+                text = golden_dec.replace("\nadrs:\n", "\nadrs:\n  - id: ADR-900\n    status: %s\n    title: t\n" % status, 1)
+                text += ("\nlocation_arguments:\n  substitutions:\n    - handler: %s.rest.%s#%s\n      argument: 0\n"
+                         "      expression: saved.getId()\n      adr: ADR-900\n" % (base, ctl, member))
+                (root / "decisions.yaml").write_text(text, encoding="utf-8")
+                r = assess("saved.getId()")
+                if r.get("verdict") != want:
+                    return _fail("[%s] a %s ADR substitution gives %s: %s" % (base, status, want, r))
+            (root / "decisions.yaml").unlink()
+            # no frozen source in this tree: no Location claim, as the guard translation
+            shutil.rmtree(root / ".derived")
+            r = assess(src_arg)
+            if r.get("verdict") != "ok":
+                return _fail("[%s] without a frozen source no Location claim is made: %s" % (base, r))
+    return 0
+
+
+def _static_generated_body_root(d: str, *, pkg: str, model: str, dest_version: str = "7.25.0",
+                                creator_option: str | None = None, frozen: bool = True, accepted_omits: bool = True) -> Path:
+    """A destination at M2 for V17-4, from files alone: the bootstrapped pom
+    (jaxrs-spec/quarkus), the frozen legacy pom (spring/spring-boot, its
+    version through a property), the spec, the corpus with the source's
+    recorded bodies, the evidence bundle's handler and the catalogue."""
+    import json as _json
+
+    root = Path(d)
+    (root / ".hermes/planning/catalogs").mkdir(parents=True)
+    shutil.copy(GOLDEN / ".hermes/planning/catalogs/compat-mapping.json", root / ".hermes/planning/catalogs/compat-mapping.json")
+    opts = "<useJakartaEe>true</useJakartaEe><useBeanValidation>true</useBeanValidation>"
+    if creator_option is not None:
+        opts += "<generateJsonCreator>%s</generateJsonCreator>" % creator_option
+    (root / "pom.xml").write_text(
+        "<project><build><plugins><plugin><groupId>org.openapitools</groupId><artifactId>openapi-generator-maven-plugin</artifactId>"
+        "<version>%s</version><executions><execution><configuration><inputSpec>${project.basedir}/src/main/resources/api.yml</inputSpec>"
+        "<modelPackage>%s.dto</modelPackage><generatorName>jaxrs-spec</generatorName><library>quarkus</library>"
+        "<modelNameSuffix>Dto</modelNameSuffix><configOptions>%s</configOptions></configuration></execution></executions>"
+        "</plugin></plugins></build></project>\n" % (dest_version, pkg, opts), encoding="utf-8")
+    if frozen:
+        fp = root / ".derived/frozen-input/pom.xml"
+        fp.parent.mkdir(parents=True)
+        fp.write_text(
+            "<project><properties><gen.version>5.2.1</gen.version></properties><build><plugins><plugin>"
+            "<groupId>org.openapitools</groupId><artifactId>openapi-generator-maven-plugin</artifactId><version>${gen.version}</version>"
+            "<executions><execution><configuration><inputSpec>${project.basedir}/src/main/resources/api.yml</inputSpec>"
+            "<modelPackage>%s.dto</modelPackage><generatorName>spring</generatorName><library>spring-boot</library>"
+            "<modelNameSuffix>Dto</modelNameSuffix><configOptions><performBeanValidation>true</performBeanValidation></configOptions>"
+            "</configuration></execution></executions></plugin></plugins></build></project>\n" % pkg, encoding="utf-8")
+    (root / "src/main/resources").mkdir(parents=True)
+    (root / "src/main/resources/api.yml").write_text(_json.dumps({"openapi": "3.0.1", "components": {"schemas": {model: {
+        "type": "object", "required": ["name", "items"],
+        "properties": {"id": {"type": "integer"}, "name": {"type": "string"}, "items": {"type": "array", "items": {"type": "string"}}}}}}}),
+        encoding="utf-8")
+    ep = "ep:%s.rest.%sController#add%s(%s.dto.%sDto):http" % (pkg, model, model, pkg, model)
+    bodies = root / "verification/scenarios/bodies"
+    bodies.mkdir(parents=True)
+    ok_body = {"name": "n"} if accepted_omits else {"name": "n", "items": ["a"]}
+    (bodies / "create.json").write_text(_json.dumps(ok_body), encoding="utf-8")
+    (bodies / "create-invalid-name.json").write_text(_json.dumps({"name": "", "items": ["a"]}), encoding="utf-8")
+    (bodies / "create-invalid-items.json").write_text(_json.dumps({"name": "n", "items": ["way too long"]}), encoding="utf-8")
+    (root / "verification/scenarios/corpus.json").write_text(_json.dumps({"schema": "rhoai3.scenario-corpus/v1", "scenarios": [
+        {"id": "sc:create", "entry_point": ep, "method": "POST", "path": "/x", "body_file": "verification/scenarios/bodies/create.json",
+         "qualify": {"expect_status": [201], "intent": "positive"}},
+        {"id": "sc:create-invalid-name", "entry_point": ep, "method": "POST", "path": "/x",
+         "body_file": "verification/scenarios/bodies/create-invalid-name.json", "qualify": {"expect_status": [400], "intent": "negative"}},
+        {"id": "sc:create-invalid-items", "entry_point": ep, "method": "POST", "path": "/x",
+         "body_file": "verification/scenarios/bodies/create-invalid-items.json", "qualify": {"expect_status": [400], "intent": "negative"}},
+    ]}), encoding="utf-8")
+    ctl = "%s.rest.%sController" % (pkg, model)
+    bundle = {"entry_points": [{"id": ep, "kind": "http", "type": ctl, "member": "add%s(%s.dto.%sDto)" % (model, pkg, model)}],
+              "structure": {"available": True, "mode": "full", "types": [{"fqn": ctl, "kind": "class", "path": "src/main/java/x.java",
+                            "methods": [{"signature": "add%s(%s.dto.%sDto)" % (model, pkg, model), "resolution": "full",
+                                         "params": [{"name": "b", "type": "%s.dto.%sDto" % (pkg, model),
+                                                     "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}]}]}]}]}}
+    (root / "evidence/planning").mkdir(parents=True)
+    (root / "evidence/planning/evidence-bundle.json").write_text(_json.dumps(bundle), encoding="utf-8")
+    return root
+
+
+def _static_generated_body_case() -> int:
+    """V17-4 (v17: the V16-8 rule existed and never fired, its trigger was a
+    create scenario FAILING behind another card): the PARITY_GENERATED_BODY
+    obligation on pom.xml is planned from files on disk -- the qualified
+    jaxrs-spec/quarkus 7.25.0 destination creator against the frozen
+    spring/spring-boot 5.2.1 source's setters, and a required property the
+    source's ACCEPTED capture omits. The option already false: not planned
+    (not-applicable). A foreign destination version or a missing frozen
+    source build: not planned, the pair UNRESOLVED and named. The source
+    sending every required property: the pair applies, no obligation. The
+    four body cases are bound to the captures that send them; a case none
+    sends is unresolved. The plan gate discharges only when the condition no
+    longer holds. Twice under renamed packages and models."""
+    import tempfile
+
+    from planner.worklist import (GENERATED_BODY_CAUSE, PLAN_GATE, RULE_PARITY_GENERATED_BODY, generator_qualification,
+                                  load_json as _lj, static_generated_body_facts, static_generated_body_items)
+
+    for pkg, model in (("org.acme.clinic", "Owner"), ("com.example.depot", "Crate")):
+        with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+            root = _static_generated_body_root(d, pkg=pkg, model=model)
+            bundle = _lj(root / "evidence/planning/evidence-bundle.json")
+            items, notes = static_generated_body_items(root, bundle)
+            if len(items) != 1 or notes:
+                return _fail("[%s] the broken form plans exactly one pom obligation: %s %s" % (pkg, items, notes))
+            it = items[0]
+            if (it["rule_id"] != RULE_PARITY_GENERATED_BODY or it["cause"] != GENERATED_BODY_CAUSE or it["gate"] != PLAN_GATE
+                    or it["path"] != "pom.xml" or it["kind"] != "build" or not it["id"].startswith("plan:gb:")):
+                return _fail("[%s] the planned item is the V16-8 obligation on pom.xml at the plan gate: %s" % (pkg, it))
+            # the planned item is admissible: it validates against the sealed work-list schema the
+            # admission applies (v21 M2 2026-09-27: source "plan" was missing from the enum -> COMPAT_FAIL)
+            from planner.schema_lite import load_schema, validate
+            wl_schema = load_schema(Path(__file__).resolve().parents[2] / "planning" / "schemas" / "worklist.schema.json")
+            errs = validate(it, wl_schema["properties"]["items"]["items"], root=wl_schema)
+            if errs:
+                return _fail("[%s] the planned item validates against worklist.schema.json: %s" % (pkg, errs))
+            if "generateJsonCreator" not in it["detail"] or "items" not in it["detail"] or "No controller edit" not in it["detail"]:
+                return _fail("[%s] its first action is the V16-8 catalogue action naming the omitted property: %s" % (pkg, it["detail"][:400]))
+            if it["planned"]["omitted_by_accepted"] != [{"model": "%s.dto.%sDto" % (pkg, model), "property": "items", "scenarios": ["sc:create"]}]:
+                return _fail("[%s] the trigger is the accepted capture that omits the property: %s" % (pkg, it["planned"]))
+            facts = static_generated_body_facts(root, bundle)
+            cases = {(c["property"], c["case"]): c for c in facts["cases"]}
+            want = {("items", "omitted"): ["sc:create"], ("items", "invalid"): ["sc:create-invalid-items"],
+                    ("name", "empty"): ["sc:create-invalid-name"], ("items", "null"): [], ("name", "omitted"): [],
+                    ("name", "null"): [], ("items", "empty"): [], ("name", "invalid"): []}
+            got = {k: cases[k]["scenarios"] for k in want if k in cases}
+            if got != want or any(cases[k]["status"] != ("covered" if v else "unresolved") for k, v in want.items()):
+                return _fail("[%s] the four cases per required property are bound to the captures that send them: %s" % (pkg, got))
+            if not all("never invented" in cases[k].get("reason", "") for k, v in want.items() if not v):
+                return _fail("[%s] a case no capture sends is unresolved, never invented: %s" % (pkg, cases))
+            # the plan gate: discharged only when the condition no longer holds
+            prev = {"known": True, "tuple": [0, 5, 0]}
+            ok, why = progress(prev, dict(prev), set(), set(), gate=PLAN_GATE, issued_items=[it["id"]], cur_item_ids={it["id"]})
+            if ok:
+                return _fail("[%s] the plan gate refuses while the condition holds: %s" % (pkg, why))
+            ok, why = progress(prev, dict(prev), set(), set(), gate=PLAN_GATE, issued_items=[it["id"]], cur_item_ids=set())
+            if not ok:
+                return _fail("[%s] the plan gate accepts when the condition no longer holds: %s" % (pkg, why))
+            ok, why = progress(prev, {"known": True, "tuple": [0, 6, 0]}, set(), set(), gate=PLAN_GATE, issued_items=[it["id"]],
+                               cur_item_ids=set())
+            if ok:
+                return _fail("[%s] a planned repair may not make compilation worse: %s" % (pkg, why))
+        # correct form: the option is already false -> not applicable, nothing planned
+        with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+            root = _static_generated_body_root(d, pkg=pkg, model=model, creator_option="false")
+            items, notes = static_generated_body_items(root, _lj(root / "evidence/planning/evidence-bundle.json"))
+            q = generator_qualification(root)
+            if items or notes or q["status"] != "not-applicable" or not q["option"]["stopped"]:
+                return _fail("[%s] generateJsonCreator=false is not applicable: %s %s %s" % (pkg, items, notes, q))
+        # a foreign destination version, and a missing frozen source build: UNRESOLVED, never assumed
+        for kw, token in (({"dest_version": "7.0.0"}, "destination plugin version '7.0.0' is not qualified"),
+                          ({"frozen": False}, "frozen source build")):
+            with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+                root = _static_generated_body_root(d, pkg=pkg, model=model, **kw)
+                items, notes = static_generated_body_items(root, _lj(root / "evidence/planning/evidence-bundle.json"))
+                if items or not notes or token not in notes[0] or "UNRESOLVED" not in notes[0]:
+                    return _fail("[%s] %s: nothing planned, the pair unresolved and named: %s %s" % (pkg, kw, items, notes))
+        # the source sends every required property: the pair applies, no obligation
+        with tempfile.TemporaryDirectory(prefix="wl-v174-") as d:
+            root = _static_generated_body_root(d, pkg=pkg, model=model, accepted_omits=False)
+            items, notes = static_generated_body_items(root, _lj(root / "evidence/planning/evidence-bundle.json"))
+            if items or notes or generator_qualification(root)["status"] != "applicable":
+                return _fail("[%s] no accepted capture omits a required property: nothing planned: %s %s" % (pkg, items, notes))
+    return 0
+
+
 def main() -> int:
+    if _static_generated_body_case():
+        return 1
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
-            or _unit_budget_case()):
+            or _unit_budget_case() or _issued_parity_plan_case() or _adapter_owned_retirement_case()
+            or _leaf_evidence_case()):
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _real_leaf_case() or _real_fragment_case() or _real_explained_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_bound_case() or _real_fragment_case() or _real_explained_case() or _real_adapter_owned_retirement_case() or _real_handler_parameter_precedence_case() or _real_binding_result_translation_case() or _real_package_validation_unit_case() or _real_location_null_argument_case():
+            return 1
+        if (_real_generic_leaf_case() or _real_partial_leaf_case() or _real_leaf_bound_case()
+                or _real_generic_retirement_case()):
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)
@@ -3703,7 +5596,7 @@ def main() -> int:
     caps = [c for c in cluster_items(many, {}, set()) if c.get("label")]
     if [c["label"] for c in caps] != ["Profile#1", "Profile#2"] or len(caps[0]["write_set"]) != 8 or len(caps[1]["write_set"]) != 2:
         return _fail("a symbol across more than 8 files splits into capped clusters: %s" % [(c["label"], len(c["write_set"])) for c in caps])
-    if card_title(sym[0], 1) != "M3 compile DataAccessException (3 items, 2 files, attempt 1)":
+    if card_title(sym[0], 1) != "M3 COMPILE \u2014 DataAccessException (3 items, 2 files, attempt 1)":
         return _fail("symbol clusters get a readable title: %s" % card_title(sym[0], 1))
     # a profile file's cluster writes the profile file AND the sibling application.properties (the documented merge)
     prof = cluster_items([{"id": "inc:p", "source": "mta", "kind": "config", "category": "mandatory", "path": "src/main/resources/application-hsqldb.properties", "line": 0, "rule_id": "springboot-properties-to-quarkus-00001"}], {}, set())
@@ -3735,7 +5628,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → an obligation OWED the harness CORS adapter, a Content-Type parameter difference → its own PARITY_CONTENT_TYPE obligation, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (ADR-019: the CORS write set is the adapter's contract path plus the configuration, permissions come from the SOURCE policy and never from one capture, with the paired actual request, the exposed headers, both security modes and the capability's --check as the exit; each owed adapter is ONE sealed unit/owed-adapter/v1 whose checkpoint assesses the template bytes, the contract type and every rendered row, and a rendering the evidence cannot support is a typed blocker; findings in harness-owned generated roots are never obligations; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → an obligation OWED the harness CORS adapter, a Content-Type parameter difference → its own PARITY_CONTENT_TYPE obligation, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (ADR-019: the CORS write set is the adapter's contract path plus the configuration, permissions come from the SOURCE policy and never from one capture, with the paired actual request, the exposed headers, both security modes and the capability's --check as the exit; each owed adapter is ONE sealed unit/owed-adapter/v1 whose checkpoint assesses the template bytes, the contract type and every rendered row, and a rendering the evidence cannot support is a typed blocker; findings in harness-owned generated roots are never obligations; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495); an adapter-owned annotation (@CrossOrigin, v16 t_7074fcda) carries its qualified adapter_owned_annotations retirement row and action, another package's CrossOrigin none, the parse proves its retirement in a leaf or a family and refuses on a missing or incomplete parse, and the CORS obligation and its owed adapter unit still stand after it. The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
 obligation it excludes stays in the work list as its own item with its file still writable, while a closure keeps \
 its callers and reaches the typed UNIT_OVERSIZE refusal rather than dropping them. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH). The CHECKPOINT: a \
 unit whose sealed identities are gone and whose members assess clean is ACCEPTED with the tuple unchanged, and even \
@@ -3757,7 +5650,7 @@ symbol; an adapter that does not implement the parent violates, a written one di
 inheritance violates; the unit's boot gate must pass before acceptance, a passing gate never excuses a violating \
 member, and a gate that was passing may not be broken; and the two counterexamples are decided from the compiler's \
 own imports -- the wrong jakarta.ws.rs.Context and an unbound UriBuilder explain nothing while the imported \
-catalogued target does. Each of them repeated on a twin sharing no identifier")
+catalogued target does. Each of them repeated on a twin sharing no identifier. DECLARED REFERENCES (rgctl offline evaluation 2026-09-25): a consumer naming a leaf type only through a generic argument, an array, a wildcard, a bound, an intersection or a generic supertype prevents the leaf by the edge itself and never becomes writable, while the disconnected control still forms one; the recorded G03 variants regroup as one family with the same files, order and obligations; missing, malformed or incomplete evidence on either side (and G09's empty outside) establishes no isolation and drops no obligation; the 20/21 file, 160/161 site and 8/9 symbol bounds hold under both classifications; and a retired type left in a generic, an array or a bound is still named, a truncated walk proves nothing absent, and the parse proof still answers")
     return 0
 
 

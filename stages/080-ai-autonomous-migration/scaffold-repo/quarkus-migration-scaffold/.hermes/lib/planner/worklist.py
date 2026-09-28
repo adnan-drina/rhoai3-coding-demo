@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit,  # noqa: E501
+from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit, tree_model,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
 from planner.paths import is_product_path, LOOP_ACCEPTED, VERIFY_DIR, CATALOGS_DIR, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 import response_adapters as _adapters  # noqa: E402  (.hermes/lib, beside this package)
@@ -291,15 +291,58 @@ def incidents_from_bundle(bundle: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
+IDENTITY_LEGACY = "legacy"
+IDENTITY_V1 = "v1"
+
+
+def diagnostic_key(diags: dict[str, Any], d: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Plan semantics v1: the facts a compile obligation's identity is made of,
+    and how much they can be trusted.
+
+    ``structured``   the compiler's own diagnostic arguments (symbol kinds and
+                     names) at the site (file, line, column) with the code:
+                     no prose, whatever language rendered it
+    ``pinned-text``  the producer rendered the text in its pinned ROOT locale;
+                     the text is the compiler's base bundle, not a translation
+    ``message-text`` neither is known (an older producer, a hand-made
+                     document): the finding is kept, with the lower-confidence
+                     identity named -- never merged with another, never dropped
+    """
+    path = str(d.get("path") or "") or GLOBAL
+    base = {"path": path, "line": int(d.get("line") or 0), "column": int(d.get("column") or 0), "code": str(d.get("code") or "")}
+    if diags.get("args_available") is True and isinstance(d.get("args"), list):
+        return dict(base, args=[str(a) for a in d["args"]]), "structured"
+    text = re.sub(r"\s+", " ", str(d.get("message") or "")).strip()
+    if str(diags.get("rendering_locale") or "") == "root":
+        return dict(base, message=text), "pinned-text"
+    return dict(base, message=text), "message-text"
+
+
+def compile_items(diags: dict[str, Any], *, identity: str = IDENTITY_LEGACY) -> list[dict[str, Any]]:
+    """Compile obligations from a rhoai3.diagnostics/v1 document.
+
+    ``identity`` is the run's decided plan semantics. legacy (the default, and
+    every run admitted before v1) hashes path, line, code and the message
+    text exactly as before. v1 hashes diagnostic_key, and gives the n-th
+    repetition of an identical key its own occurrence, so two diagnostics the
+    compiler reports at one site stay two obligations (conservation) instead
+    of one id twice."""
     out: list[dict[str, Any]] = []
+    seen: dict[str, int] = {}
     for d in diags.get("diagnostics") or []:
         if str(d.get("kind") or "").upper() != "ERROR":
             continue
         path = str(d.get("path") or "") or GLOBAL
         line = int(d.get("line") or 0)
         message = str(d.get("message") or "")
-        ident = sha256_bytes(canonical_bytes({"path": path, "line": line, "code": d.get("code"), "message": message}))[:16]
+        confidence = ""
+        if identity == IDENTITY_V1:
+            key, confidence = diagnostic_key(diags, d)
+            base_ident = sha256_bytes(canonical_bytes(key))[:16]
+            seen[base_ident] = seen.get(base_ident, 0) + 1
+            ident = base_ident if seen[base_ident] == 1 else sha256_bytes(("%s#%d" % (base_ident, seen[base_ident])).encode("utf-8"))[:16]
+        else:
+            ident = sha256_bytes(canonical_bytes({"path": path, "line": line, "code": d.get("code"), "message": message}))[:16]
         if path.startswith("target/generated-sources/"):
             # generated code is owned by its generator's configuration in the
             # pom: the item's locus is pom.xml (a build item), the generated
@@ -307,8 +350,12 @@ def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
             out.append({"id": "err:%s" % ident, "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0,
                         "rule_id": "GENERATED_SOURCE_ERROR", "message_sha256": sha256_bytes(message.encode("utf-8")),
                         "detail": ("%s:%d: %s" % (path, line, message))[:200], "message": ("%s:%d: %s" % (path, line, message))[:600], "generated_path": path})
+            if confidence:
+                out[-1].update({"column": int(d.get("column") or 0), "identity_confidence": confidence})
             continue
         out.append({"id": "err:%s" % ident, "source": "javac", "kind": "build" if path == GLOBAL or path_class(path) == "build" else "compile", "category": "mandatory", "path": path, "line": line, "rule_id": str(d.get("code") or ""), "message_sha256": sha256_bytes(message.encode("utf-8")), "detail": message[:200], "message": message[:600]})
+        if confidence:
+            out[-1].update({"column": int(d.get("column") or 0), "identity_confidence": confidence})
     if diags.get("build_unresolvable"):
         out.append({"id": "err:build-unresolvable", "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "BUILD_UNRESOLVABLE", "message_sha256": sha256_bytes(str(diags.get("reason") or "").encode("utf-8")), "detail": str(diags.get("reason") or "")[:200], "message": str(diags.get("reason") or "")[:600]})
     return out
@@ -939,6 +986,11 @@ def _split_diffs(reason: str) -> list[str]:
 
 
 SCENARIO_CORPUS = Path("verification") / "scenarios" / "corpus.json"
+SCENARIO_CORPORA = (
+    Path("verification") / "scenarios" / "corpus.json",
+    Path("verification") / "scenarios-enabled" / "corpus.json",
+)
+PARITY_SCENARIO_SUBDIRS = ("scenarios", "scenarios-enabled")
 # the corpus's scenario_type vocabulary (capture-source-oracles/_scenarios.py)
 SCENARIO_BROWSER_PREFLIGHT = "browser-preflight"
 SCENARIO_DIAGNOSTIC_PROBE = "diagnostic-probe"
@@ -953,48 +1005,80 @@ _CORS_PROBE_RE = re.compile(r"^(?:sc:)?cors-(?:[a-z0-9]+-)*probe-")
 _CORS_SAME_ORIGIN_RE = re.compile(r"^(?:sc:)?cors-[a-z0-9-]*same-origin")
 
 
+def _iter_corpus_docs(root: Path | None):
+    """Each scenario corpus this tree holds: the default mode, then enabled.
+
+    ADR-014 stores the two modes in separate corpora. A work list that reads
+    only ``verification/scenarios/corpus.json`` never sees an enabled-mode
+    FAIL and cannot mint the repair that FAIL owes."""
+    if root is None:
+        return
+    for rel in SCENARIO_CORPORA:
+        p = Path(root) / rel
+        if not p.is_file():
+            continue
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict):
+            yield doc
+
+
+def _parity_scenario_paths(pdir: Path) -> list[Path]:
+    """Verdict files under both mode scenario directories, default first."""
+    out: list[Path] = []
+    for name in PARITY_SCENARIO_SUBDIRS:
+        d = pdir / name
+        if d.is_dir():
+            out.extend(sorted(d.glob("*.json")))
+    return out
+
+
+def _security_mode_of(path: Path, doc: dict[str, Any]) -> str:
+    """The security mode a verdict belongs to: the document's own field, else
+    the directory the comparison wrote it under."""
+    mode = str(doc.get("security_mode") or "").strip().lower()
+    if mode in ("disabled", "enabled"):
+        return mode
+    posix = path.as_posix().replace("\\", "/")
+    return "enabled" if "/scenarios-enabled/" in posix or posix.endswith("/scenarios-enabled") else "disabled"
+
+
 def cors_scenarios(root: Path | None) -> dict[str, dict[str, Any]]:
     """{scenario id: {method, preflight}} for the corpus's cross-origin scenarios
-    (a scenario naming a ``cors_policy``). {} when there is no corpus."""
-    p = Path(root) / SCENARIO_CORPUS if root is not None else None
-    if p is None or not p.is_file():
-        return {}
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return {}
+    (a scenario naming a ``cors_policy``). {} when there is no corpus.
+
+    Both security-mode corpora are read. Enabled ids are distinct from
+    disabled ids (``cors-enabled-preflight-*`` vs ``cors-preflight-*``), so a
+    disabled PASS cannot discharge an enabled FAIL."""
     out: dict[str, dict[str, Any]] = {}
-    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
-        if not isinstance(sc, dict) or not sc.get("cors_policy") or not sc.get("id"):
-            continue
-        hdrs = {str(k).lower() for k in (sc.get("headers") or {})}
-        method = str(sc.get("method") or "").upper()
-        stype = str(sc.get("scenario_type") or "")
-        out[str(sc["id"])] = {"method": method, "type": stype,
-                              "probe": stype == SCENARIO_DIAGNOSTIC_PROBE,
-                              "preflight": stype == SCENARIO_BROWSER_PREFLIGHT or (
-                                  not stype and method == "OPTIONS" and "access-control-request-method" in hdrs),
-                              "same_origin": bool(sc.get("same_origin")) or str(sc.get("origin_kind") or "") == "same",
-                              "has_body": bool(sc.get("body_file"))}
+    for doc in _iter_corpus_docs(root):
+        for sc in doc.get("scenarios") or []:
+            if not isinstance(sc, dict) or not sc.get("cors_policy") or not sc.get("id"):
+                continue
+            hdrs = {str(k).lower() for k in (sc.get("headers") or {})}
+            method = str(sc.get("method") or "").upper()
+            stype = str(sc.get("scenario_type") or "")
+            out[str(sc["id"])] = {"method": method, "type": stype,
+                                  "probe": stype == SCENARIO_DIAGNOSTIC_PROBE,
+                                  "preflight": stype == SCENARIO_BROWSER_PREFLIGHT or (
+                                      not stype and method == "OPTIONS" and "access-control-request-method" in hdrs),
+                                  "same_origin": bool(sc.get("same_origin")) or str(sc.get("origin_kind") or "") == "same",
+                                  "has_body": bool(sc.get("body_file"))}
     return out
 
 
 def corpus_requests(root: Path | None) -> dict[str, dict[str, Any]]:
     """{scenario id: {method, has_body, cross_origin}} for EVERY corpus scenario
     (the cross-origin ones and the controls alike). {} without a corpus."""
-    p = Path(root) / SCENARIO_CORPUS if root is not None else None
-    if p is None or not p.is_file():
-        return {}
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return {}
     out: dict[str, dict[str, Any]] = {}
-    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
-        if not isinstance(sc, dict) or not sc.get("id"):
-            continue
-        out[_sid(str(sc["id"]))] = {"method": str(sc.get("method") or "").upper(), "has_body": bool(sc.get("body_file")),
-                                    "cross_origin": bool(sc.get("cors_policy"))}
+    for doc in _iter_corpus_docs(root):
+        for sc in doc.get("scenarios") or []:
+            if not isinstance(sc, dict) or not sc.get("id"):
+                continue
+            out[_sid(str(sc["id"]))] = {"method": str(sc.get("method") or "").upper(), "has_body": bool(sc.get("body_file")),
+                                        "cross_origin": bool(sc.get("cors_policy"))}
     return out
 
 
@@ -1324,6 +1408,12 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
     if status:
         exit_conditions.append("the request answers %s, the status the SOURCE answered; the destination answers %s today."
                                % (status["want"], status["have"]))
+        if str(status["want"]).isdigit() and 300 <= int(status["want"]) < 400:
+            exit_conditions.append(
+                "for a JAX-RS Response return type, construct Response.status(%s).location(target).build(), where target "
+                "preserves the captured Location. seeOther selects 303 and temporaryRedirect selects 307; choose neither "
+                "when the source's status differs. Complete the builder with .build(): a ResponseBuilder is not a Response."
+                % status["want"])
     if location:
         want, have, raw = location["want"], location["have"], location["source"]
         exit_conditions.append(
@@ -1338,6 +1428,11 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
                 % doubled)
         target = _url_path(want)
         if any(tok in target.lower() for tok in _DOC_UI_TOKENS):
+            # The advice below requires UI properties before navigation can
+            # pass. Bind that file here too, while the first response still
+            # fails; waiting for a navigation-only item makes the scope
+            # amendment impossible on the card that must repair both.
+            out["config_locus"] = APP_PROPERTIES
             exit_conditions.append(
                 "%s is live in the PACKAGED production artifact: the replacement UI is included in the package "
                 "(quarkus.swagger-ui.always-include=true) and addressed at that legacy path (quarkus.swagger-ui.path matching "
@@ -1360,6 +1455,159 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
 
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
+PARITY_RUN_RECORD = PARITY_DIR / "_run.json"
+DEFAULT_SECURITY_MODE = "disabled"
+SECURITY_MODES = ("disabled", "enabled")
+
+
+def normalize_loop_security_mode(security_mode: Any) -> str:
+    """disabled / enabled; anything else (including missing) is the default.
+
+    Mixed is not a receipt identity -- callers that need to distinguish it
+    read ``security_mode_of_run`` before asking for a path."""
+    mode = str(security_mode or "").strip().lower()
+    return mode if mode in SECURITY_MODES else DEFAULT_SECURITY_MODE
+
+
+def parity_receipt_file(security_mode: Any = None) -> Path:
+    mode = normalize_loop_security_mode(security_mode)
+    return PARITY_DIR / ("receipt.json" if mode == DEFAULT_SECURITY_MODE else "receipt-%s.json" % mode)
+
+
+def parity_run_file(security_mode: Any = None) -> Path:
+    mode = normalize_loop_security_mode(security_mode)
+    return PARITY_DIR / ("_run.json" if mode == DEFAULT_SECURITY_MODE else "_run-%s.json" % mode)
+
+
+def parity_before_file(security_mode: Any = None) -> Path:
+    mode = normalize_loop_security_mode(security_mode)
+    return VERIFY_DIR / ("parity-before.json" if mode == DEFAULT_SECURITY_MODE else "parity-before-%s.json" % mode)
+
+
+def security_mode_of_run(run: dict[str, Any] | None, issued: dict[str, Any] | None = None) -> str:
+    """The security mode the issued card must be judged in.
+
+    The issued card's sealed ``security_mode`` owns the comparison. A runner
+    record that disagrees is not adopted: a silent disabled replay must not
+    make acceptance read ``receipt.json``. ``mixed`` is residual and refused:
+    one repair card compares one mode. When the seal omitted the field, the
+    runner record is the fallback, then the default -- callers that must not
+    invent a mode (verify plan, acceptance) consult ``issued_parity_plan``."""
+    issued_mode = str((issued or {}).get("security_mode") or "").strip().lower()
+    if issued_mode in SECURITY_MODES or issued_mode == "mixed":
+        return issued_mode
+    par = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
+    recorded = str(par.get("security_mode") or "").strip().lower()
+    if recorded in SECURITY_MODES or recorded == "mixed":
+        return recorded
+    return DEFAULT_SECURITY_MODE
+
+
+ISSUANCE_SCOPE_PENDING = "issuance-scope-missing"
+_MIXED_MODE_SKIP = "the issued card mixes security modes; partition into one mode per repair card"
+_SCOPE_PENDING = "the issued card does not record a security mode or scenario scope"
+_SCOPE_INCONSISTENT = "the issued card's sealed security mode or scenario scope is inconsistent with its issuance item_scope"
+_SCOPE_INCOMPLETE = "the issued card's item_scope does not account for every issued item"
+
+
+def _item_security_mode(it: dict[str, Any]) -> str:
+    mode = str(it.get("security_mode") or "disabled").strip().lower() or "disabled"
+    return mode if mode in SECURITY_MODES or mode == "mixed" else "disabled"
+
+
+def _item_scenario_ids(it: dict[str, Any]) -> list[str]:
+    sids = [str(s) for s in (it.get("scenarios") or []) if str(s)]
+    if not sids and str(it.get("scenario") or ""):
+        sids = [str(it.get("scenario"))]
+    return sids
+
+
+def _scope_from_item_scope(item_scope: Any) -> tuple[str, list[str], list[str]]:
+    """Mode, scenarios and entry points from the mint-time item snapshot.
+
+    Missing modes are left empty rather than invented as ``disabled``: an
+    incomplete snapshot is pending at verify time, not a silent default."""
+    rows = [r for r in (item_scope or []) if isinstance(r, dict)]
+    if not rows:
+        return "", [], []
+    recorded = [str(it.get("security_mode") or "").strip().lower() for it in rows]
+    named = [m for m in recorded if m]
+    if not named or any(not m for m in recorded):
+        mode = ""
+    elif any(m not in SECURITY_MODES and m != "mixed" for m in named):
+        mode = next(m for m in named if m not in SECURITY_MODES and m != "mixed")
+    elif len(set(named)) > 1:
+        mode = "mixed"
+    else:
+        mode = named[0]
+    scenarios = sorted({s for it in rows for s in _item_scenario_ids(it)})
+    entry_points = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("entry_point") or "")})
+    return mode, scenarios, entry_points
+
+
+def seal_issued_parity_scope(worklist: dict[str, Any] | None, issued_ids: Any) -> dict[str, Any]:
+    """Mode, scenario ids, entry points and per-item snapshot sealed at mint.
+
+    Taken from the work-list rows that exist when the card is issued. An empty
+    row set does not invent ``disabled`` or the whole corpus: the verify plan
+    then pending rather than silently falling back. Verification recovers
+    this snapshot, never the mutable rebuilt work list."""
+    wanted = {str(i) for i in (issued_ids or []) if str(i)}
+    rows = [it for it in ((worklist or {}).get("items") or []) if isinstance(it, dict) and str(it.get("id") or "") in wanted]
+    item_scope = [{"id": str(it.get("id") or ""), "security_mode": _item_security_mode(it),
+                   "scenarios": _item_scenario_ids(it),
+                   "entry_point": str(it.get("entry_point") or "")} for it in rows]
+    mode, scenarios, entry_points = _scope_from_item_scope(item_scope)
+    return {"security_mode": mode, "scenarios": scenarios, "entry_points": entry_points, "item_scope": item_scope}
+
+
+def issued_parity_plan(issued: dict[str, Any] | None, worklist: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What the parity stage compares for this issued card.
+
+    Only issuance-bound evidence is used: ``security_mode``, ``scenarios``,
+    ``entry_points`` and the mint-time ``item_scope`` snapshot. The live
+    work list is ignored -- remaining rows may show what is left, but they
+    must not shrink a two-item seal to the one row still reported. A sealed
+    mode plus named read-oracle entry points is a valid comparison with an
+    empty scenario list. Missing, invalid, inconsistent or incomplete
+    evidence is ``pending``, never ``run:``.
+
+    ``worklist`` is accepted for call-site compatibility and is not read.
+
+    Returns ``kind`` in ``run`` / ``skip`` / ``pending``, plus ``mode``,
+    ``scenarios``, ``entry_points`` and ``reason``."""
+    issued = issued if isinstance(issued, dict) else {}
+    _ = worklist
+    sealed_mode = str(issued.get("security_mode") or "").strip().lower()
+    sealed_sids = [str(s) for s in (issued.get("scenarios") or []) if str(s)]
+    sealed_eps = [str(e) for e in (issued.get("entry_points") or []) if str(e)]
+    derived_mode, derived_sids, derived_eps = _scope_from_item_scope(issued.get("item_scope"))
+    if not sealed_mode:
+        sealed_mode = derived_mode
+    if not sealed_sids:
+        sealed_sids = derived_sids
+    if not sealed_eps:
+        sealed_eps = derived_eps
+    if sealed_mode == "mixed":
+        return {"kind": "skip", "mode": "mixed", "scenarios": [], "entry_points": [], "reason": _MIXED_MODE_SKIP}
+    scope_rows = [r for r in (issued.get("item_scope") or []) if isinstance(r, dict)]
+    if scope_rows:
+        wanted = {str(i) for i in (issued.get("items") or []) if str(i)}
+        scoped_ids = {str(r.get("id") or "") for r in scope_rows if str(r.get("id") or "")}
+        if wanted != scoped_ids:
+            return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCOMPLETE}
+        if sealed_sids and sorted(set(sealed_sids)) != sorted(set(derived_sids)):
+            return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
+        if sealed_eps and sorted(set(sealed_eps)) != sorted(set(derived_eps)):
+            return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
+    if derived_mode and sealed_mode != derived_mode:
+        return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_INCONSISTENT}
+    if sealed_mode not in SECURITY_MODES:
+        return {"kind": "pending", "mode": "", "scenarios": [], "entry_points": [], "reason": _SCOPE_PENDING}
+    if not sealed_sids and not sealed_eps:
+        return {"kind": "pending", "mode": sealed_mode, "scenarios": [], "entry_points": [], "reason": _SCOPE_PENDING}
+    return {"kind": "run", "mode": sealed_mode, "scenarios": sorted(set(sealed_sids)),
+            "entry_points": sealed_eps, "reason": ""}
 
 
 # every kind of parity obligation parity_items mints, so a later receipt can be
@@ -1367,16 +1615,31 @@ PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
 PARITY_KINDS = ("response", "cors", "navigation", "representation")
 
 
-def parity_obligation_id(entry_point: str, scenario: str, what: str) -> str:
+def parity_obligation_id(entry_point: str, scenario: str, what: str,
+                         security_mode: Any = None) -> str:
     """The identity of a parity obligation: the entry point, the scenario that
     measured it (empty for a read oracle) and WHICH of the two kinds of diff it
     carries. Line-free and message-free like every other obligation identity
-    here, so a comparator that rewords its diff reports the same obligation."""
+    here, so a comparator that rewords its diff reports the same obligation.
+
+    Navigation identities also include the security mode: a disabled dead
+    redirect and an enabled dead redirect at the same endpoint are two
+    obligations (v10: ``seen_nav`` kept the first mode and dropped the other).
+    Other kinds already distinguish modes by scenario id."""
+    payload = {"ep": entry_point, "scenario": scenario, "what": what}
+    if what == "navigation":
+        payload["mode"] = normalize_loop_security_mode(security_mode)
+    return "parity:%s" % sha256_bytes(canonical_bytes(payload))[:16]
+
+
+def parity_obligation_id_legacy(entry_point: str, scenario: str, what: str) -> str:
+    """The pre-mode navigation digest. Dest cards already issued as
+    ``parity:a79db752`` keep this id so attempt history stays attached."""
     return "parity:%s" % sha256_bytes(canonical_bytes({"ep": entry_point, "scenario": scenario, "what": what}))[:16]
 
 
-def load_parity_receipt(root: Path) -> dict[str, Any]:
-    p = Path(root) / PARITY_RECEIPT
+def load_parity_receipt(root: Path, security_mode: Any = None) -> dict[str, Any]:
+    p = Path(root) / parity_receipt_file(security_mode)
     if not p.is_file():
         return {}
     try:
@@ -1399,11 +1662,14 @@ def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
     obligation can be looked up in a LATER receipt without anyone having
     recorded what it was made of. A scenario's verdict is the verdict of the
     entry point row that declares it -- the row is PASS only when every required
-    scenario of that entry point passed (compose-parity-receipt.py)."""
+    scenario of that entry point passed (compose-parity-receipt.py). Navigation
+    also keys the historical no-mode digest so a card issued before the mode
+    was in the identity still discharges against this receipt."""
     rows = (receipt or {}).get("entry_points") if isinstance(receipt, dict) else None
     if (not isinstance(receipt, dict) or str(receipt.get("schema") or "") != PARITY_RECEIPT_SCHEMA
             or not isinstance(rows, list) or not rows):
         return {"known": False, "verdict": "", "entry_points": {}, "scenarios": {}, "obligations": {}}
+    rec_mode = normalize_loop_security_mode(receipt.get("security_mode"))
     eps: dict[str, str] = {}
     scen: dict[str, str] = {}
     obl: dict[str, dict[str, str]] = {}
@@ -1426,8 +1692,16 @@ def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
                 v = verdict
                 if what == "navigation" and (ep in nav_failed or str(row.get("navigation") or "") == "failed"):
                     v = "FAIL"  # the first response PASSes; the redirect target does not answer
-                obl[parity_obligation_id(ep, sid, what)] = {"entry_point": ep, "scenario": sid,
-                                                            "what": what, "verdict": v}
+                body = {"entry_point": ep, "scenario": sid, "what": what, "verdict": v}
+                if what == "navigation":
+                    body["security_mode"] = rec_mode
+                    oid = parity_obligation_id(ep, sid, what, rec_mode)
+                    obl[oid] = body
+                    legacy = parity_obligation_id_legacy(ep, sid, what)
+                    if legacy not in obl:
+                        obl[legacy] = body
+                else:
+                    obl[parity_obligation_id(ep, sid, what)] = body
     return {"known": True, "verdict": str(receipt.get("verdict") or ""),
             "entry_points": eps, "scenarios": scen, "obligations": obl}
 
@@ -1624,21 +1898,61 @@ def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None
     return cur, carried
 
 
+def _issued_navigation_id(root: Path, entry_point: str, mode: str) -> str:
+    """The obligation id to mint for this mode's dead redirect.
+
+    New cards use the mode-specific digest. A card already issued under the
+    historical no-mode digest keeps that id so its attempt history remains
+    the same cluster's continuation."""
+    modern = parity_obligation_id(entry_point, "", "navigation", mode)
+    legacy = parity_obligation_id_legacy(entry_point, "", "navigation")
+    p = Path(root) / LOOP_ISSUED
+    if not p.is_file():
+        return modern
+    try:
+        issued = load_json(p)
+    except (OSError, ValueError):
+        return modern
+    if not isinstance(issued, dict):
+        return modern
+    items = {str(x) for x in (issued.get("items") or [])}
+    issued_mode = str(issued.get("security_mode") or "").strip().lower()
+    if legacy in items and (not issued_mode or issued_mode == mode):
+        return legacy
+    return modern
+
+
 def judged_parity_receipt(root: Path, run: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(the parity receipt the loop reads, the rows carried into it) -- ONE
     answer for the work-list build and for acceptance (G2). After a SCOPED
     comparison the live receipt says INCONCLUSIVE for every entry point it did
     not re-run; the accepted baseline supplies those (carry_unmeasured), so a
-    mid-card rebuild keeps the obligations nobody re-measured."""
+    mid-card rebuild keeps the obligations nobody re-measured.
+
+    The receipt is the one of this verification's security mode. A mixed-mode
+    card is refused before rebuild; it does not borrow another mode's receipt."""
     root = Path(root)
-    live = load_parity_receipt(root)
     if run is None:
         run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    issued: dict[str, Any] = {}
+    issued_path = root / LOOP_ISSUED
+    if issued_path.is_file():
+        try:
+            doc = load_json(issued_path)
+        except (OSError, ValueError):
+            doc = {}
+        if isinstance(doc, dict):
+            issued = doc
+    mode = security_mode_of_run(run if isinstance(run, dict) else {}, issued)
+    if mode == "mixed":
+        return {}, []
+    live = load_parity_receipt(root, mode)
     remeasured = parity_remeasured(run)
     if remeasured is None or not live:
         return live, []
+    receipt_name = parity_receipt_file(mode).name
     before = {}
-    for p in (root / LOOP_ACCEPTED / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json"):
+    for p in (root / LOOP_ACCEPTED / "parity" / receipt_name, root / parity_before_file(mode)):
         if p.is_file():
             try:
                 before = load_json(p)
@@ -1659,9 +1973,10 @@ class ParitySplitter:
         self.root = Path(root) if root is not None else None
         self.cross_origin = cors_scenarios(root)
         self.requests = corpus_requests(root)
-        cors = (receipt or {}).get("cors") if isinstance(receipt, dict) else None
-        outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
-        self.cors_outcomes = outcomes if isinstance(outcomes, dict) else {}
+        self.cors_outcomes = _cors_outcomes_of(self.root, receipt) if self.root is not None else (
+            (((receipt or {}).get("cors") or {}) if isinstance(receipt, dict) else {}).get("outcomes") or {})
+        if not isinstance(self.cors_outcomes, dict):
+            self.cors_outcomes = {}
         self._controls: dict[tuple[str, str], set[str]] | None = None
         if docs is not None:
             self._controls = self._index(docs)
@@ -1689,7 +2004,7 @@ class ParitySplitter:
             docs: list[dict[str, Any]] = []
             pdir = self.root / PARITY_DIR if self.root is not None else None
             if pdir is not None and pdir.is_dir():
-                for p in sorted(pdir.glob("*.json")) + sorted((pdir / "scenarios").glob("*.json")):
+                for p in sorted(pdir.glob("*.json")) + _parity_scenario_paths(pdir):
                     try:
                         docs.append(load_json(p))
                     except (OSError, ValueError):
@@ -1748,12 +2063,13 @@ class ParitySplitter:
 
 
 def scenario_record(base: Path, scenario: str) -> dict[str, Any]:
-    """The one scenario verdict under ``base``/scenarios for ``scenario``, or {}."""
-    d = Path(base) / "scenarios"
-    if not d.is_dir():
-        return {}
+    """The one scenario verdict under ``base`` for ``scenario``, or {}.
+
+    Looks in both mode directories. Enabled and disabled scenario ids differ,
+    so a disabled PASS cannot be read as the enabled FAIL's record. Two files
+    for the same id is not a measurement and returns {}."""
     hits = []
-    for p in sorted(d.glob("*.json")):
+    for p in _parity_scenario_paths(Path(base)):
         try:
             doc = load_json(p)
         except (OSError, ValueError):
@@ -1852,10 +2168,13 @@ def _body_path_property(path: str) -> str:
 
 
 def body_locus_hints(root: Path | None, body_diff: dict[str, Any]) -> list[dict[str, str]]:
-    """Where a body difference may be PRODUCED, when that is cheap to name:
-    for an ORDER-only difference at a collection property, the source-model
-    getter of that property (the source model is the frozen structure; the
-    destination keeps the same relative path). Nothing else is guessed."""
+    """Where to START looking for an order-only difference at a collection
+    property: source-model getters NAMED for that property. A name match is a
+    search hint, never a diagnosis (B12, v12 t_e5c9a129): the getter may not be
+    on this endpoint's response path at all (a mapper can read the field), and
+    an unrelated type with a same-named getter matches too. So every hint says
+    it is unverified, grants no write scope, and points at response_path,
+    which names what the compiler resolved."""
     if not isinstance(body_diff, dict) or not body_diff.get("order_only") or root is None:
         return []
     props = sorted({_body_path_property(d.get("path")) for d in (body_diff.get("differences") or [])
@@ -1870,9 +2189,118 @@ def body_locus_hints(root: Path | None, body_diff: dict[str, Any]) -> list[dict[
             for prop in props:
                 if name == "get" + prop[:1].upper() + prop[1:]:
                     out.append({"property": prop, "type": str(t.get("fqn") or ""), "member": name, "path": path,
-                                "why": "the source orders %s in %s.%s; an order-only difference there is produced by "
-                                       "that getter's translation, not by the controller" % (prop, t.get("fqn"), name)})
+                                "status": "unverified-name-match",
+                                "why": "%s.%s is named for the differing property %s; nothing here shows it is on this "
+                                       "endpoint's response path or that it produces this order -- check response_path "
+                                       "first (a mapper may read the field, not the getter)" % (t.get("fqn"), name, prop)})
     return sorted(out, key=lambda h: (h["path"], h["member"]))[:3]
+
+
+_TYPE_FQN = re.compile(r"\b[a-z_][\w]*(?:\.[a-z_][\w]*)*\.[A-Z][\w]*")
+_DEPENDENCY_PREFIXES = ("java.", "javax.", "jakarta.", "org.springframework.", "io.quarkus.", "org.jboss.",
+                        "com.fasterxml.", "org.eclipse.microprofile.")
+
+
+def _entry_point_member(entry_point: str) -> tuple[str, str]:
+    """(declaring type fqn, member name) of an entry-point id ep:<fqn>#<name>(...)."""
+    body = str(entry_point or "")
+    body = body[3:] if body.startswith("ep:") else body
+    if "#" not in body:
+        return "", ""
+    fqn, rest = body.split("#", 1)
+    return fqn, rest.split("(", 1)[0]
+
+
+def response_path(root: Path | None, entry_point: str) -> dict[str, Any]:
+    """The types on an endpoint's response path as the COMPILER resolved them
+    (B12): the declared return type of the entry point's method in the
+    destination model, each type in it classified by where its file actually
+    is -- handwritten (under src/main/java), generated (a generated-sources
+    root, with the generator and the input a durable change goes to),
+    dependency, or unresolved -- plus every model type with a member that
+    RETURNS one of those types (a mapper), with its generated implementation
+    when an annotation processor wrote one. Nothing is classified by its name
+    (a handwritten class ending in Dto is handwritten). A type nobody can place
+    is RESPONSE_TYPE_UNRESOLVED with the roots searched; that is a discovery
+    gap, never a product attempt."""
+    if root is None or not entry_point:
+        return {}
+    fqn, member = _entry_point_member(entry_point)
+    try:
+        model = dest_model(Path(root))
+    except DestModelUnavailable as exc:
+        return {"entry_point": entry_point, "status": "unavailable", "detail": str(exc)[:200]}
+    types = {str(t.get("fqn") or ""): t for t in (model.get("types") or [])}
+    owner = types.get(fqn)
+    decl = next((m for m in ((owner or {}).get("declared") or []) if str(m.get("name") or "") == member), None)
+    if decl is None or not (decl.get("type_refs") or []):
+        return {"entry_point": entry_point, "status": "unresolved",
+                "detail": "RESPONSE_TYPE_UNRESOLVED: %s declares no member %s the model resolved" % (fqn or "(no type)", member)}
+    ret = str(decl["type_refs"][0])
+    from generated_sources import generator_plugins
+    from planner.dest_model import generated_source_dirs, generated_type_file
+    roots = [p.relative_to(Path(root)).as_posix() for p in generated_source_dirs(Path(root))]
+
+    def place(t_fqn: str) -> dict[str, Any]:
+        row: dict[str, Any] = {"fqn": t_fqn}
+        gen_file, gen_dir = generated_type_file(Path(root), t_fqn)
+        if gen_file is not None:
+            kind = gen_dir.name if gen_dir is not None else ""
+            row.update(ownership="generated", path=gen_file.relative_to(Path(root)).as_posix(), evidence="generated-sources/%s" % kind)
+            if kind == "annotations":
+                row.update(generator="annotation processor", edit_owner="the declaration it is generated from (the "
+                           "annotated interface), never this file")
+            else:
+                plugins = [p for p in generator_plugins(Path(root), dest_only=True)
+                           if any(t_fqn.startswith(str(pk) + ".") for pk in (p.get("packages") or []))] \
+                    or generator_plugins(Path(root), dest_only=True)
+                inputs = sorted({str(s) for p in plugins for s in (p.get("input_specs") or [])})
+                row.update(generator=", ".join(sorted({str(p.get("artifactId") or "") for p in plugins})) or "unknown",
+                           inputs=inputs,
+                           edit_owner=("the generator input %s" % ", ".join(inputs)) if inputs else
+                           "GENERATED_EDIT_OWNER_UNKNOWN: no generator input declares this package")
+            return row
+        t = types.get(t_fqn)
+        if t is not None and str(t.get("path") or ""):
+            return dict(row, ownership="handwritten", path=str(t.get("path")), evidence="destination model",
+                        edit_owner="this card, through amend-scope.py when it is outside the write set")
+        if t_fqn.startswith(_DEPENDENCY_PREFIXES):
+            return dict(row, ownership="dependency", evidence="package outside the application", edit_owner="not editable")
+        return dict(row, ownership="unresolved", searched=["src/main/java"] + roots,
+                    edit_owner="RESPONSE_TYPE_UNRESOLVED: no source root, generated root or dependency declares it")
+
+    placed = [place(f) for f in dict.fromkeys(_TYPE_FQN.findall(ret))]
+    app_types = {r["fqn"] for r in placed if r["ownership"] in ("generated", "handwritten")}
+    producers: list[dict[str, Any]] = []
+    for t_fqn, t in sorted(types.items()):
+        for m in t.get("declared") or []:
+            refs = m.get("type_refs") or []
+            if refs and any(a in str(refs[0]) for a in app_types) and t_fqn != fqn:
+                prow = {"type": t_fqn, "member": str(m.get("name") or ""), "returns": str(refs[0])[:200],
+                        "path": str(t.get("path") or "")}
+                impl_file, impl_dir = generated_type_file(Path(root), t_fqn + "Impl")
+                if impl_file is not None:
+                    prow["generated_impl"] = impl_file.relative_to(Path(root)).as_posix()
+                producers.append(prow)
+    return {"entry_point": entry_point, "status": "resolved", "returns": ret, "types": placed, "producers": producers[:8]}
+
+
+def order_sentence(diff: dict[str, Any]) -> str:
+    """One line from B9's order explanation for the brief, or ''."""
+    exp = diff.get("order") if isinstance(diff.get("order"), dict) else None
+    if not exp:
+        return ""
+    keys = exp.get("keys") or []
+    head = "same elements, %s" % ("REVERSED" if exp.get("relation") == "reversed" else "permuted")
+    if len(keys) == 1:
+        k = keys[0]
+        return "%s at %s: the source sorts %s %s, the destination %s%s" % (
+            head, diff.get("path"), k["key"], k["expected"].upper(), k["observed"].upper(),
+            " (ties: the order among equal keys is not determined)" if k.get("ties") else "")
+    if keys:
+        return "%s at %s: the source is %s -- ambiguous from the bodies alone" % (
+            head, diff.get("path"), ", ".join("%s %s" % (k["key"], k["expected"].upper()) for k in keys))
+    return "%s at %s: %s" % (head, diff.get("path"), exp.get("note") or "not explained by a single field")
 
 
 def body_diff_advice(root: Path | None, doc: dict[str, Any], item_id: str) -> dict[str, Any]:
@@ -1896,6 +2324,12 @@ def body_diff_advice(root: Path | None, doc: dict[str, Any], item_id: str) -> di
     }
     if hints:
         out["locus_hints"] = hints
+    sentences = [order_sentence(d) for d in diffs if str(d.get("kind") or "") == "order"]
+    if any(sentences):
+        out["order_explained"] = [x for x in sentences if x][:BODY_DIFF_SHOWN]
+    rp = response_path(root, str(doc.get("entry_point") or ""))
+    if rp:
+        out["response_path"] = rp
     return out
 
 
@@ -2040,29 +2474,23 @@ def corpus_body_keys(root: Path | None, scenario: str) -> dict[str, Any]:
     JSON object, and {} when the corpus does not name a body for it."""
     if root is None or not scenario:
         return {}
-    p = Path(root) / SCENARIO_CORPUS
-    if not p.is_file():
-        return {}
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return {}
-    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
-        if not isinstance(sc, dict) or _sid(str(sc.get("id") or "")) != _sid(scenario):
-            continue
-        bf = str(sc.get("body_file") or "")
-        if not bf:
-            return {}
-        bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
-        if not bp.is_file():
-            return {"file": bf, "keys": None, "reason": "the corpus names a body file this tree does not hold"}
-        try:
-            body = json.loads(bp.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {"file": bf, "keys": None, "reason": "the recorded body is not JSON"}
-        if not isinstance(body, dict):
-            return {"file": bf, "keys": None, "reason": "the recorded body is not a JSON object"}
-        return {"file": bf, "keys": sorted(str(k) for k in body)}
+    for doc in _iter_corpus_docs(root):
+        for sc in doc.get("scenarios") or []:
+            if not isinstance(sc, dict) or _sid(str(sc.get("id") or "")) != _sid(scenario):
+                continue
+            bf = str(sc.get("body_file") or "")
+            if not bf:
+                return {}
+            bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
+            if not bp.is_file():
+                return {"file": bf, "keys": None, "reason": "the corpus names a body file this tree does not hold"}
+            try:
+                body = json.loads(bp.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return {"file": bf, "keys": None, "reason": "the recorded body is not JSON"}
+            if not isinstance(body, dict):
+                return {"file": bf, "keys": None, "reason": "the recorded body is not a JSON object"}
+            return {"file": bf, "keys": sorted(str(k) for k in body)}
     return {}
 
 
@@ -2404,6 +2832,373 @@ def generated_body_text(gb: dict[str, Any], item_id: str) -> str:
         head, ", ".join(gb.get("required") or []) or "no property")
 
 
+# --- V17-4: the generated-body obligation, decided STATICALLY ---------------
+#
+# v17: the V16-8 rule existed and never fired, because its trigger was a
+# create scenario FAILING, and every parity run was INCONCLUSIVE behind
+# another card. Everything the condition needs is on disk at M2: the
+# destination plugin (generator, library, version, effective
+# generateJsonCreator), the SOURCE build's generator (the frozen legacy pom),
+# the spec's `required` list of each request-body model, and the corpus's
+# recorded source bodies. Nothing here waits for a destination failure, and
+# nothing is universal: the pair of generators must be qualified by the
+# recipe (compat-mapping migration_recipes generated-body-binding.qualified).
+
+PLAN_GATE = "plan"
+# an outcome-board planned unit (planner.outcome_graph.planned_unit_grant): a
+# REQUIREMENT the plan owes (a fragment implementation, a decided profile), not
+# a finding the tuple counts. v21 t_0bc6319b: the owed fragment implementations
+# compiled cleanly and were refused three times because "measure [0, 179, 0] did
+# not decrease" -- the 179 diagnostics were outside the unit's write set.
+PLANNED_UNIT_GATE = "planned-unit"
+
+
+def pom_properties(pom: Path) -> dict[str, str]:
+    """<project><properties> of one pom, structurally (expat). {} when unreadable."""
+    import xml.parsers.expat
+
+    if not Path(pom).is_file():
+        return {}
+    parser = xml.parsers.expat.ParserCreate()
+    stack: list[str] = []
+    text: list[str] = []
+    out: dict[str, str] = {}
+
+    def start(name: str, _a: dict) -> None:
+        stack.append(name)
+        text.clear()
+
+    def end(name: str) -> None:
+        if len(stack) == 3 and stack[:2] == ["project", "properties"]:
+            out[name] = "".join(text).strip()
+        stack.pop()
+        text.clear()
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = lambda data: text.append(data)
+    try:
+        parser.Parse(Path(pom).read_bytes(), True)
+    except xml.parsers.expat.ExpatError:
+        return {}
+    return out
+
+
+def resolved_plugin_version(plugin: dict[str, Any], pom: Path) -> str:
+    """The plugin's version with one level of ${property} resolved from the
+    same pom; '' when it names a property the pom does not define."""
+    v = str((plugin or {}).get("version") or "").strip()
+    if v.startswith("${") and v.endswith("}"):
+        return pom_properties(pom).get(v[2:-1], "")
+    return v
+
+
+def source_generator_config(root: Path | None) -> dict[str, Any]:
+    """The SOURCE build's generator, from the frozen legacy pom
+    (.derived/frozen-input/pom.xml, M1's freeze): {known, plugin, version,
+    build_file}. known=False when the frozen pom is not in this tree -- the
+    source's binding is then unknown, never assumed."""
+    if root is None:
+        return {"known": False, "reason": "no destination root"}
+    base = Path(root) / FROZEN_INPUT
+    pom = base / "pom.xml"
+    if not pom.is_file():
+        return {"known": False, "reason": "the frozen source build (%s) is not in this tree" % (FROZEN_INPUT / "pom.xml").as_posix()}
+    plugin = generator_plugin_config(base)
+    return {"known": True, "plugin": plugin, "version": resolved_plugin_version(plugin, pom) if plugin else "",
+            "build_file": (FROZEN_INPUT / "pom.xml").as_posix()}
+
+
+def _generated_body_recipe(root: Path | None) -> dict[str, Any]:
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    try:
+        doc = load_json(p) if p.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+    for rid, r in ((doc or {}).get("migration_recipes") or {}).items():
+        if isinstance(r, dict) and r.get("rule") == "generator-configuration":
+            return dict(r, id=rid)
+    return {}
+
+
+def generator_qualification(root: Path | None, dest: dict[str, Any] | None = None,
+                            source: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Is THIS pair of generators one whose request-body semantics differ in a
+    documented, qualified way? {status, reasons, dest, source, option}:
+
+      not-applicable  no destination generator, a destination generator that
+                      does not bind through a required-args @JsonCreator, or
+                      a pom that already stops it (the option at its stopping
+                      value)
+      applicable      the destination binds through the creator and the source
+                      binds through setters, both at generator, library and
+                      version the recipe qualifies
+      unresolved      anything else: an unqualified generator, library or
+                      version, or a source build this tree does not hold"""
+    dest = generator_plugin_config(root) if dest is None else dest
+    out: dict[str, Any] = {"status": "not-applicable", "reasons": [], "dest": {}, "source": {}, "option": {}}
+    if not dest:
+        out["reasons"].append("the destination build declares no %s" % OPENAPI_GENERATOR_ARTIFACT)
+        return out
+    cfg = dest.get("configuration") or {}
+    dgen, dlib = str(cfg.get("generatorName") or ""), str(cfg.get("library") or "")
+    dver = resolved_plugin_version(dest, Path(root) / "pom.xml") if root is not None else str(dest.get("version") or "")
+    out["dest"] = {"generator": dgen, "library": dlib, "version": dver}
+    catalog = _build_plugins_catalog(root)
+    row = catalog.get("%s:%s" % (dest.get("groupId") or "org.openapitools", dest.get("artifactId"))) or \
+        catalog.get("org.openapitools:" + OPENAPI_GENERATOR_ARTIFACT) or {}
+    gens = row.get("generators") or {}
+    grow = gens.get(dgen) or {}
+    opt = grow.get("required_args_constructor") or {}
+    binding = str((grow.get("binding") or {}).get("kind") or "")
+    if not grow:
+        out["status"] = "unresolved"
+        out["reasons"].append("the destination generator %r has no build_plugins row: its body binding is unknown" % dgen)
+        return out
+    if binding != "creator" or not opt:
+        out["reasons"].append("the destination generator %r does not bind through a required-args @JsonCreator" % dgen)
+        return out
+    state = str((dest.get("configOptions") or {}).get(str(opt.get("option") or "")) or "").strip().lower()
+    stopped = state == str(opt.get("value_that_stops_it") or "").lower() and bool(state)
+    out["option"] = {"name": str(opt.get("option") or ""), "set_to": state, "default": str(opt.get("default") or ""),
+                     "stopped": stopped}
+    if stopped:
+        out["reasons"].append("pom.xml already sets %s=%s: the generated models bind through their setters"
+                              % (opt.get("option"), state))
+        return out
+    src = source_generator_config(root) if source is None else source
+    sp = src.get("plugin") or {}
+    scfg = sp.get("configuration") or {}
+    sgen, slib, sver = str(scfg.get("generatorName") or ""), str(scfg.get("library") or ""), str(src.get("version") or "")
+    out["source"] = {"known": bool(src.get("known")), "generator": sgen, "library": slib, "version": sver,
+                     "build_file": str(src.get("build_file") or "")}
+    q = ((_generated_body_recipe(root).get("qualified") or {}).get(dgen)) or {}
+    reasons = []
+    if not src.get("known"):
+        reasons.append(str(src.get("reason") or "the source build is unknown"))
+    elif not sp:
+        reasons.append("the frozen source build declares no %s: the source's request bodies were not generated models"
+                       % OPENAPI_GENERATOR_ARTIFACT)
+    if not q:
+        reasons.append("no recipe qualifies the destination generator %r" % dgen)
+    else:
+        if dver not in (q.get("plugin_versions") or []):
+            reasons.append("destination plugin version %r is not qualified (%s)" % (dver, ", ".join(q.get("plugin_versions") or [])))
+        if q.get("libraries") and dlib not in q["libraries"]:
+            reasons.append("destination library %r is not qualified (%s)" % (dlib, ", ".join(q["libraries"])))
+        if sp:
+            if sgen != str(q.get("source_generator") or ""):
+                reasons.append("source generator %r is not the qualified %r" % (sgen, q.get("source_generator")))
+            elif str(((gens.get(sgen) or {}).get("binding") or {}).get("kind") or "") != "setters":
+                reasons.append("the catalog does not document the source generator %r as binding through setters" % sgen)
+            if q.get("source_libraries") and slib not in q["source_libraries"]:
+                reasons.append("source library %r is not qualified (%s)" % (slib, ", ".join(q["source_libraries"])))
+            if q.get("source_plugin_versions") and sver not in q["source_plugin_versions"]:
+                reasons.append("source plugin version %r is not qualified (%s)" % (sver, ", ".join(q["source_plugin_versions"])))
+    if reasons:
+        out["status"] = "unresolved"
+        out["reasons"].extend(reasons)
+        return out
+    out["status"] = "applicable"
+    out["reasons"].append("%s/%s %s binds a request body through its required-args @JsonCreator; the source's %s/%s %s bound it "
+                          "through setters" % (dgen, dlib, dver, sgen, slib, sver))
+    return out
+
+
+def _body_type_of(bundle: dict[str, Any], ep_id: str) -> str:
+    """The @RequestBody parameter type of the handler behind one entry point,
+    from M1's structural model; '' when there is none or it is ambiguous."""
+    st = (bundle or {}).get("structure") or {}
+    types = {str(t.get("fqn") or ""): t for t in st.get("types") or [] if isinstance(t, dict)}
+    ep = next((e for e in (bundle or {}).get("entry_points") or [] if isinstance(e, dict) and str(e.get("id") or "") == ep_id), None)
+    if ep is None:
+        return ""
+    t = types.get(str(ep.get("type") or ""))
+    ms = [m for m in (t or {}).get("methods") or [] if isinstance(m, dict) and str(m.get("signature") or "") == str(ep.get("member") or "")]
+    if len(ms) != 1:
+        return ""
+    body = [str(p.get("type") or "") for p in ms[0].get("params") or [] if isinstance(p, dict)
+            and _REQUEST_BODY_ANN in [str(a.get("fqn") or "") for a in p.get("annotations") or [] if isinstance(a, dict)]]
+    return body[0] if len(body) == 1 else ""
+
+
+def _corpus_rows(root: Path | None) -> list[dict[str, Any]]:
+    out = []
+    for doc in _iter_corpus_docs(root) if root is not None else []:
+        out.extend(sc for sc in doc.get("scenarios") or [] if isinstance(sc, dict))
+    return out
+
+
+def _corpus_body(root: Path, sc: dict[str, Any]) -> dict[str, Any] | None:
+    bf = str(sc.get("body_file") or "")
+    if not bf:
+        return None
+    bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
+    try:
+        body = json.loads(bp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _accepted(sc: dict[str, Any]) -> bool | None:
+    """True for a capture the source ACCEPTED (its expected statuses all 2xx),
+    False for one it refused (all 4xx), None when the corpus does not say."""
+    exp = [int(x) for x in ((sc.get("qualify") or {}).get("expect_status") or []) if str(x).isdigit()]
+    if exp and all(200 <= s < 300 for s in exp):
+        return True
+    if exp and all(400 <= s < 500 for s in exp):
+        return False
+    return None
+
+
+BODY_CASES = ("omitted", "null", "empty", "invalid")
+
+
+def request_body_cases(root: Path | None, bundle: dict[str, Any], plugin: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per request-body model and REQUIRED property (the spec's `required`,
+    which is what the destination's @JsonCreator enforces), the four cases a
+    source may distinguish, each bound to the corpus captures that send it:
+
+      omitted  the key is absent
+      null     the key carries null
+      empty    an empty string, array or object
+      invalid  a capture the source REFUSED (4xx) that differs from every
+               accepted capture of the same model in this property ALONE
+
+    A case no capture sends is UNRESOLVED: the source's answer is unknown and
+    is never invented. `omitted_by_accepted` names the accepted captures that
+    omit the property -- the V16-8 condition, decided from disk."""
+    out: list[dict[str, Any]] = []
+    if root is None or not plugin:
+        return out
+    rows = _corpus_rows(root)
+    by_ep: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for sc in rows:
+        by_ep[str(sc.get("entry_point") or "")].append(sc)
+    models: dict[str, list[str]] = defaultdict(list)
+    for e in sorted((bundle or {}).get("entry_points") or [], key=lambda e: str(e.get("id") or "")):
+        if not isinstance(e, dict) or str(e.get("kind") or "") != "http":
+            continue
+        bt = _body_type_of(bundle, str(e.get("id") or ""))
+        if bt:
+            models[bt].append(str(e["id"]))
+    for model in sorted(models):
+        spec = spec_required_properties(root, plugin, model)
+        req = spec.get("required")
+        if req is None:
+            out.append({"model": model, "property": "*", "case": "*", "status": "unresolved", "scenarios": [],
+                        "entry_points": sorted(models[model]), "reason": str(spec.get("reason") or "the spec could not be read")})
+            continue
+        bodies = [(sc, _corpus_body(root, sc)) for ep in models[model] for sc in by_ep.get(ep, [])]
+        bodies = [(sc, b) for sc, b in bodies if b is not None]
+        accepted = [b for sc, b in bodies if _accepted(sc) is True]
+
+        def varied(b: dict[str, Any]) -> list[str]:
+            # the properties a refused capture changes against EVERY accepted one
+            return sorted(k for k in b if not any(k in a and a[k] == b[k] for a in accepted))
+
+        for prop in req:
+            seen: dict[str, list[str]] = {c: [] for c in BODY_CASES}
+            omitted_ok: list[str] = []
+            for sc, b in bodies:
+                sid = str(sc.get("id") or "")
+                if prop not in b:
+                    seen["omitted"].append(sid)
+                    if _accepted(sc) is True:
+                        omitted_ok.append(sid)
+                elif b[prop] is None:
+                    seen["null"].append(sid)
+                elif b[prop] in ("", [], {}):
+                    seen["empty"].append(sid)
+                elif _accepted(sc) is False and accepted and varied(b) == [prop]:
+                    # a refused capture that differs from the accepted ones in
+                    # THIS property alone is the source's invalid case for it
+                    seen["invalid"].append(sid)
+            for case in BODY_CASES:
+                sids = sorted(set(seen[case]))
+                out.append({"model": model, "property": prop, "case": case, "scenarios": sids,
+                            "entry_points": sorted(models[model]), "status": "covered" if sids else "unresolved",
+                            **({"omitted_by_accepted": sorted(set(omitted_ok))} if case == "omitted" and omitted_ok else {}),
+                            **({} if sids else {"reason": "no capture sends %s.%s %s: the source's answer is unknown, never "
+                                                          "invented" % (model.rsplit(".", 1)[-1], prop, case)})})
+    return out
+
+
+def static_generated_body_facts(root: Path | None, bundle: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Everything V17-4 decides at M2, from disk: the qualification of the
+    generator pair and the body cases. Pure reads; never raises for a missing
+    input (it is recorded as unresolved)."""
+    if root is None:
+        return {"qualification": {"status": "unresolved", "reasons": ["no destination root"]}, "cases": []}
+    if bundle is None:
+        try:
+            bundle = load_json(Path(root) / EVIDENCE_BUNDLE)
+        except (OSError, ValueError):
+            bundle = {}
+    plugin = generator_plugin_config(root)
+    qual = generator_qualification(root, plugin)
+    cases = request_body_cases(root, bundle or {}, plugin) if qual["status"] != "not-applicable" else []
+    return {"qualification": qual, "cases": cases}
+
+
+def static_generated_body_items(root: Path, bundle: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The V16-8 PARITY_GENERATED_BODY obligation on pom.xml, planned from
+    the static condition (plan semantics v1): a qualified creator/setter pair,
+    the option not stopped, and a required property an ACCEPTED source capture
+    omits. One item per generator (the edit is one option in one pom), gate
+    `plan`: it is discharged when the condition, re-evaluated on the
+    candidate, no longer holds -- never by a scenario that did not run. The
+    second value names what could not be decided (never an item)."""
+    facts = static_generated_body_facts(root, bundle)
+    qual = facts["qualification"]
+    notes: list[str] = []
+    if qual["status"] == "unresolved":
+        notes.append("generated-body binding UNRESOLVED: %s" % "; ".join(qual["reasons"]))
+        return [], notes
+    if qual["status"] != "applicable":
+        return [], notes
+    omitted = [c for c in facts["cases"] if c.get("omitted_by_accepted")]
+    if not omitted:
+        return [], notes
+    plugin = generator_plugin_config(root)
+    first = omitted[0]
+    gb = generated_body_binding(root, first["model"], first["omitted_by_accepted"][0])
+    if not gb:
+        # the model's generated file is not on disk: the spec's `required` and the
+        # recorded body still decide the condition, stated from the plugin row
+        catalog = _build_plugins_catalog(root)
+        row = (catalog.get("org.openapitools:" + OPENAPI_GENERATOR_ARTIFACT) or {})
+        gen = str((plugin.get("configuration") or {}).get("generatorName") or "")
+        grow = (row.get("generators") or {}).get(gen) or {}
+        body = corpus_body_keys(root, first["omitted_by_accepted"][0])
+        gb = {"type": first["model"], "generated_path": "(not generated yet)", "plugin": plugin, "creator_seen": False,
+              "required_from": "the spec's `required` list", "body_file": str(body.get("file") or ""),
+              "body_keys": body.get("keys"),
+              "catalog_row": dict(grow, generator=gen, plugin_docs=str(row.get("docs") or ""),
+                                  option_location=str(row.get("option_location") or "")) if grow else {}}
+    gb = dict(gb, missing_required=sorted({c["property"] for c in omitted if c["model"] == first["model"]}))
+    models = sorted({c["model"] for c in omitted})
+    key = "%s|%s|%s" % (plugin.get("artifactId"), (plugin.get("configuration") or {}).get("generatorName"), ",".join(models))
+    iid = "plan:gb:%s" % sha256_bytes(key.encode("utf-8"))[:12]
+    detail = generated_body_text(gb, iid)
+    return [{"id": iid, "source": "plan", "kind": "build", "category": "mandatory", "gate": PLAN_GATE,
+             "rule_id": RULE_PARITY_GENERATED_BODY, "cause": GENERATED_BODY_CAUSE, "path": "pom.xml",
+             "line": int(plugin.get("configuration_line") or plugin.get("line") or 0),
+             "message": "a request body the source accepted is refused by the generated @JsonCreator (%s)"
+                        % ", ".join("%s.%s" % (c["model"].rsplit(".", 1)[-1], c["property"]) for c in omitted[:4]),
+             "detail": detail, "message_sha256": sha256_bytes(detail.encode("utf-8")),
+             "planned": {"trigger": "static (plan semantics v1)", "qualification": qual,
+                         "omitted_by_accepted": [{"model": c["model"], "property": c["property"],
+                                                  "scenarios": c["omitted_by_accepted"]} for c in omitted],
+                         "models": models},
+             "advice": {"generated_body": {k: gb.get(k) for k in ("type", "generated_path", "missing_required", "required_from",
+                                                                   "body_file", "body_keys")},
+                        "first_action": detail}}], notes
+
+
 VERDICT_REQUEST_BODY = "request body"
 VERDICT_SUPPORTED_ANNOTATION = "supported annotation"
 VERDICT_SUPPORTED_TYPE = "supported type"
@@ -2641,20 +3436,50 @@ def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenar
     return []
 
 
+def _cors_outcomes_of(root: Path | None, receipt: dict[str, Any] | None) -> dict[str, Any]:
+    """browser_access rows from both mode receipts, live receipt last."""
+    out: dict[str, Any] = {}
+    if root is not None:
+        for name in ("receipt.json", "receipt-enabled.json"):
+            p = Path(root) / PARITY_DIR / name
+            if not p.is_file():
+                continue
+            try:
+                doc = load_json(p)
+            except (OSError, ValueError):
+                continue
+            cors = doc.get("cors") if isinstance(doc, dict) else None
+            outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
+            if isinstance(outcomes, dict):
+                out.update(outcomes)
+    cors = (receipt or {}).get("cors") if isinstance(receipt, dict) else None
+    outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
+    if isinstance(outcomes, dict):
+        out.update(outcomes)
+    return out
+
+
 def _source_cors_policies(root: Path) -> list[str]:
-    """The CORS policies the FROZEN source declares, as the parity receipt
+    """The CORS policies the FROZEN source declares, as the parity receipts
     recorded them. A missing or unreadable receipt is an empty list: the
     advice then quotes only the diffs, which are always present."""
-    p = Path(root) / PARITY_DIR / "receipt.json"
-    if not p.is_file():
-        return []
-    try:
-        doc = load_json(p)
-    except (OSError, ValueError):
-        return []
-    cors = doc.get("cors") if isinstance(doc, dict) else None
-    policies = (cors or {}).get("source_policies") if isinstance(cors, dict) else None
-    return [str(x) for x in policies] if isinstance(policies, list) else []
+    seen: list[str] = []
+    for name in ("receipt.json", "receipt-enabled.json"):
+        p = Path(root) / PARITY_DIR / name
+        if not p.is_file():
+            continue
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        cors = doc.get("cors") if isinstance(doc, dict) else None
+        policies = (cors or {}).get("source_policies") if isinstance(cors, dict) else None
+        if isinstance(policies, list):
+            for x in policies:
+                s = str(x)
+                if s not in seen:
+                    seen.append(s)
+    return seen
 
 
 _MAPPING_ANNOTATIONS = {
@@ -2817,6 +3642,29 @@ def navigation_advice(failures: list[dict[str, Any]], path: str) -> dict[str, An
     }
 
 
+def _navigation_receipts_for_items(root: Path, judged: dict[str, Any] | None) -> list[tuple[str, dict[str, Any]]]:
+    """Receipts whose ``navigation_obligations`` mint work-list items.
+
+    Navigation FAILs live on the composed receipt, not as scenario files.
+    Scenario FAIL files are already read from both mode directories; walking
+    only the judged receipt omitted an enabled-only dead redirect from the
+    issuance baseline whenever the last verification judged the disabled
+    receipt (v10 CORS card t_27cea939, parity:a79db752)."""
+    out: list[tuple[str, dict[str, Any]]] = []
+    for mode in SECURITY_MODES:
+        rec = load_parity_receipt(root, mode)
+        if rec:
+            out.append((mode, rec))
+    if judged:
+        mode = str(judged.get("security_mode") or "")
+        if mode not in SECURITY_MODES:
+            bound = judged.get("binding") if isinstance(judged.get("binding"), dict) else {}
+            mode = str(bound.get("security_mode") or "")
+        mode = mode if mode in SECURITY_MODES else DEFAULT_SECURITY_MODE
+        out.append((mode, judged))
+    return out
+
+
 def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]] | None = None,
                  receipt: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Obligations from M4's parity verdicts: the read-oracle verdicts in
@@ -2847,7 +3695,11 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     PASSed, and what failed is the separate bounded navigation the composer
     judged. It is reported on the receipt's own entry-point row (verdict FAIL,
     kind ``navigation``), so it is read there and lands at the controller that
-    answers the redirect, with ADR-016's exit conditions for a dead target."""
+    answers the redirect, with ADR-016's exit conditions for a dead target.
+    Those rows are collected from both mode receipts plus the judged
+    (possibly carried) receipt: an enabled-only dead redirect must be in the
+    issuance baseline even when the last verification judged the disabled
+    receipt (v10 CORS card t_27cea939, parity:a79db752)."""
     out: list[dict[str, Any]] = []
     ep_path = {str(e["id"]): str(e.get("path") or "") for e in (bundle.get("entry_points") or [])}
     pdir = root / PARITY_DIR
@@ -2857,9 +3709,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     receipt = judged_parity_receipt(root)[0] if receipt is None else receipt
     notes = [] if notes is None else notes
     docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
-    sdir = pdir / "scenarios"
-    if sdir.is_dir():
-        docs += [(p, load_json(p)) for p in sorted(sdir.glob("*.json"))]
+    docs += [(p, load_json(p)) for p in _parity_scenario_paths(pdir)]
     splitter = ParitySplitter(root, receipt, [d for _p, d in docs])
     ep_rows = {str(e.get("id") or ""): e for e in (bundle.get("entry_points") or []) if isinstance(e, dict)}
     for p, doc in docs:
@@ -2886,6 +3736,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
         # acceptance path can scope the comparison to this card.
         base = {"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
                 "entry_point": ep, "scenario": scenario, "verdict_file": p.relative_to(root).as_posix(),
+                "security_mode": _security_mode_of(p, doc),
                 "scenarios": parity_scenarios_of(receipt, ep, scenario),
                 "message_sha256": sha256_bytes(reason.encode("utf-8"))}
         if other:
@@ -2899,8 +3750,10 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 summary = " Body: %s" % (body["summary"] or "; ".join(
                     "%s %s (%s vs %s)" % (d.get("kind"), d.get("path"), d.get("observed"), d.get("expected"))
                     for d in body["differences"][:2]))
+                if body.get("order_explained"):
+                    summary += " Order: %s." % "; ".join(body["order_explained"][:2])
                 if body.get("locus_hints"):
-                    summary += " Likely produced in %s." % ", ".join("%s (%s)" % (h["path"], h["member"]) for h in body["locus_hints"])
+                    summary += " Search hint (unverified name match): %s." % ", ".join("%s (%s)" % (h["path"], h["member"]) for h in body["locus_hints"])
             server_error = server_error_advice(root, doc, rid, other)
             if server_error:
                 advice["server_error"] = server_error
@@ -2930,6 +3783,20 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 summary = (" Generated body type %s requires %s, which the recorded request does not send: the generator's configuration in pom.xml is the locus, not the controller." % (
                     gb.get("type"), ", ".join(gb["missing_required"])) if gb.get("missing_required") else
                     " Generated body type %s: %s" % (gb.get("type"), (gb.get("carried_routing") or {}).get("reason")))
+                # V16-8: the catalog's conditional rule for this generator IS
+                # the first action, on the item itself and in its message, so
+                # no reader has to find it inside the handler advice
+                crow = gb.get("catalog_row") or {}
+                opt = crow.get("required_args_constructor") or {}
+                if opt and not (gb.get("option") or {}).get("stopped"):
+                    keep = crow.get("keep") or {}
+                    summary += (" FIRST ACTION (compat-mapping build_plugins %s, generator %s): set <%s>%s</%s> under the plugin's "
+                                "<configOptions> in pom.xml (line %s)%s." % (
+                                    "%s:%s" % (plugin.get("groupId") or "org.openapitools", plugin.get("artifactId") or OPENAPI_GENERATOR_ARTIFACT),
+                                    crow.get("generator"), opt.get("option"), opt.get("value_that_stops_it"), opt.get("option"),
+                                    plugin.get("configuration_line") or plugin.get("line") or "?",
+                                    "".join("; keep <%s>%s</%s>" % (k, (v or {}).get("value"), k) for k, v in sorted(keep.items()))))
+                    row["first_action"] = str(rejection.get("first_action") or "")
             out.append(dict(row,
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
                             message=("%s differs from the source (%s): %s.%s" % (ep, scenario or "read oracle", "; ".join(other), summary))[:1200],
@@ -2977,30 +3844,39 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     # The receipt's own navigation verdicts: a comparison that PASSed and a
     # redirect target that is dead, loops, or never settles within the bounded
     # walk (ADR-016). There is no FAILing verdict file for these -- the
-    # comparison passed, by design -- so the row is the evidence.
-    for row in navigation_rows(receipt):
-        if str(row.get("verdict") or "") != "FAIL":
-            continue
-        ep = str(row.get("entry_point") or "")
-        if not ep:
-            continue
-        reason = str(row.get("reason") or "")
-        fails = [f for f in (row.get("navigation_failures") or []) if isinstance(f, dict)]
-        locus = ep_path.get(ep) or GLOBAL
-        out.append({"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
-                    "entry_point": ep, "scenario": "", "verdict_file": PARITY_RECEIPT.as_posix(),
-                    "scenarios": sorted({str(x) for x in (row.get("scenarios") or []) if str(x)}) or parity_scenarios_of(receipt, ep, ""),
-                    "message_sha256": sha256_bytes(reason.encode("utf-8")),
-                    "id": parity_obligation_id(ep, "", "navigation"), "path": locus,
-                    "rule_id": "PARITY", "cause": "redirect-target-dead",
-                    "detail": ("%s: redirect target %s" % (ep, reason))[:200],
-                    "message": ("%s answers the redirect the source answers, and the address it points at does not: %s. "
-                                "ADR-016 asks for more than the status and the literal Location -- that legacy address "
-                                "must serve the replacement UI or redirect to its effective address, and a bounded "
-                                "navigation must reach the real UI and a usable OpenAPI document in the PACKAGED "
-                                "production artifact without a redirect loop. Do not change the first response: it is "
-                                "already the source's." % (ep, reason))[:1200],
-                    "advice": navigation_advice(fails, locus)})
+    # comparison passed, by design -- so the row is the evidence. Walk every
+    # mode receipt plus the judged one; the obligation id includes the mode
+    # so a disabled dead redirect and an enabled dead redirect stay independent.
+    seen_nav: set[str] = set()
+    for mode, rec in _navigation_receipts_for_items(root, receipt):
+        for row in navigation_rows(rec):
+            if str(row.get("verdict") or "") != "FAIL":
+                continue
+            ep = str(row.get("entry_point") or "")
+            if not ep:
+                continue
+            oid = _issued_navigation_id(root, ep, mode)
+            if oid in seen_nav:
+                continue
+            seen_nav.add(oid)
+            reason = str(row.get("reason") or "")
+            fails = [f for f in (row.get("navigation_failures") or []) if isinstance(f, dict)]
+            locus = ep_path.get(ep) or GLOBAL
+            out.append({"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
+                        "entry_point": ep, "scenario": "", "verdict_file": parity_receipt_file(mode).as_posix(),
+                        "security_mode": mode,
+                        "scenarios": sorted({str(x) for x in (row.get("scenarios") or []) if str(x)}) or parity_scenarios_of(rec, ep, ""),
+                        "message_sha256": sha256_bytes(reason.encode("utf-8")),
+                        "id": oid, "path": locus,
+                        "rule_id": "PARITY", "cause": "redirect-target-dead",
+                        "detail": ("%s: redirect target %s" % (ep, reason))[:200],
+                        "message": ("%s answers the redirect the source answers, and the address it points at does not: %s. "
+                                    "ADR-016 asks for more than the status and the literal Location -- that legacy address "
+                                    "must serve the replacement UI or redirect to its effective address, and a bounded "
+                                    "navigation must reach the real UI and a usable OpenAPI document in the PACKAGED "
+                                    "production artifact without a redirect loop. Do not change the first response: it is "
+                                    "already the source's." % (ep, reason))[:1200],
+                        "advice": navigation_advice(fails, locus)})
     return out
 
 
@@ -3645,6 +4521,8 @@ UNIT_RULES = (RULE_PACKAGE_LEAF, RULE_DECLARATION_CLOSURE, RULE_DIAGNOSTIC_FAMIL
 UNIT_MAX_FILES = 20
 UNIT_MAX_SITES = 160
 UNIT_MAX_SYMBOLS = 8
+# ADR-024: retain every method row when a fragment parent owes several methods.
+UNIT_MAX_FRAGMENT_SYMBOLS = 16
 
 UNIT_FORMATION_V1 = "v1"
 UNIT_FORMATION_OFF = "off"
@@ -3779,16 +4657,22 @@ def call_owner(call: Any) -> str:
 def unit_type_refs(typ: dict[str, Any]) -> set[str]:
     """Every type this declaration NAMES, in the shape the real extractor emits.
 
-    The relationships the compiler states live at MEMBER level: jdk-dest-model
-    writes ``mrow.put("type_refs", …)`` for a declared member's return, its
-    parameters and its throws, ``mrow.put("calls", …)`` for the resolved
-    callees, and ``fields[].type`` for a field; the type row itself carries
-    `supertypes` and `imports` and no `type_refs` of its own (there is no
-    ``row.put("type_refs", …)`` in DestModel.java). Asking the type level of a
-    real model therefore returned nothing, and a package with a genuine outside
-    consumer was classified as a leaf. The type-level key is still read because
-    another producer's model may carry one, and dropping evidence is never the
-    safe direction."""
+    Two levels, both read. The type row's own `type_refs` is jdk-dest-model's
+    declaration walk: the resolved declared types its supertypes, type
+    parameter bounds, field types and member signatures name, through generic
+    arguments, array components, wildcard and type-variable bounds,
+    intersections and enclosing types. Before that walk existed the only
+    evidence was the member-level spellings -- a declared member's
+    `type_refs` (return, parameters, throws), its resolved `calls`,
+    ``fields[].type``, `supertypes` and `imports` -- which this still reads,
+    erased; erasure cut ``java.util.List<inside.A>`` to java.util.List and kept
+    ``inside.B[]`` as a name nothing declares, so a package named only inside a
+    generic argument or an array looked unreferenced (rgctl offline evaluation
+    2026-09-25, G03G/G03A/G03N).
+
+    A reference found here is POSITIVE evidence even on an incomplete row. The
+    absence of one is evidence only when the row's walk is complete
+    (unit_type_refs_complete); callers asserting absence must ask that too."""
     out: set[str] = set()
     if not isinstance(typ, dict):
         return out
@@ -3815,15 +4699,32 @@ def unit_type_refs(typ: dict[str, Any]) -> set[str]:
     return {r for r in out if r}
 
 
+def unit_type_refs_complete(typ: dict[str, Any]) -> bool:
+    """Whether this row's declaration walk is COMPLETE: jdk-dest-model said so
+    explicitly (`type_refs_complete` is True) and the references it found are a
+    list. Missing (a model from before the walk), malformed or False is
+    unknown, never "complete and empty".
+
+    Complete covers the supported declaration scan only -- supertypes, bounds,
+    field types, member signatures. It says nothing about member bodies,
+    annotation arguments, reflection, configuration or other dynamic entry."""
+    return (isinstance(typ, dict) and typ.get("type_refs_complete") is True
+            and isinstance(typ.get("type_refs"), list))
+
+
 def unit_states_relationships(typ: dict[str, Any]) -> bool:
-    """Whether this type row can be asked what it refers to at all.
+    """Whether this type row can be asked what it does NOT refer to.
 
     A partially resolved type is a type the compiler could not finish: its
     member refs and its resolved calls are whatever survived the failure. An
     ISOLATION claim ("nothing outside names what is inside") is a claim about
     absence, and absence in a row that states no relationships is not evidence
-    of one. Fail closed: no relationship evidence, no leaf."""
-    return isinstance(typ, dict) and str(typ.get("resolution") or "") == "full"
+    of one. Nor is absence from a declaration walk that did not finish (an
+    unresolved, unsupported or bounded part). Fail closed: no complete
+    relationship evidence, no leaf. Positive references on such a row still
+    count wherever a reference, not an absence, is the question."""
+    return (isinstance(typ, dict) and str(typ.get("resolution") or "") == "full"
+            and unit_type_refs_complete(typ))
 
 
 def unit_annotation_sites(model: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -3896,6 +4797,35 @@ def symbol_renames(root: Path | None) -> dict[str, dict[str, Any]]:
             and "." in str(k) and "." in str(v.get("to"))}
 
 
+def adapter_owned_annotations(root: Path | None) -> dict[str, dict[str, Any]]:
+    """compat-mapping.json `adapter_owned_annotations`: annotations whose
+    behaviour a registered harness response adapter reproduces (ADR-019).
+
+    A row is the COMPILE half of that ownership: its action retires the
+    annotation and its import, and nothing replaces it in the controller. The
+    behaviour is still owed, to the adapter's parity obligation, which renders
+    the source policy from M1's structural model (response_adapters.cors_policy)
+    and never reads destination code -- so a retirement discharges nothing
+    there. The same qualification rule as symbol_renames: an unqualified key is
+    a spelling and is dropped, and so is a row whose adapter is not registered
+    or whose contract is not the registered adapter's own, because a row that
+    names an adapter the harness does not install documents nothing."""
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("adapter_owned_annotations") or {}
+    return {str(k): dict(v) for k, v in rows.items()
+            if k != "note" and isinstance(v, dict) and "." in str(k) and str(v.get("action") or "")
+            and str(v.get("adapter") or "") in _adapters.KINDS
+            and str(v.get("contract") or "") == _adapters.CONTRACTS[str(v["adapter"])]["contract"]}
+
+
 def package_renames_of(root: Path | None) -> dict[str, str]:
     if root is None:
         return {}
@@ -3909,22 +4839,199 @@ def package_renames_of(root: Path | None) -> dict[str, str]:
     return {str(k): str(v) for k, v in (doc.get("package_renames") or {}).items() if k != "note" and isinstance(v, str)}
 
 
+# JAX-RS resource-method designators: a method carrying one is a handler even
+# when its path is the class's (the Spring mapping annotations name a path).
+_HTTP_METHOD_DESIGNATORS = {"jakarta.ws.rs.%s" % m for m in ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")}
+_JAXRS_CONTEXT = "jakarta.ws.rs.core.Context"
+
+
+def _is_handler(member: dict[str, Any], bound: dict[str, str]) -> bool:
+    anns = [a for a in (member.get("annotations") or []) if isinstance(a, dict)]
+    if _mapping_paths(anns):
+        return True
+    for a in anns:
+        fqn = str(a.get("fqn") or "")
+        fqn = fqn if "." in fqn else bound.get(str(a.get("simple") or fqn), "")
+        if fqn in _MAPPING_ANNOTATIONS or fqn in _HTTP_METHOD_DESIGNATORS:
+            return True
+    return False
+
+
+def _param_identity(param: dict[str, Any], bound: dict[str, str], wildcard: str = "") -> str:
+    """A parameter's QUALIFIED type: the compiler's, or what the declaring
+    file's imports bind a simple spelling to; '' when nothing binds it. An
+    unrelated type spelled the same way is its own qualified name, never this
+    one (the same rule as symbol_renames). `wildcard` is a package the file
+    imports with `.*` and a unit SEALED (V17-2): the compiler said the package
+    does not exist, so an unbound simple name there is read as that package's."""
+    t = _erased(str(param.get("type") or ""))
+    if "." in t:
+        return t
+    return bound.get(t, "") or ("%s.%s" % (wildcard, t) if wildcard and t else "")
+
+
+def _wildcard_of(typ: dict[str, Any], pkg: str) -> str:
+    return pkg if pkg and "%s.*" % pkg in [str(i) for i in (typ.get("imports") or [])] else ""
+
+
+def handler_parameter_sites(model: dict[str, Any] | None, paths: list[str], fqn: str, *,
+                            handlers: bool = True) -> list[dict[str, Any]]:
+    """Every HTTP handler parameter in `paths` whose resolved type is `fqn`:
+    [{path, type, member, parameter}]. A handler is a declared member with a
+    mapping annotation or a JAX-RS method designator; a helper method, a
+    field or a local that uses the same type is not a handler parameter.
+    `handlers=False` asks the opposite: the members that are NOT handlers --
+    a helper's constructor or method -- taking `fqn` (V17-2)."""
+    want = set(paths)
+    pkg = fqn.rsplit(".", 1)[0] if "." in fqn else ""
+    out: list[dict[str, Any]] = []
+    for t in _unit_types(model):
+        if _unit_path(t) not in want:
+            continue
+        bound = unit_bound_imports(t)
+        wildcard = _wildcard_of(t, pkg)
+        for m in t.get("declared") or []:
+            if not isinstance(m, dict) or _is_handler(m, bound) != handlers:
+                continue
+            for p in m.get("params") or []:
+                if isinstance(p, dict) and _param_identity(p, bound, wildcard) == fqn:
+                    out.append({"path": _unit_path(t), "type": str(t.get("fqn") or ""), "member": str(m.get("name") or ""),
+                                "signature": str(m.get("signature") or ""), "parameter": str(p.get("name") or "")})
+    return sorted(out, key=lambda r: (r["path"], r["member"], r["parameter"]))
+
+
+def package_types_used(model: dict[str, Any] | None, paths: list[str], pkg: str, known: set[str]) -> list[str]:
+    """The types of package `pkg` the members of `paths` actually use (V17-2):
+    every single-type import from `pkg`, and -- in a file that imports `pkg.*`
+    -- every simple name a parameter, field or declared member names that is a
+    catalogued type of `pkg` (`known`). A package a unit seals is the
+    compiler's word that it does not exist, so nothing is resolved through it;
+    the imports and the catalog are the evidence."""
+    want = set(paths)
+    out: set[str] = set()
+    for t in _unit_types(model):
+        if _unit_path(t) not in want:
+            continue
+        for i in t.get("imports") or []:
+            s = str(i)
+            if s.startswith(pkg + ".") and "." not in s[len(pkg) + 1:] and not s.endswith(".*"):
+                out.add(s)
+        if not _wildcard_of(t, pkg):
+            continue
+        names: set[str] = set()
+        for m in t.get("declared") or []:
+            if isinstance(m, dict):
+                names.update(_erased(str(p.get("type") or "")) for p in (m.get("params") or []) if isinstance(p, dict))
+                names.update(_erased(str(r)) for r in (m.get("type_refs") or []))
+        names.update(_erased(str(f.get("type") or "")) for f in (t.get("fields") or []) if isinstance(f, dict))
+        out.update("%s.%s" % (pkg, n) for n in names if n and "." not in n and "%s.%s" % (pkg, n) in known)
+    return sorted(out)
+
+
+def validation_helpers(root: Path | None) -> dict[str, dict[str, Any]]:
+    """compat-mapping.json `validation_helpers`: the documented replacement of
+    a Spring validation type a NON-handler member takes (V17-2). Qualified keys
+    with an action only."""
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("validation_helpers") or {}
+    return {str(k): dict(v) for k, v in rows.items()
+            if k != "note" and isinstance(v, dict) and "." in str(k) and str(v.get("action") or "")}
+
+
 def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[str, Any]],
-                        packages: dict[str, str]) -> list[dict[str, Any]]:
+                        packages: dict[str, str],
+                        owned: dict[str, dict[str, Any]] | None = None,
+                        handler_sites: dict[str, list[dict[str, Any]]] | None = None,
+                        handler_rows: dict[str, dict[str, Any]] | None = None,
+                        package_types: dict[str, list[str]] | None = None,
+                        helper_sites: dict[str, list[dict[str, Any]]] | None = None,
+                        helper_rows: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """[{from, to, catalog_row}] — the documented replacement of each sealed
     symbol, when a catalog row records one. A symbol with no row contributes
     nothing: the unit then has no documented target, and the checkpoint has
-    nothing to tolerate."""
+    nothing to tolerate.
+
+    An adapter-owned annotation has no replacement: its row is
+    {from, to: "", retire: true, action, catalog_row}. The sealed symbol is
+    already a retired kind, so assess_unit asks for it to be gone as it asks
+    for any other; the row adds the documented action and the adapter that
+    keeps the behaviour. An empty `to` is no target, so the checkpoint
+    tolerates nothing more because of it (unit_explained_regressions reads
+    only qualified targets).
+
+    V16-5 (v16 t_7074fcda): where the symbol is the type of an HTTP HANDLER
+    PARAMETER and compat-mapping `handler_parameters.undocumented` has a row
+    for it, that row's action comes FIRST, as {from, to: "", handler_parameter:
+    true, action, sites, catalog_row}: the compat layer binds no such
+    parameter, and the type rename left seven handlers with an unannotated
+    UriBuilder the platform read as a second body. The symbol_renames row then
+    covers only the OTHER uses -- a helper's builder, a local -- and says so
+    (`not_for`: the handler sites); a symbol no handler takes keeps its row
+    exactly as it was.
+
+    V17-2 (v17 t_c67c0185): a PACKAGE symbol names no type, so its rows come
+    from the types of that package the unit's members use (`package_types`,
+    from their imports): each one's handler_parameters row at its handler
+    sites and its validation_helpers row at the helpers that take it, marked
+    `via_package`. A non-handler member taking a catalogued type gets that
+    helper row the same way when the unit sealed the type itself."""
     out: list[dict[str, Any]] = []
     for s in symbols:
         fqn = str(s.get("fqn") or "")
         if not fqn:
             continue
+        for used in [fqn] + [u for u in (package_types or {}).get(fqn, []) if u != fqn]:
+            via = {"via_package": fqn} if used != fqn else {}
+            if used != fqn and (handler_sites or {}).get(used) and (handler_rows or {}).get(used) is not None:
+                urow = (handler_rows or {})[used]
+                out.append(dict({"from": used, "to": "", "handler_parameter": True, "action": str(urow.get("action") or ""),
+                                 "sites": (handler_sites or {})[used],
+                                 **({"translation": dict(urow["translation"])} if isinstance(urow.get("translation"), dict) else {}),
+                                 **({"location_translation": dict(urow["location_translation"])}
+                                    if isinstance(urow.get("location_translation"), dict) else {}),
+                                 "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
+                                                 "key": used, "kind": str(urow.get("kind") or ""),
+                                                 "source": str(urow.get("source") or "")}}, **via))
+            hsites, hlp = (helper_sites or {}).get(used) or [], (helper_rows or {}).get(used)
+            if hsites and hlp is not None:
+                out.append(dict({"from": used, "to": "", "helper_parameter": True, "action": str(hlp.get("action") or ""),
+                                 "when": str(hlp.get("when") or ""), "sites": hsites,
+                                 "catalog_row": {"catalog": "compat-mapping.json", "block": "validation_helpers", "key": used,
+                                                 "kind": str(hlp.get("kind") or ""), "source": str(hlp.get("source") or "")}}, **via))
+        sites = (handler_sites or {}).get(fqn) or []
+        hrow = (handler_rows or {}).get(fqn)
+        if sites and hrow is not None:
+            out.append({"from": fqn, "to": "", "handler_parameter": True, "action": str(hrow.get("action") or ""),
+                        "sites": sites, **({"translation": dict(hrow["translation"])} if isinstance(hrow.get("translation"), dict) else {}),
+                        **({"location_translation": dict(hrow["location_translation"])}
+                           if isinstance(hrow.get("location_translation"), dict) else {}),
+                        "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
+                                        "key": fqn, "kind": str(hrow.get("kind") or ""), "source": str(hrow.get("source") or "")}})
+        own = (owned or {}).get(fqn)
+        if own is not None:
+            out.append({"from": fqn, "to": "", "retire": True, "action": str(own.get("action") or ""),
+                        "catalog_row": {"catalog": "compat-mapping.json", "block": "adapter_owned_annotations", "key": fqn,
+                                        "kind": str(own.get("kind") or ""), "source": str(own.get("source") or ""),
+                                        "adapter": str(own.get("adapter") or ""), "contract": str(own.get("contract") or ""),
+                                        "policy_evidence": str(own.get("policy_evidence") or "")}})
+            continue
         row = renames.get(fqn)
         if row is not None:
-            out.append({"from": fqn, "to": str(row.get("to") or ""),
-                        "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames", "key": fqn,
-                                        "kind": str(row.get("kind") or ""), "source": str(row.get("source") or "")}})
+            target = {"from": fqn, "to": str(row.get("to") or ""),
+                      "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames", "key": fqn,
+                                      "kind": str(row.get("kind") or ""), "source": str(row.get("source") or "")}}
+            if sites and hrow is not None:
+                target["applies_to"] = "every use of %s other than the HTTP handler parameters listed in not_for" % fqn
+                target["not_for"] = sites
+            out.append(target)
             continue
         for old in sorted(packages, key=len, reverse=True):
             if fqn == old or fqn.startswith(old + "."):
@@ -3932,7 +5039,9 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
                             "catalog_row": {"catalog": "compat-mapping.json", "block": "package_renames", "key": old,
                                             "kind": "package", "source": ""}})
                 break
-    return sorted(out, key=lambda r: (r["from"], r["to"]))
+    # a handler-parameter row leads, then a helper row: the first actions.
+    # sorted() is stable, so rows of one type keep their order
+    return sorted(out, key=lambda r: (not r.get("handler_parameter"), not r.get("helper_parameter"), r["from"], r["to"]))
 
 
 # --- the four rules --------------------------------------------------------
@@ -4118,6 +5227,137 @@ FRAGMENT_IMPL_CONTRACT = "spring-data-fragment-impl/v1"
 FRAGMENT_IMPL_SOURCE = ("https://docs.spring.io/spring-data/jpa/reference/repositories/custom-implementations.html "
                         "(a fragment interface X is implemented by XImpl in X's own package)")
 
+# ...and the CDI exposure it is owed under (V16-4, v16 t_1118e877). XImpl
+# implements X, and so does the generated Spring Data repository, which the
+# extension also makes a bean; with both beans of type X every injection of X
+# is ambiguous at augmentation. The generated repository injects its delegate
+# by the CONCRETE class, so the delegate keeps its scope and its Java
+# `implements X` and restricts its CDI bean types to that class alone:
+# @jakarta.enterprise.inject.Typed(XImpl.class). Not a profile gate (the
+# generated repository needs the delegate) and not a missing scope (the
+# extension registers the delegate anyway).
+FRAGMENT_IMPL_SCOPE = "jakarta.enterprise.context.ApplicationScoped"
+FRAGMENT_IMPL_TYPED = "jakarta.enterprise.inject.Typed"
+FRAGMENT_IMPL_CDI_SOURCE = ("https://jakarta.ee/specifications/cdi/4.1/jakarta-cdi-spec-4.1#restricting_bean_types "
+                            "(@Typed restricts a bean's types, not its Java inheritance); "
+                            "https://github.com/quarkusio/quarkus/blob/3.27.0/extensions/spring-data-jpa/deployment/src/main/java/"
+                            "io/quarkus/spring/data/deployment/generate/SpringDataRepositoryCreator.java (the generated "
+                            "repository injects the fragment implementation by its concrete class)")
+
+
+def fragment_cdi_exposure(typ: dict[str, Any], cdi: dict[str, Any]) -> tuple[str, str]:
+    """(verdict, detail): does this delegate carry the owed CDI exposure --
+    its scope, and @Typed naming exactly its own concrete class?
+
+    Read from the compiler model's annotation rows, the class literals as the
+    compiler resolved them (DestModel `classes`). A @Typed whose literals the
+    model could not resolve is inconclusive, never a pass."""
+    fqn = str(typ.get("fqn") or "")
+    scope, typed = str(cdi.get("scope") or ""), str(cdi.get("typed") or "")
+    want = [str(x) for x in (cdi.get("types") or [fqn])]
+    anns = [a for a in (typ.get("annotations") or []) if isinstance(a, dict)]
+    owed = "@%s @%s(%s.class)" % (scope, typed, fqn.rsplit(".", 1)[-1])
+    if scope and not any(str(a.get("fqn") or "") == scope for a in anns):
+        return "violates", ("%s does not carry @%s: the delegate keeps its scope and restricts its bean types -- "
+                            "annotate it %s (%s)" % (fqn, scope, owed, FRAGMENT_IMPL_CONTRACT))
+    rows = [a for a in anns if str(a.get("fqn") or "") == typed]
+    if not rows:
+        return "violates", ("%s exposes every interface it implements as a CDI bean type, so an injection of the "
+                            "repository interface is ambiguous with the generated Spring Data repository: annotate it "
+                            "%s" % (fqn, owed))
+    got = (rows[0].get("classes") or {}).get("value") if isinstance(rows[0].get("classes"), dict) else None
+    if got is None and str(rows[0].get("resolution") or "") == "full" and not rows[0].get("values"):
+        got = []  # written with no argument at all: every literal it has was read, and there is none
+    if not isinstance(got, list):
+        return "inconclusive", "the model could not resolve the class literals of @Typed on %s" % fqn
+    if sorted(str(x) for x in got) != sorted(want):
+        return "violates", ("@Typed on %s names %s; the only bean type owed is %s (the repository interface stays the "
+                            "generated repository's)" % (fqn, ", ".join(sorted(str(x) for x in got)) or "no type",
+                                                         ", ".join(want)))
+    return "ok", "%s is @%s and @Typed(%s.class): its only CDI bean type is its concrete class" % (
+        fqn, scope.rsplit(".", 1)[-1], fqn.rsplit(".", 1)[-1])
+
+
+# The annotations that decide a bean's existence, its types, its qualifiers or
+# an injection point: what the container resolves at augmentation, and so what
+# only the package gate can prove (V16-4 acceptance rule). CDI 4.1 and the
+# Spring DI / Spring Data compatibility annotations the platform maps onto it.
+CDI_WIRING_ANNOTATIONS = frozenset((
+    "jakarta.enterprise.context.ApplicationScoped", "jakarta.enterprise.context.RequestScoped",
+    "jakarta.enterprise.context.SessionScoped", "jakarta.enterprise.context.Dependent", "jakarta.inject.Singleton",
+    "jakarta.enterprise.inject.Typed", "jakarta.enterprise.inject.Produces", "jakarta.enterprise.inject.Disposes",
+    "jakarta.enterprise.inject.Alternative", "jakarta.enterprise.inject.Specializes", "jakarta.enterprise.inject.Default",
+    "jakarta.enterprise.inject.Any", "jakarta.enterprise.inject.Vetoed", "jakarta.annotation.Priority",
+    "jakarta.inject.Inject", "jakarta.inject.Named",
+    "io.quarkus.arc.DefaultBean", "io.quarkus.arc.Unremovable", "io.quarkus.arc.profile.IfBuildProfile",
+    "io.quarkus.arc.profile.UnlessBuildProfile", "io.quarkus.arc.lookup.LookupIfProperty",
+    "io.quarkus.arc.lookup.LookupUnlessProperty",
+    "org.springframework.stereotype.Component", "org.springframework.stereotype.Service",
+    "org.springframework.stereotype.Repository", "org.springframework.stereotype.Controller",
+    "org.springframework.web.bind.annotation.RestController", "org.springframework.context.annotation.Bean",
+    "org.springframework.context.annotation.Configuration", "org.springframework.context.annotation.Primary",
+    "org.springframework.context.annotation.Scope", "org.springframework.context.annotation.Profile",
+    "org.springframework.beans.factory.annotation.Autowired", "org.springframework.beans.factory.annotation.Qualifier",
+))
+
+
+def _wiring_annotations(anns: Any) -> list[str]:
+    out = []
+    for a in anns or []:
+        if not isinstance(a, dict) or str(a.get("fqn") or "") not in CDI_WIRING_ANNOTATIONS:
+            continue
+        classes = a.get("classes") if isinstance(a.get("classes"), dict) else {}
+        out.append("@%s%s" % (a["fqn"], "(%s)" % ",".join("%s=%s" % (k, "|".join(v)) for k, v in sorted(classes.items()))
+                                         if classes else ""))
+    return sorted(out)
+
+
+def cdi_wiring_of(model: dict[str, Any] | None, paths: list[str]) -> dict[str, dict[str, Any]]:
+    """type fqn -> its CDI wiring, for the types declared in `paths`: the
+    wiring annotations on the type (and, when it has any, its supertypes --
+    they ARE its bean types unless @Typed restricts them) and on each declared
+    member and field. A type without any contributes nothing."""
+    want = set(paths)
+    out: dict[str, dict[str, Any]] = {}
+    for t in _unit_types(model):
+        if _unit_path(t) not in want:
+            continue
+        own = _wiring_annotations(t.get("annotations"))
+        members = {str(m.get("signature") or m.get("name") or ""): _wiring_annotations(m.get("annotations"))
+                   for m in (t.get("declared") or []) if isinstance(m, dict)}
+        fields = {str(f.get("name") or ""): _wiring_annotations(f.get("annotations"))
+                  for f in (t.get("fields") or []) if isinstance(f, dict)}
+        members = {k: v for k, v in members.items() if v}
+        fields = {k: v for k, v in fields.items() if v}
+        if not own and not members and not fields:
+            continue
+        out[str(t.get("fqn") or "")] = {"path": _unit_path(t), "type": own,
+                                        "supertypes": sorted(_erased(x) for x in (t.get("supertypes") or [])) if own else [],
+                                        "members": members, "fields": fields}
+    return out
+
+
+def cdi_wiring_changes(root: Path, base_ref: str, changed: list[str]) -> list[dict[str, Any]]:
+    """What this CANDIDATE changed in CDI wiring, per type, from the compiler
+    models of the accepted commit and the candidate: a bean added or removed,
+    its bean-defining or type-restricting annotations, its supertypes (its bean
+    types), a producer or an injection point. [] when nothing changed; raises
+    DestModelUnavailable when either model cannot be made."""
+    java = sort_unique([p for p in changed if str(p).endswith(".java")])
+    if not java:
+        return []
+    now = cdi_wiring_of(dest_model(Path(root)), java)
+    before = cdi_wiring_of(model_at_commit(Path(root), base_ref), java)
+    rows: list[dict[str, Any]] = []
+    for fqn in sorted(set(now) | set(before)):
+        a, b = before.get(fqn), now.get(fqn)
+        if a == b:
+            continue
+        change = "added" if a is None else ("removed" if b is None else "changed")
+        rows.append({"type": fqn, "path": (b or a or {}).get("path", ""), "change": change,
+                     "before": (a or {}).get("type", []), "after": (b or {}).get("type", [])})
+    return rows
+
 
 def unit_implementation_obligations(parents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The new implementation paths a fragment unit is OWED, named in advance.
@@ -4146,6 +5386,8 @@ def unit_implementation_obligations(parents: list[dict[str, Any]]) -> list[dict[
             "members": sort_unique([str(m.get("signature") or "") for m in (p.get("members") or [])]),
             "contract": FRAGMENT_IMPL_CONTRACT,
             "source": FRAGMENT_IMPL_SOURCE,
+            "cdi": {"scope": FRAGMENT_IMPL_SCOPE, "typed": FRAGMENT_IMPL_TYPED, "types": [parent + "Impl"],
+                    "source": FRAGMENT_IMPL_CDI_SOURCE},
         })
     return sorted(out, key=lambda r: (r["parent"], r["path"]))
 
@@ -4158,15 +5400,39 @@ def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | N
     "Leaf" is decided by the relationships the compiler states about the types
     the union actually holds, never by a package NAME: a package nothing
     outside refers to is a leaf whatever it is called. Those relationships are
-    read at the level the extractor writes them — a declared member's
-    `type_refs` and resolved `calls`, a field's type, the supertypes and the
-    imports (unit_type_refs) — because the type row of a real model carries no
-    `type_refs` at all, and a planner that asked it there saw no consumer where
-    there was one.
+    read by unit_type_refs: the type row's declaration walk plus the member
+    signatures, resolved calls, field types, supertypes and imports.
 
-    Isolation is a claim about ABSENCE, so it is refused on missing evidence: a
-    single outside type the compiler could not fully resolve is a type that
-    cannot say what it names, and the union is not minted as a leaf."""
+    "Isolated" means only: no recorded inbound DECLARATION reference within the
+    modeled source root, on complete evidence. It is not a claim that the code
+    is unreachable, unused, safe to delete or safe to run in parallel --
+    framework callbacks, reflection, configuration and body-only references
+    are outside the walk.
+
+    Isolation is a claim about ABSENCE, so it is refused on missing evidence,
+    and the rule steps aside (every obligation stays with the family,
+    declaration and per-file rules) when:
+
+    * an outside type is partially resolved, or its declaration walk is
+      incomplete, missing or malformed (unit_states_relationships);
+    * an inside type has no identity, or its walk is not complete: a union
+      whose own types cannot say what they are cannot be proved unnamed, and
+      with nothing outside, an incomplete inside would otherwise pass vacuously
+      (rgctl offline evaluation 2026-09-25, G09);
+    * a union file has no type row, or the compiler reported a file in the
+      modeled root that produced no row at all (its types, and whatever they
+      name, are unknown)."""
+    rows = _unit_types(model)
+    unresolved = (model or {}).get("unresolved_files")
+    if not isinstance(unresolved, list):
+        return []  # malformed: which files failed is unknown, so nothing is isolated
+    row_paths = {_unit_path(t) for t in rows}
+    # entries outside the modeled root (an --also-source generated file, which
+    # the extractor compiles for attribution and never emits) are that root's
+    # own concern, exactly as their types are absent from `types`
+    in_root = [str(u) for u in unresolved if not (str(u).startswith("../") or str(u).startswith("/"))]
+    if any(("src/main/java/" + u) not in row_paths for u in in_root):
+        return []  # a failed file with no row: its references are unknowable
     by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for fam in families:
         if any(str(i.get("id")) in claimed for i in fam["items"]):
@@ -4178,12 +5444,19 @@ def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | N
     for directory in sorted(by_dir):
         fams = sorted(by_dir[directory], key=lambda f: f["key"])
         files = sort_unique([p for f in fams for p in f["files"]])
-        inside = {str(t.get("fqn") or "") for t in _unit_types(model) if _unit_path(t) in set(files)}
+        inside_rows = [t for t in rows if _unit_path(t) in set(files)]
+        inside = {str(t.get("fqn") or "") for t in inside_rows}
         if not inside:
             continue
-        outside = [t for t in _unit_types(model) if _unit_path(t) not in set(files)]
+        # every union file is typed, every typed file names its type, and
+        # every inside walk is complete: otherwise what the union declares --
+        # and so what an outside reference would have to name -- is unknown
+        named = {_unit_path(t) for t in inside_rows if str(t.get("fqn") or "")}
+        if set(files) - named or any(not unit_type_refs_complete(t) for t in inside_rows):
+            continue
+        outside = [t for t in rows if _unit_path(t) not in set(files)]
         if any(not unit_states_relationships(t) for t in outside):
-            continue  # no relationship evidence: isolation cannot be established
+            continue  # no complete relationship evidence: isolation cannot be established
         if any(r in inside for t in outside for r in unit_type_refs(t)):
             continue
         if len(files) < 2 and len(fams) < 2:
@@ -4243,8 +5516,8 @@ def _unit_size(unit: dict[str, Any]) -> dict[str, int]:
             "symbols": len(unit.get("symbols") or [])}
 
 
-def _within(size: dict[str, int]) -> bool:
-    return size["files"] <= UNIT_MAX_FILES and size["sites"] <= UNIT_MAX_SITES and size["symbols"] <= UNIT_MAX_SYMBOLS
+def _within(size: dict[str, int], max_symbols: int = UNIT_MAX_SYMBOLS) -> bool:
+    return size["files"] <= UNIT_MAX_FILES and size["sites"] <= UNIT_MAX_SITES and size["symbols"] <= max_symbols
 
 
 def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
@@ -4270,6 +5543,12 @@ def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
     exactly what makes a coordinated `throws` repair unrepresentable, because
     neither half compiles."""
     before = _unit_size(unit)
+    # Ordinary declaration closures and symbol unions remain at eight.
+    fragment_set = (unit["rule"] == RULE_DECLARATION_CLOSURE
+                    and bool(unit.get("implementation"))
+                    and bool(unit.get("items"))
+                    and all(i.get("set_wide") == FRAGMENT_SET for i in unit["items"]))
+    max_symbols = UNIT_MAX_FRAGMENT_SYMBOLS if fragment_set else UNIT_MAX_SYMBOLS
     excluded: list[dict[str, Any]] = []
     if not _within(before) and unit["rule"] in (RULE_PACKAGE_LEAF, RULE_DIAGNOSTIC_FAMILY):
         groups = sorted(unit.get("groups") or [], key=lambda g: (len(g["members"]), g["key"]))
@@ -4291,16 +5570,18 @@ def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
         unit["files"] = sort_unique(list(unit["files"]) + missing)
         unit["evidence"].append({"kind": "javac", "ref": "%d file(s) kept in the write set because the unit still measures an obligation in them (%s)" % (len(missing), ", ".join(missing[:2]))})
     after = _unit_size(unit)
-    unit["bounds"] = dict(after, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=UNIT_MAX_SYMBOLS)
+    unit["bounds"] = dict(after, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=max_symbols)
+    if fragment_set:
+        unit["bounds"]["adr"] = "ADR-024"
     if after != before:
         unit["bounds"]["narrowed"] = {"from": before, "to": after, "reason": "UNIT_NARROWED"}
     if excluded:
         unit["bounds"]["excluded"] = excluded
-    if not _within(after):
+    if not _within(after, max_symbols):
         unit["block"] = ("UNIT_OVERSIZE: %s over %s reaches %d file(s)/%d site(s)/%d symbol(s) (max %d/%d/%d); "
                          "a repair this wide is a planning answer"
                          % (unit["rule"], unit["family_key"], after["files"], after["sites"], after["symbols"],
-                            UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS))
+                            UNIT_MAX_FILES, UNIT_MAX_SITES, max_symbols))
         if unit["rule"] == RULE_DECLARATION_CLOSURE:
             unit["block"] += ("; its callers are bound to the declaration it changes and dropping them would leave a "
                               "unit that cannot compile")
@@ -4373,10 +5654,14 @@ def _unit_completion(unit: dict[str, Any]) -> list[dict[str, Any]]:
                                   % (row["path"], row["contract"], str(row["template_sha256"])[:12], row["type"],
                                      row["config"], len(row.get("properties") or []), row.get("install") or "")})
             continue
+        cdi = row.get("cdi") or {}
         out.append({"check": "implementation", "tool": "worklist.assess_unit", "parent": row["parent"],
                     "path": row["path"], "type": row["type"],
                     "detail": "%s is implemented by a concrete %s at %s (%s), and the model shows it implements the "
-                              "parent" % (row["parent"], row["type"], row["path"], row["contract"])})
+                              "parent%s" % (row["parent"], row["type"], row["path"], row["contract"],
+                                            ("; it is @%s and @Typed(%s.class)"
+                                             % (str(cdi.get("scope") or "").rsplit(".", 1)[-1], row["type"].rsplit(".", 1)[-1]))
+                                            if cdi else "")})
     if unit.get("gate"):
         out.append({"check": "gate", "tool": "run-verify.sh", "gate": unit["gate"],
                     "detail": "the %s gate passes on the verified artifact" % unit["gate"]})
@@ -4390,7 +5675,10 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
     Returns (unit clusters, the item ids they took). Items a unit takes are
     removed from the per-file pass exactly as `taken` already does for symbol
     groups."""
-    renames, packages = symbol_renames(root), package_renames_of(root)
+    renames, packages, owned = symbol_renames(root), package_renames_of(root), adapter_owned_annotations(root)
+    handler_rows = handler_parameters(root).get("undocumented", {})
+    helper_rows = validation_helpers(root)
+    known = set(handler_rows) | set(helper_rows) | set(renames)
     compile_rows = [i for i in items if str(i.get("source") or "") == "javac"]
     families = diagnostic_families(compile_rows, model)
     claimed: set[str] = set()
@@ -4398,8 +5686,33 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
 
     def take(unit: dict[str, Any]) -> None:
         unit["symbols"] = sorted(unit["symbols"], key=lambda s: (str(s.get("kind")), str(s.get("fqn")), str(s.get("signature") or "")))
-        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages)
+        files = list(unit["files"])
+        pkg_types = {str(sym.get("fqn") or ""): package_types_used(model, files, str(sym.get("fqn") or ""), known)
+                     for sym in unit["symbols"] if str(sym.get("kind") or "") == "package"}
+        wanted = sort_unique([str(sym.get("fqn") or "") for sym in unit["symbols"]] + [u for us in pkg_types.values() for u in us])
+        sites = {f: handler_parameter_sites(model, files, f) for f in wanted if f in handler_rows}
+        hsites = {f: handler_parameter_sites(model, files, f, handlers=False) for f in wanted if f in helper_rows}
+        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages, owned, sites, handler_rows,
+                                                     pkg_types, hsites, helper_rows)
         for t in unit["target_symbols"]:
+            if t.get("helper_parameter"):
+                unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s taken by %d helper member(s) (%s)%s"
+                                                                   % (t["catalog_row"]["block"], t["from"], len(t["sites"]),
+                                                                      ", ".join("%s.%s" % (x["type"].rsplit(".", 1)[-1], x["member"])
+                                                                                for x in t["sites"][:3]),
+                                                                      (", used from sealed package %s" % t["via_package"]) if t.get("via_package") else "")})
+                continue
+            if t.get("handler_parameter"):
+                unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s at %d handler parameter(s) (%s); "
+                                                                   "its action precedes any rename"
+                                                                   % (t["catalog_row"]["block"], t["from"], len(t["sites"]),
+                                                                      ", ".join("%s.%s" % (x["type"].rsplit(".", 1)[-1], x["member"])
+                                                                                for x in t["sites"][:3]))})
+                continue
+            if t.get("retire"):
+                unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s retired; its behaviour is owed to %s"
+                                                                   % (t["catalog_row"]["block"], t["from"], t["catalog_row"]["contract"])})
+                continue
             unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s -> %s"
                                                                % (t["catalog_row"]["block"], t["from"], t["to"])})
         _bound_unit(unit)
@@ -4484,7 +5797,7 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
         # authorize a path the model cannot yet have a type for. It is in the
         # write set from the start, because the file seal is what acceptance
         # enforces and a repair that may not write its own adapter is no repair.
-        owed = unit_implementation_obligations(parents)
+        owed = fragment_behaviour_rows(root, unit_implementation_obligations(parents))
         for row in owed:
             files.append(row["path"])
             evidence.append({"kind": "catalog", "ref": "%s: %s implements %s at %s (%s)"
@@ -4537,15 +5850,18 @@ def owed_adapter_units(items: list[dict[str, Any]], root: Path | None, depths: d
     capability renders from the evidence, and assess_unit checks all of them
     after the files exist. A rendering the evidence cannot support is a typed
     blocker on the unit, never a guess."""
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for it in items:
         owed = it.get("owed") if isinstance(it.get("owed"), dict) else None
         if owed and str(owed.get("contract") or "") and str(owed.get("kind") or "") in _adapters.KINDS:
-            groups[str(owed["kind"])].append(it)
+            mode = str(it.get("security_mode") or DEFAULT_SECURITY_MODE).strip().lower() or DEFAULT_SECURITY_MODE
+            if mode not in SECURITY_MODES:
+                mode = DEFAULT_SECURITY_MODE
+            groups[(str(owed["kind"]), mode)].append(it)
     units: list[dict[str, Any]] = []
     claimed: set[str] = set()
-    for kind in sorted(groups):
-        rows = sorted(groups[kind], key=lambda i: str(i.get("id")))
+    for kind, mode in sorted(groups):
+        rows = sorted(groups[(kind, mode)], key=lambda i: str(i.get("id")))
         c = _adapters.contract(kind)
         block = ""
         props: list[tuple[str, str]] = []
@@ -4575,7 +5891,8 @@ def owed_adapter_units(items: list[dict[str, Any]], root: Path | None, depths: d
                     for i in rows]
         evidence.append({"kind": "catalog", "ref": "%s: %s at %s (template sha256 %s; %s)"
                                                    % (c["contract"], c["type"], c["path"], c["template_sha256"][:12], c["source"])})
-        unit = {"rule": RULE_OWED_ADAPTER, "family_key": c["contract"], "kind": "config", "items": rows,
+        family_key = c["contract"] if mode == DEFAULT_SECURITY_MODE else "%s:%s" % (c["contract"], mode)
+        unit = {"rule": RULE_OWED_ADAPTER, "family_key": family_key, "kind": "config", "items": rows,
                 "files": sort_unique([c["path"], c["config"]]),
                 "members": [_unit_member(c["config"], state="declares-property")],
                 "symbols": [{"kind": "property", "fqn": _adapters.CONTRACTS[kind]["prefix"].rstrip("."), "path": c["config"]}],
@@ -4665,6 +5982,133 @@ def _implements(typ: dict[str, Any], parent: str) -> bool:
     return bool(parent) and parent in [_erased(s) for s in (typ.get("supertypes") or [])]
 
 
+# V17-3 (v17 t_eca28a3c): the seven fragment delegates compiled, packaged and
+# carried the owed CDI exposure, and every body was a stub -- query members
+# threw UnsupportedOperationException, save/delete did nothing. Compilation and
+# the package gate cannot see a body's SHAPE; the dest model can
+# (DestModel.bodyShape, from the attributed tree).
+STUB_SHAPES = {
+    "throw": "its whole body is one throw",
+    "empty": "its body is empty (a no-op)",
+    "placeholder-return": "it only returns a placeholder (null, a literal, an empty collection or Optional)",
+}
+
+
+def owed_member_body(typ: dict[str, Any], sig: str) -> tuple[str, str]:
+    """(verdict, detail) for the body of owed member `sig` of `typ`: 'ok',
+    'stub' or 'inconclusive'. A body that only delegates to another method of
+    the SAME type is judged by that method (a private helper cannot hide a
+    stub; a delegation to a real implementation -- another owed member
+    included -- is fine); a delegation cycle is a stub (it never returns a
+    computed answer). A body the model did not shape is inconclusive, never
+    a pass."""
+    declared = {str(m.get("signature") or ""): m for m in (typ.get("declared") or []) if isinstance(m, dict)}
+    chain: list[str] = []
+    cur = sig
+    while True:
+        m = declared.get(cur)
+        if m is None:
+            if chain:
+                return "ok", "%s delegates to %s, which this type inherits" % (sig, cur)
+            return "inconclusive", "the model declares no %s" % cur
+        shape = m.get("body_shape")
+        if not isinstance(shape, dict):
+            return "inconclusive", "the model recorded no body shape for %s" % cur
+        kind = str(shape.get("kind") or "")
+        if kind in STUB_SHAPES:
+            via = (" (through %s)" % " -> ".join(chain + [cur])) if chain else ""
+            what = STUB_SHAPES[kind] + ((" of %s" % shape.get("exception")) if kind == "throw" and shape.get("exception") else "")
+            return "stub", "%s%s: %s" % (sig, via, what)
+        if kind == "delegate":
+            nxt = str(shape.get("delegate") or "")
+            chain.append(cur)
+            if nxt in chain or nxt == sig:
+                return "stub", "%s only delegates in a cycle (%s): it never computes an answer" % (sig, " -> ".join(chain + [nxt]))
+            cur = nxt
+            continue
+        return "ok", "%s has a substantive body%s" % (sig, (" (through %s)" % " -> ".join(chain + [cur])) if chain else "")
+
+
+def fragment_behaviour_rows(root: Path | None, owed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """V17-3: each owed fragment implementation, annotated with the SELECTED
+    source behaviour of every member (source_requirements.repository_behaviour:
+    decided build profiles; override fragment, @Query, CRUD default, derived
+    query; never an inactive-profile implementation) and the functional
+    verification that proves it (repository_verification: reads, and writes
+    by a committed read-back; a member no captured scenario reaches stays
+    unresolved). Sealed with the unit, so the brief renders it and acceptance
+    judges against it. Missing evidence is an unknown on the row, never an
+    empty behaviour."""
+    from planner.source_requirements import repository_behaviour, repository_verification
+    if not owed:
+        return owed
+    bundle = None
+    decisions: dict[str, Any] | None = None
+    catalog: dict[str, Any] = {}
+    if root is not None:
+        try:
+            bundle = load_json(Path(root) / EVIDENCE_BUNDLE)
+        except (OSError, ValueError):
+            bundle = None
+        try:
+            from planner.decisions import load_decisions
+            decisions = load_decisions(Path(root))
+        except (OSError, ValueError):
+            decisions = None
+        try:
+            catalog = load_json(Path(root) / CATALOGS_DIR / "compat-mapping.json")
+        except (OSError, ValueError):
+            catalog = {}
+    types = ((bundle or {}).get("structure") or {}).get("types") if isinstance(bundle, dict) else None
+    oracles, facts = corpus_scenario_facts(root)
+    out = []
+    for row in owed:
+        row = dict(row)
+        if row.get("contract") != FRAGMENT_IMPL_CONTRACT:
+            out.append(row)
+            continue
+        if not isinstance(types, list) or decisions is None:
+            row["behaviour"] = {"parent": row.get("parent"), "repository": "", "members": [], "not_behaviour_sources": [],
+                                "unknowns": ["the frozen structural model or decisions.yaml is unreadable: the selected source "
+                                             "behaviour of %s is unknown" % row.get("parent")]}
+            row["verification"] = []
+            out.append(row)
+            continue
+        # every member of the parent, not only the ones the platform cannot
+        # derive: the <Parent>Impl implements the whole interface, and the
+        # generated repository delegates to it for each of them (v17: the
+        # derivable findById / findByLastName threw from the delegate too)
+        src_parent = next((t for t in types if isinstance(t, dict) and str(t.get("fqn") or "") == str(row.get("parent") or "")), {})
+        every = sort_unique([str(s) for s in row.get("members") or []]
+                            + [str(m.get("signature") or "") for m in (src_parent.get("methods") or []) if isinstance(m, dict)])
+        beh = repository_behaviour(types, parent=str(row.get("parent") or ""), members=every,
+                                   decisions=decisions, catalog=catalog)
+        row["behaviour"] = beh
+        row["verification"] = repository_verification(beh, entry_points=list((bundle or {}).get("entry_points") or []),
+                                                      types=types, oracles=oracles, scenarios=facts)
+        out.append(row)
+    return out
+
+
+def corpus_scenario_facts(root: Path | None) -> tuple[dict[str, list[str]] | None, dict[str, dict[str, Any]] | None]:
+    """(entry point -> scenario ids, scenario id -> {method, path, effects})
+    from the captured corpus; (None, None) when there is none."""
+    if root is None:
+        return None, None
+    oracles: dict[str, list[str]] = {}
+    facts: dict[str, dict[str, Any]] = {}
+    seen = False
+    for doc in _iter_corpus_docs(Path(root)):
+        seen = True
+        for sc in doc.get("scenarios") or []:
+            if isinstance(sc, dict) and sc.get("id"):
+                facts[str(sc["id"])] = {"method": str(sc.get("method") or ""), "path": str(sc.get("path") or ""),
+                                        "effects": [dict(e) for e in (sc.get("effects") or []) if isinstance(e, dict)]}
+                if sc.get("entry_point"):
+                    oracles.setdefault(str(sc["entry_point"]), []).append(str(sc["id"]))
+    return (oracles, facts) if seen else (None, None)
+
+
 def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, Any] | None,
                             by_path: dict[str, list[dict[str, Any]]], rule: str) -> list[dict[str, Any]]:
     """The recorded implementation obligations, verified from the model AFTER
@@ -4707,9 +6151,41 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
                             detail="%s implements %s but declares no body for %s; an abstract answer answers nothing"
                                    % (typ.get("fqn"), parent, ", ".join(missing[:3]))))
             continue
+        # V17-3: a body is not an implementation because it compiles
+        # every member the delegate declares that the parent owes or the
+        # sealed behaviour covers: the generated repository calls them all
+        mine = {str(m.get("signature") or "") for m in (typ.get("declared") or []) if isinstance(m, dict)}
+        judged = sort_unique([str(s) for s in row.get("members") or []]
+                             + [str(b.get("signature") or "") for b in ((row.get("behaviour") or {}).get("members") or [])
+                                if isinstance(b, dict) and str(b.get("signature") or "") in mine])
+        bodies = [(s, owed_member_body(typ, str(s))) for s in judged]
+        stubs = [d for _s, (v, d) in bodies if v == "stub"]
+        if stubs:
+            beh = {str(b.get("signature") or ""): b for b in ((row.get("behaviour") or {}).get("members") or [])
+                   if isinstance(b, dict)}
+            owed_src = ["%s <- %s" % (s, beh[s].get("source") or beh[s].get("kind")) for s, (v, _d) in bodies
+                        if v == "stub" and s in beh]
+            out.append(dict(base, verdict="violates",
+                            detail="%s implements %s with STUB bodies, which answer nothing the source answered: %s. Each "
+                                   "owed member must carry its SELECTED source behaviour%s (spring-data-fragment-impl/v1, "
+                                   "V17-3)" % (typ.get("fqn"), parent, "; ".join(stubs[:4]),
+                                               (": " + "; ".join(owed_src[:4])) if owed_src else "")))
+            continue
+        unshaped = [d for _s, (v, d) in bodies if v == "inconclusive"]
+        if unshaped:
+            out.append(dict(base, verdict="inconclusive",
+                            detail="the bodies of %s cannot be judged: %s" % (typ.get("fqn"), "; ".join(unshaped[:3]))))
+            continue
+        if isinstance(row.get("cdi"), dict):
+            verdict, detail = fragment_cdi_exposure(typ, row["cdi"])
+            if verdict != "ok":
+                out.append(dict(base, verdict=verdict, detail=detail))
+                continue
         out.append(dict(base, verdict="ok",
-                        detail="%s implements %s and declares %d concrete member(s) it owed"
-                               % (typ.get("fqn"), parent, len(row.get("members") or []))))
+                        detail="%s implements %s and declares %d concrete member(s) it owed%s"
+                               % (typ.get("fqn"), parent, len(row.get("members") or []),
+                                  ("; its only CDI bean type is itself (structural: the bean wiring is proven by the "
+                                   "package gate, not here)") if isinstance(row.get("cdi"), dict) else "")))
     return out
 
 
@@ -4744,6 +6220,107 @@ def _assess_owed_adapter(root: Path, row: dict[str, Any], by_path: dict[str, lis
                 % (path, row.get("contract"), want, row.get("config"), len(props)))
 
 
+OBJECTIVE_RULE = "unit/objective/v1"
+
+
+class ObjectiveScopeError(ValueError):
+    pass
+
+
+def objective_children(root: Path, envelope: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
+    """(child record, its sealed inventory or None for an unsealed cluster).
+    A sealed child whose file is missing or whose content is not the digest the
+    envelope names refuses: a child is judged by the inventory it was admitted
+    with, never by a later one."""
+    out = []
+    for ch in envelope.get("children") or []:
+        doc = None
+        if ch.get("path"):
+            p = Path(root) / str(ch["path"])
+            doc = load_json(p) if p.is_file() else None
+            if not isinstance(doc, dict) or batch_scope_digest(doc) != str(ch.get("digest") or ""):
+                raise ObjectiveScopeError("the sealed inventory of %s (%s) is missing or is not the admitted one"
+                                          % (ch.get("cluster"), ch.get("path")))
+        out.append((ch, doc))
+    return out
+
+
+def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, Any],
+                          worklist: dict[str, Any] | None) -> dict[str, Any]:
+    """ONE composite inventory for an objective issued whole
+    (compatibility_objectives execution_unit). Its children keep their own
+    rule-specific inventories (referenced by path and digest, assessed by their
+    own assessor); the envelope unions their file seal, symbols, catalogued
+    targets and members (each tagged with its constituent) so the checkpoint
+    judges the objective once. Requirement files the objective owns join the
+    file seal; nothing else does. Raises ObjectiveScopeError when a child
+    inventory is missing or changed."""
+    from planner.compatibility_objectives import fragment_seal, scope_bounds, seal_site_keys
+    children: list[dict[str, Any]] = []
+    writable: set[str] = set()
+    site_keys: set[str] = set()
+    fragment = bool(descriptor.get("units"))
+    symbols: list[dict[str, Any]] = []
+    targets: list[dict[str, Any]] = []
+    members: list[dict[str, Any]] = []
+    idents: set[str] = set()
+    items = {str(i.get("id")): i for i in (worklist or {}).get("items") or [] if isinstance(i, dict)}
+    for unit in descriptor.get("units") or []:
+        seal = unit.get("seal") or {}
+        ch = {"cluster": str(unit.get("cluster")), "rule": str(seal.get("rule") or "cluster"),
+              "path": str(seal.get("path") or ""), "digest": str(seal.get("digest") or ""),
+              "write_set": sorted(unit.get("write_set") or []), "items": sorted(unit.get("items") or [])}
+        children.append(ch)
+    for ch, doc in objective_children(root, {"children": children}):
+        writable |= set(ch["write_set"])
+        if doc is None:
+            site_keys |= {"i|%s" % i for i in ch["items"]}
+            fragment = False
+            continue
+        writable |= {str(p) for p in doc.get("writable_paths") or []}
+        site_keys |= set(seal_site_keys(doc))
+        fragment = fragment and fragment_seal(doc)
+        for s in doc.get("symbols") or []:
+            if s not in symbols:
+                symbols.append(s)
+        for t in doc.get("target_symbols") or []:
+            if t not in targets:
+                targets.append(t)
+        members += [dict(m, constituent=ch["cluster"]) for m in doc.get("members") or []]
+    for ob, ident in sorted((descriptor.get("identities") or {}).items()):
+        idents.add(str(ident))
+    writable |= {str(p) for p in descriptor.get("paths") or []}
+    # the scope bound, recomputed over THIS final envelope with the planner's own validator: a stored
+    # `within` is never trusted, and a descriptor whose counts differ from its envelope is stale
+    bounds = scope_bounds(files=writable, sites=site_keys,
+                          symbols={str(q) for u in descriptor.get("units") or [] for q in u.get("symbols") or []},
+                          fragment=fragment)
+    if not bounds["within"]:
+        raise ObjectiveScopeError("OBJECTIVE_SCOPE_OVERSIZE: %s spans %s; nothing is granted" % (
+            objective_id, ", ".join("%s %d/%d" % (k, bounds[k], bounds["limits"][k]) for k in ("files", "sites", "symbols"))))
+    recorded = descriptor.get("bounds") or {}
+    if any(recorded.get(k) != bounds[k] for k in ("files", "sites", "symbols")) or sorted(writable) != sorted(descriptor.get("paths") or []):
+        raise ObjectiveScopeError("OBJECTIVE_SCOPE_MISREPORTED: %s records %s over %d path(s) but its envelope is %s over %d"
+                                  % (objective_id, {k: recorded.get(k) for k in ("files", "sites", "symbols")},
+                                     len(descriptor.get("paths") or []), {k: bounds[k] for k in ("files", "sites", "symbols")},
+                                     len(writable)))
+    env = {
+        "schema": UNIT_SCHEMA, "kind": UNIT_KIND, "rule": OBJECTIVE_RULE,
+        "unit_id": str(objective_id), "cluster": "objective:%s" % objective_id,
+        "producer": "worklist.build_objective_scope", "children": children,
+        "writable_paths": sorted(writable), "symbols": symbols, "target_symbols": targets,
+        "members": sorted(members, key=lambda m: (str(m.get("path")), str(m.get("member_id")), str(m.get("constituent")))),
+        "obligations": sorted(descriptor.get("obligations") or []), "requirements": sorted(descriptor.get("requirements") or []),
+        "bounds": bounds,
+        "completion": [{"check": "identities-gone", "tool": "javac", "identities": sorted(idents),
+                        "detail": "every one of the %d admitted obligations of the objective is no longer reported" % len(idents)},
+                       {"check": "unit-assessment", "tool": "worklist.assess_unit",
+                        "detail": "every constituent's sealed members, assessed by that constituent's own rule"}],
+    }
+    env["digest"] = batch_scope_digest(env)
+    return env
+
+
 def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
     """Every sealed member against the rule its unit declares, from the
     compiled tree. `inconclusive` is never a pass: the caller must refuse.
@@ -4761,6 +6338,17 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
       unit carries is the other half, and `progress()` requires it.
     """
     rule = str(scope.get("rule") or "")
+    if rule == OBJECTIVE_RULE:
+        # each constituent by ITS OWN assessor; the weakest cannot stand for the others
+        try:
+            kids = objective_children(root, scope)
+        except ObjectiveScopeError as exc:
+            return [{"member": "*", "verdict": "violates", "detail": str(exc)}]
+        rows: list[dict[str, Any]] = []
+        for ch, doc in kids:
+            if doc is not None:
+                rows += [dict(r, constituent=ch["cluster"]) for r in assess_unit(root, doc)]
+        return rows
     if rule == CHECKED_FAMILY_RULE:
         return assess_checked_family(root, scope)
     if rule == BATCH_RULE:
@@ -4792,14 +6380,63 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         if not here:
             out.append(dict(base, verdict="inconclusive", detail="the model has no type for %s" % path))
             continue
-        typ = types.get((path, fqn)) or here[0]
-        if str(typ.get("resolution") or "") != "full":
+        typ = types.get((path, fqn)) if fqn else here[0]
+        if typ is None:
+            out.append(dict(base, verdict="violates", detail="the sealed type %s is gone" % fqn))
+            continue
+        # Full attribution of an entire file is unnecessary to prove that a
+        # retired type/annotation no longer occurs in its parsed syntax. This
+        # is an absence proof, not a guess about unresolved relationships. A
+        # syntax error, missing inventory or remaining simple
+        # name cannot use this proof (even a same-spelled different type).
+        syntax = typ.get("syntax_names")
+        qualified = typ.get("syntax_qualified_names")
+        def parsed_retirement(fqn: str, kind: str) -> bool:
+            if kind in ("type", "annotation"):
+                return fqn.rsplit(".", 1)[-1] not in syntax
+            if kind == "package":
+                # Package diagnostics seal the namespace, not one type. javac
+                # preserves qualification in imports, package declarations and
+                # inline/nested references before attribution. Inherited type
+                # names need their own complete compiler-resolved hierarchy;
+                # unrelated field/annotation errors do not invalidate it.
+                implicit = typ.get("implicit_type_names")
+                implicit_known = (typ.get("syntax_implicit_types") is False
+                                  or (typ.get("syntax_implicit_types") is True
+                                      and typ.get("implicit_type_scope_complete") is True
+                                      and isinstance(implicit, list)))
+                return (isinstance(qualified, list)
+                        and implicit_known
+                        and fqn != "java.lang"
+                        and not _names_retired(set(qualified), fqn, kind)
+                        and not _names_retired(set(implicit or []), fqn, kind))
+            return False
+        # Both rules that RETIRE their symbols (a family, and a leaf that is a
+        # union of families) ask the same question of a member, so both may
+        # answer it from the parse; a declaration closure preserves its
+        # declarations and still needs the resolved model. v16 t_7074fcda: a
+        # leaf over seven controllers retiring @CrossOrigin.
+        parsed_absence = (rule in (RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF) and bool(retired)
+                          and typ.get("syntax_complete") is True and isinstance(syntax, list)
+                          and all(parsed_retirement(fqn, kind) for fqn, kind in retired))
+        if str(typ.get("resolution") or "") != "full" and not parsed_absence:
             out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
             continue
         names: set[str] = set()
         for t in here:
             names |= unit_type_refs(t)
+            for declaration in [t] + list(t.get("declared") or []) + list(t.get("fields") or []):
+                names.update(str(a.get("fqn") or "") for a in declaration.get("annotations") or [])
         still = sorted(s for s, kind in retired if _names_retired(names, s, kind))
+        # A reference still found proves the symbol remains, whatever else is
+        # unknown. Its ABSENCE proves nothing when a declaration walk in this
+        # file did not finish (an unresolved, unsupported or bounded part); only
+        # the independent parsed proof above can answer then.
+        if retired and not still and not parsed_absence and not all(unit_type_refs_complete(t) for t in here):
+            out.append(dict(base, verdict="inconclusive",
+                            detail="the declaration references of %s are incomplete, so their absence does not prove the "
+                                   "retired symbol(s) gone" % path))
+            continue
         if mid:
             ids = member_ids(typ)
             member = next((m for m in typ.get("declared") or [] if ids.get(str(m.get("signature") or "")) == mid or str(m.get("name") or "") == mid), None)
@@ -4821,8 +6458,271 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         if still:
             out.append(dict(base, verdict="violates", detail="%s still names the retired symbol(s) %s" % (path, ", ".join(still))))
             continue
-        out.append(dict(base, verdict="ok", detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
+        out.append(dict(base, verdict="ok", proof="parsed-symbol-absence" if parsed_absence else "resolved-model",
+                        detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
     out.extend(_assess_implementations(Path(root), scope, model, by_path, rule))
+    out.extend(_assess_handler_parameters(scope, by_path, rule, root=Path(root)))
+    return out
+
+
+def _translation_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], bound: dict[str, str],
+                         source: dict[str, Any] | None, source_gap: str) -> dict[str, Any] | None:
+    """V16-8: the BindingResult translation, checked structurally. The
+    handler's validation guards must be the frozen source handler's, with
+    hasErrors() and !validate(...).isEmpty() the same atom (INVALID); and a
+    handler that validates itself must not keep @Valid on a parameter (the
+    platform would validate first and answer the violation itself). None when
+    nothing is wrong; a source the model cannot read makes no guard claim."""
+    dst = sorted({str(g) for m in handlers for g in (m.get("validation_guards") or [])})
+    if dst:
+        kept = ["%s %s" % (_param_identity(p, bound) or p.get("type"), p.get("name")) for m in handlers
+                for p in (m.get("params") or []) if isinstance(p, dict)
+                and any((str(a.get("fqn") or "") if "." in str(a.get("fqn") or "") else bound.get(str(a.get("simple") or a.get("fqn") or ""), ""))
+                        in _VALID_ANNOTATIONS for a in (p.get("annotations") or []) if isinstance(a, dict))]
+        if kept:
+            return {"verdict": "violates",
+                    "detail": "the handler %s.%s validates its body itself (%s) and still carries @Valid on %s: the platform "
+                              "validates a @Valid parameter first and answers the violation with its own 400 report, so the "
+                              "source's response is never built -- remove @Valid from the parameter (compat-mapping "
+                              "handler_parameters jakarta.validation.Valid); keep the DTO's constraints and nested @Valid"
+                              % (typ_fqn, name, "; ".join(dst), ", ".join(kept))}
+    if source is None:
+        return None
+    src = _guards(_unit_types(source), typ_fqn, name)
+    if not src:
+        return None
+    missing = [g for g in src if g not in dst]
+    if not missing:
+        return None
+    inverted = [g for g in missing if _negated(g) in dst or _flipped(g) in dst]
+    return {"verdict": "violates",
+            "detail": "the source handler %s.%s decides on %s and the candidate on %s%s: bindingResult.hasErrors() is "
+                      "!validator.validate(<body>).isEmpty(), and the rest of the guard stays as the source wrote it "
+                      "(compat-mapping handler_parameters BindingResult translation)"
+                      % (typ_fqn, name, "; ".join(missing), "; ".join(dst) or "no validation guard",
+                         " -- INVERTED" if inverted else "")}
+
+
+FROZEN_INPUT = Path(".derived") / "frozen-input"
+_VALID_ANNOTATIONS = ("jakarta.validation.Valid", "javax.validation.Valid")
+
+
+def frozen_source_model(root: Path | None) -> tuple[dict[str, Any] | None, str]:
+    """(the compiler model of the FROZEN source, why not). Its own build
+    classpath when M1 recorded one (evidence/build/classpath.txt), else none:
+    the parse tree and the file's own imports still name what it calls."""
+    if root is None:
+        return None, "no destination root"
+    tree = Path(root) / FROZEN_INPUT
+    cp = Path(root) / "evidence" / "build" / "classpath.txt"
+    try:
+        return tree_model(Path(root), tree, classpath=cp if cp.is_file() and cp.stat().st_size else None), ""
+    except DestModelUnavailable as exc:
+        return None, str(exc)
+
+
+def _guards(types: list[dict[str, Any]], fqn: str, name: str) -> list[str] | None:
+    """The validation guards of every member `name` of type `fqn`, or None
+    when the model has no such member."""
+    ms = [m for t in types if str(t.get("fqn") or "") == fqn for m in (t.get("declared") or [])
+          if isinstance(m, dict) and str(m.get("name") or "") == name]
+    if not ms:
+        return None
+    return sorted({str(g) for m in ms for g in (m.get("validation_guards") or [])})
+
+
+def _flipped(g: str) -> str:
+    """The guard with every validation atom inverted (INVALID <-> !INVALID):
+    the v16 translation that kept the operators and lost the negation."""
+    return g.replace("!INVALID", "\0").replace("INVALID", "!INVALID").replace("\0", "INVALID")
+
+
+def _negated(g: str) -> str:
+    if g.startswith("!(") and g.endswith(")"):
+        return g[2:-1]
+    if g.startswith("!"):
+        return g[1:]
+    return ("!" + g) if g.startswith("(") or " " not in g else "!(%s)" % g
+
+LOCATION_DECISION = "location_arguments"
+
+
+def location_substitutions(root: Path | None) -> set[tuple[str, str, int, str]]:
+    """decisions.yaml `location_arguments.substitutions` (V17-5): each
+    {handler: "<type fqn>#<member>", argument: <index>, expression: "<the
+    candidate's base expression>", adr: <an ACCEPTED ADR>} authorizes the
+    candidate to expand a different value than the source did at that
+    argument (typically the saved entity's id for the request DTO's). A row
+    without an accepted ADR authorizes nothing; absent means none."""
+    if root is None:
+        return set()
+    try:
+        from planner.decisions import accepted_adrs, load_decisions
+
+        doc = load_decisions(Path(root))
+    except (OSError, ValueError):
+        return set()
+    block = doc.get(LOCATION_DECISION) if isinstance(doc, dict) else None
+    rows = (block or {}).get("substitutions") if isinstance(block, dict) else None
+    ok = accepted_adrs(doc)
+    out: set[tuple[str, str, int, str]] = set()
+    for r in rows or []:
+        if not isinstance(r, dict) or str(r.get("adr") or "") not in ok:
+            continue
+        handler = str(r.get("handler") or "")
+        if "#" not in handler:
+            continue
+        typ, member = handler.split("#", 1)
+        try:
+            idx = int(r.get("argument"))
+        except (TypeError, ValueError):
+            continue
+        out.add((typ, member, idx, " ".join(str(r.get("expression") or "").split())))
+    return out
+
+
+def _same_expansion_base(src: dict[str, Any], dst: dict[str, Any]) -> bool:
+    """Is the candidate's argument the source's own value? The same kind of
+    root (a handler parameter, or a local) of the same declared type with the
+    same accessors after it -- a renamed variable is the same value, another
+    variable (the saved entity where the source expanded the request DTO) is
+    not. A root the model cannot classify compares by its text."""
+    kind = str(src.get("root_kind") or "")
+    if kind in ("parameter", "local"):
+        return (str(dst.get("root_kind") or "") == kind and str(dst.get("root_type") or "") == str(src.get("root_type") or "")
+                and str(dst.get("selectors") or "") == str(src.get("selectors") or ""))
+    return " ".join(str(dst.get("base") or "").split()) == " ".join(str(src.get("base") or "").split())
+
+
+def _location_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], source: dict[str, Any] | None,
+                      source_gap: str, frozen_present: bool,
+                      authorized: set[tuple[str, str, int, str]]) -> dict[str, Any] | None:
+    """V17-5: the Location the source built is the Location the candidate
+    builds. Every argument of the frozen source handler's
+    UriComponentsBuilder.buildAndExpand(...) that is not a non-null literal
+    must reach the candidate's JAX-RS UriBuilder.build(...) as the SAME value
+    (the same parameter or local, the same accessors) and NULL-TOLERANTLY
+    (`a == null ? "" : a`, Objects.toString(a, ""), Objects.requireNonNullElse(a,
+    "")): Spring expands null as an empty segment and JAX-RS throws for it
+    (v17 addPetType: 500 after the row was committed). A different value is a
+    behaviour change unless decisions.yaml location_arguments authorizes it
+    (location_substitutions). No frozen source in this tree: no claim (as the
+    guard translation); a frozen source that cannot be modelled: inconclusive."""
+    if source is None:
+        if frozen_present:
+            return {"verdict": "inconclusive",
+                    "detail": "the frozen source could not be modelled (%s), so the source's Location arguments for %s.%s are "
+                              "unknown" % (source_gap or "no model", typ_fqn, name)}
+        return None
+    members = [m for t in _unit_types(source) if str(t.get("fqn") or "") == typ_fqn for m in (t.get("declared") or [])
+               if isinstance(m, dict) and str(m.get("name") or "") == name]
+    src = [e for m in members for e in (m.get("uri_expansions") or []) if isinstance(e, dict) and e.get("api") == "spring"]
+    if not src:
+        return None
+    dst = [e for m in handlers for e in (m.get("uri_expansions") or []) if isinstance(e, dict) and e.get("api") == "jaxrs"]
+    problems: list[str] = []
+    used: set[int] = set()
+    for se in src:
+        tpl = list(se.get("templates") or [])
+        de_i = next((k for k, e in enumerate(dst) if k not in used and tpl and list(e.get("templates") or []) == tpl), None)
+        if de_i is None:
+            de_i = next((k for k in range(len(dst)) if k not in used), None)
+        if de_i is None:
+            problems.append("the source expands %s with %d argument(s) and the candidate builds no JAX-RS UriBuilder expansion "
+                            "for it" % ("/".join(tpl) or "its template", len(se.get("args") or [])))
+            continue
+        used.add(de_i)
+        dargs = list(dst[de_i].get("args") or [])
+        for j, sa in enumerate(se.get("args") or []):
+            if sa.get("non_null"):
+                continue
+            da = dargs[j] if j < len(dargs) else None
+            if da is None:
+                problems.append("argument %d (%s) of the source's expansion is missing from build(...)" % (j, sa.get("text")))
+                continue
+            if not _same_expansion_base(sa, da):
+                if (typ_fqn, name, j, " ".join(str(da.get("base") or "").split())) in authorized:
+                    continue
+                problems.append("argument %d is %s where the source expanded %s: another value is a behaviour change (the "
+                                "source's Location, a null included, is the contract) unless decisions.yaml %s.substitutions "
+                                "records it with an accepted ADR" % (j, da.get("text"), sa.get("text"), LOCATION_DECISION))
+                continue
+            if not da.get("null_tolerant"):
+                problems.append("argument %d (%s) is passed bare: the source's buildAndExpand(%s) expands a null value as an "
+                                "empty segment and UriBuilder.build throws IllegalArgumentException for it -- write %s == null "
+                                "? \"\" : %s or Objects.toString(%s, \"\")"
+                                % (j, da.get("text"), sa.get("text"), da.get("base"), da.get("base"), da.get("base")))
+    if not problems:
+        return None
+    return {"verdict": "violates",
+            "detail": "the Location of %s.%s is not the source's (compat-mapping handler_parameters UriComponentsBuilder "
+                      "location_translation): %s" % (typ_fqn, name, "; ".join(problems[:3]))}
+
+
+def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[dict[str, Any]]],
+                               rule: str, *, root: Path | None = None) -> list[dict[str, Any]]:
+    """V16-5: every handler site a handler_parameters row sealed, after the
+    candidate. The handler must no longer take the retired type, nor the type
+    symbol_renames names for it, unless that parameter carries @Context -- an
+    unannotated UriBuilder compiles and is refused at augmentation as a second
+    request body. The handler itself must survive; the route is not repaired
+    by deleting it."""
+    renames = {str(t.get("from") or ""): str(t.get("to") or "") for t in (scope.get("target_symbols") or [])
+               if isinstance(t, dict) and t.get("to")}
+    source: dict[str, Any] | None = None
+    source_gap = ""
+    if root is not None and any(isinstance(t, dict) and (t.get("translation") or t.get("location_translation"))
+                                for t in (scope.get("target_symbols") or [])):
+        source, source_gap = frozen_source_model(root)
+    frozen_present = root is not None and (Path(root) / FROZEN_INPUT).is_dir()
+    authorized = location_substitutions(root) if root is not None else set()
+    out: list[dict[str, Any]] = []
+    for row in scope.get("target_symbols") or []:
+        if not isinstance(row, dict) or not row.get("handler_parameter"):
+            continue
+        banned = {str(row.get("from") or "")} | ({renames[row["from"]]} if renames.get(str(row.get("from") or "")) else set())
+        for site in row.get("sites") or []:
+            path, typ_fqn, name = str(site.get("path") or ""), str(site.get("type") or ""), str(site.get("member") or "")
+            base = {"member": "%s#%s(%s)" % (path, name, site.get("parameter") or ""), "path": path, "rule": rule,
+                    "state": "handler-parameter"}
+            typ = next((t for t in by_path.get(path) or [] if str(t.get("fqn") or "") == typ_fqn), None)
+            if typ is None:
+                out.append(dict(base, verdict="inconclusive", detail="the model has no type %s at %s" % (typ_fqn, path)))
+                continue
+            bound = unit_bound_imports(typ)
+            handlers = [m for m in typ.get("declared") or [] if isinstance(m, dict) and str(m.get("name") or "") == name
+                        and _is_handler(m, bound)]
+            if not handlers:
+                out.append(dict(base, verdict="violates", detail="the handler %s.%s is gone; its route is not repaired by "
+                                                                 "deleting it" % (typ_fqn, name)))
+                continue
+            bad = []
+            for m in handlers:
+                for p in m.get("params") or []:
+                    if not isinstance(p, dict) or _param_identity(p, bound, _wildcard_of(typ, str(row.get("from") or "").rsplit(".", 1)[0])) not in banned:
+                        continue
+                    ctx = any((str(a.get("fqn") or "") if "." in str(a.get("fqn") or "")
+                               else bound.get(str(a.get("simple") or a.get("fqn") or ""), "")) == _JAXRS_CONTEXT
+                              for a in (p.get("annotations") or []) if isinstance(a, dict))
+                    if not ctx:
+                        bad.append("%s %s" % (_param_identity(p, bound), p.get("name")))
+            if bad:
+                out.append(dict(base, verdict="violates",
+                                detail="the handler %s.%s still takes %s without @Context; the compat layer binds no such "
+                                       "parameter -- %s" % (typ_fqn, name, ", ".join(bad), row.get("action") or "")))
+                continue
+            if row.get("translation"):
+                verdict = _translation_verdict(typ_fqn, name, handlers, bound, source, source_gap)
+                if verdict:
+                    out.append(dict(base, **verdict))
+                    continue
+            if row.get("location_translation"):
+                verdict = _location_verdict(typ_fqn, name, handlers, source, source_gap, frozen_present, authorized)
+                if verdict:
+                    out.append(dict(base, **verdict))
+                    continue
+            out.append(dict(base, verdict="ok", detail="the handler %s.%s no longer takes %s as a bound parameter"
+                                                       % (typ_fqn, name, " or ".join(sorted(banned)))))
     return out
 
 
@@ -4856,7 +6756,8 @@ def _symbol_match(key: str, kind: str, fqn: str) -> bool:
 
 def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]],
                                model: dict[str, Any] | None = None,
-                               identities: set[str] | None = None) -> tuple[list[dict[str, Any]], str]:
+                               identities: set[str] | None = None, *,
+                               root: Path | None = None) -> tuple[list[dict[str, Any]], str]:
     """(the rows a unit's sealed symbols explain, why the tolerated set is refused).
 
     A currently reported compile diagnostic ``d`` is EXPLAINED iff all four:
@@ -4891,6 +6792,16 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
     about (the introduced set); absent, every reported diagnostic is considered."""
     if not isinstance(scope, dict) or str(scope.get("kind") or "") != UNIT_KIND:
         return [], "the card carries no unit seal, so no symbol of it can explain anything"
+    if str(scope.get("rule") or "") == OBJECTIVE_RULE:
+        # per constituent: one child's documented targets explain diagnostics
+        # in ITS files only, never a regression in another child's files
+        if root is None:
+            return [], "an objective's constituents cannot be read without the tree, so nothing is explained"
+        try:
+            kids = objective_children(root, scope)
+        except ObjectiveScopeError as exc:
+            return [], str(exc)
+        return _objective_explained(kids, items, model, identities)
     if model is None:
         return [], ("the destination model is unavailable, so no token can be resolved through the declaring file's "
                     "imports; a bare name matched by spelling is exactly the mistake this rule refuses (v9 t_3903f495)")
@@ -4937,6 +6848,23 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
         return [], ("the diagnostics this checkpoint would tolerate name %d different symbol families (%s); a unit may "
                     "only carry its OWN family through its checkpoint, and anything else is a second defect"
                     % (len(families), ", ".join(sorted(families)[:3])))
+    return sorted(rows, key=lambda r: (r["path"], r["identity"])), ""
+
+
+def _objective_explained(kids: list[tuple[dict[str, Any], dict[str, Any] | None]], items: list[dict[str, Any]],
+                         model: dict[str, Any] | None, identities: set[str] | None) -> tuple[list[dict[str, Any]], str]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for ch, doc in kids:
+        if doc is None:
+            continue  # an unsealed constituent explains nothing
+        got, why = unit_explained_regressions(doc, items, model, identities)
+        if why:
+            return [], "%s: %s" % (ch.get("cluster"), why)
+        for r in got:
+            if r["identity"] not in seen:
+                seen.add(r["identity"])
+                rows.append(dict(r, constituent=ch.get("cluster")))
     return sorted(rows, key=lambda r: (r["path"], r["identity"])), ""
 
 
@@ -5203,6 +7131,14 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
                                  explained=explained, family_scope=family_scope)
         if verdict is not None:
             return verdict
+    if gate == PLANNED_UNIT_GATE:
+        # the tuple may not get worse; whether the requirement is met is the outcome's
+        # requirement checks, recomputed on the committed tree by the acceptance
+        # (native_control.accept_commit / outcome_lifecycle.accept_commit)
+        if b > a:
+            return False, "a planned unit may not make the measure worse: %s > %s" % (b, a)
+        return True, ("planned unit: measure %s not worse than %s; the outcome's requirement checks decide "
+                      "its acceptance" % (b, a))
     if b < a:
         return True, "measure %s < %s" % (b, a)
     if gate == "parity":
@@ -5285,6 +7221,23 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
             return True, ("the parity comparison discharges %s: %s came back PASS in %s with the measure unchanged at %s"
                           % (",".join(sorted(issued_par)[:3]), ", ".join(named[:3]), PARITY_RECEIPT.as_posix(), b))
         return True, "the parity comparison reports no obligation for this card and no scenario regressed (measure %s)" % b
+    if gate == PLAN_GATE:
+        # V17-4: an obligation planned from files on disk (plan semantics v1)
+        # is discharged when its static condition, re-evaluated on the
+        # candidate, no longer holds -- and nothing else may go backwards
+        if b > a:
+            return False, "measure %s regressed from %s; a planned repair may not make compilation or tests worse" % (b, a)
+        for name in ("package", "boot"):
+            if _gate_passing(prev_runtime or {}, name) and not _gate_passing(cur_runtime or {}, name):
+                return False, "the %s gate was passing and is not any more; a planned repair may not break it" % name
+        issued_plan = {str(i) for i in (issued_items or []) if str(i).startswith("plan:")}
+        still = sorted(issued_plan & (cur_item_ids or set()))
+        if still:
+            return False, ("the planned obligation %s still holds: its condition is re-evaluated on the candidate from the "
+                           "files on disk (pom.xml, the spec, the recorded source bodies)" % ",".join(still[:2]))
+        if not issued_plan:
+            return False, "a plan-gate card was issued without a planned obligation"
+        return True, "the planned obligation(s) %s no longer hold on the candidate (measure %s)" % (",".join(sorted(issued_plan)[:3]), b)
     if gate in ("package", "boot"):
         prev_rt = prev_runtime or {}
         cur_rt = cur_runtime or {}
@@ -5322,8 +7275,9 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
                 return False, "the %s obligation %s is still reported (its identity is the gate, the cause, the file and the member; a different message at the same place is the same obligation)" % (gate, ",".join(sorted(issued & after)[:2]))
             if issued:
                 return UNPROVEN, ("the %s gate still fails and %s is no longer reported, which is not proof it was repaired: this tool "
-                                "reports one failure at a time. The candidate is retained unaccepted; repair the members it now names "
-                                "in the same candidate, and the gate passing discharges them together"
+                                "reports one failure at a time. The candidate is retained unaccepted; only a failure the gate now "
+                                "names inside this card's write set is this candidate's to repair (advance.py names which), and "
+                                "the gate passing discharges them together"
                                 % (gate, ",".join(sorted(issued)[:2])))
             return False, "the %s gate is still not passing (%s)" % (gate, "; ".join((cur_rt.get("reasons") or [])[:2]) or "see its receipt")
     issued_err = {str(i) for i in (issued_items or []) if str(i).startswith("err:")}
@@ -5422,6 +7376,11 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         decisions_doc = load_decisions(root)
     except (OSError, ValueError):
         decisions_doc = {}
+    from planner.decisions import plan_semantics as _plan_semantics
+
+    # the decided plan semantics (decisions.loop.plan_semantics, sealed by the
+    # admission receipt): absent keeps every identity exactly as it was
+    semantics = IDENTITY_V1 if _plan_semantics(decisions_doc) == "v1" else IDENTITY_LEGACY
     platform_id = str((decisions_doc.get("destination_platform") or {}).get("id") or "")
     apply_supersessions(incidents, superseded_rules(decisions_doc, root) if decisions_doc else {}, _waivers(decisions_doc) if decisions_doc else [], pom_dependency_ids(root), platform=platform_id)
     mandatory = [i for i in incidents if i["category"] == "mandatory"]
@@ -5429,7 +7388,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     diag_run = run.get("diagnostics") or {}
     diags = load_json(diag_path) if diag_path.is_file() else None
     compile_known = isinstance(diags, dict) and bool(diag_run.get("ran")) and not diags.get("build_unresolvable")
-    comp_probe = compile_items(diags) if isinstance(diags, dict) else []
+    comp_probe = compile_items(diags, identity=semantics) if isinstance(diags, dict) else []
     disagreed = False
     maven_compile = run.get("maven_compile") or {}
     if compile_known and maven_compile.get("failed") and not comp_probe:
@@ -5449,7 +7408,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             blocked.append("build unresolvable: %s" % str(diags.get("reason") or "no classpath")[:300])
         else:
             blocked.append("compiler diagnostics did not run in this verification")
-    comp = compile_items(diags) if isinstance(diags, dict) else []
+    comp = compile_items(diags, identity=semantics) if isinstance(diags, dict) else []
     tests_run = run.get("tests") or {}
     sure = load_json(sure_path) if sure_path.is_file() else None
     tst = test_items(sure) if isinstance(sure, dict) else []
@@ -5467,7 +7426,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     parity_notes: list[dict[str, Any]] = []
     judged_receipt, parity_carried = judged_parity_receipt(root, run)
     par = parity_items(root, bundle, parity_notes, receipt=judged_receipt)
-    parity_known = (root / PARITY_DIR).is_dir() and (any((root / PARITY_DIR).glob("*.json")) or any((root / PARITY_DIR / "scenarios").glob("*.json")))
+    parity_known = (root / PARITY_DIR).is_dir() and (any((root / PARITY_DIR).glob("*.json")) or any(_parity_scenario_paths(root / PARITY_DIR)))
     unmeasured_parity = parity_unmeasured(load_parity_receipt(root))
     if unmeasured_parity:
         parity_known = False
@@ -5503,7 +7462,15 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         blocked.append("runtime gate blocked by the environment: %s" % b)
         unlocatable.append({"id": "fx:environment:%s" % sha256_bytes(str(b).encode("utf-8"))[:12],
                             "kind": "environment", "gate": "", "cause": "environment", "detail": str(b)[:400]})
-    items = sorted(mandatory + comp + tst + par + rt, key=lambda i: i["id"])
+    # V17-4 (plan semantics v1 only): obligations decided from files on disk
+    # before any destination failure -- the generated-body binding of a
+    # qualified generator pair whose source accepted a body the generated
+    # @JsonCreator refuses. Absent the decision the list is what it was.
+    planned: list[dict[str, Any]] = []
+    planned_notes: list[str] = []
+    if semantics == IDENTITY_V1:
+        planned, planned_notes = static_generated_body_items(root, bundle)
+    items = sorted(mandatory + comp + tst + par + rt + planned, key=lambda i: i["id"])
     # ADR-015/ADR-019: nothing a worker could be issued may land in a
     # harness-owned generated root. Such findings stay VISIBLE -- recorded
     # here, owned by the generator -- and are never an obligation.
@@ -5635,6 +7602,11 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         "measure": measure_of(items, incidents_known=incidents_known, compile_known=compile_known, tests_known=tests_known, parity_known=parity_known, blocked=blocked),
         "order_policy": "build → config → compile (leaf types first) → incident → test → parity; within a rank by dependency depth then path; tests are never in a write set. Packaging and startup obligations enter as build/config items carrying their gate; the closing card needs an empty list AND both gates passing on the same packaged artifact.",
     }
+    if semantics == IDENTITY_V1:
+        # present only under v1, so a list formed without it is byte-for-byte
+        # what it always was
+        doc["plan_semantics"] = IDENTITY_V1
+        doc["planned_unresolved"] = sorted(planned_notes)
     if write:
         from planner.canonical import write_canonical
 

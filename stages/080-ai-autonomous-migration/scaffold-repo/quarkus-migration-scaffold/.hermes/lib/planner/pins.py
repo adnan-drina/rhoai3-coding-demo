@@ -35,11 +35,22 @@ USED_STATUSES = ("ok", "partial")
 
 
 def load_pins(root: Path) -> dict[str, Any]:
+    """The pins, with the run's activation from RUN CONTROL when the run's
+    initial-commit declaration says it is governed (planner.run_control): the
+    platform's read-only contract plus the write-once M1 binding, never the
+    repository's `pins.planner`. A governed run whose record is missing,
+    malformed or foreign carries that refusal as its activation gap. A legacy
+    run (declared without run control) reads the repository's pins, as
+    before v13."""
     path = Path(root) / PINS
     doc = load_json(path)
     if not isinstance(doc, dict) or not isinstance(doc.get("pins"), dict):
         raise ValueError("%s: expected {pins: {...}}" % path)
-    return doc["pins"]
+    pins = dict(doc["pins"])
+    from planner import run_control
+    if run_control.in_use(root):
+        pins["planner"] = dict(run_control.planner_block(root, pin(pins, "planner")))
+    return pins
 
 
 def pin(pins: dict[str, Any], key: str) -> dict[str, Any]:
@@ -67,8 +78,11 @@ def pinned_version(pins: dict[str, Any], key: str) -> str | None:
 
 
 def planner_activation(pins: dict[str, Any]) -> str:
-    """Activation gate (SAD §12). Absent block means not activated."""
+    """Activation gate (SAD §12). Absent block means not activated; a run-control
+    refusal (missing, foreign) is never an activation."""
     p = pin(pins, "planner")
+    if p.get("gap"):
+        return NOT_ACTIVATED
     value = str(p.get("activation") or NOT_ACTIVATED).strip().lower()
     if value == ACTIVATED:
         return ACTIVATED
@@ -109,9 +123,9 @@ def pilot_bind_gaps(pins: dict[str, Any]) -> list[str]:
     if not str(seal.get("authorized_by") or "").strip():
         gaps.append("pins.planner.pilot.authorized_by missing")
     auth = pilot_authorization(pins)
-    if str(auth.get("source") or "") != "devworkspace":
+    if str(auth.get("source") or "") not in ("devworkspace", "platform-provisioner"):
         gaps.append("pins.planner.pilot.authorization.source is %r, not 'devworkspace' (only the platform may record an authorization the harness binds)" % auth.get("source"))
-    if not str(auth.get("creator") or "").strip():
+    if str(auth.get("source") or "") == "devworkspace" and not str(auth.get("creator") or "").strip():
         gaps.append("pins.planner.pilot.authorization.creator missing (the workspace creator)")
     if str(seal.get("evidence_bundle_sha256") or "").strip():
         gaps.append("pins.planner.pilot.evidence_bundle_sha256 is already bound; a bound seal is never rewritten")
@@ -151,6 +165,9 @@ def activation_gaps(pins: dict[str, Any], bundle_digest: str) -> list[str]:
     Empty list = admissible (activated, or a pilot seal bound to exactly
     this evidence bundle). Everything else is a fail-closed reason.
     """
+    gap = str(pin(pins, "planner").get("gap") or "")
+    if gap:
+        return [gap]
     mode = planner_activation(pins)
     if mode == ACTIVATED:
         return []

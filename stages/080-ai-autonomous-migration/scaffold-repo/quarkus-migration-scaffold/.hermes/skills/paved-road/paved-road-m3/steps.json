@@ -29,7 +29,7 @@
       "keep": [
         "verification/loop/steps.json"
       ],
-      "note": "The acceptance transaction. ACCEPTED commits and mints the next card; REVERTED discards the candidate and re-mints this cluster; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop. REVERTED/DEFERRED/PENDING exit 1 by design: the grade is the loop record naming this card as accepted or rejected, not the exit code. PENDING is kanban_block, not complete."
+      "note": "The acceptance transaction. ACCEPTED commits and mints the next card; REVERTED discards the candidate and re-mints this cluster; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop. REVERTED/DEFERRED/PENDING exit 1 by design: the grade is the loop record naming this card as accepted or rejected, not the exit code. PENDING is not complete: advance.py raises the run's stop request and the runtime records the needs_input block (kanban_block only when advance.py names it the terminator). Outcome board: OWNER_RECOVERY / OWNER_REPAIR_PENDING (a runtime failure proven on the baseline and owned by an accepted outcome) holds the candidate without spending an attempt; the terminator is kanban_block kind=dependency; after the owner repair, outcome_gate.py restore-held returns the candidate for re-verification."
     }
   ]
 }
