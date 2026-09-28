@@ -148,42 +148,38 @@ GOLDEN_SHA=<full sha> PLATFORM_SHA=<full sha> ISOLATION_RECEIPT=<receipt.json> \
   bash stages/080-ai-autonomous-migration/run-preflight.sh
 ```
 
-`v10-preflight.sh`/`v11-preflight.sh` apply only to those runs, whose budgets
-were self-contained (schema v1); run-report still reads them as history.
+The version-specific v10/v11 preflight scripts are retired; their original
+implementations remain in Git history. Run-report still reads their historical
+schema-v1 budgets. New runs use the current preflight above.
 
-### Stage 080 run isolation and v10 qualification
+`validate.sh` checks stage readiness and the remaining scaffold/platform checks.
+The retired Stage 080 helper suites are no longer part of validation;
+the launch preflight has a shell syntax check only in this entrypoint.
 
-Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and
-[ISOLATION-DEMO.md](../stages/080-ai-autonomous-migration/ISOLATION-DEMO.md),
-not the historical session-local files under tmp/080-operator. The read-only
-v10 preflight consumes a retained isolation receipt bound to the exact platform,
-golden and image pins. It does not bootstrap, reset a database or dispatch work.
+### Stage 080 run isolation
 
-The 2026-09-22 qualification failed `workspace_identity`: actual migration
-workers could read another run's database Secret through the Dev Spaces default
-role. The other 12 checks passed. The Operator deferred permission hardening
-for this controlled v10 experiment on 2026-09-22. The launch check preserves
-the measured FAIL as a warning for this run only.
+Qualify isolation using fresh disposable runs and the exact platform,
+golden and image pins. The retired detailed procedure is available in Git history.
+`run-preflight.sh` consumes the retained receipt and requires all 13 checks to
+PASS, including worker identity. It does not bootstrap, reset a database or
+dispatch work. Past run results and scope decisions are local-only under
+`tmp/history/v10-v12/` at the repository root; previously tracked records are
+also available in Git history. The local archive is not required by this procedure.
 
-A Stage 050 GitOps repair now provisions a per-run `<run>-worker` identity and
-selects it with destfile pod-overrides. It is **not** live-synced from this
-document. Restricting new workers does not revoke existing `workspace*-sa`
-accounts still bound to `devworkspace-default-role`. Follow
-[WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md)
-for the permission matrix and disposable validation plan before deploying.
-After that focused plan PASSes, requalify all 13 isolation checks against the
-resulting platform revision. Do not launch v11 from the unsynced repair.
+The factory selects the per-run `<run>-worker` identity through pod overrides.
+Check the admitted pod identity and CLI credentials after startup and restart;
+other-run parity Secrets must remain inaccessible.
+Restricting new workers does not revoke existing `workspace*-sa` accounts still
+bound to `devworkspace-default-role`. Requalify isolation against the resulting
+platform revision after identity changes.
 
-Stage 050 reserves three concurrent workspace slots per user for preserved v10
-plus two disposable isolation runs. Start the first disposable alone and prove
-IDE/tool initialization before starting the second. The existing group grant
-still permits GET of the two named MaaS Secrets; other-run parity Secrets must
-remain forbidden. The MaaS route helper loads the cluster guard and refuses to
-change a started workspace. Stop through Dev Spaces before applying that merge,
-then start again; do not interrupt postStart with a pod-template change.
-
-No platform or golden republish is needed for the local v10 launch-policy
-change that warned on the measured FAIL.
+Stage 050 reserves three concurrent workspace slots per user. Start the first
+disposable alone and prove IDE/tool initialization before starting the second.
+The existing group grant still permits GET of the two named MaaS Secrets;
+other-run parity Secrets must remain forbidden. The MaaS route helper loads the
+cluster guard and refuses to change a started workspace. Stop through Dev Spaces
+before applying that merge, then start again; do not interrupt postStart with a
+pod-template change.
 
 The migration template's pre-start initializer clones source onto a separate
 volume and writes `.git/rhoai3-source.json`. The worker mounts it read-only;
@@ -1516,6 +1512,6 @@ harness/golden scaffold before run end. Full timeline and evidence:
 
 Stage 050 provisions `<run>-worker` with only the init ConfigMap GET and named `container-build` SCC use. The factory pod-overrides selects that SA; DWO's leftover generated account keeps its default Role and must not be mounted by new workers. Existing legacy workspace identities are not revoked. Effective permissions also include the existing group GET grants for `maas-devspace-api-keys` and `workspace-maas-credentials`; no other-run parity Secret access is allowed.
 
-Three concurrent workspace slots preserve v10 while two disposable workspaces qualify isolation. Start the first alone and prove IDE/tool initialization before the second. Publish through normal GitOps, then follow [WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md). A standalone Job or a passing fixture is not workspace qualification. Keep migration auto-start disabled.
+Three concurrent workspace slots preserve v10 while two disposable workspaces qualify isolation. Start the first alone and prove IDE/tool initialization before the second. Publish through normal GitOps, then follow the worker identity repair procedure (the retired `WORKER-IDENTITY-REPAIR.md`, in Git history). A standalone Job or a passing fixture is not workspace qualification. Keep migration auto-start disabled.
 
-`scripts/patch-workspace-maas-route.sh` loads the cluster guard and refuses to change a started workspace. Stop it through Dev Spaces, apply the merge, then start it again. The merge preserves the per-run ServiceAccount. Use the [v11 launch packet](../stages/080-ai-autonomous-migration/V11-PLAN.md) only after all 13 isolation checks pass on the final revisions. Actual v11 creation remains the user's manual step.
+`scripts/patch-workspace-maas-route.sh` loads the cluster guard and refuses to change a started workspace. Stop it through Dev Spaces, apply the merge, then start it again. The merge preserves the per-run ServiceAccount. Use the retired v11 launch record (`V11-PLAN.md`, in Git history) only after all 13 isolation checks pass on the final revisions. Actual v11 creation remains the user's manual step.

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Outcome board: derivation, publication, authority, lifecycle, continuations,
 serialization. SYNTHETIC evidence: an in-memory FakeNative board with the
-pinned semantics, real SQLite, real git and real processes. Native behaviour
-on the exact runtime is qualified separately
-(stages/080-ai-autonomous-migration/hermes-runtime/tests/rhoai3_outcome_board).
+pinned semantics, real SQLite, real git and real processes. Historical native
+behaviour was qualified separately on the exact runtime; that retired suite
+is available in Git history.
 
 Run: PYTHONDONTWRITEBYTECODE=1 python3 .hermes/lib/planner/outcome_board.test.py
 """

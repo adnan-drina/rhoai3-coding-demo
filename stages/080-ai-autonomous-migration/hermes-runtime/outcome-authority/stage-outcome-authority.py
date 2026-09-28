@@ -9,8 +9,8 @@ Extracts .hermes/{kernel,lib,planning,skills} of that commit with `git archive`
 (never the working tree, so no local edit, bytecode or untracked file enters),
 and prints the code identity the image must stamp as
 `outcome_authority.code_sha256` (planner.outcome_authority.code_identity over
-the staged tree). The Dockerfile hunk refuses a build whose baked tree does not
-compute the identity passed as OUTCOME_AUTHORITY_CODE_SHA256.
+the staged tree). The image build must refuse a baked tree whose identity
+differs from OUTCOME_AUTHORITY_CODE_SHA256.
 """
 from __future__ import annotations
 

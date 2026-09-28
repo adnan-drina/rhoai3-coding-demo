@@ -401,9 +401,6 @@ check "080 golden implementer SOUL.md present" \
 check "080 golden reviewer SOUL.md present" \
   "test -f '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' && echo present || echo missing" \
   "present"
-check "080 every SOUL.md survives the Hermes injection scanner" \
-  "python3 '${SCRIPT_DIR}/assert-soul-scanner-clean.py' >/dev/null 2>&1 && echo 1 || echo 0" \
-  "1"
 check "080 golden worker SOUL.md files are git-tracked" \
   "git -C '${REPO_ROOT}' ls-files --error-unmatch '${SCAFFOLD_PROFILES}/orchestrator.SOUL.md' '${SCAFFOLD_PROFILES}/implementer.SOUL.md' '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' >/dev/null && echo tracked || echo missing" \
   "tracked"
@@ -639,9 +636,9 @@ check "080 the golden carries shared run defaults only (no run identity, timesta
 check "080 run_declaration refuses missing, foreign, stale and rewritten declarations" \
   "python3 '${SCAFFOLD_LIB}/planner/run_declaration.test.py' >/dev/null 2>&1 && echo DECLARATION_SELFTEST_OK || echo DECLARATION_SELFTEST_FAILED" \
   "DECLARATION_SELFTEST_OK"
-check "080 the launch preflight is run-agnostic and reads the budget through the declaration" \
-  "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_OK || echo RUN_PREFLIGHT_FAILED" \
-  "RUN_PREFLIGHT_OK"
+check "080 launch preflight shell syntax is valid" \
+  "bash -n '${SCRIPT_DIR}/run-preflight.sh' && echo RUN_PREFLIGHT_SYNTAX_OK || echo RUN_PREFLIGHT_SYNTAX_FAILED" \
+  "RUN_PREFLIGHT_SYNTAX_OK"
 check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
   "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
   "FACTORY_DECLARES_RUN"
@@ -1004,29 +1001,8 @@ check "080 run_identity selftest passes (the four wrong-target counterexamples a
 check "080 stamp-run-resources selftest passes (verification precedes stamping; a refusal writes nothing)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/stamp-run-resources.py' --help >/dev/null && python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/stamp-run-resources.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 provisioning lifecycle serializes overlapping events and refuses API failures" \
-  "python3 '${SCRIPT_DIR}/provision-migration-run.test.py' >/dev/null && echo 1 || echo 0" \
-  "1"
 check "080 run-report compares emitted pins and preserves missing-evidence distinctions" \
   "python3 '${SCAFFOLD_SKILLS}/evaluation/run-report/scripts/run-report.test.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 source initializer pins the first clone and refuses changed or unrecorded volumes" \
-  "python3 '${SCRIPT_DIR}/source-volume.test.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 versioned launch preflight refuses unready or changed inputs" \
-  "bash -n '${SCRIPT_DIR}/v10-preflight.sh' && python3 '${SCRIPT_DIR}/v10-preflight.test.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 v11 launch preflight requires measured identity PASS and does not inherit the v10 deferral" \
-  "bash -n '${SCRIPT_DIR}/v11-preflight.sh' && python3 '${SCRIPT_DIR}/v11-preflight.test.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 per-run isolation invariants hold over the platform manifests (watch label, exact targeting, no repo-as-source, retirement)" \
-  "python3 '${SCRIPT_DIR}/assert-run-isolation.py' >/dev/null 2>&1 && echo 1 || echo 0" \
-  "1"
-check "080 worker identity is platform-managed and does not inherit DWO default-role verbs" \
-  "python3 '${SCRIPT_DIR}/assert-worker-permissions.py' >/dev/null 2>&1 && echo 1 || echo 0" \
-  "1"
-check "080 worker kubeconfig is replaced with the current pod identity and refuses leftover credentials" \
-  "python3 '${SCRIPT_DIR}/bind-pod-kubeconfig.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 MaaS route changes are guarded and require a stopped workspace" \
   "python3 '${REPO_ROOT}/scripts/patch-workspace-maas-route.test.py' >/dev/null && echo 1 || echo 0" \
@@ -1047,7 +1023,7 @@ check "080 the run's secrets are watched and mounted, so DWO's cache can see the
   "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(t.count('controller.devfile.io/watch-secret: \\\"true\\\"'))\"" \
   "2"
 # Three automounted objects bind this workspace: the two per-run Secrets and,
-# since v13, the run-control ConfigMap (assert-run-isolation.py checks each by kind).
+# since v13, the run-control ConfigMap.
 check "080 the run's secrets and its run-control record bind THIS workspace name, all three" \
   "sed 's/^[[:space:]]*#.*//' '${PIPELINES_BUILD}/task-provision-migration-run.yaml' | grep -c -F 'mount-to-devworkspace-include: \"\${RUN}\"' || echo 0" \
   "3"

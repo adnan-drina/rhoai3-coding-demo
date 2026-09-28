@@ -7,8 +7,8 @@
 # generated object carries rhoai3.io/migration-run=<run>, and retirement
 # deletes by that label and then proves nothing is left.
 #
-# Retire a run with (see stages/080-ai-autonomous-migration/ISOLATION-DEMO.md for the full
-# procedure, including archiving the evidence first):
+# Retire a run with (archive the evidence first; see docs/OPERATIONS.md,
+# Stage 080 run isolation):
 #
 #   oc create -n app-platform-build -f - <<'EOF'
 #   apiVersion: tekton.dev/v1

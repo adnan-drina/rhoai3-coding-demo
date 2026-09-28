@@ -7,9 +7,8 @@ the K2 hook -- against the architect's bounded acceptance list
 
 SYNTHETIC evidence: an in-memory FakeNative board with the pinned review,
 dependency and completion semantics, real git, the real classifier and the
-real K2 hook script. Native behaviour on the exact runtime is qualified
-separately (stages/080-ai-autonomous-migration/hermes-runtime/tests/
-rhoai3_outcome_board/test_native_control.py).
+real K2 hook script. Historical native behaviour was qualified separately
+on the exact runtime; the retired test_native_control.py suite is in Git history.
 
 Run: PYTHONDONTWRITEBYTECODE=1 python3 .hermes/lib/planner/native_board.test.py
 """

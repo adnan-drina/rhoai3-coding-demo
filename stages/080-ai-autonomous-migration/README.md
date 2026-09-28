@@ -12,7 +12,7 @@ The harness must be reusable from the outset. PetClinic is the current proving a
 
 ## What You'll Do
 
-**Historically demonstrated demo spine (Acts A–E):** provision a governed migration workspace → establish MTA migration evidence → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. Spec Kit is **removed**. Migration is one mechanical loop (SAD v3, fix-until-green): tools compute a work list (MTA incidents, compiler diagnostics, failing tests, parity), the model fixes one file cluster per card, and a strict progress measure accepts, retains an unproven candidate, or reverts each step. It is implemented and locally fixture-tested (acceptance is a transaction over a verified candidate; every measurement records whether its tool ran) but gated: until `pins.planner.activation` is flipped by an Operator GO, dest-init mints **M1 ANALYZE only** and M2 refuses. That golden pin stays `not-activated`. Assisted v10 demonstrated toolchain execution, M2 planning, runtime parity through M4, and CI/CD/live Route deployment on an overlay beyond published golden `61ac38db` ([BACKLOG v10 readiness](../../BACKLOG.md), [V10-PLAN](V10-PLAN.md)). That run is **assisted**, not autonomous proof. Full M5 `ACCEPT` / factory release remains open (outstanding qualifications). Clean repeatability is still to demonstrate with v11.
+**Historically demonstrated demo spine (Acts A–E):** provision a governed migration workspace → establish MTA migration evidence → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. Spec Kit is **removed**. Migration is one mechanical loop (SAD v3, fix-until-green): tools compute a work list (MTA incidents, compiler diagnostics, failing tests, parity), the model fixes one file cluster per card, and a strict progress measure accepts, retains an unproven candidate, or reverts each step. It is implemented and locally fixture-tested (acceptance is a transaction over a verified candidate; every measurement records whether its tool ran) but gated: until `pins.planner.activation` is flipped by an Operator GO, dest-init mints **M1 ANALYZE only** and M2 refuses. That golden pin stays `not-activated`. Assisted v10 demonstrated toolchain execution, M2 planning, runtime parity through M4, and CI/CD/live Route deployment on an overlay beyond published golden `61ac38db` ([BACKLOG v10 readiness](../../BACKLOG.md)). That run is **assisted**, not autonomous proof. Full M5 `ACCEPT` / factory release remains open (outstanding qualifications). This assisted run does not establish clean repeatability.
 
 Implementation architecture (design, M1–M5, governance, current implementation vs target) lives in [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md). This README is the demo walkthrough. Do not copy either file into `scaffold-repo/`. Agents: consume and contribute using the SAD [§14](SOLUTION-ARCHITECTURE.md#14-documentation-and-contribution-boundaries). Bounded M5 delivery (prepare → existing `app-push` → live Route checks) is implemented; assisted v10 exercised that live path. Full M5 `ACCEPT` / factory ship is **not** claimed DEMONSTRATED while release qualifications remain.
 
@@ -287,25 +287,22 @@ actually shipped.
 | MaaS code assistant quickstart                | [https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)                     |
 
 
-## v10 validation preparation
+## Stage files and retained evidence
 
-Assisted v10 (overlay beyond published golden `61ac38db`) demonstrated
-migration through M4 `PROVISIONAL_ACCEPT` and CI/CD/live Route deployment.
-That is not autonomous proof and not a full M5 `ACCEPT`: outstanding
-qualifications remain. Clean repeatability is still to demonstrate with v11.
-Evidence: [BACKLOG v10 readiness](../../BACKLOG.md), [V10-PLAN.md](V10-PLAN.md),
-[ISOLATION-RESULT-2026-09-22.md](ISOLATION-RESULT-2026-09-22.md). Preserve the
-closed v10 dest; do not reopen it for harness-only copies.
+| Path | Purpose |
+|------|---------|
+| [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md) | Stage architecture and proof boundaries |
+| [OUTCOME-BOARD-CONTRACT.md](OUTCOME-BOARD-CONTRACT.md) | Outcome-board contract and qualification status |
+| [run-preflight.sh](run-preflight.sh), [validate.sh](validate.sh) | Current launch and stage validation entrypoints |
+| [hermes-runtime/](hermes-runtime/) | Workspace runtime patches and authority packaging helper |
 
-The [versioned execution plan](V10-PLAN.md), [isolation demonstration](ISOLATION-DEMO.md)
-and read-only `v10-preflight.sh` define the closed v10 launch sequence. v11
-preparation is [V11-PLAN.md](V11-PLAN.md) and `v11-preflight.sh`; do not create
-or launch that workspace from this document. Worker-identity repair and its
-focused live plan are [WORKER-IDENTITY-REPAIR.md](WORKER-IDENTITY-REPAIR.md). A local green suite
-does not qualify live isolation. Resource ownership now requires the platform
-receipt, actual workspace and original scaffolding assignment; provision/retire
-operations serialize per run. v9-to-v10 comparisons describe all changed pins
-and preserve unknowns, coverage gaps and prior authored repairs.
+Past run plans, results and review packets are local-only under the repository
+root’s `tmp/history/` (ignored by Git). Previously tracked records remain
+available in Git history. Assisted v10 reached M4 `PROVISIONAL_ACCEPT` and CI/CD/live Route
+deployment; that historical result is not autonomous proof or full M5 `ACCEPT`.
+Retired version-specific preflight scripts remain available in Git history.
+Use the current operations procedure for a fresh run. A local green suite
+does not qualify live isolation.
 
 ## Creating a migration run
 
@@ -326,7 +323,6 @@ declaration, and autostart does not mint M1 without a valid one; reopening or
 restarting the workspace re-reads the same committed bytes. After creation, run
 the read-only `run-preflight.sh` with `WORKSPACE` set to the project name (see
 [OPERATIONS](../../docs/OPERATIONS.md#stage-080-run-declaration-and-launch-preflight)).
-`v10-preflight.sh` and `v11-preflight.sh` remain the records of those launches.
 
 A v13+ run is governed by **run control**. Its initial-commit `run-budget.json`
 declares it, and the migration-run provisioner writes the record from the

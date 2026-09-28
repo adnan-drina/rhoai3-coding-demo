@@ -153,8 +153,11 @@ observers are never acceptance gates.
 |---|---|
 | `.hermes/lib/planner/native_board.test.py` (22) | synthetic board with the pinned review/dependency semantics, real git, the real classifier, the real K2 hook |
 | `.hermes/lib/planner/native_m3_recovery.test.py` (11) | the M3 recovery rules above on the same synthetic board; also passes under the worker's `python3` (3.9) in the ws-080 image |
-| `hermes-runtime/tests/rhoai3_outcome_board/test_native_control.py` (36 checks) | the ws-080 image: real `kanban_db` lifecycle, real `hermes kanban` CLI, the golden's `native_gate.py` under the worker's `python3` (3.9), the real K2 hook. No model, no dispatcher loop, no cluster |
-| `outcome-board-hooks.test.py`, `app-migration-template.test.py`, `provision-migration-run.test.py`, `run-preflight.test.py` | platform side |
+| Historical `test_native_control.py` (36 checks; retired suite in Git history) | the ws-080 image: real `kanban_db` lifecycle, real `hermes kanban` CLI, the golden's `native_gate.py` under the worker's `python3` (3.9), the real K2 hook. No model, no dispatcher loop, no cluster |
+| `outcome-board-hooks.test.py`, `app-migration-template.test.py`, pipeline `provision-migration-run.test.py` | platform side |
+
+The stage-local provisioning and preflight suites were also part of the recorded
+qualification; those helpers have since been retired and remain in Git history.
 
 Not established here: a model-driven worker on a live workspace, the
 dispatcher's own loop and pacing on a v2 board, a fresh MTA replay. The first
@@ -465,8 +468,8 @@ acceptance is tied to the classifier's evidence: every failing scenario must
 PASS in a live scenario record bound to the repair's own tree
 (`repair_evidence_gaps`), besides its check class.
 Evidence: `outcome_board.test.py OwnerRecovery` (synthetic board, real
-classifier) and `hermes-runtime/tests/rhoai3_outcome_board/test_owner_recovery_service.py`
-(exact runtime, through the service, the service crashed after the revision
+classifier) and historical `test_owner_recovery_service.py` (retired suite
+in Git history; exact runtime, through the service, the service crashed after the revision
 and after the publication: one repair card).
 `candidate-regression` is the ordinary rejection; `ambiguous` (and any claim
 the authority cannot validate, or a second claim for the same pair) is an
@@ -509,8 +512,8 @@ unresolved push effects of finished runs by identity.
   - Built: the authority service, its clients, the store binding, the pre-use
     check, the sidecar layout in the skeleton devfile (rendered only for an
     outcome-board request), the protocol selection chain and launch refusals.
-  - Qualified locally (`outcome-authority-two-uid.qualify.py`, podman, the
-    ws-080 image, two uids): the store path does not exist in the worker
+  - Historical local qualification (retired two-UID helper in Git history,
+    podman, the ws-080 image, two uids): the store path does not exist in the worker
     container (`ENOENT`), the socket cannot be unlinked, renamed or planted
     beside (`EROFS`/`EACCES`), a request crosses the uid boundary,
     `authority_protected()` is true, the gate needs the trust decision; same-uid
@@ -520,12 +523,11 @@ unresolved push effects of finished runs by identity.
     out-of-scope and non-child commits refuse; a planted consistent store
     refuses everything; manual M5 claim, unaccepted parent and stale run grant
     nothing; repository config runs nothing in the service.
-  - Exact runtime (`hermes-runtime/tests/rhoai3_outcome_board/test_outcome_authority_service.py`,
-    tree 8a3bb406): the service publishes the graph with the real CLI under a
+  - Historical exact-runtime qualification (`test_outcome_authority_service.py`
+    in Git history, tree 8a3bb406): the service publishes the graph with the real CLI under a
     private home; attachments land where the worker reads them; read-back green.
   - Supporting evidence only (NOT qualification): the per-run worker
-    ServiceAccount's declared RBAC (`WORKER-IDENTITY-REPAIR.md`, no pod
-    create) and a server-side dry-run that admitted the sidecar DevWorkspace
+    ServiceAccount's declared RBAC (no pod create) and a server-side dry-run that admitted the sidecar DevWorkspace
     on DWO 0.43.0 (2026-09-26).
   - NOT established — an explicit release prerequisite (live Dev Spaces
     qualification, section 8a): the DWO
@@ -539,8 +541,8 @@ unresolved push effects of finished runs by identity.
 - **Measurement trust (section 8b):** decided for the first controlled run (cooperative-receipts); the run control must carry it.
 - C1/C6: qualified locally on the exact runtime tree `8a3bb406` (series
   0001–0012) with real dispatcher, CLI and workers
-  (`hermes-runtime/tests/rhoai3_outcome_board`, fake provider). No runtime
-  patch was needed.
+  and a fake provider (retired qualification suite in Git history). No
+  runtime patch was needed.
 - C3/C4/C5: implemented and tested synthetically
   (`lib/planner/outcome_board.test.py`). The M2 release continuation is also
   tested on the real dispatcher tick.

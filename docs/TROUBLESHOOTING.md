@@ -2168,7 +2168,7 @@ must be retrieved before that binding can be verified; do not replace the receip
 Wait for the owner to finish. A killed task may leave the lock: prove the holder
 and its pod are stopped before platform cleanup. A `retiring` receipt permits
 only retirement recovery; a `retired` identity is never provisioned again.
-See the versioned Stage 080 isolation demonstration for the live qualification.
+See [Stage 080 run isolation](OPERATIONS.md#stage-080-run-isolation) for the qualification requirements.
 
 ### Correct Secret mounts but failed workspace identity isolation
 
@@ -2187,12 +2187,11 @@ makes no claim of worker security confinement.
 
 The Stage 050 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
 destfile pod-overrides; operator-owned `devworkspace-default-role` unpatched)
-is documented in
-[WORKER-IDENTITY-REPAIR.md](../stages/080-ai-autonomous-migration/WORKER-IDENTITY-REPAIR.md).
+is described in [Stage 080 run isolation](OPERATIONS.md#stage-080-run-isolation).
 Do not hand-edit the operator-reconciled default role or broaden another
 identity to make startup pass. Restricting new workers does not revoke existing
-legacy `workspace*-sa` accounts. Run the focused disposable plan in that file
-after sync; only then requalify all 13 isolation checks. DWO
+legacy `workspace*-sa` accounts. Verify startup and restart credentials on
+fresh disposable workspaces after sync, then requalify all 13 isolation checks. DWO
 `serviceAccount.disableCreation` still binds the named account to the default
 role and is not the repair.
 
@@ -2212,8 +2211,8 @@ after Ready, inspect kubeconfig **user names and auth field names only**.
 Dev Spaces 3.30.1 Dashboard merges a human login after startup. Migration
 workspaces require the dedicated ephemeral `/home/user/.kube` directory mount
 in the current factory devfile; a one-time replacement config is insufficient.
-See `WORKER-IDENTITY-REPAIR.md` above for the pinned implementation and restart
-checks. A previously passing initial matrix does not qualify this failure.
+Recheck the pod identity, CLI credentials and cross-run access after restart.
+A previously passing initial matrix does not qualify this failure.
 
 ### Migration source initializer refuses its PVC
 

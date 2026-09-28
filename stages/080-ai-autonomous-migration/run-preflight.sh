@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Read-only launch check for ANY migration run created by the app-migration
 # factory after 2026-09-24 (run-budget.json schema v2). Does not reset data,
-# mint cards, or install a harness. v10-preflight.sh and v11-preflight.sh stay
-# as the records of those launches; their runs carry self-contained budgets.
+# mint cards, or install a harness. Historical launch records and retired
+# scripts remain available in Git history.
 # Required: WORKSPACE (the run: the full project name, never a suffix), POD,
 # GOLDEN_CHECKOUT (verified published checkout), GOLDEN_SHA, PLATFORM_SHA (the
 # merged platform revision), ISOLATION_RECEIPT (local JSON).

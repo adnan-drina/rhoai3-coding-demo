@@ -1,6 +1,6 @@
 # Stage 080 — Solution Architecture (v3: fix-until-green)
 
-**Architecture status (2026-09-23):** accepted design; implemented and locally fixture-tested. Assisted v10 demonstrated toolchain execution, M2, runtime parity through M4 `PROVISIONAL_ACCEPT`, and CI/CD/live Route deployment on a dest overlay beyond published golden `61ac38db` ([BACKLOG v10 readiness](../../BACKLOG.md), [V10-PLAN](V10-PLAN.md)). Full release qualification remains open. Clean repeatability is still to demonstrate with v11. Autonomous migration is not claimed. Golden `pins.planner.activation` remains `not-activated`. Supersedes v2 (capability planner) on 2026-09-08.
+**Architecture status (2026-09-23):** accepted design; implemented and locally fixture-tested. Assisted v10 demonstrated toolchain execution, M2, runtime parity through M4 `PROVISIONAL_ACCEPT`, and CI/CD/live Route deployment on a dest overlay beyond published golden `61ac38db` ([BACKLOG v10 readiness](../../BACKLOG.md)). Full release qualification remains open. Clean repeatability is still to demonstrate with v11. Autonomous migration is not claimed. Golden `pins.planner.activation` remains `not-activated`. Supersedes v2 (capability planner) on 2026-09-08.
 
 This is the solution architecture for Stage 080, not for the whole workshop and not an execution file for a destination workspace. The [stage README](README.md) owns the demo journey. This document owns the migration design, authority boundaries, invariants, and proof gates. Runtime procedures remain in [operations](../../docs/OPERATIONS.md); destination code and skills remain in `scaffold-repo/`.
 
@@ -622,4 +622,6 @@ Receipts bind the full endpoint, actual workspace and scaffolding ancestor;
 the original resource declaration must still agree. This is consistency checking
 at harness entry points, not an OS or tenant security boundary. The platform
 images and the live two-workspace qualification are pinned before v10 starts.
-See V10-PLAN.md and ISOLATION-DEMO.md for the measured release conditions.
+The historical `V10-PLAN.md` is available in Git history. Use
+[Stage 080 run isolation](../../docs/OPERATIONS.md#stage-080-run-isolation)
+for the current qualification requirements.

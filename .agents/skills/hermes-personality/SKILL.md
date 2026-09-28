@@ -124,8 +124,8 @@ hermes config get display.personality   # active overlay, if any
   without the trigger — “you do not speak or act as one of them”.
   `You are the <role>` is **clean**: measured against all 17
   context-scope patterns. Do not avoid phrasings that were never a
-  hazard — run `assert-soul-scanner-clean.py`, which asserts the
-  installed table rather than a literal blacklist.
+  hazard — check wording against the installed `tools.threat_patterns`
+  context-scope table rather than a literal blacklist.
 - An empty SOUL.md doesn't mean "no identity" — the built-in fallback
   takes over silently.
 

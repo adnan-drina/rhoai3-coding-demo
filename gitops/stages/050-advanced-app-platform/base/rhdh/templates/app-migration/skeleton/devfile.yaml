@@ -58,7 +58,7 @@ components:
     attributes:
       # DWO 0.43 strategic merge: change ONLY this declared mount's flag,
       # preserving generated PVC/subPath and all credentials/metadata mounts.
-      # Verify against the admitted Pod; see V10-PLAN.md source protection.
+      # Verify against the admitted Pod; Stage 080 run-preflight.sh checks source protection.
       container-overrides:
         volumeMounts:
           - mountPath: /projects/legacy
