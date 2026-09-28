@@ -7,6 +7,7 @@
   ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/scripts/admit-migration-plan.py --root /projects/modernized  0.2s
   ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec  1.2s [exit 1]
   ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s
+  ┊ 💻 $         python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m2 --task t_m2 --write  0.3s
   ┊ 📚 skill  verify-live-kanban-loop
   ┊ 💻 $         python3 .hermes/skills/planning/verify-live-kanban-loop/scripts/verify-live-kanban-loop.py --root /projects/modernized --live  0.4s
   ┊ 📋 preparing kanban_request_review…

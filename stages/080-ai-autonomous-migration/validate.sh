@@ -722,6 +722,9 @@ check "080 K4 mint-writer selftest passes" \
 check "080 kanban attach selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/kanban_attach_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 M1/M2 handoff facts tests pass" \
+  "python3 '${SCAFFOLD_KERNEL}/handoff_facts.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 G-4 claim consistency selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/gates/check-release-readiness/scripts/assert-g4-claim-consistency.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

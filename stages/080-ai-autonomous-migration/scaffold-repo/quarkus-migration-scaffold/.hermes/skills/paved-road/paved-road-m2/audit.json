@@ -49,6 +49,17 @@
       ]
     },
     {
+      "backing": "native",
+      "id": "handoff-facts",
+      "keep": [
+        "evidence/handoff/m2-facts.json"
+      ],
+      "needle": "handoff_facts.py",
+      "require_args": [
+        "--write"
+      ]
+    },
+    {
       "backing": "skill",
       "id": "verify-live-kanban-loop",
       "keep": [

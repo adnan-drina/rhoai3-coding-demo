@@ -45,10 +45,11 @@ the root of the planner digest chain (SAD §6).
    freeze → build → JDK-model inventory → bytecode (optional) → context probe
    → MTA → assemble → derive the scenario corpus → capture the source →
    qualify the captures → the same three again for the source's **enabled**
-   security setting → attach.
+   security setting → handoff facts → attach.
    - `skill` — `skill_view` that leaf and follow its SKILL.md.
    - `native` — run the named script under `.hermes/kernel/`
-     (`kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec`).
+     (`handoff_facts.py --root /projects/modernized --phase m1 --write`,
+     `kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec`).
 2. KEEP paths on the step must exist under the workspace root.
 3. A producer that records `status: unpinned` (structure extractor) or a build that
    records `outcome: failure` is **evidence**, not a defect to repair.
@@ -78,7 +79,9 @@ the root of the planner digest chain (SAD §6).
 5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`, with the
    summary and metadata below), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
 6. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
-7. Reviewer runs `python3 .hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`.
+7. Reviewer runs `python3 .hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`
+   and `python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m1 --check-task "$HERMES_KANBAN_TASK"`;
+   a handoff that contradicts the computed facts is sent back (request changes), never completed.
    The official log is `$HERMES_HOME/kanban/logs/<id>.log`. Do not pass `--log` unless that file exists; a workshop path such as `/projects/modernized/kanban/logs/` is not the official log (v9 M1 `t_e84503a8`).
 
 ## Progress and review handoff
@@ -102,8 +105,15 @@ the root of the planner digest chain (SAD §6).
   attached file names), `evidence_bundle`
   (`evidence/planning/evidence-bundle.json`), `captures` (per security mode:
   captured / qualified / idle with its reason), `m2_card` (the id
-  `autostart-migration.sh --after-m1` created), `coverage_gaps` and
-  `limitations`.
+  `autostart-migration.sh --after-m1` created), `facts`
+  (`evidence/handoff/m1-facts.json`), `coverage_gaps` and `limitations`.
+  Counts and classes come from the facts file, never from memory: entry
+  points by kind; read-oracle coverage (captured, and each inconclusive read's
+  class: a write belongs to the scenario corpus, a wildcard path is not a
+  request); scenario coverage per security mode. Only a **non-HTTP** entry
+  point needs an operator observation, so do not describe an HTTP gap as
+  scheduled, messaging or lifecycle work (v23 M1 did, with 34 HTTP and 0
+  non-HTTP entry points).
 
 ## Gotchas
 

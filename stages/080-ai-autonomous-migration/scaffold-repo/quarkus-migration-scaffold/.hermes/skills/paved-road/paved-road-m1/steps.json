@@ -108,6 +108,18 @@
       "note": "Judge the enabled-mode captures against the enabled corpus that produced them. scripts/qualify-source-captures.py --security-mode enabled reads only that mode's captures, refuses to judge a directory whose captures were taken in another mode, and writes verification/source-oracles/scenarios-enabled/_qualification.json. FAIL and INCONCLUSIVE are recorded SOURCE facts here exactly as in the disabled mode: they become coverage gaps at M4 and never destination repair cards. When the capture of this mode recorded that it was idle -- no security section in decisions.yaml, or a declared credential this workspace does not hold -- there is nothing to judge: the qualification records that same reason with status idle and verdict INCONCLUSIVE and no scenario, rather than refusing over a corpus nobody derived. ADR-014 asks for the blocker to be recorded, and this is where an absent enabled mode is visible at M4."
     },
     {
+      "id": "handoff-facts",
+      "backing": "native",
+      "native": "handoff_facts.py",
+      "keep": [
+        "evidence/handoff/m1-facts.json"
+      ],
+      "require_args": [
+        "--write"
+      ],
+      "note": "The handoff's counts and classifications, computed from sealed artifacts: entry points by kind, read-oracle coverage (captured, and each inconclusive read classified from the inventory: a write belongs to the scenario corpus, a wildcard path is not a request, only a non-HTTP entry point needs an operator observation) and scenario coverage per security mode. Run with --write; quote these numbers in the review request (metadata.facts) and never contradict them. The reviewer runs it with --check-task <card>: a summary or metadata that contradicts the facts refuses."
+    },
+    {
       "id": "kanban-attach",
       "backing": "native",
       "native": "kanban_attach.py",

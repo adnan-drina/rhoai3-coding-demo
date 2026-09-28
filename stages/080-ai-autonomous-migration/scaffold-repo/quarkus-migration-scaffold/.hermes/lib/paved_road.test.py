@@ -39,7 +39,10 @@ LIB = Path(__file__).resolve().parent
 
 GATE = "  ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized  0.1s\n"
 M2_SKILLS = "  ┊ 📚 skill  bootstrap-destination\n  ┊ 📚 skill  build-worklist\n  ┊ 📚 skill  admit-migration-plan\n  ┊ 📚 skill  verify-live-kanban-loop\n"
-M2_MINT = "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s\n"
+# the mint and the handoff facts it is followed by (a green M2 runs both; tests
+# that mark or drop the mint touch only its "1.2s" line)
+M2_MINT = ("  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s\n"
+           "  ┊ 💻 $         python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m2 --task t_m2 --write  0.3s\n")
 
 
 def intent_ledger(text: str, run: str = "1") -> list[dict]:
@@ -181,7 +184,7 @@ class TestStepsContract(unittest.TestCase):
         native = [s for s in doc["steps"] if s["backing"] == "native"]
         # M1 ends by dispatching the next phase: it binds the platform-recorded
         # pilot authorization to the bundle it just produced and mints M2.
-        self.assertEqual([n["native"] for n in native], ["kanban_attach.py", "autostart-migration.sh"])
+        self.assertEqual([n["native"] for n in native], ["handoff_facts.py", "kanban_attach.py", "autostart-migration.sh"])
 
     def test_m1_scan_before_inventory_is_refused(self):
         swapped = load_steps(M1 / "steps.json")
@@ -263,8 +266,15 @@ class TestAuditSemantics(unittest.TestCase):
     def test_red_then_recorded_clean_passes(self):
         text = GATE + M2_SKILLS + M2_MINT + M2_MINT
         ledger = intent_ledger(text)
-        ledger[-3]["exit_code"] = 1  # the first mint's end: red, then the second is clean
+        ledger[-7]["exit_code"] = 1  # the first mint's end (each M2_MINT is mint + facts): red, then the second is clean
         self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 0)
+
+    def test_m2_without_handoff_facts_refuses(self):
+        # v23 M2 handed off "29 outcomes" and "unresolved: []": the counts are computed, not written
+        text = GATE + M2_SKILLS + M2_MINT.splitlines(keepends=True)[0]
+        rc, msg = _eval_msg(text, self.doc, self.keep)
+        self.assertEqual(rc, 1)
+        self.assertIn("handoff_facts.py", msg)
 
     def test_a_plan_only_mint_is_not_the_step(self):
         # the mint without --exec plans and exits 0: the step requires the flag that makes it act
