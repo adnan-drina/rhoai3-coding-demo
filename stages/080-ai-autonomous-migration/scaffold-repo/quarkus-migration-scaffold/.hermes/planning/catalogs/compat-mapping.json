@@ -709,7 +709,7 @@
       ],
       "implementation": {
         "kind": "agent-bounded",
-        "architecture": "handler_parameters.undocumented[<type>].action and .translation: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator BEFORE any side effect, keep every other operand and operator of the source guard verbatim, remove @Valid from the self-validated body (the jakarta.validation.Valid row), keep the DTO's own and nested constraints, build the source's error response from the violations"
+        "architecture": "handler_parameters.undocumented[<type>].action and .translation: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator BEFORE any side effect, keep every other operand and operator of the source guard verbatim, remove @Valid from the self-validated body (the jakarta.validation.Valid row), keep the DTO's own and nested constraints, build the source's error response from the violations; the errors header's object name is the binding name the SOURCE capture records for that body (Spring names a @RequestBody binding by its conventional bean name), derived from the capture, never the DTO class's simple name and never a constant"
       },
       "acceptance": [
         {
@@ -728,6 +728,13 @@
             "inverted guard refuses the valid create",
             "&& persists an invalid create",
             "kept @Valid answers with the platform report"
+          ]
+        },
+        {
+          "check": "parity:sc",
+          "checker": "skills/paved-road/paved-road-m4/scripts/run-parity.py (M4 parity over the corpus scenarios; asserted_headers_extra: errors) -- a later check",
+          "refuses": [
+            "an errors header whose objectName differs from the source capture's (2026-09-28: v21 09a7faf named it by the DTO's simple name, OwnerDto, where sc_create-invalid-owners-* record ownerDto; reproduced on the pinned platform)"
           ]
         }
       ],
@@ -876,7 +883,7 @@
       "applies_to": [],
       "implementation": {
         "kind": "agent-bounded",
-        "architecture": "planner.worklist.FRAGMENT_IMPL_CONTRACT: the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed to the fragment (worklist.fragment_cdi_exposure), one intended injectable implementation per contract in the decided build profile"
+        "architecture": "planner.worklist.FRAGMENT_IMPL_CONTRACT: the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed to the fragment (worklist.fragment_cdi_exposure), one intended injectable implementation per contract in the decided build profile; a query the selected source implementation writes is kept as JPQL over entity PROPERTY paths: a source query naming table columns (WHERE type_id=, WHERE pet_id=) ran on Hibernate 5 and is rejected by Hibernate 6+ (SemanticException), so the destination navigates the mapped association (pet.type.id, visit.pet.id) -- the selected implementation's effects, not an inactive profile's and not a text replacement"
       },
       "acceptance": [
         {
@@ -901,7 +908,8 @@
           "check": "behavior:repository-effects",
           "checker": "planner.source_requirements.repository_verification (planned); M4 parity over the corpus scenarios that reach the member",
           "refuses": [
-            "reads pass, writes do nothing: a write member accepted without a committed effect read back across a request boundary"
+            "reads pass, writes do nothing: a write member accepted without a committed effect read back across a request boundary",
+            "a delete or read whose JPQL names table columns (2026-09-28 probe: the source's override fragments' 'WHERE type_id=' / 'WHERE pet_id=' fail at runtime on Hibernate 7)"
           ],
           "unresolved_when": "no captured scenario reaches the member's write effect: the responsibility stays open (coverage unresolved), never PASS"
         },
