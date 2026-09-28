@@ -309,6 +309,30 @@ class TestAuditSemantics(unittest.TestCase):
         self.assertIn("kanban_attach.py", buf.getvalue())
         self.assertIn("lacks --exec", buf.getvalue())
 
+    def test_required_flag_in_a_compound_command_counts(self):
+        # v24 validation run (…-v25) M1: the flag was glued to the separator and the audit refused a correct run
+        from paved_road import args_of_run
+        cmd = 'cd /projects/modernized && python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m1 --write; echo "EXIT=$?"'
+        self.assertIn("--write", args_of_run(cmd, "handoff_facts.py"))
+        cmd = 'cd /x && python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec | tee out; echo done'
+        self.assertIn("--exec", args_of_run(cmd, "kanban_attach.py"))
+        self.assertIn("--exec", args_of_run("bash -c 'python3 .hermes/kernel/kanban_attach.py --exec; echo ok'", "kanban_attach.py"))
+        # the flag must belong to the script's own command, not a neighbour's
+        self.assertNotIn("--exec", args_of_run("python3 .hermes/kernel/kanban_attach.py; echo --exec", "kanban_attach.py"))
+        self.assertEqual(args_of_run("cat .hermes/kernel/kanban_attach.py", "kanban_attach.py"), [])
+        doc = load_steps(M1 / "steps.json")
+        keep = M1 / "fixtures" / "green-m1"
+        text = (keep / "official.log").read_text(encoding="utf-8")
+        wrapped = text.replace("kanban_attach.py --task t_m1 --exec", 'kanban_attach.py --task t_m1 --exec; echo "EXIT=$?"')
+        self.assertNotEqual(wrapped, text)
+        ledger = intent_ledger(wrapped, run="1")
+        with patch.dict(os.environ, {"HERMES_BIN": str(FAKE_HERMES), "FAKE_ATTACHMENT_STORE": str(M1 / "fixtures" / "native-attachments")}):
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                rc = evaluate_audit(wrapped, doc, keep, ledger)
+        self.assertNotIn("lacks --exec", buf.getvalue())
+        self.assertEqual(rc, 0, buf.getvalue())
+
     def test_require_args_is_validated(self):
         doc = load_steps(M2 / "steps.json")
         bad = json.loads(json.dumps(doc))

@@ -469,6 +469,28 @@ def is_run_of(cmd: str, basename: str) -> bool:
     return basename in run_executables(cmd)
 
 
+def args_of_run(cmd: str, basename: str) -> list[str]:
+    """The tokens of the simple command that RUNS ``basename`` (list and pipe
+    operators split off, ``bash -c STRING`` looked into); [] when none does.
+
+    v24 validation run (…-v25) M1: ``cd … && python3 …/handoff_facts.py … --write;
+    echo "EXIT=$?"`` split as one token stream gave ``--write;`` -- the flag
+    glued to the separator -- and the audit refused a run that had the flag."""
+    import shlex as _shlex
+    for seg in _segments(cmd):
+        if basename not in run_executables(_shlex.join(seg)):
+            continue
+        for i, tok in enumerate(seg):
+            if tok.rsplit("/", 1)[-1] in INTERPRETERS and "-c" in seg[i + 1:]:
+                j = seg.index("-c", i + 1)
+                if j + 1 < len(seg):
+                    inner = args_of_run(seg[j + 1], basename)
+                    if inner:
+                        return inner
+        return list(seg)
+    return []
+
+
 def matching_terminal_lines(text: str, basename: str) -> list[str]:
     """The ``$`` lines that RAN this script: the executable resolves to it.
 
@@ -746,10 +768,7 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
         required = [str(a) for a in step.get("require_args") or []]
         if required:
             cmd = str(latest["start"].get("command") or "")
-            try:
-                tokens = shlex.split(cmd)
-            except ValueError:
-                tokens = cmd.split()
+            tokens = args_of_run(cmd, needle)
             absent = [a for a in required if a not in tokens]
             if absent:
                 failures.append("the latest invocation of needle %r (step %s) lacks %s: without it the script only plans "

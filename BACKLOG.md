@@ -4,14 +4,14 @@ Open limitations, unfinished work, and the evidence needed to understand them.
 Completed run narratives remain in Git history. Paths under `tmp/` are local
 evidence, excluded from Git.
 
-## v25 improvements: reusable migration repairs — planned after v24 (2026-09-28)
+## v26 improvements: reusable migration repairs — planned after v25 validation (2026-09-28)
 
-Naming note: this section is the future v25 *improvement package*. The v24 *validation run* was created as
-`spring-petclinic-rest-legacy-v25` by mistake (see the v24 section); that run is not this package.
+The current validation run is `spring-petclinic-rest-legacy-v25` and validates the v24 package
+(see the v24 section). The improvements formerly planned as v25 are now planned for v26.
 
-Finish the agreed v24 package and its validation run first. The detailed scope,
+Finish the current v25 validation run first. The detailed scope,
 design decisions and acceptance criteria are in
-[V25-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V25-IMPROVEMENTS.md).
+[V26-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V26-IMPROVEMENTS.md).
 This is a future improvement list, not an implementation or release claim.
 
 - [ ] Execute two qualified repairs deterministically inside existing M3 scopes:
@@ -19,14 +19,14 @@ This is a future improvement list, not an implementation or release claim.
 - [ ] Qualify recipes with before/after, no-change, idempotence, type-resolution,
   scope and real behavioural checks; preserve native review and acceptance gates.
 - [ ] Generate compact, evidence-bound objective context from existing analysis.
-- [ ] Extend v24 reporting with actual transformation results and measured cost.
-- [ ] Compare against the completed v24 baseline, then validate on a fresh v25 run.
+- [ ] Extend the v24 package's reporting, validated in v25, with actual transformation results and measured cost.
+- [ ] Compare against the completed v25 validation baseline, then validate on a fresh v26 run.
 - [ ] Later optimization only: analysis reuse with complete cache invalidation.
 
 Licensing stays within the existing boundary: adopt eligible open-source
 components under their licenses; avoid proprietary or restricted dependencies,
 or independently implement similar behaviour from public contracts. Do not copy
-restricted implementation code. No v24 scope expansion, live overlay, isolation
+restricted implementation code. No scope expansion of the current v25 run, live overlay, isolation
 campaign, additional scheduler or parallel M3 execution is authorized by this plan.
 
 ## v24 package — golden `221de165` published; validation run `spring-petclinic-rest-legacy-v25`
@@ -61,6 +61,7 @@ Published in `95ead23f` (commits `e8c13adb`, `efb59233`, `9b3e1b92`, `e974e863`)
 
 - [x] **Decided (architect, revised 2026-09-28): the M2-published family budget governs v24** (`89005fe5`). One limit and one count on a governed outcome-board/v2 card: the issued contract's family key and limit (Pet family: 12 across the family, not 3, not 12 per card) and native `family_spent` (rejected candidates plus reviewer change requests). `advance.py` projects that count instead of adding its own; `decisions.max_attempts` stays an input to the initial budget and governs only the legacy serial/v1 loop. Cards, restarts and checkpoints never replenish the family; the twelfth charge exhausts it. No published budget refuses (`ISSUE_BUDGET_UNPUBLISHED`); an inconsistent account refuses (`LOOP_BUDGET_INCONSISTENT`). The published total is unchanged; v23 keeps its pinned rules. This supersedes the earlier "keep three" decision.
 - [ ] **Republish with the F1–F3 review corrections** (committed as `b00585fd`, not in `95ead23f`). F1: M5 does not read `unresolved-resolutions.json`; resolution comes only from M4-bound parity receipts, per entry point and owed mode. F2: whether a plan is owed comes from pinned `loop.plan_semantics` and the admission seal; a missing, bare, list-less, duplicated, unsealed or re-bound plan blocks release; a declared legacy run and a valid empty admitted list pass. F3: the parity stage separates requested scope, execution and the verdict bound to this candidate and mode. Corrected reporting of the combined check: 93 executed checks and 2 skips; the replay proved equal derived plans, not two admitted native M2 runs.
+- [x] **Harness defect found on the v24 validation run (…-v25) M1, fixed in the golden.** The `require_args` audit check tokenized the whole compound command, so `… --write; echo "EXIT=$?"` gave `--write;` and the reviewer's audit refused a correct M1 (both `handoff_facts.py --write` and `kanban_attach.py --exec` had run); the reviewer then looped reading the ledger and the loop guard halted it (card blocked). `args_of_run` now reads the tokens of the exact command that runs the script; the plan-only refusal is unchanged. With the fix, that M1's own log audits green (read-only check). Not in golden `221de165`.
 - [ ] **WP6 live retirement is not measured.** Retire mode is authored on `19469a5d` and reverted on main by `915242c1`, so Argo CD cannot publish it before review. It removes the run's delivery PipelineRuns and pods, then `project-<run>` through its own finalizer, then `<run>-dev`, each ownership-checked by exact name. The tombstone names the kept repository. The admission policy `retired-migration-run-project` refuses recreation. Still required: one live retirement of a disposable run, and a security review of the cluster-wide delete grant `migration-run-retire-project`.
 - [ ] Report the MTA 8.2.1 dependency-JSON defect to Red Hat support or upstream Konveyor. Draft: `tmp/v24-preparation/wp5-rescan/UPSTREAM-BUG.md`. YAML-only output and `--mode source-only` were not chosen.
 
