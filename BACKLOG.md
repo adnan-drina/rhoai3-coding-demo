@@ -6,6 +6,9 @@ evidence, excluded from Git.
 
 ## v25 improvements: reusable migration repairs — planned after v24 (2026-09-28)
 
+Naming note: this section is the future v25 *improvement package*. The v24 *validation run* was created as
+`spring-petclinic-rest-legacy-v25` by mistake (see the v24 section); that run is not this package.
+
 Finish the agreed v24 package and its validation run first. The detailed scope,
 design decisions and acceptance criteria are in
 [V25-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V25-IMPROVEMENTS.md).
@@ -26,7 +29,15 @@ or independently implement similar behaviour from public contracts. Do not copy
 restricted implementation code. No v24 scope expansion, live overlay, isolation
 campaign, additional scheduler or parallel M3 execution is authorized by this plan.
 
-## v24 package — golden `95ead23f` published; later trees are not that publication
+## v24 package — golden `221de165` published; validation run `spring-petclinic-rest-legacy-v25`
+
+The v24 validation run was named `spring-petclinic-rest-legacy-v25` by mistake when it was created
+(2026-09-28). It is the v24 run: its destination's initial commit `1a26eab` carries a `.hermes` tree
+identical to golden `221de165` (source `706e2fdd`, scaffold tree `9f271640`), `run_id`
+`spring-petclinic-rest-legacy-v25`, `plan_semantics: v1`, `compatibility_objectives: v1`. No
+`…-v24` run, record or repository exists. Records refer to it as "the v24 validation run (`…-v25`)".
+`95ead23f` (tree `b0db84bd`) was superseded by `221de165` after the F1–F3 review and was never used
+for a run.
 
 Plan: `tmp/v23-run/V24-IMPLEMENTATION-PLAN.md`. Release identities and publication
 notes: `tmp/v24-preparation/RELEASE-READINESS.md`. v23 is not changed by this package.
