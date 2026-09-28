@@ -734,6 +734,9 @@ check "080 v24 integrated native sequence passes" \
 check "080 authoritative outcome line and retry brief tests pass (v24 WP4)" \
   "python3 '${SCAFFOLD_KERNEL}/../skills/migration/fix-until-green/scripts/outcome-line.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
+check "080 one family budget: native account governs, loop projects it (v24)" \
+  "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/../lib/planner/family_budget.test.py' >/dev/null 2>&1 && PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/../skills/migration/fix-until-green/scripts/family-budget-loop.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 M1 MTA analyzer exit judgement tests pass (v24 WP5)" \
   "python3 '${SCAFFOLD_KERNEL}/../skills/analysis/scan-with-mta/scripts/mta-analyze-legacy.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
