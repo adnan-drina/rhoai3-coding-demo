@@ -163,7 +163,11 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    print("OK: kanban attach (%d file(s))." % len(planned["files"]), file=sys.stderr)
+    if execute:
+        print("OK: kanban attach (%d file(s) attached)." % len(planned["files"]), file=sys.stderr)
+    else:
+        print("PLAN ONLY: %d file(s) would be attached; NOTHING was attached. Run again with --exec."
+              % len(planned["files"]), file=sys.stderr)
     return 0
 
 

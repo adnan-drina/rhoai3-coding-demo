@@ -40,7 +40,10 @@
       "id": "k4-mint",
       "backing": "kernel",
       "kernel": "k4_mint.py",
-      "note": "From an ADMITTED receipt only (zero commands otherwise; INCONCLUSIVE is a legal stop: kanban_block kind=needs_input naming the BLOCK classes). outcome-board/v2: publishes the whole known plan as native cards (every outcome, M4, the three M5 stages) under this open card, attaches plan.r1.json here and contract.json to each, and prints created_cards. serial-loop/v1: mints exactly one card, the head cluster (or M4 VERIFY when the list is empty)."
+      "note": "From an ADMITTED receipt only (zero commands otherwise; INCONCLUSIVE is a legal stop: kanban_block kind=needs_input naming the BLOCK classes). outcome-board/v2: publishes the whole known plan as native cards (every outcome, M4, the three M5 stages) under this open card, attaches plan.r1.json here and contract.json to each, and prints created_cards. serial-loop/v1: mints exactly one card, the head cluster (or M4 VERIFY when the list is empty).",
+      "require_args": [
+        "--exec"
+      ]
     },
     {
       "id": "verify-live-kanban-loop",

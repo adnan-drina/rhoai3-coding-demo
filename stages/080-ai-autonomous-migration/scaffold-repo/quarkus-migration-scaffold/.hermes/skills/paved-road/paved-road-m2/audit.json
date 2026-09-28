@@ -43,7 +43,10 @@
       "backing": "kernel",
       "id": "k4-mint",
       "keep": [],
-      "needle": "k4_mint.py"
+      "needle": "k4_mint.py",
+      "require_args": [
+        "--exec"
+      ]
     },
     {
       "backing": "skill",

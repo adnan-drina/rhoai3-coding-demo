@@ -195,6 +195,9 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
             producers += 1
         if "verdict" in step and (step.get("verdict") is not True or backing == "skill"):
             errors.append("%s: verdict must be true and only on a kernel/native step" % prefix)
+        if "require_args" in step and (backing == "skill" or not isinstance(step.get("require_args"), list)
+                                       or not all(isinstance(x, str) and x.startswith("-") for x in step["require_args"])):
+            errors.append("%s: require_args must be a list of flags and only on a kernel/native step" % prefix)
         keep = step.get("keep")
         if keep is not None:
             if not isinstance(keep, list) or not all(isinstance(x, str) for x in keep):
@@ -326,6 +329,8 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
             producer = step["id"]
         if step.get("verdict") is True:
             item["verdict"] = True
+        if step.get("require_args"):
+            item["require_args"] = list(step["require_args"])
         steps_out.append(item)
     return {
         "artifact": doc["artifact"],
@@ -683,6 +688,21 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
             failures.append("the latest invocation of needle %r did not exit 0 (step %s exit_code=%s)"
                             % (needle, sid, "unknown" if last_exit is None else last_exit))
             continue
+        # a script whose default is a plan (dry run) exits 0 without doing the step: the step names the
+        # flags that make it act, and the latest recorded invocation must carry them (v23 M1: a bare
+        # kanban_attach.py printed "OK: kanban attach (6 file(s))" and attached nothing)
+        required = [str(a) for a in step.get("require_args") or []]
+        if required:
+            cmd = str(latest["start"].get("command") or "")
+            try:
+                tokens = shlex.split(cmd)
+            except ValueError:
+                tokens = cmd.split()
+            absent = [a for a in required if a not in tokens]
+            if absent:
+                failures.append("the latest invocation of needle %r (step %s) lacks %s: without it the script only plans "
+                                "and changes nothing, whatever it printed (%r)" % (needle, sid, " ".join(absent), cmd[:160]))
+                continue
         missing = keep_missing(root, keep)
         if missing:
             failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))

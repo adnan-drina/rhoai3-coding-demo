@@ -266,6 +266,37 @@ class TestAuditSemantics(unittest.TestCase):
         ledger[-3]["exit_code"] = 1  # the first mint's end: red, then the second is clean
         self.assertEqual(evaluate_audit(text, self.doc, self.keep, ledger), 0)
 
+    def test_a_plan_only_mint_is_not_the_step(self):
+        # the mint without --exec plans and exits 0: the step requires the flag that makes it act
+        bare = M2_MINT.replace(" --exec", "")
+        text = GATE + M2_SKILLS + bare
+        rc, msg = _eval_msg(text, self.doc, self.keep)
+        self.assertEqual(rc, 1)
+        self.assertIn("lacks --exec", msg)
+        # a later invocation WITH --exec is the step
+        self.assertEqual(evaluate_audit(GATE + M2_SKILLS + bare + M2_MINT, self.doc, self.keep,
+                                        intent_ledger(GATE + M2_SKILLS + bare + M2_MINT)), 0)
+
+    def test_m1_attach_without_exec_is_refused(self):
+        # v23 M1: `kanban_attach.py` with no arguments printed OK and attached nothing
+        doc = load_steps(M1 / "steps.json")
+        keep = M1 / "fixtures" / "green-m1"
+        text = (keep / "official.log").read_text(encoding="utf-8")
+        bare = text.replace("kanban_attach.py --task t_m1 --exec", "kanban_attach.py")
+        self.assertNotEqual(bare, text)
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            rc = evaluate_audit(bare, doc, keep, intent_ledger(bare, run="1"))
+        self.assertEqual(rc, 1)
+        self.assertIn("kanban_attach.py", buf.getvalue())
+        self.assertIn("lacks --exec", buf.getvalue())
+
+    def test_require_args_is_validated(self):
+        doc = load_steps(M2 / "steps.json")
+        bad = json.loads(json.dumps(doc))
+        next(s for s in bad["steps"] if s["backing"] == "skill")["require_args"] = ["--exec"]
+        self.assertTrue(any("require_args" in e for e in validate_steps_doc(bad, path=Path("x"))))
+
     def test_read_of_the_script_is_not_an_execution(self):
         text = GATE + M2_SKILLS + M2_MINT
         ledger = intent_ledger(text)

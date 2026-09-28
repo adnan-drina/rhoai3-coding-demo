@@ -115,7 +115,10 @@
         "evidence/required-extensions.json",
         "evidence/mta-findings.json"
       ],
-      "needle": "kanban_attach.py"
+      "needle": "kanban_attach.py",
+      "require_args": [
+        "--exec"
+      ]
     },
     {
       "backing": "native",

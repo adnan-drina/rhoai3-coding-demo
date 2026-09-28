@@ -118,6 +118,9 @@
         "evidence/type-inventory.json",
         "evidence/required-extensions.json",
         "evidence/mta-findings.json"
+      ],
+      "require_args": [
+        "--exec"
       ]
     },
     {
