@@ -831,6 +831,9 @@ check "080 assemble-evidence-bundle selftest passes" \
 check "080 scan-with-mta selftest passes (provenance, canary, never --source)" \
   "python3 '${SCAFFOLD_SKILLS}/analysis/scan-with-mta/scripts/scan-with-mta.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 destination rescan analyzes a disposable copy of the candidate (analyzer metadata never reaches the product tree)" \
+  "python3 '${SCAFFOLD_SKILLS}/analysis/scan-with-mta/scripts/mta-rescan-destination.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 worklist selftest passes (order, measure, progress rule)" \
   "python3 '${SCAFFOLD_LIB}/planner/worklist.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

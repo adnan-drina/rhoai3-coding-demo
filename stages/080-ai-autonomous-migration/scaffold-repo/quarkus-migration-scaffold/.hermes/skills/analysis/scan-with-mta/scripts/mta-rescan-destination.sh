@@ -51,11 +51,65 @@ PY
 DEST_DIGEST="$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo worktree)"
 export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"; export PATH="${JAVA_HOME}/bin:${PATH}"
 MTA_RUN_CWD="${MTA_RUN_CWD:-/projects/.tools/mta-run}"; mkdir -p "${MTA_RUN_CWD}"
+# The analyzer never runs on the candidate itself: its Java provider (JDT/m2e)
+# writes .project, .settings/ and .classpath into the tree it analyzes. They are
+# git-ignored but product bytes, so an in-place scan moved the candidate's
+# product digest off HEAD and the next issue refused ISSUE_BASELINE_DRIFT
+# (2026-09-28 qualification, pinned ws-080 image). It analyzes a disposable
+# snapshot of the CURRENT candidate -- the working tree, uncommitted repair
+# included, in harness-owned scratch, with the same relative layout -- then maps
+# the findings back to destination-relative paths before normalization and
+# binds them to the candidate's pre-scan digest. The candidate is re-hashed after
+# the analyzer: a candidate that moved during the scan is a stale input, refused.
+SNAP_BASE="$(mktemp -d "${MTA_RUN_CWD%/}/destination-input.XXXXXX")"
+SNAP="${SNAP_BASE}/$(basename "${ROOT}")"
+cleanup() { rm -rf "${SNAP_BASE}"; }
+trap cleanup EXIT
+python3 - "${ROOT}" "${SNAP}" "${TREE_SHA256}" <<'PY'
+import os, shutil, sys
+from pathlib import Path
+root, snap, want = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+sys.path.insert(0, str(root / ".hermes/lib"))
+from planner.canonical import product_tree_sha256
+# everything the in-place scan saw, except git's object store and this scan's own output
+skip = {".git", "verification/mta-rescan"}
+def ignore(d, names):
+    rel = os.path.relpath(d, root)
+    rel = "" if rel == "." else rel + "/"
+    return [n for n in names if (rel + n) in skip]
+shutil.copytree(root, snap, symlinks=True, ignore=ignore)
+got = product_tree_sha256(snap)
+if got != want:
+    raise SystemExit("FAIL: MTA_RESCAN_SNAPSHOT the analysis copy is not the candidate (%s != %s)" % (got[:12], want[:12]))
+PY
 set +e
-( cd "${MTA_RUN_CWD}" && "${CLI}" analyze --input "${ROOT}" --output "${OUT}/report" "${TARGETS[@]}" "${RULES_FLAGS[@]}" --json-output "${OUT}/findings.json" --overwrite )
+( cd "${MTA_RUN_CWD}" && "${CLI}" analyze --input "${SNAP}" --output "${OUT}/report" ${TARGETS[@]+"${TARGETS[@]}"} ${RULES_FLAGS[@]+"${RULES_FLAGS[@]}"} --json-output "${OUT}/findings.json" --overwrite )
 rc=$?
 set -e
 if [[ ! -s "${OUT}/findings.json" && -s "${OUT}/report/output.json" ]]; then cp -f "${OUT}/report/output.json" "${OUT}/findings.json"; fi
 [[ -s "${OUT}/findings.json" ]] || { echo "FAIL: destination rescan produced no findings (rc=${rc})" >&2; exit 1; }
-python3 "${SCRIPTS}/normalize-findings.py" "${OUT}/findings.json" "${CLI}" "$(printf '%s,' "${TARGETS[@]}" | tr -d '-' | sed 's/target,//g; s/,$//')" "destination:${DEST_DIGEST}" "${OUT}/rules-coverage.json" "${OUT}/report/static-report/index.html" "${TREE_SHA256}" "${DEST_DIGEST}"
-echo "OK: destination rescan → ${OUT}/findings.json (rc=${rc})"
+# the candidate the findings describe must still be the candidate on disk, and
+# findings name destination-relative files, never the scratch copy
+python3 - "${ROOT}" "${SNAP}" "${TREE_SHA256}" "${OUT}/findings.json" "${OUT}/report/output.json" <<'PY'
+import sys
+from pathlib import Path
+root, snap, want = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+sys.path.insert(0, str(root / ".hermes/lib"))
+from planner.canonical import product_tree_sha256
+now = product_tree_sha256(root)
+if now != want:
+    for f in sys.argv[4:]:
+        p = Path(f)
+        if p.is_file():
+            p.rename(p.with_name(p.name + ".stale"))
+    raise SystemExit("FAIL: MTA_RESCAN_STALE_INPUT the destination changed while it was analyzed (%s before, %s after); the "
+                     "findings describe neither tree and are kept only as %s.stale for diagnosis" % (want[:12], now[:12], sys.argv[4]))
+for f in sys.argv[4:]:
+    p = Path(f)
+    if p.is_file():
+        text = p.read_text(encoding="utf-8", errors="surrogateescape")
+        if snap in text:
+            p.write_text(text.replace(snap, str(root)), encoding="utf-8", errors="surrogateescape")
+PY
+python3 "${SCRIPTS}/normalize-findings.py" "${OUT}/findings.json" "${CLI}" "$(printf '%s,' ${TARGETS[@]+"${TARGETS[@]}"} | tr -d '-' | sed 's/target,//g; s/,$//')" "destination:${DEST_DIGEST}" "${OUT}/rules-coverage.json" "${OUT}/report/static-report/index.html" "${TREE_SHA256}" "${DEST_DIGEST}"
+echo "OK: destination rescan → ${OUT}/findings.json (rc=${rc}; analyzed a copy of candidate ${TREE_SHA256:0:12})"
