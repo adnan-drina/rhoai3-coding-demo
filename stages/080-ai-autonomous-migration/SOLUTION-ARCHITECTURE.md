@@ -29,6 +29,8 @@ Migration is **one mechanical loop**. There is no planner in the sense of an own
 
 > **Frozen evidence → deterministic bootstrap → work list computed by tools → fail-closed admission → one Hermes card per step → tools accept or revert → repeat until the list is empty → runtime parity**
 
+*Current native path (2026-09-28).* "One card per step" is the serial-loop/v1 reading and stays true for runs created with it. A run on `outcome-board/v2` (§10.1, the default for new runs) publishes one native task per planned outcome after M2. With `loop.compatibility_objectives: v1` (§7.2), an outcome is a bounded **compatibility objective**: one or more work-list units that share one concrete repair, issued whole and judged per constituent. The tools still accept or revert every candidate; Hermes still owns the lifecycle; execution stays serial.
+
 The governing decisions:
 
 1. **The work list is the plan.** MTA mandatory incidents, JDK compiler diagnostics, failing tests, and runtime-parity mismatches, each with a file locus, clustered by file, in a fixed order. It is recomputed by tools after every change and never written by a model or a human.
@@ -205,6 +207,7 @@ Fail-closed boundaries, each with a permanent negative test:
 | `PLANNER_NOT_ACTIVATED` / `PLANNER_PILOT_SEAL` | the activation gate (§9) |
 | `MISSING_DECISION` / `ADR_NOT_ACCEPTED` / `PLATFORM_UNKNOWN` | `decisions.yaml` incomplete or citing an unaccepted ADR |
 | `PLAN_SEMANTICS_REPINNED` | `decisions.yaml` `loop.plan_semantics` differs from the value the destination's initial commit carried (§7.1): a run keeps the plan semantics it was created with |
+| `OBJECTIVES_REPINNED` / `OBJECTIVES_WITHOUT_PLAN_SEMANTICS` | `loop.compatibility_objectives` differs from the run's initial commit, or is selected without `plan_semantics: v1` (§7.2) |
 | `BOOTSTRAP_MISSING` / `BOOTSTRAP_STALE` | no deterministic baseline, or one bound to another bundle |
 | `MEASURE_UNKNOWN` / `WORKLIST_STALE` | a tool did not run in this verification, or the list belongs to another bundle |
 | `BOOTSTRAP_BLOCKED` | the bootstrap recorded a non-trivial launcher or an unmapped dependency |
@@ -365,17 +368,91 @@ the pinned MTA CLI 8.2 (the host's mta-cli is 7.3.0, not admissible; the
 pinned 8.2.1 exists locally only as linux/amd64 inside the ws-080 image, and
 under emulation on the arm64 workstation its Java provider did not start the
 analysis within 21 minutes -- the native run takes about a minute), so MTA
-findings are recorded evidence; and the M2 destination analysis (bootstrap,
-destination compile and rescan) on fresh M1 output, so the finding half of the
-initial plan was compared from recorded evidence only. Equal plans from
-recorded evidence are not equal results from a fresh M1 analysis. Planning
-equality does not authorize execution or establish behavioural PASS.
+findings are recorded evidence. Equal plans from recorded evidence are not
+equal results from a fresh M1 analysis. Planning equality does not authorize
+execution or establish behavioural PASS.
+
+*Fresh M1 → M2 (2026-09-28, local).* With the M1 classpath correction (the
+warm-up now runs the same `dependency:build-classpath` goal the offline
+extraction runs, so an empty cache no longer yields a partial model), two
+fresh derivations of the frozen PetClinic source re-ran build evidence,
+structure, the evidence bundle, both scenario corpora, their captures and
+qualification, bootstrap and the destination compile; MTA findings stayed the
+recorded M1 output. Both derivations produced identical requirements and the
+identical logical plan (`qualify-repeatability.py --fresh A B`); bootstrap
+and the destination compile matched the preserved v21 baseline. A corpus
+or capture bound to another evidence bundle, or naming an entry point the
+bundle does not hold, is refused (`outcome_checks.corpus_binding_gaps`,
+`qualify-source-captures.py`): the fix changed 14 entry-point identities, and
+a stale binding would have reported covered entry points as having no oracle.
+
+### 7.2 Compatibility objectives (v1, run-pinned)
+
+`decisions.yaml` `loop.compatibility_objectives: v1` (pinned like plan
+semantics; needs it) changes how M2 groups the known work, not what is known.
+`planner/compatibility_objectives.py` composes the work list's sealed units
+into objectives using the versioned `objective_families` of
+`compat-mapping.json`:
+
+- **Membership by shared concrete repair.** Units join an objective when a
+  family names their resolved symbols or MTA rule and they share a file (or,
+  for a rule family, the rule). Membership never depends on type or file
+  names; symbols are qualified through the frozen model. A unit no family
+  names stays a singleton with its baseline id.
+- **Requirements by semantic subject.** A requirement attaches to the
+  objective that owns its subject, never to the first unit that shares a
+  path. Each selected repository contract is its own objective (seven on
+  PetClinic); Profile and DAO translation remain separate objectives.
+- **Checks planned at M2.** Each (requirement, check) pair is `immediate` or
+  `later` (runtime checks at M4 `deferred_requirement_checks`). An immediate
+  check's prerequisites are the owners of compile obligations in the files it
+  reads, so a task is not issued before the work it depends on. The outcome
+  board measures each requirement's checks separately; one passing
+  requirement never stands for another's unknown.
+- **Bounds and conservation.** An objective must fit the planned-unit grant
+  (20 files, 160 sites, 8 symbols); otherwise it is refused, never enlarged.
+  Every original obligation and requirement is owned, satisfied or explicitly
+  unresolved, and budgets join by lineage: one family key whose limit is the
+  sum of its original accounts (PetClinic fresh 297 = 297; the E0 fixture
+  96 = 96).
+- **Execution.** `native_control.issue` issues an open objective whole
+  (`objective:<id>`, its union write set). `worklist.build_objective_scope`
+  binds each constituent's sealed inventory into one envelope, and
+  `advance.py` rebuilds and compares that envelope before judging each
+  constituent with its own assessor. A blocked objective parks without
+  spending budget, and an independent objective proceeds.
+
+Borrowed from OpenRewrite/Moderne as patterns only, with no recipe engine:
+declarative, versioned composition metadata; preconditions (applicability)
+separated from the transformation; idempotent edits; data-table style
+reporting of what each objective covers.
+
+Proof actually run (2026-09-28, local, `tmp/v21-run/m3-partition-comparison`,
+gitignored): four PetClinic cases through the real issue → projection → brief
+→ measure → advance judging → accept-commit path on a FakeNative board.
+
+- Sorting: 3 per-unit cards → 1 objective.
+- Configuration: 2 → 1.
+- Persistence: the per-unit plan left three repository contracts unimplemented
+  and blocked two cards; objectives accepted all 11.
+- Request boundary: the per-unit plan blocked two cards; objectives accepted
+  one 8-file objective in one round.
+
+Repository write/read effects and Owner request outcomes were measured outside
+Quarkus on Hibernate + H2 seeded from the source, and compared with the
+qualified source captures. Negatives were caught: no-op and stub writes,
+inverted and `&&` guards, `@Valid` retained, and a null-intolerant Location.
+
+NOT RUN: the pinned MTA rescan, CDI/startup, packaging and live parity (the
+destination does not build at this baseline). A duplicate injectable bean is
+caught only at startup: `structure:single-injectable-implementation` judges
+the owed implementation's own exposure.
 
 ---
 
 ## 8. Hermes execution model (K1–K4)
 
-- **K4** converts the sealed work list into **exactly one** `kanban_create` payload per step: the head cluster (kind unchanged; display title `M3 <ACTION> — <subject> (...)` from `card_title`) or `M4 VERIFY` when the list is empty and nothing is deferred. Key `k4:<cluster>:<attempt>:<receipt16>`; parent = the previous accepted step's card plus the M2 card. K4 re-derives the activation verdict and the tool pins from `pins.json` itself; a receipt text never overrides them. Zero commands unless ADMITTED. `k4_mint.py` appends the captured task id to `evidence/receipts/k4/mints.json`.
+- **K4** (serial-loop/v1 runs; outcome-board/v2 publishes the whole plan once, §10.1) converts the sealed work list into **exactly one** `kanban_create` payload per step: the head cluster (kind unchanged; display title `M3 <ACTION> — <subject> (...)` from `card_title`) or `M4 VERIFY` when the list is empty and nothing is deferred. Key `k4:<cluster>:<attempt>:<receipt16>`; parent = the previous accepted step's card plus the M2 card. K4 re-derives the activation verdict and the tool pins from `pins.json` itself; a receipt text never overrides them. Zero commands unless ADMITTED. `k4_mint.py` appends the captured task id to `evidence/receipts/k4/mints.json`.
 - **K1** bodies carry `receipt_sha256`, `worklist_sha256`, cluster id/kind/attempt, the write set, the item ids, and the artifact digests. No graph, no MTA prose, no acceptance text.
 - **K3** proves the live board equals the loop's expected cards: every accepted step's card and the one open card, matched only by native idempotency key or by K4's mint receipts (never title or body), chained by parent. Only registered control cards (`verification/loop/cards.json`: the M2 card, registered once from its own environment, and its M1 ancestor) are exempt; an execution card is never exempt, so the previous accepted card stays in the expected set. Continuation is proven through `advance.py` → `k4_mint.py --exec` against a file-backed fake board; not yet on the pinned Hermes.
 - **K2** vetoes worker graph mutation (`kanban_create`, `kanban_link`, swarm, decompose, direct `hermes kanban create|link`, `daemon --force`) and product writes outside the sandbox. Guardrail, not containment.
@@ -416,7 +493,7 @@ dest-init mints M1 ANALYZE always and M2 PLAN (child of M1) only under an activa
 | Context probe, jQAssistant reconciliation | **Deleted** (`probe-spring-bindings`, `enrich-legacy-bytecode`) |
 | Platform API index | **Deleted** (no symbol projection on the compat path) |
 | `execute-admitted-increment`, `plan-migration-increments`, `verify-live-kanban-dag` | **Replaced** by `fix-until-green`, `build-worklist`, `verify-live-kanban-loop` |
-| K1 / K4 / K3 | **Adapted** to the work list (one card per step, attempt in the key, mint receipts as provenance) |
+| K1 / K4 / K3 | **Adapted** to the work list (serial-loop/v1: one card per step, attempt in the key, mint receipts as provenance; outcome-board/v2 publishes one native task per outcome or compatibility objective, §10.1) |
 | K2, pins, activation and pilot seal, MTA provenance and canary, source oracles, M4 gates | **Kept** |
 | Spec Kit | **Removed**; no compatibility path (residue scan in `validate.sh`) |
 
@@ -479,7 +556,8 @@ second principal) is retired for new runs; its contract is Part B.
 | JDK diagnostics tool | IMPLEMENTED; run locally on the Spring fixture (18 errors, no classpath); `-Xmaxerrs 10000` does not complete coverage across sibling checked-exception sites |
 | Loop (verify, accept, revert, defer, human clear, M4 on empty) | IMPLEMENTED end to end on the http specimen with simulated tool outputs and a real git repository; the 2026-09-09 review counterexamples (invented cluster, post-verification edit, out-of-scope test edit, staged revert, rejected reports, unrun/failed tools, line movement, unresolved test scope, stop on deferral, second-card continuation) and the 2026-09-11 v8 counterexamples (six-file URI mask, compile RETAIN, reject still-reported, rollback state rebuild) are permanent tests |
 | Admission v2 with every boundary | IMPLEMENTED with per-boundary negatives, forged-receipt and pilot-seal counterexamples |
-| K1 / K4 / K3 (one card per step, provenance-only matching) | IMPLEMENTED against a fake board |
+| K1 / K4 / K3 (one card per step, provenance-only matching) | IMPLEMENTED against a fake board (serial-loop/v1) |
+| Compatibility objectives (§7.2) | IMPLEMENTED and selected in the golden for NEW runs; four PetClinic cases run locally through the real issuance and acceptance functions on a FakeNative board, repository and request behaviour probed outside Quarkus; not run on a live board or with the pinned MTA rescan |
 | K2 graph-mutation veto | IMPLEMENTED for the documented tool names; the real v0.20.5 worker tool surface is not captured |
 | M4 source oracles and parity receipt | IMPLEMENTED with a local HTTP stub; scenario comparator asserts `Location` / `Access-Control-*` when the capture recorded `headers`; legacy captures without that map skip header compare |
 | M5 bounded delivery (prepare → app-push observe → deployed Route live checks) | IMPLEMENTED with fixture tests for duplicate-start, failed M4 prerequisite, wrong-revision PipelineRun, pipeline success without Deployment, image mismatch, failed live acceptance, M5 `ACCEPT` from closed M4 `ship: false` plus required release evidence (passes `check-verdict-routing.py`), and retained v10 qualifications → `INCONCLUSIVE`. Live Route demonstration is a separate dest execution, not implied by the fixtures. Full M5 `ACCEPT` still requires the existing release contract including a pinned kill-ratio PASS read from evidence; M4 `ship: false` is not a gate. A reachable app with outstanding qualifications is `INCONCLUSIVE` / not shipped |
@@ -487,7 +565,7 @@ second principal) is retired for new runs; its contract is Part B.
 | The producer → bootstrap → verify chain on real code (spring-petclinic-rest, local JDK 21 + Maven, Red Hat GA repository) | DEMONSTRATED 2026-09-09 by `build-worklist/scripts/rehearse-legacy.sh` (local rehearsal). Assisted v10 later demonstrated the live producer → loop → M4 chain on dest; that overlay is not this local rehearsal and is not autonomous proof |
 | Anything on a live workspace, board, or the MTA CLI | Assisted v10 DEMONSTRATED M1–M4 and live Route delivery on an overlay dest ([BACKLOG v10 readiness](../../BACKLOG.md)). Golden workshop path remains `not-activated` (M1 only). Autonomous proof, full M5 `ACCEPT`, and clean v11 repeatability are not claimed |
 
-Principal risks: the compat mapping's coverage on a real starter set (unmapped dependencies become loop work, which is correct but may be long); local minima where a step reduces the measure without being semantically right (tests and parity are in the measure, and tests are never writable); sequential-only execution; the surefire runner on a partially migrated tree.
+Principal risks: the compat mapping's coverage on a real starter set (unmapped dependencies become loop work, which is correct but may be long); local minima where a step reduces the measure without being semantically right (tests and parity are in the measure, and tests are never writable); sequential-only execution; the surefire runner on a partially migrated tree; a composed objective is a larger single candidate than a per-unit card (bounded by the planned-unit grant); work no objective family names still reaches M4 only as parity (2026-09-28: the source's own override fragments use column names in JPQL, which Hibernate 7 rejects).
 
 Decisions still required: the MTA CLI 8.2 binary in the overlay with its checksum frozen before admission; the pilot seal (bound to source, baseline, receipt, board and expiry) after the acceptance and continuation defects are proven on the pinned Hermes; capture of the worker tool names and schemas per profile for K2. `decisions.yaml` (platform ADR-001, attempt threshold ADR-002 = 3) is in place.
 

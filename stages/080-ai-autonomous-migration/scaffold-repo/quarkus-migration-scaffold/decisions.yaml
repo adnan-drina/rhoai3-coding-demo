@@ -110,10 +110,19 @@ thresholds:
 # Selected here for NEW runs: a run keeps the value its destination's initial
 # commit carried (admission refuses a later flip, PLAN_SEMANTICS_REPINNED), so
 # every earlier run -- created without the key -- stays off.
+# Compatibility objectives (v1): M2 composes the work list's units into bounded
+# objectives by shared concrete repair objective (the catalog's
+# objective_families: one sorting replacement, one retired configuration rule,
+# one request boundary, one selected repository contract, ...), attaches each
+# requirement by its semantic subject instead of its first path, plans each
+# check's stage and prerequisites before M3, and joins budgets by lineage so
+# the run's total retry allowance is unchanged. Needs plan_semantics v1; pinned
+# at run creation like it (OBJECTIVES_REPINNED), so earlier runs stay per-unit.
 loop:
   unit_formation: v1
   runtime_feedback: v1
   plan_semantics: v1
+  compatibility_objectives: v1
 
 # Repairs accepted ADRs already made, carried into a FRESH run as bootstrap
 # transformations (ADR-019 sections 2 and 3) instead of mid-run Operator steps.

@@ -56,6 +56,15 @@ nothing here changes it. Steps 1–4 and 7 are the same for both.
      so nothing runs until this card is done. The command prints the
      `created_cards` list. A crash mid-publication resumes with the same
      command and creates nothing twice.
+     When `decisions.yaml` selects `loop.compatibility_objectives: v1` (the
+     run's initial commit pins it), a card can be a **compatibility
+     objective**: several work-list units that share one concrete repair,
+     each selected repository contract, or one request boundary. Its contract
+     lists the constituents, each check's stage (`immediate` now, `later` at
+     M4) and the prerequisites that must finish first. Its budget is the
+     summed family of the units it joined, so the run's total is unchanged.
+     You neither choose nor change the grouping. An `OBJECTIVES_*` admission
+     block is a decision for a human, like any other BLOCK class.
    - **serial-loop/v1:** mints exactly one card, the head cluster (or M4
      VERIFY when the list is empty). From then on each accepted M3 step
      mints the next card (`advance.py`); `pipeline.admit` also writes the

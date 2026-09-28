@@ -111,6 +111,14 @@ the root of the planner digest chain (SAD §6).
   Do not last-wins across different needles.
 - `inventory-legacy-surface` precedes `scan-with-mta`: the MTA handoff
   refuses (AR-4.1) without `evidence/entry-point-inventory.json`.
+- Build evidence comes first, and its warm-up runs the same
+  `dependency:build-classpath` goal the offline extraction runs. An empty
+  offline classpath is recorded in the build receipt's reasons and makes the
+  structure partial. Do not work around it.
+- The scenario corpus and its captures are bound to THIS tree's evidence
+  bundle: entry-point ids change when M1 resolves more of the source. A corpus
+  derived against another bundle, or a capture naming another entry point, is
+  refused as a stale binding. Re-derive and re-capture; never relabel.
 - `derive-legacy-boot3` is **not** an M1 step. The baseline is the
   frozen original source; a Boot 3 derivation is an execution-side
   transformation only.

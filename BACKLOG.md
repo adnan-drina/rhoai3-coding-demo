@@ -1,5 +1,46 @@
 # Backlog
 
+## Compatibility objectives and the M1 classpath fix — 2026-09-28
+
+Design: `tmp/v21-run/m3-partition-comparison/IMPLEMENTATION-DESIGN.md`
+(evidence, cases and probe under the same directory, gitignored). Branch
+`integ/planner-objectives-20260928`. The golden `decisions.yaml` selects
+`loop.compatibility_objectives: v1` for NEW runs (run-pinned,
+`OBJECTIVES_REPINNED`). See Stage 080 SOLUTION-ARCHITECTURE §7.1–§7.2.
+
+- [x] M1: the build warm-up resolves the classpath goal the offline
+  extraction runs. From an empty cache: 131 classpath entries, 100/100 types
+  and 437/437 methods fully resolved. An empty offline classpath is a
+  recorded reason.
+- [x] Corpus and captures are bound to this tree's evidence bundle and entry
+  points. The fix changed 14 entry-point ids, and a stale binding is refused
+  instead of silently losing oracles.
+- [x] Fresh M1 → M2 twice, locally (producers re-run; MTA findings recorded):
+  identical requirements and logical plan (`qualify-repeatability.py
+  --fresh`); bootstrap and the destination compile match v21.
+- [x] M2 composes bounded objectives by shared concrete repair. Requirements
+  attach by semantic subject, checks are planned by stage with prerequisites,
+  and budgets are conserved (297 = 297; E0 96 = 96).
+- [x] M3 issues an objective whole, judges each constituent, parks without
+  spending, and satisfies a requirement objective whose checks already hold.
+- [x] Four PetClinic cases run through the real issuance and acceptance
+  functions on a FakeNative board, with repository and handler behaviour
+  probed outside Quarkus against the source captures.
+- [ ] The pinned MTA 8.2 rescan on a fresh destination (unchanged blocker:
+  amd64-only image, emulation times out on arm64).
+- [ ] CDI/startup, packaging and live parity for the composed objectives: on
+  a live board once the destination builds. A duplicate injectable bean is
+  caught only at startup (`structure:single-injectable-implementation` judges
+  the owed implementation's own exposure).
+- [ ] Found by the behaviour probe, owned by no objective family yet:
+  - The source's repository override fragments use column names in JPQL
+    (`WHERE type_id=`, `WHERE pet_id=`), which Hibernate 7 rejects, so Pet and
+    PetType deletes fail.
+  - The jaxrs-spec generator emits `@JsonCreator` DTOs that require every
+    property, so the source's create body without `pets` is rejected.
+  - v21's accepted `BindingErrorsResponse` names the error object
+    `OwnerDto`, where the source's `errors` header says `ownerDto`.
+
 ## Repeatable initial M3 plan (plan semantics v1) — 2026-09-26
 
 Plan: `tmp/m2-repeatability-20260926/IMPLEMENTATION-PLAN.md`. Selected by the

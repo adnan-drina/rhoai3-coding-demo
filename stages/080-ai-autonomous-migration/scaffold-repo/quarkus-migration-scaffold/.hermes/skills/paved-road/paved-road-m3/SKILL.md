@@ -224,6 +224,15 @@ review; the domain checks guard your native actions.
 2. The same road: brief, patch, run-verify, advance. A REVERTED attempt stays
    on this card: advance re-issues the scope (`CONTINUE THIS CARD`), read the
    brief again.
+   **A compatibility objective** (`cluster` is `objective:<outcome>`): the scope is
+   the whole objective, issued once. The brief's `objective` block lists every
+   constituent's action in order, the checks judged now (`checks_now`) and those
+   left to M4 (`checks_later`). Make ONE candidate that repairs every constituent:
+   the same replacement at each of its sites, or the whole request boundary
+   (validation guard, URI parameter, error payload). Do not split it across runs.
+   advance judges each constituent against its own sealed inventory. A partial
+   repair fails with the unrepaired constituent named, and a later check is
+   never yours on this card.
 3. `OUTCOME ACCEPTED`: run `python3 .hermes/kernel/native_gate.py --root . handoff`
    and end the run with `kanban_request_review` reviewer=reviewer, passing its
    `summary` and `metadata` (commit, tree, measurement, attempts, budget,

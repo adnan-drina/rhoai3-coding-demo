@@ -129,6 +129,61 @@ def _plan_semantics_pin_case() -> int:
     return 0
 
 
+def _objectives_pin_case() -> int:
+    """compatibility-objectives/v1 is pinned like plan semantics: a destination
+    created without it stays per-unit, a later flip either way is
+    OBJECTIVES_REPINNED, and selecting it without plan semantics v1 is
+    OBJECTIVES_WITHOUT_PLAN_SEMANTICS. Both are blocks_for's own classes."""
+    import subprocess
+    import tempfile
+    from unittest.mock import patch
+    from planner import admission as ADM
+    from planner.decisions import compatibility_objectives, loop_pin_gap
+
+    def git(root: Path, *a: str) -> None:
+        subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True)
+
+    base = "schema: rhoai3.decisions/v2\nloop:\n  plan_semantics: v1\n%s"
+    for created, now, want in (("", "", False), ("", "  compatibility_objectives: v1\n", True),
+                               ("  compatibility_objectives: v1\n", "  compatibility_objectives: v1\n", False),
+                               ("  compatibility_objectives: v1\n", "", True)):
+        with tempfile.TemporaryDirectory(prefix="adm-obj-") as td:
+            root = Path(td)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "t@t")
+            git(root, "config", "user.name", "t")
+            (root / "decisions.yaml").write_text(base % created, encoding="utf-8")
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "scaffold")
+            doc = {"loop": {"plan_semantics": "v1", **({"compatibility_objectives": "v1"} if now else {})}}
+            gap = loop_pin_gap(root, doc, "compatibility_objectives")
+            if bool(gap) != want:
+                return _fail("objectives created %r, now %r: pin gap %r, expected %s" % (created.strip(), now.strip(), gap, want))
+            with patch.object(ADM, "missing_decisions", return_value=[]), patch.object(ADM, "activation_gaps", return_value=[]), \
+                    patch.object(ADM, "pin_gaps", return_value=[]):
+                got = {b["class"] for b in ADM.blocks_for(root, {"structure": {"available": True}}, {}, doc, {}, "")}
+            if ("OBJECTIVES_REPINNED" in got) != want:
+                return _fail("blocks_for %s for objectives created %r, now %r" % (sorted(got), created.strip(), now.strip()))
+    if compatibility_objectives({"loop": {"compatibility_objectives": "v2"}}) != "off" or compatibility_objectives(None) != "off":
+        return _fail("an unknown or absent objective policy is off")
+    with tempfile.TemporaryDirectory(prefix="adm-obj-nogit-") as td:
+        doc = {"loop": {"compatibility_objectives": "v1"}}
+        if loop_pin_gap(Path(td), doc, "compatibility_objectives"):
+            return _fail("a tree with no history has no objective pin to compare")
+        with patch.object(ADM, "missing_decisions", return_value=[]), patch.object(ADM, "activation_gaps", return_value=[]), \
+                patch.object(ADM, "pin_gaps", return_value=[]):
+            got = {b["class"] for b in ADM.blocks_for(Path(td), {"structure": {"available": True}}, {}, doc, {}, "")}
+        if "OBJECTIVES_WITHOUT_PLAN_SEMANTICS" not in got:
+            return _fail("objectives without plan semantics v1 must block: %s" % sorted(got))
+        doc["loop"]["plan_semantics"] = "v1"
+        with patch.object(ADM, "missing_decisions", return_value=[]), patch.object(ADM, "activation_gaps", return_value=[]), \
+                patch.object(ADM, "pin_gaps", return_value=[]):
+            got = {b["class"] for b in ADM.blocks_for(Path(td), {"structure": {"available": True}}, {}, doc, {}, "")}
+        if got & {"OBJECTIVES_WITHOUT_PLAN_SEMANTICS", "OBJECTIVES_REPINNED"}:
+            return _fail("objectives with plan semantics v1 and no history must not block: %s" % sorted(got))
+    return 0
+
+
 def _recipe_rules_case() -> int:
     """PLAN_RECIPE_MISSING is for REPAIR requirements only: an applicable
     behaviour verification (a captured oracle) or decided configuration has
@@ -151,7 +206,7 @@ def _recipe_rules_case() -> int:
 
 def main() -> int:
     if (_typed_class_case() or _unit_oversize_case() or _unit_mode_switch_case() or _plan_semantics_pin_case()
-            or _recipe_rules_case()):
+            or _objectives_pin_case() or _recipe_rules_case()):
         return 1
     print("OK: admission block classes (a bounded-out unit is UNIT_OVERSIZE carrying the former's own refusal, a "
           "cluster with no derivable scope is still SCOPE_UNDERIVED with its own wording, a refused formation flip is "
