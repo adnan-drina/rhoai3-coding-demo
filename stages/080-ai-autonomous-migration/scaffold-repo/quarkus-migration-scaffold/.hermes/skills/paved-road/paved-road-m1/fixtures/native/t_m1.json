@@ -1,0 +1,88 @@
+{
+ "runs": [
+  {
+   "id": 1,
+   "metadata": {
+    "attachments": [
+     "evidence-bundle.json"
+    ],
+    "facts": {
+     "binding": {
+      "evidence_bundle_sha256": "bc3d1bb5ad1ef8bed821274d0e820cc1db9dc36d3331465af9aedb57d6f2bbe8",
+      "phase": "m1",
+      "run": "1",
+      "task": "t_m1"
+     },
+     "coverage": {
+      "covered": 0,
+      "read_oracle": 0,
+      "scenario_passed": {
+       "disabled": 0,
+       "enabled": 0
+      },
+      "source_qualification_fail": {
+       "disabled": [],
+       "enabled": []
+      },
+      "unverified": 0,
+      "unverified_entry_points": []
+     },
+     "entry_points": {
+      "by_kind": {},
+      "http": 0,
+      "non_http": 0,
+      "total": 0
+     },
+     "operator_observations_needed": 0,
+     "read_oracles": {
+      "captured": 0,
+      "inconclusive": 0,
+      "not_captured_by_suitability": {},
+      "records": 0
+     },
+     "scenarios": {
+      "disabled": {
+       "bound": false,
+       "captured": 1,
+       "qualification": {
+        "FAIL": 0,
+        "INCONCLUSIVE": 0,
+        "PASS": 0
+       },
+       "requested": 0,
+       "status": "ok",
+       "unbound_reason": "the capture is bound to another evidence bundle"
+      },
+      "enabled": {
+       "bound": false,
+       "captured": 0,
+       "qualification": {
+        "FAIL": 0,
+        "INCONCLUSIVE": 0,
+        "PASS": 0
+       },
+       "requested": 0,
+       "status": "idle",
+       "unbound_reason": "no corpus"
+      }
+     }
+    },
+    "factual_summary": "0 entry points (0 HTTP, 0 non-HTTP). Read oracles: 0 captured, 0 not captured (none). Scenarios disabled: 1/0 captured, qualification 0 PASS / 0 FAIL / 0 INCONCLUSIVE (not bound: the capture is bound to another evidence bundle). Scenarios enabled: 0/0 captured, qualification 0 PASS / 0 FAIL / 0 INCONCLUSIVE (not bound: no corpus). Entry points covered: 0 (read oracle 0; passing scenario disabled 0, enabled 0); unverified 0; operator observations needed 0."
+   },
+   "outcome": "review_requested",
+   "profile": "implementer",
+   "summary": "34 HTTP entry points, 0 non-HTTP; no operator observations are needed."
+  },
+  {
+   "id": 2,
+   "metadata": null,
+   "outcome": null,
+   "profile": "reviewer",
+   "summary": null
+  }
+ ],
+ "task": {
+  "id": "t_m1",
+  "title": "M1 ANALYZE"
+ }
+}

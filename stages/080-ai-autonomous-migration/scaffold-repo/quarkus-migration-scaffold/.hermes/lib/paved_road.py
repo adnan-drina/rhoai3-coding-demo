@@ -632,6 +632,31 @@ def native_attachment_failures(root: Path, task_id: str, sid: str, keep: list[st
             "(%d record(s) listed): %s" % (sid, len(gaps), len(keep), task_id, len(records), "; ".join(gaps))]
 
 
+HANDOFF_PHASE = {"m1-analyze": "m1", "m2-plan": "m2"}
+
+
+def _auditing_profile() -> str:
+    return (os.environ.get("HERMES_PROFILE") or "").strip().lower()
+
+
+def handoff_review_failures(root: Path, task_id: str, phase: str) -> list[str]:
+    """The reviewer's audit compares the CURRENT handoff (the task's latest
+    implementer run, which must have requested review) with the facts
+    recomputed from the phase's sealed artifacts (kernel/handoff_facts.py),
+    before it can write a green receipt. A disagreement is a red audit, and the
+    reviewer requests changes through the native path. The implementer's
+    self-audit runs before any review request exists and skips this."""
+    if _auditing_profile() != "reviewer":
+        return []
+    if not task_id:
+        return ["HANDOFF_FACTS: the official log names no task whose handoff to check"]
+    kernel = str(Path(__file__).resolve().parent.parent / "kernel")
+    if kernel not in sys.path:
+        sys.path.insert(0, kernel)
+    from handoff_facts import review_gaps
+    return review_gaps(root, phase, task_id)
+
+
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict[str, Any]] | None = None) -> int:
     """Grade the official log + KEEP against steps.json.
 
@@ -739,6 +764,8 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
 
     if doc.get("kind") == "m1-analyze":
         failures.extend(m1_handoff_gaps(root, task_id))
+    if doc.get("kind") in HANDOFF_PHASE and not failures:
+        failures.extend(handoff_review_failures(root, task_id, HANDOFF_PHASE[str(doc.get("kind"))]))
     if failures:
         return _fail("; ".join(failures))
 

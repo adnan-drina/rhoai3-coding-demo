@@ -34,6 +34,14 @@ from paved_road import (
 
 M1 = HERMES_DIR / "skills" / "paved-road" / "paved-road-m1"
 M2 = HERMES_DIR / "skills" / "paved-road" / "paved-road-m2"
+FAKE_HERMES = M1 / "fixtures" / "fake-hermes"
+
+
+def native_env(phase: str, show_dir: Path | None = None, store: Path | None = None) -> dict:
+    """The fake native CLI a reviewer audit reads (kanban show / attachments)."""
+    fx = (M1 if phase == "m1" else M2) / "fixtures"
+    return {"HERMES_BIN": str(FAKE_HERMES), "FAKE_SHOW_DIR": str(show_dir or fx / "native"),
+            "FAKE_ATTACHMENT_STORE": str(store or fx / "native-attachments")}
 AUTOSTART = HERMES_DIR / "skills" / "harness" / "dispatch-phase" / "scripts" / "autostart-migration.sh"
 LIB = Path(__file__).resolve().parent
 
@@ -508,7 +516,7 @@ class TestAuditReceipt(unittest.TestCase):
         log.write_text((M2 / "fixtures" / fixture / "official.log").read_text(encoding="utf-8"), encoding="utf-8")
         (logs / "t_rcpt0001.exec.jsonl").write_text(
             (M2 / "fixtures" / fixture / "official.exec.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, dict(native_env("m2"), **env), clear=False):
             with redirect_stderr(io.StringIO()):
                 rc = audit_paths(log, M2 / "fixtures" / fixture, M2 / "steps.json")
         return rc, json.loads((logs / "t_rcpt0001.audit.json").read_text(encoding="utf-8"))
@@ -538,7 +546,7 @@ class TestAuditReceipt(unittest.TestCase):
     def _cli(self, env: dict, *extra) -> int:
         cli = M2 / "scripts" / "assert-paved-road-audit.py"
         return subprocess.run([sys.executable, str(cli), "t_rcpt0001", "--root", str(M2 / "fixtures" / "green-m2"), *extra],
-                              env=dict(os.environ, **env), capture_output=True, text=True).returncode
+                              env=dict(os.environ, **native_env("m2"), **env), capture_output=True, text=True).returncode
 
     def test_green_then_red_replaces_the_receipt(self):
         with tempfile.TemporaryDirectory() as td:
@@ -692,6 +700,100 @@ class TestM1Green(unittest.TestCase):
                                      "FAKE_ATTACHMENT_STORE": str(M1 / "fixtures" / "native-attachments")}):
             self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root,
                                             load_exec_ledger(root / "official.log")), 0)
+
+
+class TestHandoffReviewAudit(unittest.TestCase):
+    """v24 WP1: the reviewer's audit compares the current structured handoff
+    with the facts recomputed from the sealed artifacts before it can be green
+    (review of 2c2264e1 F1/F2). The implementer's self-audit skips it."""
+
+    def _audit(self, phase: str, show: dict | None = None, profile: str = "reviewer") -> tuple[int, str]:
+        root = (M1 / "fixtures" / "green-m1") if phase == "m1" else (M2 / "fixtures" / "green-m2")
+        doc = load_steps((M1 if phase == "m1" else M2) / "steps.json")
+        text = (root / "official.log").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            show_dir = None
+            if show is not None:
+                show_dir = Path(td)
+                (show_dir / ("t_%s.json" % phase)).write_text(json.dumps(show))
+            env = dict(native_env(phase, show_dir), HERMES_PROFILE=profile)
+            if phase == "m1":
+                env["FAKE_ATTACHMENT_STORE"] = str(M1 / "fixtures" / "native-attachments")
+            buf = io.StringIO()
+            with patch.dict(os.environ, env), redirect_stderr(buf):
+                rc = evaluate_audit(text, doc, root, load_exec_ledger(root / "official.log"))
+        return rc, buf.getvalue()
+
+    def _show(self, phase: str) -> dict:
+        return json.loads(((M1 if phase == "m1" else M2) / "fixtures" / "native" / ("t_%s.json" % phase)).read_text())
+
+    def test_accurate_handoffs_pass(self):
+        for phase in ("m1", "m2"):
+            rc, msg = self._audit(phase)
+            self.assertEqual(rc, 0, "%s: %s" % (phase, msg))
+
+    def test_truthful_zero_non_http_narrative_is_not_refused(self):
+        show = self._show("m1")
+        self.assertIn("0 non-HTTP; no operator observations", show["runs"][0]["summary"])
+        self.assertEqual(self._audit("m1", show)[0], 0)
+
+    def test_missing_facts_refuse_even_after_the_producer_ran(self):
+        # the handoff_facts.py --write step ran (exit 0, KEEP present); the handoff carries no facts
+        show = self._show("m2")
+        show["runs"][0]["metadata"] = {"created_cards": ["t_a"], "summary": "Plan published."}
+        rc, msg = self._audit("m2", show)
+        self.assertEqual(rc, 1)
+        self.assertIn("metadata.facts is missing", msg)
+
+    def test_wrong_unresolved_ids_refuse(self):
+        for ids, why in ((["unrelated-id"], "names 1 id(s) the plan does not"), ([], "omits 1 plan id"),
+                         (["unresolved:verification:http:acme.Api"] * 2, "repeats")):
+            show = self._show("m2")
+            show["runs"][0]["metadata"]["unresolved"] = ids
+            rc, msg = self._audit("m2", show)
+            self.assertEqual(rc, 1, ids)
+            self.assertIn(why, msg)
+
+    def test_wrong_count_refuses(self):
+        show = self._show("m2")
+        show["runs"][0]["metadata"]["facts"]["cards"]["repair"] = 2
+        rc, msg = self._audit("m2", show)
+        self.assertEqual(rc, 1)
+        self.assertIn("metadata.facts.cards differs", msg)
+
+    def test_earlier_passing_run_does_not_cover_the_current_run(self):
+        show = self._show("m2")
+        good = show["runs"][0]
+        show["runs"] = [good, {"id": 8, "profile": "reviewer", "outcome": "changes_requested"},
+                        dict(good, id=9, metadata={"created_cards": ["t_a"]}),
+                        {"id": 10, "profile": "reviewer", "outcome": None}]
+        rc, msg = self._audit("m2", show)
+        self.assertEqual(rc, 1)
+        self.assertIn("run 9", msg)
+        # and the old facts bound to run 7 do not pass for run 9 either
+        show["runs"][2]["metadata"] = good["metadata"]
+        rc, msg = self._audit("m2", show)
+        self.assertEqual(rc, 1)
+        self.assertIn("metadata.facts.binding differs", msg)
+
+    def test_implementer_self_audit_needs_no_review_request(self):
+        show = self._show("m2")
+        show["runs"] = [{"id": 7, "profile": "implementer", "outcome": None}]
+        self.assertEqual(self._audit("m2", show, profile="implementer")[0], 0)
+        self.assertEqual(self._audit("m2", show, profile="reviewer")[0], 1)
+
+    def test_attachments_still_refuse_when_missing(self):
+        # the native attachment proof is kept (1bc989c0): an empty store refuses before any handoff check
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "t_m1").mkdir()
+            env = dict(native_env("m1"), HERMES_PROFILE="reviewer", FAKE_ATTACHMENT_STORE=td)
+            root = M1 / "fixtures" / "green-m1"
+            buf = io.StringIO()
+            with patch.dict(os.environ, env), redirect_stderr(buf):
+                rc = evaluate_audit((root / "official.log").read_text(encoding="utf-8"), load_steps(M1 / "steps.json"),
+                                    root, load_exec_ledger(root / "official.log"))
+            self.assertEqual(rc, 1)
+            self.assertIn("NATIVE_ATTACHMENTS", buf.getvalue())
 
 
 class TestNativeAttachments(unittest.TestCase):

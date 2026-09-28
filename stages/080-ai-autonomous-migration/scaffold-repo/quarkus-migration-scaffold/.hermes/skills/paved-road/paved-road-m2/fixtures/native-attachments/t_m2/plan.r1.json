@@ -1,0 +1,67 @@
+{
+ "revision": 1,
+ "schema": "fixture",
+ "plan": {
+  "policy": "compatibility-objectives/v1",
+  "digest": "fixture-plan-digest",
+  "nodes": [
+   {
+    "outcome_id": "source:c:a",
+    "role": "repair",
+    "class": "source"
+   },
+   {
+    "outcome_id": "config:c:b",
+    "role": "repair",
+    "class": "config"
+   },
+   {
+    "outcome_id": "objective:x:c",
+    "role": "repair",
+    "class": "source"
+   },
+   {
+    "outcome_id": "assess:m4:g1",
+    "role": "assess",
+    "class": "assess"
+   },
+   {
+    "outcome_id": "deliver:prepare",
+    "role": "deliver",
+    "class": "deliver"
+   },
+   {
+    "outcome_id": "deliver:push",
+    "role": "deliver",
+    "class": "deliver"
+   },
+   {
+    "outcome_id": "deliver:accept",
+    "role": "deliver",
+    "class": "deliver"
+   }
+  ],
+  "requirements": [
+   {
+    "id": "req:a",
+    "status": "applicable"
+   },
+   {
+    "id": "req:b",
+    "status": "unresolved"
+   }
+  ],
+  "unresolved": [
+   {
+    "id": "unresolved:verification:http:acme.Api",
+    "blocks": "ship",
+    "entry_points": [
+     "ep:acme.Api#post():http"
+    ],
+    "requirements": [
+     "req:b"
+    ]
+   }
+  ]
+ }
+}

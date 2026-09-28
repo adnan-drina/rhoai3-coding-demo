@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
-"""Land-time stand-in for `hermes kanban attachments <task> --json`: lists the
-files under $FAKE_ATTACHMENT_STORE/<task>/ as native records. Nothing else."""
+"""Land-time stand-in for the two native reads the audits make:
+`hermes kanban attachments <task> --json` lists the files under
+$FAKE_ATTACHMENT_STORE/<task>/ as native records, and
+`hermes kanban show <task> --json` prints $FAKE_SHOW_DIR/<task>.json. Nothing else."""
 import json
 import os
 import sys
 from pathlib import Path
 
 args = sys.argv[1:]
-if args[:2] != ["kanban", "attachments"] or len(args) < 3:
-    print("fake-hermes: only `kanban attachments <task> --json`", file=sys.stderr)
-    sys.exit(2)
-store = Path(os.environ.get("FAKE_ATTACHMENT_STORE", "")) / args[2]
-files = sorted(store.iterdir()) if store.is_dir() else []
-print(json.dumps([{"id": i + 1, "filename": f.name, "size": f.stat().st_size, "stored_path": str(f.resolve()),
-                   "content_type": "application/json", "uploaded_by": "implementer"} for i, f in enumerate(files)]))
+if args[:2] == ["kanban", "attachments"] and len(args) >= 3:
+    store = Path(os.environ.get("FAKE_ATTACHMENT_STORE", "")) / args[2]
+    files = sorted(store.iterdir()) if store.is_dir() else []
+    print(json.dumps([{"id": i + 1, "filename": f.name, "size": f.stat().st_size, "stored_path": str(f.resolve()),
+                       "content_type": "application/json", "uploaded_by": "implementer"} for i, f in enumerate(files)]))
+    sys.exit(0)
+if args[:2] == ["kanban", "show"] and len(args) >= 3:
+    doc = Path(os.environ.get("FAKE_SHOW_DIR", "")) / ("%s.json" % args[2])
+    if not doc.is_file():
+        print("no such task %s" % args[2], file=sys.stderr)
+        sys.exit(1)
+    print(doc.read_text(encoding="utf-8"))
+    sys.exit(0)
+print("fake-hermes: only `kanban attachments|show <task> --json`", file=sys.stderr)
+sys.exit(2)

@@ -69,7 +69,7 @@ nothing here changes it. Steps 1–4 and 7 are the same for both.
      VERIFY when the list is empty). From then on each accepted M3 step
      mints the next card (`advance.py`); `pipeline.admit` also writes the
      derived `evidence/planning/serial-roadmap.json`, a view and never a gate.
-5a. `python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m2 --task "$HERMES_KANBAN_TASK" --write`
+5a. `python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m2 --write`
    (KEEP `evidence/handoff/m2-facts.json`): the handoff's numbers, computed
    from the published plan (the newest `plan.r<N>.json` on this card; the
    frozen `plan-semantics.json` when the protocol publishes no revision) —
@@ -105,11 +105,11 @@ registered from `.hermes/AUTOSTART-STATUS`.
   printed; never empty after a publication), `admission`
   (`evidence/planning/admission-receipt.json` and its verdict),
   `plan_revision` (v2: 1), `read_back` (v2: `[]`, or the receipt path),
-  `unresolved` (the plan's unresolved ids, from the facts file),
-  `facts` (`evidence/handoff/m2-facts.json`) and `limitations` (what this
-  plan does not cover yet, e.g. coverage gaps inherited from M1).
+  `limitations` (what this plan does not cover yet, e.g. coverage gaps
+  inherited from M1), and **verbatim** the `facts`, `factual_summary` and
+  `unresolved` (the exact unresolved ID set) that step 5a printed.
 
-Take every count from the facts file. Repair outcomes and milestones are
+Take every count from the facts; the narrative explains, never restates. Repair outcomes and milestones are
 separate numbers (v23: 30 repair outcomes plus 4 milestones = 34 cards, which
 M2 reported as "29 outcomes"). Admission blocks and unresolved rows are
 different things: a block refuses the plan; an unresolved row is an admitted
@@ -117,10 +117,12 @@ release qualification (`blocks: ship`) that stays open until evidence closes
 it, so `unresolved` is never `[]` while the plan keeps one (v23: 7 groups
 spanning 12 HTTP entry points).
 
-The reviewer checks these against the attached plan and the board, runs the
-audit and `python3 .hermes/kernel/handoff_facts.py --root /projects/modernized
---phase m2 --check-task "$HERMES_KANBAN_TASK"`, and completes or requests
-changes; a handoff that contradicts the facts is not completed.
+The reviewer checks these against the attached plan and the board and runs
+the audit. Under the reviewer profile the audit compares the current handoff
+(the latest implementer run) with the facts recomputed from the published
+plan: missing or different facts, or an unresolved ID set with a missing,
+extra, duplicate or foreign ID, is a red audit, and the reviewer requests
+changes instead of completing.
 
 ## Legacy protocol: outcome-board/v1
 

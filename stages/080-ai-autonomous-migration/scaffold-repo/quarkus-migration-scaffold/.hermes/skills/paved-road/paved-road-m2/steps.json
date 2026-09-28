@@ -55,7 +55,7 @@
       "require_args": [
         "--write"
       ],
-      "note": "The handoff's counts and classifications, computed from sealed artifacts: repair outcomes versus milestones on the published plan (the newest plan.r<N>.json native attachment), requirement counts, and the unresolved verification responsibilities (groups, requirements, entry points, what they block), bound to the admission receipt the plan was published under. Run with --write; quote these numbers in the review request (metadata.facts) and never contradict them. The reviewer runs it with --check-task <card>: a summary or metadata that contradicts the facts refuses."
+      "note": "The handoff's counts and classifications, computed from sealed artifacts: repair outcomes versus milestones on the published plan (the newest plan.r<N>.json native attachment), requirement counts, and the unresolved verification responsibilities (groups, requirements, entry points, what they block), bound to the admission receipt the plan was published under. Run with --write; it prints the metadata block the review request carries verbatim (facts, factual_summary, unresolved), bound to this task and run. Under the reviewer profile this audit compares the current handoff with the facts recomputed from the sealed artifacts: missing or different facts refuse."
     },
     {
       "id": "verify-live-kanban-loop",

@@ -1,0 +1,77 @@
+{
+ "runs": [
+  {
+   "id": 7,
+   "metadata": {
+    "created_cards": [
+     "t_a",
+     "t_b"
+    ],
+    "facts": {
+     "admission": {
+      "blocks": 0,
+      "status": "absent"
+     },
+     "binding": {
+      "phase": "m2",
+      "plan_digest": "fixture-plan-digest",
+      "plan_revision": 1,
+      "policy": "compatibility-objectives/v1",
+      "published_under_receipt": "",
+      "run": "7",
+      "task": "t_m2"
+     },
+     "cards": {
+      "milestones": 4,
+      "milestones_by_role": {
+       "assess": 1,
+       "deliver": 3
+      },
+      "repair": 3,
+      "repair_by_class": {
+       "config": 1,
+       "source": 2
+      },
+      "total": 7
+     },
+     "requirements": {
+      "applicable": 1,
+      "unresolved": 1
+     },
+     "unresolved": {
+      "blocks": {
+       "ship": 1
+      },
+      "entry_point_kinds": {
+       "http": 1
+      },
+      "entry_points": 1,
+      "groups": 1,
+      "ids": [
+       "unresolved:verification:http:acme.Api"
+      ],
+      "requirements": 1
+     }
+    },
+    "factual_summary": "Plan revision 1 (compatibility-objectives/v1): 7 cards = 3 repair outcomes + 4 milestones. Requirements: applicable 1, unresolved 1. Admission: absent. Unresolved: 1 group(s), 1 requirement(s), 1 entry point(s) (http 1), blocking ship 1.",
+    "unresolved": [
+     "unresolved:verification:http:acme.Api"
+    ]
+   },
+   "outcome": "review_requested",
+   "profile": "implementer",
+   "summary": "Plan published; see the facts."
+  },
+  {
+   "id": 8,
+   "metadata": null,
+   "outcome": null,
+   "profile": "reviewer",
+   "summary": null
+  }
+ ],
+ "task": {
+  "id": "t_m2",
+  "title": "M2 PLAN"
+ }
+}

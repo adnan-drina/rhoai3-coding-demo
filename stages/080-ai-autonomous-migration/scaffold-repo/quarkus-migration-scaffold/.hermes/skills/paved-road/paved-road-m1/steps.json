@@ -117,7 +117,7 @@
       "require_args": [
         "--write"
       ],
-      "note": "The handoff's counts and classifications, computed from sealed artifacts: entry points by kind, read-oracle coverage (captured, and each inconclusive read classified from the inventory: a write belongs to the scenario corpus, a wildcard path is not a request, only a non-HTTP entry point needs an operator observation) and scenario coverage per security mode. Run with --write; quote these numbers in the review request (metadata.facts) and never contradict them. The reviewer runs it with --check-task <card>: a summary or metadata that contradicts the facts refuses."
+      "note": "The handoff's counts and classifications, computed from sealed artifacts: entry points by kind, read-oracle coverage (captured, and each inconclusive read classified from the inventory: a write belongs to the scenario corpus, a wildcard path is not a request, only a non-HTTP entry point needs an operator observation) and scenario coverage per security mode. Run with --write; it prints the metadata block the review request carries verbatim (facts, factual_summary), bound to this task and run. Under the reviewer profile this audit compares the current handoff with the facts recomputed from the sealed artifacts: missing or different facts refuse."
     },
     {
       "id": "kanban-attach",

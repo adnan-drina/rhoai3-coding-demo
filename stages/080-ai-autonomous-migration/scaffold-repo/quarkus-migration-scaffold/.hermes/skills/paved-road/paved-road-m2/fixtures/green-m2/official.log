@@ -1,3 +1,4 @@
+Query: work kanban task t_m2
   ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized  0.1s
   ┊ 📚 skill  bootstrap-destination
   ┊ 💻 $         python3 .hermes/skills/migration/bootstrap-destination/scripts/bootstrap-destination.py --root /projects/modernized  0.4s
