@@ -3,6 +3,53 @@
 Paths under `tmp/` refer to optional local evidence, excluded from Git.
 Previously tracked run records and retired scripts remain available in Git history.
 
+## v24 package: fixes derived from v23 — authored 2026-09-28 (unpublished)
+
+Plan: `tmp/v23-run/V24-IMPLEMENTATION-PLAN.md` (architect). Release readiness, identities and the
+publication commands: `tmp/v24-preparation/RELEASE-READINESS.md`. These ship with the next
+golden (and WP6 with the next Stage 050 platform publish). v23 is not changed by any of them.
+
+- [x] **WP1: the reviewer audit compares the structured handoff.** `handoff_facts.py` v2 computes
+  bound facts (task, implementer run, phase, evidence bundle or published plan revision). The
+  handoff carries `metadata.facts`, the generated `factual_summary` and, for M2, the exact
+  unresolved ID set. The M1/M2 audit under the reviewer profile compares them before a green
+  receipt; the implementer self-audit skips it. The narrative is not parsed.
+- [x] **WP2: a measurement class is what the verification executed.** `planner.measurement`
+  records each stage (passed, failed, blocked, not-run, unknown) bound to the candidate tree.
+  `_outcome_bridge` and the baseline shortcut derive classes from it; the tuple is unchanged.
+  Check timing is explicit: a source outcome's `measure:tests` moves at publication to M4
+  (`deferred_requirement_checks`, naming the outcome and requirements). M4 refuses
+  (`ASSESS_TESTS_UNMEASURED`, `M4_TESTS_UNMEASURED`) until a bound, executed suite passes.
+  This changes the acceptance contract of source outcomes, not repair boundaries or budgets.
+  Known limit: outcome-board/v1 (non-native) does not publish through `native_plan`, so it does
+  not get the deferral; new runs use v2.
+- [x] **WP3: the plan's unresolved responsibilities reach M5.** Nothing between M2 and the M5
+  `ship` decision read the plan's unresolved rows on the native board. M5 now takes them from the
+  frozen admitted plan and keeps `ship: false` until a resolution names the exact id with
+  evidence (file + sha256), security mode, evidence bundle and delivery candidate. The M4
+  assessment lists them with their consequence.
+- [x] **WP4: checkpoints, attribution, retries.** On the outcome board the checkpoint line no
+  longer says `OK: ACCEPTED`; the authoritative line is `CHECKPOINT RECORDED; OUTCOME PENDING`
+  or `OUTCOME ACCEPTED`. A satisfied outcome names a witness, never a cause. Commit subjects
+  count this card's checkpoints. The brief leads with the retry state (what the last revert
+  deleted, absent write-set files, one line per refusal, labelled budgets) and each planned
+  requirement's required shape. The v23 PetType/Specialty/Visit briefs did contain both CDI
+  requirements, but only in a section their 64K digest never printed.
+- [ ] **Decision: two retry thresholds on one family key (outcome-board/v2).** The loop's
+  deferral applies `decisions.max_attempts` (3) to the shared family key while the M2-published
+  outcome budget for the same key is larger (Pet: 12). The loop stops first. v24 displays both
+  and changes neither; which one governs is an architect decision.
+- [x] **WP5: pinned MTA invocation.** Boolean `--json-output` in M1 and the rescan;
+  `judge-analyzer-exit.py` accepts a nonzero exit only for `MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL`
+  under the recorded conditions, and keeps the exit status and the exception in the receipt.
+  Pinned rescan: `[4, 233, 0]`, 24 clusters. Upstream report drafted, not sent.
+- [x] **WP6: run retirement (Stage 050, authored, not measured live).** Retire mode removes the
+  run's delivery PipelineRuns and pods, then `project-<run>` through its own finalizer, then
+  `<run>-dev`, each ownership-checked by exact name; the tombstone names the kept repository;
+  the admission policy `retired-migration-run-project` refuses recreation. Open: a first live
+  retirement of a disposable run; a security review of the cluster-wide delete grant
+  (`migration-run-retire-project`) before the platform publish.
+
 ## v23 validation run: observations and fixes — 2026-09-28
 
 v23 (`spring-petclinic-rest-legacy-v23`) is the first run on golden `0ccb05e` (published from
@@ -26,6 +73,9 @@ methods fully resolved, 34 entry points, captures 18/18 and 67/67, qualification
   nothing satisfied them at issue, so the worker iterated on a unit with nothing to change.
   `native_control._satisfied` now accepts the M2 baseline step as evidence when its commit is
   HEAD, its digest is the tree, and its measure is known.
+  - **Corrected in v24 (review of `2c2264e1`, F4):** that shortcut stamped `build, compile,
+    tests` from a known tuple, although the v23 baseline `[4, 233, 0]` ran no test. It now proves
+    only the classes the baseline verification executed (`planner.measurement`).
 - [x] **A rejection's revert silently deleted a new file** (fixed on main `d7c029a8`; ships with
   the next golden). The Pet repository contract card (t_71d9117b) wrote the owed `PetRepositoryImpl.java`
   in attempt 2, and a missing import in the other file rejected it. The revert deleted the
@@ -48,17 +98,22 @@ methods fully resolved, 34 entry points, captures 18/18 and 67/67, qualification
   reads are 19 writes routed to the scenario corpus and 1 wildcard path. M2 said "29 repair
   outcomes"; the plan has 30 repair outcomes plus 4 milestones. M2 recorded
   `unresolved: []`; the plan keeps 7 ship-blocking groups over 12 HTTP entry points.
-  `handoff_facts.py` now computes these counts, a paved-road step writes them, and the
-  reviewer's `--check-task` refuses a contradicting handoff. v23: correction comments and the
+  `handoff_facts.py` now computes these counts and a paved-road step writes them.
+  - **Corrected in v24 (review of `2c2264e1`, F1–F3):** `bf08d9ac` was not enforced. The
+    `--check-task` keyword checker was only a reviewer instruction; it refused the truthful
+    "0 non-HTTP" sentence, accepted a foreign unresolved id, and counted every write as
+    covered by the corpus. v24 replaces it with structured facts bound to the task, run and
+    evidence, compared inside the reviewer audit (see the v24 section). v23: correction comments and the
   computed facts (attachments 42, 43) were added to `t_56d38285` and `t_2c96a669`; their
   histories are unchanged.
-- [ ] **A worker looped on the retry brief before its first edit** (observation, next golden).
+- [x] **A worker looped on the retry brief before its first edit** (v24 WP4: the brief now leads
+  with a short retry state; the loop guard is unchanged).
   The Pet card's first run (`t_71d9117b` run 1) crashed with `WORKER_TOOL_LOOP`
   (`near_duplicate_loop_halt`, 12 calls). It re-ran `brief.py --section previous_attempts`
   with different greps instead of reading the section once. The guardrail stopped it; the
   brief's previous-attempts section should be short enough to read whole.
-- [ ] **Retirement leaves the per-app pipeline project behind** (platform, next release: it changes
-  the Pipeline the live run was provisioned by). `provision-migration-run` in retire mode deletes
+- [x] **Retirement leaves the per-app pipeline project behind** (authored in v24 WP6 for the next
+  Stage 050 publish; not measured live, see the v24 section). `provision-migration-run` in retire mode deletes
   only what is labelled `rhoai3.io/migration-run=<run>`. v22 retirement then needed these by hand:
   - delete the Argo CD Application `project-<run>`;
   - delete the failed seed PipelineRun, whose pods held the `maven-cache` claim in Terminating
@@ -83,15 +138,17 @@ after "Analysis complete!". Every rescan therefore exits 1, including v21's live
 the script ignores the analyzer's exit code, so a genuine analyzer failure that left an
 `output.json` would be accepted as a measurement.
 
-- [ ] Pass `--json-output` without a path. Accept a nonzero analyzer exit ONLY for this exact
+v24 WP5 status: the four items below are done except the upstream report; see the v24 section.
+
+- [x] Pass `--json-output` without a path. Accept a nonzero analyzer exit ONLY for this exact
   known defect: `analysis.log` reports "Analysis complete!", the dependency-JSON marshal error
   is the sole error, and a parseable `output.json` has the same ruleset count as `output.yaml`.
   Record the defect in the findings' execution evidence. Any other nonzero exit means the
   rescan did not run (incidents UNKNOWN).
-- [ ] Test with a fake analyzer: the known defect is accepted and recorded; any other nonzero
+- [x] Test with a fake analyzer: the known defect is accepted and recorded; any other nonzero
   exit, a missing or unparseable `output.json`, or a ruleset-count mismatch is refused.
-- [ ] One pinned rescan in a disposable pod confirms `[4, 233, 0]` for the PetClinic fixture.
-- [ ] Correct `--json-output` to a boolean in `.agents/skills/mta-cli` (official-doc extraction
+- [x] One pinned rescan in a disposable pod confirms `[4, 233, 0]` for the PetClinic fixture.
+- [x] Correct `--json-output` to a boolean in `.agents/skills/mta-cli` (official-doc extraction
   and SKILL.md).
 - [ ] Report the 8.2.1 dependency-JSON defect to Red Hat support or upstream Konveyor (no
   existing kantra issue found).

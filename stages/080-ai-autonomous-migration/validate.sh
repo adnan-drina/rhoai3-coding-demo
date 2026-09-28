@@ -725,6 +725,18 @@ check "080 kanban attach selftest passes" \
 check "080 M1/M2 handoff facts tests pass" \
   "python3 '${SCAFFOLD_KERNEL}/handoff_facts.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
+check "080 measurement execution and M4 test obligation tests pass (v24 WP2)" \
+  "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/../lib/planner/measurement.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 v24 integrated native sequence passes" \
+  "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/../lib/planner/v24_sequence.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 authoritative outcome line and retry brief tests pass (v24 WP4)" \
+  "python3 '${SCAFFOLD_KERNEL}/../skills/migration/fix-until-green/scripts/outcome-line.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 M1 MTA analyzer exit judgement tests pass (v24 WP5)" \
+  "python3 '${SCAFFOLD_KERNEL}/../skills/analysis/scan-with-mta/scripts/mta-analyze-legacy.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 G-4 claim consistency selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/gates/check-release-readiness/scripts/assert-g4-claim-consistency.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
