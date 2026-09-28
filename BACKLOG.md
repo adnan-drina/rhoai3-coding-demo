@@ -3,6 +3,30 @@
 Paths under `tmp/` refer to optional local evidence, excluded from Git.
 Previously tracked run records and retired scripts remain available in Git history.
 
+## v23 validation run: observations and fixes — 2026-09-28
+
+v23 (`spring-petclinic-rest-legacy-v23`) is the first run on golden `0ccb05e` (published from
+main `b77a6229`: compatibility objectives, the M1 classpath fix, the rescan on a copy). M1
+reproduced the fresh local derivation exactly: 131 classpath entries, 100/100 types and 437/437
+methods fully resolved, 34 entry points, captures 18/18 and 67/67, qualification 17/1 and 66/1.
+
+- [x] **Plan-only attach counted as done** (fixed on main `e6fe7791`; ships with the next golden).
+  M1 ran `kanban_attach.py` without `--exec`, which only plans. It printed "OK: kanban attach
+  (6 file(s))" and attached nothing, and the audit passed. Paved-road steps now declare
+  `require_args`, and the M1 attach and M2 mint require `--exec`. The dry run says
+  "PLAN ONLY ... NOTHING was attached".
+- [ ] **Retirement leaves the per-app pipeline project behind** (platform, next release: it changes
+  the Pipeline the live run was provisioned by). `provision-migration-run` in retire mode deletes
+  only what is labelled `rhoai3.io/migration-run=<run>`. v22 retirement then needed these by hand:
+  - delete the Argo CD Application `project-<run>`;
+  - delete the failed seed PipelineRun, whose pods held the `maven-cache` claim in Terminating
+    and so blocked the Application's cascade finalizer;
+  - delete the `<run>-dev` namespace;
+  - delete the destination repository.
+
+  Retire mode should cover the project Application and its namespace, and name the destination
+  repository in the tombstone for deletion by an owner of the Git organization.
+
 ## MTA destination rescan: use --json-output as the CLI defines it — next golden (2026-09-28)
 
 `mta-rescan-destination.sh` passes `--json-output "${OUT}/findings.json"`, but on the pinned MTA CLI
