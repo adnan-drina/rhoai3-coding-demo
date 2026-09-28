@@ -86,11 +86,23 @@ def _fragment_rows(requirement: dict[str, Any]) -> list[dict[str, Any]]:
     facts = requirement.get("facts") or {}
     owed = str(facts.get("owed_implementation") or "")
     parent = str(facts.get("fragment") or "")
-    if not owed or not parent:
+    if not parent:
         return []
-    return [{"parent": parent, "type": parent + "Impl", "path": owed, "members": list(facts.get("members") or []),
+    impl, path = parent + "Impl", owed
+    if not owed:
+        # the source already implements the fragment: nothing is owed, and the ONE implementation
+        # selected in the decided build profile is what the checks judge (v21 t_0bc6319b: the
+        # PetRepositoryOverride <- SpringDataPetRepositoryImpl facts named no owed implementation, so
+        # every fragment check stayed UNKNOWN and no candidate could be accepted). None or several
+        # selected: nothing to judge here (the recipe refuses those cases).
+        selected = [str(x) for x in facts.get("selected") or [] if str(x)]
+        if len(selected) != 1:
+            return []
+        impl = selected[0]
+        path = "src/main/java/%s.java" % impl.replace(".", "/")
+    return [{"parent": parent, "type": impl, "path": path, "members": list(facts.get("members") or []),
              "contract": FRAGMENT_IMPL_CONTRACT, "behaviour": facts.get("behaviour") or {},
-             "cdi": {"scope": FRAGMENT_IMPL_SCOPE, "typed": FRAGMENT_IMPL_TYPED, "types": [parent + "Impl"],
+             "cdi": {"scope": FRAGMENT_IMPL_SCOPE, "typed": FRAGMENT_IMPL_TYPED, "types": [impl],
                      "source": FRAGMENT_IMPL_CDI_SOURCE}}]
 
 

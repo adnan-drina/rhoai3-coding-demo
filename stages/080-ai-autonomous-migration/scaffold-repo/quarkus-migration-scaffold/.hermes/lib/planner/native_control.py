@@ -1100,8 +1100,14 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
     checks = requirement_measurement(root, plan, node, worklist, scenarios, tree)
     if checks:
         m["checks"] = passed(checks)
+        # only the checks THIS outcome is judged by; a check deferred to M4 (a runtime check an early
+        # outcome cannot measure) is named apart, never as a reason this card is not accepted
+        kept = set(((node.get("acceptance") or {}).get("requirement_checks")) or [])
         m["unmet_checks"] = {k: {"status": v.get("status"), "detail": str(v.get("detail") or "")[:200]}
-                             for k, v in sorted(checks.items()) if v.get("status") != "pass"}
+                             for k, v in sorted(checks.items()) if v.get("status") != "pass" and k in kept}
+        deferred = sorted(k for k, v in checks.items() if k not in kept and v.get("status") != "pass")
+        if deferred:
+            m["deferred_to_m4"] = deferred
     need = {"build": {"build"}, "config": {"build"}, "source": {"compile", "tests"}, "runtime": {"runtime"},
             "behavior": {"parity"}}.get(str(node.get("class") or ""), set())
     missing = sorted(need - set(m["classes"]))
