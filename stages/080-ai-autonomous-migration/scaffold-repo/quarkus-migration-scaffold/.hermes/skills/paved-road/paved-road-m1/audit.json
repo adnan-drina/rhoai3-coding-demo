@@ -115,6 +115,7 @@
         "evidence/required-extensions.json",
         "evidence/mta-findings.json"
       ],
+      "native_attachments": true,
       "needle": "kanban_attach.py",
       "require_args": [
         "--exec"

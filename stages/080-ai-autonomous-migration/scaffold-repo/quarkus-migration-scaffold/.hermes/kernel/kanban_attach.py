@@ -9,6 +9,13 @@ The evidence bundle (``evidence/planning/evidence-bundle.json``, root of
 the planner digest chain) and the type graph are on the card. A Boot 3
 derivation manifest is not — dest-13 attached that basename instead of the
 type graph, so M2 reading ``kanban_attachments`` had no structural input.
+
+``--exec`` is proven, not assumed: after attaching, the native records are
+read back (``hermes kanban attachments --json``) and every expected file must
+be held with its workspace bytes, or the step exits 1 naming the gap. v23 M1
+ran the dry run, printed OK and attached nothing; the reviewer's listing was
+empty and the audit passed. A file already proven is not attached twice.
+DEFAULT_REL is the paved-road-m1 ``kanban-attach`` KEEP set (selftest).
 """
 from __future__ import annotations
 
@@ -19,6 +26,12 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable
+
+_KERNEL = Path(__file__).resolve().parent
+_LIB = _KERNEL.parent / "lib"
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+from native_attachments import attachment_gaps, latest_by_name, read_records, record_matches  # noqa: E402
 
 MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_REL = (
@@ -47,12 +60,14 @@ def plan_attachments(root: Path, *, extra: list[Path] | None = None) -> dict[str
     if extra:
         wanted.extend(extra)
     seen: set[Path] = set()
+    absent: list[str] = []
     for path in wanted:
         path = path.resolve()
         if path in seen:
             continue
         seen.add(path)
         if not path.is_file():
+            absent.append(str(path))
             continue
         size = path.stat().st_size
         if size > MAX_BYTES:
@@ -67,6 +82,7 @@ def plan_attachments(root: Path, *, extra: list[Path] | None = None) -> dict[str
     return {
         "files": files,
         "skipped": skipped,
+        "absent": absent,
         "complete_artifacts": [f["path"] for f in files],
         "claimed_control": False,
     }
@@ -98,6 +114,29 @@ def attach_files(
         "complete_artifacts": plan["complete_artifacts"],
         "claimed_control": False,
     }
+
+
+def attach_and_prove(root: Path, task_id: str, plan: dict[str, Any], *, runner: Runner,
+                     hermes: str = "hermes", read: Callable[[str], list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+    """Attach what the native records do not already prove, then read the
+    records back and check the whole expected set against the workspace."""
+    read = read or (lambda t: read_records(t, hermes=hermes))
+    before = latest_by_name(read(task_id))
+    todo = dict(plan, files=[f for f in plan["files"]
+                             if record_matches(root, _rel(root, f["path"]), before.get(f["name"]))])
+    result = attach_files(task_id, todo, runner=runner, hermes=hermes)
+    result["already_attached"] = [f["path"] for f in plan["files"] if f not in todo["files"]]
+    records = read(task_id)
+    result["records"] = len(records)
+    result["gaps"] = attachment_gaps(root, records, DEFAULT_REL)
+    return result
+
+
+def _rel(root: Path, path: str) -> str:
+    try:
+        return str(Path(path).resolve().relative_to(root.resolve()))
+    except ValueError:
+        return path
 
 
 def subprocess_runner(argv: list[str]) -> tuple[int, str, str]:
@@ -147,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         planned = plan_attachments(root, extra=extras)
         if execute:
-            result = attach_files(task, planned, runner=subprocess_runner, hermes=hermes)
+            result = attach_and_prove(root, task, planned, runner=subprocess_runner, hermes=hermes)
         else:
             result = {
                 "task_id": task,
@@ -164,7 +203,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
     if execute:
-        print("OK: kanban attach (%d file(s) attached)." % len(planned["files"]), file=sys.stderr)
+        if result["gaps"]:
+            print("FAIL: NATIVE_ATTACHMENTS %d of %d evidence file(s) are not held as native attachments of %s: %s"
+                  % (len(result["gaps"]), len(DEFAULT_REL), task, "; ".join(result["gaps"])), file=sys.stderr)
+            return 1
+        print("OK: kanban attach (%d attached, %d already attached; %d of %d evidence file(s) proven by native records)."
+              % (len(result["attached"]), len(result["already_attached"]), len(DEFAULT_REL), len(DEFAULT_REL)), file=sys.stderr)
     else:
         print("PLAN ONLY: %d file(s) would be attached; NOTHING was attached. Run again with --exec."
               % len(planned["files"]), file=sys.stderr)

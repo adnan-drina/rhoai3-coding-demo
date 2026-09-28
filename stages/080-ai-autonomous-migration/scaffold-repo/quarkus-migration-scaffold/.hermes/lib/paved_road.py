@@ -202,6 +202,12 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
         if keep is not None:
             if not isinstance(keep, list) or not all(isinstance(x, str) for x in keep):
                 errors.append("%s: keep must be a string array" % prefix)
+        if "native_attachments" in step:
+            names = [Path(str(x)).name for x in (keep or []) if isinstance(x, str)]
+            if step.get("native_attachments") is not True or backing == "skill" or not names:
+                errors.append("%s: native_attachments must be true, on a kernel/native step with a KEEP set" % prefix)
+            elif len(set(names)) != len(names):
+                errors.append("%s: native_attachments KEEP basenames must be unique (a native record is found by its name)" % prefix)
         if "emit-findings-handoff" in sid or (backing == "skill" and "emit-findings-handoff" in str(step.get("skill") or "")):
             errors.append("%s: emit-findings-handoff.py runs inside mta-analyze-legacy.sh; do not list it as a paved-road step" % prefix)
     if producers != 1:
@@ -331,6 +337,8 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
             item["verdict"] = True
         if step.get("require_args"):
             item["require_args"] = list(step["require_args"])
+        if step.get("native_attachments") is True:
+            item["native_attachments"] = True
         steps_out.append(item)
     return {
         "artifact": doc["artifact"],
@@ -605,6 +613,25 @@ def m1_handoff_gaps(root: Path, task_id: str) -> list[str]:
         return ["PHASE_HANDOFF: unreadable continuation status or activation evidence"]
 
 
+def native_attachment_failures(root: Path, task_id: str, sid: str, keep: list[str]) -> list[str]:
+    """The card's native attachment records must prove its KEEP set: one
+    record per file, holding the workspace bytes. Completion metadata that
+    lists file names is a claim, not an attachment (v23 M1 t_56d38285: six
+    names in metadata, an empty native listing, a green audit)."""
+    from native_attachments import attachment_gaps, read_records
+    if not task_id:
+        return ["NATIVE_ATTACHMENTS: step %s: the official log names no task whose attachments to read" % sid]
+    try:
+        records = read_records(task_id, run=subprocess.run)
+    except ValueError as exc:
+        return ["NATIVE_ATTACHMENTS: step %s: %s" % (sid, exc)]
+    gaps = attachment_gaps(root, records, keep)
+    if not gaps:
+        return []
+    return ["NATIVE_ATTACHMENTS: step %s: %d of %d evidence file(s) are not proven by a native attachment record of %s "
+            "(%d record(s) listed): %s" % (sid, len(gaps), len(keep), task_id, len(records), "; ".join(gaps))]
+
+
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict[str, Any]] | None = None) -> int:
     """Grade the official log + KEEP against steps.json.
 
@@ -706,6 +733,9 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
         missing = keep_missing(root, keep)
         if missing:
             failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
+            continue
+        if step.get("native_attachments") is True:
+            failures.extend(native_attachment_failures(root, task_id, sid, keep))
 
     if doc.get("kind") == "m1-analyze":
         failures.extend(m1_handoff_gaps(root, task_id))

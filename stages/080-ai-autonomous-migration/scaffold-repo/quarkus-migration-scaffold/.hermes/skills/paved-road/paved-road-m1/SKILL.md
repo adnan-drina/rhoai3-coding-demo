@@ -87,7 +87,11 @@ the root of the planner digest chain (SAD §6).
   this card (native attachments, listed by `kanban_show` and in the worker
   context): the evidence bundle, findings handoff, inventories, required
   extensions and MTA findings. The script fixes the set and the 25 MiB cap;
-  the attachment tool alone does not satisfy the audit.
+  the attachment tool alone does not satisfy the audit. With `--exec` it reads
+  the native records back and exits 1 unless every file is held with its
+  workspace bytes; the audit reads the same records (`hermes kanban
+  attachments <task> --json`). File names in `metadata.attachments` are not
+  proof.
 - **Milestone comments** (`kanban_comment`, at most three, factual, never one
   per command): after the MTA scan (findings count and any unpinned
   producer), after the source captures (scenarios captured and qualified, the

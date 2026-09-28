@@ -121,7 +121,8 @@
       ],
       "require_args": [
         "--exec"
-      ]
+      ],
+      "native_attachments": true
     },
     {
       "id": "dispatch-next-phase",

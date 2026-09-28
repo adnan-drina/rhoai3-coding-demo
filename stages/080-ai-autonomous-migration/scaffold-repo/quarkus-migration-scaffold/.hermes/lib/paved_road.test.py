@@ -678,8 +678,93 @@ class TestM1Green(unittest.TestCase):
     def test_m1_green_passes(self):
         doc = load_steps(M1 / "steps.json")
         root = M1 / "fixtures" / "green-m1"
-        self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root,
-                                        load_exec_ledger(root / "official.log")), 0)
+        with patch.dict(os.environ, {"HERMES_BIN": str(M1 / "fixtures" / "fake-hermes"),
+                                     "FAKE_ATTACHMENT_STORE": str(M1 / "fixtures" / "native-attachments")}):
+            self.assertEqual(evaluate_audit((root / "official.log").read_text(encoding="utf-8"), doc, root,
+                                            load_exec_ledger(root / "official.log")), 0)
+
+
+class TestNativeAttachments(unittest.TestCase):
+    """v23 M1 t_56d38285: six names in completion metadata, an empty native
+    listing, a green audit. The audit now reads the native records."""
+
+    ROOT = M1 / "fixtures" / "green-m1"
+    STORE = M1 / "fixtures" / "native-attachments" / "t_m1"
+
+    def _records(self, store: Path) -> list[dict]:
+        return [{"id": i + 1, "filename": f.name, "size": f.stat().st_size, "stored_path": str(f)}
+                for i, f in enumerate(sorted(store.iterdir()))]
+
+    def _audit(self, records: list[dict]) -> tuple[int, str]:
+        doc = load_steps(M1 / "steps.json")
+        text = (self.ROOT / "official.log").read_text(encoding="utf-8")
+        seen: list[list[str]] = []
+        real_run = subprocess.run
+
+        def fake(argv, *a, **k):
+            if argv[:1] != ["hermes"]:
+                return real_run(argv, *a, **k)  # git (run control) is real; only the kanban CLI is faked
+            seen.append(list(argv))
+            if argv[1:3] == ["kanban", "attachments"]:
+                return subprocess.CompletedProcess(argv, 0, json.dumps(records), "")
+            raise AssertionError("unexpected call %s" % argv)
+
+        buf = io.StringIO()
+        with patch("paved_road.subprocess.run", side_effect=fake), redirect_stderr(buf):
+            rc = evaluate_audit(text, doc, self.ROOT, load_exec_ledger(self.ROOT / "official.log"))
+        self.assertIn(["hermes", "kanban", "attachments", "t_m1", "--json"], seen)
+        return rc, buf.getvalue()
+
+    def test_valid_set_passes(self):
+        self.assertEqual(self._audit(self._records(self.STORE))[0], 0)
+
+    def test_no_native_record_refuses(self):
+        rc, msg = self._audit([])
+        self.assertEqual(rc, 1)
+        self.assertIn("NATIVE_ATTACHMENTS", msg)
+        self.assertIn("6 of 6", msg)
+
+    def test_missing_one_refuses_naming_it(self):
+        rc, msg = self._audit([r for r in self._records(self.STORE) if r["filename"] != "mta-findings.json"])
+        self.assertEqual(rc, 1)
+        self.assertIn("evidence/mta-findings.json: missing", msg)
+        self.assertIn("1 of 6", msg)
+
+    def test_incomplete_record_refuses(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = Path(td)
+            for f in self.STORE.iterdir():
+                (store / f.name).write_bytes(f.read_bytes())
+            short = store / "type-inventory.json"
+            short.write_bytes(short.read_bytes()[:-1])
+            rc, msg = self._audit(self._records(store))
+            self.assertEqual(rc, 1)
+            self.assertIn("evidence/type-inventory.json: incomplete", msg)
+            # same size, different bytes: a record must hold the workspace evidence, not a name
+            short.write_bytes(b"x" * (self.ROOT / "evidence/type-inventory.json").stat().st_size)
+            rc, msg = self._audit(self._records(store))
+            self.assertEqual(rc, 1)
+            self.assertIn("stored bytes differ", msg)
+            # a record whose stored file is gone
+            recs = self._records(store)
+            short.unlink()
+            rc, msg = self._audit(recs)
+            self.assertEqual(rc, 1)
+            self.assertIn("stored file", msg)
+
+    def test_metadata_names_are_not_records(self):
+        # the completion metadata's names, without native records, are a claim
+        rc, msg = self._audit([{"filename": Path(k).name} for k in
+                               next(s for s in load_steps(M1 / "steps.json")["steps"] if s["id"] == "kanban-attach")["keep"]])
+        self.assertEqual(rc, 1)
+        self.assertIn("incomplete", msg)
+
+    def test_step_field_is_validated(self):
+        doc = load_steps(M1 / "steps.json")
+        bad = json.loads(json.dumps(doc))
+        next(s for s in bad["steps"] if s["backing"] == "skill")["native_attachments"] = True
+        self.assertTrue(any("native_attachments" in e for e in validate_steps_doc(bad, path=Path("x"))))
+        self.assertTrue(next(s for s in doc["steps"] if s["id"] == "kanban-attach").get("native_attachments"))
 
 
 if __name__ == "__main__":

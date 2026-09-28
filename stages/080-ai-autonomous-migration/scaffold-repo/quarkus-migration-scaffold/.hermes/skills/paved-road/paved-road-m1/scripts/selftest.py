@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +14,8 @@ HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 SCRIPT = HERE / "assert-paved-road-audit.py"
 GREEN = SKILL / "fixtures" / "green-m1"
+FAKE_HERMES = SKILL / "fixtures" / "fake-hermes"
+NATIVE_STORE = SKILL / "fixtures" / "native-attachments"
 
 
 def _fail(msg: str) -> int:
@@ -35,8 +39,10 @@ _ensure_hermes_lib()
 from paved_road import GOLDEN_ROOT, coverage, load_steps, sync_audit, validate_steps_doc  # noqa: E402
 
 
-def _run(log: Path, root: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, str(SCRIPT), "--log", str(log), "--root", str(root)], text=True, capture_output=True)
+def _run(log: Path, root: Path, store: Path = NATIVE_STORE) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ, HERMES_BIN=str(FAKE_HERMES), FAKE_ATTACHMENT_STORE=str(store))
+    return subprocess.run([sys.executable, str(SCRIPT), "--log", str(log), "--root", str(root)], text=True,
+                          capture_output=True, env=env)
 
 
 def main() -> int:
@@ -121,10 +127,22 @@ def main() -> int:
         proc = _run(GREEN / "official.log", partial)
         if proc.returncode != 1 or "missing KEEP" not in proc.stdout + proc.stderr:
             return _fail("missing KEEP must REFUSE")
+        # v23 M1: a green log and KEEP with no native attachment record refuses
+        empty = Path(tmp) / "empty-store"
+        (empty / "t_m1").mkdir(parents=True)
+        proc = _run(GREEN / "official.log", GREEN, empty)
+        if proc.returncode != 1 or "NATIVE_ATTACHMENTS" not in proc.stdout + proc.stderr:
+            return _fail("an empty native attachment listing must REFUSE: %s" % (proc.stdout + proc.stderr))
+        partial_store = Path(tmp) / "partial-store"
+        shutil.copytree(NATIVE_STORE, partial_store)
+        (partial_store / "t_m1" / "type-inventory.json").unlink()
+        proc = _run(GREEN / "official.log", GREEN, partial_store)
+        if proc.returncode != 1 or "type-inventory.json: missing" not in proc.stdout + proc.stderr:
+            return _fail("an incomplete native attachment set must REFUSE naming the file: %s" % (proc.stdout + proc.stderr))
 
     if coverage(GOLDEN_ROOT) != 0:
         return _fail("coverage lint failed")
-    print("OK: paved-road-m1 selftest (sync; order contract; green PASS; silence/cache/KEEP REFUSE; coverage)")
+    print("OK: paved-road-m1 selftest (sync; order contract; green PASS; silence/cache/KEEP/native-attachment REFUSE; coverage)")
     return 0
 
 
