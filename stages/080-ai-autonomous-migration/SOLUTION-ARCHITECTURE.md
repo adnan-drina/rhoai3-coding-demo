@@ -437,8 +437,8 @@ declarative, versioned composition metadata; preconditions (applicability)
 separated from the transformation; idempotent edits; data-table style
 reporting of what each objective covers.
 
-Proof actually run (2026-09-28; `tmp/v21-run/m3-partition-comparison`,
-gitignored; CASES-REPORT.md). The environment was a disposable pod from the
+Proof actually run (2026-09-28; retained record
+`tmp/v21-run/m3-partition-comparison/CASES-REPORT.md`). The environment was a disposable pod from the
 pinned ws-080 image: MTA CLI 8.2.1, JDK 21 and Maven.
 
 - **Measured inventory.** The fresh M1 evidence rebuilt through

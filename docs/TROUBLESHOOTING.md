@@ -1058,7 +1058,7 @@ the first project's `checkoutFrom.revision`. Our bare repository link supplied
 no revision while the devfile selected `main`. The installed client therefore
 missed the original workspace and allowed a suffixed one. A regression using
 the exact installed client code reproduced the miss and the explicit-revision
-match. Evidence: `tmp/v11-duplicate-workspace-20260924/`.
+match. The measurement is in Git history.
 
 **Prevention:** factory links explicitly request `revision=main` and
 `existing=<project>`. The `migration-workspace-run-name` admission policy

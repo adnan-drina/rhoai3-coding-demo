@@ -16,8 +16,8 @@ Paths are relative to the destination root unless they start with `.hermes/`.
 
 # Part A — outcome-board/v2: native cooperative control
 
-Design and rationale: `tmp/native-hermes-review-20260927/NATIVE-SOLUTION-REVIEW.md`
-(architect). Code: `.hermes/lib/planner/{native_control,native_publish}.py`,
+The architect review of 2026-09-27 is retained in this contract. Code:
+`.hermes/lib/planner/{native_control,native_publish}.py`,
 `.hermes/kernel/native_gate.py` (worker CLI), the v2 branches of
 `outcome_hook.py`, `pre_tool_call.sh`, `_outcome_bridge.py`, `k4_mint.py`,
 `m5_delivery.py`. The pure domain predicates are shared with v1 in
@@ -564,20 +564,14 @@ unresolved push effects of finished runs by identity.
   subset parser: the parser is a planning input and may not depend on the
   environment (`yamlite.test.py`).
 
-## 8a. The live qualification the platform still owes
+## 8a. Protected-authority sidecar
 
-| Element | What must be observed on a disposable started workspace |
-|---|---|
-| Sidecar uid | the admitted pod's `outcome-authority` container runs as 1001040001 (`oc get pod -o jsonpath` on `securityContext`), the worker as its range start; `openshift.io/scc: container-build` |
-| Store unreachable | from the worker container: `stat /var/lib/outcome-authority` → no such file; no volumeMount of `outcome-authority-store` in the worker container spec |
-| Socket read-only | from the worker container: `rm /run/outcome-authority/authority.sock` → read-only file system; `outcome_authority.py hello` answers |
-| Pre-use check | `python3 -c 'from planner.outcome_protocol import authority_protected; print(authority_protected("/projects/modernized"))'` → `(True, ...)` with the image stamp |
-| Board access | the sidecar's private-home CLI creates and attaches on `kanban.db` (group-writable under the pod fsGroup) and the worker reads the attachment |
-| Run control | `/etc/rhoai3/run-control/contract.json` mounted in the sidecar |
-
-The commands are in `tmp/v17-run-20260926/kanban-review/implementation/activation-plan.md`.
-Until they pass, `enabled` is not set by the platform, and a run that requested
-the outcome board refuses at launch.
+The sidecar uid, store and socket checks belonged to `outcome-board/v1`. The template does not offer that
+protocol, and `outcome-board/v2` has no authority service. v2 launch depends on
+the run control and on `measurement_trust` (8b), not on a sidecar uid or socket.
+The current image still packages the authority tree and stamps
+`outcome_authority.code_sha256`, because the image build stages that tree; the
+stamp is not a v2 launch gate.
 
 ## 8b. Measurement trust — DECIDED for the first controlled run
 

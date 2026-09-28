@@ -45,16 +45,13 @@ A declaration is only a declaration if the run cannot rewrite it, so:
 TYPED OUTCOMES. Each names what to do; none falls back to another run:
 
   OK                            factory declaration for this run, intact
-  LEGACY                        a pre-2026-09-24 self-contained declaration
-                                (schema v1), read only for history
-                                (allow_legacy): the v10/v11 records
   RUN_DECLARATION_MISSING       no run-budget.json
   RUN_DECLARATION_DEFAULTS_MISSING  no run-defaults.json to bind
   RUN_DECLARATION_INVALID       unreadable, wrong schema, unrendered, or
                                 missing a required field
   RUN_DECLARATION_FOREIGN       names a run other than this one
-  RUN_DECLARATION_STALE         an earlier generation's per-run file: a v1
-                                declaration on a launch path, or a
+  RUN_DECLARATION_STALE         an earlier generation's per-run file: a
+                                rhoai3.run-budget/v1 declaration, or a
                                 run-configuration.json riding beside a v2 one
   RUN_DECLARATION_NOT_INITIAL   not introduced by the destination's initial
                                 commit
@@ -93,7 +90,6 @@ RUN_NAME_ENV = "MIGRATION_RUN_NAME"
 RECEIPT_ENV = "PARITY_RUN_RECEIPT"
 
 OK = "OK"
-LEGACY = "LEGACY"
 MISSING = "RUN_DECLARATION_MISSING"
 DEFAULTS_MISSING = "RUN_DECLARATION_DEFAULTS_MISSING"
 INVALID = "RUN_DECLARATION_INVALID"
@@ -121,7 +117,7 @@ class Declaration:
 
     @property
     def ok(self) -> bool:
-        return self.code in (OK, LEGACY)
+        return self.code == OK
 
     def __str__(self) -> str:
         return "%s: %s" % (self.code, self.detail)
@@ -200,14 +196,13 @@ def _load_json(path: Path) -> tuple[Any, str]:
         return None, "%s is not readable JSON (%s)" % (path.name, exc)
 
 
-def load(root: Path, expected_run: str | None = None, environ: dict | None = None,
-         allow_legacy: bool = False) -> Declaration:
+def load(root: Path, expected_run: str | None = None, environ: dict | None = None) -> Declaration:
     """This destination's run declaration, or the typed reason it has none.
 
-    `allow_legacy` is for reading HISTORY (run-report on v10/v11) and nothing
-    else. A legacy file labels its run (`"v11"`) rather than naming it, so its
-    identity cannot be checked by equality -- and it is exactly what a stale
-    golden would leave in a new destination. Launch paths never pass it.
+    A ``rhoai3.run-budget/v1`` file is refused as stale. It labelled a run
+    (``"v11"``) rather than naming one, which is what an earlier golden copied
+    into a new destination. Closed runs keep their own frozen harness; this
+    golden does not load that schema.
     """
     root = Path(root)
     env = dict(os.environ if environ is None else environ)
@@ -227,17 +222,16 @@ def load(root: Path, expected_run: str | None = None, environ: dict | None = Non
     if not isinstance(run_id, str) or not run_id.strip() or _UNRENDERED.search(run_id):
         return Declaration(INVALID, "%s carries no rendered run_id; the factory did not stamp it. %s"
                            % (DECLARATION, RECREATE))
-    if schema == LEGACY_SCHEMA and not allow_legacy:
+    if schema == LEGACY_SCHEMA:
         return Declaration(STALE, "%s is a pre-2026-09-24 declaration labelled run %r, copied from an "
                                   "earlier golden. It cannot declare this run. %s"
                            % (DECLARATION, run_id, RECREATE), run_id)
-    if schema not in (SCHEMA, LEGACY_SCHEMA):
+    if schema != SCHEMA:
         return Declaration(INVALID, "%s has schema %r; expected %r" % (DECLARATION, schema, SCHEMA), run_id)
-    if schema == SCHEMA:
-        mismatch = _identity(run_id, root, expected)
-        if mismatch:
-            return Declaration(FOREIGN, "%s. This is another run's budget; nothing may run against it. %s"
-                               % (mismatch, RECREATE), run_id)
+    mismatch = _identity(run_id, root, expected)
+    if mismatch:
+        return Declaration(FOREIGN, "%s. This is another run's budget; nothing may run against it. %s"
+                           % (mismatch, RECREATE), run_id)
 
     history = _history(root)
     if isinstance(history, Declaration):
@@ -245,8 +239,6 @@ def load(root: Path, expected_run: str | None = None, environ: dict | None = Non
         return history
     first, first_at = history
 
-    if schema == LEGACY_SCHEMA:
-        return _legacy(root, doc, run_id, first, first_at)
     if _UNRENDERED.search(path.read_text(encoding="utf-8")):
         return Declaration(INVALID, "%s still contains template markup; the factory did not render it. %s"
                            % (DECLARATION, RECREATE), run_id)
@@ -311,34 +303,14 @@ def load(root: Path, expected_run: str | None = None, environ: dict | None = Non
                        % (run_id, first[:12], first_at, LIMITS_REF), run_id, budget, first_at, first)
 
 
-def _legacy(root: Path, doc: dict, run_id: str, first: str, first_at: str) -> Declaration:
-    """A v10/v11 self-contained declaration, read for the record of THAT run only."""
-    at = str(doc.get("declared_at") or "")
-    hours = doc.get("max_wall_hours")
-    if not at or not isinstance(hours, (int, float)) or isinstance(hours, bool) or hours <= 0:
-        return Declaration(INVALID, "legacy %s needs declared_at and a positive max_wall_hours" % DECLARATION,
-                           run_id)
-    changed = _unchanged(root, first, DECLARATION)
-    if changed:
-        return Declaration(ALTERED, "legacy declaration: %s since the initial commit %s" % (changed, first[:12]),
-                           run_id)
-    budget = {k: v for k, v in doc.items() if k != "schema"}
-    budget["initial_commit"] = first
-    return Declaration(LEGACY, "run %s carries a pre-2026-09-24 self-contained declaration made at %s "
-                               "(initial commit %s at %s)" % (run_id, at, first[:12], first_at),
-                       run_id, budget, at, first)
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Check this destination's run declaration.")
     ap.add_argument("--root", default=".")
     ap.add_argument("--expect", default=None,
                     help="the run this must be (default: $%s when set)" % RUN_NAME_ENV)
     ap.add_argument("--json", action="store_true", help="print the effective budget on success")
-    ap.add_argument("--history", action="store_true",
-                    help="also read a pre-2026-09-24 declaration, for the record only")
     args = ap.parse_args(argv)
-    d = load(Path(args.root), args.expect, allow_legacy=args.history)
+    d = load(Path(args.root), args.expect)
     if not d.ok:
         print("REFUSE: %s" % d, file=sys.stderr)
         return 1

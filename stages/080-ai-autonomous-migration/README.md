@@ -296,11 +296,11 @@ actually shipped.
 | [run-preflight.sh](run-preflight.sh), [validate.sh](validate.sh) | Current launch and stage validation entrypoints |
 | [hermes-runtime/](hermes-runtime/) | Workspace runtime patches and authority packaging helper |
 
-Past run plans, results and review packets are local-only under the repository
-root’s `tmp/history/` (ignored by Git). Previously tracked records remain
-available in Git history. Assisted v10 reached M4 `PROVISIONAL_ACCEPT` and CI/CD/live Route
-deployment; that historical result is not autonomous proof or full M5 `ACCEPT`.
-Retired version-specific preflight scripts remain available in Git history.
+Previously tracked run records remain in Git history. Assisted v10 reached M4
+`PROVISIONAL_ACCEPT` and a live Route; that result is not autonomous proof or
+full M5 `ACCEPT`. The v23 Pet repository acceptance and the v23 M1 attachment
+repair were operator-assisted. Retired version-specific preflight scripts
+remain in Git history.
 Use the current operations procedure for a fresh run. A local green suite
 does not qualify live isolation.
 

@@ -266,7 +266,7 @@ def select_protocol(root: Path) -> Selection:
         sel = Selection(protocol, execution, "run-defaults+pins", False, code,
                         measurement_trust=str(board.get("measurement_trust") or ""),
                         authority_socket=str(board.get("authority_socket") or ""))
-        if code not in ("RUN_DECLARATION_MISSING", "OK", "LEGACY"):
+        if code not in ("RUN_DECLARATION_MISSING", "OK"):
             sel.errors.append(("PROTOCOL_UNBOUND", "run declaration %s" % code))
         if sel.protocol not in PROTOCOLS:
             sel.errors.append(("PROTOCOL_UNKNOWN", "board_protocol %r" % sel.protocol))

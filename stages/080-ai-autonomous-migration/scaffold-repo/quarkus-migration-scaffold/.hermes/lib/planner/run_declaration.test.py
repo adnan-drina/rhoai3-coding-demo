@@ -94,7 +94,7 @@ def main() -> int:
     def expect(root: Path, code: str, why: str, **kw) -> rd.Declaration:
         d = rd.load(root, **kw)
         ok(d.code == code, "%s: expected %s, got %s (%s)" % (why, code, d.code, d.detail))
-        if code not in (rd.OK, rd.LEGACY):
+        if code != rd.OK:
             ok(not d.ok and not d.budget, "%s: a refusal still carried a budget" % why)
         return d
 
@@ -164,15 +164,15 @@ def main() -> int:
         expect(repo(tmp, "foreign-assignment", files), rd.FOREIGN, "assignment names another run")
         expect(root, rd.FOREIGN, "run-a-retry must not pass as run-a", expected_run="run-a-retry")
 
-        # 5. An earlier golden's per-run files: refused to launch, readable as history.
+        # 5. An earlier golden's per-run files are refused. Closed runs keep that
+        # schema in their own frozen harness; this golden does not load it.
         legacy = json.dumps({"schema": "rhoai3.run-budget/v1", "run_id": "v11",
                              "declared_at": "2026-09-23T17:10:00Z", "max_wall_hours": 24})
         files = factory("v12-new")
         files["run-budget.json"] = legacy
         root = repo(tmp, "stale-legacy", files)
-        expect(root, rd.STALE, "a v11 declaration copied into a new run", expected_run="v12-new")
-        h = expect(root, rd.LEGACY, "the same file read for history", allow_legacy=True)
-        ok(h.run_id == "v11" and h.declared_at == "2026-09-23T17:10:00Z", "history lost the legacy record")
+        stale = expect(root, rd.STALE, "a v11 declaration copied into a new run", expected_run="v12-new")
+        ok(stale.run_id == "v11" and not stale.ok, "a v1 declaration must not become a budget")
         files = factory("r-stalecfg")
         files["run-configuration.json"] = json.dumps({"run_id": "v11"})
         expect(repo(tmp, "stale-config", files), rd.STALE, "run-configuration.json beside a v2 declaration",
