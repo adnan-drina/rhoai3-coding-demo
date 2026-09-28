@@ -101,5 +101,95 @@ class BriefDigest(unittest.TestCase):
         self.assertIn("a/R.java:21 cannot find symbol symbol: class HttpServerResponse", text)
 
 
+class IssuedOwnership(unittest.TestCase):
+    """Architect review 2026-09-29 §3 / v24 run t_dbde15ae: the Profile card shares repository paths with
+    six repository-architecture requirements owned by other cards; its digest must not advertise their
+    checks as due now."""
+    REQ = {"id": "req:repository-architecture:X", "subject": "a.SpringDataX<-a.X", "status": "applicable",
+           "acceptance": ["unit:fragment-implementation", "structure:single-injectable-implementation", "gate:package"],
+           "recipe": {"id": "spring-data-fragment-impl", "architecture": "the <Fragment>Impl, @ApplicationScoped"}}
+
+    def test_a_card_not_owning_the_requirement_shows_only_its_issued_checks(self):
+        b = dict(BriefDigest.BRIEF, planned_requirements=[],
+                 issued_checks={"outcome": "source:u:profile", "checks_now": ["worklist-absent", "measure:compile"],
+                                "requirements": [], "other_owners_on_these_paths": [self.REQ["id"]]})
+        b["_retry_state"] = {}
+        text = BR.brief_digest(b, "brief-p")
+        self.assertIn("CHECKS THIS CARD IS JUDGED BY NOW (its issued contract, source:u:profile): worklist-absent, measure:compile", text)
+        self.assertIn("1 requirement(s) on these files belong to OTHER cards", text)
+        self.assertNotIn("unit:fragment-implementation", text)
+        self.assertNotIn("REQUIRED SHAPE", text)
+
+    def test_an_owning_card_is_judged_by_its_issued_checks_only(self):
+        b = dict(BriefDigest.BRIEF, planned_requirements=[self.REQ],
+                 issued_checks={"outcome": "req:X", "checks_now": ["unit:fragment-implementation"],
+                                "requirements": [self.REQ["id"]]})
+        b["_retry_state"] = {}
+        text = BR.brief_digest(b, "brief-o")
+        self.assertIn("  X -- checks now: unit:fragment-implementation\n", text)
+        self.assertNotIn("checks now: unit:fragment-implementation, structure", text)
+
+
+class ObjectiveLiveness(unittest.TestCase):
+    """v24 runs t_90e674d6 / t_e5f41dc2: a composite objective was told it was not open at its first brief."""
+    ISSUED = {"cluster": "objective:objective:dao:1", "items": ["err:a", "err:b"], "item_identities": {"err:b": "diag:B|x"},
+              "write_set": ["a/S.java"], "kind": "compile", "task_id": "t_o"}
+
+    def test_open_while_any_constituent_is_reported(self):
+        doc = {"head": "u:other", "items": [{"id": "err:a"}, {"id": "err:zz"}]}
+        row = BR._issued_not_open(self.ISSUED, doc)
+        self.assertNotIn("not_open", row)
+        self.assertEqual(row["items"], ["err:a"])
+        self.assertIn("1 of 2", row["liveness"])
+
+    def test_a_rehashed_constituent_is_matched_by_identity(self):
+        doc = {"head": "u:other", "items": [{"id": "err:new", "identity": "diag:B|x"}]}
+        self.assertEqual(BR._issued_not_open(self.ISSUED, doc)["items"], ["err:new"])
+
+    def test_not_open_only_when_no_constituent_is_reported(self):
+        row = BR._issued_not_open(self.ISSUED, {"head": "u:other", "items": [{"id": "err:zz"}]})
+        self.assertIn("not_open", row)
+
+
+class Selectors(unittest.TestCase):
+    def _root(self, td, measured_matches=True):
+        from pathlib import Path as P
+        root = P(td)
+        doc = {"candidate_sha256": "c" * 64,
+               "items": [{"id": "err:%d" % i, "path": "a/R.java" if i % 2 else "a/S.java", "line": i,
+                          "rule_id": "compiler.err.cant.resolve.location", "message": "cannot find symbol\n  symbol: class HttpServerResponse",
+                          "advice": {"symbol": {"kind": "class", "name": "HttpServerResponse"}}} for i in range(200)]}
+        now = "c" * 64 if measured_matches else "d" * 64
+        return root, doc, now
+
+    def test_file_selector_is_bounded_and_names_the_candidate(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root, doc, now = self._root(td)
+            with patch.object(BR, "candidate_sha256", return_value=now):
+                out = BR.select_facts(doc, root, file="/projects/modernized/a/R.java")
+        self.assertIn("IS that candidate", out.splitlines()[0])
+        self.assertIn("100 measured obligation(s) at a/R.java", out)
+        self.assertEqual(sum(1 for l in out.splitlines() if l.startswith("  err:")), BR.SELECT_LIMIT)
+        self.assertIn("20 more", out)
+
+    def test_a_query_after_a_revert_says_the_tree_is_not_the_measured_candidate(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root, doc, now = self._root(td, measured_matches=False)
+            with patch.object(BR, "candidate_sha256", return_value=now):
+                out = BR.select_facts(doc, root, symbol="HttpServerResponse")
+        self.assertIn("NOT the measured candidate: run run-verify.sh", out)
+
+    def test_an_empty_answer_is_stated_as_the_answer(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root, doc, now = self._root(td)
+            with patch.object(BR, "candidate_sha256", return_value=now):
+                out = BR.select_facts(doc, root, file="a/None.java")
+        self.assertIn("0 measured obligations at a/None.java. That is the answer", out)
+        self.assertIn("do not re-run this query unchanged", out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

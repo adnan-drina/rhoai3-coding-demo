@@ -26,6 +26,7 @@ ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
 from planner.worklist import OBJECTIVE_RULE  # noqa: E402
+import _outcome_bridge  # noqa: E402  outcome-board/v2: the issued contract this card owns
 from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, adapter_owned_annotations, assess_unit, head_cluster, items_of  # noqa: E402
 
 # H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
@@ -898,18 +899,38 @@ PENDING_NEXT = (
 )
 
 
+def constituents_open(issued: dict, doc: dict) -> list[str]:
+    """The issued card's constituent obligations the measured work list still
+    reports: by item id, or by the stable identity the issue recorded (a line
+    shift re-hashes the id, not the obligation)."""
+    ids = {str(i) for i in (issued.get("items") or [])}
+    idents = {str(v) for v in (issued.get("item_identities") or {}).values() if v}
+    return sorted(str(i["id"]) for i in (doc.get("items") or [])
+                  if isinstance(i, dict) and (str(i.get("id")) in ids or (i.get("identity") and str(i["identity"]) in idents)))
+
+
 def _issued_not_open(issued: dict, doc: dict) -> dict:
     """G2: the ISSUED card's own cluster is never "not open" to that card. A
     mid-card rebuild that no longer lists it is a measurement of the
     candidate (the obligations may be discharged); the issued record is the
-    plan, and advance.py is the judge."""
+    plan, and advance.py is the judge.
+
+    A composite objective or planned unit is issued under a synthetic id the
+    raw cluster list never carries; its liveness is its constituents (v24 run
+    t_90e674d6 / t_e5f41dc2: both were told "no longer on the open work list"
+    at their first brief while every constituent was still reported). Only
+    when none is still reported is the card told it is not open."""
     cid = str(issued.get("cluster") or "")
     ws = [str(w) for w in (issued.get("write_set") or [])]
-    return {"id": cid, "path": ws[0] if ws else "", "kind": str(issued.get("kind") or ""),
-            "items": [str(i) for i in (issued.get("items") or [])], "write_set": ws,
-            "gate": str(issued.get("gate") or ""), "status": "issued",
-            "retry_key": str(issued.get("retry_key") or cid), "batch_scope": dict(issued.get("batch_scope") or {}),
-            "not_open": {"head": str(doc.get("head") or ""), "next": NOT_OPEN_NEXT % cid}}
+    live = constituents_open(issued, doc)
+    row = {"id": cid, "path": ws[0] if ws else "", "kind": str(issued.get("kind") or ""),
+           "items": live or [str(i) for i in (issued.get("items") or [])], "write_set": ws,
+           "gate": str(issued.get("gate") or ""), "status": "issued",
+           "retry_key": str(issued.get("retry_key") or cid), "batch_scope": dict(issued.get("batch_scope") or {})}
+    if live:
+        row["liveness"] = "%d of %d issued constituent(s) still reported" % (len(live), len(issued.get("items") or []))
+        return row
+    return dict(row, not_open={"head": str(doc.get("head") or ""), "next": NOT_OPEN_NEXT % cid})
 
 
 def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tuple[dict | None, str, str]:
@@ -999,9 +1020,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--section", action="append", default=[], metavar="KEY",
                     help="print only this top-level section of the brief, in full (repeatable)")
     ap.add_argument("--full", action="store_true", help="print the whole brief even when it is large")
+    ap.add_argument("--file", default="", metavar="PATH", help="every measured obligation at this path, one line each (bounded)")
+    ap.add_argument("--item", default="", metavar="ID", help="one measured obligation in full")
+    ap.add_argument("--symbol", default="", metavar="NAME", help="every measured obligation naming this symbol (bounded)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     doc = load_json(root / WORKLIST)
+    if args.file or args.item or args.symbol:
+        print(select_facts(doc, root, file=args.file, item=args.item, symbol=args.symbol))
+        return 0
     cluster, code, detail = select_cluster(doc, root, args.cluster, os.environ.get("HERMES_KANBAN_TASK") or "")
     if cluster is None:
         return _refuse(code, detail)
@@ -1281,9 +1308,20 @@ def main(argv: list[str] | None = None) -> int:
                     "still reported, or a sealed member that violates its rule all refuse the card. So repair the whole "
                     "unit in one candidate; do not stop half way to make the count fall."),
             }
-    planned = planned_requirements(root, write_set)
+    own = issued_ownership(root)
+    planned = planned_requirements(root, write_set, own)
     if planned:
         brief["planned_requirements"] = planned
+    if own is not None:
+        # what THIS card is judged by now, from its issued contract -- never derived from the paths it
+        # shares with other owners (v24 run t_dbde15ae: the Profile card's digest labelled six repository
+        # requirements owned by other cards as its own checks due now)
+        brief["issued_checks"] = {"outcome": own["outcome"], "checks_now": own["checks_now"],
+                                  "requirements": sorted(own["requirements"])}
+        others = planned_requirements(root, write_set, None)
+        elsewhere = sorted(r["id"] for r in others if r["id"] not in own["requirements"])
+        if elsewhere:
+            brief["issued_checks"]["other_owners_on_these_paths"] = elsewhere
     stem = "brief-%s" % cluster["id"].replace(":", "-")
     write_canonical(root / LOOP_DIR / (stem + ".json"), brief)
     text = json.dumps(brief, indent=2, sort_keys=True)
@@ -1422,11 +1460,21 @@ def brief_digest(brief: dict, stem: str) -> str:
     # PetType/Specialty/Visit briefs named @ApplicationScoped and @Typed-to-the-fragment only
     # inside planned_requirements, which a 64K brief's digest never showed; each card then
     # spent two refused checkpoints discovering them)
+    ic = brief.get("issued_checks") if isinstance(brief.get("issued_checks"), dict) else None
+    if ic is not None:
+        out.append("CHECKS THIS CARD IS JUDGED BY NOW (its issued contract, %s): %s"
+                   % (ic.get("outcome"), ", ".join(ic.get("checks_now") or []) or "the measured work list only"))
+        if ic.get("other_owners_on_these_paths"):
+            out.append("  %d requirement(s) on these files belong to OTHER cards -- not yours, not judged here"
+                       % len(ic["other_owners_on_these_paths"]))
     shapes = [r for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and (r.get("recipe") or {}).get("architecture")]
     if shapes:
-        out += ["REQUIRED SHAPE (planned requirements, judged by these checks now):"]
+        out += ["REQUIRED SHAPE (planned requirements this card owns%s):" % ("" if ic is not None else ", judged by these checks now")]
         for r in shapes:
-            now = [c for c in r.get("acceptance") or [] if str(c).startswith(("unit:", "structure:", "gate:compile", "config:"))]
+            if ic is not None:
+                now = [c for c in r.get("acceptance") or [] if c in set(ic.get("checks_now") or [])]
+            else:
+                now = [c for c in r.get("acceptance") or [] if str(c).startswith(("unit:", "structure:", "gate:compile", "config:"))]
             out.append("  %s -- checks now: %s" % (str(r.get("subject") or r.get("id")).rsplit(".", 1)[-1], ", ".join(now) or "none"))
             out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), _clip(r["recipe"]["architecture"], 420)))
     for name, b in sorted((rs.get("budget") or {}).items()):
@@ -1454,7 +1502,7 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append(_item_line(it))
         shown += len(rows)
         if shown > cap:
-            out.append("    … the rest are in the items section")
+            out.append("    … the rest: brief.py --root . --file <path> lists every measured obligation at a file")
             break
     unit = brief.get("unit")
     if isinstance(unit, dict):
@@ -1465,9 +1513,55 @@ def brief_digest(brief: dict, stem: str) -> str:
     for key in ("procedure", "rule", "stop_rule", "evidence_rule"):
         if brief.get(key):
             out += ["", key.upper() + ":", textwrap.indent(textwrap.fill(str(brief[key]), 110), "  ")]
+    out += ["", "SELECT (bounded, read-only, bound to the measured candidate): brief.py --root . --file <path> | "
+                "--item <id> | --symbol <name>"]
     out += ["", "SECTIONS (read any in full: brief.py --root . --cluster %s --section <key>; "
                 "the whole brief one key per line: verification/loop/%s.txt):" % (cl.get("id"), stem)]
     out += ["  %-22s %s" % (k, _size(brief[k])) for k in sorted(brief)]
+    return "\n".join(out)
+
+
+SELECT_LIMIT = 80
+
+
+def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbol: str = "") -> str:
+    """Bounded, read-only selectors over the MEASURED work list (v24 run: workers grepped a 143K items
+    section and a 100-error mvn output for facts this list already held, and the tool-loop guard halted
+    them). Every answer names the candidate it was measured on and whether the tree on disk is still
+    that candidate, so a query after a revert never describes a discarded candidate as the current tree.
+    An empty answer is stated as an answer."""
+    measured = str(doc.get("candidate_sha256") or "")
+    now = candidate_sha256(root)
+    head = ["measured on candidate %s; the tree on disk %s" % (
+        measured[:12] or "(unrecorded)",
+        "IS that candidate" if measured and measured == now else
+        "is %s -- NOT the measured candidate: run run-verify.sh before relying on these facts" % now[:12])]
+    items = [i for i in doc.get("items") or [] if isinstance(i, dict)]
+    if item:
+        hit = next((i for i in items if str(i.get("id")) == item), None)
+        if hit is None:
+            return "\n".join(head + ["no measured obligation %s: it is not reported on the measured candidate" % item])
+        return "\n".join(head + [json.dumps(hit, indent=2, sort_keys=True)[:12000]])
+    def sym(i):
+        adv = i.get("advice") if isinstance(i.get("advice"), dict) else {}
+        return str(((adv.get("symbol") or {}) if isinstance(adv.get("symbol"), dict) else {}).get("name") or "")
+    if file:
+        rel = file.split("/projects/modernized/", 1)[-1].lstrip("./")
+        rows = [i for i in items if str(i.get("path") or "") == rel]
+        what = "at %s" % rel
+    else:
+        rows = [i for i in items if sym(i) == symbol or (symbol and symbol in str(i.get("message") or i.get("detail") or ""))]
+        what = "naming %s" % symbol
+    rows.sort(key=lambda i: (str(i.get("path") or ""), int(i.get("line") or 0) if str(i.get("line") or "").isdigit() else 0))
+    if not rows:
+        return "\n".join(head + ["0 measured obligations %s. That is the answer: the measured work list reports none; "
+                                  "do not re-run this query unchanged." % what])
+    out = head + ["%d measured obligation(s) %s:" % (len(rows), what)]
+    for i in rows[:SELECT_LIMIT]:
+        out.append("  %s %s:%s %s: %s" % (i.get("id"), i.get("path"), i.get("line"), i.get("rule_id") or i.get("code") or i.get("kind"),
+                                          _clip(i.get("message") or i.get("detail") or "", 160)))
+    if len(rows) > SELECT_LIMIT:
+        out.append("  … %d more: narrow with --file or --item" % (len(rows) - SELECT_LIMIT))
     return "\n".join(out)
 
 
@@ -1531,12 +1625,32 @@ def behaviour_brief(row: dict) -> dict:
     return out
 
 
-def planned_requirements(root: Path, write_set: list[str]) -> list[dict]:
+def issued_ownership(root: Path) -> dict | None:
+    """On an outcome-board/v2 card: the outcome this task is, the requirements
+    it owns and the checks it is judged by now (the plan node the issued
+    contract was attached from). None off the native board."""
+    board = _outcome_bridge._native(root)
+    if board is None:
+        return None
+    try:
+        from planner import native_control as NC
+        task, _run = _outcome_bridge._ids()
+        _role, _run_id, oid, _plan, node = NC.node_context(board, task)
+    except Exception:
+        return None
+    return {"outcome": oid, "requirements": {str(r) for r in node.get("requirements") or []},
+            "checks_now": sorted(str(c) for c in ((node.get("acceptance") or {}).get("requirement_checks") or []))}
+
+
+def planned_requirements(root: Path, write_set: list[str], own: dict | None = None) -> list[dict]:
     """Plan semantics v1: the source requirements admission planned for these
     files (evidence/planning/plan-semantics.json), each with its qualified
     recipe -- the fixed architecture and the mechanical checks that will judge
     it. Descriptive: the write set above is the only grant, and a run admitted
-    without the decision has no such file, so its brief is unchanged."""
+    without the decision has no such file, so its brief is unchanged.
+
+    On a native card (own given) only the requirements the card OWNS are listed;
+    sharing a file with another owner's requirement does not make it this card's."""
     from planner.paths import PLAN_SEMANTICS
     from planner.source_requirements import recipes_of
 
@@ -1550,7 +1664,12 @@ def planned_requirements(root: Path, write_set: list[str]) -> list[dict]:
     recipes = recipes_of(catalog(root))
     out = []
     for r in ((doc.get("plan") or {}).get("requirements") or []):
-        if not isinstance(r, dict) or r.get("status") not in ("applicable", "unresolved") or not set(r.get("paths") or []) & set(write_set):
+        if not isinstance(r, dict) or r.get("status") not in ("applicable", "unresolved"):
+            continue
+        if own is not None:
+            if str(r.get("id")) not in own["requirements"]:
+                continue
+        elif not set(r.get("paths") or []) & set(write_set):
             continue
         rec = recipes.get(str((r.get("recipe") or {}).get("id") or ""))
         out.append({"id": r["id"], "status": r["status"], "subject": r.get("subject"),
