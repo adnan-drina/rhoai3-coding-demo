@@ -120,6 +120,15 @@ class IssuedOwnership(unittest.TestCase):
         self.assertNotIn("unit:fragment-implementation", text)
         self.assertNotIn("REQUIRED SHAPE", text)
 
+    def test_the_required_architecture_is_printed_whole(self):
+        long_arch = "the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed to the fragment; " * 8
+        req = dict(self.REQ, recipe={"id": "spring-data-fragment-impl", "architecture": long_arch})
+        b = dict(BriefDigest.BRIEF, planned_requirements=[req],
+                 issued_checks={"outcome": "req:X", "checks_now": ["unit:fragment-implementation"], "requirements": [req["id"]]})
+        b["_retry_state"] = {}
+        text = BR.brief_digest(b, "brief-a")
+        self.assertIn(" ".join(long_arch.split()), text)
+
     def test_an_owning_card_is_judged_by_its_issued_checks_only(self):
         b = dict(BriefDigest.BRIEF, planned_requirements=[self.REQ],
                  issued_checks={"outcome": "req:X", "checks_now": ["unit:fragment-implementation"],

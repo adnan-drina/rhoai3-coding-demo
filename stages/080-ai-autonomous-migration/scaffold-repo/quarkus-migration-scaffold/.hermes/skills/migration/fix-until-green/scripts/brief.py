@@ -1476,7 +1476,11 @@ def brief_digest(brief: dict, stem: str) -> str:
             else:
                 now = [c for c in r.get("acceptance") or [] if str(c).startswith(("unit:", "structure:", "gate:compile", "config:"))]
             out.append("  %s -- checks now: %s" % (str(r.get("subject") or r.get("id")).rsplit(".", 1)[-1], ", ".join(now) or "none"))
-            out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), _clip(r["recipe"]["architecture"], 420)))
+            # the required shape in full (bounded): v24 run t_5d909848 sliced this line by character
+            # columns for 16 minutes looking for the remainder a 420-character clip had cut off
+            arch = " ".join(str(r["recipe"]["architecture"]).split())
+            out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), arch if len(arch) <= 4000 else arch[:4000]
+                       + " … (the rest: brief.py --root . --section planned_requirements)"))
     for name, b in sorted((rs.get("budget") or {}).items()):
         if isinstance(b, dict):
             out.append("  budget %s: key %s, %s of %s spent (%s)" % (name, b.get("key"), b.get("spent"), b.get("limit"), b.get("means")))
