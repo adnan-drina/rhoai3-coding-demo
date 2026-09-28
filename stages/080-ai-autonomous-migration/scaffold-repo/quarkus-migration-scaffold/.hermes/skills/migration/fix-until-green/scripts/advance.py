@@ -81,6 +81,7 @@ Exit 0 accepted; 1 reverted / deferred / pending / refused; 2 usage or no state.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -1661,6 +1662,7 @@ def _mint(root: Path, hermes: str) -> int:
 
 
 LAST_ADVANCE = Path("verification") / "loop" / "last-advance.json"
+ADVANCE_NEEDLE = "fix-until-green/scripts/advance"
 
 
 def _loop_rows(root: Path, card: str) -> tuple[int, int]:
@@ -1674,40 +1676,90 @@ def _loop_rows(root: Path, card: str) -> tuple[int, int]:
     return n("steps"), n("rejected")
 
 
+def _ledger_path(card: str) -> Path | None:
+    """<kanban root>/kanban/logs/<card>.exec.jsonl (HERMES_HOME may be a named profile's home)."""
+    home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
+    if not home or not card:
+        return None
+    parent, name = os.path.split(home)
+    root, profiles = os.path.split(parent)
+    base = root if profiles == "profiles" and name and root else home
+    return Path(base) / "kanban" / "logs" / ("%s.exec.jsonl" % card)
+
+
+def this_invocation(card: str, run: str) -> str:
+    """The execution ledger's latest advance.py START row for this card in this native run: the K2
+    pre-tool hook writes it before the command executes, so it is this invocation's identity."""
+    p = _ledger_path(card)
+    if p is None or not p.is_file():
+        return ""
+    call = ""
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if (isinstance(row, dict) and row.get("phase") == "start" and str(row.get("task") or "") == card
+                and str(row.get("run") or "") == run and ADVANCE_NEEDLE in str(row.get("command") or "")):
+            call = str(row.get("tool_call_id") or "")
+    return call
+
+
+def _publish(root: Path, doc: dict) -> None:
+    """Atomic replacement: the hook reads the old receipt or the new one, never a torn one."""
+    target = root / LAST_ADVANCE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp.%d" % os.getpid())
+    tmp.write_text(json.dumps(doc, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, target)
+
+
 def record_last_advance(argv: list[str] | None = None) -> int:
-    """Run main() and record what THIS invocation decided, for the K2 pre-tool hook.
+    """Run main() and publish what THIS invocation decided, for the K2 pre-tool hook.
 
     advance.py exits 1 on REVERTED and DEFERRED by design, and also on a refusal
     (LOOP_CANDIDATE_CHANGED, LOOP_NOT_ISSUED, ...). The hook's implementer lockout after a
-    mandated needle's [exit 1] is right for a refusal and wrong for a REVERTED: its
-    legal next step is to edit the write set (v24 run t_e5f41dc2 was refused a read-only
-    javap three times after a REVERTED and halted). The verdict is read from the loop
-    record this invocation changed, not from its text."""
+    mandated needle's [exit 1] is right for a refusal and wrong for a REVERTED, whose legal
+    next step is to edit the write set (v24 run t_e5f41dc2 was refused a read-only javap three
+    times after a REVERTED and halted). The receipt names the invocation it answers (the
+    execution ledger's tool_call_id), the native run and the issued unit; it says IN_PROGRESS
+    before anything is judged, so an interrupted invocation or a failed final write never
+    leaves an older REVERTED in force (architect review 2026-09-29). If even the IN_PROGRESS
+    receipt cannot be written, nothing is judged. The verdict is read from the loop record this
+    invocation changed, not from its text."""
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--root", default="")
     ap.add_argument("--card", default="")
     ap.add_argument("--cluster", default="")
     known, _rest = ap.parse_known_args(argv)
     root = Path(known.root) if known.root else None
+    if root is None or not (root / "verification" / "loop").is_dir():
+        return main(argv)
     card = known.card or os.environ.get("HERMES_KANBAN_TASK") or ""
-    before = _loop_rows(root, card) if root else (0, 0)
+    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    receipt = {"schema": "rhoai3.last-advance/v1", "card": card, "run": run, "cluster": known.cluster,
+               "tool_call_id": this_invocation(card, run), "verdict": "IN_PROGRESS"}
+    try:
+        _publish(root, receipt)
+    except OSError as exc:
+        print("REFUSE: LOOP_RECEIPT_UNWRITABLE %s could not be written (%s); nothing judged" % (LAST_ADVANCE, exc), file=sys.stderr)
+        return 2
+    before = _loop_rows(root, card)
     rc = 2
     try:
         rc = main(argv)
         return rc
     finally:
-        if root is not None and (root / "verification" / "loop").is_dir():
-            after = _loop_rows(root, card)
-            verdict = ("ACCEPTED" if after[0] > before[0] else "REVERTED" if after[1] > before[1]
-                       else "OK" if rc == 0 else "REFUSED")
-            deferred = root / LOOP_DEFERRED
+        after = _loop_rows(root, card)
+        verdict = ("ACCEPTED" if after[0] > before[0] else "REVERTED" if after[1] > before[1]
+                   else "OK" if rc == 0 else "REFUSED")
+        deferred = root / LOOP_DEFERRED
+        try:
             if verdict == "REVERTED" and deferred.is_file() and known.cluster in (load_json(deferred).get("clusters") or []):
                 verdict = "DEFERRED"
-            try:
-                write_canonical(root / LAST_ADVANCE, {"card": card, "cluster": known.cluster, "rc": rc, "verdict": verdict,
-                                                      "run": os.environ.get("HERMES_KANBAN_RUN_ID") or ""})
-            except OSError:
-                pass
+            _publish(root, dict(receipt, verdict=verdict, rc=rc))
+        except (OSError, ValueError):
+            pass    # the IN_PROGRESS receipt stays: it never unlocks anything
 
 
 if __name__ == "__main__":

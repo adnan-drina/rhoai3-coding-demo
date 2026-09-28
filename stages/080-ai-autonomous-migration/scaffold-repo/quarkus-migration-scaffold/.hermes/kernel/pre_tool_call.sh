@@ -562,24 +562,60 @@ def bound_gates_red():
     return [n for n in names if last.get(n) == 1]
 
 def last_advance_reverted(task):
-    """advance.py recorded that its LAST invocation for this card was REVERTED
-    (verification/loop/last-advance.json, written from the loop record that
-    invocation changed). A REVERTED exits 1 by design and its legal next step
-    is to edit the write set; a refusal or a DEFERRED still exits 1 and keeps
-    the lockout (v24 run t_e5f41dc2: a read-only javap was refused three times
-    after a REVERTED and the worker halted)."""
-    if not task:
+    """The LATEST advance.py invocation of this card in this native run was a
+    REVERTED, on the unit issued to this card now. A REVERTED exits 1 by design
+    and its legal next step is to edit the write set; a refusal or a DEFERRED
+    keeps the lockout (v24 run t_e5f41dc2: a read-only javap was refused three
+    times after a REVERTED and the worker halted).
+
+    Bound, never inherited (architect review 2026-09-29): the receipt that
+    advance.py publishes atomically (verification/loop/last-advance.json) must
+    name the tool_call_id of the latest advance START row in the execution
+    ledger for this task and run, that row must have ended with exit 1, the
+    receipt run must be this run and its cluster the unit issued to this card.
+    A missing, older, IN_PROGRESS or unreadable receipt unlocks nothing."""
+    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    home = kanban_root_home()
+    if not task or not run or not home:
         return False
+    starts, ends = [], {}
+    try:
+        with open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict) or str(row.get("task") or "") != task or str(row.get("run") or "") != run:
+                    continue
+                if "fix-until-green/scripts/advance" not in str(row.get("command") or ""):
+                    continue
+                call = str(row.get("tool_call_id") or "")
+                if row.get("phase") == "start":
+                    starts.append(call)
+                elif row.get("phase") == "end":
+                    ends[call] = row.get("exit_code")
+    except OSError:
+        return False
+    if not starts or not starts[-1] or ends.get(starts[-1]) != 1:
+        return False
+    latest = starts[-1]
     roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
     for r in roots:
         if not r:
             continue
         try:
             doc = json.load(open(os.path.join(r, "verification", "loop", "last-advance.json"), encoding="utf-8"))
+            issued = json.load(open(os.path.join(r, "verification", "loop", "issued.json"), encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(doc, dict) and str(doc.get("card") or "") == task:
-            return str(doc.get("verdict") or "") == "REVERTED"
+        if not isinstance(doc, dict) or not isinstance(issued, dict):
+            continue
+        return (str(doc.get("card") or "") == task and str(doc.get("run") or "") == run
+                and str(doc.get("tool_call_id") or "") == latest
+                and str(issued.get("task_id") or "") == task
+                and str(doc.get("cluster") or "") == str(issued.get("cluster") or "") != ""
+                and str(doc.get("verdict") or "") == "REVERTED")
     return False
 
 def bound_gate_red():

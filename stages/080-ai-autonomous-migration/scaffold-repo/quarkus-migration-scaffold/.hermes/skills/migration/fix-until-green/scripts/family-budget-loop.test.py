@@ -153,6 +153,39 @@ class ReworkUnchanged(unittest.TestCase):
             last = load_json(root / "verification" / "loop" / "last-advance.json")
             self.assertEqual((last["card"], last["verdict"], last["rc"]), ("t_ctl", "REVERTED", 1))
 
+    def test_the_receipt_names_this_invocation_from_the_ledger(self):
+        with tempfile.TemporaryDirectory(prefix="rework-led-") as td:
+            root, cluster, errors = self._dest(td)
+            FUG._issue_cluster(root, cluster, "t_led")
+            specimens.verify(root, errors=errors, failures=[], findings=load_json(root / MTA_FINDINGS))
+            home = Path(td) / "hh"
+            (home / "profiles" / "implementer").mkdir(parents=True)
+            (home / "kanban" / "logs").mkdir(parents=True)
+            cmd = "python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster %s --card t_led" % cluster["id"]
+            rows = [{"phase": "start", "task": "t_led", "run": "9", "command": cmd, "tool_call_id": "old"},
+                    {"phase": "end", "task": "t_led", "run": "9", "command": cmd, "tool_call_id": "old", "exit_code": 1},
+                    {"phase": "start", "task": "t_led", "run": "8", "command": cmd, "tool_call_id": "other-run"},
+                    {"phase": "start", "task": "t_led", "run": "9", "command": cmd, "tool_call_id": "this-one"}]
+            (home / "kanban" / "logs" / "t_led.exec.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+            p = FUG._advance(root, cluster["id"], "t_led", {"HERMES_HOME": str(home / "profiles" / "implementer"),
+                                                            "HERMES_KANBAN_RUN_ID": "9"})
+            last = load_json(root / "verification" / "loop" / "last-advance.json")
+            self.assertEqual((last["tool_call_id"], last["run"], last["cluster"], last["verdict"]),
+                             ("this-one", "9", cluster["id"], "REVERTED"), p.stdout + p.stderr)
+
+    def test_an_unwritable_receipt_judges_nothing(self):
+        with tempfile.TemporaryDirectory(prefix="rework-unw-") as td:
+            root, cluster, errors = self._dest(td)
+            FUG._issue_cluster(root, cluster, "t_unw")
+            specimens.verify(root, errors=errors, failures=[], findings=load_json(root / MTA_FINDINGS))
+            (root / "verification" / "loop" / "last-advance.json").unlink(missing_ok=True)
+            (root / "verification" / "loop" / "last-advance.json").mkdir()      # os.replace onto a directory fails
+            before = load_json(root / LOOP_STEPS)
+            p = FUG._advance(root, cluster["id"], "t_unw")
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn("LOOP_RECEIPT_UNWRITABLE", p.stderr)
+            self.assertEqual(load_json(root / LOOP_STEPS), before)              # no verdict, no charge
+
     def test_a_refusal_is_recorded_as_refused(self):
         with tempfile.TemporaryDirectory(prefix="rework-ref-") as td:
             root, cluster, errors = self._dest(td)

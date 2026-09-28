@@ -1097,28 +1097,66 @@ def main() -> int:
         else:
             print("ok loop_run_verify_after_red_advance")
         # v24 run t_e5f41dc2: after a REVERTED (advance.py exit 1 by design) a read-only probe was refused
-        # three times and the worker halted. A REVERTED recorded by advance.py lifts the advance lockout;
-        # a refusal it recorded keeps it.
+        # three times and the worker halted. Only the LATEST advance invocation of this card, in this
+        # native run, on the unit issued now, recorded as REVERTED lifts the advance lockout; every
+        # stale, incomplete or other-verdict receipt keeps it (architect review 2026-09-29).
         rev_home = Path(td) / "rev-home"
-        (rev_home / "kanban" / "logs").mkdir(parents=True)
-        (rev_home / "kanban" / "logs" / "t_rev.log").write_text(
-            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . "
-            "--cluster c:1 --card t_rev  5.3s [exit 1]\n", encoding="utf-8")
-        (dest / "verification" / "loop").mkdir(parents=True, exist_ok=True)
+        logs = rev_home / "kanban" / "logs"
+        logs.mkdir(parents=True)
+        adv = "python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_rev"
+        loopd = dest / "verification" / "loop"
+        loopd.mkdir(parents=True, exist_ok=True)
         rev_env = {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(rev_home), "HERMES_KANBAN_TASK": "t_rev",
-                   "HERMES_WRITE_SAFE_ROOT": str(dest)}
-        for verdict, blocked, name in (("REVERTED", False, "read_after_recorded_reverted_allowed"),
-                                       ("REFUSED", True, "read_after_recorded_refusal_still_refused"),
-                                       ("DEFERRED", True, "read_after_recorded_deferred_still_refused")):
-            (dest / "verification" / "loop" / "last-advance.json").write_text(
-                json.dumps({"card": "t_rev", "cluster": "c:1", "rc": 1, "verdict": verdict}), encoding="utf-8")
-            r = run("javap -version", roots, cwd=cwd, extra_env=rev_env)
-            if (r.get("action") == "block") != blocked:
-                print("FAIL " + name, r, file=sys.stderr)
-                fails += 1
+                   "HERMES_KANBAN_RUN_ID": "7", "HERMES_WRITE_SAFE_ROOT": str(dest)}
+
+        def rev_case(name, blocked, *, receipt, ledger, log_extra="", issued=None):
+            (logs / "t_rev.log").write_text("  ┊ 💻 $         %s  5.3s [exit 1]\n%s" % (adv, log_extra), encoding="utf-8")
+            (logs / "t_rev.k2-run.json").write_text(json.dumps({"run": "7", "offset": 0}), encoding="utf-8")
+            (logs / "t_rev.exec.jsonl").write_text("".join(json.dumps(r) + "\n" for r in ledger), encoding="utf-8")
+            (loopd / "issued.json").write_text(json.dumps(issued or {"task_id": "t_rev", "cluster": "c:1"}), encoding="utf-8")
+            rp = loopd / "last-advance.json"
+            if receipt is None:
+                rp.unlink(missing_ok=True)
             else:
-                print("ok " + name)
-        (dest / "verification" / "loop" / "last-advance.json").unlink()
+                rp.write_text(json.dumps(receipt), encoding="utf-8")
+            nonlocal_fails = 0
+            for cmd in ("javap -version", "cat src/Main.java"):
+                r = run(cmd, roots, cwd=cwd, extra_env=rev_env)
+                if (r.get("action") == "block") != blocked:
+                    print("FAIL rev_%s (%s)" % (name, cmd), r, file=sys.stderr)
+                    nonlocal_fails += 1
+            if not nonlocal_fails:
+                print("ok rev_" + name)
+            return nonlocal_fails
+
+        def start(call, run_id="7"):
+            return {"phase": "start", "task": "t_rev", "run": run_id, "command": adv, "tool_call_id": call}
+
+        def end(call, code=1, run_id="7"):
+            return {"phase": "end", "task": "t_rev", "run": run_id, "command": adv, "tool_call_id": call, "exit_code": code}
+
+        def rec(verdict, call="c2", run_id="7", cluster="c:1"):
+            return {"card": "t_rev", "run": run_id, "cluster": cluster, "tool_call_id": call, "verdict": verdict}
+
+        cur = [start("c2"), end("c2")]
+        fails += rev_case("current_reverted_allows_reads", False, receipt=rec("REVERTED"), ledger=cur)
+        fails += rev_case("current_refused_blocks", True, receipt=rec("REFUSED"), ledger=cur)
+        fails += rev_case("current_deferred_blocks", True, receipt=rec("DEFERRED"), ledger=cur)
+        fails += rev_case("prior_run_reverted_blocks", True, receipt=rec("REVERTED", run_id="6"), ledger=cur)
+        fails += rev_case("previous_unit_reverted_blocks", True, receipt=rec("REVERTED", cluster="c:0"), ledger=cur)
+        # an earlier REVERTED (c1), then a newer invocation (c2) that never recorded its disposition
+        fails += rev_case("interrupted_newer_invocation_blocks", True, receipt=rec("REVERTED", call="c1"),
+                          ledger=[start("c1"), end("c1"), start("c2"), end("c2")])
+        # the final replacement failed: the IN_PROGRESS receipt of the current invocation stays
+        fails += rev_case("failed_replacement_blocks", True, receipt=rec("IN_PROGRESS"), ledger=cur)
+        fails += rev_case("missing_receipt_blocks", True, receipt=None, ledger=cur)
+        fails += rev_case("no_ledger_row_blocks", True, receipt=rec("REVERTED"), ledger=[])
+        # another bound gate is still red: the REVERTED lifts only the advance lockout
+        fails += rev_case("other_red_gate_still_blocks", True, receipt=rec("REVERTED"), ledger=cur,
+                          log_extra="  ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/scripts/"
+                                    "verify-admission-receipt.py --root . --any-status  0.2s [exit 1]\n")
+        (loopd / "last-advance.json").unlink(missing_ok=True)
+        (loopd / "issued.json").unlink(missing_ok=True)
         with (red_home / "kanban" / "logs" / "t_p0b.log").open(
             "a", encoding="utf-8"
         ) as fh:
