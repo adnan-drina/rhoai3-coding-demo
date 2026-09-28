@@ -10,23 +10,53 @@ main `b77a6229`: compatibility objectives, the M1 classpath fix, the rescan on a
 reproduced the fresh local derivation exactly: 131 classpath entries, 100/100 types and 437/437
 methods fully resolved, 34 entry points, captures 18/18 and 67/67, qualification 17/1 and 66/1.
 
-- [x] **Plan-only attach counted as done** (fixed on main `e6fe7791`; ships with the next golden).
-  M1 ran `kanban_attach.py` without `--exec`, which only plans. It printed "OK: kanban attach
-  (6 file(s))" and attached nothing, and the audit passed. Paved-road steps now declare
-  `require_args`, and the M1 attach and M2 mint require `--exec`. The dry run says
-  "PLAN ONLY ... NOTHING was attached".
-- [x] **A requirement card whose checks already hold looped on an empty unit** (fixed on main;
-  ships with the next golden). The security card's planned checks held at the baseline, but
+- [x] **Plan-only attach counted as done** (fixed on main `e6fe7791` and `1bc989c0`; ships with the
+  next golden). M1 ran `kanban_attach.py` without `--exec`, which only plans. It printed "OK:
+  kanban attach (6 file(s))" and attached nothing. The metadata named six attachments, the
+  reviewer saw an empty listing, and the audit passed. `e6fe7791`: the M1 attach and M2 mint
+  require `--exec`. `1bc989c0`: `--exec` reads the native records back, and the audit
+  (`native_attachments: true`) refuses unless the card's records hold the KEEP set byte for
+  byte. Metadata names are not proof.
+  - v23 assisted repair (2026-09-28): the six M1 originals were attached to `t_56d38285` as
+    attachments 36-41 (`operator-assisted`). Their mtimes fall inside the M1 run, the inventory
+    digest equals the plan's provenance, and the records were verified equal to the workspace.
+    A correction comment records this; the card's result and verdict are unchanged.
+- [x] **A requirement card whose checks already hold looped on an empty unit** (fixed on main
+  `d7c029a8`; ships with the next golden). The security card's planned checks held at the baseline, but
   nothing satisfied them at issue, so the worker iterated on a unit with nothing to change.
   `native_control._satisfied` now accepts the M2 baseline step as evidence when its commit is
   HEAD, its digest is the tree, and its measure is known.
-- [x] **A rejection's revert silently deleted a new file** (fixed on main; ships with the next
-  golden). The Pet repository contract card (t_71d9117b) wrote the owed `PetRepositoryImpl.java`
+- [x] **A rejection's revert silently deleted a new file** (fixed on main `d7c029a8`; ships with
+  the next golden). The Pet repository contract card (t_71d9117b) wrote the owed `PetRepositoryImpl.java`
   in attempt 2, and a missing import in the other file rejected it. The revert deleted the
   untracked new file. The retry re-applied only the other file and was accepted, and the worker
   then blocked, claiming that the check denied a file that "exists". The rejected row now
   records `deleted_by_revert`, which `legal_next`, the REVERTED line and the retry brief all
-  name. Live v23: the Operator unblocked the card with the diagnosis; no harness change.
+  name.
+  - v23 assisted continuation (2026-09-28): the Operator unblocked the card with the verified
+    cause and added an ASSISTED CONTINUATION comment. Task identity, attempts, retry
+    accounting, deadline, checks and harness were unchanged, and the existing dispatcher
+    resumed it. Run 3 rewrote `PetRepositoryImpl.java` from the source's `JpaPetRepositoryImpl`.
+    It was accepted as commit `439587bb` with `outcome_accepted: true`; all three checks passed
+    for both Pet requirements (single injectable implementation, fragment implementation,
+    fragment behaviour bodies). The measure was `[0, 94, 0]`, not worse, with budget 2 of 12.
+    Native review (run 4) completed with a green paved-road-m3 audit. This is an assisted
+    result, not an autonomous one.
+- [x] **M1/M2 handoff prose contradicted the sealed artifacts** (fixed on main `bf08d9ac`; ships
+  with the next golden). M1 and M2 said 20 of 34 entry points needed operator observations
+  (scheduled, messaging, lifecycle). The inventory is HTTP 34, non-HTTP 0; the 20 inconclusive
+  reads are 19 writes routed to the scenario corpus and 1 wildcard path. M2 said "29 repair
+  outcomes"; the plan has 30 repair outcomes plus 4 milestones. M2 recorded
+  `unresolved: []`; the plan keeps 7 ship-blocking groups over 12 HTTP entry points.
+  `handoff_facts.py` now computes these counts, a paved-road step writes them, and the
+  reviewer's `--check-task` refuses a contradicting handoff. v23: correction comments and the
+  computed facts (attachments 42, 43) were added to `t_56d38285` and `t_2c96a669`; their
+  histories are unchanged.
+- [ ] **A worker looped on the retry brief before its first edit** (observation, next golden).
+  The Pet card's first run (`t_71d9117b` run 1) crashed with `WORKER_TOOL_LOOP`
+  (`near_duplicate_loop_halt`, 12 calls). It re-ran `brief.py --section previous_attempts`
+  with different greps instead of reading the section once. The guardrail stopped it; the
+  brief's previous-attempts section should be short enough to read whole.
 - [ ] **Retirement leaves the per-app pipeline project behind** (platform, next release: it changes
   the Pipeline the live run was provisioned by). `provision-migration-run` in retire mode deletes
   only what is labelled `rhoai3.io/migration-run=<run>`. v22 retirement then needed these by hand:
