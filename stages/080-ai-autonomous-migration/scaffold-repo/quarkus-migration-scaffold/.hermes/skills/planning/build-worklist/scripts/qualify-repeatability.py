@@ -30,7 +30,12 @@ Proof levels:
   --source DIR      the M1 structure producer (JdkModelExtract) re-run on two
                     clean copies of a FROZEN source with an offline classpath
 
-Usage: qualify-repeatability.py [--out FILE] [--keep DIR] [--specimen DIR] [--source DIR] [--no-producers]
+  --fresh A B       two INDEPENDENT fresh M1 -> M2 roots of one frozen source
+                    (producers re-run on each by the caller): requirements,
+                    logical graph and compatibility-objective membership
+                    compared outcome by outcome
+
+Usage: qualify-repeatability.py [--out FILE] [--keep DIR] [--specimen DIR] [--source DIR] [--fresh A B] [--no-producers]
 Exit 0 when no case FAILED (NOT-RUN cases are listed, with their reason).
 """
 from __future__ import annotations
@@ -434,6 +439,68 @@ def run_cases(q: Q) -> None:
     q.case("mixed protocol state", "recorded-evidence", mixed_protocol)
 
 
+def _graph_of(d: Path, run_id: str, scope_note: str = "preserved specimen replay") -> dict:
+    """The one initial graph builder on a root's recorded M1/M2 evidence, with
+    the compatibility objectives the root's decisions pin (None when they pin
+    none: the per-unit plan, byte for byte)."""
+    from planner.outcome_checks import objective_inputs
+    reqs = SR.for_root(d, oracles=L._oracles(d))
+    wl = load_json(d / "evidence/planning/worklist.json")
+    inv = load_json(d / "evidence/entry-point-inventory.json")
+    g = OG.derive_initial_graph(run_id=run_id, worklist=wl, entry_points=inv["entry_points"], oracles=L._oracles(d),
+                                references=None, provenance={"snapshot_kind": "admission", "scope_note": scope_note,
+                                                              "construction": "qualify-repeatability"},
+                                requirements=reqs["requirements"], objectives=objective_inputs(d, wl))
+    return {"requirements": reqs, "graph": g}
+
+
+def _membership(g: dict) -> dict:
+    """objective -> its constituent clusters and requirements: the grouping a
+    reviewer compares, independent of run binding."""
+    comp = g.get("composition") or {}
+    return {n["outcome_id"]: {"clusters": sorted(n.get("clusters") or []), "requirements": sorted(n.get("requirements") or []),
+                              "parents": sorted(n.get("parents") or [])}
+            for n in g["nodes"]} | ({"_budget": comp.get("budget")} if comp else {})
+
+
+def fresh_cases(q: Q, a: Path, b: Path) -> None:
+    """Two INDEPENDENT fresh M1 -> M2 derivations of the same frozen source
+    with the same tool and decision pins (producers re-run on each; the
+    caller made them). Their requirements, logical graph -- objectives
+    included when the decisions pin them -- and objective membership must be
+    equal; only the run binding may differ. Any difference is reported by
+    outcome, never normalised away."""
+    def installed(root: Path, name: str) -> Path:
+        # a disposable copy planned with THIS golden's decisions and catalogs (the policy under
+        # qualification); the root's own recorded evidence is what differs between the two
+        d = q.tmp / name
+        shutil.rmtree(d, ignore_errors=True)
+        shutil.copytree(root, d, symlinks=True, ignore=shutil.ignore_patterns("target", ".git"))
+        shutil.copy(HERMES.parent / "decisions.yaml", d / "decisions.yaml")
+        shutil.copytree(HERMES / "planning", d / ".hermes/planning", dirs_exist_ok=True)
+        return d
+
+    def compare():
+        from planner.canonical import digest
+        ca, cb = installed(a, "fresh-a"), installed(b, "fresh-b")
+        ga, gb = _graph_of(ca, "run-fresh-a", "fresh derivation"), _graph_of(cb, "run-fresh-b", "fresh derivation")
+        ra, rb = digest(ga["requirements"]["requirements"]), digest(gb["requirements"]["requirements"])
+        pa, pb = PS.graph_projection(ga["graph"]), PS.graph_projection(gb["graph"])
+        ma, mb = _membership(ga["graph"]), _membership(gb["graph"])
+        diff = sorted(k for k in set(ma) | set(mb) if ma.get(k) != mb.get(k))
+        q.evidence["fresh_comparison"] = {
+            "a": str(a), "b": str(b), "decisions_and_catalogs": "this golden's", "requirements_digest": [ra, rb],
+            "logical_graph_digest": [digest(pa), digest(pb)], "policy": (ga["graph"].get("policy") or {}).get("id") if isinstance(ga["graph"].get("policy"), dict) else (ga["graph"].get("policy") or "per-unit"), "objectives": sum(1 for k in ma if k.startswith("objective:")),
+            "membership_differences": diff[:40], "equal": ra == rb and pa == pb and not diff}
+        if ra != rb or pa != pb or diff:
+            return FAIL, "fresh derivations differ: requirements %s/%s; outcomes %s" % (ra[:12], rb[:12], diff[:6])
+        return PASS, "%d requirements, %d outcomes (%s, %d objective(s)) identical across two fresh derivations" % (
+            len(ga["requirements"]["requirements"]), len(ga["graph"]["nodes"]), ga["graph"].get("policy") or "per-unit",
+            q.evidence["fresh_comparison"]["objectives"])
+
+    q.case("two fresh M1 -> M2 derivations of one frozen source", "producer-replay (fresh roots)", compare)
+
+
 def specimen_cases(q: Q, specimen: Path) -> None:
     """Recorded-evidence replay on PRESERVED PetClinic M1 evidence (not
     synthetic): the frozen structural model, entry points, captured corpus
@@ -456,23 +523,30 @@ def specimen_cases(q: Q, specimen: Path) -> None:
                 t["methods"] = list(reversed(t.get("methods") or []))
             b["entry_points"] = list(reversed(b["entry_points"]))
             write_canonical(d / "evidence/planning/evidence-bundle.json", b)
+            # a producer that emitted this order would have had the corpus derived against THIS
+            # bundle: re-bind the derivation receipts as that derivation records them (the corpus
+            # content is the same scenarios; corpus_binding_gaps refuses a receipt naming another bundle)
+            from planner.canonical import digest as _digest
+            for rel in ("verification/scenarios/_derive.json", "verification/scenarios-enabled/_derive.json"):
+                p = d / rel
+                if p.is_file():
+                    r = load_json(p)
+                    r["evidence_bundle_sha256"] = _digest(b)
+                    write_canonical(p, r)
             for rel in ("verification/scenarios/corpus.json",):
                 p = d / rel
                 if p.is_file():
                     c = load_json(p)
                     c["scenarios"] = list(reversed(c.get("scenarios") or []))
                     write_canonical(p, c)
+            # the work list's own order is an input to objective composition too
+            w = load_json(d / "evidence/planning/worklist.json")
+            w["clusters"] = list(reversed(w.get("clusters") or []))
+            w["items"] = list(reversed(w.get("items") or []))
+            write_canonical(d / "evidence/planning/worklist.json", w)
         return d
 
-    def graph_of(d: Path, run_id: str) -> dict:
-        reqs = SR.for_root(d, oracles=L._oracles(d))
-        wl = load_json(d / "evidence/planning/worklist.json")
-        inv = load_json(d / "evidence/entry-point-inventory.json")
-        g = OG.derive_initial_graph(run_id=run_id, worklist=wl, entry_points=inv["entry_points"], oracles=L._oracles(d),
-                                    references=None, provenance={"snapshot_kind": "admission", "scope_note": "preserved specimen replay",
-                                                                  "construction": "qualify-repeatability"},
-                                    requirements=reqs["requirements"])
-        return {"requirements": reqs, "graph": g}
+    graph_of = _graph_of
 
     def replay():
         a = load_copy("specimen-a", False)
@@ -736,6 +810,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-producers", action="store_true", help="recorded-evidence level only")
     ap.add_argument("--specimen", default="", help="a PRESERVED M1 evidence tree (evidence/, verification/) to replay")
     ap.add_argument("--source", default="", help="a FROZEN source tree to run the M1 structure producer on (two clean copies)")
+    ap.add_argument("--fresh", nargs=2, default=None, metavar=("ROOT_A", "ROOT_B"),
+                    help="two independently derived fresh M1 -> M2 roots of one frozen source to compare")
     a = ap.parse_args(argv)
     tmp = Path(a.keep) if a.keep else Path(tempfile.mkdtemp(prefix="qualify-repeatability-"))
     tmp.mkdir(parents=True, exist_ok=True)
@@ -745,6 +821,8 @@ def main(argv: list[str] | None = None) -> int:
         run_cases(q)
         if q.specimen is not None:
             specimen_cases(q, q.specimen)
+        if a.fresh:
+            fresh_cases(q, Path(a.fresh[0]).resolve(), Path(a.fresh[1]).resolve())
         if not a.no_producers:
             producer_cases(q)
     finally:
