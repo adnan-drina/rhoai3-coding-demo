@@ -139,6 +139,7 @@ class ReworkUnchanged(unittest.TestCase):
             steps = load_json(root / LOOP_STEPS)
             self.assertEqual(steps.get("rejected") or [], [])
             self.assertEqual(steps.get("attempts") or {}, {})
+            self.assertEqual(load_json(root / "verification" / "loop" / "last-advance.json")["verdict"], "OK")
 
     def test_an_unchanged_ordinary_candidate_is_still_judged(self):
         with tempfile.TemporaryDirectory(prefix="rework-ctl-") as td:
@@ -148,6 +149,17 @@ class ReworkUnchanged(unittest.TestCase):
             p = FUG._advance(root, cluster["id"], "t_ctl")
             self.assertNotIn("REWORK UNCHANGED", p.stdout)
             self.assertTrue(load_json(root / LOOP_STEPS).get("rejected"), p.stdout + p.stderr)
+            # the K2 hook lifts the post-[exit 1] lockout only on this recorded REVERTED (v24 run t_e5f41dc2)
+            last = load_json(root / "verification" / "loop" / "last-advance.json")
+            self.assertEqual((last["card"], last["verdict"], last["rc"]), ("t_ctl", "REVERTED", 1))
+
+    def test_a_refusal_is_recorded_as_refused(self):
+        with tempfile.TemporaryDirectory(prefix="rework-ref-") as td:
+            root, cluster, errors = self._dest(td)
+            FUG._issue_cluster(root, cluster, "t_ref")
+            p = FUG._advance(root, "c:not-issued", "t_ref")          # LOOP_NOT_ISSUED: exit 1, no verdict
+            self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+            self.assertEqual(load_json(root / "verification" / "loop" / "last-advance.json")["verdict"], "REFUSED")
 
 
 if __name__ == "__main__":

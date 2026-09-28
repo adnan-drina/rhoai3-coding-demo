@@ -96,7 +96,7 @@ from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_PACKAGE, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_PACKAGE, VERIFY_RUN, WORKLIST  # noqa: E402
 from planner.worklist import OBJECTIVE_RULE, ObjectiveScopeError, build_objective_scope  # noqa: E402
 from planner.worklist import cdi_wiring_changes, carry_unmeasured, issued_parity_plan, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, SECURITY_MODES, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
@@ -1660,5 +1660,55 @@ def _mint(root: Path, hermes: str) -> int:
     return 0 if proc.returncode == 0 else 1
 
 
+LAST_ADVANCE = Path("verification") / "loop" / "last-advance.json"
+
+
+def _loop_rows(root: Path, card: str) -> tuple[int, int]:
+    """(accepted steps, rejected attempts) the loop record holds for this card."""
+    try:
+        doc = load_json(root / LOOP_STEPS)
+    except (OSError, ValueError):
+        return 0, 0
+    def n(key):
+        return sum(1 for r in (doc.get(key) or []) if isinstance(r, dict) and card and str(r.get("card") or "") == card)
+    return n("steps"), n("rejected")
+
+
+def record_last_advance(argv: list[str] | None = None) -> int:
+    """Run main() and record what THIS invocation decided, for the K2 pre-tool hook.
+
+    advance.py exits 1 on REVERTED and DEFERRED by design, and also on a refusal
+    (LOOP_CANDIDATE_CHANGED, LOOP_NOT_ISSUED, ...). The hook's implementer lockout after a
+    mandated needle's [exit 1] is right for a refusal and wrong for a REVERTED: its
+    legal next step is to edit the write set (v24 run t_e5f41dc2 was refused a read-only
+    javap three times after a REVERTED and halted). The verdict is read from the loop
+    record this invocation changed, not from its text."""
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--root", default="")
+    ap.add_argument("--card", default="")
+    ap.add_argument("--cluster", default="")
+    known, _rest = ap.parse_known_args(argv)
+    root = Path(known.root) if known.root else None
+    card = known.card or os.environ.get("HERMES_KANBAN_TASK") or ""
+    before = _loop_rows(root, card) if root else (0, 0)
+    rc = 2
+    try:
+        rc = main(argv)
+        return rc
+    finally:
+        if root is not None and (root / "verification" / "loop").is_dir():
+            after = _loop_rows(root, card)
+            verdict = ("ACCEPTED" if after[0] > before[0] else "REVERTED" if after[1] > before[1]
+                       else "OK" if rc == 0 else "REFUSED")
+            deferred = root / LOOP_DEFERRED
+            if verdict == "REVERTED" and deferred.is_file() and known.cluster in (load_json(deferred).get("clusters") or []):
+                verdict = "DEFERRED"
+            try:
+                write_canonical(root / LAST_ADVANCE, {"card": card, "cluster": known.cluster, "rc": rc, "verdict": verdict,
+                                                      "run": os.environ.get("HERMES_KANBAN_RUN_ID") or ""})
+            except OSError:
+                pass
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(record_last_advance())

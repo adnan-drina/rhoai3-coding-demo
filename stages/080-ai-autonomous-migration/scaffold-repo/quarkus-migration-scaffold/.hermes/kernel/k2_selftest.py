@@ -1096,6 +1096,29 @@ def main() -> int:
             fails += 1
         else:
             print("ok loop_run_verify_after_red_advance")
+        # v24 run t_e5f41dc2: after a REVERTED (advance.py exit 1 by design) a read-only probe was refused
+        # three times and the worker halted. A REVERTED recorded by advance.py lifts the advance lockout;
+        # a refusal it recorded keeps it.
+        rev_home = Path(td) / "rev-home"
+        (rev_home / "kanban" / "logs").mkdir(parents=True)
+        (rev_home / "kanban" / "logs" / "t_rev.log").write_text(
+            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . "
+            "--cluster c:1 --card t_rev  5.3s [exit 1]\n", encoding="utf-8")
+        (dest / "verification" / "loop").mkdir(parents=True, exist_ok=True)
+        rev_env = {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(rev_home), "HERMES_KANBAN_TASK": "t_rev",
+                   "HERMES_WRITE_SAFE_ROOT": str(dest)}
+        for verdict, blocked, name in (("REVERTED", False, "read_after_recorded_reverted_allowed"),
+                                       ("REFUSED", True, "read_after_recorded_refusal_still_refused"),
+                                       ("DEFERRED", True, "read_after_recorded_deferred_still_refused")):
+            (dest / "verification" / "loop" / "last-advance.json").write_text(
+                json.dumps({"card": "t_rev", "cluster": "c:1", "rc": 1, "verdict": verdict}), encoding="utf-8")
+            r = run("javap -version", roots, cwd=cwd, extra_env=rev_env)
+            if (r.get("action") == "block") != blocked:
+                print("FAIL " + name, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok " + name)
+        (dest / "verification" / "loop" / "last-advance.json").unlink()
         with (red_home / "kanban" / "logs" / "t_p0b.log").open(
             "a", encoding="utf-8"
         ) as fh:

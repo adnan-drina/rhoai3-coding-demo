@@ -561,6 +561,27 @@ def bound_gates_red():
         last[name] = int(m.group(1)) if m else 0
     return [n for n in names if last.get(n) == 1]
 
+def last_advance_reverted(task):
+    """advance.py recorded that its LAST invocation for this card was REVERTED
+    (verification/loop/last-advance.json, written from the loop record that
+    invocation changed). A REVERTED exits 1 by design and its legal next step
+    is to edit the write set; a refusal or a DEFERRED still exits 1 and keeps
+    the lockout (v24 run t_e5f41dc2: a read-only javap was refused three times
+    after a REVERTED and the worker halted)."""
+    if not task:
+        return False
+    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots:
+        if not r:
+            continue
+        try:
+            doc = json.load(open(os.path.join(r, "verification", "loop", "last-advance.json"), encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("card") or "") == task:
+            return str(doc.get("verdict") or "") == "REVERTED"
+    return False
+
 def bound_gate_red():
     reds = bound_gates_red()
     if reds and loop_verdict_recorded():
@@ -1580,6 +1601,8 @@ scratch_ok = False
 # that is not a bound-gate name (AD-020). Reviewer is not this gate.
 if profile == "implementer" and not is_block() and not is_complete():
     unmatched = bound_gates_red()
+    if unmatched and last_advance_reverted(hook_task_id()):
+        unmatched = [g for g in unmatched if "fix-until-green/scripts/advance" not in g]
     if unmatched:
         blob = cmd or ""
         if any(g in blob for g in unmatched):
