@@ -80,11 +80,15 @@ def main() -> int:
         (root / "pom.xml").write_text("<project/>\n")
         (root / "migration.yaml").write_text("analysis:\n  targets:\n    - quarkus\n")
         (root / ".gitignore").write_text(".project\n.settings/\n.classpath\nverification/\n.hermes/\n")
+        (root / "evidence/mta").mkdir(parents=True)   # M1 leaves this read-only on a real destination
+        (root / "evidence/mta/output.json").write_text("{}")
         (root / ".hermes").mkdir()
         os.symlink(HERMES / "lib", root / ".hermes" / "lib")
         git(root, "init", "-q")
         git(root, "add", "-A")
         git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "candidate")
+        (root / "evidence/mta/output.json").chmod(0o444)
+        (root / "evidence/mta").chmod(0o555)
         home = t / "home"
         (home / ".local/bin").mkdir(parents=True)
         (home / ".local/bin/kantra-assert-exec").write_text("#!/bin/sh\nexit 0\n")
@@ -114,7 +118,7 @@ def main() -> int:
         if product_tree_sha256(root) != before or before != commit_product_tree(root, git(root, "rev-parse", "HEAD")):
             return _fail("the product digest must stay the candidate's and equal HEAD's after a rescan")
         if list((t / "run-a").glob("destination-input.*")):
-            return _fail("the scratch copy must be removed after the scan")
+            return _fail("the scratch copy must be removed after the scan, read-only directories included")
         # 3. destination-relative incidents, identities independent of the scratch directory
         doc_a = findings()
         uris = [i["uri"] for v in doc_a["violations"].values() for i in v["incidents"]]
