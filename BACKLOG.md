@@ -20,26 +20,38 @@ Design: `tmp/v21-run/m3-partition-comparison/IMPLEMENTATION-DESIGN.md`
   --fresh`); bootstrap and the destination compile match v21.
 - [x] M2 composes bounded objectives by shared concrete repair. Requirements
   attach by semantic subject, checks are planned by stage with prerequisites,
-  and budgets are conserved (297 = 297; E0 96 = 96).
+  and budgets are conserved.
+- [x] Architect review of 6b923d49 (F1–F3), fixed in b4796865:
+  - one scope validator over the final envelope, recomputed at issuance;
+  - symbols counted as source symbols, not transformation names;
+  - an oversized connected component is a typed COMPOSITION_OVERSIZE refusal,
+    never an unproved split.
 - [x] M3 issues an objective whole, judges each constituent, parks without
   spending, and satisfies a requirement objective whose checks already hold.
-- [x] Four PetClinic cases run through the real issuance and acceptance
-  functions on a FakeNative board, with repository and handler behaviour
-  probed outside Quarkus against the source captures.
-- [ ] The pinned MTA 8.2 rescan on a fresh destination (unchanged blocker:
-  amd64-only image, emulation times out on arm64).
-- [ ] CDI/startup, packaging and live parity for the composed objectives: on
-  a live board once the destination builds. A duplicate injectable bean is
-  caught only at startup (`structure:single-injectable-implementation` judges
-  the owed implementation's own exposure).
-- [ ] Found by the behaviour probe, owned by no objective family yet:
-  - The source's repository override fragments use column names in JPQL
-    (`WHERE type_id=`, `WHERE pet_id=`), which Hibernate 7 rejects, so Pet and
-    PetType deletes fail.
-  - The jaxrs-spec generator emits `@JsonCreator` DTOs that require every
-    property, so the source's create body without `pets` is rejected.
-  - v21's accepted `BindingErrorsResponse` names the error object
-    `OwnerDto`, where the source's `errors` header says `ownerDto`.
+- [x] Pinned MTA 8.2.1 rescan (disposable pod, ws-080 image): the next run's
+  inventory is `[4, 233, 0]` with 24 clusters. A plans 32 outcomes and O
+  plans 30 (14 objectives); the budget is 96 = 96. Two M2 derivations gave
+  identical work lists.
+- [x] The four PetClinic cases ran through run-verify.sh (every verification
+  with the rescan) and advance.py; only the board and the reviewer were
+  simulated. Persistence: A left three cards unfinished on the repository
+  checks it could not meet; O accepted all 11.
+- [x] Target runtime (pinned Red Hat build of Quarkus): a duplicate
+  injectable refuses at augmentation (already fragment-cdi-package). A no-op
+  save, an inverted guard, `&&` and a kept `@Valid` are caught over real HTTP.
+- [ ] Live Hermes board, M4 packaging, startup and parity on the migrated
+  application (it does not build yet), and the decided PostgreSQL.
+- [ ] Product defects, attributed to their owners and due at M4 parity:
+  - The source override fragments' column-name JPQL, which Hibernate 7
+    rejects (spring-data-fragment-impl; guidance in bb3dea3c).
+  - The generated DTO's required `pets` (generated-body-binding, owned since
+    V17-4).
+  - The `errors` objectName `OwnerDto` vs `ownerDto` (handler-validation-
+    translation; guidance in bb3dea3c).
+- [ ] Risk, recorded and not changed: the product-tree digest counts
+  git-ignored JDT metadata (`.project`, `.settings/`) if a rescan writes it
+  into the destination. It happened in the qualification pod, but not in
+  v21's live tree.
 
 ## Repeatable initial M3 plan (plan semantics v1) — 2026-09-26
 

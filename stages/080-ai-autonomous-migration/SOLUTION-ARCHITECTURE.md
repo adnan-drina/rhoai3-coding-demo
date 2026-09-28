@@ -409,12 +409,22 @@ into objectives using the versioned `objective_families` of
   reads, so a task is not issued before the work it depends on. The outcome
   board measures each requirement's checks separately; one passing
   requirement never stands for another's unknown.
-- **Bounds and conservation.** An objective must fit the planned-unit grant
-  (20 files, 160 sites, 8 symbols); otherwise it is refused, never enlarged.
+- **Bounds and conservation.** One validator (`compatibility_objectives.
+  scope_bounds`) judges an objective's FINAL envelope. That is every path it
+  may write: unit write sets, sealed writable paths and the paths its
+  requirements attach. It counts in the unit former's own units: files, sealed
+  member sites, and distinct source symbols, never transformation names. The
+  limits are 20 files, 160 sites and 8 symbols; 16 symbols applies only when
+  every constituent's seal qualified as a fragment set. An oversized connected
+  component is a typed `COMPOSITION_OVERSIZE` planning refusal (admission
+  `PLAN_CONTRACT`) naming what it accounts for; it is never split into halves
+  whose independence nobody proved, and never enlarged or truncated.
+  `worklist.build_objective_scope` recomputes the same bound at issuance and
+  projection, so a stored `within` is never trusted and a misreported
+  descriptor refuses `ISSUE_OBJECTIVE_SCOPE` before any path is granted.
   Every original obligation and requirement is owned, satisfied or explicitly
   unresolved, and budgets join by lineage: one family key whose limit is the
-  sum of its original accounts (PetClinic fresh 297 = 297; the E0 fixture
-  96 = 96).
+  sum of its original accounts (measured next run 96 = 96).
 - **Execution.** `native_control.issue` issues an open objective whole
   (`objective:<id>`, its union write set). `worklist.build_objective_scope`
   binds each constituent's sealed inventory into one envelope, and
@@ -427,26 +437,34 @@ declarative, versioned composition metadata; preconditions (applicability)
 separated from the transformation; idempotent edits; data-table style
 reporting of what each objective covers.
 
-Proof actually run (2026-09-28, local, `tmp/v21-run/m3-partition-comparison`,
-gitignored): four PetClinic cases through the real issue → projection → brief
-→ measure → advance judging → accept-commit path on a FakeNative board.
+Proof actually run (2026-09-28; `tmp/v21-run/m3-partition-comparison`,
+gitignored; CASES-REPORT.md). The environment was a disposable pod from the
+pinned ws-080 image: MTA CLI 8.2.1, JDK 21 and Maven.
 
-- Sorting: 3 per-unit cards → 1 objective.
-- Configuration: 2 → 1.
-- Persistence: the per-unit plan left three repository contracts unimplemented
-  and blocked two cards; objectives accepted all 11.
-- Request boundary: the per-unit plan blocked two cards; objectives accepted
-  one 8-file objective in one round.
+- **Measured inventory.** The fresh M1 evidence rebuilt through
+  `build-worklist.sh` with the pinned destination rescan gives `[4, 233, 0]`
+  and 24 clusters, v21's measured baseline. Two derivations, one run created
+  without the policy and one with it, give identical work lists. A plans 32
+  repair outcomes and O plans 30, of which 14 are objectives; both have a
+  budget of 96.
+- **Cases.** Four PetClinic cases ran for A and O through `run-verify.sh
+  --mode acceptance` (every verification with the rescan) and `advance.py`.
+  Only the board (FakeNative) and the reviewer were simulated.
+  - Persistence: A accepted the DAO checkpoint, but its outcome stayed not
+    accepted on the attached repository checks, and three cards could not
+    finish. O accepted all 11, and every fragment check passed.
+  - Sorting and configuration: each is one objective and one verification,
+    where A needs more cards.
+  - Request boundary: both finished; O needed 2 verifications, A 3.
+- **Target runtime.** The golden's package fixtures and a qualification
+  fixture ran on the pinned Red Hat build of Quarkus. A duplicate injectable
+  refuses at augmentation. A no-op save, an inverted guard, `&&` for `||` and
+  a kept `@Valid` are each caught over real HTTP, with writes read back in a
+  new transaction.
 
-Repository write/read effects and Owner request outcomes were measured outside
-Quarkus on Hibernate + H2 seeded from the source, and compared with the
-qualified source captures. Negatives were caught: no-op and stub writes,
-inverted and `&&` guards, `@Valid` retained, and a null-intolerant Location.
-
-NOT RUN: the pinned MTA rescan, CDI/startup, packaging and live parity (the
-destination does not build at this baseline). A duplicate injectable bean is
-caught only at startup: `structure:single-injectable-implementation` judges
-the owed implementation's own exposure.
+NOT RUN: a live Hermes board, M4 packaging, startup and parity on the
+migrated application (it does not build yet), and the decided PostgreSQL.
+Every later check stays due at M4: none was discharged or reclassified.
 
 ---
 
