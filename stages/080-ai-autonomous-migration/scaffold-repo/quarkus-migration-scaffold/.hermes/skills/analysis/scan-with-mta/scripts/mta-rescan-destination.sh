@@ -35,6 +35,17 @@ PY
 )"
 RULES_FLAGS=()
 [[ -n "${RULES}" && -d "${ROOT}/${RULES#/}" ]] && RULES_FLAGS=(--rules "${ROOT}/${RULES#/}")
+CANARY_ID="$(python3 - "${ROOT}" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + "/.hermes/lib")
+from planner.evidence import load_migration
+from pathlib import Path
+print(load_migration(Path(sys.argv[1]))["canary_rule_id"])
+PY
+)"
+# the measured product version, as mta-analyze-legacy.sh measures it: the analyzer-exit
+# judgement binds its one compatibility exception to the version it was identified on
+CLI_VERSION="$("${CLI}" version 2>/dev/null | grep -m1 -E '[0-9]+\.[0-9]+' || true)"
 # The tree this scan is of, recorded BEFORE the analyzer runs and as the loop
 # identifies trees (planner.canonical.product_tree_sha256, the accepted step's
 # candidate_sha256): the M4 rescan floor (assert-mta-rescan.py) compares this
@@ -84,12 +95,25 @@ got = product_tree_sha256(snap)
 if got != want:
     raise SystemExit("FAIL: MTA_RESCAN_SNAPSHOT the analysis copy is not the candidate (%s != %s)" % (got[:12], want[:12]))
 PY
+# --json-output is a boolean on the pinned MTA CLI 8.2.1 ("create analysis and dependency output
+# as json"); the findings are <output>/output.json. The analyzer's console is kept beside the
+# report because the exit judgement reads it. The exit status is judged, never ignored
+# (judge-analyzer-exit.py): a clean exit, or the one documented 8.2.1 dependency-JSON marshal
+# defect after a completed, consistent analysis, recorded with its nonzero exit status. Anything
+# else means incidents are UNKNOWN: the rescan fails and writes no findings.
+OUTPUT_EXISTED=()
+[[ -e "${OUT}/report/output.json" ]] && OUTPUT_EXISTED=(--output-existed)
+touch "${OUT}/.analyze-started"
 set +e
-( cd "${MTA_RUN_CWD}" && "${CLI}" analyze --input "${SNAP}" --output "${OUT}/report" ${TARGETS[@]+"${TARGETS[@]}"} ${RULES_FLAGS[@]+"${RULES_FLAGS[@]}"} --json-output "${OUT}/findings.json" --overwrite )
-rc=$?
+( cd "${MTA_RUN_CWD}" && "${CLI}" analyze --input "${SNAP}" --output "${OUT}/report" ${TARGETS[@]+"${TARGETS[@]}"} ${RULES_FLAGS[@]+"${RULES_FLAGS[@]}"} --json-output --overwrite ) 2>&1 | tee "${OUT}/analyze.console.log" >&2
+rc=${PIPESTATUS[0]}
+python3 "${SCRIPTS}/judge-analyzer-exit.py" --rc "${rc}" --report-dir "${OUT}/report" --console "${OUT}/analyze.console.log" \
+  --started "${OUT}/.analyze-started" --cli-version "${CLI_VERSION}" --input-root "${SNAP}" --canary-id "${CANARY_ID}" \
+  ${OUTPUT_EXISTED[@]+"${OUTPUT_EXISTED[@]}"} > "${OUT}/analyzer-verdict.json"
+judged=$?
 set -e
-if [[ ! -s "${OUT}/findings.json" && -s "${OUT}/report/output.json" ]]; then cp -f "${OUT}/report/output.json" "${OUT}/findings.json"; fi
-[[ -s "${OUT}/findings.json" ]] || { echo "FAIL: destination rescan produced no findings (rc=${rc})" >&2; exit 1; }
+[[ "${judged}" -eq 0 ]] || { echo "FAIL: destination rescan produced no usable findings (analyzer rc=${rc}; verdict ${OUT}/analyzer-verdict.json)" >&2; exit 1; }
+cp -f "${OUT}/report/output.json" "${OUT}/findings.json"
 # the candidate the findings describe must still be the candidate on disk, and
 # findings name destination-relative files, never the scratch copy
 python3 - "${ROOT}" "${SNAP}" "${TREE_SHA256}" "${OUT}/findings.json" "${OUT}/report/output.json" <<'PY'
@@ -113,5 +137,5 @@ for f in sys.argv[4:]:
         if snap in text:
             p.write_text(text.replace(snap, str(root)), encoding="utf-8", errors="surrogateescape")
 PY
-python3 "${SCRIPTS}/normalize-findings.py" "${OUT}/findings.json" "${CLI}" "$(printf '%s,' ${TARGETS[@]+"${TARGETS[@]}"} | tr -d '-' | sed 's/target,//g; s/,$//')" "destination:${DEST_DIGEST}" "${OUT}/rules-coverage.json" "${OUT}/report/static-report/index.html" "${TREE_SHA256}" "${DEST_DIGEST}"
-echo "OK: destination rescan → ${OUT}/findings.json (rc=${rc}; analyzed a copy of candidate ${TREE_SHA256:0:12})"
+python3 "${SCRIPTS}/normalize-findings.py" "${OUT}/findings.json" "${CLI}" "$(printf '%s,' ${TARGETS[@]+"${TARGETS[@]}"} | tr -d '-' | sed 's/target,//g; s/,$//')" "destination:${DEST_DIGEST}" "${OUT}/rules-coverage.json" "${OUT}/report/static-report/index.html" "${TREE_SHA256}" "${DEST_DIGEST}" "${OUT}/analyzer-verdict.json"
+echo "OK: destination rescan → ${OUT}/findings.json (analyzer rc=${rc}, $(python3 -c 'import json, sys; v = json.load(open(sys.argv[1])); print((v.get("compatibility_exception") or {}).get("id") or v.get("basis"))' "${OUT}/analyzer-verdict.json"); analyzed a copy of candidate ${TREE_SHA256:0:12})"

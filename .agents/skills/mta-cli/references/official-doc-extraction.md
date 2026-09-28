@@ -118,7 +118,7 @@ Confirm listing flags against `mta-cli analyze --help` on a real 8.2 binary.
 | `--bulk` | bool | Bulk analysis mode (Dev Preview) |
 | `--overwrite` | bool | Overwrite output directory |
 | `--skip-static-report` | bool | Skip HTML report |
-| `--json-output` | string | JSON output |
+| `--json-output` | bool | Create analysis and dependency output as JSON (`<output>/output.json`, `dependencies.json`); takes no path. Measured on the pinned MTA CLI 8.2.1 `analyze --help` (Stage 080 ws-080 image, 2026-09-28); this extraction earlier listed it as a string |
 | `--enable-default-rulesets` | bool | Include defaults (default: true) |
 | `--analyze-known-libraries` | bool | Include open-source libraries |
 | `--context-lines` | int | Source lines per incident (default: 100) |

@@ -145,7 +145,7 @@ mta-cli generate helm --chart-dir <chart> --input <discovery.yaml> \
 | `--mode` | `full` (default) or `source-only` |
 | `--overwrite` | Overwrite existing output directory |
 | `--skip-static-report` | Skip HTML report generation |
-| `--json-output` | Produce JSON output |
+| `--json-output` | Boolean: also write `output.json` (and `dependencies.json`) into `--output`; takes no path. MTA CLI 8.2.1 exits 1 after a completed analysis when `dependencies.yaml` has nested `baseDep.extras` ("json: unsupported type: map[interface {}]interface {}"); `output.json` is already written |
 | `--enable-default-rulesets` | Include default rules (default: true) |
 
 ## Analysis Report Sections

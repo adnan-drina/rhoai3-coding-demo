@@ -213,6 +213,11 @@ def main() -> int:
     # (its input is the frozen copy, identified by input_digest).
     tree_sha256 = sys.argv[7] if len(sys.argv) > 7 else ""
     git_head = sys.argv[8] if len(sys.argv) > 8 else ""
+    # judge-analyzer-exit.py's verdict on this invocation: the analyzer's own exit
+    # status (never rewritten) and, when it was nonzero, the compatibility
+    # exception that made the findings usable.
+    verdict_arg = sys.argv[9] if len(sys.argv) > 9 and sys.argv[9] else ""
+    verdict = json.loads(Path(verdict_arg).read_text(encoding="utf-8")) if verdict_arg else {}
 
     if not path.is_file():
         print(f"normalize-mta-findings: missing {path}", file=sys.stderr)
@@ -255,6 +260,12 @@ def main() -> int:
             "input_digest": input_digest,
             "tree_sha256": tree_sha256,
             "git_head": git_head,
+            **({
+                "analyzer_exit_status": verdict.get("analyzer_exit_status"),
+                "analyzer_exit_basis": verdict.get("basis"),
+                "cli_version_measured": verdict.get("cli_version_measured"),
+                "compatibility_exception": verdict.get("compatibility_exception"),
+            } if verdict else {}),
         },
         "violations": violations,
         "insights": insights,

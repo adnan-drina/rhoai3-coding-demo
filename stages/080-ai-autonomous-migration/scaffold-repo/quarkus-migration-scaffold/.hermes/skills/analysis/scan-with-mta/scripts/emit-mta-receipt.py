@@ -4,7 +4,8 @@
 Records: exact binary (path, realpath, sha256, size), install-prefix
 provider/analyzer artifacts (path + sha256), product pin from
 .hermes/pins.json, arguments and mode, targets, bundled and custom
-ruleset digests, input digest, exit status, output digest, canary result,
+ruleset digests, input digest, exit status (never rewritten; `analyzer_exit` records how a
+nonzero exit was judged, judge-analyzer-exit.py), output digest, canary result,
 and whether the run is ADMISSIBLE (pinned MTA CLI 8.2 artifact) or a
 provisional kantra fallback.
 
@@ -106,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--argv-file", default="")
     ap.add_argument("--mode", default="containerless")
     ap.add_argument("--cli-version", default="", help="measured `<cli> --version` first line")
+    ap.add_argument("--analyzer-verdict", default="", help="judge-analyzer-exit.py verdict for this invocation")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     freeze = load_json(producer_receipt(root, "freeze")) if producer_receipt(root, "freeze").is_file() else {}
@@ -147,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: MTA_SOURCE_FLAG argv contains --source (AD-003 amendment A)", file=sys.stderr)
         return 1
     findings = Path(args.findings) if args.findings else None
+    # the analyzer's exit judgement: how a nonzero exit_status was (or was not) accepted
+    verdict = load_json(Path(args.analyzer_verdict)) if args.analyzer_verdict and Path(args.analyzer_verdict).is_file() else None
     canary = _canary_fired(findings, args.canary_id) if findings else None
     receipt = {
         "schema": "rhoai3.producer-receipt/v1",
@@ -180,6 +184,10 @@ def main(argv: list[str] | None = None) -> int:
         "bundled_rules_digest": bundled_digest,
         "bundled_rules_count": bundled_count,
         "exit_status": args.exit_status,
+        "analyzer_exit": ({"basis": verdict.get("basis"), "accepted": verdict.get("accepted"),
+                           "refusal": verdict.get("refusal"),
+                           "compatibility_exception": verdict.get("compatibility_exception")}
+                          if isinstance(verdict, dict) else None),
         "output_digest": sha256_file(findings) if findings and findings.is_file() else "",
         "canary": {"rule_id": args.canary_id, "fired": canary},
     }

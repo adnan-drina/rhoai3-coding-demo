@@ -17,7 +17,14 @@ destination (the golden's planner library):
 4. a candidate that changes while it is analyzed is refused
    MTA_RESCAN_STALE_INPUT, its findings kept only as .stale, the scratch copy
    removed and the report left for diagnosis; a failed analyzer leaves no
-   scratch copy either.
+   scratch copy either;
+5. the fake takes `--json-output` as the pinned 8.2.1 boolean (a value after it
+   is refused), and the analyzer's exit is judged (judge-analyzer-exit.py): a
+   clean exit is recorded as such; the known 8.2.1 dependency-JSON marshal
+   defect after a completed analysis is accepted with its nonzero exit and
+   reason recorded; the defect plus another error, a stale, missing or
+   truncated output.json, output.json disagreeing with output.yaml, or another
+   CLI version is refused with no findings (incidents UNKNOWN).
 """
 from __future__ import annotations
 
@@ -37,12 +44,17 @@ from planner.outcome_checks import commit_product_tree  # noqa: E402
 from planner.worklist import incidents_from_findings  # noqa: E402
 
 FAKE = r'''#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 a = sys.argv[1:]
 if a[:1] != ["analyze"]:
-    print("mta-cli 8.2.1"); raise SystemExit(0)
-inp = Path(a[a.index("--input") + 1]); out = Path(a[a.index("--json-output") + 1])
+    print(os.environ.get("FAKE_VERSION", "version: 8.2.1")); raise SystemExit(0)
+# the pinned 8.2.1 flag is a boolean: a value after it is a stray argument
+j = a.index("--json-output")
+if j + 1 < len(a) and not a[j + 1].startswith("--"):
+    print("Error: unexpected argument %s" % a[j + 1], file=sys.stderr); raise SystemExit(2)
+inp = Path(a[a.index("--input") + 1]); rep = Path(a[a.index("--output") + 1])
+mode = os.environ.get("FAKE_MODE", "")
 if os.environ.get("FAKE_FAIL"):
     raise SystemExit(3)
 # what JDT/m2e does to the tree it analyzes
@@ -50,15 +62,44 @@ if os.environ.get("FAKE_FAIL"):
 (inp / ".settings").mkdir(exist_ok=True)
 (inp / ".settings" / "org.eclipse.m2e.core.prefs").write_text("version=1\n")
 (inp / ".classpath").write_text("<classpath/>\n")
-incidents = []
+incidents, canary = [], []
 for f in sorted(inp.rglob("*.java")):
     first = f.read_text().splitlines()[0]
     incidents.append({"uri": "file://%s" % f, "lineNumber": 1, "message": "uses %s" % first})
+    canary.append({"uri": "file://%s" % f, "lineNumber": 1, "message": "rhoai3 canary fired"})
 if os.environ.get("FAKE_TOUCH"):
     orig = Path(os.environ["FAKE_TOUCH"])
     orig.write_text(orig.read_text() + "// changed during the scan\n")
-out.write_text(json.dumps([{"name": "rs", "violations": {"fake-rule-00001": {"category": "mandatory", "incidents": incidents}},
-                            "unmatched": [], "skipped": [], "errors": {}}]))
+rep.mkdir(parents=True, exist_ok=True)
+doc = [{"name": "rs", "violations": {"fake-rule-00001": {"category": "mandatory", "incidents": incidents}},
+        "insights": {"rhoai3-canary-00001": {"category": "optional", "incidents": canary}},
+        "unmatched": [], "skipped": [], "errors": {}}]
+def yaml_incidents(items):
+    return "".join("      - uri: %s\n        message: %s\n        lineNumber: 1\n" % (i["uri"], i["message"]) for i in items)
+extra = incidents[:1] if mode == "inconsistent" else []
+(rep / "output.yaml").write_text("- name: rs\n  violations:\n    fake-rule-00001:\n      category: mandatory\n      incidents:\n"
+                                 + yaml_incidents(incidents + extra)
+                                 + "  insights:\n    rhoai3-canary-00001:\n      category: optional\n      incidents:\n"
+                                 + yaml_incidents(canary))
+(rep / "analysis.log").write_text('time="t" level=error msg="skipping rule for unavailable provider" provider=nodejs\n'
+                                  'time="t" level=info msg="finished running analysis" rulesets="[]"\n')
+(rep / "dependencies.yaml").write_text("- provider: java\n  dependencies: []\n")
+text = json.dumps(doc)
+if mode == "truncated":
+    text = text[: len(text) // 2]
+if mode != "missing":
+    (rep / "output.json").write_text(text)
+if mode == "stale":
+    os.utime(rep / "output.json", (time.time() - 86400, time.time() - 86400))
+if mode != "incomplete":
+    print("Analysis complete!")
+if mode:
+    # what the pinned 8.2.1 prints converting dependencies.yaml with nested baseDep.extras
+    print('time="t" level=error msg="failed to marshal dependencies file to json" error="json: unsupported type: map[interface {}]interface {}"', file=sys.stderr)
+    if mode == "defect+other":
+        print('time="t" level=error msg="failed to generate static report" error="exit status 1"', file=sys.stderr)
+    print("Error: json: unsupported type: map[interface {}]interface {}", file=sys.stderr)
+    raise SystemExit(1)
 '''
 
 
@@ -78,7 +119,7 @@ def main() -> int:
         (root / "src/main/java/org/acme").mkdir(parents=True)
         (root / "src/main/java/org/acme/A.java").write_text("class A {}\n")
         (root / "pom.xml").write_text("<project/>\n")
-        (root / "migration.yaml").write_text("analysis:\n  targets:\n    - quarkus\n")
+        (root / "migration.yaml").write_text("analysis:\n  canary_rule_id: rhoai3-canary-00001\n  targets:\n    - quarkus\n")
         (root / ".gitignore").write_text(".project\n.settings/\n.classpath\nverification/\n.hermes/\n")
         (root / "evidence/mta").mkdir(parents=True)   # M1 leaves this read-only on a real destination
         (root / "evidence/mta/output.json").write_text("{}")
@@ -157,9 +198,66 @@ def main() -> int:
         p = rescan("run-e", FAKE_FAIL="1")
         if p.returncode == 0 or list((t / "run-e").glob("destination-input.*")):
             return _fail("a failed analyzer must fail and clean its scratch copy: rc=%s" % p.returncode)
+        if (out / "findings.json").exists() or "MTA_ANALYZER_FAILED" not in p.stderr:
+            return _fail("a failed analyzer must leave no findings (incidents UNKNOWN): %s" % p.stderr[-300:])
+        # 5. the analyzer's exit status is judged (--json-output is a boolean on 8.2.1; the fake refuses a value)
+        p = rescan("run-f")
+        ev = findings().get("execution_evidence") or {}
+        if p.returncode != 0 or ev.get("analyzer_exit_status") != 0 or ev.get("analyzer_exit_basis") != "clean-exit" \
+                or ev.get("compatibility_exception") is not None:
+            return _fail("a clean exit is recorded as such: rc=%s %s" % (p.returncode, ev))
+        # 5a. the one known 8.2.1 defect: accepted, its nonzero exit and reason recorded, findings intact
+        p = rescan("run-g", FAKE_MODE="defect")
+        if p.returncode != 0:
+            return _fail("the known 8.2.1 dependency-JSON marshal defect after a completed analysis is accepted: %s"
+                         % (p.stdout + p.stderr)[-600:])
+        doc = findings()
+        ev = doc.get("execution_evidence") or {}
+        exc = ev.get("compatibility_exception") or {}
+        if ev.get("analyzer_exit_status") != 1 or exc.get("id") != "MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL" \
+                or exc.get("analyzer_exit_status") != 1 or exc.get("cli_version") != "8.2.1" or "dependencies.yaml" not in exc.get("reason", ""):
+            return _fail("the exception must be recorded with the analyzer's nonzero exit preserved: %s" % ev)
+        if not any(v.get("incidents") for v in doc["violations"].values()) or ev.get("tree_sha256") != product_tree_sha256(root):
+            return _fail("accepted findings must carry the incidents and bind to the candidate: %s" % ev)
+        # 5b. every other nonzero exit means incidents UNKNOWN: the rescan fails and writes no findings
+        refusals = {
+            "run-h": ({"FAKE_MODE": "defect+other"}, "another error besides the known marshal failure"),
+            "run-i": ({"FAKE_MODE": "stale"}, "predates this invocation"),
+            "run-j": ({"FAKE_MODE": "missing"}, "wrote no output.json"),
+            "run-k": ({"FAKE_MODE": "truncated"}, "does not parse"),
+            "run-l": ({"FAKE_MODE": "inconsistent"}, "output.json and output.yaml disagree"),
+            "run-m": ({"FAKE_MODE": "defect", "FAKE_VERSION": "version: 8.2.2"}, "bound to 8.2.1 only"),
+            "run-n": ({"FAKE_MODE": "incomplete"}, "does not report 'Analysis complete!'"),
+        }
+        for run, (env, why) in refusals.items():
+            p = rescan(run, **env)
+            verdict = out / "analyzer-verdict.json"
+            if p.returncode == 0 or "MTA_ANALYZER_FAILED" not in p.stderr or why not in p.stderr:
+                return _fail("%s must be refused (%s): rc=%s %s" % (env, why, p.returncode, p.stderr[-400:]))
+            if (out / "findings.json").exists() or not verdict.is_file() or json.loads(verdict.read_text()).get("accepted") is not False:
+                return _fail("%s must leave no findings and a refusing verdict" % env)
+            if list((t / run).glob("destination-input.*")):
+                return _fail("%s must still remove its scratch copy" % env)
+        # 5c. an output.json present before the analyzer ran is never this invocation's
+        rep = t / "prior" / "report"
+        rep.mkdir(parents=True)
+        (rep / "output.json").write_text("[]")
+        (t / "prior" / "started").write_text("")
+        p = subprocess.run([sys.executable, str(HERE / "judge-analyzer-exit.py"), "--rc", "1", "--report-dir", str(rep),
+                            "--console", str(t / "prior" / "console"), "--started", str(t / "prior" / "started"),
+                            "--cli-version", "version: 8.2.1", "--input-root", str(t), "--canary-id", "x", "--output-existed"],
+                           capture_output=True, text=True)
+        if p.returncode == 0 or "existed before this invocation" not in p.stderr:
+            return _fail("a pre-existing output.json must be refused: %s" % p.stderr)
+        # the M1 analyzer invocation uses the same boolean flag and the same judgement
+        m1 = (HERE / "mta-analyze-legacy.sh").read_text()
+        if '--json-output "' in m1 or "judge-analyzer-exit.py" not in m1:
+            return _fail("mta-analyze-legacy.sh must pass --json-output as a boolean and judge the analyzer's exit")
     print("OK: mta-rescan-destination (the analyzer reads a disposable copy of the candidate, uncommitted repair included; "
           "its IDE metadata never reaches the candidate, whose digest stays HEAD's; incidents are destination-relative with "
-          "scratch-independent identities; a candidate changed during the scan is refused as stale; scratch always removed)")
+          "scratch-independent identities; a candidate changed during the scan is refused as stale; scratch always removed; "
+          "--json-output is a boolean; the known 8.2.1 dependency-JSON marshal defect is accepted with its exit recorded, and "
+          "another error, a stale/missing/truncated output.json, YAML/JSON disagreement or another version is refused)")
     return 0
 
 

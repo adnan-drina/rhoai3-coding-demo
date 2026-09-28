@@ -2,7 +2,7 @@
 # AD-003 amendment A — harness M1/M5 analysis invocation.
 #
 #   mta-cli analyze --input <frozen analysis copy> --output … --target … \
-#     --rules <custom ruleset with canary> [--json-output]
+#     --rules <custom ruleset with canary> --json-output   (a boolean on 8.2.1)
 #
 # NEVER pass --source (dated Track B evidence 2026-07-27: excludes
 # source-labelless rules and narrows the set). Targets come from
@@ -190,25 +190,6 @@ python_for_yaml() {
   printf '%s\n' "python3"
 }
 
-convert_yaml_json() {
-  local src="$1" dest="$2"
-  if command -v python3.11 >/dev/null 2>&1 && python3.11 -c "import yaml" >/dev/null 2>&1; then
-    python3.11 - "${src}" "${dest}" <<'PY'
-import json, sys, yaml
-src, dest = sys.argv[1], sys.argv[2]
-json.dump(yaml.safe_load(open(src, encoding="utf-8")), open(dest, "w", encoding="utf-8"), indent=2)
-print(f"converted {src} -> {dest}", file=sys.stderr)
-PY
-    return 0
-  fi
-  if command -v yq >/dev/null 2>&1; then
-    yq -o=json "${src}" > "${dest}"
-    echo "converted ${src} -> ${dest} (yq)" >&2
-    return 0
-  fi
-  return 1
-}
-
 PYTHON_YAML="$(python_for_yaml)"
 
 # UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
@@ -324,7 +305,8 @@ if [ -n "${RULES_REL}" ]; then
   RULES_FLAGS=(--rules "${RULES_DIR}")
 fi
 
-rm -rf "${OUT_DIR}"
+# a failed re-run must not leave an earlier run's findings standing in for its own
+rm -rf "${OUT_DIR}" "${JSON_OUT}"
 mkdir -p "${OUT_DIR}" "$(dirname "${JSON_OUT}")"
 
 # Clean-room finding 2026-08-09 (v8): analyzer-lsp hard-codes
@@ -339,38 +321,53 @@ echo "Targets:${TARGET_LIST}" >&2
 [ -n "${RULES_DIR}" ] && echo "Custom rules: ${RULES_DIR} (canary ${CANARY_ID:-<none>})" >&2
 echo "NOTE: --source is intentionally omitted (AD-003 amendment A)." >&2
 
-ARGV=("${CLI}" analyze --input "${INPUT}" --output "${OUT_DIR}" "${TARGET_FLAGS[@]}" "${RULES_FLAGS[@]}" --json-output "${JSON_OUT}" --overwrite)
-printf '%s\n' "${ARGV[@]}" > "${OUT_DIR}/argv.txt"
+# --json-output is a boolean on the pinned MTA CLI 8.2.1 ("create analysis and
+# dependency output as json"): the findings are ${OUT_DIR}/output.json. The
+# console is kept beside the report because the exit judgement reads it.
+ARGV=("${CLI}" analyze --input "${INPUT}" --output "${OUT_DIR}" "${TARGET_FLAGS[@]}" "${RULES_FLAGS[@]}" --json-output --overwrite)
+# --overwrite empties OUT_DIR when the analyzer starts, so what must survive the
+# run (start marker, console, verdict) is kept in harness scratch and copied in
+# afterwards, and argv.txt is written after the run (the receipt's --source
+# check reads it; written before, it was wiped and the check saw no argv).
+JUDGE_DIR="$(mktemp -d "${MTA_RUN_CWD%/}/m1-analyze.XXXXXX")"
+CONSOLE="${JUDGE_DIR}/analyze.console.log"
+STARTED="${JUDGE_DIR}/analyze.started"
+VERDICT="${JUDGE_DIR}/analyzer-verdict.json"
+OUTPUT_EXISTED=()
+[[ -e "${OUT_DIR}/output.json" ]] && OUTPUT_EXISTED=(--output-existed)
+touch "${STARTED}"
 
-# --json-output can fail after a successful analysis (kantra marshal of
-# dependencies.yaml: map[interface{}]interface{}). Treat tool exit as soft if
-# OUT_DIR still has output.json / output.yaml (AD-003 / live P10 retry path).
+# The exit status is judged, never ignored (judge-analyzer-exit.py): a clean
+# exit, or the one documented 8.2.1 dependency-JSON marshal defect after a
+# completed, consistent analysis, recorded with its nonzero exit status in the
+# receipt. Anything else is a failed analysis: no findings, a failed receipt.
 set +e
-( cd "${MTA_RUN_CWD}" && "${ARGV[@]}" )
-analyze_rc=$?
+( cd "${MTA_RUN_CWD}" && "${ARGV[@]}" ) 2>&1 | tee "${CONSOLE}" >&2
+analyze_rc=${PIPESTATUS[0]}
+python3 "${SCRIPTS}/judge-analyzer-exit.py" --rc "${analyze_rc}" --report-dir "${OUT_DIR}" --console "${CONSOLE}" \
+  --started "${STARTED}" --cli-version "${CLI_VERSION}" --input-root "${INPUT}" --canary-id "${CANARY_ID}" \
+  ${OUTPUT_EXISTED[@]+"${OUTPUT_EXISTED[@]}"} > "${VERDICT}"
+judged=$?
 set -e
+mkdir -p "${OUT_DIR}"
 echo "${analyze_rc}" > "${OUT_DIR}/analyze.rc"
+printf '%s\n' "${ARGV[@]}" > "${OUT_DIR}/argv.txt"
+cp -f "${CONSOLE}" "${VERDICT}" "${OUT_DIR}/"
+VERDICT="${OUT_DIR}/analyzer-verdict.json"
+rm -rf "${JUDGE_DIR}" 2>/dev/null || true
 
-if [[ ! -s "${JSON_OUT}" ]]; then
-  if [[ -s "${OUT_DIR}/output.json" ]]; then
-    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); falling back to ${OUT_DIR}/output.json" >&2
-    cp -f "${OUT_DIR}/output.json" "${JSON_OUT}"
-  elif [[ -s "${OUT_DIR}/output.yaml" ]]; then
-    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); converting ${OUT_DIR}/output.yaml" >&2
-    convert_yaml_json "${OUT_DIR}/output.yaml" "${JSON_OUT}" \
-      || die "analyze wrote output.yaml but YAML→JSON conversion failed (need python3.11+PyYAML or yq; analyze_rc=${analyze_rc})"
-  else
-    python3 "${SCRIPTS}/emit-mta-receipt.py" "${ROOT}" --cli "${CLI}" --cli-version "${CLI_VERSION}" --status failed --exit-status "${analyze_rc}" --targets "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" --rules-dir "${RULES_DIR}" --canary-id "${CANARY_ID}" --input "${INPUT}" || true
-    die "mta-cli analyze failed (rc=${analyze_rc}) with no ${OUT_DIR}/output.json|output.yaml"
-  fi
+if [[ "${judged}" -ne 0 ]]; then
+  python3 "${SCRIPTS}/emit-mta-receipt.py" "${ROOT}" --cli "${CLI}" --cli-version "${CLI_VERSION}" --status failed --exit-status "${analyze_rc}" --targets "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" --rules-dir "${RULES_DIR}" --canary-id "${CANARY_ID}" --input "${INPUT}" --argv-file "${OUT_DIR}/argv.txt" --analyzer-verdict "${VERDICT}" || true
+  die "mta-cli analyze failed (rc=${analyze_rc}); findings are UNKNOWN (verdict ${VERDICT})"
 fi
+cp -f "${OUT_DIR}/output.json" "${JSON_OUT}"
 
 # Preserve model: envelope + codeSnip required (provisional schema lock).
 # Digest form: frozen:<source sha256>
 python3 "${SCRIPTS}/normalize-findings.py" \
   "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "frozen:${INPUT_DIGEST}" \
   "${OUT_DIR}/rules-coverage.json" \
-  "${OUT_DIR}/static-report/index.html"
+  "${OUT_DIR}/static-report/index.html" "" "" "${VERDICT}"
 python3 "${SCRIPTS}/assert-mta-rescan.py" "${ROOT}" \
   --snapshot-m1 --findings "${JSON_OUT}" \
   || die "M1 findings digest snapshot failed (WC-5)"
@@ -381,7 +378,7 @@ python3 "${SCRIPTS}/validate-findings-schema.py" "${JSON_OUT}" \
 # input, exit, output digest, canary). Admissibility is a recorded fact.
 python3 "${SCRIPTS}/emit-mta-receipt.py" "${ROOT}" --cli "${CLI}" --cli-version "${CLI_VERSION}" --status ok --exit-status "${analyze_rc}" \
   --targets "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" --rules-dir "${RULES_DIR}" --canary-id "${CANARY_ID}" \
-  --input "${INPUT}" --findings "${JSON_OUT}" --argv-file "${OUT_DIR}/argv.txt" \
+  --input "${INPUT}" --findings "${JSON_OUT}" --argv-file "${OUT_DIR}/argv.txt" --analyzer-verdict "${VERDICT}" \
   || die "emit-mta-receipt failed"
 python3 "${SCRIPTS}/assert-mta-canary.py" "${ROOT}" || echo "mta-analyze-legacy: WARN canary did not fire — admission will block CANARY_MISSING" >&2
 
