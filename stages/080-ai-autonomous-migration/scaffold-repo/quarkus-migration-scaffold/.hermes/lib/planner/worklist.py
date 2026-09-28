@@ -6220,6 +6220,86 @@ def _assess_owed_adapter(root: Path, row: dict[str, Any], by_path: dict[str, lis
                 % (path, row.get("contract"), want, row.get("config"), len(props)))
 
 
+OBJECTIVE_RULE = "unit/objective/v1"
+
+
+class ObjectiveScopeError(ValueError):
+    pass
+
+
+def objective_children(root: Path, envelope: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
+    """(child record, its sealed inventory or None for an unsealed cluster).
+    A sealed child whose file is missing or whose content is not the digest the
+    envelope names refuses: a child is judged by the inventory it was admitted
+    with, never by a later one."""
+    out = []
+    for ch in envelope.get("children") or []:
+        doc = None
+        if ch.get("path"):
+            p = Path(root) / str(ch["path"])
+            doc = load_json(p) if p.is_file() else None
+            if not isinstance(doc, dict) or batch_scope_digest(doc) != str(ch.get("digest") or ""):
+                raise ObjectiveScopeError("the sealed inventory of %s (%s) is missing or is not the admitted one"
+                                          % (ch.get("cluster"), ch.get("path")))
+        out.append((ch, doc))
+    return out
+
+
+def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, Any],
+                          worklist: dict[str, Any] | None) -> dict[str, Any]:
+    """ONE composite inventory for an objective issued whole
+    (compatibility_objectives execution_unit). Its children keep their own
+    rule-specific inventories (referenced by path and digest, assessed by their
+    own assessor); the envelope unions their file seal, symbols, catalogued
+    targets and members (each tagged with its constituent) so the checkpoint
+    judges the objective once. Requirement files the objective owns join the
+    file seal; nothing else does. Raises ObjectiveScopeError when a child
+    inventory is missing or changed."""
+    children: list[dict[str, Any]] = []
+    writable: set[str] = set()
+    symbols: list[dict[str, Any]] = []
+    targets: list[dict[str, Any]] = []
+    members: list[dict[str, Any]] = []
+    idents: set[str] = set()
+    items = {str(i.get("id")): i for i in (worklist or {}).get("items") or [] if isinstance(i, dict)}
+    for unit in descriptor.get("units") or []:
+        seal = unit.get("seal") or {}
+        ch = {"cluster": str(unit.get("cluster")), "rule": str(seal.get("rule") or "cluster"),
+              "path": str(seal.get("path") or ""), "digest": str(seal.get("digest") or ""),
+              "write_set": sorted(unit.get("write_set") or []), "items": sorted(unit.get("items") or [])}
+        children.append(ch)
+    for ch, doc in objective_children(root, {"children": children}):
+        writable |= set(ch["write_set"])
+        if doc is None:
+            continue
+        writable |= {str(p) for p in doc.get("writable_paths") or []}
+        for s in doc.get("symbols") or []:
+            if s not in symbols:
+                symbols.append(s)
+        for t in doc.get("target_symbols") or []:
+            if t not in targets:
+                targets.append(t)
+        members += [dict(m, constituent=ch["cluster"]) for m in doc.get("members") or []]
+    for ob, ident in sorted((descriptor.get("identities") or {}).items()):
+        idents.add(str(ident))
+    writable |= {str(p) for p in descriptor.get("paths") or []}
+    env = {
+        "schema": UNIT_SCHEMA, "kind": UNIT_KIND, "rule": OBJECTIVE_RULE,
+        "unit_id": str(objective_id), "cluster": "objective:%s" % objective_id,
+        "producer": "worklist.build_objective_scope", "children": children,
+        "writable_paths": sorted(writable), "symbols": symbols, "target_symbols": targets,
+        "members": sorted(members, key=lambda m: (str(m.get("path")), str(m.get("member_id")), str(m.get("constituent")))),
+        "obligations": sorted(descriptor.get("obligations") or []), "requirements": sorted(descriptor.get("requirements") or []),
+        "bounds": dict(descriptor.get("bounds") or {}),
+        "completion": [{"check": "identities-gone", "tool": "javac", "identities": sorted(idents),
+                        "detail": "every one of the %d admitted obligations of the objective is no longer reported" % len(idents)},
+                       {"check": "unit-assessment", "tool": "worklist.assess_unit",
+                        "detail": "every constituent's sealed members, assessed by that constituent's own rule"}],
+    }
+    env["digest"] = batch_scope_digest(env)
+    return env
+
+
 def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
     """Every sealed member against the rule its unit declares, from the
     compiled tree. `inconclusive` is never a pass: the caller must refuse.
@@ -6237,6 +6317,17 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
       unit carries is the other half, and `progress()` requires it.
     """
     rule = str(scope.get("rule") or "")
+    if rule == OBJECTIVE_RULE:
+        # each constituent by ITS OWN assessor; the weakest cannot stand for the others
+        try:
+            kids = objective_children(root, scope)
+        except ObjectiveScopeError as exc:
+            return [{"member": "*", "verdict": "violates", "detail": str(exc)}]
+        rows: list[dict[str, Any]] = []
+        for ch, doc in kids:
+            if doc is not None:
+                rows += [dict(r, constituent=ch["cluster"]) for r in assess_unit(root, doc)]
+        return rows
     if rule == CHECKED_FAMILY_RULE:
         return assess_checked_family(root, scope)
     if rule == BATCH_RULE:
@@ -6644,7 +6735,8 @@ def _symbol_match(key: str, kind: str, fqn: str) -> bool:
 
 def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]],
                                model: dict[str, Any] | None = None,
-                               identities: set[str] | None = None) -> tuple[list[dict[str, Any]], str]:
+                               identities: set[str] | None = None, *,
+                               root: Path | None = None) -> tuple[list[dict[str, Any]], str]:
     """(the rows a unit's sealed symbols explain, why the tolerated set is refused).
 
     A currently reported compile diagnostic ``d`` is EXPLAINED iff all four:
@@ -6679,6 +6771,16 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
     about (the introduced set); absent, every reported diagnostic is considered."""
     if not isinstance(scope, dict) or str(scope.get("kind") or "") != UNIT_KIND:
         return [], "the card carries no unit seal, so no symbol of it can explain anything"
+    if str(scope.get("rule") or "") == OBJECTIVE_RULE:
+        # per constituent: one child's documented targets explain diagnostics
+        # in ITS files only, never a regression in another child's files
+        if root is None:
+            return [], "an objective's constituents cannot be read without the tree, so nothing is explained"
+        try:
+            kids = objective_children(root, scope)
+        except ObjectiveScopeError as exc:
+            return [], str(exc)
+        return _objective_explained(kids, items, model, identities)
     if model is None:
         return [], ("the destination model is unavailable, so no token can be resolved through the declaring file's "
                     "imports; a bare name matched by spelling is exactly the mistake this rule refuses (v9 t_3903f495)")
@@ -6725,6 +6827,23 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
         return [], ("the diagnostics this checkpoint would tolerate name %d different symbol families (%s); a unit may "
                     "only carry its OWN family through its checkpoint, and anything else is a second defect"
                     % (len(families), ", ".join(sorted(families)[:3])))
+    return sorted(rows, key=lambda r: (r["path"], r["identity"])), ""
+
+
+def _objective_explained(kids: list[tuple[dict[str, Any], dict[str, Any] | None]], items: list[dict[str, Any]],
+                         model: dict[str, Any] | None, identities: set[str] | None) -> tuple[list[dict[str, Any]], str]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for ch, doc in kids:
+        if doc is None:
+            continue  # an unsealed constituent explains nothing
+        got, why = unit_explained_regressions(doc, items, model, identities)
+        if why:
+            return [], "%s: %s" % (ch.get("cluster"), why)
+        for r in got:
+            if r["identity"] not in seen:
+                seen.add(r["identity"])
+                rows.append(dict(r, constituent=ch.get("cluster")))
     return sorted(rows, key=lambda r: (r["path"], r["identity"])), ""
 
 

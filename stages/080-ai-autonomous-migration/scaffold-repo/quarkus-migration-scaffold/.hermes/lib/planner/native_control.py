@@ -616,6 +616,21 @@ def _allowed_paths(node: dict[str, Any], worklist: dict[str, Any] | None, own: s
     return "", []
 
 
+def objective_open(descriptor: dict[str, Any], worklist: dict[str, Any] | None) -> bool:
+    """Is any admitted obligation of an objective still reported? Asked of the
+    line-free identity (a moved site is the same site) and, for an obligation
+    without one (an MTA incident), of its id."""
+    if not worklist:
+        return False
+    want = set((descriptor.get("identities") or {}).values())
+    for it in worklist.get("items") or []:
+        if not isinstance(it, dict) or str(it.get("category") or "") != "mandatory":
+            continue
+        if str(it.get("identity") or "") in want or str(it.get("id") or "") in want:
+            return True
+    return False
+
+
 def _open_pending(board: Board, task_id: str) -> dict[str, Any] | None:
     pend = None
     for r in board.records(task_id):
@@ -763,9 +778,16 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         raise Refusal("ISSUE_" + why, "an outcome is issued against the measured work list")
     cluster, allowed, unit = "", [], None
     satisfied, unsatisfied = None, []
+    objective = None
     if role == "repair":
         own = owned(plan, node)
-        cluster, allowed = _allowed_paths(node, worklist, own)
+        eu = node.get("execution_unit") if isinstance(node.get("execution_unit"), dict) else None
+        if eu and objective_open(eu, worklist):
+            # compatibility-objectives/v1: the admitted objective is ONE bounded
+            # scope, issued whole -- never its first open unit
+            cluster, allowed, objective = "objective:%s" % oid, sorted(str(p) for p in eu.get("paths") or []), eu
+        else:
+            cluster, allowed = _allowed_paths(node, worklist, own)
         if not cluster and node.get("repair_paths"):
             cluster = planned_cluster_id(oid)
             allowed = sorted(node["repair_paths"])[:AMEND_MAX_FILES]
@@ -809,6 +831,7 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                                          + unsatisfied[:3]) or "no reason measured"))
     return {"issue_id": seq, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
             "cluster": cluster, "allowed_paths": allowed, "budget": budget, "retained_candidate": bool(pending),
+            "objective": objective,
             "planned_unit": (dict(unit, owed=unit.get("owed") or [], bounds=unit.get("bounds") or {},
                                   kind=_unit_kind(node)) if unit else None),
             "held_candidate": bool(board.records(task_id, "owner-hold")) and not board.records(task_id, "restore-held"),
@@ -1098,6 +1121,17 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
          "open_owned": sorted(open_now & owned(plan, node)), "open_count": len(open_now),
          "classes_asserted_by": "worker-receipts"}
     checks = requirement_measurement(root, plan, node, worklist, scenarios, tree)
+    if checks and node.get("check_plan"):
+        # compatibility-objectives/v1: judged per (requirement, check); a check
+        # name passes only when it passes for every requirement that uses it
+        from planner.outcome_checks import requirement_matrix
+        matrix = requirement_matrix(root, plan, node, worklist, scenarios, tree)
+        m["check_matrix"] = {rq: {c: v.get("status") for c, v in cs.items()} for rq, cs in matrix.items()}
+        names = {c for cs in matrix.values() for c in cs}
+        m["checks"] = sorted(c for c in names if all(cs[c].get("status") == "pass" for cs in matrix.values() if c in cs))
+        m["unmet_checks"] = {"%s|%s" % (rq, c): {"status": v.get("status"), "detail": str(v.get("detail") or "")[:200]}
+                             for rq, cs in sorted(matrix.items()) for c, v in sorted(cs.items()) if v.get("status") != "pass"}
+        checks = None
     if checks:
         m["checks"] = passed(checks)
         # only the checks THIS outcome is judged by; a check deferred to M4 (a runtime check an early
@@ -1154,6 +1188,11 @@ def _covers_or_defers(board: Board, run: str, plan: dict[str, Any], node: dict[s
     back by unmet_deferred, refused there (ASSESS_DEFERRED_CHECKS) until it passes."""
     if _covers(node, m):
         return True
+    if node.get("check_plan") is not None:
+        # compatibility-objectives/v1: prerequisites were planned at M2; an
+        # immediate check that cannot pass yet stays pending, never moved to
+        # M4 by what the worker happened to encounter
+        return False
     late = _unmeasurable_yet(m)
     if not late or not _covers(node, dict(m, checks=sorted(set(m.get("checks") or []) | set(late)))):
         return False

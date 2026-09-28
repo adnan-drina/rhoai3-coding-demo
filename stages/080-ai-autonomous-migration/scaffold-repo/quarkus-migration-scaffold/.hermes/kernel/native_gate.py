@@ -62,6 +62,8 @@ def write_issued_projection(root: Path, issued: dict) -> str:
     from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, LOOP_STEPS
     wl, _why = load_worklist(root)
     row = next((c for c in (wl or {}).get("clusters") or [] if c["id"] == issued["cluster"]), None)
+    if issued.get("objective"):
+        row = _objective_row(root, issued, wl)
     if row is None and issued.get("planned_unit"):
         allowed = sorted(issued.get("allowed_paths") or [])
         row = {"id": issued["cluster"], "kind": issued["planned_unit"].get("kind") or "compile", "path": allowed[0] if allowed else "",
@@ -78,6 +80,12 @@ def write_issued_projection(root: Path, issued: dict) -> str:
         from planner.worklist import PLANNED_UNIT_GATE
         card["gate"] = PLANNED_UNIT_GATE          # judged by its requirement checks, not the tuple
     write_issued(root, wl, card, str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
+    if issued.get("objective"):
+        # the admitted descriptor rides with the card: advance.py rebuilds the
+        # envelope from it and refuses one that differs
+        doc = load_json(root / LOOP_ISSUED)
+        doc["objective"] = dict(issued["objective"])
+        write_canonical(root / LOOP_ISSUED, doc)
     amends = list(issued.get("amendments") or [])
     if amends:
         doc = load_json(root / LOOP_ISSUED)
@@ -85,6 +93,37 @@ def write_issued_projection(root: Path, issued: dict) -> str:
                              for a in amends]
         write_canonical(root / LOOP_ISSUED, doc)
     return key
+
+
+def _objective_row(root: Path, issued: dict, wl: dict | None) -> dict:
+    """The card row of an objective issued whole: every still-reported
+    obligation it admitted (by line-free identity, or id for an incident), the
+    admitted file seal, and its composite scope written ONCE at its digest path."""
+    from planner.canonical import write_canonical
+    from planner.worklist import ObjectiveScopeError, batch_scope_path, build_objective_scope
+    desc = issued["objective"]
+    oid = str(issued["outcome_id"])
+    try:
+        env = build_objective_scope(root, oid, desc, wl)
+    except ObjectiveScopeError as exc:
+        raise Refusal("ISSUE_OBJECTIVE_SCOPE", str(exc))
+    out = root / batch_scope_path(env)
+    if not out.is_file():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        write_canonical(out, env)
+    want = set((desc.get("identities") or {}).values())
+    items = sorted(str(i["id"]) for i in (wl or {}).get("items") or []
+                   if isinstance(i, dict) and (str(i.get("identity") or "") in want or str(i.get("id") or "") in want))
+    kinds = {str(c.get("kind") or "") for c in (wl or {}).get("clusters") or [] if c.get("id") in {u["cluster"] for u in desc.get("units") or []}}
+    kind = kinds.pop() if len(kinds) == 1 else "compile"
+    paths = sorted(desc.get("paths") or [])
+    return {"id": issued["cluster"], "kind": kind, "path": paths[0] if paths else "", "write_set": paths, "items": items,
+            "retry_key": (issued.get("budget") or {}).get("key") or issued["cluster"],
+            "batch_scope": {"path": batch_scope_path(env).as_posix(), "digest": env["digest"], "rule": env["rule"],
+                            "kind": env["kind"], "family_id": "", "unit_id": env["unit_id"], "members": len(env["members"])},
+            "unit": {"unit_id": env["unit_id"], "rule": env["rule"], "symbols": env["symbols"],
+                     "target_symbols": env["target_symbols"], "completion": env["completion"],
+                     "constituents": [c["cluster"] for c in env["children"]]}}
 
 
 def _ids() -> tuple[str, int]:

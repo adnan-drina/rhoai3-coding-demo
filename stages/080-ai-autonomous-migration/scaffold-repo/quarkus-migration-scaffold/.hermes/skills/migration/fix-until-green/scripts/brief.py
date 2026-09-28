@@ -25,6 +25,7 @@ from _loop_common import budget as _budget, candidate_sha256, ensure_hermes_lib,
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
+from planner.worklist import OBJECTIVE_RULE  # noqa: E402
 from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, adapter_owned_annotations, assess_unit, head_cluster, items_of  # noqa: E402
 
 # H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
@@ -1157,6 +1158,28 @@ def main(argv: list[str] | None = None) -> int:
                        "--path <file> --reason <what this card cannot finish without it>. Bounded: two per card." % cluster["id"])),
             "amendments": list((issued_now or {}).get("amendments") or []),
         }
+        desc = (issued_now or {}).get("objective") if str(scope.get("rule") or "") == OBJECTIVE_RULE else None
+        if isinstance(desc, dict):
+            # compatibility-objectives/v1: ONE objective issued whole. Its
+            # constituents are the ordered actions (each judged by its own
+            # rule); the checks say what must pass NOW and what is due later.
+            by_c = {}
+            for v in verdicts.values():
+                by_c.setdefault(str(v.get("constituent") or ""), []).append(v)
+            brief["objective"] = {
+                "family": desc.get("family"),
+                "actions": [{"constituent": u["cluster"], "rule": (u.get("seal") or {}).get("rule") or "cluster",
+                             "files": list(u.get("write_set") or []), "obligations": len(u.get("items") or []),
+                             "members_still_violating": sum(1 for v in by_c.get(u["cluster"], []) if v.get("verdict") == "violates")}
+                            for u in desc.get("units") or []],
+                "checks_now": sorted({"%s (%s)" % (r["check"], r["requirement"].split(":", 2)[-1][:80])
+                                      for r in desc.get("check_plan") or [] if r.get("stage") == "immediate"}),
+                "checks_later": sorted({"%s -> %s" % (r["check"], ", ".join(r.get("due") or ["M4"]))
+                                        for r in desc.get("check_plan") or [] if r.get("stage") == "later"})[:40],
+                "rule": ("All constituents are ONE coordinated change inside one write set: the checkpoint judges the "
+                         "objective once, after every constituent. A later check is not passed by this card and is "
+                         "measured where it is due."),
+            }
         if unit:
             # THE UNIT, as the worker has to see it: what one coherent repair
             # covers, what it is moving to and on whose authority, what decides

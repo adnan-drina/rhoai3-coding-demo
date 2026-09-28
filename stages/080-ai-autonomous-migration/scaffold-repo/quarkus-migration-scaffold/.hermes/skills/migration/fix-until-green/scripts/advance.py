@@ -97,6 +97,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_PACKAGE, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.worklist import OBJECTIVE_RULE, ObjectiveScopeError, build_objective_scope  # noqa: E402
 from planner.worklist import cdi_wiring_changes, carry_unmeasured, issued_parity_plan, navigation_handlers_added, parity_before_file, parity_discharge_scope, parity_obligation_discharged, parity_receipt_file, parity_remeasured, parity_run_file, parity_state, security_mode_of_run, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, SECURITY_MODES, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
@@ -841,6 +842,22 @@ def main(argv: list[str] | None = None) -> int:
             return _reject(root, steps, args.cluster, args.card, cur,
                            "the scope inventory on disk is not the one sealed with the card",
                            changed, mint=not args.no_mint, hermes=args.hermes)
+        if str(scope_doc.get("rule") or "") == OBJECTIVE_RULE:
+            # the composite envelope must be exactly the one the ADMITTED
+            # objective produces from its children's admitted inventories: a
+            # changed child, catalog or scope after issue refuses
+            desc = issued.get("objective") or {}
+            try:
+                want = build_objective_scope(root, str(scope_doc.get("unit_id") or ""), desc, None) if desc else None
+            except ObjectiveScopeError as exc:
+                want, why_env = None, str(exc)
+            else:
+                why_env = "" if want else "the issued card carries no admitted objective descriptor"
+            if want is None or want.get("digest") != scope_doc.get("digest"):
+                return _reject(root, steps, args.cluster, args.card, cur,
+                               "the objective's scope envelope is not the admitted one: %s"
+                               % (why_env or "its children, paths or obligations differ from the admitted descriptor"),
+                               changed, mint=not args.no_mint, hermes=args.hermes)
         # assess_unit dispatches on the sealed rule: a repository inventory and
         # a checked-exception family are assessed by the same code as before,
         # and a unit by the rule that formed it.
@@ -916,7 +933,7 @@ def main(argv: list[str] | None = None) -> int:
             print("WARN: the destination could not be modelled (%s), so no diagnostic can be explained by this unit's "
                   "sealed symbols; every introduced diagnostic is judged as before" % exc, file=sys.stderr)
         explained_rows, why = unit_explained_regressions(scope_doc, cur.get("items") or [], _cand_model,
-                                                         identities=set(introduced))
+                                                         identities=set(introduced), root=root)
         if why:
             print("WARN: nothing is tolerated at this checkpoint: %s" % why, file=sys.stderr)
             explained_rows = []
