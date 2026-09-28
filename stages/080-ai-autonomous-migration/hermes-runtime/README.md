@@ -8,8 +8,8 @@ patches are build inputs; keep their contents and application order intact.
 |-------|----------|
 | Hermes base | `NousResearch/hermes-agent`, tag `v2026.8.19`, version `0.20.5` |
 | Base commit | `fcbd1076a93841fa88855acce810e342a5b78101` |
-| Patch series | [patches/](patches/), 0001–0014 in filename order |
-| Expected patched Git tree | `498e2faf0d481049111646eeb04e6cde20dcae1b` |
+| Patch series | [patches/](patches/), 0001–0015 in filename order |
+| Expected patched Git tree | `542d0cd3ae5f22b7849ec9ffbd06914bb5324e70` (0001–0014: `498e2faf`, the published image) |
 | Release manifest | [RELEASE.md](RELEASE.md): published image, qualification, and the image each run uses |
 
 ## Patch responsibilities
@@ -27,6 +27,7 @@ patches are build inputs; keep their contents and application order intact.
 | 0012 | Halt redundant read cycles and repeated identical refusals before tool execution |
 | 0013 | Review handoff (kanban_request_review / kanban_request_changes) is a terminal worker exit; the stop nudge applies only to the dispatcher-owned worker (backport of upstream 2bd0f1c5, 474db536, 42500bf0, 41fe679d) |
 | 0014 | Halt near-duplicate tool-call loops (`near_duplicate_loop_halt`): calls with the same operands after number normalisation, a growing literal, or an exact alternation, with no progress, edit or board transition in between; a new query or file is progress. Local extension, active only under `tool_loop_guardrails.hard_stop_enabled` |
+| 0015 | Low novelty is not zero novelty: a call showing at least three lines not shown before (incidental timestamps, durations and hex digests masked) makes progress whatever their share; a halt whose counted calls mostly showed a few new lines is `low_novelty_loop_halt`, never reported as no new output. Exact repetitions and unchanged-output loops still halt as `near_duplicate_loop_halt`. Not in a published image yet |
 
 Patch 0001 backports the controller/runtime changes from upstream commit
 `76648a7faf7822cdd6c0e147c35857e15780c1af`; patch 0013 backports the upstream
@@ -40,7 +41,7 @@ The upstream test hunk inside 0001 is part of the pinned tree identity.
 ## Build contract
 
 Image assembly lives in the local, Git-ignored `workspace-images/` directory.
-From a clean checkout of the base commit, apply all fourteen patches in order
+From a clean checkout of the base commit, apply all fifteen patches in order
 with `git apply --index`. Require `git write-tree` to equal the expected tree
 above before building. The image build must check the patch count and tree,
 record patch checksums in `/opt/rhoai3/hermes-runtime-patches.sha256`, and stamp
