@@ -813,6 +813,16 @@ def main(argv: list[str] | None = None) -> int:
                        "amendment(s) without authority: %s were added to the write set after the file had already been "
                        "edited, so no card ever authorized the change" % ", ".join(str(a.get("path")) for a in bad_amendments[:3]),
                        changed, mint=not args.no_mint, hermes=args.hermes)
+    if args.cluster.startswith("rework:") and not changed:
+        # v24 run t_e2932aa0: the reviewer's change request was procedural (a missing skill_view line),
+        # the product was already accepted, and a no-op advance.py was REVERTED ("did not decrease") and
+        # charged the family budget. An unchanged rework candidate is not an attempt: nothing is judged.
+        print("REWORK UNCHANGED %s: no product file changed since the accepted commit %s, so nothing is judged and no "
+              "attempt is spent. If the change request needs no product edit, run python3 .hermes/kernel/native_gate.py "
+              "--root . handoff and kanban_request_review reviewer=reviewer with its summary (the reviewer re-judges the "
+              "acceptance). If it needs an edit, make it in the write set, run run-verify.sh, then advance.py."
+              % (args.cluster, str(steps["steps"][-1].get("commit") or "")[:12]))
+        return 0
     outside = [p for p in changed if p not in allowed]
     if outside:
         return _reject(root, steps, args.cluster, args.card, cur, "changed path(s) outside the write set: %s" % ",".join(outside[:5]), changed, mint=not args.no_mint, hermes=args.hermes)

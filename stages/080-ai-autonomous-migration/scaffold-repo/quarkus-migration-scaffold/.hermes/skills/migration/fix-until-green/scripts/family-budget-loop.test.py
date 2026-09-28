@@ -27,7 +27,7 @@ import advance as ADV  # noqa: E402
 import _outcome_bridge as B  # noqa: E402
 from planner import specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, WORKLIST  # noqa: E402
+from planner.paths import LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_FINDINGS, WORKLIST  # noqa: E402
 
 KEY, LIMIT = "rk:family:t:repositories", 12
 
@@ -113,6 +113,41 @@ class LoopProjection(unittest.TestCase):
                 ADV._reject(self.root, load_json(self.root / LOOP_STEPS), self.cluster["id"], "t_fam",
                             load_json(self.root / WORKLIST), "red", [], mint=False)
         self.assertTrue(self.deferred())
+
+
+class ReworkUnchanged(unittest.TestCase):
+    """v24 run t_e2932aa0: a procedural change request on an accepted card; the no-op advance.py was
+    REVERTED ("did not decrease") and charged the family. An unchanged rework candidate is not an attempt."""
+    def _dest(self, td):
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        owner = FUG._write_uri_controllers(root, FUG._BUILDER)[0]
+        errors = [(owner, 3, "cannot find symbol class UriComponentsBuilder", "compiler.err.cant.resolve.location")]
+        specimens.prepare_loop(root, errors=errors)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        return root, cluster, errors
+
+    def test_an_unchanged_rework_candidate_is_not_judged_or_charged(self):
+        with tempfile.TemporaryDirectory(prefix="rework-") as td:
+            root, cluster, errors = self._dest(td)
+            rework = dict(cluster, id="rework:source:c:x:26")
+            FUG._issue_cluster(root, rework, "t_rw")
+            specimens.verify(root, errors=errors, failures=[], findings=load_json(root / MTA_FINDINGS))
+            p = FUG._advance(root, rework["id"], "t_rw")
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertIn("REWORK UNCHANGED rework:source:c:x:26", p.stdout)
+            steps = load_json(root / LOOP_STEPS)
+            self.assertEqual(steps.get("rejected") or [], [])
+            self.assertEqual(steps.get("attempts") or {}, {})
+
+    def test_an_unchanged_ordinary_candidate_is_still_judged(self):
+        with tempfile.TemporaryDirectory(prefix="rework-ctl-") as td:
+            root, cluster, errors = self._dest(td)
+            FUG._issue_cluster(root, cluster, "t_ctl")
+            specimens.verify(root, errors=errors, failures=[], findings=load_json(root / MTA_FINDINGS))
+            p = FUG._advance(root, cluster["id"], "t_ctl")
+            self.assertNotIn("REWORK UNCHANGED", p.stdout)
+            self.assertTrue(load_json(root / LOOP_STEPS).get("rejected"), p.stdout + p.stderr)
 
 
 if __name__ == "__main__":
