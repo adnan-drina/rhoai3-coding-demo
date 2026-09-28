@@ -1162,7 +1162,7 @@ def _large_brief_digest_case() -> int:
            "planned_requirements": ["y" * 5000] * 4}
     text = B.brief_digest(doc, "brief-u-big")
     for needle in ("WRITE SET (3 file(s)", "src/A0.java -- 14 item(s)", "cannot find symbol symbol: class Profile location: package x",
-                   "… 11 more", "PROCEDURE:", "Patch the write set", "STOP_RULE:", "checkpoint: judged once",
+                   "line 39 compiler.err.cant.resolve:", "PROCEDURE:", "Patch the write set", "STOP_RULE:", "checkpoint: judged once",
                    "--section <key>", "verification/loop/brief-u-big.txt", "planned_requirements"):
         if needle not in text:
             return _fail("the digest of a large brief carries %r:\n%s" % (needle, text[:1500]))

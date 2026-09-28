@@ -1366,11 +1366,36 @@ def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previo
         "last_rejection": ({"card": last.get("card"), "reason": str(last.get("reason") or "")[:300],
                             "legal_next": last.get("legal_next")} if last else None),
         "deleted_by_last_revert": list(last.get("deleted_by_revert") or []),
+        # v24 run t_e5f21725: after a revert the worker grepped `mvn compile` for its own file and
+        # found nothing (javac prints the first 100 of 231 errors), five identical calls, halted.
+        # The rejection already measured what the patch introduced in the write set; name it here.
+        "introduced_in_write_set": _introduced(last, write_set),
         "write_set_files_absent": sorted(p for p in write_set if not (root / p).is_file()),
         "refusals": reasons,
         "budget": budgets,
         "history": "previous_attempts holds every rejected patch in full (%d)" % len(previous),
     }
+
+
+def _introduced(rejection: dict, write_set: list, cap: int = 20) -> list:
+    """The diagnostics a rejected patch introduced in the write set: loci after
+    the patch that were not there before, as "path:line detail" (one line each)."""
+    before = {str(l.get("id")) for l in rejection.get("loci_before") or [] if isinstance(l, dict)}
+    ws = set(write_set)
+    rows = ["%s:%s %s" % (l.get("path"), l.get("line"), _clip(l.get("detail") or "", 160))
+            for l in rejection.get("loci_after") or []
+            if isinstance(l, dict) and l.get("path") in ws and str(l.get("id")) not in before]
+    return rows[:cap] + (["… %d more (previous_attempts)" % (len(rows) - cap)] if len(rows) > cap else [])
+
+
+def _item_line(it: dict) -> str:
+    """One obligation on one line: where, and the unresolved symbol when the compiler named one."""
+    adv = it.get("advice") if isinstance(it.get("advice"), dict) else {}
+    sym = adv.get("symbol") if isinstance(adv.get("symbol"), dict) else {}
+    what = ("%s %s" % (sym.get("kind") or "symbol", sym.get("name"))) if sym.get("name") else \
+        _clip(it.get("message") or it.get("detail") or "", 140)
+    via = " (imported as %s)" % adv["imported_as"] if adv.get("imported_as") else ""
+    return "    line %s %s: %s%s" % (it.get("line"), it.get("rule_id") or it.get("code") or it.get("kind"), what, via)
 
 
 def brief_digest(brief: dict, stem: str) -> str:
@@ -1389,6 +1414,9 @@ def brief_digest(brief: dict, stem: str) -> str:
         if rs.get("last_rejection"):
             out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
             out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
+        if rs.get("introduced_in_write_set"):
+            out.append("  the rejected patch introduced (in the write set; the reverted tree no longer has them):")
+            out += ["    %s" % r for r in rs["introduced_in_write_set"]]
         out.append("  refusals so far: %s" % ", ".join("%s x%d" % (r["refusal"], r["times"]) for r in rs.get("refusals") or []))
     # the required shape of each planned requirement, before the first edit (v23: the
     # PetType/Specialty/Visit briefs named @ApplicationScoped and @Typed-to-the-fragment only
@@ -1416,14 +1444,18 @@ def brief_digest(brief: dict, stem: str) -> str:
         if isinstance(it, dict):
             by_path.setdefault(str(it.get("path") or "(no path)"), []).append(it)
     out += ["", "OBLIGATIONS (%d item(s)) by file:" % len(brief.get("items") or [])]
+    # every obligation, one line each (v24 run t_90e674d6: the digest showed 3 of 97 and the
+    # worker spent two runs grepping a 143K items section it could not read whole)
+    shown, cap = 0, 400
     for path in sorted(by_path):
-        rows = by_path[path]
+        rows = sorted(by_path[path], key=lambda i: (int(i.get("line") or 0) if str(i.get("line") or "").isdigit() else 0))
         out.append("  %s -- %d item(s)" % (path, len(rows)))
-        for it in rows[:3]:
-            out.append("    line %s %s: %s" % (it.get("line"), it.get("rule_id") or it.get("code") or it.get("kind"),
-                                               _clip(it.get("message") or it.get("detail") or "", 180)))
-        if len(rows) > 3:
-            out.append("    … %d more (see the items section)" % (len(rows) - 3))
+        for it in rows[:max(0, cap - shown)]:
+            out.append(_item_line(it))
+        shown += len(rows)
+        if shown > cap:
+            out.append("    … the rest are in the items section")
+            break
     unit = brief.get("unit")
     if isinstance(unit, dict):
         out += ["", "UNIT: " + ", ".join("%s (%s)" % (k, _size(v)) for k, v in sorted(unit.items()))]

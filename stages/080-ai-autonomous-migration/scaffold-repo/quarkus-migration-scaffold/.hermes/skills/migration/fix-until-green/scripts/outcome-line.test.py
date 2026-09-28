@@ -76,6 +76,30 @@ class BriefDigest(unittest.TestCase):
         self.assertIn("budget family: key rk:family:f, 2 of 12 spent (GOVERNS)", head)   # one limit, one count
         self.assertNotIn("of 3", head)
 
+    def test_every_obligation_is_listed_with_its_symbol(self):
+        # v24 run t_90e674d6: 3 of 97 items shown; the worker grepped the 143K items section for two runs
+        items = [{"path": "a/S%d.java" % (i % 4), "line": i, "rule_id": "compiler.err.cant.resolve.location",
+                  "message": "cannot find symbol\n  symbol: class DataAccessException",
+                  "advice": {"symbol": {"kind": "class", "name": "DataAccessException"},
+                             "imported_as": "org.springframework.dao.DataAccessException"}} for i in range(97)]
+        text = BR.brief_digest(dict(self.BRIEF, items=items), "brief-x")
+        self.assertEqual(text.count("class DataAccessException (imported as org.springframework.dao.DataAccessException)"), 97)
+        self.assertIn("line 96 compiler.err.cant.resolve.location", text)
+        self.assertNotIn("more (see the items section)", text)
+
+    def test_the_rejected_patch_names_what_it_introduced_in_the_write_set(self):
+        # v24 run t_e5f21725: after the revert the worker grepped a 100-error mvn output for its file, halted
+        rej = {"loci_before": [{"id": "e1", "path": "a/R.java", "line": 3, "detail": "old"}],
+               "loci_after": [{"id": "e1", "path": "a/R.java", "line": 3, "detail": "old"},
+                              {"id": "e2", "path": "a/R.java", "line": 21, "detail": "cannot find symbol\n  symbol: class HttpServerResponse"},
+                              {"id": "e3", "path": "b/Other.java", "line": 9, "detail": "elsewhere"}]}
+        rows = BR._introduced(rej, ["a/R.java"])
+        self.assertEqual(rows, ["a/R.java:21 cannot find symbol symbol: class HttpServerResponse"])
+        rs = dict(self.BRIEF["_retry_state"], introduced_in_write_set=rows)
+        text = BR.brief_digest(dict(self.BRIEF, _retry_state=rs), "brief-x")
+        self.assertIn("the rejected patch introduced", text)
+        self.assertIn("a/R.java:21 cannot find symbol symbol: class HttpServerResponse", text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
