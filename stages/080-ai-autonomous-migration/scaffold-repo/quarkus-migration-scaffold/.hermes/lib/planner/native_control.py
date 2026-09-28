@@ -1252,11 +1252,17 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     active_issue(board, task_id, run_id)
     role, run, oid, plan, node = node_context(board, task_id)
     rows = _accept_records(board, task_id)
-    if not rows or not rows[-1].get("recovered") or rows[-1].get("outcome_accepted"):
+    if not rows or rows[-1].get("outcome_accepted"):
         return None
     last = rows[-1]
     tree = _product_tree(root)
-    if tree != last.get("tree"):
+    if not last.get("recovered"):
+        # the latest acceptance did not accept the outcome and the tree has not moved since:
+        # it is judged again under the current rules (v21 t_0bc6319b: a check that could not
+        # be measured became decidable after an Operator correction) -- no commit, no attempt
+        if tree != last.get("tree"):
+            return None
+    elif tree != last.get("tree"):
         raise Refusal("ACCEPT_TREE_DRIFT", "the tree is not the recovered commit's tree")
     wl, why = load_worklist(root)
     if wl is None:
@@ -1265,10 +1271,13 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
-    board.record(task_id, "accept-evaluated", "accept-evaluated:%s" % last["key"].split(":", 1)[1], run=int(run_id),
+    # one record per evaluation: a later evaluation under corrected rules is a new verdict, not a replay
+    board.record(task_id, "accept-evaluated", "accept-evaluated:%s:%d" % (last["key"].split(":", 1)[1], len(rows)),
+                 run=int(run_id),
                  commit=last.get("commit"), tree=tree, outcome_accepted=done, measurement=m)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "covered": covered,
-            "commit": last.get("commit")}
+            "commit": last.get("commit"),
+            "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": gaps})}
 
 
 def restore_pending(root: Path, board: Board, *, task_id: str, run_id: int, candidate_now: str) -> dict[str, Any]:

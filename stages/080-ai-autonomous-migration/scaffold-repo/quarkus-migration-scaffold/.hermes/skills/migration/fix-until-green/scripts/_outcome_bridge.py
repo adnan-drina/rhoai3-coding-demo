@@ -180,9 +180,12 @@ def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) 
         if out is None:
             return None
         if out["outcome_accepted"]:
-            print(_REVIEW % (out["outcome_id"], "recovered commit " + str(out["commit"])[:12]))
+            print(_REVIEW % (out["outcome_id"], "commit " + str(out["commit"])[:12] + ", judged again on the unchanged tree"))
             return 0
-        return reissue(root, note="recovered commit %s; outcome still owns %s" % (str(out["commit"])[:12], ", ".join(out["open_owned"][:4])))
+        reasons = out.get("not_accepted_because") or ["open obligation %s" % o for o in out["open_owned"][:4]]
+        print("OUTCOME NOT YET ACCEPTED %s (commit %s, judged again on the unchanged tree): %s"
+              % (out["outcome_id"], str(out["commit"])[:12], "; ".join(reasons[:4])), file=sys.stderr)
+        return reissue(root, note="outcome %s is not accepted yet: %s" % (out["outcome_id"], "; ".join(reasons[:3])))
     if not active(root):
         return None
     from planner import outcome_lifecycle as L

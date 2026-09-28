@@ -281,6 +281,35 @@ class UnresolvableYet(unittest.TestCase):
         rows = NC.unmet_deferred(r.root, r.board, r.plan(), NC._node(r.plan(), "assess:m4:g1"), m4)
         self.assertTrue(any("build:rk:pom|unit:fragment-implementation" in x for x in rows), rows)   # M4 still judges it
 
+    def test_an_unaccepted_acceptance_is_judged_again_on_the_unchanged_tree(self):
+        # the Operator's correction lands after the acceptance was recorded: the next advance
+        # re-judges it under the current rules, with no new commit and no attempt spent
+        state = {"detail": "the destination model is unavailable"}
+        orig = NC.requirement_measurement
+        NC.requirement_measurement = lambda root, plan, node, wl, sc, tree: (
+            {c: {"status": "unknown", "detail": state["detail"]} for c in (node.get("acceptance") or {}).get("requirement_checks") or []})
+        r = Run(publish=False)
+        self.addCleanup(r.close)
+        try:
+            with_check(r, "build:rk:pom", "unit:fragment-implementation")
+            r.out = r.publish()
+            r.release()
+            tid, run, iss = r.issue("build:rk:pom")
+            acc = r.accept_on_run(tid, run, iss)
+            self.assertFalse(acc["outcome_accepted"])
+            m = {"classes": ["build", "compile", "tests"], "scenarios": []}
+            again = NC.evaluate_recovered(r.root, r.board, task_id=tid, run_id=run, measurement=m)
+            self.assertFalse(again["outcome_accepted"])
+            self.assertTrue(any("destination model is unavailable" in x for x in again["not_accepted_because"]), again)
+            state["detail"] = "the compiler could not fully resolve src/X.java"      # decidable only at M4 now
+            again = NC.evaluate_recovered(r.root, r.board, task_id=tid, run_id=run, measurement=m)
+            self.assertTrue(again["outcome_accepted"], again)
+            self.assertEqual(NC.outcome_acceptance(r.root, r.board, tid, r.plan(), NC._node(r.plan(), "build:rk:pom"))[0], True)
+            r.edit("pom.xml", "<project>moved</project>\n")                           # a moved tree is never re-judged
+            self.assertIsNone(NC.evaluate_recovered(r.root, r.board, task_id=tid, run_id=run, measurement=m))
+        finally:
+            NC.requirement_measurement = orig
+
     def test_a_failing_check_still_blocks(self):
         acc, deferred, _r, _m4 = self.run_case("fail", "@Typed names the wrong type")
         self.assertFalse(acc["outcome_accepted"])
