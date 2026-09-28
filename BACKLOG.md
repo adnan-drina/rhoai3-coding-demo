@@ -4,14 +4,14 @@ Open limitations, unfinished work, and the evidence needed to understand them.
 Completed run narratives remain in Git history. Paths under `tmp/` are local
 evidence, excluded from Git.
 
-## v26 improvements: reusable migration repairs — planned after v25 validation (2026-09-28)
+## v25 improvements: reusable migration repairs — planned after v24 (2026-09-28)
 
-The current validation run is `spring-petclinic-rest-legacy-v25` and validates the v24 package
-(see the v24 section). The improvements formerly planned as v25 are now planned for v26.
+Naming note: this section is the future v25 *improvement package*. The v24 *validation run* was created as
+`spring-petclinic-rest-legacy-v25` by mistake (see the v24 section); that run is not this package.
 
-Finish the current v25 validation run first. The detailed scope,
+Finish the agreed v24 package and its validation run first. The detailed scope,
 design decisions and acceptance criteria are in
-[V26-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V26-IMPROVEMENTS.md).
+[V25-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V25-IMPROVEMENTS.md).
 This is a future improvement list, not an implementation or release claim.
 
 - [ ] Execute two qualified repairs deterministically inside existing M3 scopes:
@@ -19,14 +19,14 @@ This is a future improvement list, not an implementation or release claim.
 - [ ] Qualify recipes with before/after, no-change, idempotence, type-resolution,
   scope and real behavioural checks; preserve native review and acceptance gates.
 - [ ] Generate compact, evidence-bound objective context from existing analysis.
-- [ ] Extend the v24 package's reporting, validated in v25, with actual transformation results and measured cost.
-- [ ] Compare against the completed v25 validation baseline, then validate on a fresh v26 run.
+- [ ] Extend v24 reporting with actual transformation results and measured cost.
+- [ ] Compare against the completed v24 baseline, then validate on a fresh v25 run.
 - [ ] Later optimization only: analysis reuse with complete cache invalidation.
 
 Licensing stays within the existing boundary: adopt eligible open-source
 components under their licenses; avoid proprietary or restricted dependencies,
 or independently implement similar behaviour from public contracts. Do not copy
-restricted implementation code. No scope expansion of the current v25 run, live overlay, isolation
+restricted implementation code. No v24 scope expansion, live overlay, isolation
 campaign, additional scheduler or parallel M3 execution is authorized by this plan.
 
 ## v24 package — golden `221de165` published; validation run `spring-petclinic-rest-legacy-v25`
