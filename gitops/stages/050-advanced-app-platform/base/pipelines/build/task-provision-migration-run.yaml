@@ -267,32 +267,208 @@ spec:
         recorded="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.scaffoldCommit}')"
 
         if [ "${MODE}" = "retire" ]; then
-          # Every generated object carries the run label, so retirement
-          # enumerates rather than remembers. The receipt ConfigMap deliberately
-          # does NOT carry it: it survives as the tombstone.
+          # WHAT RETIREMENT REMOVES. The run's own workspace-side objects (every
+          # one labelled rhoai3.io/migration-run=<run>) AND its per-app delivery
+          # project: the Argo CD Application project-<run> that the scaffolded
+          # bootstrap trigger created, the delivery PipelineRuns in <run>-dev,
+          # and the <run>-dev namespace itself. v22 needed all of the project
+          # half by hand (BACKLOG, v23 validation run).
+          #
+          # WHAT IT KEEPS. The receipt ConfigMap deliberately does NOT carry the
+          # run label: it survives as the tombstone. It names the destination
+          # repository for an owner of the Git organization to delete; the
+          # platform never deletes a repository. The tombstone is also what stops
+          # GitOps recreating the project: the admission policy in
+          # pipeline-provision-migration-run.yaml refuses any new
+          # scaffolded-projects Application for a run whose receipt says
+          # retiring or retired, so a later push to the kept repository cannot
+          # bring project-<run> or <run>-dev back.
+          #
+          # SELECTION IS EXACT. Every project object is addressed by its full
+          # derived name or an equality label selector, never a prefix: run x-v2
+          # never touches x-v23. Before anything changes, every present object is
+          # checked to belong to exactly this run; a mismatch refuses with
+          # nothing deleted.
+          #
+          # ORDER PERMITS FINALIZATION. Delivery pods mount the project's
+          # maven-cache claim; while they exist the claim stays Terminating and
+          # the Application's cascade finalizer cannot complete. So: owned
+          # PipelineRuns and their pods first, then the Application (Argo CD's
+          # own finalizer removes what it manages), then the namespace. A
+          # finalizer is never removed or bypassed here: a finalization that does
+          # not complete in time is RETIRE_INCOMPLETE with the tombstone left
+          # at retiring, and a retry resumes from what remains.
+          PROJECT_APP="project-${RUN}"
+          PROJECT_NS="${RUN}-dev"
+          GITOPS_NS="openshift-gitops"
+          DEST_REPO="https://github.com/${REQUEST_OWNER}/${RUN}"
+          WAIT_S="${RETIRE_WAIT_SECONDS:-600}"
+          POLL_S="${RETIRE_POLL_SECONDS:-5}"
+          receipt_run="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.run}')"
+          retired_at="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.retiredAt}')"
+          recorded_repo="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" --ignore-not-found -o jsonpath='{.data.destinationRepository}')"
+          APP_JSON="$(oc get application.argoproj.io "${PROJECT_APP}" -n "${GITOPS_NS}" --ignore-not-found -o json)"
+          NS_JSON="$(oc get namespace "${PROJECT_NS}" --ignore-not-found -o json)"
+          if ! ownership="$(APP_JSON="${APP_JSON}" NS_JSON="${NS_JSON}" python3 - "${RUN}" "${phase}" "${receipt_run}" <<'PYOWNER'
+        import json, os, sys
+        run, phase, receipt_run = sys.argv[1:4]
+        ns = run + "-dev"
+        gaps, present = [], []
+        if phase and receipt_run != run:
+            gaps.append("receipt migration-run-%s names run %r" % (run, receipt_run))
+        app = json.loads(os.environ["APP_JSON"]) if os.environ["APP_JSON"].strip() else None
+        if app is not None:
+            present.append("app")
+            meta, spec = app.get("metadata") or {}, app.get("spec") or {}
+            labels = meta.get("labels") or {}
+            if labels.get("rhoai3.redhat.com/scaffolded-project") != "true":
+                gaps.append("Application project-%s is not a scaffolded project" % run)
+            if "rhoai3.io/migration-run" in labels and labels["rhoai3.io/migration-run"] != run:
+                gaps.append("Application project-%s is labelled for run %r" % (run, labels["rhoai3.io/migration-run"]))
+            if spec.get("project") != "scaffolded-projects":
+                gaps.append("Application project-%s is in AppProject %r" % (run, spec.get("project")))
+            if (spec.get("destination") or {}).get("namespace") != ns:
+                gaps.append("Application project-%s deploys to %r, not %s" % (run, (spec.get("destination") or {}).get("namespace"), ns))
+            if ((spec.get("source") or {}).get("kustomize") or {}).get("namespace") != ns:
+                gaps.append("Application project-%s renders into another namespace" % run)
+            part_of = (((spec.get("syncPolicy") or {}).get("managedNamespaceMetadata") or {}).get("labels") or {}).get("app.kubernetes.io/part-of")
+            if part_of != run:
+                gaps.append("Application project-%s manages a namespace part of %r" % (run, part_of))
+        nsobj = json.loads(os.environ["NS_JSON"]) if os.environ["NS_JSON"].strip() else None
+        if nsobj is not None:
+            present.append("ns")
+            labels = (nsobj.get("metadata") or {}).get("labels") or {}
+            if labels.get("app.kubernetes.io/part-of") != run or labels.get("rhoai3.redhat.com/pipeline-project") != "true":
+                gaps.append("namespace %s is not this run's pipeline project (part-of %r)" % (ns, labels.get("app.kubernetes.io/part-of")))
+        if present and not phase:
+            gaps.append("no receipt migration-run-%s links project-%s or %s to a migration run" % (run, run, ns))
+        if gaps:
+            print("; ".join(gaps), file=sys.stderr)
+            sys.exit(3)
+        print(" ".join(present))
+        PYOWNER
+            )"; then
+            echo "REFUSED: RETIRE_OWNERSHIP_MISMATCH for ${RUN}; nothing was deleted and the receipt is unchanged" >&2
+            exit 1
+          fi
+          # Every read below is an assignment, so an API error (Forbidden, a
+          # timeout) stops the task under errexit instead of reading as absent.
+          # The helpers run inside $(...), where bash clears errexit, so they
+          # exit explicitly on an API error.
+          count_names() {  # <oc get args...>: how many objects, or exit on API error
+            local out
+            out="$(oc get "$@" -o name)" || exit 1
+            printf '%s' "${out}" | grep -c . || true
+          }
+          count_generated() {
+            count_names secret,deployment,service,serviceaccount,role,rolebinding,configmap -n "${WSNS}" \
+              -l "rhoai3.io/migration-run=${RUN}"
+          }
+          generated_left="$(count_generated)"
+          if [ "${phase}" = "retired" ] && [ -z "${ownership}" ] && [ "${recorded_repo}" = "${DEST_REPO}" ] \
+              && [ "${generated_left}" = "0" ]; then
+            echo "retired ${RUN}: already retired; nothing remains and the tombstone is unchanged"
+            printf 'retired' > "$(results.outcome.path)"
+            printf 'retired' > "$(results.receipt.path)"
+            exit 0
+          fi
           # Durable intent precedes deletion. If interrupted, provisioning must
-          # still refuse; another retirement may finish the operation.
+          # still refuse, the admission policy already refuses a recreated
+          # project, and another retirement may finish the operation.
           oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
             --from-literal=run="${RUN}" --from-literal=phase=retiring \
-            --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" | oc apply -f -
+            --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" \
+            --from-literal=destinationRepository="${DEST_REPO}" | oc apply -f -
+          oc label configmap "${RECEIPT_CM}" -n "${WSNS}" \
+            rhoai3.io/purpose=stage-080-parity "rhoai3.io/migration-run-receipt=${RUN}" --overwrite
           for kind in deployment service secret serviceaccount role rolebinding configmap; do
             oc delete "${kind}" -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" --ignore-not-found --wait=true
           done
-          left="$(oc get secret,deployment,service,serviceaccount,role,rolebinding,configmap -n "${WSNS}" \
-                    -l "rhoai3.io/migration-run=${RUN}" -o name 2>/dev/null | wc -l | tr -d ' ')"
+          left="$(count_generated)"
           if [ "${left}" != "0" ]; then
             echo "REFUSED: ${left} generated object(s) for ${RUN} still exist after retirement" >&2
             exit 1
           fi
+
+          # The delivery project. Owned PipelineRuns carry the equality label the
+          # dispatcher and the seed stamp (app.kubernetes.io/name=<run>), and
+          # Tekton propagates it to their pods.
+          remove_delivery_runs() {
+            local prs pr
+            prs="$(oc get pipelinerun.tekton.dev -n "${PROJECT_NS}" -l "app.kubernetes.io/name=${RUN}" -o name)"
+            for pr in ${prs}; do
+              oc delete "${pr}" -n "${PROJECT_NS}" --cascade=foreground --ignore-not-found --wait=false
+            done
+            oc delete pod -n "${PROJECT_NS}" -l "app.kubernetes.io/name=${RUN},tekton.dev/pipelineRun" \
+              --ignore-not-found --wait=false
+          }
+          delivery_left() {
+            # called inside $(...), where bash clears errexit: exit explicitly
+            local runs pods
+            runs="$(count_names pipelinerun.tekton.dev -n "${PROJECT_NS}" -l "app.kubernetes.io/name=${RUN}")" || exit 1
+            pods="$(count_names pod -n "${PROJECT_NS}" -l "app.kubernetes.io/name=${RUN},tekton.dev/pipelineRun")" || exit 1
+            echo $((runs + pods))
+          }
+          app_left() { count_names application.argoproj.io "${PROJECT_APP}" -n "${GITOPS_NS}" --ignore-not-found; }
+          ns_left() { count_names namespace "${PROJECT_NS}" --ignore-not-found; }
+          give_up() {  # <what>
+            echo "RETIRE_INCOMPLETE: $1 after ${WAIT_S}s; no finalizer was removed; the tombstone stays retiring; retry retirement" >&2
+            exit 1
+          }
+          n="$(ns_left)"
+          if [ "${n}" != "0" ]; then
+            waited=0
+            while :; do
+              remove_delivery_runs
+              n="$(delivery_left)"
+              [ "${n}" = "0" ] && break
+              [ "${waited}" -lt "${WAIT_S}" ] || give_up "${n} delivery run object(s) of ${RUN} in ${PROJECT_NS} still exist"
+              sleep "${POLL_S}"; waited=$((waited + POLL_S))
+            done
+          fi
+          n="$(app_left)"
+          if [ "${n}" != "0" ]; then
+            oc delete application.argoproj.io "${PROJECT_APP}" -n "${GITOPS_NS}" --ignore-not-found --wait=false
+            waited=0
+            while :; do
+              n="$(app_left)"
+              [ "${n}" = "0" ] && break
+              if [ "${waited}" -ge "${WAIT_S}" ]; then
+                oc get pod -n "${PROJECT_NS}" -o name >&2 || true
+                give_up "${PROJECT_APP} is still finalizing (pods in ${PROJECT_NS} listed above)"
+              fi
+              # A delivery run started during retirement (a late push) would hold
+              # the cache again; it belongs to this run, so remove it too.
+              n="$(ns_left)"
+              [ "${n}" = "0" ] || remove_delivery_runs
+              sleep "${POLL_S}"; waited=$((waited + POLL_S))
+            done
+          fi
+          n="$(ns_left)"
+          if [ "${n}" != "0" ]; then
+            oc delete namespace "${PROJECT_NS}" --ignore-not-found --wait=false
+            waited=0
+            while :; do
+              n="$(ns_left)"
+              [ "${n}" = "0" ] && break
+              [ "${waited}" -lt "${WAIT_S}" ] || give_up "namespace ${PROJECT_NS} is still terminating"
+              sleep "${POLL_S}"; waited=$((waited + POLL_S))
+            done
+          fi
+
           oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
             --from-literal=run="${RUN}" \
             --from-literal=phase=retired \
             --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" \
-            --from-literal=retiredAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --from-literal=retiredAt="${retired_at:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+            --from-literal=projectApplication="${GITOPS_NS}/${PROJECT_APP}" \
+            --from-literal=projectNamespace="${PROJECT_NS}" \
+            --from-literal=destinationRepository="${DEST_REPO}" \
+            --from-literal=destinationRepositoryDisposition="kept; delete only by an owner of the Git organization" \
             | oc apply -f -
           oc label configmap "${RECEIPT_CM}" -n "${WSNS}" \
             rhoai3.io/purpose=stage-080-parity "rhoai3.io/migration-run-receipt=${RUN}" --overwrite
-          echo "retired ${RUN}: no generated secret, deployment, service or worker identity remains; the receipt is a tombstone"
+          echo "retired ${RUN}: no generated secret, deployment, service, worker identity, delivery run, ${PROJECT_APP} or ${PROJECT_NS} remains; the receipt is a tombstone naming ${DEST_REPO} for its owner"
           printf 'retired' | tee "$(results.outcome.path)" >/dev/null
           printf 'retired' > "$(results.receipt.path)"
           exit 0

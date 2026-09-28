@@ -2168,6 +2168,15 @@ must be retrieved before that binding can be verified; do not replace the receip
 Wait for the owner to finish. A killed task may leave the lock: prove the holder
 and its pod are stopped before platform cleanup. A `retiring` receipt permits
 only retirement recovery; a `retired` identity is never provisioned again.
+
+`RETIRE_OWNERSHIP_MISMATCH` means `project-<run>`, `<run>-dev` or the receipt
+belongs to another run or to no migration run. Nothing was deleted. Find out who
+owns the object; do not relabel it to make retirement pass.
+`RETIRE_INCOMPLETE` means a finalizer has not finished yet, usually a pod in
+`<run>-dev` that still mounts `maven-cache`. The error lists the namespace's
+pods. Resolve that pod and run the retirement again. Do not remove the
+Application's finalizer. A scaffolded-project Application creation denied by
+`retired-migration-run-project` is expected for a retired run.
 See [Stage 080 run isolation](OPERATIONS.md#stage-080-run-isolation) for the qualification requirements.
 
 ### Correct Secret mounts but failed workspace identity isolation

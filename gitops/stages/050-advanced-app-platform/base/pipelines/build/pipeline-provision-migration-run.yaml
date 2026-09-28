@@ -7,6 +7,21 @@
 # generated object carries rhoai3.io/migration-run=<run>, and retirement
 # deletes by that label and then proves nothing is left.
 #
+# Retirement also removes the run's per-app delivery project, which the
+# scaffolded bootstrap trigger (triggers.yaml) created rather than this
+# Pipeline: owned delivery PipelineRuns and their pods in <run>-dev first
+# (their pods hold the project's maven-cache claim), then the Argo CD
+# Application project-<run> through its own cascade finalizer, then the
+# <run>-dev namespace. Each is addressed by its exact derived name or an
+# equality label and checked to belong to exactly this run before anything
+# changes. The destination repository is KEPT and named in the tombstone for
+# an owner of the Git organization; the platform never deletes it.
+#
+# Recreation is refused by the tombstone itself: the admission policy at the
+# end of this file denies a new scaffolded-projects Application for any run
+# whose receipt says retiring or retired, so a later push to the kept
+# repository cannot re-bootstrap project-<run> or <run>-dev.
+#
 # Retire a run with (archive the evidence first; see docs/OPERATIONS.md,
 # Stage 080 run isolation):
 #
@@ -28,6 +43,10 @@
 #       - name: mode
 #         value: retire
 #   EOF
+#
+# A retirement that ends RETIRE_INCOMPLETE left a finalizer to finish (for
+# example a delivery pod still releasing its claim). Nothing is stripped; run
+# the same PipelineRun again once the blocker is understood.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -69,3 +88,163 @@ spec:
           value: $(params.mode)
         - name: workspace-namespace
           value: $(params.workspace-namespace)
+---
+# The retirement half of the provisioner identity for the delivery project.
+# These live here, beside the Pipeline that uses them, rather than with the
+# workspace-side Role (devspaces/migration-run-resources-rbac.yaml), because
+# they concern the per-app project the dispatcher creates, not the Dev Spaces
+# namespace. Kubernetes RBAC cannot name a run's objects in advance, so the
+# grants are by resource; the Task narrows every use to one run by exact name
+# or equality label and refuses an ownership mismatch before deleting. The
+# subject is the app-platform-build ServiceAccount no workspace can reference.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: migration-run-retire-application
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: migration-run-retire-application
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: migration-run-retire-application
+subjects:
+  - kind: ServiceAccount
+    name: migration-run-provisioner
+    namespace: app-platform-build
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: migration-run-retire-project
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "delete"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: migration-run-retire-project
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: migration-run-retire-project
+subjects:
+  - kind: ServiceAccount
+    name: migration-run-provisioner
+    namespace: app-platform-build
+---
+# A retired run's delivery project is never recreated. The scaffolded
+# bootstrap trigger creates project-<repo> on ANY main push to a repository
+# with the rhoai3-scaffolded topic (AlreadyExists is its idempotency), and
+# the destination repository is deliberately kept after retirement. CEL in the
+# trigger cannot read cluster state, so the refusal is here, at admission,
+# with the run's tombstone as the parameter: every receipt ConfigMap
+# (rhoai3.io/migration-run-receipt) is evaluated, and one whose phase is
+# retiring or retired denies CREATE of a scaffolded-projects Application
+# named project-<run> or deploying to <run>-dev. Names compare exactly, so
+# retiring x-v2 never blocks x-v23. CREATE only: the existing Application's
+# own finalization (UPDATEs) is never blocked. Scoped to openshift-gitops and
+# the scaffolded-projects AppProject so no platform Application is affected.
+# Ref: https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/#parameter-resources
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: retired-migration-run-project
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  failurePolicy: Fail
+  paramKind:
+    apiVersion: v1
+    kind: ConfigMap
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: openshift-gitops
+    resourceRules:
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE"]
+        resources: ["applications"]
+  matchConditions:
+    - name: scaffolded-project
+      expression: >-
+        has(object.spec) && has(object.spec.project) &&
+        object.spec.project == 'scaffolded-projects'
+  variables:
+    - name: retiredRun
+      expression: >-
+        has(params.data) && 'run' in params.data && 'phase' in params.data &&
+        params.data['phase'] in ['retiring', 'retired'] ? params.data['run'] : ''
+  validations:
+    - expression: >-
+        variables.retiredRun == '' ||
+        (object.metadata.name != 'project-' + variables.retiredRun &&
+         !(has(object.spec.destination) && has(object.spec.destination.namespace) &&
+           object.spec.destination.namespace == variables.retiredRun + '-dev'))
+      messageExpression: >-
+        'migration run ' + variables.retiredRun + ' is retired (tombstone
+        migration-run-' + variables.retiredRun + ' in wksp-ai-developer); its
+        delivery project is not recreated'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: retired-migration-run-project
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  policyName: retired-migration-run-project
+  validationActions: [Deny]
+  paramRef:
+    namespace: wksp-ai-developer
+    selector:
+      matchLabels:
+        rhoai3.io/purpose: stage-080-parity
+      matchExpressions:
+        - key: rhoai3.io/migration-run-receipt
+          operator: Exists
+    parameterNotFoundAction: Allow
