@@ -4,7 +4,7 @@
     "hermes_agent": {
       "version": "v0.20.5",
       "build": "2026.8.19",
-      "patched_tree": "8a3bb406be0cfcb587fb90903da287e3805c297e",
+      "patched_tree": "ccb6a5ee89fe209383c00abd187e43752f3f2c47",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
       "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
@@ -42,8 +42,8 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:6a8a69a38aa2973973039cb3492b08083bc98da2698cb7ba1ca088b4d6e5f291",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-09-27 (tag 080-authority-bb66b50e): Hermes runtime series 0001-0012 (/opt/rhoai3/080.pins hermes.patched_tree=8a3bb406be0cfcb587fb90903da287e3805c297e) plus the outcome-board authority baked root-owned at /opt/rhoai3/outcome-authority from commit bb66b50e (analyzer isolation; 080.pins outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc). Superseded: sha256:744bd9526bccd2a5b4bc5e8e5f4361c256cebd508ac8d92b85e98d21c2f91e34 (authority 19467e64, executed a workspace analyzer class). Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
+        "digest": "sha256:7490502c71993c86be593956702b1070fb63590e32ebdd8d037ff97fb61dcec2",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-09-28 (tag 080-runtime-ccb6a5ee): Hermes runtime series 0001-0014 (/opt/rhoai3/080.pins hermes.patched_tree=ccb6a5ee89fe209383c00abd187e43752f3f2c47; 0013 review handoff is terminal in the stop guard, 0014 near-duplicate loop halt) plus the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc). Superseded: sha256:6a8a69a38aa2973973039cb3492b08083bc98da2698cb7ba1ca088b4d6e5f291 (series 0001-0012). Qualified: tmp/v21-fixes/qualification-0014 (27/27). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {
