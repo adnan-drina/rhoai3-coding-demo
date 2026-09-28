@@ -333,6 +333,18 @@ def _creates_one_entity(root: Path, sid: str, sc: dict[str, Any], cap: dict[str,
     return True, "exactly one new entity %s carrying the body, prior entities kept, Location names it" % json.dumps(new_identity)
 
 
+def inventory_entry_points(root: Path) -> set[str]:
+    """The entry points of the evidence bundle the corpus is bound to (M1's
+    inventory, as the bundle carries it); empty when absent, and then no
+    scenario can be bound to it."""
+    p = Path(root) / "evidence" / "planning" / "evidence-bundle.json"
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {str(r.get("id")) for r in doc.get("entry_points") or [] if isinstance(r, dict)}
+
+
 def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None, corpus_sha: str, bundle_sha: str,
                      capture_sha: str) -> dict[str, Any]:
     sid = str(sc["id"])
@@ -381,6 +393,17 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
     recorded_req = str((cap.get("request") or {}).get("request_sha256") or "")
     if request_sha and recorded_req != request_sha:
         evidence_reasons.append("capture answers request %s, the scenario describes %s (not this scenario's capture)" % (recorded_req[:12] or "(none)", request_sha[:12]))
+    # WHICH entry point. Entry-point ids follow M1's resolution (a classpath
+    # that resolves turns simple-name signatures into qualified ones), so a
+    # capture taken for another inventory is not evidence for this one, and
+    # an old capture is never relabelled onto a new identity: re-capture.
+    ep = str(sc.get("entry_point") or "")
+    if ep and str(cap.get("entry_point") or "") != ep:
+        evidence_reasons.append("capture is bound to entry point %s, the scenario names %s (stale binding: re-capture)"
+                                % (str(cap.get("entry_point") or "(none)")[:120], ep[:120]))
+    if ep and ep not in inventory_entry_points(root):
+        evidence_reasons.append("the scenario's entry point %s is not an entry point of this tree's evidence bundle (stale binding: "
+                                "derive the corpus and capture again)" % ep[:120])
     # WHOSE read-backs these are. A contract that reads them is judging the
     # state a request left, and a capture that took them as somebody else --
     # the refused caller, whose probes answer 401 -- is evidence about another

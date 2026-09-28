@@ -59,8 +59,54 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def corpus_binding_gaps(root: Path) -> list[str]:
+    """Why this tree's scenario corpora cannot bind oracles to ITS entry points
+    ([] when they can). Entry-point ids depend on how fully M1 resolved the
+    source (v21: a classpath fix turned 14 of 34 simple-name signatures into
+    qualified ones), so a corpus derived against another evidence bundle, or a
+    scenario naming an entry point this inventory does not hold, is a stale
+    binding: planning from it would report covered entry points as having no
+    oracle. The capture tools refuse such a corpus the same way
+    (capture-source-oracles/_scenarios.py); planning must not read around it."""
+    from planner.canonical import digest
+    from planner.paths import EVIDENCE_BUNDLE
+    from planner.worklist import SCENARIO_CORPORA
+    root = Path(root)
+    corpora = [rel for rel in SCENARIO_CORPORA if (root / rel).is_file()]
+    if not corpora:
+        return []
+    bundle = _read_json(root / EVIDENCE_BUNDLE)
+    # the entry points of the bundle the corpus is bound to (M1's inventory,
+    # as the bundle carries it -- the same reference capture qualification uses)
+    have = {str(r.get("id")) for r in (bundle or {}).get("entry_points") or [] if isinstance(r, dict)}
+    gaps: list[str] = []
+    for rel in corpora:
+        doc = _read_json(root / rel)
+        if not isinstance(doc, dict):
+            gaps.append("%s is unreadable" % rel)
+            continue
+        receipt = _read_json(root / rel.parent / "_derive.json")
+        if isinstance(doc.get("derived_from"), dict):
+            bound = str((receipt or {}).get("evidence_bundle_sha256") or "") if isinstance(receipt, dict) else ""
+            if not isinstance(bundle, dict) or bound != digest(bundle):
+                gaps.append("%s was derived against evidence bundle %s, not this tree's bundle: derive the corpus (and "
+                            "capture it) again" % (rel, bound[:12] or "<none>"))
+                continue
+        stale = sorted({str(sc.get("entry_point")) for sc in doc.get("scenarios") or []
+                        if isinstance(sc, dict) and sc.get("entry_point") and str(sc.get("entry_point")) not in have})
+        if stale:
+            gaps.append("%s binds %d entry point(s) this tree's evidence bundle does not hold (stale binding), e.g. %s"
+                        % (rel, len(stale), stale[0]))
+    return gaps
+
+
 def _oracles(root: Path) -> dict[str, list[str]] | None:
+    """entry point -> captured scenario ids, or None when no corpus exists OR
+    the corpora are not bound to this tree (corpus_binding_gaps): unknown,
+    never a partial map that silently drops coverage."""
     from planner.worklist import _iter_corpus_docs
+    if corpus_binding_gaps(root):
+        return None
     out: dict[str, list[str]] = {}
     seen = False
     for doc in _iter_corpus_docs(root):

@@ -136,7 +136,8 @@ def _decided_rows(doc: Any) -> list[dict[str, Any]]:
 
 
 def input_components(root: Path, *, bundle: dict[str, Any] | None = None, decisions: dict[str, Any] | None = None,
-                     oracles: dict[str, list[str]] | None = None, oracles_known: bool = True) -> dict[str, dict[str, Any]]:
+                     oracles: dict[str, list[str]] | None = None, oracles_known: bool = True,
+                     oracle_gaps: list[str] | None = None) -> dict[str, dict[str, Any]]:
     """One semantic component per planning input (INPUT_ORDER)."""
     root = Path(root)
     if bundle is None:
@@ -187,7 +188,8 @@ def input_components(root: Path, *, bundle: dict[str, Any] | None = None, decisi
                             unknowns=[] if str(mta.get("status")) == "ok" else ["MTA producer status %r" % mta.get("status")])
     norm_oracles = {str(k): sorted({str(s) for s in v or []}) for k, v in (oracles or {}).items()}
     out["oracles"] = _component(norm_oracles, complete=oracles_known,
-                                unknowns=[] if oracles_known else ["no captured scenario corpus: behavior coverage is unresolved"])
+                                unknowns=[] if oracles_known else (list(oracle_gaps or [])
+                                                                   or ["no captured scenario corpus: behavior coverage is unresolved"]))
     bs = _read(root / BOOTSTRAP_RECEIPT)
     if isinstance(bs, dict):
         b = {k: v for k, v in bs.items() if k not in ("inputs", "path", "observations")}
@@ -365,8 +367,10 @@ def from_root(root: Path, *, run_id: str = "semantic", worklist: dict[str, Any] 
         raise SemanticsError("%s is missing or malformed" % WORKLIST)
     from planner import source_requirements
 
+    from planner.outcome_checks import corpus_binding_gaps
     oracles = _oracles(root)
-    inputs = input_components(root, oracles=oracles or {}, oracles_known=oracles is not None)
+    inputs = input_components(root, oracles=oracles or {}, oracles_known=oracles is not None,
+                              oracle_gaps=corpus_binding_gaps(root))
     reqs = source_requirements.for_root(root, oracles=oracles)
     graph, why = initial_graph(root, worklist, requirements=reqs["requirements"], oracles=oracles, run_id=run_id)
     doc = compose(inputs=inputs, worklist=worklist, requirements=reqs["requirements"], graph=graph,
