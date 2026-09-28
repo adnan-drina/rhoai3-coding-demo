@@ -69,6 +69,69 @@ class Execution(unittest.TestCase):
         self.assertEqual(M.needed_classes({"acceptance": {"checks": ["worklist-absent", "parity:scenarios"]}}), {"parity"})
 
 
+class ParityStage(unittest.TestCase):
+    """Review F3: requested scope, actual execution and the bound receipt's
+    verdict are three things; a requested scenario list is never a PASS."""
+
+    def _root(self, receipt=None, mode="disabled"):
+        import tempfile
+        from planner.worklist import parity_receipt_file
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        root = Path(td.name)
+        if receipt is not None:
+            f = root / parity_receipt_file(mode)
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps(receipt))
+        return root
+
+    @staticmethod
+    def receipt(verdict_by_sc, *, tree=T, mode="disabled", overall=None):
+        rows = [{"entry_point": "ep:acme.Api#%s():http" % sc, "verdict": v, "scenarios": [sc]} for sc, v in sorted(verdict_by_sc.items())]
+        return {"schema": "rhoai3.parity-receipt/v1", "security_mode": mode, "binding": {"mode": "candidate", "candidate_sha256": tree},
+                "verdict": overall or ("PASS" if all(v == "PASS" for v in verdict_by_sc.values()) else "FAIL"), "entry_points": rows}
+
+    @staticmethod
+    def par(scenarios=(), ran=True, rc=0, mode="disabled"):
+        r = run()
+        r["runtime"] = {"parity": {"ran": ran, "rc": rc, "scoped": bool(scenarios), "scenarios": list(scenarios),
+                                   "read_oracles_rerun": [], "security_mode": mode}}
+        return r
+
+    def st(self, run_doc, root):
+        return M.execution(wl(), run_doc, T, root)["stages"]["parity"]
+
+    def test_requested_but_not_run(self):
+        s = self.st(self.par(["sc:a"], ran=False), self._root())
+        self.assertEqual((s["state"], s["requested"], s["scenarios"]), ("not-run", ["sc:a"], []))
+
+    def test_failed_run_without_receipt_is_not_a_pass(self):
+        s = self.st(self.par(["sc:a"], rc=1), self._root())
+        self.assertEqual(s["state"], "unknown")
+        self.assertNotIn("parity", M.classes(M.execution(wl(), self.par(["sc:a"], rc=1), T, self._root())))
+
+    def test_fail_and_inconclusive_verdicts_are_kept(self):
+        self.assertEqual(self.st(self.par(["sc:a"], rc=1), self._root(self.receipt({"sc:a": "FAIL"})))["state"], "failed")
+        self.assertEqual(self.st(self.par(["sc:a"]), self._root(self.receipt({"sc:a": "INCONCLUSIVE"})))["state"], "unknown")
+
+    def test_wrong_tree_and_wrong_mode_receipts_do_not_count(self):
+        self.assertEqual(self.st(self.par(["sc:a"]), self._root(self.receipt({"sc:a": "PASS"}, tree="b" * 64)))["state"], "unknown")
+        self.assertEqual(self.st(self.par(["sc:a"], mode="enabled"),
+                                 self._root(self.receipt({"sc:a": "PASS"}, mode="disabled"), mode="enabled"))["state"], "unknown")
+
+    def test_scoped_pass_names_only_what_it_measured(self):
+        s = self.st(self.par(["sc:a", "sc:b"]), self._root(self.receipt({"sc:a": "PASS", "sc:b": "PASS"})))
+        self.assertEqual((s["state"], s["scenarios"]), ("passed", ["sc:a", "sc:b"]))
+        s = self.st(self.par(["sc:a", "sc:c"]), self._root(self.receipt({"sc:a": "PASS"})))   # sc:c not in the receipt
+        self.assertEqual((s["state"], s["scenarios"]), ("unknown", ["sc:a"]))
+
+    def test_unscoped_pass_by_the_receipt_verdict_and_rc_is_not_a_verdict(self):
+        s = self.st(self.par([]), self._root(self.receipt({"sc:a": "PASS", "sc:b": "PASS"})))
+        self.assertEqual((s["state"], s["scenarios"]), ("passed", ["sc:a", "sc:b"]))
+        s = self.st(self.par([], rc=1), self._root(self.receipt({"sc:a": "PASS"})))       # rc alone decides nothing
+        self.assertEqual(s["state"], "passed")
+
+
 class Placement(unittest.TestCase):
     def test_source_tests_move_to_m4_with_their_origin_and_owner_repairs_keep_them(self):
         plan = NB.derive()

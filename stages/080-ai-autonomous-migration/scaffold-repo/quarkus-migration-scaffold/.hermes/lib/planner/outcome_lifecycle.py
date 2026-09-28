@@ -1178,7 +1178,7 @@ def record_assessment(ctx: Ctx, *, task_id: str, run_id: int, verdict_doc: dict[
             _run = json.loads((Path(ctx.root) / _VR).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             _run = {}
-        record_measurement(ctx, tree=tree, classes=_proven(_execution(wl, _run, tree)), scenarios=measured,
+        record_measurement(ctx, tree=tree, classes=_proven(_execution(wl, _run, tree, ctx.root)), scenarios=measured,
                            open_ids=[o["id"] for o in obligations], source="assessment:%s" % iss["outcome_id"],
                            checks=checks or None, asserted_by=_asserted_by(ctx))
     return {"assessment_seq": seq, "verdict": token, "open_obligations": len(obligations)}

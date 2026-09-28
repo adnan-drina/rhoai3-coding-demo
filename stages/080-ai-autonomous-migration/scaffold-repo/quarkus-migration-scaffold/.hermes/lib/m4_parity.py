@@ -141,7 +141,7 @@ def measure(root: Path) -> dict:
         errors.append("security modes were measured on different packaged artifacts")
     failed = [r for r in rows if r["verdict"] == "FAIL"]
     return {"rc": 2 if errors else (1 if failed else 0), "rows": rows, "errors": errors,
-            "receipt_sha256_by_mode": bindings}
+            "receipt_sha256_by_mode": bindings, "modes": modes}
 
 
 def verdict_issues(doc: dict, root: Path) -> list[str]:

@@ -31,7 +31,8 @@ def _stage(state: str, detail: str, **extra: Any) -> dict[str, Any]:
     return dict({"state": state, "detail": detail}, **extra)
 
 
-def execution(worklist: dict[str, Any] | None, run: dict[str, Any] | None, tree: str = "") -> dict[str, Any]:
+def execution(worklist: dict[str, Any] | None, run: dict[str, Any] | None, tree: str = "",
+              root: Any = None) -> dict[str, Any]:
     """The execution record of the verification that produced ``worklist``
     (``run`` is its run.json). ``tree`` is the product tree being judged: the
     record describes it only when the work list and the run are bound to it."""
@@ -89,19 +90,64 @@ def execution(worklist: dict[str, Any] | None, run: dict[str, Any] | None, tree:
                          else _stage(FAILED, "a runtime gate ran and did not pass") if ran_rt
                          else _stage(NOT_RUN, "the runtime gates did not run"))
 
-    parity = ((rn.get("runtime") or {}).get("parity") or {})
-    scen = sorted(str(s) for s in parity.get("scenarios") or [])
-    stages["parity"] = (_stage(PASSED, "%d scenario(s) replayed" % len(scen), scenarios=scen) if scen
-                        else _stage(NOT_RUN, "no parity scenario was replayed"))
+    stages["parity"] = parity_stage(rn, wl_tree, root)
     out["stages"] = stages
     return out
 
 
+def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, Any]:
+    """Requested scope, actual execution and measured verdict of the parity
+    comparison, kept apart (review F3: a non-empty REQUESTED scenario list was
+    reported as passed, even for rc 1 and verdict FAIL).
+
+    The verdict comes only from the composed receipt of the run's security
+    mode, bound to THIS candidate tree (compose-parity-receipt's binding), read
+    through worklist.parity_state; the runner's rc is never a verdict. A scoped
+    run passes when every requested scenario (and re-run read oracle) is PASS
+    in that receipt; an unscoped run by the receipt's verdict. ``scenarios`` are
+    the ones the receipt measured, never the ones requested."""
+    par = ((run or {}).get("runtime") or {}).get("parity") if isinstance(run, dict) else None
+    if not isinstance(par, dict) or not par.get("ran"):
+        req = sorted(str(x) for x in ((par or {}).get("scenarios") or [])) if isinstance(par, dict) else []
+        return _stage(NOT_RUN, "no parity comparison ran" + (" (%d requested)" % len(req) if req else ""), requested=req, scenarios=[])
+    requested = sorted(str(x) for x in par.get("scenarios") or [])
+    oracles = sorted(str(x) for x in par.get("read_oracles_rerun") or [])
+    mode = str(par.get("security_mode") or "disabled")
+    base = {"requested": requested, "scenarios": [], "security_mode": mode, "scoped": bool(par.get("scoped"))}
+    if root is None:
+        return _stage(UNKNOWN, "no destination root to read the %s-mode receipt from" % mode, **base)
+    from planner.worklist import load_parity_receipt, parity_state
+    receipt = load_parity_receipt(root, mode)
+    if not receipt:
+        return _stage(UNKNOWN, "the comparison ran and no %s-mode receipt was composed" % mode, **base)
+    if str(receipt.get("security_mode") or "disabled") != mode:
+        return _stage(UNKNOWN, "the receipt was taken in another security mode", **base)
+    bind = receipt.get("binding") if isinstance(receipt.get("binding"), dict) else {}
+    if str(bind.get("candidate_sha256") or "") != tree or not tree:
+        return _stage(UNKNOWN, "the %s-mode receipt is bound to %s, not to this candidate" % (mode, str(bind.get("candidate_sha256") or "nothing")[:12]), **base)
+    st = parity_state(receipt)
+    if not st["known"]:
+        return _stage(UNKNOWN, "the %s-mode receipt measured nothing" % mode, **base)
+    scen_v, ep_v = st.get("scenarios") or {}, st.get("entry_points") or {}
+    if requested or oracles:
+        verdicts = [scen_v.get(x, "") for x in requested] + [ep_v.get(e, "") for e in oracles]
+        measured = sorted(x for x in requested if scen_v.get(x))
+    else:
+        verdicts = [str(receipt.get("verdict") or "")]
+        measured = sorted(scen_v)
+    base["scenarios"] = measured
+    if verdicts and all(v == "PASS" for v in verdicts):
+        return _stage(PASSED, "%d requested check(s) PASS in the bound %s-mode receipt" % (len(verdicts), mode), **base)
+    if any(v == "FAIL" for v in verdicts):
+        return _stage(FAILED, "%d FAIL in the bound %s-mode receipt" % (sum(1 for v in verdicts if v == "FAIL"), mode), **base)
+    return _stage(UNKNOWN, "inconclusive or unmeasured in the bound %s-mode receipt" % mode, **base)
+
+
 def classes(ex: dict[str, Any] | None) -> list[str]:
     """The legacy class labels this execution proves. ``build`` and
-    ``runtime`` when they passed; ``compile`` and ``tests`` when they ran with a
-    known result (the counts, not the labels, say whether they are clean);
-    ``parity`` when scenarios were replayed. Nothing for an unbound record."""
+    ``runtime`` when they passed; ``compile``, ``tests`` and ``parity`` when
+    they ran with a known, bound result (the counts and verdicts, not the
+    labels, say whether they are clean). Nothing for an unbound record."""
     if not isinstance(ex, dict) or not ex.get("bound"):
         return []
     st = ex.get("stages") or {}
@@ -115,8 +161,8 @@ def classes(ex: dict[str, Any] | None) -> list[str]:
         out.append("tests")
     if state("runtime") == PASSED:
         out.append("runtime")
-    if state("parity") == PASSED:
-        out.append("parity")
+    if state("parity") in KNOWN:
+        out.append("parity")    # the comparison executed with a bound verdict; the verdict itself gates acceptance
     return out
 
 

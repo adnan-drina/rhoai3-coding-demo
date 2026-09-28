@@ -96,13 +96,10 @@ DISCHARGE_SCHEMA = "rhoai3.coverage-discharge/v1"
 # here. Nothing between the plan and this module read them on the native board:
 # a coverage account keyed by source path cannot stand for an entry-point group,
 # and a handoff's `unresolved` list is prose. The origin set is the FROZEN
-# admitted plan semantics, never a handoff; each id resolves only by a record
-# naming it, its evidence (file + sha256), the security mode, the evidence
-# bundle it was captured against and the delivery candidate it was assessed on.
+# admitted plan semantics (sealed by admission), never a handoff; each id
+# resolves only when the parity receipts the bound M4 verdict judged measure
+# every one of its entry points PASS in every owed security mode.
 PLAN_SEMANTICS_REL = Path("evidence") / "planning" / "plan-semantics.json"
-EVIDENCE_BUNDLE_REL = Path("evidence") / "planning" / "evidence-bundle.json"
-UNRESOLVED_RESOLUTIONS = DELIVERY_DIR / "unresolved-resolutions.json"
-RESOLUTION_SCHEMA = "rhoai3.unresolved-resolution/v1"
 RELEASE_BLOCKING = ("ship", "delivery")
 
 # M4 close always records ship:false. Those rows, and the M4 verdict's
@@ -131,8 +128,8 @@ QUALIFICATION_META = {
     },
     "plan-unresolved": {
         "owner": "M4 assessment on the delivery candidate (the admitted plan's unresolved responsibility)",
-        "evidence": str(UNRESOLVED_RESOLUTIONS),
-        "resolution": "a resolution naming this exact id with its evidence file and sha256, the security mode, the evidence bundle digest and this delivery candidate; a clean work list or an empty handoff list resolves nothing",
+        "evidence": "verification/parity/receipt*.json bound by the M4 verdict",
+        "resolution": "every entry point of the responsibility measures PASS, in every owed security mode, in the parity receipts the bound M4 verdict judged; a clean work list, a handoff list or a hand-written file resolves nothing",
     },
     "g1-kill-ratio": {
         "owner": "check-domain-parity / pin-kill-ratio-from-pit.py",
@@ -950,89 +947,143 @@ def outstanding_from_artifacts(root: Path, *, candidate_sha: str = "") -> list[d
     return out
 
 
-def plan_unresolved(root: Path) -> list[dict[str, Any]] | None:
-    """The admitted plan's release-blocking unresolved rows (frozen plan
-    semantics); [] when the plan keeps none; None when the file exists but
-    cannot be read as the frozen plan (fail closed)."""
-    p = Path(root) / PLAN_SEMANTICS_REL
-    if not p.is_file():
-        return []
+def plan_unresolved(root: Path) -> tuple[list[dict[str, Any]] | None, str]:
+    """(rows, note): the admitted plan's release-blocking unresolved rows.
+
+    Whether a plan is REQUIRED comes from the run's own pinned declaration
+    (decisions.yaml loop.plan_semantics, which must equal the initial commit's)
+    and from the admission receipt that sealed the plan -- never from whether a
+    file happens to be present (review F2: a deleted plan-semantics.json, or a
+    bare {"frozen": true}, cleared all seven v23 responsibilities). A required
+    plan must still carry its admission seal (plan_semantics.seal_gaps), be
+    frozen, have a graph with an explicit unresolved list, and name each row
+    with a unique id and a known consequence. None means unknown: the caller
+    keeps release blocked. [] with a note is an explicitly legacy run or a
+    genuinely empty admitted list."""
+    return _plan_unresolved_checked(Path(root))
+
+
+def _plan_unresolved_checked(root: Path) -> tuple[list[dict[str, Any]] | None, str]:
+    from planner import plan_semantics as PS
+    from planner.decisions import load_decisions, plan_semantics, plan_semantics_pin_gap
+    from planner.paths import ADMISSION_RECEIPT
     try:
-        doc = load_json(p)
-        graph = (doc.get("plan") or {}).get("graph") or {}
-        if doc.get("frozen") is not True or not isinstance(graph.get("unresolved", []), list):
-            return None
-    except Exception:
-        return None
-    return [dict(u) for u in graph.get("unresolved") or [] if isinstance(u, dict)
-            and str(u.get("blocks") or "delivery") in RELEASE_BLOCKING]
+        dec = load_decisions(root)
+    except Exception as exc:  # an unreadable declaration is unknown, never legacy
+        return None, "decisions.yaml cannot be read (%s): whether this run owes a plan is unknown" % exc
+    gap = plan_semantics_pin_gap(root, dec)
+    if gap:
+        return None, gap
+    receipt = {}
+    if (root / ADMISSION_RECEIPT).is_file():
+        try:
+            receipt = load_json(root / ADMISSION_RECEIPT)
+        except Exception:
+            return None, "%s cannot be read" % ADMISSION_RECEIPT
+    seal = ((receipt.get("seals") or {}) if isinstance(receipt, dict) else {}).get("plan_semantics")
+    if plan_semantics(dec) != "v1" and not seal:
+        return [], "legacy run: decisions select no plan semantics and no admission sealed one"
+    if not isinstance(seal, dict) or not seal.get("plan_fingerprint"):
+        return None, "the run plans with plan semantics v1, but no admission receipt seals the plan"
+    gaps = PS.seal_gaps(root, seal)
+    if gaps:
+        return None, "; ".join(gaps)
+    doc = load_json(root / PLAN_SEMANTICS_REL)
+    if doc.get("frozen") is not True or doc.get("schema") != PS.SCHEMA:
+        return None, "%s is not the frozen admitted plan" % PLAN_SEMANTICS_REL
+    graph = (doc.get("plan") or {}).get("graph") if isinstance(doc.get("plan"), dict) else None
+    if not isinstance(graph, dict) or not isinstance(graph.get("unresolved"), list):
+        return None, "%s has no graph with an explicit unresolved list" % PLAN_SEMANTICS_REL
+    rows, seen = [], set()
+    for u in graph["unresolved"]:
+        uid = str(u.get("id") or "") if isinstance(u, dict) else ""
+        blocks = str(u.get("blocks") or "") if isinstance(u, dict) else ""
+        if not uid or uid in seen or blocks not in RELEASE_BLOCKING:
+            return None, "%s has a malformed or duplicated unresolved row (%r)" % (PLAN_SEMANTICS_REL, uid or u)
+        seen.add(uid)
+        if blocks in RELEASE_BLOCKING:
+            rows.append(dict(u))
+    return rows, ""
 
 
-def unresolved_resolutions(root: Path, candidate_sha: str, ids: set[str]) -> tuple[dict[str, dict[str, Any]], list[str]]:
-    """({id: resolution}, refusals). A resolution counts only for an id of the
-    admitted plan, on this delivery candidate, captured against this evidence
-    bundle, in a named security mode, with every evidence file present and
-    equal to its recorded sha256. Anything else is named and ignored."""
+def parity_evidence(root: Path) -> tuple[dict[str, dict[str, str]] | None, str]:
+    """({mode: {entry point: verdict}}, note) from the parity receipts the
+    bound M4 verdict judged, in EVERY security mode this run owes; None when
+    any owed mode has no usable assessment.
+
+    Review F1: a resolution file whose evidence hash matched was enough to
+    clear seven responsibilities, whatever the evidence said. Resolution is now
+    derived from the existing validated producer records only: each owed mode's
+    receipt must pass m4_parity's own checks (schema, mode, a full, unscoped
+    runner record of this receipt, one packaged artifact across modes), and its
+    digest must be the one the M4 verdict bound (bind-m4-verdict.py), so the
+    receipt IS the assessment M4 accepted. The delivery candidate is tied to
+    that M4 closure by the existing M5 closure and stale-evidence gates."""
+    import hashlib
+    import m4_parity
+    from planner.worklist import load_parity_receipt, parity_receipt_file, parity_run_file, parity_state
     root = Path(root)
-    p = root / UNRESOLVED_RESOLUTIONS
-    if not p.is_file():
-        return {}, []
+    if not (root / M4_VERDICT).is_file():
+        return None, "no M4 verdict"
     try:
-        doc = load_json(p)
+        verdict = load_json(root / M4_VERDICT)
     except Exception:
-        return {}, ["%s is not readable JSON" % UNRESOLVED_RESOLUTIONS]
-    if str(doc.get("schema") or "") != RESOLUTION_SCHEMA:
-        return {}, ["%s has schema %r, not %s" % (UNRESOLVED_RESOLUTIONS, doc.get("schema"), RESOLUTION_SCHEMA)]
-    from planner.canonical import digest
-    bundle = digest(load_json(root / EVIDENCE_BUNDLE_REL)) if (root / EVIDENCE_BUNDLE_REL).is_file() else ""
-    ok: dict[str, dict[str, Any]] = {}
-    bad: list[str] = []
-    for row in doc.get("resolutions") or []:
-        rid = str((row or {}).get("id") or "")
-        why = ""
-        if rid not in ids:
-            why = "not an unresolved id of the admitted plan"
-        elif rid in ok:
-            why = "resolved twice"
-        elif not candidate_sha or str(row.get("candidate_sha") or "") != candidate_sha:
-            why = "bound to candidate %r, not the delivery candidate" % str(row.get("candidate_sha") or "")[:12]
-        elif not bundle or str(row.get("source_bundle_sha256") or "") != bundle:
-            why = "captured against another evidence bundle"
-        elif str(row.get("security_mode") or "") not in ("disabled", "enabled"):
-            why = "names no security mode"
-        else:
-            ev = [e for e in row.get("evidence") or [] if isinstance(e, dict)]
-            if not ev:
-                why = "names no evidence"
-            for e in ev:
-                f = root / str(e.get("path") or "")
-                if not str(e.get("path") or "") or not f.is_file() or sha256_file(f) != str(e.get("sha256") or ""):
-                    why = "evidence %s is missing or differs from its sha256" % e.get("path")
-                    break
+        return None, "the M4 verdict cannot be read"
+    bound = dict(verdict.get("parity_receipt_sha256_by_mode") or {})
+    if not bound and verdict.get("parity_receipt_sha256"):
+        bound = {"disabled": str(verdict.get("parity_receipt_sha256"))}
+    meas = m4_parity.measure(root)
+    modes = list(meas.get("modes") or [])
+    out: dict[str, dict[str, str]] = {}
+    for mode in modes:
+        errs = [e for e in meas.get("errors") or [] if str(e).startswith(mode + ":")]
+        if errs:
+            return None, "%s mode: %s" % (mode, errs[0])
+        p = root / parity_receipt_file(mode)
+        sha = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else ""
+        if not sha or sha != str(bound.get(mode) or ""):
+            return None, "the %s-mode receipt is not the one the M4 verdict bound" % mode
+        receipt = load_parity_receipt(root, mode)
+        try:
+            run = load_json(root / parity_run_file(mode))
+        except Exception:
+            return None, "no %s-mode runner record" % mode
+        if not isinstance(run, dict) or not run.get("ok") or not m4_parity.runner_is_full_mode(run):
+            return None, "the %s-mode runner record is not a successful full comparison" % mode
+        why = m4_parity.runner_provenance_error(run, receipt)
         if why:
-            bad.append("%s: %s" % (rid or "(no id)", why))
-        else:
-            ok[rid] = dict(row)
-    return ok, bad
+            return None, "%s mode: %s" % (mode, why)
+        st = parity_state(receipt)
+        if not st["known"]:
+            return None, "the %s-mode receipt measured nothing" % mode
+        out[mode] = {str(k): str(v) for k, v in (st.get("entry_points") or {}).items()}
+    return out, ""
 
 
 def _plan_unresolved_rows(root: Path, candidate_sha: str) -> list[dict[str, Any]]:
-    rows = plan_unresolved(root)
+    rows, why = plan_unresolved(root)
     if rows is None:
-        return [{"kind": "plan-unresolved", "id": "plan-unresolved-unreadable", "count": 1,
-                 "detail": "%s exists but is not a readable frozen plan: its unresolved responsibilities are unknown"
-                           % PLAN_SEMANTICS_REL}]
-    resolved, refused = unresolved_resolutions(root, candidate_sha, {str(u.get("id")) for u in rows})
+        return [{"kind": "plan-unresolved", "id": "plan-unresolved-unknown", "count": 1,
+                 "detail": "the admitted plan's unresolved responsibilities are unknown: %s" % why}]
+    if not rows:
+        return []
+    evidence, ev_why = parity_evidence(root)
     out = []
     for u in sorted(rows, key=lambda u: str(u.get("id"))):
-        if str(u.get("id")) in resolved:
-            continue
         eps = [str(e) for e in u.get("entry_points") or []]
+        missing: list[str] = []
+        if evidence is None:
+            missing = ["no usable M4 parity assessment (%s)" % ev_why]
+        elif not eps:
+            missing = ["the responsibility names no entry point to measure"]
+        else:
+            for mode, verdicts in sorted(evidence.items()):
+                missing += ["%s %s: %s" % (mode, e, verdicts.get(e) or "not measured") for e in eps if verdicts.get(e) != "PASS"]
+        if not missing:
+            continue   # every entry point PASS in every owed mode of the bound M4 assessment
         out.append({"kind": "plan-unresolved", "id": str(u.get("id")), "blocks": str(u.get("blocks") or "delivery"),
                     "count": max(1, len(eps)), "entry_points": eps, "requirements": list(u.get("requirements") or []),
-                    "detail": str(u.get("reason") or "")[:300],
-                    **({"refused_resolutions": [r for r in refused if r.startswith(str(u.get("id")) + ":")]}
-                       if any(r.startswith(str(u.get("id")) + ":") for r in refused) else {})})
+                    "detail": str(u.get("reason") or "")[:300], "not_yet": missing[:8]})
     return out
 
 
