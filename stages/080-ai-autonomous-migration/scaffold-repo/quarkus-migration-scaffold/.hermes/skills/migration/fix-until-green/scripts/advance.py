@@ -329,6 +329,18 @@ def _execution(cur: dict, run: object, tree: str, root: Path | None = None) -> d
     return execution(cur, run if isinstance(run, dict) else {}, tree, root)
 
 
+def checkpoint_relation(changed: list[str]) -> str:
+    """'causal' when the accepted candidate changed product files; 'witness' when it
+    changed none (v26 t_4fd2dcec: an empty commit was accepted as the card's
+    checkpoint after an earlier card had already removed its obligation)."""
+    return "causal" if changed else "witness"
+
+
+def checkpoint_subject(cluster: str, n: int, card: str, measure: Any, relation: str) -> str:
+    base = "fix-until-green: %s checkpoint %d of %s %s" % (cluster, n, card, measure)
+    return base if relation == "causal" else base + " (witness: no product change; discharged before this card's edit)"
+
+
 def _commit(root: Path, paths: list[str], message: str) -> str:
     git(root, "reset", "-q")  # nothing staged but what we add now
     if paths:
@@ -1254,7 +1266,12 @@ def main(argv: list[str] | None = None) -> int:
     # first commit of every later repository card (the shared family budget's key), which read as exhaustion
     checkpoint_n = 1 + sum(1 for s in steps.get("steps") or [] if isinstance(s, dict) and s.get("card") == args.card
                            and s.get("verdict") == "accepted")
-    sha = _commit(root, changed, "fix-until-green: %s checkpoint %d of %s %s" % (args.cluster, checkpoint_n, args.card, cur["measure"]["tuple"]))
+    relation = checkpoint_relation(changed)
+    if relation == "witness":
+        print("NOTE: WITNESS CHECKPOINT %s: this candidate changed no product file; its obligations were discharged "
+              "before this card's edit (by an earlier card or the baseline). It is recorded as a witness, not as this "
+              "card's repair." % args.cluster)
+    sha = _commit(root, changed, checkpoint_subject(args.cluster, checkpoint_n, args.card, cur["measure"]["tuple"], relation))
     _phase("snapshotting the tool reports")
     snapshot_reports(root)
     if carried_rows:
@@ -1264,7 +1281,7 @@ def main(argv: list[str] | None = None) -> int:
         snap_name = parity_receipt_file(parity_mode).name
         write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / snap_name, judged_parity)
     steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"],
-                           "execution": _execution(cur, run, on_disk, root), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+                           "execution": _execution(cur, run, on_disk, root), "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "relation": relation, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),
                                      "family_key": str(scope_doc.get("family_key") or "")} if unit else {}),

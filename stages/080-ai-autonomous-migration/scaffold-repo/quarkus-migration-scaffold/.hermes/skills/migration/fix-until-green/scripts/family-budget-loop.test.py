@@ -210,5 +210,41 @@ class ReworkUnchanged(unittest.TestCase):
             self.assertEqual(load_json(root / "verification" / "loop" / "last-advance.json")["verdict"], "REFUSED")
 
 
+class CheckpointRelation(unittest.TestCase):
+    """v26 t_4fd2dcec: an empty commit was accepted as the card's checkpoint after an earlier card had already
+    removed the obligation. An acceptance that changed no product file is recorded as a witness, not a repair."""
+    def _accept(self, td, *, edit):
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        owner = FUG._write_uri_controllers(root, FUG._BUILDER)[0]
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol class UriComponentsBuilder",
+                                              "compiler.err.cant.resolve.location")])
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        FUG._issue_cluster(root, cluster, "t_rel")
+        if edit:
+            f = root / owner
+            f.write_text(f.read_text() + "\n// repaired\n")
+        specimens.verify(root, errors=[], failures=[], findings=load_json(root / MTA_FINDINGS))
+        p = FUG._advance(root, cluster["id"], "t_rel")
+        steps = [x for x in load_json(root / LOOP_STEPS)["steps"] if x.get("card") == "t_rel"]
+        subject = FUG._git(root, "log", "-1", "--format=%s").strip()
+        return p, steps, subject
+
+    def test_an_edit_that_discharges_is_causal(self):
+        with tempfile.TemporaryDirectory(prefix="rel-c-") as td:
+            p, steps, subject = self._accept(td, edit=True)
+            self.assertTrue(steps, p.stdout + p.stderr)
+            self.assertEqual(steps[-1]["relation"], "causal")
+            self.assertNotIn("witness", subject)
+
+    def test_no_product_change_is_a_witness(self):
+        with tempfile.TemporaryDirectory(prefix="rel-w-") as td:
+            p, steps, subject = self._accept(td, edit=False)
+            self.assertTrue(steps, p.stdout + p.stderr)
+            self.assertEqual((steps[-1]["relation"], steps[-1]["changed"]), ("witness", []))
+            self.assertIn("witness: no product change", subject)
+            self.assertIn("WITNESS CHECKPOINT", p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
