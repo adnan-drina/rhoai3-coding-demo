@@ -1,52 +1,51 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Tue, 29 Sep 2026 01:13:36 +0200
-Subject: [PATCH] fix(guardrails): low novelty is not zero novelty in the
+Subject: [PATCH] fix(guardrails): any new line is progress in the
  near-duplicate guard
 
-RHOAI3 v24 (2026-09-29): the near-duplicate guard halted a worker paging a
-143K section whose pages each showed 20-30 new diagnostic lines (3% of 850)
-and reported it as "no new output". A call now makes progress when it shows
-at least min_new_lines (3) lines not shown before, whatever their share.
-Incidental timestamps, durations and long hex digests are masked before
-lines are compared, so they never count as new. A halt whose counted calls
-mostly showed a few new lines is reported as low_novelty_loop_halt (a
-non-converging investigation), never as no new output; exact repetitions and
-unchanged-output loops still halt as near_duplicate_loop_halt.
+RHOAI3 v24 (2026-09-29): the near-duplicate guard (0014) halted a worker paging a
+143K section whose pages each showed new diagnostic lines, and would halt
+paging that yields one new diagnostic per page, reporting both as "no new
+output". A call now makes progress when it shows at least min_new_lines (1)
+line not shown before since the last edit or transition. Incidental
+timestamps, durations and long hex digests are masked before lines are
+compared, so they never count as new: polling whose only change is a clock
+or a self-generated digest still halts. Exact repetitions and unchanged-output
+loops still halt as near_duplicate_loop_halt, whose message now states how
+many of the counted calls showed no new output.
 ---
- agent/tool_guardrails.py                      | 68 ++++++++++++++++-
- .../test_tool_guardrails_near_duplicate.py    | 74 ++++++++++++++++++-
- 2 files changed, 134 insertions(+), 8 deletions(-)
+ agent/tool_guardrails.py                      | 40 ++++++++-
+ .../test_tool_guardrails_near_duplicate.py    | 82 ++++++++++++++++++-
+ 2 files changed, 114 insertions(+), 8 deletions(-)
 
 diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
-index 4fca31b..220c7e2 100644
+index 4fca31b..1dc0ada 100644
 --- a/agent/tool_guardrails.py
 +++ b/agent/tool_guardrails.py
-@@ -249,6 +249,15 @@ class NearDuplicateConfig:
+@@ -249,6 +249,13 @@ class NearDuplicateConfig:
        of its output lines were not shown since the last edit or transition.
        A call that names a new operand (query term, literal or path) makes
        progress whatever its output.
 +    - ``min_new_lines``: a call that shows at least this many lines not shown
 +      before also makes progress, whatever their share (RHOAI3 v24: a page of
-+      850 lines with 26 new diagnostic lines was halted as "no new output").
-+      Lines are compared with incidental timestamps, durations and long hex
-+      digests masked, so those alone never count as new.
-+      When a halt counts a call that did show a few new lines (fewer than
-+      ``min_new_lines``, no more than ``new_output_share``), it is reported as
-+      ``low_novelty_loop_halt`` -- a bounded investigation that is not
-+      converging -- never as "no new output".
++      850 lines with 26 new diagnostic lines, and pages that each added ONE new
++      diagnostic, were halted as "no new output"). Default 1: any new line is
++      information. Lines are compared with incidental timestamps, durations and
++      long hex digests masked, so those alone never count as new; exact
++      repetitions and unchanged-output loops still halt.
      """
  
      enabled: bool = True
-@@ -259,6 +268,7 @@ class NearDuplicateConfig:
+@@ -259,6 +266,7 @@ class NearDuplicateConfig:
      warn_after: int = 8
      similarity: float = 0.75
      new_output_share: float = 0.5
-+    min_new_lines: int = 3
++    min_new_lines: int = 1
  
      @classmethod
      def from_mapping(cls, data: Mapping[str, Any] | None) -> "NearDuplicateConfig":
-@@ -276,6 +286,7 @@ class NearDuplicateConfig:
+@@ -276,6 +284,7 @@ class NearDuplicateConfig:
              warn_after=_positive_int(data.get("warn_after"), d.warn_after),
              similarity=_unit_float(data.get("similarity"), d.similarity),
              new_output_share=_unit_float(data.get("new_output_share"), d.new_output_share),
@@ -54,7 +53,7 @@ index 4fca31b..220c7e2 100644
          )
  
  
-@@ -824,11 +835,12 @@ class ToolCallGuardrailController:
+@@ -824,11 +833,12 @@ class ToolCallGuardrailController:
          lines = _result_content_lines(result)
          new = 0
          for line in lines:
@@ -65,11 +64,11 @@ index 4fca31b..220c7e2 100644
                  new += 1
 -        progressing = novel or (bool(lines) and new > cfg.new_output_share * len(lines))
 +        progressing = novel or (bool(lines) and (new > cfg.new_output_share * len(lines) or new >= cfg.min_new_lines))
-+        novelty = "progress" if progressing else ("low" if new else "none")
++        novelty = "progress" if progressing else "none"
          entry = _NearDuplicateCall(
              tool_name=tool_name,
              tokens=shape,
-@@ -837,6 +849,7 @@ class ToolCallGuardrailController:
+@@ -837,6 +847,7 @@ class ToolCallGuardrailController:
              exact=exact,
              operands=operands,
              head=head,
@@ -77,7 +76,7 @@ index 4fca31b..220c7e2 100644
          )
          self._nd_history.append(entry)
          keep = max(cfg.window, cfg.cycle_laps * cfg.max_cycle_period)
-@@ -852,6 +865,8 @@ class ToolCallGuardrailController:
+@@ -852,6 +863,8 @@ class ToolCallGuardrailController:
          ]
          count = len(similar)
          loop = ""
@@ -86,7 +85,7 @@ index 4fca31b..220c7e2 100644
          if count >= cfg.similar_calls:
              loop = (
                  f"{count} of the last {min(len(history), cfg.window)} {tool_name} calls "
-@@ -863,17 +878,45 @@ class ToolCallGuardrailController:
+@@ -863,17 +876,20 @@ class ToolCallGuardrailController:
                  if laps >= cfg.cycle_laps:
                      members = "; ".join(e.description for e in history[-period:])
                      count = laps
@@ -96,32 +95,7 @@ index 4fca31b..220c7e2 100644
                          f"{laps} times ({members})"
                      )
                      break
-+        low = sum(1 for e in counted if e.novelty == "low")
 +        zero = sum(1 for e in counted if e.novelty == "none")
-+        if loop and low > zero:
-+            code = LOW_NOVELTY_HALT_CODE
-+        if loop and self.config.hard_stop_enabled and code == LOW_NOVELTY_HALT_CODE:
-+            decision = ToolGuardrailDecision(
-+                action="halt",
-+                code=LOW_NOVELTY_HALT_CODE,
-+                message=(
-+                    f"Stopped {tool_name}: {loop}. Each showed at most {cfg.min_new_lines - 1} "
-+                    "new line(s) and asked no new question: an investigation that is not converging "
-+                    "(this limit is not a claim that nothing new was shown). Nothing on disk was "
-+                    "changed by this stop. Use the content already shown, ask a different question "
-+                    "(a new term, file or selector), make the change, or end the run with the card's "
-+                    "stated terminator."
-+                ),
-+                tool_name=tool_name,
-+                count=count,
-+                signature=ToolCallSignature(
-+                    tool_name=tool_name,
-+                    args_hash=_sha256(json.dumps([tool_name, list(entry.exact)])),
-+                ),
-+                family=loop[:300],
-+            )
-+            self._halt_decision = decision
-+            return decision
          if loop and self.config.hard_stop_enabled:
              decision = ToolGuardrailDecision(
                  action="halt",
@@ -133,7 +107,7 @@ index 4fca31b..220c7e2 100644
                      "and no board transition in between. Only numbers, a growing "
                      "quoted argument or a chained part changed between these "
                      "calls, and none of them asked about a new term or file, so "
-@@ -902,7 +945,7 @@ class ToolCallGuardrailController:
+@@ -902,7 +918,7 @@ class ToolCallGuardrailController:
                  action="warn",
                  code=NEAR_DUPLICATE_WARN_CODE,
                  message=(
@@ -142,11 +116,10 @@ index 4fca31b..220c7e2 100644
                      "looks like a loop: use what was already shown, make the "
                      "change, or stop."
                  ),
-@@ -1724,6 +1767,22 @@ def _result_content_lines(result: str | None) -> list:
+@@ -1724,6 +1740,21 @@ def _result_content_lines(result: str | None) -> list:
  # ── Near-duplicate loop guard (_observe_near_duplicate) ──────────────────
  
  NEAR_DUPLICATE_HALT_CODE = "near_duplicate_loop_halt"
-+LOW_NOVELTY_HALT_CODE = "low_novelty_loop_halt"
 +# Incidental output that changes on every call without saying anything new: masked before a
 +# line is compared, so it never counts as a new line (RHOAI3 v24 review: timestamps and
 +# self-generated digests must not justify endless polling).
@@ -165,39 +138,33 @@ index 4fca31b..220c7e2 100644
  NEAR_DUPLICATE_WARN_CODE = "near_duplicate_loop_warning"
  # Board transitions: after one of these the model is on a new step. Reads of
  # the board (kanban_show/kanban_list), heartbeats and comments are not.
-@@ -1777,6 +1836,7 @@ class _NearDuplicateCall:
+@@ -1777,6 +1808,7 @@ class _NearDuplicateCall:
      exact: tuple = ()  # digit runs as ``#``, quoted text kept
      operands: tuple = ()  # query terms, literals and paths, digit-normalised
      head: tuple = ()  # exact tokens of the first chain element
-+    novelty: str = "none"  # "progress", "low" (a few new lines) or "none" (no new line)
++    novelty: str = "none"  # "progress" or "none" (no new line, incidental tokens masked)
  
  
  def _shell_tokens(command: str) -> list:
 diff --git a/tests/agent/test_tool_guardrails_near_duplicate.py b/tests/agent/test_tool_guardrails_near_duplicate.py
-index 758a634..d5d7147 100644
+index 758a634..7fcbaa6 100644
 --- a/tests/agent/test_tool_guardrails_near_duplicate.py
 +++ b/tests/agent/test_tool_guardrails_near_duplicate.py
-@@ -9,6 +9,7 @@ run_agent._append_guardrail_observation does: after_call, then observe_call.
- import json
- 
- from agent.tool_guardrails import (
-+    LOW_NOVELTY_HALT_CODE,
-     NEAR_DUPLICATE_HALT_CODE,
-     NEAR_DUPLICATE_WARN_CODE,
-     NearDuplicateConfig,
-@@ -120,7 +121,11 @@ def test_sed_window_walk_run37_halts():
+@@ -120,8 +120,13 @@ def test_sed_window_walk_run37_halts():
          calls.append(window(45, 80))
          calls.extend(window(n, n + 5) for n in range(45, 0, -1))
      index, halt, _ = _replay(_hard_stop(), calls)
--    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
-+    # Each 6-line window shows one line not shown before: a walk that is not
-+    # converging. It halts at the same point as before, reported honestly as
-+    # low novelty rather than "no new output" (RHOAI3 v24 review).
-+    assert halt is not None and halt.code == LOW_NOVELTY_HALT_CODE
-+    assert "not a claim that nothing new was shown" in halt.message
-     assert index <= 13
++    # Each window of the first walk shows one source line not shown before: new
++    # information, so the walk is not stopped (RHOAI3 v24 review: legitimate
++    # paging that yields one new line per page must not halt). The loop is the
++    # second walk over windows already shown: it halts twelve calls into it.
++    first_walk = 1 + 45
+     assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
+-    assert index <= 13
++    assert first_walk <= index <= first_walk + 12
  
  
+ def test_widening_context_run39_halts_when_it_keeps_widening():
 @@ -136,11 +141,14 @@ def test_widening_context_run39_halts_when_it_keeps_widening():
      # The seven logged calls alone stay under the threshold ...
      index, halt, _ = _replay(_hard_stop(), [before(n) for n in series])
@@ -216,7 +183,7 @@ index 758a634..d5d7147 100644
  
  
  def test_exact_alternation_run44_halts_even_when_each_call_shows_its_lines():
-@@ -391,3 +399,61 @@ def test_terminal_write_classifier():
+@@ -391,3 +399,69 @@ def test_terminal_write_classifier():
      ]
      assert all(_terminal_command_mutates(c) for c in writes), [c for c in writes if not _terminal_command_mutates(c)]
      assert not any(_terminal_command_mutates(c) for c in reads), [c for c in reads if _terminal_command_mutates(c)]
@@ -278,6 +245,14 @@ index 758a634..d5d7147 100644
 +            halted = index
 +            break
 +    assert halted is not None and halted <= 5
++
++
++def test_one_new_diagnostic_per_page_does_not_halt():
++    """The audit's regression (v24): each page repeats the last one and adds ONE new diagnostic."""
++    rows = [f"[ERROR] src/main/java/a/S{i}.java:[{i},8] cannot find symbol" for i in range(60)]
++    calls = [_term(f"python3 brief.py --section items | head -{20 + k}", "\n".join(rows[:20 + k])) for k in range(40)]
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
 -- 
 2.54.0 (Apple Git-157)
 
