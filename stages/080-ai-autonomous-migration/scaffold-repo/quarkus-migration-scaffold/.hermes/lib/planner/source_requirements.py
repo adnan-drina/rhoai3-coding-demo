@@ -123,6 +123,29 @@ def _recipe_for(recipes: dict[str, dict[str, Any]], rule: str, key: str = "") ->
             "implementation": str((r.get("implementation") or {}).get("kind") or "")}
 
 
+def recipe_call_gap(recipes: dict[str, dict[str, Any]], recipe: dict[str, Any] | None, method: dict[str, Any]) -> str:
+    """'' when the recipe qualifies this handler's calls, else the named capability gap.
+
+    A recipe with ``requires_calls`` is qualified only for a handler that calls the
+    listed owners and whose every call on them is one of ``names`` (the structural
+    model records each distinct owner#name a method body calls). v26 t_4fd2dcec:
+    a Servlet response parameter used only for sendRedirect has a verified
+    translation; any other use of it has none, and a guess is not a translation."""
+    spec = (recipes.get(str((recipe or {}).get("id") or "")) or {}).get("requires_calls")
+    if not isinstance(spec, dict):
+        return ""
+    owners = set(spec.get("owners") or [])
+    used = sorted({_s(c.get("name")) for c in method.get("calls") or [] if isinstance(c, dict) and _s(c.get("owner")) in owners})
+    other = [n for n in used if n not in set(spec.get("names") or [])]
+    gap = _s(spec.get("gap")) or "unqualified-call"
+    if other:
+        return "capability gap %s: the handler calls %s, which no qualified recipe translates" % (gap, ", ".join(other))
+    if not used:
+        return "capability gap %s: the handler never calls the parameter, so the qualified shape (%s) is absent" % (
+            gap, ", ".join(spec.get("names") or []))
+    return ""
+
+
 def _req(rule: str, subject: str, status: str, *, evidence: list[dict[str, str]], paths: list[str], acceptance: list[str],
          recipe: dict[str, Any] | None = None, consumers: list[str] | None = None, unknowns: list[str] | None = None,
          dependencies: list[str] | None = None, facts: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -287,6 +310,11 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
             else:
                 binding += 1
                 rec = _recipe_for(recipes, "handler-parameter-binding", ptype)
+                gap = recipe_call_gap(recipes, rec, m)
+                if gap:
+                    rec = None
+                elif rec is None and _s(row.get("capability_gap")):
+                    gap = "capability gap %s: no qualified recipe for %s on the selected stack" % (_s(row.get("capability_gap")), ptype)
                 loc = row.get("location_translation") if isinstance(row.get("location_translation"), dict) else None
                 if loc:
                     location_eps.add(ep)
@@ -294,8 +322,9 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
                                 evidence=sel, paths=[_s(t.get("path"))], recipe=rec, consumers=[ep],
                                 acceptance=["unit:handler-parameter-sites", "gate:package", "gate:augmentation"]
                                 + (["unit:location-null-arguments"] if loc else []) + ["parity:%s" % s for s in scen],
-                                unknowns=unk + ([] if rec else ["no qualified recipe for %s" % ptype]),
+                                unknowns=unk + ([] if rec else [gap or "no qualified recipe for %s" % ptype]),
                                 facts=dict({"parameter": _s(p.get("name")), "parameter_type": ptype,
+                                            **({"capability_gap": gap} if gap else {}),
                                             "precedes": ["symbol_renames:%s" % ptype]},
                                            **({"location": {"null_argument": _s(loc.get("null_argument")),
                                                             "substitution": _s(loc.get("substitution")),

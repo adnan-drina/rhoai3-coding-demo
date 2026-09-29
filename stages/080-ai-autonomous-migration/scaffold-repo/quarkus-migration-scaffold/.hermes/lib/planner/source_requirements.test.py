@@ -191,8 +191,8 @@ def satisfied_case() -> int:
 
 def recipes_case() -> int:
     recipes = SR.recipes_of(CATALOG)
-    if len(recipes) != 5:
-        return _fail("five qualified recipes expected, found %s" % sorted(recipes))
+    if len(recipes) != 6:
+        return _fail("six qualified recipes expected, found %s" % sorted(recipes))
     for rid, r in recipes.items():
         if r["rule"] not in SR.RULES:
             return _fail("%s names an unknown rule %s" % (rid, r["rule"]))
@@ -522,9 +522,58 @@ def application_path_case() -> int:
     return 0
 
 
+def servlet_case() -> int:
+    """V26-6 item 1 (v26 t_4fd2dcec): a Servlet response parameter used only for sendRedirect is planned with the
+    qualified redirect recipe, under any class, method, parameter or path name; any other Servlet use is an
+    unresolved requirement naming its capability gap, never a guessed translation."""
+    def root_type(fqn: str, path: str, method: str, param: str, calls: list[tuple[str, str]], ptype: str) -> dict:
+        m = S._m(method, "%s(%s)" % (method, ptype), annotations=[S._ann(S.A_REQ, value=["/"])])
+        m["params"] = [{"name": param, "type": ptype, "annotations": []}]
+        m["calls"] = [{"owner": o, "name": n} for o, n in calls]
+        return S._t(fqn, path, annotations=[S._ann(S.A_REST), S._ann(S.A_REQ, value=["/"])], methods=[m], refs=[ptype])
+
+    base = S.migration_types("org.acme.clinic", S.PETCLINIC_NAMES)
+    RESP, JRESP, REQ = ("javax.servlet.http.HttpServletResponse", "jakarta.servlet.http.HttpServletResponse",
+                        "javax.servlet.http.HttpServletRequest")
+    shapes = {
+        # the real source shape (javax spelling, the handler only redirects)
+        "real": root_type("org.acme.clinic.rest.RootRestController", "src/main/java/org/acme/clinic/rest/RootRestController.java",
+                          "redirectToSwagger", "response", [(RESP, "sendRedirect")], RESP),
+        # a renamed equivalent: other package, class, method, parameter, jakarta spelling
+        "renamed": root_type("z.gateway.PortalResource", "src/main/java/z/gateway/PortalResource.java",
+                             "showPortal", "res", [(JRESP, "sendRedirect"), ("java.lang.String", "concat")], JRESP),
+        # unsupported: writes a body through the response
+        "writer": root_type("z.gateway.Dump", "src/main/java/z/gateway/Dump.java", "dump", "out",
+                            [("javax.servlet.ServletResponse", "getWriter"), (RESP, "sendRedirect")], RESP),
+        # unsupported: a request parameter (no qualified recipe on this stack)
+        "request": root_type("z.gateway.Echo", "src/main/java/z/gateway/Echo.java", "echo", "req",
+                             [(REQ, "getSession")], REQ),
+    }
+    for name, t in shapes.items():
+        doc = derive("org.acme.clinic", S.PETCLINIC_NAMES, types=base + [t])
+        rows = [r for r in by_rule(doc, "handler-parameter-binding") if r["subject"].startswith(t["fqn"] + "#")]
+        if len(rows) != 1:
+            return _fail("%s: one handler-parameter requirement for the Servlet parameter, found %s" % (name, [r["id"] for r in rows]))
+        r = rows[0]
+        if name in ("real", "renamed"):
+            if r["status"] != "applicable" or (r["recipe"] or {}).get("id") != "servlet-redirect-response" \
+                    or "capability_gap" in r["facts"] or "unit:handler-parameter-sites" not in r["acceptance"]:
+                return _fail("%s: the redirect-only handler is planned with the qualified recipe: %s" % (name, r))
+        else:
+            gap = "servlet-response-member" if name == "writer" else "servlet-request"
+            if r["status"] != "unresolved" or r["recipe"] is not None or gap not in r["facts"].get("capability_gap", "") \
+                    or not any(gap in u for u in r["unknowns"]):
+                return _fail("%s: an unqualified Servlet use stays unresolved naming capability gap %s: %s" % (name, gap, r))
+    if "getWriter" not in [r for r in by_rule(derive("org.acme.clinic", S.PETCLINIC_NAMES, types=base + [shapes["writer"]]),
+                                                    "handler-parameter-binding") if r["subject"].startswith("z.gateway.Dump#")][0]["facts"]["capability_gap"]:
+        return _fail("the gap names the unqualified call")
+    return 0
+
+
 def main() -> int:
     for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
-                 repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case, application_path_case):
+                 repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case, application_path_case,
+                 servlet_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "

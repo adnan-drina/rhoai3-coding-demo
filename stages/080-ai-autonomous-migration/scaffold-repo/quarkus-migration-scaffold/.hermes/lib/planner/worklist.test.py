@@ -3216,9 +3216,17 @@ def _request_rejection_advice_case() -> int:
         for stype in ("jakarta.servlet.http.HttpServletResponse", "javax.servlet.http.HttpServletResponse"):
             sv = classify_handler_parameter({"name": "response", "type": stype}, cat)
             first, _rest = handler_first_action([sv], cat, "", ctl)
-            if sv["binding"] != "undocumented" or "ResponseEntity" not in first or "HttpStatus.FOUND" not in first:
-                return _fail("a Servlet response parameter is undocumented on Quarkus REST and leads with its row's action: %s / %s"
-                             % (sv["line"], first))
+            if sv["binding"] != "undocumented" or "ResponseEntity" not in first or "HttpStatus.FOUND" not in first \
+                    or "uriInfo.getBaseUriBuilder()" not in first or "Never URI.create of a relative path" not in first:
+                return _fail("a Servlet response parameter is undocumented on Quarkus REST and leads with its row's verified "
+                             "action (absolute Location from the request base): %s / %s" % (sv["line"], first))
+        # no namespace rename is ever a target for a Servlet type: the stack has no Servlet API (v26 t_4fd2dcec)
+        from planner.worklist import unit_target_symbols, symbol_renames as _sr, package_renames_of as _pr
+        _sites = {"javax.servlet.http.HttpServletResponse": [{"path": "a/R.java", "type": "a.R", "member": "go", "parameter": "response"}]}
+        _tg = unit_target_symbols([{"kind": "type", "fqn": "javax.servlet.http.HttpServletResponse", "path": "a/R.java"}],
+                                  _sr(root), _pr(root), None, _sites, cat["undocumented"])
+        if [bool(t.get("handler_parameter")) for t in _tg] != [True] or any(str(t.get("to") or "").startswith("jakarta.servlet") for t in _tg):
+            return _fail("a javax Servlet handler parameter has its handler row and no jakarta.servlet rename target: %s" % _tg)
         from planner.compatibility_objectives import _symbol_index, families as _families
         from planner.worklist import CATALOGS_DIR
         import json as _json

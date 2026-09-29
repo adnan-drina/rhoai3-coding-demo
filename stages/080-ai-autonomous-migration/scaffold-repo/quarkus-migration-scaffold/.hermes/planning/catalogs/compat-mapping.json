@@ -149,7 +149,7 @@
     "io.quarkus:quarkus-rest-client-reactive-jsonb": "io.quarkus:quarkus-rest-client-jsonb"
   },
   "package_renames": {
-    "note": "Jakarta EE 10 namespace (Quarkus 3 migration guide, 'Jakarta EE 10' section): javax.* → jakarta.* for these packages. The brief attaches the rename to a compiler diagnostic that names one of them; the worker changes the import, never the dependency.",
+    "note": "Jakarta EE 10 namespace (Quarkus 3 migration guide, 'Jakarta EE 10' section): javax.* → jakarta.* for these packages. The brief attaches the rename to a compiler diagnostic that names one of them; the worker changes the import, never the dependency. javax.servlet is deliberately absent: the selected stack (quarkus-rest) has no Servlet API, so jakarta.servlet does not compile either; Servlet handler parameters are handler_parameters.undocumented rows with their own actions and capability gaps (v26 t_4fd2dcec: the rename produced 'package jakarta.servlet.http does not exist').",
     "javax.persistence": "jakarta.persistence",
     "javax.validation": "jakarta.validation",
     "javax.transaction": "jakarta.transaction",
@@ -157,7 +157,6 @@
     "javax.enterprise": "jakarta.enterprise",
     "javax.annotation": "jakarta.annotation",
     "javax.ws.rs": "jakarta.ws.rs",
-    "javax.servlet": "jakarta.servlet",
     "javax.json": "jakarta.json",
     "javax.xml.bind": "jakarta.xml.bind"
   },
@@ -457,25 +456,43 @@
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
         "note": "not available on the selected stack: the guide supports HttpServletResponse only on the Classic RESTEasy stack with quarkus-undertow, and states that the Servlet API is not supported on Quarkus REST (quarkus-rest), which this catalog selects. org.springframework.http.ResponseEntity is a documented return type.",
-        "action": "the compat layer on Quarkus REST has no Servlet API: remove the HttpServletResponse parameter and RETURN org.springframework.http.ResponseEntity (a documented return type) carrying what the handler wrote to the response. response.sendRedirect(<target>) answers 302 Found with a Location header: change the return type from void to ResponseEntity<Void> and return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(<the same target expression>)).build() (java.net.URI, org.springframework.http.HttpStatus); keep the target expression exactly as the source wrote it, including its context-path prefix -- the source capture decides the expected Location. setStatus/addHeader/setHeader/getWriter become the same status, headers and body on the ResponseEntity. Drop `throws IOException` only if nothing else in the method throws it. Do not add quarkus-undertow, quarkus-resteasy or a servlet dependency, and do not use runtime-internal types (io.quarkus.*, io.vertx.*) as a substitute."
+        "action": "the compat layer on Quarkus REST has no Servlet API, and a jakarta.servlet import does not compile there (package jakarta.servlet.http does not exist): remove the HttpServletResponse parameter. The qualified shape (migration_recipes servlet-redirect-response) is a handler whose only use of the response is response.sendRedirect(<target>): the Servlet container answers 302 Found with an ABSOLUTE Location built from the request's scheme, host and port. Change the return type from void to org.springframework.http.ResponseEntity<Void>, add the handler parameter @Context jakarta.ws.rs.core.UriInfo uriInfo, and return ResponseEntity.status(HttpStatus.FOUND).location(<location>).build() (org.springframework.http.HttpStatus), where <location> is uriInfo.getBaseUriBuilder().path(\"<the target's path after the application context path, without its leading slash>\").build() when the target is the application's context path followed by a path -- the base already carries quarkus.http.root-path, the destination key of server.servlet.context-path, so the context path appears once -- and java.net.URI.create(<target>) only when the target is already an absolute URL (scheme://host/...). A field or expression that existed only to hold the Servlet context path (for example @Value(\"#{servletContext.contextPath}\") or request.getContextPath()) has no Servlet context to read on the destination: remove it together with the parameter. Never URI.create of a relative path (it answers a relative Location where the source answered an absolute one), never a jakarta.servlet import, never quarkus-undertow, RESTEasy Classic or a Servlet dependency, and no io.quarkus or io.vertx type. Any other use of the response (getWriter, getOutputStream, setStatus, setHeader, addCookie, ...) or any other target form (a path outside the application, a path relative to the request) is not qualified: it is capability gap servlet-response-member -- stop and block the card naming that gap and the call; do not guess a translation.",
+        "capability_gap": "servlet-response-member",
+        "response_translation": {
+          "returns": "org.springframework.http.ResponseEntity",
+          "calls": [
+            "location"
+          ],
+          "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)"
+        }
       },
       "jakarta.servlet.http.HttpServletRequest": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
         "note": "not available on the selected stack: the guide supports HttpServletRequest only on the Classic RESTEasy stack with quarkus-undertow, and states that the Servlet API is not supported on Quarkus REST (quarkus-rest), which this catalog selects.",
-        "action": "the compat layer on Quarkus REST has no Servlet API: remove the HttpServletRequest parameter and bind each value the handler reads from it through a documented annotation instead -- request.getHeader(\"n\") becomes a @RequestHeader(\"n\") parameter, request.getParameter(\"n\") a @RequestParam(\"n\") parameter, a cookie a @CookieValue parameter, a path segment a @PathVariable parameter -- keeping each value's name, type, required-ness and default as the source used them. A read these annotations cannot express stays an explicit unresolved item (kanban_block needs_input naming it); do not add quarkus-undertow, quarkus-resteasy or a servlet dependency."
+        "action": "the compat layer on Quarkus REST has no Servlet API, and a jakarta.servlet import does not compile there: no translation of an HttpServletRequest parameter is qualified on this stack (no recipe; the requirement stays unresolved as capability gap servlet-request). The documented replacements for a single value are annotations -- request.getHeader(\"n\") a @RequestHeader(\"n\") parameter, request.getParameter(\"n\") a @RequestParam(\"n\") parameter, a cookie a @CookieValue parameter, a path segment a @PathVariable parameter, each keeping the value's name, type, required-ness and default -- and request.getContextPath() the base of an injected @Context jakarta.ws.rs.core.UriInfo (uriInfo.getBaseUri()). Anything these cannot express (the session, the input stream, attributes, the remote address) is capability gap servlet-request: stop and block the card naming that gap and the call; never a jakarta.servlet import, never quarkus-undertow.",
+        "capability_gap": "servlet-request"
       },
       "javax.servlet.http.HttpServletResponse": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
-        "note": "the pre-Jakarta spelling of jakarta.servlet.http.HttpServletResponse (package_renames javax.servlet -> jakarta.servlet); the same row.",
-        "action": "the pre-Jakarta spelling: do not rename the import to jakarta.servlet; the compat layer on Quarkus REST has no Servlet API: remove the HttpServletResponse parameter and RETURN org.springframework.http.ResponseEntity (a documented return type) carrying what the handler wrote to the response. response.sendRedirect(<target>) answers 302 Found with a Location header: change the return type from void to ResponseEntity<Void> and return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(<the same target expression>)).build() (java.net.URI, org.springframework.http.HttpStatus); keep the target expression exactly as the source wrote it, including its context-path prefix -- the source capture decides the expected Location. setStatus/addHeader/setHeader/getWriter become the same status, headers and body on the ResponseEntity. Drop `throws IOException` only if nothing else in the method throws it. Do not add quarkus-undertow, quarkus-resteasy or a servlet dependency, and do not use runtime-internal types (io.quarkus.*, io.vertx.*) as a substitute."
+        "note": "the pre-Jakarta spelling of jakarta.servlet.http.HttpServletResponse; the same row (no javax.servlet rename exists on the selected stack).",
+        "action": "the pre-Jakarta spelling: do not rename the import to jakarta.servlet (package_renames carries no javax.servlet row: the Servlet API is absent on this stack); the compat layer on Quarkus REST has no Servlet API, and a jakarta.servlet import does not compile there (package jakarta.servlet.http does not exist): remove the HttpServletResponse parameter. The qualified shape (migration_recipes servlet-redirect-response) is a handler whose only use of the response is response.sendRedirect(<target>): the Servlet container answers 302 Found with an ABSOLUTE Location built from the request's scheme, host and port. Change the return type from void to org.springframework.http.ResponseEntity<Void>, add the handler parameter @Context jakarta.ws.rs.core.UriInfo uriInfo, and return ResponseEntity.status(HttpStatus.FOUND).location(<location>).build() (org.springframework.http.HttpStatus), where <location> is uriInfo.getBaseUriBuilder().path(\"<the target's path after the application context path, without its leading slash>\").build() when the target is the application's context path followed by a path -- the base already carries quarkus.http.root-path, the destination key of server.servlet.context-path, so the context path appears once -- and java.net.URI.create(<target>) only when the target is already an absolute URL (scheme://host/...). A field or expression that existed only to hold the Servlet context path (for example @Value(\"#{servletContext.contextPath}\") or request.getContextPath()) has no Servlet context to read on the destination: remove it together with the parameter. Never URI.create of a relative path (it answers a relative Location where the source answered an absolute one), never a jakarta.servlet import, never quarkus-undertow, RESTEasy Classic or a Servlet dependency, and no io.quarkus or io.vertx type. Any other use of the response (getWriter, getOutputStream, setStatus, setHeader, addCookie, ...) or any other target form (a path outside the application, a path relative to the request) is not qualified: it is capability gap servlet-response-member -- stop and block the card naming that gap and the call; do not guess a translation.",
+        "capability_gap": "servlet-response-member",
+        "response_translation": {
+          "returns": "org.springframework.http.ResponseEntity",
+          "calls": [
+            "location"
+          ],
+          "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)"
+        }
       },
       "javax.servlet.http.HttpServletRequest": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
-        "note": "the pre-Jakarta spelling of jakarta.servlet.http.HttpServletRequest (package_renames javax.servlet -> jakarta.servlet); the same row.",
-        "action": "the pre-Jakarta spelling: do not rename the import to jakarta.servlet; the compat layer on Quarkus REST has no Servlet API: remove the HttpServletRequest parameter and bind each value the handler reads from it through a documented annotation instead -- request.getHeader(\"n\") becomes a @RequestHeader(\"n\") parameter, request.getParameter(\"n\") a @RequestParam(\"n\") parameter, a cookie a @CookieValue parameter, a path segment a @PathVariable parameter -- keeping each value's name, type, required-ness and default as the source used them. A read these annotations cannot express stays an explicit unresolved item (kanban_block needs_input naming it); do not add quarkus-undertow, quarkus-resteasy or a servlet dependency."
+        "note": "the pre-Jakarta spelling of jakarta.servlet.http.HttpServletRequest; the same row (no javax.servlet rename exists on the selected stack).",
+        "action": "the pre-Jakarta spelling: do not rename the import to jakarta.servlet (package_renames carries no javax.servlet row: the Servlet API is absent on this stack); the compat layer on Quarkus REST has no Servlet API, and a jakarta.servlet import does not compile there: no translation of an HttpServletRequest parameter is qualified on this stack (no recipe; the requirement stays unresolved as capability gap servlet-request). The documented replacements for a single value are annotations -- request.getHeader(\"n\") a @RequestHeader(\"n\") parameter, request.getParameter(\"n\") a @RequestParam(\"n\") parameter, a cookie a @CookieValue parameter, a path segment a @PathVariable parameter, each keeping the value's name, type, required-ness and default -- and request.getContextPath() the base of an injected @Context jakarta.ws.rs.core.UriInfo (uriInfo.getBaseUri()). Anything these cannot express (the session, the input stream, attributes, the remote address) is capability gap servlet-request: stop and block the card naming that gap and the call; never a jakarta.servlet import, never quarkus-undertow.",
+        "capability_gap": "servlet-request"
       }
     },
     "servlet_types_condition": "The guide supports jakarta.servlet.http.HttpServletRequest and HttpServletResponse parameters ONLY on the Classic RESTEasy stack with quarkus-undertow: 'If your application uses the Reactive stack (quarkus-rest / quarkus-rest-jackson), then the Servlet API is not supported.' This catalog's always_add selects quarkus-rest, so both are undocumented rows here, each with its action (v26 t_4fd2dcec cycled catalog greps for a Servlet rule that this block listed as supported)."
@@ -947,6 +964,56 @@
         "the fragment has no <Fragment>Impl in the source",
         "several implementations in the selected profile",
         "profile-gated implementations with no decided build profile"
+      ]
+    },
+    "servlet-redirect-response": {
+      "version": "1",
+      "rule": "handler-parameter-binding",
+      "phase": "m3",
+      "applies_to": [
+        "jakarta.servlet.http.HttpServletResponse",
+        "javax.servlet.http.HttpServletResponse"
+      ],
+      "requires_calls": {
+        "owners": [
+          "jakarta.servlet.http.HttpServletResponse",
+          "javax.servlet.http.HttpServletResponse",
+          "jakarta.servlet.ServletResponse",
+          "javax.servlet.ServletResponse"
+        ],
+        "names": [
+          "sendRedirect"
+        ],
+        "gap": "servlet-response-member",
+        "note": "qualified only when the handler calls the response and every call on it is one of names; any other response member leaves the requirement unresolved with this capability gap (source_requirements.derive)"
+      },
+      "precedence": "a qualified handler-parameter action precedes any package rename; the catalog carries no javax.servlet rename",
+      "implementation": {
+        "kind": "agent-bounded",
+        "architecture": "handler_parameters.undocumented[jakarta.servlet.http.HttpServletResponse].action: ResponseEntity<Void> 302 Found with Location uriInfo.getBaseUriBuilder().path(<target after the context path>).build() from a @Context jakarta.ws.rs.core.UriInfo handler parameter"
+      },
+      "acceptance": [
+        {
+          "check": "unit:handler-parameter-sites",
+          "checker": "planner.worklist.handler_parameter_sites",
+          "refuses": [
+            "the handler still takes the Servlet response",
+            "the handler deleted instead of translated",
+            "a handler that returns void or sets no Location (the redirect dropped)"
+          ]
+        },
+        {
+          "check": "gate:augmentation",
+          "checker": "skills/migration/fix-until-green/scripts/servlet-redirect-package.test.py",
+          "refuses": [
+            "the jakarta.servlet rename does not compile on the pinned stack",
+            "a relative Location (URI.create of the context-relative target) answers where the source answered an absolute one"
+          ]
+        }
+      ],
+      "refuse": [
+        "the handler calls a Servlet response member other than sendRedirect (capability gap servlet-response-member)",
+        "the handler never calls the response it takes"
       ]
     }
   },

@@ -5013,6 +5013,8 @@ def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[s
                         "sites": sites, **({"translation": dict(hrow["translation"])} if isinstance(hrow.get("translation"), dict) else {}),
                         **({"location_translation": dict(hrow["location_translation"])}
                            if isinstance(hrow.get("location_translation"), dict) else {}),
+                        **({"response_translation": dict(hrow["response_translation"])}
+                           if isinstance(hrow.get("response_translation"), dict) else {}),
                         "catalog_row": {"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented",
                                         "key": fqn, "kind": str(hrow.get("kind") or ""), "source": str(hrow.get("source") or "")}})
         own = (owned or {}).get(fqn)
@@ -6659,6 +6661,27 @@ def _location_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], s
                       "location_translation): %s" % (typ_fqn, name, "; ".join(problems[:3]))}
 
 
+def _response_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], spec: dict[str, Any]) -> dict[str, Any] | None:
+    """A handler that answered through the response parameter it no longer takes must now RETURN that
+    response (spec.returns) and set what it wrote (spec.calls, from the destination model's call names):
+    an emptied void handler compiles and drops the answer (v26 worker exercise). None when every handler
+    does; the model's first type_ref is the declared return type."""
+    want = str(spec.get("returns") or "")
+    calls = [str(c) for c in spec.get("calls") or []]
+    for m in handlers:
+        ret = str((m.get("type_refs") or [""])[0])
+        got = set(str(c) for c in m.get("call_names") or [])
+        if want and not ret.startswith(want):
+            return {"verdict": "violates", "detail": "the handler %s.%s returns %s: it answered through the response it no "
+                                                      "longer takes, so it must return %s carrying that answer -- %s"
+                                                      % (typ_fqn, name, ret or "nothing", want, spec.get("why") or "")}
+        missing = [c for c in calls if c not in got]
+        if missing:
+            return {"verdict": "violates", "detail": "the handler %s.%s returns %s but never calls %s: what the source wrote "
+                                                      "to the response is not answered" % (typ_fqn, name, ret, ", ".join(missing))}
+    return None
+
+
 def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[dict[str, Any]]],
                                rule: str, *, root: Path | None = None) -> list[dict[str, Any]]:
     """V16-5: every handler site a handler_parameters row sealed, after the
@@ -6681,6 +6704,11 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
         if not isinstance(row, dict) or not row.get("handler_parameter"):
             continue
         banned = {str(row.get("from") or "")} | ({renames[row["from"]]} if renames.get(str(row.get("from") or "")) else set())
+        # the Jakarta EE namespace move is the same type: a javax.* handler parameter renamed to
+        # jakarta.* still takes the retired type (v26 t_4fd2dcec: jakarta.servlet.http.HttpServletResponse,
+        # which the catalog deliberately does not map, since the stack has no Servlet API)
+        banned |= {("jakarta." + b[len("javax."):]) if b.startswith("javax.") else ("javax." + b[len("jakarta."):])
+                   for b in list(banned) if b.startswith(("javax.", "jakarta."))}
         for site in row.get("sites") or []:
             path, typ_fqn, name = str(site.get("path") or ""), str(site.get("type") or ""), str(site.get("member") or "")
             base = {"member": "%s#%s(%s)" % (path, name, site.get("parameter") or ""), "path": path, "rule": rule,
@@ -6718,6 +6746,11 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
                     continue
             if row.get("location_translation"):
                 verdict = _location_verdict(typ_fqn, name, handlers, source, source_gap, frozen_present, authorized)
+                if verdict:
+                    out.append(dict(base, **verdict))
+                    continue
+            if isinstance(row.get("response_translation"), dict):
+                verdict = _response_verdict(typ_fqn, name, handlers, row["response_translation"])
                 if verdict:
                     out.append(dict(base, **verdict))
                     continue

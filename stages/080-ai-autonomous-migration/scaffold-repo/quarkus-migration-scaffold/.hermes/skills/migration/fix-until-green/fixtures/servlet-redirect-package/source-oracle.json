@@ -1,0 +1,15 @@
+{
+  "entry_point": "ep:org.springframework.samples.petclinic.rest.RootRestController#redirectToSwagger(javax.servlet.http.HttpServletResponse):http",
+  "oracle": {
+    "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "location": "http://127.0.0.1:9966/petclinic/swagger-ui/index.html",
+    "method": "GET",
+    "path": "/",
+    "redirects_followed": false,
+    "status": 302,
+    "url": "http://127.0.0.1:9966/petclinic/"
+  },
+  "provenance": "captured from the frozen source spring-petclinic-rest-2.6.2.jar (server.servlet.context-path=/petclinic/) by capture-source-oracles on the rgctl experiment destination (receipt d9a88327de6041e40fd0dbe49b776fd4e0a1b9c566fd0e4ac9f5623edcc6acda); the test compares with the origin normalized",
+  "schema": "rhoai3.source-oracle/v1",
+  "status": "CAPTURED"
+}
