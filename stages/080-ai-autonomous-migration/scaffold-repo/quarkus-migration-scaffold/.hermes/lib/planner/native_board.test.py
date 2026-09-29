@@ -1005,6 +1005,86 @@ class K2Hook(unittest.TestCase):
 
 
 # ===========================================================================
+class NativeRetryContext(unittest.TestCase):
+    """V26-6 item 2: the same card's NEXT native run is told why its predecessor stopped, what it repeated
+    and what that returned, the last loop step it completed, what it left in the tree, and whether the
+    verification it already ran still describes the tree -- read from the native run rows, the execution
+    ledger the K2 hooks write and the verifier's own record, through brief.py's real board path.
+    v26 t_4fd2dcec run 15: three identical dependency greps, read_cycle_no_new_content_halt."""
+
+    GREP = 'grep -n "quarkus-undertow\\|servlet" pom.xml'
+    STOP = ("STOP WORKER_TOOL_LOOP: tool terminal, guardrail read_cycle_no_new_content_halt, count 3 (args_sha256 "
+            "438f5e2076bd7f44)")
+
+    def _ledger(self, home: Path, tid: str, run: int) -> None:
+        logs = home / "kanban" / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        calls = [("brief", "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .", "brief ..."),
+                 ("verify", "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . | tail -3",
+                  "VERIFY EXIT 0: procedure completed; compilation FAILED (230 compile error(s)); tests not run")] + \
+                [("g%d" % i, self.GREP, "(no match: pom.xml declares no Servlet dependency)") for i in range(3)]
+        with (logs / ("%s.exec.jsonl" % tid)).open("w") as fh:
+            for cid, cmd, out in calls:
+                base = {"task": tid, "run": str(run), "tool_call_id": cid, "command": cmd}
+                fh.write(json.dumps(dict(base, phase="start")) + "\n")
+                fh.write(json.dumps(dict(base, phase="end", exit_code=0 if cid != "g0" else 1, output_tail=out,
+                                         output_chars=len(out))) + "\n")
+
+    def test_the_retry_receives_its_predecessors_context_through_the_native_board(self):
+        sys.path.insert(0, str(LIB.parent / "skills" / "migration" / "fix-until-green" / "scripts"))
+        import brief as BR
+        r = Run()
+        mirror_layout(r.root)
+        keys = ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID", "HERMES_KANBAN_DB", "HERMES_HOME")
+        saved = {k: os.environ.get(k) for k in keys}
+        orig = NC.board_for
+        try:
+            r.release()
+            tid, run1, _iss = r.issue("build:rk:pom")
+            home = Path(r.tmp) / "hermes-home"
+            self._ledger(home, tid, run1)
+            cand = r.tree()
+            rec = {"schema": "rhoai3.last-verify/v2", "status": "finished", "card": tid, "run": str(run1), "rc": 0,
+                   "procedure": "completed", "compilation": "failed", "compile_errors": 230, "tests": "not-run",
+                   "candidate_sha256": cand}
+            (r.root / "verification" / "loop").mkdir(parents=True, exist_ok=True)
+            (r.root / "verification" / "loop" / "last-verify.json").write_text(json.dumps(rec))
+            # the guardrail ends run 1; the dispatcher gives the same card a new native run
+            r.native.end_run(tid, "ready", "crashed")
+            r.native.runs_[run1]["error"] = self.STOP
+            run2, _lock = r.native.claim(tid)
+            r.native.sync()
+            os.environ.update(HERMES_KANBAN_TASK=tid, HERMES_KANBAN_RUN_ID=str(run2), HERMES_KANBAN_DB=r.native.db_path,
+                              HERMES_HOME=str(home))
+            NC.board_for = lambda root, native=None: NC.Board(r.native, author="implementer")
+            pr = BR._previous_run(r.root)
+            self.assertEqual((pr["run"], pr["outcome"], pr["kind"]), (str(run1), "crashed", "halted-investigation"))
+            self.assertIn("read_cycle_no_new_content_halt", pr["stop"])
+            self.assertEqual((pr["repeated"]["command"], pr["repeated"]["times"]), (self.GREP, 3))
+            self.assertIn("pom.xml declares no Servlet dependency", pr["repeated"]["result_tail"])
+            self.assertEqual(pr["last_loop_step"], {"script": "run-verify.sh", "exit_code": 0})
+            # the verification the crashed run completed still describes this tree: it is not to be repeated
+            vs = BR.verification_state(rec, tid, BR.candidate_sha256(r.root))
+            self.assertEqual(vs["state"], "current", vs)
+            # a tree edited since is stale evidence, never reused
+            r.edit("pom.xml", "<project>edited after the crash</project>\n")
+            self.assertEqual(BR.verification_state(rec, tid, BR.candidate_sha256(r.root))["state"], "stale")
+            self.assertEqual(BR._previous_run(r.root)["left_in_tree"], ["pom.xml"])
+            # without the ledger the repeated call and the last step stay unknown
+            (home / "kanban" / "logs" / ("%s.exec.jsonl" % tid)).unlink()
+            pr = BR._previous_run(r.root)
+            self.assertEqual((pr["repeated"], pr["last_loop_step"], pr["kind"]), (None, None, "halted-investigation"))
+        finally:
+            NC.board_for = orig
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            r.close()
+
+
+# ===========================================================================
 class AdvanceBridge(unittest.TestCase):
     """advance.py's calls on a v2 node: same card, board records, review handoff."""
 

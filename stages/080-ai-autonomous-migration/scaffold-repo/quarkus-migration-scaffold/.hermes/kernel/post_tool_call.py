@@ -14,7 +14,8 @@ destination tree) and appends
 one row to ``<kanban root>/kanban/logs/<task>.exec.jsonl``:
 
     {"phase": "end", "run", "profile", "task", "tool_call_id", "command",
-     "command_sha256", "exit_code", "status"}
+     "command_sha256", "exit_code", "status", "output_tail", "output_sha256",
+     "output_chars"}
 
 paired by ``tool_call_id`` with the ``"phase": "start"`` row the K2 pre hook
 writes for the same call before it runs.
@@ -23,6 +24,12 @@ writes for the same call before it runs.
 result without one is recorded as ``null`` (unknown, never success). The
 paved-road audit grades mandated commands from these rows, not from the
 absence of a marker.
+
+``output_tail`` is the last OUTPUT_TAIL characters of the result's output
+(with its sha256 and full length), so a native retry can be told what a
+repeated call already answered (V26-6 item 2) without re-running it.
+Bounded on purpose: this is a pointer to what the worker saw, not a copy of
+the session.
 
 Observer only: it never blocks, never writes stdout, and a failure to record
 leaves the row missing, which the audit reads as "no positive evidence".
@@ -50,14 +57,30 @@ def kanban_root_home() -> str:
     return home
 
 
-def exit_code_of(result) -> int | None:
+OUTPUT_TAIL = 800
+
+
+def _result_doc(result):
     if isinstance(result, dict):
-        doc = result
-    else:
-        try:
-            doc = json.loads(result) if isinstance(result, str) else None
-        except ValueError:
-            return None
+        return result
+    try:
+        doc = json.loads(result) if isinstance(result, str) else None
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def output_of(result) -> str | None:
+    """The terminal output the call returned; None when the result carries none."""
+    doc = _result_doc(result)
+    if doc is not None:
+        out = doc.get("output")
+        return out if isinstance(out, str) else None
+    return result if isinstance(result, str) else None
+
+
+def exit_code_of(result) -> int | None:
+    doc = _result_doc(result)
     if not isinstance(doc, dict):
         return None
     code = doc.get("exit_code")
@@ -89,6 +112,11 @@ def record(payload: dict) -> str:
         "exit_code": exit_code_of(extra.get("result")),
         "status": str(extra.get("status") or ""),
     }
+    out = output_of(extra.get("result"))
+    if out is not None:
+        row["output_tail"] = out[-OUTPUT_TAIL:]
+        row["output_sha256"] = hashlib.sha256(out.encode("utf-8", errors="replace")).hexdigest()
+        row["output_chars"] = len(out)
     path = os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task)
     line = (json.dumps(row, sort_keys=True) + "\n").encode("utf-8")
     fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)

@@ -1317,6 +1317,12 @@ def main(argv: list[str] | None = None) -> int:
             brief["last_verify"] = load_json(lv)
         except (OSError, ValueError):
             pass
+    if isinstance(brief.get("last_verify"), dict):
+        try:
+            now = candidate_sha256(root)
+        except Exception:
+            now = ""
+        brief["last_verify_state"] = verification_state(brief["last_verify"], _outcome_bridge._ids()[0], now)
     own = issued_ownership(root)
     planned = planned_requirements(root, write_set, own)
     if planned:
@@ -1445,6 +1451,17 @@ def _item_line(it: dict) -> str:
     return "    line %s %s: %s%s" % (it.get("line"), it.get("rule_id") or it.get("code") or it.get("kind"), what, via)
 
 
+def _subject_label(subject) -> str:
+    """A requirement subject, short: the type's simple name (and the member, parameter or edge that
+    follows it). A handler subject carries dotted parameter types, so its last dot is not the type's
+    (v26: `HttpServletResponse)|response` named no handler)."""
+    s = str(subject or "")
+    if "#" in s:
+        typ, rest = s.split("#", 1)
+        return "%s#%s%s" % (typ.rsplit(".", 1)[-1], rest.split("(", 1)[0], ("|" + rest.rsplit("|", 1)[1]) if "|" in rest else "")
+    return s.rsplit(".", 1)[-1]
+
+
 def brief_digest(brief: dict, stem: str) -> str:
     """A readable digest of a large brief: what to edit, what is owed per file,
     how the card is judged, and how to read every section in full. Nothing is
@@ -1484,12 +1501,20 @@ def brief_digest(brief: dict, stem: str) -> str:
                 now = [c for c in r.get("acceptance") or [] if c in set(ic.get("checks_now") or [])]
             else:
                 now = [c for c in r.get("acceptance") or [] if str(c).startswith(("unit:", "structure:", "gate:compile", "config:"))]
-            out.append("  %s -- checks now: %s" % (str(r.get("subject") or r.get("id")).rsplit(".", 1)[-1], ", ".join(now) or "none"))
+            out.append("  %s -- checks now: %s" % (_subject_label(r.get("subject") or r.get("id")), ", ".join(now) or "none"))
             # the required shape in full (bounded): v24 run t_5d909848 sliced this line by character
             # columns for 16 minutes looking for the remainder a 420-character clip had cut off
             arch = " ".join(str(r["recipe"]["architecture"]).split())
             out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), arch if len(arch) <= 4000 else arch[:4000]
                        + " … (the rest: brief.py --root . --section planned_requirements)"))
+    # an owned requirement no qualified recipe translates: say so before the first edit, by name
+    # (v26 t_4fd2dcec cycled catalog greps for a Servlet rule that did not exist, then guessed a rename)
+    gaps = [(r, u) for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and r.get("status") == "unresolved"
+            for u in r.get("unknowns") or [] if str(u).startswith("capability gap ")]
+    if gaps:
+        out.append("CAPABILITY GAP (no qualified translation exists; do not search for one and do not guess one -- block "
+                   "the card naming the gap):")
+        out += ["  %s -- %s" % (_subject_label(r.get("subject") or r.get("id")), u) for r, u in gaps]
     for name, b in sorted((rs.get("budget") or {}).items()):
         if isinstance(b, dict):
             out.append("  budget %s: key %s, %s of %s spent (%s)" % (name, b.get("key"), b.get("spent"), b.get("limit"), b.get("means")))
@@ -1498,16 +1523,44 @@ def brief_digest(brief: dict, stem: str) -> str:
     pr = brief.get("previous_run") if isinstance(brief.get("previous_run"), dict) else None
     if pr is not None:
         out.append("PREVIOUS RUN of this card (run %s) ended %s: %s" % (pr.get("run"), pr.get("outcome"), _clip(pr.get("stop"), 200)))
+        kind = pr.get("kind")
+        if kind == "rejected-candidate":
+            out.append("  it was a REJECTED CANDIDATE: advance.py %s its patch (%s). Do not repeat that patch."
+                       % (pr.get("verdict"), _clip(pr.get("rejection") or "reason in the rejected record", 200)))
+        elif kind == "halted-investigation":
+            out.append("  it was a HALTED INVESTIGATION: it was stopped while investigating; no candidate was judged or "
+                       "rejected. Continue from what it learned below, not from the start.")
         rep = pr.get("repeated")
         if rep:
             out.append("  it repeated `%s` %d times (exit %s): that answer is already known -- do not run it again; "
                        "act on it or ask a different question" % (_clip(rep.get("command"), 160), rep.get("times"),
                                                                    "/".join(rep.get("exit_codes") or []) or "unknown"))
+            if rep.get("result_tail") is not None:
+                out.append("  what it returned (last %d of %s characters): %s" % (len(rep["result_tail"]), rep.get("result_chars"),
+                                                                                 " ".join(str(rep["result_tail"]).split())))
+            else:
+                out.append("  what it returned: not recorded (unknown)")
         st = pr.get("last_loop_step")
         out.append("  last loop step it completed: %s" % ("%s (exit %s)" % (st["script"], st["exit_code"]) if st else "none recorded"))
         out.append("  left in the working tree: %s" % (", ".join(pr.get("left_in_tree") or []) or "no product edits"))
     lv = brief.get("last_verify") if isinstance(brief.get("last_verify"), dict) else None
-    if lv is not None:
+    if lv is not None and lv.get("schema") == "rhoai3.last-verify/v2":
+        tests = lv.get("tests")
+        out.append("LAST VERIFICATION (card %s, run %s): procedure %s (exit %s); compilation %s (%s); %s -- the verifier's "
+                   "own record; a filter or echo after run-verify.sh does not change it"
+                   % (lv.get("card") or "?", lv.get("run") or "?", lv.get("procedure") or "?", lv.get("rc"),
+                      str(lv.get("compilation") or "unknown").upper(), lv.get("compilation_detail") or "",
+                      ("tests ran (Maven exit %s)" % lv.get("tests_rc")) if tests == "ran"
+                      else ("tests not run: %s" % lv.get("tests_detail")) if tests == "not-run" else "tests unknown"))
+        vs = brief.get("last_verify_state") or {}
+        if vs.get("state") == "current":
+            out.append("  it is %s: that result stands -- do not re-run run-verify.sh until you change the tree "
+                       "(a crashed or halted run does not make it stale)" % vs.get("why"))
+        elif vs.get("state") == "stale":
+            out.append("  it is STALE: %s -- run run-verify.sh after your edit" % vs.get("why"))
+        else:
+            out.append("  whether it is of this tree is unknown: %s" % vs.get("why", "no record"))
+    elif lv is not None:
         out.append("LAST VERIFICATION: exit %s (%s, card %s, run %s, %s) -- the verifier's own status; a filter piped "
                    "after run-verify.sh does not change it" % (lv.get("rc"), lv.get("mode"), lv.get("card") or "?",
                                                                lv.get("run") or "?", lv.get("finished_at") or "?"))
@@ -1658,12 +1711,25 @@ LOOP_STEP_SCRIPTS = ("brief.py", "run-verify.sh", "advance.py", "native_gate.py"
 ENDED_WITHOUT_HANDOFF = ("crashed", "gave_up", "blocked", "timed_out", "spawn_failed", "reclaimed")
 
 
-def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list) -> dict | None:
+REJECTING_VERDICTS = ("REVERTED", "DEFERRED")
+RESULT_TAIL = 400
+
+
+def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list, *, task: str = "",
+                         last_advance: dict | None = None, rejected: list | None = None) -> dict | None:
     """V26-6 item 2: what the previous native run of THIS card did before it stopped, from
     existing records only -- the native run row (outcome, stop reason), the execution
-    ledger (the call it repeated, the last loop step it completed and how) and the working
-    tree (edits left behind). None when there is no earlier run that ended without a
-    handoff. Missing records stay unknown; nothing is inferred."""
+    ledger (the call it repeated with the bounded output the observer kept, the last loop
+    step it completed and how), advance.py's receipt (whether a candidate was judged) and
+    the working tree (edits left behind). None when there is no earlier run that ended
+    without a handoff. Missing records stay unknown; nothing is inferred.
+
+    kind separates the two retries that need different next steps:
+      rejected-candidate    advance.py judged this run's candidate and REVERTED/DEFERRED it
+                            (its receipt names this card and run)
+      halted-investigation  the run was stopped (a guardrail, a crash) without a judged
+                            candidate: nothing was rejected, the reading was cut off
+      ended                 neither is recorded"""
     try:
         cur = int(current_run or 0)
     except ValueError:
@@ -1676,7 +1742,7 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
     rid = str(last.get("id"))
     rows = [r for r in ledger if isinstance(r, dict) and str(r.get("run") or "") == rid]
     starts = [r for r in rows if r.get("phase") == "start"]
-    ends = {str(r.get("tool_call_id") or ""): r.get("exit_code") for r in rows if r.get("phase") == "end"}
+    ends = {str(r.get("tool_call_id") or ""): r for r in rows if r.get("phase") == "end"}
     counts: dict = {}
     for r in starts[-15:]:
         c = str(r.get("command") or "")
@@ -1685,18 +1751,52 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
     if counts:
         cmd, times = max(counts.items(), key=lambda kv: kv[1])
         if times >= 3:
-            exits = sorted({str(ends.get(str(r.get("tool_call_id") or ""))) for r in starts if str(r.get("command") or "") == cmd})
-            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits}
+            calls = [ends.get(str(r.get("tool_call_id") or "")) for r in starts if str(r.get("command") or "") == cmd]
+            exits = sorted({str((e or {}).get("exit_code")) for e in calls})
+            done = [e for e in calls if isinstance(e, dict)]
+            tail = done[-1].get("output_tail") if done else None
+            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits,
+                        "result_tail": tail[-RESULT_TAIL:] if isinstance(tail, str) else None,
+                        "result_chars": done[-1].get("output_chars") if done else None}
     step = None
     for r in reversed(starts):
         c = str(r.get("command") or "")
         hit = next((sname for sname in LOOP_STEP_SCRIPTS if sname in c), None)
         if hit:
-            code = ends.get(str(r.get("tool_call_id") or ""))
+            code = (ends.get(str(r.get("tool_call_id") or "")) or {}).get("exit_code")
             step = {"script": hit, "exit_code": "unknown" if code is None else code}
             break
-    return {"run": rid, "outcome": str(last.get("outcome") or ""), "stop": str(last.get("error") or last.get("summary") or "")[:300],
+    stop = str(last.get("error") or last.get("summary") or "")
+    la = last_advance if isinstance(last_advance, dict) else {}
+    judged = (str(la.get("card") or "") == task and str(la.get("run") or "") == rid
+              and str(la.get("verdict") or "") in REJECTING_VERDICTS)
+    if judged:
+        kind = "rejected-candidate"
+        why = next((str(r.get("reason") or "") for r in reversed(rejected or [])
+                    if isinstance(r, dict) and str(r.get("card") or "") == task), "")
+    elif "WORKER_TOOL_LOOP" in stop or "guardrail" in stop or str(last.get("outcome") or "") == "crashed":
+        kind, why = "halted-investigation", ""
+    else:
+        kind, why = "ended", ""
+    return {"run": rid, "task": task, "outcome": str(last.get("outcome") or ""), "stop": stop[:300], "kind": kind,
+            "verdict": str(la.get("verdict") or "") if judged else "", "rejection": why[:300],
             "repeated": repeated, "last_loop_step": step, "left_in_tree": list(dirty)[:10]}
+
+
+def verification_state(record: dict | None, task: str, candidate_now: str) -> dict:
+    """Whether the verifier's own latest record is evidence about THIS card's tree NOW:
+    current (same card, finished, same candidate digest), stale (the tree changed since)
+    or unknown (no record, another card, unfinished, or a record without a digest)."""
+    if not isinstance(record, dict) or str(record.get("card") or "") != task or not task:
+        return {"state": "unknown", "why": "no verifier record of this card"}
+    if record.get("status") not in (None, "finished"):
+        return {"state": "unknown", "why": "its latest verification did not record a finish (interrupted)"}
+    was = str(record.get("candidate_sha256") or "")
+    if not was or not candidate_now:
+        return {"state": "unknown", "why": "the record names no candidate digest"}
+    if was != candidate_now:
+        return {"state": "stale", "why": "the tree changed since (verified %s, now %s)" % (was[:12], candidate_now[:12])}
+    return {"state": "current", "why": "of this tree (candidate %s)" % was[:12]}
 
 
 def _previous_run(root: Path) -> dict | None:
@@ -1725,7 +1825,15 @@ def _previous_run(root: Path) -> dict | None:
         dirty = product_paths_changed(root)
     except Exception:
         dirty = []
-    return previous_run_context(runs, ledger, str(run), dirty)
+    try:
+        la = load_json(root / LOOP_DIR / "last-advance.json")
+    except (OSError, ValueError):
+        la = None
+    try:
+        rejected = (load_json(root / LOOP_DIR / "steps.json") or {}).get("rejected") or []
+    except (OSError, ValueError, AttributeError):
+        rejected = []
+    return previous_run_context(runs, ledger, str(run), dirty, task=task, last_advance=la, rejected=rejected)
 
 
 def issued_ownership(root: Path) -> dict | None:

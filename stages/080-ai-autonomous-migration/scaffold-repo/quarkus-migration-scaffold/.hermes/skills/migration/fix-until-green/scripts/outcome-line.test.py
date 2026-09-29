@@ -143,6 +143,87 @@ class PreviousRun(unittest.TestCase):
         self.assertIsNone(pr["repeated"])
         self.assertIsNone(pr["last_loop_step"])
 
+    def test_a_halted_investigation_carries_the_bounded_answer_it_already_had(self):
+        # v26 t_4fd2dcec run 15: three identical dependency greps, then read_cycle_no_new_content_halt
+        ledger = self._ledger()
+        for r in ledger:
+            if r["phase"] == "end" and r["tool_call_id"] == "c6":
+                r.update(output_tail="x" * 1000 + "RootRestController.java:41 cannot find symbol HttpServletResponse",
+                         output_chars=1066)
+        pr = BR.previous_run_context(self.RUNS, ledger, "18", [], task="t_x")
+        self.assertEqual(pr["kind"], "halted-investigation")
+        self.assertEqual(len(pr["repeated"]["result_tail"]), BR.RESULT_TAIL)
+        self.assertTrue(pr["repeated"]["result_tail"].endswith("cannot find symbol HttpServletResponse"))
+        text = BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-h")
+        self.assertIn("HALTED INVESTIGATION", text)
+        self.assertIn("no candidate was judged or rejected", text)
+        self.assertIn("what it returned (last 400 of 1066 characters)", text)
+
+    def test_an_unrecorded_result_is_unknown_not_empty(self):
+        pr = BR.previous_run_context(self.RUNS, self._ledger(), "18", [], task="t_x")
+        self.assertIsNone(pr["repeated"]["result_tail"])
+        self.assertIn("what it returned: not recorded (unknown)",
+                      BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-u"))
+
+    def test_a_rejected_candidate_is_named_with_its_rejection(self):
+        la = {"card": "t_x", "run": "17", "verdict": "REVERTED"}
+        rej = [{"card": "t_x", "reason": "INTRODUCED_COMPILE_DIAGNOSTIC package jakarta.servlet.http does not exist"}]
+        pr = BR.previous_run_context(self.RUNS, self._ledger(), "18", ["a/R.java"], task="t_x", last_advance=la, rejected=rej)
+        self.assertEqual((pr["kind"], pr["verdict"]), ("rejected-candidate", "REVERTED"))
+        text = BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-r")
+        self.assertIn("REJECTED CANDIDATE: advance.py REVERTED its patch (INTRODUCED_COMPILE_DIAGNOSTIC", text)
+        # a receipt of another run or card is not this run's judgement
+        for other in ({"card": "t_x", "run": "16", "verdict": "REVERTED"}, {"card": "t_y", "run": "17", "verdict": "REVERTED"}):
+            self.assertEqual(BR.previous_run_context(self.RUNS, [], "18", [], task="t_x", last_advance=other)["kind"],
+                             "halted-investigation")
+
+
+class CapabilityGap(unittest.TestCase):
+    """V26-6 item 1: an owned Servlet use that no recipe qualifies is named before the first edit."""
+
+    def test_the_gap_is_named_and_the_qualified_shape_is_printed(self):
+        reqs = [{"id": "req:h:1", "status": "unresolved", "subject": "z.gateway.Dump#dump(javax.servlet.http.HttpServletResponse)|out",
+                 "recipe": None, "acceptance": [], "unknowns": ["capability gap servlet-response-member: the handler calls getWriter, "
+                                                                "which no qualified recipe translates"]},
+                {"id": "req:h:2", "status": "applicable", "subject": "a.RootRestController#redirectToSwagger(x)|response",
+                 "recipe": {"id": "servlet-redirect-response", "architecture": "ResponseEntity<Void> 302 Found with Location "
+                                                                              "uriInfo.getBaseUriBuilder().path(<target>).build()"},
+                 "acceptance": ["unit:handler-parameter-sites", "gate:augmentation"], "unknowns": []}]
+        b = dict(BriefDigest.BRIEF, planned_requirements=reqs)
+        b["_retry_state"] = {}
+        text = BR.brief_digest(b, "brief-g")
+        self.assertIn("CAPABILITY GAP (no qualified translation exists", text)
+        self.assertIn("capability gap servlet-response-member: the handler calls getWriter", text)
+        self.assertIn("servlet-redirect-response: ResponseEntity<Void> 302 Found with Location uriInfo.getBaseUriBuilder()", text)
+        # a handler subject is labelled by its type and member, not by the last dot of a parameter type
+        self.assertIn("  RootRestController#redirectToSwagger|response -- checks now", text)
+        self.assertIn("  Dump#dump|out -- capability gap servlet-response-member", text)
+        self.assertLess(text.index("REQUIRED SHAPE"), text.index("WRITE SET"))
+
+
+class VerificationState(unittest.TestCase):
+    """V26-6 item 2: a verification already completed on this tree is not repeated because its run crashed;
+    one of an older tree is marked stale."""
+    REC = {"schema": "rhoai3.last-verify/v2", "status": "finished", "card": "t_x", "run": "17", "rc": 0,
+           "procedure": "completed", "compilation": "failed", "compilation_detail": "200 compile error(s)",
+           "tests": "not-run", "tests_detail": "compilation is not clean", "candidate_sha256": "a" * 64}
+
+    def test_current_stale_unknown(self):
+        self.assertEqual(BR.verification_state(self.REC, "t_x", "a" * 64)["state"], "current")
+        self.assertEqual(BR.verification_state(self.REC, "t_x", "b" * 64)["state"], "stale")
+        self.assertEqual(BR.verification_state(self.REC, "t_other", "a" * 64)["state"], "unknown")
+        self.assertEqual(BR.verification_state(dict(self.REC, status="started"), "t_x", "a" * 64)["state"], "unknown")
+        self.assertEqual(BR.verification_state(dict(self.REC, candidate_sha256=""), "t_x", "a" * 64)["state"], "unknown")
+        self.assertEqual(BR.verification_state(None, "t_x", "a" * 64)["state"], "unknown")
+
+    def test_the_digest_keeps_procedure_compilation_and_tests_apart(self):
+        b = dict(BriefDigest.BRIEF, last_verify=self.REC, last_verify_state=BR.verification_state(self.REC, "t_x", "a" * 64))
+        text = BR.brief_digest(b, "brief-v2")
+        self.assertIn("procedure completed (exit 0); compilation FAILED (200 compile error(s)); tests not run: compilation is not clean", text)
+        self.assertIn("that result stands -- do not re-run run-verify.sh until you change the tree", text)
+        b["last_verify_state"] = BR.verification_state(self.REC, "t_x", "b" * 64)
+        self.assertIn("it is STALE: the tree changed since", BR.brief_digest(b, "brief-v3"))
+
 
 class IssuedOwnership(unittest.TestCase):
     """Architect review 2026-09-29 §3 / v24 run t_dbde15ae: the Profile card shares repository paths with

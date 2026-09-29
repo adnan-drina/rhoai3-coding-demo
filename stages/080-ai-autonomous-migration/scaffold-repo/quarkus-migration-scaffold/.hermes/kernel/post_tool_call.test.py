@@ -44,6 +44,15 @@ def main() -> int:
             fails.append("exit codes recorded %s" % [r["exit_code"] for r in rows])
         if {(r["run"], r["profile"], r["task"]) for r in rows} != {("9", "implementer", "t_obs1")}:
             fails.append("run binding %s" % rows[0])
+        # the output a call returned is kept bounded: its tail, digest and length (V26-6 item 2)
+        if rows[1].get("output_tail") != "ok" or rows[1].get("output_chars") != 2 or len(rows[1].get("output_sha256") or "") != 64:
+            fails.append("output tail not recorded %s" % rows[1])
+        big = "x" * 5000 + "THE END"
+        fire(home, term("python3 long.py", json.dumps({"output": big, "exit_code": 0})))
+        last = json.loads(ledger.read_text(encoding="utf-8").splitlines()[-1])
+        if not last["output_tail"].endswith("THE END") or len(last["output_tail"]) != 800 or last["output_chars"] != len(big):
+            fails.append("long output not bounded to its tail: %d chars" % len(last.get("output_tail") or ""))
+        cases.append((None, 0))
         # not a terminal call: nothing recorded
         fire(home, {"tool_name": "write_file", "tool_input": {"path": "x"}, "extra": {"result": "{}"}})
         if len(ledger.read_text(encoding="utf-8").splitlines()) != len(cases):
@@ -64,7 +73,7 @@ def main() -> int:
         print("FAIL:", f, file=sys.stderr)
     if fails:
         return 1
-    print("OK: post_tool_call observer (exit codes 1/0/unknown recorded; non-terminal ignored; profile home -> base "
+    print("OK: post_tool_call observer (exit codes 1/0/unknown recorded; bounded output tail; non-terminal ignored; profile home -> base "
           "kanban root; never blocks, never writes stdout)")
     return 0
 
