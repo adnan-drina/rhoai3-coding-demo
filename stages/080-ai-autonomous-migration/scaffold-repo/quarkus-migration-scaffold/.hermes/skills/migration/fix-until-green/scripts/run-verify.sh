@@ -78,6 +78,9 @@ done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
 [[ "${MODE}" == "acceptance" || "${MODE}" == "diagnostic" ]] || { echo "FAIL: --mode must be acceptance or diagnostic" >&2; exit 2; }
 [[ "${MODE}" == "diagnostic" ]] && RUNTIME=0
+# a parallel pilot worktree (PARALLEL-M3-PILOT.md) never starts the application or the parity database:
+# those run once, on the main tree, when native_gate.py integrate judges the combined candidate
+if [[ -f "${ROOT}/verification/pilot/seed.json" ]]; then RUNTIME=0; FORCE_PARITY=false; fi
 ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The verifier's OWN record (V26-6 item 3, verify_record.py): started now, finished on every

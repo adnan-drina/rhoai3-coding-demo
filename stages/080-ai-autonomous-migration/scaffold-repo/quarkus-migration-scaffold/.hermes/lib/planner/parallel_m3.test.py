@@ -19,6 +19,8 @@ _spec.loader.exec_module(NB)
 sys.path.insert(0, str(HERE.parent))
 from planner import native_control as NC  # noqa: E402
 from planner import pair_selection as PS  # noqa: E402
+from planner import pilot as PL  # noqa: E402
+sys.path.insert(0, str(HERE.parent.parent / "kernel"))
 
 ITEM, ORDER = "source:rk:item", "source:rk:order"
 W = "src/main/java/com/acme/shop/"
@@ -89,6 +91,250 @@ class PilotPublication(unittest.TestCase):
             self.assertTrue(all(len(w) == 1 for w in ready_waves(r)))
         finally:
             r.close()
+
+
+class Worktrees:
+    """A pilot run driven to its pair, with REAL git worktrees made the way the pinned runtime makes them
+    (``git worktree add -b <branch> <path> HEAD`` from the destination) and the loop's board side driven
+    through the production native_control / pilot code. run-verify.sh and advance.py on the main tree are
+    replaced by a runner that measures the combined tree and records verdicts exactly as the bridge does."""
+
+    def __init__(self, decisions=None):
+        import os as _os
+        self.os = _os
+        self.r = NB.Run(pilot=True, structure=structure())
+        NB.mirror_layout(self.r.root)       # the pinned harness (tracked in a real destination)
+        self.r.release()
+        for oid in ("build:rk:pom", "config:rk:cfg", "source:u:dto-mapper"):
+            self.r.accept(oid, classes=("build", "compile", "tests"))
+        self.decisions = decisions or {}
+        self.observed = {}           # task -> the main tree's pair files as verification saw them
+        self.fail_verify_once = set()
+        self.saved_env = {k: self.os.environ.get(k) for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID", PL.INTEGRATION_ENV)}
+        self.orig = NC.board_for
+        NC.board_for = lambda root, native=None: NC.Board(self.r.native, author="implementer")
+
+    def close(self):
+        NC.board_for = self.orig
+        for k, v in self.saved_env.items():
+            (self.os.environ.pop(k, None) if v is None else self.os.environ.__setitem__(k, v))
+        self.r.close()
+
+    def env(self, tid, run):
+        self.os.environ.update(HERMES_KANBAN_TASK=tid, HERMES_KANBAN_RUN_ID=str(run))
+        self.os.environ.pop(PL.INTEGRATION_ENV, None)
+
+    def start(self, oid):
+        """The dispatcher claims the task; the runtime materializes its worktree; the worker issues."""
+        tid = self.r.tid(oid)
+        path, branch = PS.worktree_of(str(self.r.root.resolve()), oid)
+        NB.git(self.r.root, "worktree", "add", "-q", "-b", branch, path, "HEAD")
+        if not (Path(path) / ".hermes" / "lib").exists():
+            NB.mirror_layout(Path(path))   # a real worktree carries the tracked harness; the fixture links it
+        run, _lock = self.r.native.claim(tid)
+        self.env(tid, run)
+        wt = Path(path)
+        PL.seed(wt, task=tid, run=run)
+        iss = NC.issue(wt, self.r.board, task_id=tid, run_id=run)
+        from native_gate import write_issued_projection
+        write_issued_projection(wt, iss)
+        return tid, run, wt, iss
+
+    def accept_in_worktree(self, tid, run, wt, iss, text=None):
+        """The worktree loop accepts a candidate (advance.py through the bridge, worktree namespace)."""
+        self.env(tid, run)
+        rel = iss["allowed_paths"][0]
+        (wt / rel).write_text(text or "// %s repaired in its worktree\n" % rel)
+        cand = NC._product_tree(wt)
+        att = PL.attempt_key(wt, cand)
+        self.assert_(att.startswith("wt-"))
+        NC.record_verdict(wt, self.r.board, task_id=tid, run_id=run, verdict="ACCEPTED", candidate=cand, attempt=att)
+        NB.git(wt, "add", "-A")
+        NB.git(wt, "commit", "-qm", "accept %s in worktree" % tid)
+        commit = NB.git(wt, "rev-parse", "HEAD")
+        steps_p = wt / "verification" / "loop" / "steps.json"
+        steps = json.loads(steps_p.read_text()) if steps_p.is_file() else {"steps": []}
+        steps["steps"].append({"card": tid, "commit": commit, "verdict": "accepted"})
+        steps_p.parent.mkdir(parents=True, exist_ok=True)
+        steps_p.write_text(json.dumps(steps))
+        self._drop_owned(wt, tid)
+        return NC.accept_commit(wt, self.r.board, task_id=tid, run_id=run, attempt=att, commit=commit,
+                                measurement={"classes": ["build", "compile", "tests"]}, extra={"pilot": "worktree"})
+
+    def _drop_owned(self, root, tid):
+        oid = self.r.board.node_of(tid)[2]
+        owned = NC.owned(self.r.plan(), NC._node(self.r.plan(), oid))
+        wl_p = root / NB.WORKLIST
+        wl = json.loads(wl_p.read_text())
+        wl["items"] = [i for i in wl["items"] if i["id"] not in owned]
+        for c in wl["clusters"]:
+            c["items"] = [i for i in c["items"] if i not in owned]
+        wl["clusters"] = [c for c in wl["clusters"] if c["items"]]
+        wl_p.write_text(json.dumps(wl))
+        if root == self.r.root:
+            self.r.worklist = wl
+
+    def runner(self, argv, env, log):
+        canon = self.r.root
+        tid = env["HERMES_KANBAN_TASK"]
+        run = int(env["HERMES_KANBAN_RUN_ID"])
+        saved = self.os.environ.get(PL.INTEGRATION_ENV)
+        self.os.environ[PL.INTEGRATION_ENV] = "1"
+        try:
+            if argv[1].endswith("run-verify.sh"):
+                if tid in self.fail_verify_once:
+                    self.fail_verify_once.discard(tid)
+                    raise KeyboardInterrupt("interrupted after the apply, before verification")
+                self.observed[tid] = {p: (canon / p).read_text() for p in (W + "web/ItemController.java", W + "web/OrderController.java")}
+                return 0
+            cand = NC._product_tree(canon)
+            att = PL.attempt_key(canon, cand)
+            la = canon / "verification" / "loop" / "last-advance.json"
+            if self.decisions.get(tid) == "reject":
+                NC.record_verdict(canon, self.r.board, task_id=tid, run_id=run, verdict="REVERTED", candidate=cand,
+                                  attempt=att, reason="combined tree regressed")
+                NB.git(canon, "reset", "-q", "--hard", "HEAD")      # advance.py's revert of the candidate paths
+                la.write_text(json.dumps({"card": tid, "verdict": "REVERTED", "reason": "combined tree regressed"}))
+                return 1
+            NC.record_verdict(canon, self.r.board, task_id=tid, run_id=run, verdict="ACCEPTED", candidate=cand, attempt=att)
+            NB.git(canon, "add", "-A")
+            NB.git(canon, "commit", "-qm", "integrate %s" % tid)
+            commit = NB.git(canon, "rev-parse", "HEAD")
+            steps_p = canon / "verification" / "loop" / "steps.json"
+            steps = json.loads(steps_p.read_text()) if steps_p.is_file() else {"steps": []}
+            steps["steps"].append({"card": tid, "commit": commit, "verdict": "accepted", "pilot_wt_commit": env[PL.WT_COMMIT_ENV]})
+            steps_p.parent.mkdir(parents=True, exist_ok=True)
+            steps_p.write_text(json.dumps(steps))
+            self._drop_owned(canon, tid)
+            NC.accept_commit(canon, self.r.board, task_id=tid, run_id=run, attempt=att, commit=commit,
+                             measurement={"classes": ["build", "compile", "tests"]}, extra={"pilot": "integration"})
+            la.write_text(json.dumps({"card": tid, "verdict": "ACCEPTED"}))
+            return 0
+        finally:
+            (self.os.environ.pop(PL.INTEGRATION_ENV, None) if saved is None else self.os.environ.__setitem__(PL.INTEGRATION_ENV, saved))
+
+    def integrate(self, tid, run, wt):
+        self.env(tid, run)
+        return PL.integrate(wt, self.r.board, task_id=tid, run_id=run, runner=self.runner)
+
+    def assert_(self, cond):
+        assert cond
+
+
+class Qualification(unittest.TestCase):
+    def setUp(self):
+        self.w = Worktrees()
+        self.addCleanup(self.w.close)
+
+    def test_the_pair_runs_isolated_integrates_serially_and_the_second_is_verified_combined(self):
+        w, r = self.w, self.w.r
+        head0 = NB.git(r.root, "rev-parse", "HEAD")
+        (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
+        # both live at once, each in its own worktree from the same verified baseline
+        self.assertEqual({r.native.task(ta)["status"], r.native.task(tb)["status"]}, {"running"})
+        self.assertEqual(PL.seeded(wa)["canonical_head"], PL.seeded(wb)["canonical_head"])
+        self.assertEqual(PL.seeded(wa)["canonical_head"], head0)
+        # isolated mutable state: separate issuance projections, neither in the main tree
+        self.assertEqual(json.loads((wa / "verification/loop/issued.json").read_text())["task_id"], ta)
+        self.assertEqual(json.loads((wb / "verification/loop/issued.json").read_text())["task_id"], tb)
+        w.accept_in_worktree(ta, ra, wa, ia)
+        w.accept_in_worktree(tb, rb, wb, ib)
+        self.assertEqual(NB.git(r.root, "status", "--porcelain", "--", "src"), "")      # the main tree untouched
+        self.assertNotIn("repaired", (wb / ia["allowed_paths"][0]).read_text())       # A's edit is not in B's tree
+        # the terminator refuses an unintegrated pair outcome
+        with self.assertRaises(NC.Refusal) as cm:
+            NC.check_terminator(r.root, r.board, task_id=ta, run_id=ra, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        self.assertEqual(cm.exception.code, "PILOT_NOT_INTEGRATED")
+        a = w.integrate(ta, ra, wa)
+        self.assertEqual(a["status"], "INTEGRATED")
+        b = w.integrate(tb, rb, wb)
+        self.assertEqual(b["status"], "INTEGRATED")
+        # the second integration was verified on the COMBINED tree: A's change was already in it
+        self.assertIn("repaired", w.observed[tb][ia["allowed_paths"][0]])
+        self.assertIn("repaired", w.observed[tb][ib["allowed_paths"][0]])
+        self.assertEqual(NB.git(r.root, "rev-list", "--count", "%s..HEAD" % head0), "2")
+        # replaying an integration applies nothing twice
+        again = w.integrate(ta, ra, wa)
+        self.assertTrue(again["replayed"])
+        self.assertEqual(NB.git(r.root, "rev-list", "--count", "%s..HEAD" % head0), "2")
+        # M4 waits until both pair outcomes are done; A still stands after B's integration (sibling tolerance)
+        m4 = r.tid("assess:m4:g1")
+        r.review_and_complete(ta, ra)
+        self.assertEqual(r.native.task(m4)["status"], "todo")
+        r.review_and_complete(tb, rb)
+
+    def test_one_workers_rollback_leaves_its_sibling_and_the_main_tree_intact(self):
+        w, r = self.w, self.w.r
+        (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
+        (wa / ia["allowed_paths"][0]).write_text("// half-done edit\n")
+        (wb / ib["allowed_paths"][0]).write_text("// sibling work in progress\n")
+        NB.git(wa, "checkout", "--", ".")                                   # A rolls back its candidate
+        self.assertEqual((wb / ib["allowed_paths"][0]).read_text(), "// sibling work in progress\n")
+        self.assertEqual(NB.git(r.root, "status", "--porcelain", "--", "src"), "")
+        self.assertTrue((wb / "verification/loop/issued.json").is_file())
+
+    def test_an_interrupted_integration_resumes_without_applying_twice(self):
+        w, r = self.w, self.w.r
+        head0 = NB.git(r.root, "rev-parse", "HEAD")
+        ta, ra, wa, ia = w.start(ITEM)
+        w.accept_in_worktree(ta, ra, wa, ia)
+        w.fail_verify_once.add(ta)
+        with self.assertRaises(KeyboardInterrupt):
+            w.integrate(ta, ra, wa)
+        # the candidate is half-applied on the main tree, recorded as begun
+        self.assertNotEqual(NB.git(r.root, "status", "--porcelain", "--", "src"), "")
+        out = w.integrate(ta, ra, wa)
+        self.assertEqual(out["status"], "INTEGRATED")
+        self.assertEqual(NB.git(r.root, "rev-list", "--count", "%s..HEAD" % head0), "1")
+        self.assertEqual(len(r.board.records(ta, "integrated")), 1)
+
+    def test_a_conflict_returns_to_same_card_rework_without_spending_or_completing(self):
+        w, r = self.w, self.w.r
+        (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
+        w.accept_in_worktree(ta, ra, wa, ia)
+        self.assertEqual(w.integrate(ta, ra, wa)["status"], "INTEGRATED")
+        # B's candidate also edits A's file on its old baseline (an overlap the selection would never pick,
+        # forced here): it cannot apply over A's integration
+        (wb / ia["allowed_paths"][0]).write_text("// B's conflicting view\n")
+        plan = r.plan()
+        node = NC._node(plan, ORDER)
+        spent0 = NC.budget_state(r.board, r.run_id, plan, node)["spent"]
+        issues = [x for x in r.board.records(tb, "issue") if int(x["run"]) == rb]
+        forced = dict(issues[-1], allowed_paths=sorted(set(issues[-1]["allowed_paths"]) | {ia["allowed_paths"][0]}))
+        r.board.record(tb, "issue", "issue:%d:99" % rb, **{k: v for k, v in forced.items() if k not in ("key", "kind", "v", "_id")})
+        w.accept_in_worktree(tb, rb, wb, ib)
+        out = w.integrate(tb, rb, wb)
+        self.assertEqual(out["status"], "CONFLICT")
+        self.assertEqual(NB.git(r.root, "status", "--porcelain", "--", "src"), "")           # main tree unchanged
+        self.assertEqual(NC.budget_state(r.board, r.run_id, plan, node)["spent"], spent0)    # no attempt spent
+        with self.assertRaises(NC.Refusal):
+            NC.check_terminator(r.root, r.board, task_id=tb, run_id=rb, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        rb2 = PL.rebase(wb, r.board, task_id=tb, run_id=rb)
+        self.assertEqual(rb2["status"], "REBASED")
+        self.assertIn("kept at refs/pilot/", rb2["outcome"])
+        self.assertEqual(NB.git(wb, "rev-parse", "HEAD"), NB.git(r.root, "rev-parse", "HEAD"))
+
+    def test_a_rejected_combined_tree_is_a_genuine_rejection_and_restores_the_main_tree(self):
+        w = self.w
+        w.decisions = {}
+        r = w.r
+        (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
+        w.accept_in_worktree(ta, ra, wa, ia)
+        w.accept_in_worktree(tb, rb, wb, ib)
+        self.assertEqual(w.integrate(ta, ra, wa)["status"], "INTEGRATED")
+        head_a = NB.git(r.root, "rev-parse", "HEAD")
+        plan = r.plan()
+        node = NC._node(plan, ORDER)
+        spent0 = NC.budget_state(r.board, r.run_id, plan, node)["spent"]
+        w.decisions[tb] = "reject"
+        out = w.integrate(tb, rb, wb)
+        self.assertEqual((out["status"], out["verdict"]), ("REJECTED", "REVERTED"))
+        self.assertEqual(NB.git(r.root, "rev-parse", "HEAD"), head_a)                        # A's accepted state kept
+        self.assertEqual(NB.git(r.root, "status", "--porcelain", "--", "src"), "")
+        self.assertEqual(NC.budget_state(r.board, r.run_id, plan, node)["spent"], spent0 + 1)
+        self.assertEqual(r.native.task(r.tid("assess:m4:g1"))["status"], "todo")
 
 
 if __name__ == "__main__":

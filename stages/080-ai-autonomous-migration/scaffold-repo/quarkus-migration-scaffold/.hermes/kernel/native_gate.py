@@ -15,6 +15,8 @@
     native_gate.py --root . account                   (read-only progress projection)
     native_gate.py --root . handoff                   (read-only: the review summary + metadata for this card)
     native_gate.py --root . park                      (hold this card's uncommitted candidate; restore HEAD)
+    native_gate.py --root . integrate                 (pilot pair: apply the accepted worktree candidate to the main tree, verified there)
+    native_gate.py --root . rebase                    (pilot pair: move the worktree onto the main tree's HEAD for rework)
     native_gate.py --root . restore-parked            (put this card's parked candidate back, re-verified)
 
 A refusal repeated three times in one run answers REPEATED_REFUSAL: the
@@ -209,6 +211,8 @@ def main(argv: list[str] | None = None) -> int:
     vr.add_argument("--reason", required=True)
     sub.add_parser("park")
     sub.add_parser("restore-parked")
+    sub.add_parser("integrate")
+    sub.add_parser("rebase")
     ns = ap.parse_args(argv)
     root = Path(ns.root).resolve()
     task, run_id = _ids()
@@ -237,6 +241,14 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"gaps": gaps}, indent=2))
             return 0 if not gaps else 1
         elif ns.cmd == "issue":
+            from planner import pilot as PL
+            if PL.is_pilot_worktree(root):
+                # a pilot pair worktree holds only tracked files: its run state is seeded from the main tree first
+                try:
+                    PL.seed(root, task=task, run=run_id)
+                except ValueError as exc:
+                    code, _, detail = str(exc).partition(" ")
+                    return _refused(root, task, run_id, code, detail)
             out = NC.issue(root, board, task_id=task, run_id=run_id,
                            claim_lock=(os.environ.get("HERMES_KANBAN_CLAIM_LOCK") or "").strip(), replay_unchanged=True)
             out["issued_record"] = write_issued_projection(root, out)
@@ -277,6 +289,21 @@ def main(argv: list[str] | None = None) -> int:
             out = NC.park(root, board, task_id=task, run_id=run_id)
         elif ns.cmd == "restore-parked":
             out = NC.restore_parked(root, board, task_id=task, run_id=run_id)
+        elif ns.cmd in ("integrate", "rebase"):
+            from planner import pilot as PL
+            fn = PL.integrate if ns.cmd == "integrate" else PL.rebase
+            out = fn(root, board, task_id=task, run_id=run_id)
+            if ns.cmd == "integrate":
+                out["next"] = {
+                    "INTEGRATED": "the candidate is the application's now: python3 .hermes/kernel/native_gate.py --root . handoff, "
+                                  "then kanban_request_review reviewer=reviewer",
+                    "CONFLICT": "the main tree changed under this candidate: python3 .hermes/kernel/native_gate.py --root . rebase, "
+                                "then run-verify.sh and advance.py again here, then integrate",
+                    "REJECTED": "the combined tree was not accepted (advance.py verdict above, recorded on this card): "
+                                "python3 .hermes/kernel/native_gate.py --root . rebase, repair here, then integrate again",
+                    "VERIFY_FAILED": "verification of the combined tree could not run; integrate again after the named tool failure",
+                    "NOTHING_ISSUED": "the main tree issues this card nothing: follow the issue's next step",
+                }.get(str(out.get("status")), "")
         elif ns.cmd == "push":
             out = NC.push(root, board, task_id=task, run_id=run_id, remote=ns.remote, ref=ns.ref)
         else:

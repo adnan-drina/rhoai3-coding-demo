@@ -1631,7 +1631,7 @@ data:
     # outcome-board/v2 (native Hermes Kanban control): the K2 hook also decides
     # the review/block terminators and sees the kanban comment/attach/create/
     # link tools (its record and graph guards); NO reconciler: the one native
-    # dispatcher (kanban.max_in_progress 1, review_dispatch on, pinned above)
+    # dispatcher (kanban.max_in_progress from the pinned M3 policy below, review_dispatch on)
     # promotes dependents itself.
     # outcome-board/v1 (retired for new runs): the same matcher plus the
     # continuation reconciler on the dispatcher tick; execution stays refused
@@ -1674,6 +1674,24 @@ data:
     elif _ob_why:
         print("OUTCOME-BOARD: hooks NOT registered: %s" % _ob_why)
     # <<< outcome-board hooks
+    # >>> M3 execution policy (stages/080-ai-autonomous-migration/PARALLEL-M3-PILOT.md)
+    # The dispatcher cap is the run's PINNED policy, read by the destination's own
+    # harness from its initial commit: 2 only for a run created as the one-pair
+    # pilot (its board chain admits the pair and nothing else at once), 1 for every
+    # other run -- a run whose harness predates the policy, or that declares
+    # anything else, stays serial. Never a global switch.
+    _m3_cap, _m3_why = 1, "no execution policy module: serial"
+    try:
+        from planner.execution_policy import max_in_progress as _m3_max, pinned_policy as _m3_pinned
+        _m3 = _m3_pinned(safe_root)
+        _m3_cap, _m3_why = _m3_max(_m3["policy"]), "%s (%s)" % (_m3["policy"], _m3["why"])
+    except ImportError:
+        pass
+    except Exception as _m3_exc:
+        _m3_cap, _m3_why = 1, "policy unreadable (%s): serial" % type(_m3_exc).__name__
+    cfg["kanban"]["max_in_progress"] = _m3_cap
+    print("M3 EXECUTION POLICY: kanban.max_in_progress %d -- %s" % (_m3_cap, _m3_why))
+    # <<< M3 execution policy
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
         # a JSON round trip unshares nested values (the provider and the
@@ -1935,8 +1953,9 @@ data:
         raise SystemExit("ERROR: kanban.auto_decompose must be false")
     if kb.get("dispatch_in_gateway") is not True:
         raise SystemExit("ERROR: kanban.dispatch_in_gateway must be true")
-    if kb.get("max_in_progress") != 1:
-        raise SystemExit("ERROR: kanban.max_in_progress must be 1")
+    if kb.get("max_in_progress") != _m3_cap:
+        raise SystemExit("ERROR: kanban.max_in_progress must be %d (the run's pinned M3 execution policy: %s)"
+                         % (_m3_cap, _m3_why))
     sec = pin.get("security") or {}
     if sec.get("tirith_enabled") is not False:
         raise SystemExit(

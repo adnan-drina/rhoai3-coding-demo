@@ -1037,8 +1037,14 @@ def outcome_acceptance(root: Path, board: Board, task_id: str, plan: dict[str, A
     if not recs or not recs[-1].get("outcome_accepted"):
         return False, "no accepted measurement is recorded for %s" % node["outcome_id"]
     tree = _product_tree(root)
+    if node.get("pilot_pair") and recs[-1].get("pilot") != "integration":
+        return False, "%s: its latest acceptance is a worktree candidate, not the main tree's integration" % node["outcome_id"]
     if recs[-1].get("tree") != tree:
-        return False, "%s was accepted on tree %s; the tree is now %s" % (node["outcome_id"], str(recs[-1].get("tree"))[:12], tree[:12])
+        # a pilot pair outcome accepted by integration stands while later commits (its sibling's
+        # integration) leave everything it changed untouched (PARALLEL-M3-PILOT.md)
+        from planner.pilot import sibling_tolerant
+        if sibling_tolerant(root, board, task_id, node, str(recs[-1].get("tree") or "")):
+            return False, "%s was accepted on tree %s; the tree is now %s" % (node["outcome_id"], str(recs[-1].get("tree"))[:12], tree[:12])
     wl, why = load_worklist(root)
     if wl is None:
         return False, "completion is judged against the measured work list (%s)" % why
@@ -1150,6 +1156,10 @@ def check_terminator(root: Path, board: Board, *, task_id: str, run_id: int, kin
         if waiting:
             raise Refusal("OWNER_REPAIR_PENDING", "%s holds a candidate for the repair %s: end this run with "
                                                   "kanban_block kind=dependency" % (oid, waiting))
+        from planner.pilot import integration_gap
+        gap = integration_gap(root, board, task_id, node)
+        if gap:
+            raise Refusal("PILOT_NOT_INTEGRATED", gap)
         ok, why = outcome_acceptance(root, board, task_id, plan, node)
         if not ok:
             raise Refusal("OUTCOME_NOT_ACCEPTED", "%s: a rejected or unfinished attempt keeps the outcome open" % why)
@@ -1347,7 +1357,7 @@ def _covers_or_defers(board: Board, run: str, plan: dict[str, Any], node: dict[s
 
 
 def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attempt: str, commit: str,
-                  measurement: dict[str, Any]) -> dict[str, Any]:
+                  measurement: dict[str, Any], extra: dict[str, Any] | None = None) -> dict[str, Any]:
     """Record the committed acceptance of the issued scope and decide whether
     the OUTCOME is accepted: every owned obligation absent from the rebuilt
     work list and the outcome's check class measured on this tree."""
@@ -1378,7 +1388,8 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     covered = _covers_or_defers(board, run, plan, node, m, record=not evidence_gaps)
     done = not m["open_owned"] and covered and not evidence_gaps
     board.record(task_id, "accept-commit", "accept-commit:%s" % key, run=int(run_id), commit=commit, tree=tree,
-                 cluster=iss.get("cluster") or "", outcome_accepted=done, measurement=m, repair_evidence_gaps=evidence_gaps)
+                 cluster=iss.get("cluster") or "", outcome_accepted=done, measurement=m, repair_evidence_gaps=evidence_gaps,
+                 **(extra or {}))
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"],
             "covered": covered, "repair_evidence_gaps": evidence_gaps,
             "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": evidence_gaps})}

@@ -317,8 +317,9 @@ def _native_record(root: Path, board, verdict: str, candidate: str, reason: str)
     from planner import native_control as NC
     task, run = _ids()
     try:
+        from planner.pilot import attempt_key
         out = NC.record_verdict(Path(root), board, task_id=task, run_id=run, verdict=verdict, candidate=candidate,
-                                attempt=candidate[:16], reason=reason)
+                                attempt=attempt_key(Path(root), candidate), reason=reason)
     except Exception as exc:  # the board must hold the verdict before anything else moves
         return _refuse(exc)
     if out.get("verdict") == "OWNER_RECOVERY":
@@ -338,11 +339,27 @@ def _native_record(root: Path, board, verdict: str, candidate: str, reason: str)
 def _native_after_accept(root: Path, board, commit: str, candidate: str, worklist: dict[str, Any], run: dict[str, Any]) -> int:
     from planner import native_control as NC
     task, run_id = _ids()
+    from planner.pilot import attempt_key, mode as pilot_mode
+    pm = pilot_mode(Path(root))
     try:
-        out = NC.accept_commit(Path(root), board, task_id=task, run_id=run_id, attempt=candidate[:16], commit=commit,
-                               measurement=_measurement(worklist, run, candidate, root))
+        out = NC.accept_commit(Path(root), board, task_id=task, run_id=run_id, attempt=attempt_key(Path(root), candidate),
+                               commit=commit, measurement=_measurement(worklist, run, candidate, root),
+                               extra={"pilot": pm} if pm else None)
     except Exception as exc:
         return _refuse(exc)
+    if pm == "worktree":
+        # a pilot worktree candidate is not the application's yet (PARALLEL-M3-PILOT.md)
+        if out["outcome_accepted"]:
+            print("CANDIDATE ACCEPTED IN THIS WORKTREE %s: commit %s. It is not yet the application's: run python3 "
+                  ".hermes/kernel/native_gate.py --root . integrate, which applies it to the main tree and verifies the "
+                  "combined result there. Do not request review before it reports INTEGRATED."
+                  % (out["outcome_id"], commit[:12]))
+            return 0
+    if pm == "integration":
+        print("INTEGRATION %s: commit %s on the main tree; outcome %s%s" % (
+            out["outcome_id"], commit[:12], "ACCEPTED" if out["outcome_accepted"] else "PENDING",
+            "" if out["outcome_accepted"] else " (%s)" % "; ".join((out.get("not_accepted_because") or [])[:3])))
+        return 0
     if out["outcome_accepted"]:
         print(_REVIEW % (out["outcome_id"], "commit " + commit[:12]))
         return 0

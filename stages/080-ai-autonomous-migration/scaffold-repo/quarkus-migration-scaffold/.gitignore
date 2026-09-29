@@ -5,6 +5,8 @@
 # Planner producer output (M1/M2 regenerate in the workspace; the admission
 # receipt seals the digests, the files themselves are workspace evidence).
 .derived/
+# the parallel M3 pilot's native worktrees (PARALLEL-M3-PILOT.md)
+.worktrees/
 evidence/frozen/
 evidence/producers/
 evidence/build/
