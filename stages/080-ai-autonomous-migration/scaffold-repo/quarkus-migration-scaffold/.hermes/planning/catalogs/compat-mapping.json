@@ -464,10 +464,13 @@
             "location"
           ],
           "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)",
-          "forbidden_field_values": [
-            "#{servletContext"
-          ],
-          "forbidden_field_values_why": "a field of the handler's type that read the Servlet context through SpEL (@Value(\"#{servletContext.contextPath}\")) has no Servlet context on the destination and SpEL is unsupported there (the package gate fails with 'SpEL expressions are not supported'); the base URI already carries the root path, so the field goes with the parameter (v28 t_25819d9c kept it)"
+          "forbidden_field_injection": {
+            "annotation": "org.springframework.beans.factory.annotation.Value",
+            "value_prefixes": [
+              "#{servletContext"
+            ],
+            "why": "a field of the handler's type that injected the Servlet context through SpEL (@Value(\"#{servletContext.contextPath}\")) has no Servlet context on the destination and SpEL is unsupported there (the package gate fails with 'SpEL expressions are not supported'); the base URI already carries the root path, so the field goes with the parameter (v28 t_25819d9c kept it). Only an injection through Spring @Value counts: the same text in another annotation is data"
+          }
         }
       },
       "jakarta.servlet.http.HttpServletRequest": {
@@ -489,10 +492,13 @@
             "location"
           ],
           "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)",
-          "forbidden_field_values": [
-            "#{servletContext"
-          ],
-          "forbidden_field_values_why": "a field of the handler's type that read the Servlet context through SpEL (@Value(\"#{servletContext.contextPath}\")) has no Servlet context on the destination and SpEL is unsupported there (the package gate fails with 'SpEL expressions are not supported'); the base URI already carries the root path, so the field goes with the parameter (v28 t_25819d9c kept it)"
+          "forbidden_field_injection": {
+            "annotation": "org.springframework.beans.factory.annotation.Value",
+            "value_prefixes": [
+              "#{servletContext"
+            ],
+            "why": "a field of the handler's type that injected the Servlet context through SpEL (@Value(\"#{servletContext.contextPath}\")) has no Servlet context on the destination and SpEL is unsupported there (the package gate fails with 'SpEL expressions are not supported'); the base URI already carries the root path, so the field goes with the parameter (v28 t_25819d9c kept it). Only an injection through Spring @Value counts: the same text in another annotation is data"
+          }
         }
       },
       "javax.servlet.http.HttpServletRequest": {

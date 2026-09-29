@@ -6680,13 +6680,29 @@ def _response_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], s
         if missing:
             return {"verdict": "violates", "detail": "the handler %s.%s returns %s but never calls %s: what the source wrote "
                                                       "to the response is not answered" % (typ_fqn, name, ret, ", ".join(missing))}
-    forbidden = [str(v) for v in spec.get("forbidden_field_values") or []]
-    for f in (typ or {}).get("fields") or []:
-        vals = [str(v) for a in (f.get("annotations") or []) if isinstance(a, dict) for v in a.get("values") or []]
-        hit = next((v for v in vals for pre in forbidden if v.startswith(pre)), "")
-        if hit:
-            return {"verdict": "violates", "detail": "the field %s.%s still reads %r: %s"
-                                                      % (typ_fqn, f.get("name"), hit, spec.get("forbidden_field_values_why") or "")}
+    # a field that INJECTS a forbidden expression (architect review 2026-09-29, G3): only the named annotation,
+    # resolved as handler-parameter annotations are (a qualified name as written, else the import that binds
+    # the simple name), counts; the same text in another annotation (a Jackson @JsonProperty literal) is data.
+    # An annotation no import binds is unknown attribution, not a demonstrated violation -- the package gate
+    # still refuses any SpEL expression the destination cannot evaluate.
+    inj = spec.get("forbidden_field_injection") if isinstance(spec.get("forbidden_field_injection"), dict) else {}
+    target = str(inj.get("annotation") or "")
+    prefixes = ["".join(str(v).split()) for v in inj.get("value_prefixes") or [] if str(v).strip()]
+    if target and prefixes:
+        bound = unit_bound_imports(typ or {})
+        for f in (typ or {}).get("fields") or []:
+            for a in f.get("annotations") or []:
+                if not isinstance(a, dict):
+                    continue
+                fq = str(a.get("fqn") or "")
+                if (fq if "." in fq else bound.get(str(a.get("simple") or fq), "")) != target:
+                    continue
+                hit = next((str(v) for v in a.get("values") or [] for pre in prefixes
+                            if "".join(str(v).split()).startswith(pre)), "")
+                if hit:
+                    return {"verdict": "violates", "detail": "the field %s.%s still injects %r through @%s: %s"
+                                                              % (typ_fqn, f.get("name"), hit, target.rsplit(".", 1)[-1],
+                                                                 inj.get("why") or "")}
     return None
 
 
