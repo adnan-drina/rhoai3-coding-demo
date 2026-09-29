@@ -201,6 +201,37 @@ class CapabilityGap(unittest.TestCase):
         self.assertLess(text.index("REQUIRED SHAPE"), text.index("WRITE SET"))
 
 
+class SmallBriefGuidance(unittest.TestCase):
+    """v28 t_1cec0a74: an 8 KB brief printed as raw JSON, its previous_run and planned requirement mid-document;
+    two runs read other cards' repositories (a `grep -B10 ... -B130` slow walk) instead of writing the owed file."""
+
+    def test_a_slow_walk_is_one_repeated_question(self):
+        walk = ['cat src/a/OwnerRepository.java | grep -B%d "void delete"' % n for n in range(10, 140, 10)]
+        ledger = []
+        for i, c in enumerate(walk):
+            ledger += [{"phase": "start", "run": "27", "tool_call_id": "w%d" % i, "command": c},
+                       {"phase": "end", "run": "27", "tool_call_id": "w%d" % i, "exit_code": 0, "output_tail": "void delete(Owner owner);"}]
+        pr = BR.previous_run_context([{"id": 27, "outcome": "crashed", "error": "STOP WORKER_TOOL_LOOP: read_family_no_new_content_halt"},
+                                      {"id": 28, "outcome": None}], ledger, "28", [], task="t_x")
+        self.assertEqual((pr["repeated"]["times"], pr["repeated"]["command"]), (13, walk[-1]))
+
+    def test_the_guidance_leads_a_small_brief_and_names_the_owed_file(self):
+        b = dict(BriefDigest.BRIEF)
+        b["cluster"] = dict(b["cluster"], not_open={"head": "u:other"})
+        b["previous_run"] = {"run": "27", "outcome": "crashed", "stop": "guard", "kind": "halted-investigation",
+                             "repeated": None, "last_loop_step": None, "left_in_tree": []}
+        head = BR.brief_guidance(b, "brief-s")
+        self.assertTrue(head.startswith("BRIEF GUIDANCE (read first"))
+        for want in ("write-set files that do not exist: a/PetRepositoryImpl.java",
+                     "this card's planned requirement still owes the file(s) above", "REQUIRED SHAPE",
+                     "PREVIOUS RUN of this card (run 27)"):
+            self.assertIn(want, head)
+        self.assertNotIn("\ncluster ", head)
+
+    def test_no_guidance_when_the_digest_leads_with_nothing(self):
+        self.assertEqual(BR.brief_guidance({"cluster": {"id": "c:1"}, "write_set": [], "items": []}, "brief-e"), "")
+
+
 class VerificationState(unittest.TestCase):
     """V26-6 item 2: a verification already completed on this tree is not repeated because its run crashed;
     one of an older tree is marked stale."""

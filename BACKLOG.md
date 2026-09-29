@@ -87,6 +87,16 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   `unsupported-spel` obligation. Evidence: `servlet-redirect-package.test.py` (the v28 form is
   refused structurally and does not package).
 
+- [x] A small brief leads with its guidance (v28 `t_1cec0a74` gave up, `t_85e348e7` run 29
+  halted): under 24,000 characters `brief.py` printed raw JSON, so REQUIRED SHAPE, PREVIOUS
+  RUN and the absent write-set files sat mid-document behind "your cluster is no longer on the
+  open work list"; the workers read sibling repositories (28 of 52 calls) to learn what to write.
+  The digest's leading blocks now print first (stderr, which the Hermes terminal merges ahead of
+  the JSON on stdout), with a line naming the file the planned requirement still owes. The
+  retry context counts calls that differ only in numbers as one repeated question
+  (`grep -B10 … -B130`). Live: `t_85e348e7` run 30 (the retry, with previous_run) edited and
+  requested review in 11 calls. Evidence: `outcome-line.test.py` SmallBriefGuidance.
+
 Still open (not blockers of this package's source work):
 
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);

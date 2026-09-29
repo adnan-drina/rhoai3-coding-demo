@@ -1350,10 +1350,25 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({k: brief[k] for k in args.section}, indent=2, sort_keys=True))
         return 0
     if args.full or len(text) <= BRIEF_PRINT_LIMIT:
+        # the guidance the digest leads with (retry state, previous run, last verification, required
+        # shape, capability gaps) is printed FIRST whatever the size: v28 t_1cec0a74 got an 8 KB JSON
+        # brief whose previous_run and planned_requirements sat mid-document, and two runs read other
+        # cards' repositories instead of writing the file the card owed
+        # on stderr, flushed first: the worker's terminal shows both streams in this order, and stdout
+        # stays the brief's JSON for every caller that parses it
+        head = brief_guidance(brief, stem)
+        if head:
+            print(head + "\n\nFULL BRIEF (JSON, on stdout):", file=sys.stderr, flush=True)
         print(text)
         return 0
     print(brief_digest(brief, stem))
     return 0
+
+
+def brief_guidance(brief: dict, stem: str) -> str:
+    """The digest's leading blocks alone (everything before the cluster line), or '' when there are none."""
+    lines = brief_digest(brief, stem).split("\ncluster ", 1)[0].splitlines()[1:]
+    return "\n".join(["BRIEF GUIDANCE (read first; the full brief follows)"] + lines) if lines else ""
 
 
 # v21 t_0bc6319b: a seven-repository unit printed a 150 KB brief (~40K tokens); the terminal
@@ -1475,6 +1490,11 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  the last revert DELETED: %s -- they are not on the tree now" % ", ".join(rs["deleted_by_last_revert"]))
         if rs.get("write_set_files_absent"):
             out.append("  write-set files that do not exist: %s" % ", ".join(rs["write_set_files_absent"]))
+            if (cl.get("not_open") or {}) and brief.get("planned_requirements"):
+                out.append("  the compile items of this cluster are already gone (earlier cards cleared them), but this "
+                           "card's planned requirement still owes the file(s) above: write them to the REQUIRED SHAPE "
+                           "below, inside the write set, then run-verify.sh and advance.py. Other cards' files are not "
+                           "the specification; the recipe is.")
         if rs.get("last_rejection"):
             out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
             out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
@@ -1743,15 +1763,22 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
     rows = [r for r in ledger if isinstance(r, dict) and str(r.get("run") or "") == rid]
     starts = [r for r in rows if r.get("phase") == "start"]
     ends = {str(r.get("tool_call_id") or ""): r for r in rows if r.get("phase") == "end"}
+    # calls that differ only in numbers are one question asked again (v28 t_1cec0a74 run 27:
+    # `grep -B10 ... -B130 "void delete" OwnerRepository.java`, one call per ten lines)
+    def shape(c: str) -> str:
+        return re.sub(r"\d+", "N", c)
     counts: dict = {}
+    latest_of: dict = {}
     for r in starts[-15:]:
         c = str(r.get("command") or "")
-        counts[c] = counts.get(c, 0) + 1
+        counts[shape(c)] = counts.get(shape(c), 0) + 1
+        latest_of[shape(c)] = c
     repeated = None
     if counts:
-        cmd, times = max(counts.items(), key=lambda kv: kv[1])
+        key, times = max(counts.items(), key=lambda kv: kv[1])
+        cmd = latest_of[key]
         if times >= 3:
-            calls = [ends.get(str(r.get("tool_call_id") or "")) for r in starts if str(r.get("command") or "") == cmd]
+            calls = [ends.get(str(r.get("tool_call_id") or "")) for r in starts if shape(str(r.get("command") or "")) == key]
             exits = sorted({str((e or {}).get("exit_code")) for e in calls})
             done = [e for e in calls if isinstance(e, dict)]
             tail = done[-1].get("output_tail") if done else None
