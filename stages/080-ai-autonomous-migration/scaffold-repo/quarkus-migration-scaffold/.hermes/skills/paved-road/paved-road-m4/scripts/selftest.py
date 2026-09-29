@@ -131,7 +131,7 @@ def main() -> int:
         return _fail("read-after-runner must PASS (a grep naming the runner is not a run of it): %s" % blob)
     for name, needle in (("verdict-before-runner", "run-m4-pre-verdict.sh"),
                          ("no-oracles", "capture-source-oracles"),
-                         ("runner-red-no-rerun", "unmatched [exit 1]"),
+                         ("runner-red-no-rerun", "did not exit 0"),
                          ("missing-verdict", "m4-verdict.json")):
         rc, blob = _run(name)
         if rc != 1 or needle not in blob:

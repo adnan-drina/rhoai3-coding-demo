@@ -66,7 +66,7 @@ def main() -> int:
     if "[exit 0]" in (FX / "green-m2" / "official.log").read_text(encoding="utf-8"):
         return _fail("green fixture must omit [exit 0]")
     rc, blob = _run("red-no-rerun")
-    if rc != 1 or "unmatched [exit 1]" not in blob or "k4_mint.py" not in blob:
+    if rc != 1 or "did not exit 0" not in blob or "k4_mint.py" not in blob:
         return _fail("red-no-rerun must REFUSE naming k4_mint.py: %s" % blob)
     rc, blob = _run("red-then-clean")
     if rc != 0:
