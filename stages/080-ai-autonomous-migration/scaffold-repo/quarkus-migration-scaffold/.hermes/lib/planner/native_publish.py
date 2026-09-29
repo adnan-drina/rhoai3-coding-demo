@@ -177,7 +177,12 @@ def _publish_nodes(board: Board, plan: dict[str, Any], added: list[str], *, work
     digests = board.contract_digests(plan["run_id"])
     wanted = set(added)
     created = []
-    for node in topo_order(plan["nodes"]):
+    # ordered by the edges each native task is CREATED with (published_parents: genuine plus, on a pilot run, the
+    # schedule chain): v29 M2 created objective:controller-request-boundary before source:u:cd4a81a71d9f, its
+    # schedule parent only, and publication refused PUBLICATION_PARENT
+    by_id = {n["outcome_id"]: n for n in plan["nodes"]}
+    order = [n["outcome_id"] for n in topo_order([dict(n, parents=published_parents(n)) for n in plan["nodes"]])]
+    for node in (by_id[o] for o in order):
         oid = node["outcome_id"]
         if oid not in wanted:
             continue

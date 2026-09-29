@@ -117,6 +117,36 @@ class PilotPublication(unittest.TestCase):
         finally:
             r.close()
 
+    def test_publication_follows_the_schedule_chain_not_only_genuine_parents(self):
+        """v29 M2: publication refused PUBLICATION_PARENT -- objective:controller-request-boundary parent
+        source:u:cd4a81a71d9f has no native task yet. The node after the pair depends on both pair members
+        only through the schedule chain; ordered by genuine parents and the order hint alone, it was created
+        before the pair member whose hint sorts later."""
+        r = NB.Run(pilot=True, structure=structure(), publish=False)
+        try:
+            plan = json.loads(r.plan_file.read_text())
+            for n in plan["nodes"]:
+                if n["outcome_id"] == ORDER:
+                    n["order_hint"] = ["~~~ sorts after every other hint"]
+                if n["outcome_id"] == "runtime:package:rk:package:spel":
+                    # like v29's objective card: a genuine dependency on ONE pair member only
+                    n["parents"] = [p for p in n["parents"] if p != ORDER]
+            plan.pop("digest", None)
+            plan["digest"] = NB.OG.plan_digest(plan)
+            r.plan_file.write_text(json.dumps(plan))
+            r.out = r.publish()
+            from planner.native_publish import published_parents, readback
+            pub = r.plan()
+            self.assertEqual(readback(r.board, pub), [])
+            succ = [n for n in pub["nodes"] if ORDER in (n.get("schedule_parents") or []) and ORDER not in (n.get("parents") or [])]
+            self.assertTrue(succ, "the fixture must have a node that waits on the pair member only through the chain")
+            for n in succ:
+                self.assertIn(r.tid(ORDER), r.native.task(r.tid(n["outcome_id"]))["parents"])
+            self.assertTrue(all(set(published_parents(n)) <= {m["outcome_id"] for m in pub["nodes"]} | {"control:m2"}
+                                for n in pub["nodes"]))
+        finally:
+            r.close()
+
     def test_a_serial_run_is_unchanged(self):
         r = NB.Run(pilot=False, structure=structure())
         try:
