@@ -341,11 +341,18 @@ rate.
 | 4. Brief agrees with the issued contract | **Done** | bb8e7cfd, 0b130728, 507af709 | checks from the owning outcome; other owners' requirements marked not yours; objective liveness from constituents; every obligation listed; required architecture printed whole (tests) |
 | 5. Near-duplicate progress classification | **Done** (runtime 0015) | 61d6b0ab | any new line is progress; printed identifiers, digests and timestamps are content; only the runtime's own notices are excluded; the page-13 reproduction and 25 distinct artifact pages no longer halt; identical calls and unchanged loops still halt (45 guard tests) |
 
-The open parts above are implemented after v26 on `next/after-v26`
-(source-level, not in the v26 golden): item 1 in 463dbd0a, the retry handoff
-of item 2 in 657be426, the verifier exit record of item 3 in c02e319b, and V26-4
-reporting from existing records in c3b3b80d. BACKLOG.md lists the rest of that
-package.
+**After v26 (2026-09-29).** v26 was frozen by an Operator-requested stop at 12 of 36
+cards; it is not a validation of this list. The open parts above are implemented after
+it on `next/after-v26`, with regression evidence and publication status per requirement
+in BACKLOG.md ("Correction package after v26"):
+
+| Item | Implementation | Evidence (source-level) |
+|---|---|---|
+| 1. Servlet redirect guidance | `servlet-redirect-response` recipe, catalog rows, named capability gaps, structural response check (78a74e69) | `servlet-redirect-package.test.py`: matches the recorded source 302 over HTTP on the pinned platform; a renamed equivalent; unsupported uses stay unresolved |
+| 2. Native retry context | PREVIOUS RUN (halted vs rejected, repeated call and bounded result, last step), LAST VERIFICATION current/stale (d4592bdf) | a native retry through the board path (`NativeRetryContext`); bounded worker exercise: the corrected brief moved 2 of 2 samples from investigating to editing |
+| 3. Producer exit code | `verify_record.py`, call-bound `last-verify.json` v2; ledger-first audit (fbeb51e1) | real `run-verify.sh` behind `\| tail -1; echo`; replay of v26 `t_d5579123`: both displays grade the same |
+
+None of these has live evidence yet.
 
 Related defects found in v25 and fixed for v26, outside the five items:
 

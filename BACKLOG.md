@@ -23,14 +23,15 @@ In v26:
   architecture; retry-state diagnostics; the REVERTED lockout; unchanged rework;
   the preload of required skills; near-duplicate progress (runtime 0015).
   Source-level evidence; see V26-IMPROVEMENTS.md.
-- [ ] V26-6 open items: Servlet response/redirect guidance (item 1); the repeated
-  command/result and last step in the native retry handoff (item 2); the producer
-  exit code through a worker's own filter or trailing echo (item 3).
+- [x] V26-6 open items (Servlet redirect guidance, native retry handoff, producer
+  exit code through a filter) were NOT in v26; they are implemented after it
+  (source-level, unpublished): see the correction package table below.
 - [x] V26-3 targeted context (instructions, selectors, owned obligations, saved
   diagnostics, retry context). The resolved-context attachment and a
   classpath/API lookup are deferred.
 - [ ] V26-4: report actual verification, retries, assistance, requests, tokens
-  and elapsed time from existing records at the close of the v26 run.
+  and elapsed time from existing records. v26 was frozen at 12/36 cards; the
+  scripted report (run-report Reliability) needs a copy of the preserved board.
 
 Subsequent feature package (V26-1 with V26-2), not scheduled for a numbered run:
 
@@ -42,66 +43,44 @@ Subsequent feature package (V26-1 with V26-2), not scheduled for a numbered run:
 - [ ] Deferred pending measurements (V26-5): analysis reuse with complete cache
   invalidation.
 
-Next reliability package, after v26 (recorded 2026-09-29, in priority order).
-v26 is not changed by any of these (no overlay):
+**v26 frozen (Operator-requested stop, 2026-09-29 10:53:48Z).** The workspace was
+stopped through `spec.started=false` at 12 of 36 cards done (2 blocked, 2 ready, 1
+running, 19 todo), destination HEAD `48b063c1`; PVC, board, logs, budgets and the
+uncommitted state are preserved. It is not a successful validation run: the four
+corrections below were known unfinished requirements. Snapshot and identities:
+`tmp/v26-corrections/` (freeze-snapshot, devworkspace YAML, IMPLEMENTATION-REPORT.md).
 
-1. [x] **V26-6 item 1: Servlet response/redirect guidance.** Implemented on
-   `next/after-v26` (463dbd0a, source-level): undocumented catalog rows for the
-   jakarta and javax Servlet request/response types, routed to
-   controller-request-boundary; redirect becomes `ResponseEntity` with 302 and the
-   same `Location`.
-   - It is live-relevant: v26 `t_4fd2dcec` run 1 (controller request boundaries,
-     `RootRestController`) halted correctly on `read_cycle_no_new_content_halt`
-     while cycling catalog greps for a Servlet rule that does not exist.
-   - Add a qualified catalog and brief action for the supported source shape.
-   - Preserve the redirect status, `Location` and context path.
-2. [x] **V26-6 item 3: an authoritative verifier exit record.** Implemented
-   (c02e319b): `run-verify.sh` writes `verification/loop/last-verify.json`; the
-   brief prints it and the audit refuses when the verifier itself exited non-zero. Workers pipe
-   `run-verify.sh | tail` or `mvn | grep; echo`, so the terminal and the ledger
-   report the filter's exit code (seen on three v26 cards).
-   - `run-verify.sh` should write its own exit record, and the brief should
-     expose it.
-   - `advance.py`'s verdict stays the authority, so acceptance is unaffected.
-3. [x] **V26-6 item 2, remaining part: native retry handoff.** Implemented
-   (657be426): the brief's PREVIOUS RUN block. Carry the repeated
-   command and its result, and the last completed step, into the next native run.
-   Introduced diagnostics, the REVERTED lockout and rework already ship in v26.
-4. [x] **Card and handoff wording** (implemented, 398afb97) (v26 completed-task audit):
-   - COMPILE bodies say "compile and pass its tests", while tests are owned by
-     M4. Say that.
-   - The M2 handoff says "34 children", while 31 are direct children. The
-     reviewer then wrote that the M5 ids do not exist after Hermes's completion
-     guard (`completion_blocked_hallucination`) rejected them as non-children.
-     Name direct children and descendants separately.
-5. [x] **Stale image values in the golden** (implemented, edb93305; validate.sh
-   now refuses any rhoai3-ws-080 digest that differs from pins.json) (hygiene): `run-defaults.json`
-   `workspace_overlay.digest` and the golden `devfile.yaml` still name
-   `sha256:6a8a69a3…`. Nothing consumes them (workspaces render from the RHDH
-   skeleton; launch compares `080.pins` with `pins.json`), but pin or remove them
-   with each release.
-6. [x] **V26-4 reporting tool.** Implemented (c3b3b80d): run-report's
-   Reliability section, `--kanban-db` for a board copy. v26 is reported by hand from existing records:
-   native runs, the execution ledger and the request ledger. Script the report
-   without adding a receipt or an authority.
-7. [ ] **Evidence gaps:**
-   - Preloaded skill text cannot be corroborated from the session store (empty
-     `system_prompt`; the ledger records `prompt_sha256`).
-   - `test_stall_guards` and `test_cli_preloaded_skills` were not run for
-     0015/0016 (missing local dependencies; identical on the base).
-   - V26-6 acceptance still lacks a bounded worker replay of the no-local-example
-     case and a same-model comparison of old and corrected brief inputs.
+Correction package after v26 (branch `next/after-v26`; source-level unless a live
+column says otherwise; nothing overlaid on v26). Every included requirement:
 
-Found in v26 and implemented on `next/after-v26` (source-level):
+| Requirement | Implementation | Regression evidence | Published | Live evidence |
+|---|---|---|---|---|
+| A. Servlet redirect guidance (V26-6 item 1) | catalog `handler_parameters` Servlet rows + `migration_recipes.servlet-redirect-response` (qualified by the handler's calls); `source_requirements.recipe_call_gap`; `worklist._response_verdict` and the jakarta ban; no `javax.servlet` rename; brief CAPABILITY GAP (78a74e69, d4592bdf) | `servlet-redirect-package.test.py` (pinned BOM, offline: rename does not compile, emptied and relative forms refused or differ, the recipe's form matches the recorded source 302 over HTTP, renamed equivalent); `source_requirements.test.py` servlet case (real + renamed applicable, getWriter and request unresolved with named gaps); worklist test | no (golden publish owed) | worker exercise only (below); none in a run |
+| B. Native retry context (V26-6 item 2) | post-tool observer output tail; brief PREVIOUS RUN (halted investigation vs rejected candidate, repeated call and bounded result, last step, tree) and LAST VERIFICATION current/stale (d4592bdf, earlier 657be426) | `native_board.test.py` NativeRetryContext (a real native retry through the board path), `outcome-line.test.py` PreviousRun/VerificationState, `post_tool_call.test.py` | no | worker exercise only; a Hermes-dispatched retry is first observable in the next run |
+| C. Command-status integrity (V26-6 item 3) | `verify_record.py` (`rhoai3.last-verify/v2`: procedure, compilation, tests apart; bound to the terminal call), `run-verify.sh` start/finish (fbeb51e1) | `verify_record.test.py` (real run-verify.sh behind `\| tail -1; echo`: pipeline 0, record keeps the failure; compile errors stay failed; skipped tests stay not-run) | no | none |
+| D. Audit under shortened log display | `paved_road.evaluate_audit` ledger-first, completeness bound, call-bound verifier record (fbeb51e1) | `paved_road.test.py` LedgerFirstAudit (Profile shape both displays, failed build behind clean wrapper, newer unfinished or never-reached invocation, wrong run/card, lost ledger row); replay of v26 `t_d5579123` run 17 (`tmp/v26-corrections/replays/`) | no | none |
+| Witness checkpoint gets no repair credit | run-report `step_relation`, `accepted_repairs`/`accepted_witnesses` (94dc4bbf, earlier a9d81a3b) | `run-report.test.py` with the v26 rows: 4 repairs, 1 witness (`93bf5c97`) | no | none |
+| Unchanged worker re-issue records nothing | `native_control.issue(replay_unchanged)`, `native_gate.py issue` (94dc4bbf) | `family_budget.test.py`; replay: released 7 records for 7 calls, corrected 1 | no | none |
+| Card/handoff wording, image pins, V26-4 report | 398afb97, edb93305, c3b3b80d | their suites | no | none |
 
-- [x] The audit refused an abbreviated compound command (`💻 $ … + N commands`) as
-  "silence: step run-verify" on `t_d5579123` (29df6451). It now credits the line
-  only when the execution ledger records the loop script; prose is never a run.
-- [x] An empty checkpoint was accepted as a repair (`t_4fd2dcec`, 93bf5c97).
-  A checkpoint with no product change is now recorded as a witness (a9d81a3b).
+Worker exercise (bounded, declared ceiling 4 requests / 300,000 tokens; used 4 /
+232,354; production non-thinking profile; key created and revoked through the MaaS
+workflow): the v25 Root card retry decision point, control vs corrected brief. Control:
+2 of 2 kept investigating. Corrected: 2 of 2 edited the controller at once; 1 wrote the
+qualified form, 1 dropped the redirect (a void handler). The second shape is now
+refused by the structural check (added from this result). Two samples per arm: a
+direction, not a rate. `tmp/v26-corrections/worker-exercise/`.
 
-Publication of `next/after-v26` (main fast-forward and golden) is the Operator's
-step for a future run; no runtime patch changed, so the image stays 9147834b.
+Still open (not blockers of this package's source work):
+
+- [ ] Publication: fast-forward `main` and publish the golden (Operator steps);
+  the runtime is unchanged (image `9147834b`).
+- [ ] Live evidence for A-D comes only from the next run.
+- [ ] Evidence gaps kept from v26: preloaded skill text is not corroborated from the
+  session store; `test_stall_guards` and `test_cli_preloaded_skills` were not run for
+  0015/0016 (missing local dependencies).
+- [ ] The v26 PVC was not copied after the stop (a read-only reader pod was refused by
+  the permission classifier); the replays use the logs saved before the freeze.
 
 Platform follow-ups (not package code):
 
