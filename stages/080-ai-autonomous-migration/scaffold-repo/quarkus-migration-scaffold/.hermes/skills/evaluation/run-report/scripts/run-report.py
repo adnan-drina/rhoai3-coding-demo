@@ -2012,12 +2012,128 @@ def render(rep: Dict[str, Any]) -> str:
         for l, hl in cmp_["headline"].items():
             L.append("- %s: %s" % (l, json.dumps(hl, sort_keys=True)))
             L.append("  - parity on the common subset: %s" % json.dumps(cmp_["parity_on_common_entry_points"].get(l), sort_keys=True))
+    rl = rep.get("reliability") or {}
+    if rl:
+        L.append("")
+        L.append("## Reliability (V26-4, from existing records)")
+        wh = rl.get("worker_halts") or {}
+        whv = wh.get("value") if isinstance(wh, dict) else None
+        L.append("- worker halts: %s" % (("%d (%s)" % (whv["total"], ", ".join("%s %d" % (k, v["count"]) for k, v in whv["by_guardrail"].items()) or "none"))
+                                         if isinstance(whv, dict) else val(wh)))
+        for key, label in (("run_outcomes", "run outcomes"), ("review_change_requests", "review change requests"),
+                           ("retried_cards", "retried cards"), ("gave_up_cards", "gave-up cards"),
+                           ("checkpoints", "accepted checkpoints by relation"), ("preload", "preload")):
+            if key in rl:
+                L.append("- %s: %s" % (label, val(rl[key])))
+        ri = rl.get("repeated_investigation") or {}
+        riv = ri.get("value") if isinstance(ri, dict) else None
+        L.append("- repeated investigation: %s" % ("%d run(s) with 3+ identical consecutive calls" % riv["runs_with_3_or_more_identical_consecutive_calls"]
+                                                   if isinstance(riv, dict) else val(ri)))
     return "\n".join(L) + "\n"
+
+
+GUARD_RE = re.compile(r"guardrail (\w+)")
+
+
+def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kanban_db: Optional[Path]) -> Dict[str, Any]:
+    """V26-4: the reliability measures of one run, from records it already keeps -- native run
+    rows (a read-only copy of the board database), the per-card execution ledgers and the
+    loop record. Worker halts are counted even when a later run completed the card; a
+    guardrail halt is not classified as false or correct here (that needs the session)."""
+    out: Dict[str, Any] = {}
+    runs: List[Dict[str, Any]] = []
+    if kanban_db is None:
+        why = "no --kanban-db (a read-only copy of the Hermes kanban.db) was given"
+        for k in ("run_outcomes", "worker_halts", "review_change_requests", "retried_cards", "gave_up_cards"):
+            out[k] = U(why)
+    else:
+        import sqlite3
+        src = "kanban-db:%s task_runs" % kanban_db.name
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % kanban_db, uri=True)
+            con.row_factory = sqlite3.Row
+            runs = [dict(r) for r in con.execute("SELECT id, task_id, profile, outcome, error FROM task_runs ORDER BY id")]
+            con.close()
+        except Exception as exc:  # noqa: BLE001 - an unreadable copy is an unknown, not a zero
+            runs = []
+            for k in ("run_outcomes", "worker_halts", "review_change_requests", "retried_cards", "gave_up_cards"):
+                out[k] = U("the board copy could not be read: %s" % exc, src)
+        if runs or "run_outcomes" not in out:
+            outcomes: Dict[str, int] = {}
+            for r in runs:
+                outcomes[str(r.get("outcome") or "running")] = outcomes.get(str(r.get("outcome") or "running"), 0) + 1
+            halts: Dict[str, List[str]] = {}
+            for r in runs:
+                err = str(r.get("error") or "")
+                if "WORKER_TOOL_LOOP" in err:
+                    m = GUARD_RE.search(err)
+                    halts.setdefault(m.group(1) if m else "unknown", []).append("%s/run %s" % (r.get("task_id"), r.get("id")))
+            impl: Dict[str, int] = {}
+            for r in runs:
+                if str(r.get("profile") or "") == "implementer":
+                    impl[str(r.get("task_id"))] = impl.get(str(r.get("task_id")), 0) + 1
+            out["run_outcomes"] = V(outcomes, src)
+            out["worker_halts"] = V({"total": sum(len(v) for v in halts.values()),
+                                     "by_guardrail": {k: {"count": len(v), "runs": v} for k, v in sorted(halts.items())}}, src)
+            out["review_change_requests"] = V(sum(1 for r in runs if r.get("outcome") == "changes_requested"), src)
+            out["retried_cards"] = V(sorted(t for t, n in impl.items() if n > 1), src, "cards with more than one implementer run")
+            out["gave_up_cards"] = V(sorted({str(r.get("task_id")) for r in runs if r.get("outcome") == "gave_up"}), src)
+    if kanban_logs is None or not Path(kanban_logs).is_dir():
+        out["repeated_investigation"] = U("no --kanban-logs directory with <task>.exec.jsonl ledgers")
+        out["preload"] = U("no --kanban-logs directory with <task>.exec.jsonl ledgers")
+    else:
+        streaks: List[Dict[str, Any]] = []
+        preload: Dict[str, int] = {}
+        runs_seen: set = set()
+        runs_preloaded: set = set()
+        for lp in sorted(Path(kanban_logs).glob("*.exec.jsonl")):
+            rows = []
+            for line in lp.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    continue
+            by_run: Dict[str, List[str]] = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                key = (str(r.get("task") or lp.name.split(".")[0]), str(r.get("run") or ""))
+                if r.get("phase") == "start":
+                    runs_seen.add(key)
+                    by_run.setdefault(key[1], []).append(str(r.get("command") or ""))
+                elif r.get("phase") == "preload":
+                    runs_preloaded.add(key)
+                    preload[str(r.get("status") or "unknown")] = preload.get(str(r.get("status") or "unknown"), 0) + 1
+            for run_id, cmds in by_run.items():
+                best, cur, last = 0, 0, None
+                for c in cmds:
+                    cur = cur + 1 if c == last else 1
+                    last = c
+                    if cur > best:
+                        best, best_cmd = cur, c
+                if best >= 3:
+                    streaks.append({"task": lp.name.split(".")[0], "run": run_id, "identical_consecutive_calls": best,
+                                    "command": head(best_cmd, 160)})
+        out["repeated_investigation"] = V({"runs_with_3_or_more_identical_consecutive_calls": len(streaks),
+                                           "rows": sorted(streaks, key=lambda x: -x["identical_consecutive_calls"])[:40]},
+                                          "kanban-logs:*.exec.jsonl")
+        out["preload"] = V({"by_status": preload, "runs_without_a_preload_row": len(runs_seen - runs_preloaded)},
+                           "kanban-logs:*.exec.jsonl phase=preload",
+                           "a run without a preload row ran without runtime 0016 or before its first tool call")
+    if not isinstance(steps_doc, dict):
+        out["checkpoints"] = U(steps_why or "no loop record")
+    else:
+        rel: Dict[str, int] = {}
+        for s in steps_doc.get("steps") or []:
+            if isinstance(s, dict) and s.get("verdict") == "accepted":
+                rel[str(s.get("relation") or "unrecorded")] = rel.get(str(s.get("relation") or "unrecorded"), 0) + 1
+        out["checkpoints"] = V(rel, STEPS, "'unrecorded' = an acceptance recorded before checkpoint relations existed")
+    return out
 
 
 def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs: Optional[Path] = None, git_log: Optional[Path] = None,
                  hermes_configs: Optional[List[Path]] = None, budget_file: Optional[Path] = None,
-                 compare_with: Optional[List[Tuple[str, Dict[str, Any]]]] = None) -> Dict[str, Any]:
+                 compare_with: Optional[List[Tuple[str, Dict[str, Any]]]] = None, kanban_db: Optional[Path] = None) -> Dict[str, Any]:
     ensure_hermes_lib()
     tree = Tree(root)
     hist = load_history(root, git_log)
@@ -2052,6 +2168,7 @@ def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs:
         "contract": contract(tree),
         "budget": budget(tree, budget_file, decisions, dec_why, clock),
         "board": board_section(board, kanban_logs, steps_doc),
+        "reliability": reliability(steps_doc, steps_why, kanban_logs, kanban_db),
     }
     rep["classification"] = classification(steps_doc, steps_why, inter, boot)
     if compare_with:
@@ -2065,6 +2182,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--out", type=Path, help="report path (default <root>/%s)" % OUT_REL)
     ap.add_argument("--kanban-json", type=Path, help="output of `hermes kanban list --json`")
     ap.add_argument("--kanban-logs", type=Path, help="directory of per-card worker logs (<task>.log)")
+    ap.add_argument("--kanban-db", type=Path, help="a read-only copy of the Hermes kanban.db (native run rows)")
     ap.add_argument("--git-log", type=Path, help="file of `git log --format='%%H %%ct %%s'` lines, instead of running git")
     ap.add_argument("--hermes-config", type=Path, action="append", default=[], help="a copy of the live Hermes config (YAML/JSON); repeatable")
     ap.add_argument("--budget", type=Path, help="the run budget and stopping conditions declared before launch (JSON/YAML)")
@@ -2088,7 +2206,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         others.append((label or str(as_dict(as_dict(doc.get("pinned_inputs")).get("pilot_run_id")).get("value") or Path(path).stem), doc))
     try:
         rep = build_report(root, kanban_json=args.kanban_json, kanban_logs=args.kanban_logs, git_log=args.git_log,
-                           hermes_configs=args.hermes_config, budget_file=args.budget, compare_with=others)
+                           hermes_configs=args.hermes_config, budget_file=args.budget, compare_with=others,
+                           kanban_db=args.kanban_db)
     except (OSError, ValueError) as exc:
         print("FAIL: %s" % exc, file=sys.stderr)
         return 2

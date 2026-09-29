@@ -772,5 +772,48 @@ class RunReportTest(unittest.TestCase):
         ast.parse(Path(__file__).read_text(encoding="utf-8"), feature_version=(3, 9))
 
 
+class Reliability(unittest.TestCase):
+    """V26-4: reliability measures from the run's own records; unknown without them."""
+
+    def test_measures_from_the_board_copy_the_ledgers_and_the_loop_record(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            db = td / "kanban.db"
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE task_runs (id INTEGER PRIMARY KEY, task_id TEXT, profile TEXT, outcome TEXT, error TEXT)")
+            con.executemany("INSERT INTO task_runs VALUES (?,?,?,?,?)", [
+                (1, "t_a", "implementer", "review_requested", None), (2, "t_a", "reviewer", "changes_requested", None),
+                (3, "t_a", "implementer", "review_requested", None), (4, "t_a", "reviewer", "completed", None),
+                (5, "t_b", "implementer", "crashed", "STOP WORKER_TOOL_LOOP: tool terminal, guardrail read_cycle_no_new_content_halt, count 3"),
+                (6, "t_b", "implementer", "gave_up", "STOP WORKER_TOOL_LOOP: tool terminal, guardrail identical_call_streak_halt, count 5")])
+            con.commit()
+            con.close()
+            logs = td / "logs"
+            logs.mkdir()
+            rows = [{"phase": "preload", "task": "t_b", "run": "5", "status": "loaded"}] + \
+                   [{"phase": "start", "task": "t_b", "run": "6", "command": "grep x pom.xml", "tool_call_id": "c%d" % i} for i in range(5)] + \
+                   [{"phase": "start", "task": "t_b", "run": "5", "command": "ls", "tool_call_id": "d"}]
+            (logs / "t_b.exec.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+            steps = {"steps": [{"verdict": "accepted", "relation": "causal"}, {"verdict": "accepted", "relation": "witness"},
+                               {"verdict": "accepted"}, {"verdict": "baseline"}]}
+            out = rr.reliability(steps, "", logs, db)
+        wh = out["worker_halts"]["value"]
+        self.assertEqual(wh["total"], 2)
+        self.assertEqual(set(wh["by_guardrail"]), {"read_cycle_no_new_content_halt", "identical_call_streak_halt"})
+        self.assertEqual(out["review_change_requests"]["value"], 1)
+        self.assertEqual(out["retried_cards"]["value"], ["t_a", "t_b"])
+        self.assertEqual(out["gave_up_cards"]["value"], ["t_b"])
+        self.assertEqual(out["repeated_investigation"]["value"]["rows"][0]["identical_consecutive_calls"], 5)
+        self.assertEqual(out["preload"]["value"], {"by_status": {"loaded": 1}, "runs_without_a_preload_row": 1})
+        self.assertEqual(out["checkpoints"]["value"], {"causal": 1, "witness": 1, "unrecorded": 1})
+
+    def test_unknown_without_the_records(self):
+        out = rr.reliability(None, "no loop record", None, None)
+        for key in ("worker_halts", "repeated_investigation", "preload", "checkpoints"):
+            self.assertIsNone(out[key]["value"], key)
+            self.assertTrue(out[key]["reason"], key)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
