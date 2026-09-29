@@ -3208,10 +3208,27 @@ def _request_rejection_advice_case() -> int:
         cat = handler_parameters(root)
         plain = [classify_handler_parameter(p, cat) for p in (
             {"name": "id", "type": "int", "annotations": [{"fqn": "org.springframework.web.bind.annotation.PathVariable"}]},
-            {"name": "body", "type": dto_fqn, "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}]},
-            {"name": "req", "type": "jakarta.servlet.http.HttpServletRequest"})]
-        if [p["binding"] for p in plain] != ["supported annotation", "request body", "supported type"] or "@PathVariable" not in plain[0]["line"]:
-            return _fail("supported kinds classify by annotation, body and type: %s" % [p["line"] for p in plain])
+            {"name": "body", "type": dto_fqn, "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}]})]
+        if [p["binding"] for p in plain] != ["supported annotation", "request body"] or "@PathVariable" not in plain[0]["line"]:
+            return _fail("supported kinds classify by annotation and body: %s" % [p["line"] for p in plain])
+        # the Servlet API is documented only on the Classic stack with quarkus-undertow; the catalog selects
+        # quarkus-rest, so a Servlet parameter is undocumented and its row's action leads (v26 t_4fd2dcec)
+        for stype in ("jakarta.servlet.http.HttpServletResponse", "javax.servlet.http.HttpServletResponse"):
+            sv = classify_handler_parameter({"name": "response", "type": stype}, cat)
+            first, _rest = handler_first_action([sv], cat, "", ctl)
+            if sv["binding"] != "undocumented" or "ResponseEntity" not in first or "HttpStatus.FOUND" not in first:
+                return _fail("a Servlet response parameter is undocumented on Quarkus REST and leads with its row's action: %s / %s"
+                             % (sv["line"], first))
+        from planner.compatibility_objectives import _symbol_index, families as _families
+        from planner.worklist import CATALOGS_DIR
+        import json as _json
+        _idx = _symbol_index(_families(_json.loads((Path(root) / CATALOGS_DIR / "compat-mapping.json").read_text())))
+        if _idx.get("jakarta.servlet.http.HttpServletResponse", ("",))[0] != "controller-request-boundary":
+            return _fail("a Servlet response diagnostic belongs to the controller request-boundary objective: %s"
+                         % (_idx.get("jakarta.servlet.http.HttpServletResponse"),))
+        sreq = classify_handler_parameter({"name": "req", "type": "jakarta.servlet.http.HttpServletRequest"}, cat)
+        if sreq["binding"] != "undocumented" or "@RequestHeader" not in handler_first_action([sreq], cat, "", ctl)[0]:
+            return _fail("a Servlet request parameter leads with the documented-annotation action: %s" % sreq["line"])
         first, rest = handler_first_action(plain, cat, dto_fqn, ctl)
         if not first.startswith("every parameter is a documented kind") or dto_fqn not in first or rest:
             return _fail("with every kind documented the first action is the body and content-type check: %s" % first)

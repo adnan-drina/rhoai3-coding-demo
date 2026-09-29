@@ -385,10 +385,7 @@
       "org.springframework.web.bind.annotation.CookieValue",
       "org.springframework.web.bind.annotation.RequestBody"
     ],
-    "supported_types": [
-      "jakarta.servlet.http.HttpServletRequest",
-      "jakarta.servlet.http.HttpServletResponse"
-    ],
+    "supported_types": [],
     "undocumented": {
       "org.springframework.validation.BindingResult": {
         "kind": "type",
@@ -455,8 +452,33 @@
         "source": "https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation",
         "note": "the pre-Jakarta spelling of jakarta.validation.Valid (package_renames javax.validation -> jakarta.validation); the same row.",
         "action": "rename the import to jakarta.validation.Valid (package_renames), then the same first action as jakarta.validation.Valid."
+      },
+      "jakarta.servlet.http.HttpServletResponse": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "not available on the selected stack: the guide supports HttpServletResponse only on the Classic RESTEasy stack with quarkus-undertow, and states that the Servlet API is not supported on Quarkus REST (quarkus-rest), which this catalog selects. org.springframework.http.ResponseEntity is a documented return type.",
+        "action": "the compat layer on Quarkus REST has no Servlet API: remove the HttpServletResponse parameter and RETURN org.springframework.http.ResponseEntity (a documented return type) carrying what the handler wrote to the response. response.sendRedirect(<target>) answers 302 Found with a Location header: change the return type from void to ResponseEntity<Void> and return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(<the same target expression>)).build() (java.net.URI, org.springframework.http.HttpStatus); keep the target expression exactly as the source wrote it, including its context-path prefix -- the source capture decides the expected Location. setStatus/addHeader/setHeader/getWriter become the same status, headers and body on the ResponseEntity. Drop `throws IOException` only if nothing else in the method throws it. Do not add quarkus-undertow, quarkus-resteasy or a servlet dependency, and do not use runtime-internal types (io.quarkus.*, io.vertx.*) as a substitute."
+      },
+      "jakarta.servlet.http.HttpServletRequest": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "not available on the selected stack: the guide supports HttpServletRequest only on the Classic RESTEasy stack with quarkus-undertow, and states that the Servlet API is not supported on Quarkus REST (quarkus-rest), which this catalog selects.",
+        "action": "the compat layer on Quarkus REST has no Servlet API: remove the HttpServletRequest parameter and bind each value the handler reads from it through a documented annotation instead -- request.getHeader(\"n\") becomes a @RequestHeader(\"n\") parameter, request.getParameter(\"n\") a @RequestParam(\"n\") parameter, a cookie a @CookieValue parameter, a path segment a @PathVariable parameter -- keeping each value's name, type, required-ness and default as the source used them. A read these annotations cannot express stays an explicit unresolved item (kanban_block needs_input naming it); do not add quarkus-undertow, quarkus-resteasy or a servlet dependency."
+      },
+      "javax.servlet.http.HttpServletResponse": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "the pre-Jakarta spelling of jakarta.servlet.http.HttpServletResponse (package_renames javax.servlet -> jakarta.servlet); the same row.",
+        "action": "the pre-Jakarta spelling: do not rename the import to jakarta.servlet; the compat layer on Quarkus REST has no Servlet API: remove the HttpServletResponse parameter and RETURN org.springframework.http.ResponseEntity (a documented return type) carrying what the handler wrote to the response. response.sendRedirect(<target>) answers 302 Found with a Location header: change the return type from void to ResponseEntity<Void> and return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(<the same target expression>)).build() (java.net.URI, org.springframework.http.HttpStatus); keep the target expression exactly as the source wrote it, including its context-path prefix -- the source capture decides the expected Location. setStatus/addHeader/setHeader/getWriter become the same status, headers and body on the ResponseEntity. Drop `throws IOException` only if nothing else in the method throws it. Do not add quarkus-undertow, quarkus-resteasy or a servlet dependency, and do not use runtime-internal types (io.quarkus.*, io.vertx.*) as a substitute."
+      },
+      "javax.servlet.http.HttpServletRequest": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "the pre-Jakarta spelling of jakarta.servlet.http.HttpServletRequest (package_renames javax.servlet -> jakarta.servlet); the same row.",
+        "action": "the pre-Jakarta spelling: do not rename the import to jakarta.servlet; the compat layer on Quarkus REST has no Servlet API: remove the HttpServletRequest parameter and bind each value the handler reads from it through a documented annotation instead -- request.getHeader(\"n\") becomes a @RequestHeader(\"n\") parameter, request.getParameter(\"n\") a @RequestParam(\"n\") parameter, a cookie a @CookieValue parameter, a path segment a @PathVariable parameter -- keeping each value's name, type, required-ness and default as the source used them. A read these annotations cannot express stays an explicit unresolved item (kanban_block needs_input naming it); do not add quarkus-undertow, quarkus-resteasy or a servlet dependency."
       }
-    }
+    },
+    "servlet_types_condition": "The guide supports jakarta.servlet.http.HttpServletRequest and HttpServletResponse parameters ONLY on the Classic RESTEasy stack with quarkus-undertow: 'If your application uses the Reactive stack (quarkus-rest / quarkus-rest-jackson), then the Servlet API is not supported.' This catalog's always_add selects quarkus-rest, so both are undocumented rows here, each with its action (v26 t_4fd2dcec cycled catalog greps for a Servlet rule that this block listed as supported)."
   },
   "application_paths": {
     "note": "Where the source serves its application and management endpoints, and the destination key that owes the same value (round 3). planner.source_requirements.application_paths reads the FROZEN source's configuration (application.properties and the application-<profile>.properties of the profiles the source itself activates) and owes each configured key's effective value on the destination key -- or the value decisions.yaml application_paths records under an accepted ADR; requirement_checks measures it as config:application-path. A source that configures none of these keeps both platforms' defaults.",
@@ -1030,6 +1052,17 @@
             "symbols": [
               "org.springframework.web.bind.annotation.CrossOrigin"
             ]
+          },
+          {
+            "id": "servlet-response",
+            "symbols": [
+              "jakarta.servlet.http",
+              "jakarta.servlet.http.HttpServletResponse",
+              "jakarta.servlet.http.HttpServletRequest",
+              "javax.servlet.http",
+              "javax.servlet.http.HttpServletResponse",
+              "javax.servlet.http.HttpServletRequest"
+            ]
           }
         ],
         "requirement_rules": [
@@ -1037,7 +1070,7 @@
           "handler-parameter-binding",
           "annotation-retirement"
         ],
-        "acceptance_intent": "guard polarity and connectives, body validation before side effects, the injected URI context and Location, annotation retirement; CORS behaviour stays the adapter's"
+        "acceptance_intent": "guard polarity and connectives, body validation before side effects, the injected URI context and Location, annotation retirement, a Servlet response or request use translated to a documented return type or annotations; CORS behaviour stays the adapter's"
       },
       "selected-repository-implementation": {
         "title": "implement the selected repository contract",
