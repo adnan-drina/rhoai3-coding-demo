@@ -4,7 +4,7 @@
     "hermes_agent": {
       "version": "v0.20.5",
       "build": "2026.8.19",
-      "patched_tree": "498e2faf0d481049111646eeb04e6cde20dcae1b",
+      "patched_tree": "37b147baef0c2678507c52e59e3b9231ab6ab64f",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
       "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
@@ -42,8 +42,8 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:2ea8ebd6860519c450730f72550201b191beda7374275a79c79ec811689c93b7",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-09-28 (tag 080-runtime-498e2faf): Hermes runtime series 0001-0014 as corrected by the independent runtime review (/opt/rhoai3/080.pins hermes.patched_tree=498e2faf0d481049111646eeb04e6cde20dcae1b; 0006 neutral rate_limited requeue, 0011 owned-worker stop request, 0014 operand-preserving near-duplicate halt) plus the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc). Superseded: sha256:7490502c71993c86be593956702b1070fb63590e32ebdd8d037ff97fb61dcec2 (ccb6a5ee, 0014 false halts). Qualified: tmp/v21-fixes/qualification-498e (27/27, review probes). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
+        "digest": "sha256:9147834b1ba45f6431bf2da6b33b62d47801b33de66e23cce18efcb007f4b1e1",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-09-28 (tag 080-runtime-498e2faf): Hermes runtime series 0001-0014 as corrected by the independent runtime review (/opt/rhoai3/080.pins hermes.patched_tree=37b147baef0c2678507c52e59e3b9231ab6ab64f; 0006 neutral rate_limited requeue, 0011 owned-worker stop request, 0014 operand-preserving near-duplicate halt) plus the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc). Superseded: sha256:7490502c71993c86be593956702b1070fb63590e32ebdd8d037ff97fb61dcec2 (ccb6a5ee, 0014 false halts). Qualified: tmp/v21-fixes/qualification-498e (27/27, review probes). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {

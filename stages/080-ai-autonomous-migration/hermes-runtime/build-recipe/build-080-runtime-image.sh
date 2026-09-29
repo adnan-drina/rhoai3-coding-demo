@@ -60,7 +60,8 @@ grep -q "hermes-runtime-patches/\*.patch | wc -l)\" -eq $N " "$W/Dockerfile" || 
 echo "   recipe pins tree $TREE and $N patches"
 
 echo "== 4. build (amd64 under emulation; cached layers help)"
-podman machine start >/dev/null 2>&1 || true
+podman machine start >/dev/null 2>&1 || true   # already running is not an error
+podman info >/dev/null 2>&1 || { echo "STOP: podman is not reachable (podman machine start failed); nothing was built"; exit 1; }
 OUTCOME_AUTHORITY_CODE_SHA256="$C" bash "$W/scripts/build-workspace-images.sh"
 
 IMG=localhost/rhoai3-ws-080:unreleased

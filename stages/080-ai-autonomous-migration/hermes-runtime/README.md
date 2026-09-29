@@ -9,7 +9,7 @@ patches are build inputs; keep their contents and application order intact.
 | Hermes base | `NousResearch/hermes-agent`, tag `v2026.8.19`, version `0.20.5` |
 | Base commit | `fcbd1076a93841fa88855acce810e342a5b78101` |
 | Patch series | [patches/](patches/), 0001–0016 in filename order |
-| Expected patched Git tree | `37b147baef0c2678507c52e59e3b9231ab6ab64f` (0001–0014: `498e2faf`, the published image) |
+| Expected patched Git tree | `37b147baef0c2678507c52e59e3b9231ab6ab64f`, the current published image (superseded 0001–0014 image: `498e2faf`) |
 | Release manifest | [RELEASE.md](RELEASE.md): published image, qualification, and the image each run uses |
 
 ## Patch responsibilities
@@ -41,21 +41,28 @@ The upstream test hunk inside 0001 is part of the pinned tree identity.
 
 ## Build contract
 
-Image assembly lives in the local, Git-ignored `workspace-images/` directory.
-From a clean checkout of the base commit, apply all sixteen patches in order
-with `git apply --index`. Require `git write-tree` to equal the expected tree
-above before building. The image build must check the patch count and tree,
-record patch checksums in `/opt/rhoai3/hermes-runtime-patches.sha256`, and stamp
-`hermes.source_sha` and `hermes.patched_tree` in `/opt/rhoai3/080.pins`.
+The canonical build recipe is versioned in [build-recipe/](build-recipe/): the
+Dockerfile, `.dockerignore`, build scripts, devfile fragment and
+[build-080-runtime-image.sh](build-recipe/build-080-runtime-image.sh). The
+build context is the local, Git-ignored `workspace-images/` directory, which
+also holds generated caches and downloaded inputs under `out/` (the MTA CLI
+archive comes from the Red Hat download page and is checksum-gated).
 
-The local `workspace-images/Dockerfile` was checked during cleanup: it already
-contains the patch application step (patch count and expected tree set by
-`tmp/080-operator/build-080-runtime-image.sh`, which also verifies the series
-from a fresh base checkout) and the authority packaging step. The
-old incremental Dockerfile hunks were removed. That local file is not supplied
-by a fresh repository clone; a separate image-build environment must implement
-this contract. See the [operations guide](../../../docs/OPERATIONS.md) for the
-workshop operating model.
+The build script:
+
+- syncs the recipe into the context and refuses a context that then differs;
+- applies all patches to a clean checkout of the base commit with
+  `git apply --index` and requires `git write-tree` to equal the expected tree;
+- requires the recipe to pin that tree and patch count;
+- builds the image, which records patch checksums in
+  `/opt/rhoai3/hermes-runtime-patches.sha256` and stamps `hermes.source_sha`
+  and `hermes.patched_tree` in `/opt/rhoai3/080.pins`;
+- reads back the tree, the patch count and the authority stamp from the built
+  image;
+- records the build context identity.
+
+See the [operations guide](../../../docs/OPERATIONS.md) for the workshop
+operating model.
 
 ## Authority packaging
 
