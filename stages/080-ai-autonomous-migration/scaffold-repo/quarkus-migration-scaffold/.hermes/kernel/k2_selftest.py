@@ -1950,5 +1950,56 @@ def v17_6b_invocation_record() -> int:
     return fails
 
 
+def number_only_repeat_checks() -> int:
+    """v28 t_564dfeaa: one grep redirected to a new numbered file each time and read back, 213 times; every
+    call and result differed only in a number, so no byte-for-byte guard fired. The fifth such call in a run is
+    refused, quoting the known answer; an exact repeat, a walk whose output grows, another run, an unknown result
+    and fewer than four prior calls are not."""
+    fails = 0
+
+    def case(name, prior, current, want_block, *, run_id="46", other_run=False, tail=True):
+        nonlocal fails
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td) / "home"
+            (home / "kanban" / "logs").mkdir(parents=True)
+            dest = Path(td) / "mod"
+            (dest / "verification").mkdir(parents=True)
+            rows = []
+            for i, (cmd, out) in enumerate(prior):
+                cmd, out = cmd.replace("DEST", str(dest)), out.replace("DEST", str(dest))
+                base = {"task": "t_nr", "run": "45" if other_run else run_id, "tool_call_id": "c%d" % i, "command": cmd}
+                rows.append(dict(base, phase="start"))
+                end = dict(base, phase="end", exit_code=0)
+                if tail:
+                    end["output_tail"] = out
+                rows.append(end)
+            (home / "kanban" / "logs" / "t_nr.exec.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+            env = {"HERMES_HOME": str(home), "HERMES_KANBAN_TASK": "t_nr", "HERMES_KANBAN_RUN_ID": run_id,
+                   "HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+            r = run(current.replace("DEST", str(dest)), [str(dest)], cwd=str(dest), extra_env=env)
+            got = r.get("action") == "block" and "NUMBER_ONLY_REPEAT" in str(r.get("message"))
+            if got != want_block:
+                print("FAIL number_only_repeat %s: %s" % (name, r), file=sys.stderr)
+                fails += 1
+            elif want_block and "12600 DEST/verification/txn_" not in str(r.get("message")).replace(str(dest), "DEST"):
+                print("FAIL number_only_repeat %s: the known answer is not quoted: %s" % (name, r), file=sys.stderr)
+                fails += 1
+
+    grep = "cat DEST/diagnostics.json | grep -o Transactional > DEST/verification/txn_clinic_full%d.txt; wc -c DEST/verification/txn_clinic_full%d.txt"
+    renamed = [(grep % (n, n), "12600 DEST/verification/txn_clinic_full%d.txt" % n) for n in range(1, 5)]
+    case("v28-shape", renamed, grep % (5, 5), True)
+    case("three-prior", renamed[1:], grep % (5, 5), False)
+    case("another-run", renamed, grep % (5, 5), False, other_run=True)
+    case("unknown-result", renamed, grep % (5, 5), False, tail=False)
+    same = [(grep % (1, 1), "12600 DEST/verification/txn_clinic_full1.txt")] * 4
+    case("exact-repeat-is-the-runtime-guard", same, grep % (1, 1), False)
+    walk = "grep -B%d void DEST/verification/Owner.java"
+    growing = [(walk % (10 * n), "\n".join("line %d" % k for k in range(n))) for n in range(1, 5)]
+    case("growing-walk", growing, walk % 50, False)
+    if not fails:
+        print("ok number_only_repeat_checks")
+    return fails
+
+
 if __name__ == "__main__":
-    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record())
+    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record() + number_only_repeat_checks())

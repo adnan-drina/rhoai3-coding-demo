@@ -97,6 +97,16 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   (`grep -B10 … -B130`). Live: `t_85e348e7` run 30 (the retry, with previous_run) edited and
   requested review in 11 calls. Evidence: `outcome-line.test.py` SmallBriefGuidance.
 
+- [x] A number-only repeat is refused (v28 `t_564dfeaa`: one grep redirected to a new
+  `txn_clinic_fullN.txt` and read back, 213 times over an hour to the 500-iteration cap;
+  every call and result differed only in a number, which the byte-for-byte runtime guards
+  and patch 0015 count as new). The K2 pre-tool hook refuses the fifth terminal call of a
+  run whose previous four had this command and one output with digits masked (not all
+  byte-identical: exact repeats stay the runtime guard's), quoting the known answer and the
+  bounded brief selectors. A walk whose output grows is not refused (architect ruling kept).
+  Evidence: `k2_selftest.py` number_only_repeat_checks (the v28 shape; exact repeat, growing
+  walk, another run, unknown result and three prior calls are not refused).
+
 Still open (not blockers of this package's source work):
 
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);

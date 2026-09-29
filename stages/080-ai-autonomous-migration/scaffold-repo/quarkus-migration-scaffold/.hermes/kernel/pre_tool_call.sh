@@ -113,6 +113,72 @@ def record_invocation():
 
 record_invocation()
 
+# Number-only repeat (v28 t_564dfeaa: 213 calls of one grep, each redirected to a
+# new file txn_clinic_fullN.txt and read back; one hour, no edit, no guard fired).
+# The runtime guards compare calls and results byte for byte, and a new number in
+# the command or the output counts there as a new call and as progress. Here a
+# terminal call is refused when the previous NUMBER_REPEAT_LIMIT completed terminal
+# calls of this run had this command and one output, both with every digit run
+# masked, and not every one of them was this exact command (an exact repeat is the
+# runtime identical-call guard). A walk whose output really changes (grep -B10,
+# -B20, ... returning more lines) is never refused here. The answer is quoted back.
+NUMBER_REPEAT_LIMIT = 4
+
+def _masked(v):
+    return re.sub(r"[0-9]+", "N", v)
+
+def number_only_repeat():
+    if tool not in ("terminal", "bash", "shell") or not cmd:
+        return ""
+    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    run_id = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
+    if not task or not run_id or not home:
+        return ""
+    parent, name = os.path.split(home)
+    root, prof = os.path.split(parent)
+    if prof == "profiles" and name and root:
+        home = root
+    try:
+        with open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), encoding="utf-8", errors="replace") as fh:
+            rows = [json.loads(x) for x in fh if x.strip()]
+    except (OSError, ValueError):
+        return ""
+    ends = {}
+    for r in rows:
+        if isinstance(r, dict) and r.get("phase") == "end" and str(r.get("run") or "") == run_id and r.get("tool_call_id"):
+            ends[str(r["tool_call_id"])] = r
+    done = []
+    for r in rows:
+        if isinstance(r, dict) and r.get("phase") == "start" and str(r.get("run") or "") == run_id:
+            e = ends.get(str(r.get("tool_call_id") or ""))
+            if e is not None:
+                done.append((str(r.get("command") or ""), e))
+    last = done[-NUMBER_REPEAT_LIMIT:]
+    if len(last) < NUMBER_REPEAT_LIMIT:
+        return ""
+    shape = _masked(cmd)
+    if any(_masked(c) != shape for c, _e in last):
+        return ""
+    if all(c == cmd for c, _e in last):
+        return ""
+    outs = [e.get("output_tail") for _c, e in last]
+    if any(not isinstance(o, str) for o in outs):
+        return ""
+    if len({_masked(o) for o in outs}) != 1 or len({str(e.get("exit_code")) for _c, e in last}) != 1:
+        return ""
+    answer = " ".join(outs[-1].split())[-300:]
+    return ("NUMBER_ONLY_REPEAT: your last %d terminal calls were this command with only a number changed, and each "
+            "returned the same answer with only a number changed (exit %s): %s -- that answer is known. Act on it: edit "
+            "the write set, or run run-verify.sh / advance.py. For a bounded view of the measured diagnostics use "
+            "brief.py --root . --symbol <name> | --file <path> | --item <id>, which also says whose obligation each is. "
+            "Changing a file name or a number does not change the question."
+            % (NUMBER_REPEAT_LIMIT, last[-1][1].get("exit_code"), answer))
+
+_nr = number_only_repeat()
+if _nr:
+    block(_nr)
+
 def preload_gaps():
     """The native --skills preload of THIS run (runtime 0016: the run-bound
     preload row the native finalizer appends to the execution ledger) left a
