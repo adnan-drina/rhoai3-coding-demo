@@ -103,11 +103,12 @@ def task_roots():
 # INVOCATION (written here, before the call can run) with its COMPLETION
 # (written by the post_tool_call observer) by tool_call_id, so the audit can
 # tell a latest invocation whose result was lost or never came from a success.
-# A file-editing tool call is recorded too, as a "mutation" row (no pairing):
-# the duplicate-observation rule below resets at any edit.
+# Every other tool call this hook sees (the Stage 050 matcher: edits, patches,
+# created files, executed code, delegation, skill changes, completion) is
+# recorded too, as a "mutation" row (no pairing): any of them may change what a
+# later read returns, so the duplicate-observation rule below resets at it.
 # Recording is best effort and never decides anything here: a missing start row
 # makes the audit read the call as unknown, never as a pass.
-MUTATING_TOOLS = ("write_file", "write", "patch", "edit_file", "str_replace")
 
 def ledger_home():
     home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
@@ -121,7 +122,7 @@ def ledger_home():
 
 def record_invocation():
     terminal = tool in ("terminal", "bash", "shell")
-    if not terminal and tool not in MUTATING_TOOLS:
+    if not tool:
         return
     task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     home = ledger_home()

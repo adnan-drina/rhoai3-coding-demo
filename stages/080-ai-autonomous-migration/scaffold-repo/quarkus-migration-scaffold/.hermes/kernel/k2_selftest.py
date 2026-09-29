@@ -1938,11 +1938,14 @@ def v17_6b_invocation_record() -> int:
         run("cat /etc/shadow", [str(dest)], cwd=str(dest), extra_env=env, extra_payload={"extra": {"tool_call_id": "call-b"}})
         run("", [str(dest)], cwd=str(dest), tool="write_file", extra_env=env, extra_input={"path": str(dest / "x")},
             extra_payload={"extra": {"tool_call_id": "call-c"}})
+        run("", [str(dest)], cwd=str(dest), tool="execute_code", extra_env=env, extra_input={"code": "print(1)"},
+            extra_payload={"extra": {"tool_call_id": "call-d"}})
         ledger = home / "kanban" / "logs" / "t_inv1.exec.jsonl"
         rows = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()] if ledger.exists() else []
         # invocation rows only: the once-per-run preload row is a separate record (phase "preload")
         got = [(r.get("phase"), r.get("tool_call_id"), r.get("run"), r.get("profile")) for r in rows if r.get("phase") != "preload"]
-        want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer"), ("mutation", "call-c", "5", "reviewer")]
+        want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer"), ("mutation", "call-c", "5", "reviewer"),
+                ("mutation", "call-d", "5", "reviewer")]
         if got != want:
             print("FAIL v17_6b_invocation_record", got, file=sys.stderr)
             fails += 1
