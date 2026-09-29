@@ -235,6 +235,23 @@ log_step "Factory Migration Workspace (app-migration destfile)"
 # require a standing mca-coolstore DevWorkspace. Assert the factory contract
 # and that the retired GitOps seats are gone.
 SKELETON_080="$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml"
+# One runtime image everywhere it is named (v26 audit: run-defaults.json and the golden
+# devfile still named sha256:6a8a69a3 while pins.json and the template named sha256:9147834b)
+GOLDEN_080="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold"
+WS080_PIN="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['pins']['workspace_overlay']['ws_080']['digest'])" "${GOLDEN_080}/.hermes/pins.json" 2>/dev/null || echo missing)"
+check "every ws-080 image reference equals the golden pin (${WS080_PIN:0:19}…)" \
+  "python3 - '${WS080_PIN}' '${SKELETON_080}' '${GOLDEN_080}/devfile.yaml' '${GOLDEN_080}/run-defaults.json' <<'PY'
+import json, re, sys
+pin, files = sys.argv[1], sys.argv[2:]
+seen = []
+for f in files:
+    text = open(f, encoding='utf-8').read()
+    seen += re.findall(r'rhoai3-ws-080@(sha256:[0-9a-f]{64})', text)
+    if f.endswith('run-defaults.json'):
+        seen.append(json.loads(text)['configuration']['workspace_overlay']['digest'])
+print('match' if seen and pin.startswith('sha256:') and set(seen) == {pin} else 'mismatch %s' % sorted(set(seen)))
+PY" \
+  "match"
 GOLDEN_DEVFILE="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/devfile.yaml"
 check_factory_mta_destfile() {
     local label="$1"
