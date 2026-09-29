@@ -1019,15 +1019,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cluster", default="", help="this card's cluster id (default: issued.json when $HERMES_KANBAN_TASK matches, else the head)")
     ap.add_argument("--section", action="append", default=[], metavar="KEY",
                     help="print only this top-level section of the brief, in full (repeatable)")
-    ap.add_argument("--full", action="store_true", help="print the whole brief even when it is large")
+    # architect review 2026-09-29, G2: the worker always reads the human digest; machines ask for JSON explicitly
+    ap.add_argument("--json", action="store_true", help="print the complete brief as JSON on stdout (for programs; "
+                    "the default is the human digest, whatever the size)")
+    ap.add_argument("--full", action="store_true", help="the same as --json (the documented machine contract)")
     ap.add_argument("--file", default="", metavar="PATH", help="every measured obligation at this path, one line each (bounded)")
     ap.add_argument("--item", default="", metavar="ID", help="one measured obligation in full")
     ap.add_argument("--symbol", default="", metavar="NAME", help="every measured obligation naming this symbol (bounded)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     doc = load_json(root / WORKLIST)
+    owners = diagnostic_owners(root)
     if args.file or args.item or args.symbol:
-        print(select_facts(doc, root, file=args.file, item=args.item, symbol=args.symbol))
+        print(select_facts(doc, root, file=args.file, item=args.item, symbol=args.symbol, owners=owners))
         return 0
     cluster, code, detail = select_cluster(doc, root, args.cluster, os.environ.get("HERMES_KANBAN_TASK") or "")
     if cluster is None:
@@ -1337,6 +1341,15 @@ def main(argv: list[str] | None = None) -> int:
         elsewhere = sorted(r["id"] for r in others if r["id"] not in own["requirements"])
         if elsewhere:
             brief["issued_checks"]["other_owners_on_these_paths"] = elsewhere
+    if cluster.get("not_open") and planned and not pending:
+        owed = planned_owed_next(cluster["id"], write_set, planned, own, root)
+        cluster["not_open"]["next"] = owed
+        brief["issued_not_open"]["next"] = owed
+        brief["procedure"] = owed
+    if owners is not None:
+        for it in items:
+            if isinstance(it, dict):
+                it["ownership"] = ownership_of(it, owners)
     stem = "brief-%s" % cluster["id"].replace(":", "-")
     write_canonical(root / LOOP_DIR / (stem + ".json"), brief)
     text = json.dumps(brief, indent=2, sort_keys=True)
@@ -1349,31 +1362,16 @@ def main(argv: list[str] | None = None) -> int:
                            % (", ".join(missing), ", ".join(sorted(brief))))
         print(json.dumps({k: brief[k] for k in args.section}, indent=2, sort_keys=True))
         return 0
-    if args.full or len(text) <= BRIEF_PRINT_LIMIT:
-        # the guidance the digest leads with (retry state, previous run, last verification, required
-        # shape, capability gaps) is printed FIRST whatever the size: v28 t_1cec0a74 got an 8 KB JSON
-        # brief whose previous_run and planned_requirements sat mid-document, and two runs read other
-        # cards' repositories instead of writing the file the card owed
-        # on stderr, flushed first: the worker's terminal shows both streams in this order, and stdout
-        # stays the brief's JSON for every caller that parses it
-        head = brief_guidance(brief, stem)
-        if head:
-            print(head + "\n\nFULL BRIEF (JSON, on stdout):", file=sys.stderr, flush=True)
+    if args.json or args.full:
         print(text)
         return 0
+    # one stream, one reading order, whatever the size (architect review 2026-09-29, G2): v28 t_1cec0a74 got
+    # an 8 KB JSON brief whose previous_run and planned_requirements sat mid-document, and a guidance header
+    # on stderr is not proof of what the terminal shows first
     print(brief_digest(brief, stem))
     return 0
 
 
-def brief_guidance(brief: dict, stem: str) -> str:
-    """The digest's leading blocks alone (everything before the cluster line), or '' when there are none."""
-    lines = brief_digest(brief, stem).split("\ncluster ", 1)[0].splitlines()[1:]
-    return "\n".join(["BRIEF GUIDANCE (read first; the full brief follows)"] + lines) if lines else ""
-
-
-# v21 t_0bc6319b: a seven-repository unit printed a 150 KB brief (~40K tokens); the terminal
-# truncated it and two runs spent 55 minutes slicing the one-line JSON file with grep windows.
-BRIEF_PRINT_LIMIT = 24000
 
 
 def _clip(value, n: int = 220) -> str:
@@ -1463,7 +1461,8 @@ def _item_line(it: dict) -> str:
     what = ("%s %s" % (sym.get("kind") or "symbol", sym.get("name"))) if sym.get("name") else \
         _clip(it.get("message") or it.get("detail") or "", 140)
     via = " (imported as %s)" % adv["imported_as"] if adv.get("imported_as") else ""
-    return "    line %s %s: %s%s" % (it.get("line"), it.get("rule_id") or it.get("code") or it.get("kind"), what, via)
+    own = (" [%s]" % it["ownership"]["label"]) if isinstance(it.get("ownership"), dict) else ""
+    return "    line %s %s: %s%s%s" % (it.get("line"), it.get("rule_id") or it.get("code") or it.get("kind"), what, via, own)
 
 
 def _subject_label(subject) -> str:
@@ -1483,18 +1482,16 @@ def brief_digest(brief: dict, stem: str) -> str:
     decided here; the full brief is unchanged on disk."""
     cl = brief.get("cluster") or {}
     rs = brief.get("_retry_state") or {}
-    out = ["BRIEF (digest: the full brief is %d characters; nothing below replaces it)" % len(json.dumps(brief))]
+    out = ["BRIEF (digest: the full brief is %d characters, on disk and with --json; nothing below replaces it)" % len(json.dumps(brief))]
+    if isinstance(brief.get("issued_not_open"), dict) and brief.get("procedure"):
+        # the one next action of a card whose compile items are gone (the same text as PROCEDURE below)
+        out += ["NEXT ACTION (this card):", textwrap.indent(textwrap.fill(str(brief["procedure"]), 110), "  ")]
     if rs.get("last_rejection") or rs.get("write_set_files_absent"):
         out += ["RETRY STATE (read first):"]
         if rs.get("deleted_by_last_revert"):
             out.append("  the last revert DELETED: %s -- they are not on the tree now" % ", ".join(rs["deleted_by_last_revert"]))
         if rs.get("write_set_files_absent"):
             out.append("  write-set files that do not exist: %s" % ", ".join(rs["write_set_files_absent"]))
-            if (cl.get("not_open") or {}) and brief.get("planned_requirements"):
-                out.append("  the compile items of this cluster are already gone (earlier cards cleared them), but this "
-                           "card's planned requirement still owes the file(s) above: write them to the REQUIRED SHAPE "
-                           "below, inside the write set, then run-verify.sh and advance.py. Other cards' files are not "
-                           "the specification; the recipe is.")
         if rs.get("last_rejection"):
             out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
             out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
@@ -1551,10 +1548,17 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  it was a HALTED INVESTIGATION: it was stopped while investigating; no candidate was judged or "
                        "rejected. Continue from what it learned below, not from the start.")
         rep = pr.get("repeated")
-        if rep:
-            out.append("  it repeated `%s` %d times (exit %s): that answer is already known -- do not run it again; "
-                       "act on it or ask a different question" % (_clip(rep.get("command"), 160), rep.get("times"),
-                                                                   "/".join(rep.get("exit_codes") or []) or "unknown"))
+        if rep and rep.get("results") == "unchanged":
+            out.append("  it ran `%s` %d times with the same complete result each time (exit %s): that answer is known "
+                       "-- act on it or ask a different question" % (_clip(rep.get("command"), 160), rep.get("times"),
+                                                                     "/".join(rep.get("exit_codes") or []) or "unknown"))
+        elif rep:
+            out.append("  it spent %d calls on one investigation like `%s` (exit %s); its results %s. That does not "
+                       "mean the question was answered: read on only to ask something new, and for measured "
+                       "diagnostics use brief.py --root . --symbol <name> | --file <path> | --item <id>"
+                       % (rep.get("times"), _clip(rep.get("command"), 160),
+                          "/".join(rep.get("exit_codes") or []) or "unknown",
+                          "were not all identical" if rep.get("results") == "changing" else "were not all recorded"))
             if rep.get("result_tail") is not None:
                 out.append("  what it returned (last %d of %s characters): %s" % (len(rep["result_tail"]), rep.get("result_chars"),
                                                                                  " ".join(str(rep["result_tail"]).split())))
@@ -1629,7 +1633,8 @@ def brief_digest(brief: dict, stem: str) -> str:
 SELECT_LIMIT = 80
 
 
-def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbol: str = "") -> str:
+def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbol: str = "",
+                 owners: dict | None = None) -> str:
     """Bounded, read-only selectors over the MEASURED work list (v24 run: workers grepped a 143K items
     section and a 100-error mvn output for facts this list already held, and the tool-loop guard halted
     them). Every answer names the candidate it was measured on and whether the tree on disk is still
@@ -1646,6 +1651,8 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
         hit = next((i for i in items if str(i.get("id")) == item), None)
         if hit is None:
             return "\n".join(head + ["no measured obligation %s: it is not reported on the measured candidate" % item])
+        if owners is not None:
+            hit = dict(hit, ownership=ownership_of(hit, owners))
         return "\n".join(head + [json.dumps(hit, indent=2, sort_keys=True)[:12000]])
     def sym(i):
         adv = i.get("advice") if isinstance(i.get("advice"), dict) else {}
@@ -1663,8 +1670,9 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
                                   "do not re-run this query unchanged." % what])
     out = head + ["%d measured obligation(s) %s:" % (len(rows), what)]
     for i in rows[:SELECT_LIMIT]:
-        out.append("  %s %s:%s %s: %s" % (i.get("id"), i.get("path"), i.get("line"), i.get("rule_id") or i.get("code") or i.get("kind"),
-                                          _clip(i.get("message") or i.get("detail") or "", 160)))
+        out.append("  %s %s:%s %s: %s%s" % (i.get("id"), i.get("path"), i.get("line"), i.get("rule_id") or i.get("code") or i.get("kind"),
+                                            _clip(i.get("message") or i.get("detail") or "", 160),
+                                            (" [%s]" % ownership_of(i, owners)["label"]) if owners is not None else ""))
     if len(rows) > SELECT_LIMIT:
         out.append("  … %d more: narrow with --file or --item" % (len(rows) - SELECT_LIMIT))
     return "\n".join(out)
@@ -1785,7 +1793,17 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
             exits = sorted({str((e or {}).get("exit_code")) for e in calls})
             done = [e for e in calls if isinstance(e, dict)]
             tail = done[-1].get("output_tail") if done else None
-            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits,
+            # a known answer is PROVEN only by the same exact command with known exits and equal complete outputs;
+            # resemblance of commands is an investigation, not an answer (architect review 2026-09-29, G2)
+            group = [r for r in starts if shape(str(r.get("command") or "")) == key]
+            known = len(done) == len(calls) and all(isinstance(e.get("exit_code"), int) and e.get("output_sha256")
+                                                   for e in done)
+            if known and all(str(r.get("command") or "") == cmd for r in group) \
+                    and len({(e.get("exit_code"), e.get("output_sha256")) for e in done}) == 1:
+                results = "unchanged"
+            else:
+                results = "changing" if known else "unknown"
+            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits, "results": results,
                         "result_tail": tail[-RESULT_TAIL:] if isinstance(tail, str) else None,
                         "result_chars": done[-1].get("output_chars") if done else None}
     step = None
@@ -1895,6 +1913,71 @@ def issued_ownership(root: Path) -> dict | None:
         return None
     return {"outcome": oid, "requirements": {str(r) for r in node.get("requirements") or []},
             "checks_now": sorted(str(c) for c in ((node.get("acceptance") or {}).get("requirement_checks") or []))}
+
+
+def diagnostic_owners(root: Path) -> dict | None:
+    """On an outcome-board/v2 card: who owns each planned obligation (the plan ownership map and every
+    node's obligations), which of them THIS card owns (native_control.owned, the same set its acceptance
+    measures), and each owner's task and status. None off the native board: no ownership is claimed there."""
+    board = _outcome_bridge._native(root)
+    if board is None:
+        return None
+    try:
+        from planner import native_control as NC
+        task, _run = _outcome_bridge._ids()
+        _role, run_id, oid, plan, node = NC.node_context(board, task)
+        rows = board.run_tasks(run_id)
+    except Exception:
+        return None
+    owners = {str(k): str(v) for k, v in (plan.get("ownership") or {}).items()}
+    for n in plan.get("nodes") or []:
+        for ob in n.get("obligations") or []:
+            owners.setdefault(str(ob), str(n.get("outcome_id") or ""))
+    return {"self": oid, "task": task, "mine": {str(x) for x in NC.owned(plan, node)}, "owners": owners,
+            "tasks": {k: {"id": str(v.get("id") or ""), "status": str(v.get("status") or "")} for k, v in rows.items()}}
+
+
+def ownership_of(item: dict, ctx: dict) -> dict:
+    """Whose obligation one measured diagnostic is, and whether it blocks THIS card's acceptance. Descriptive
+    only: it grants no write scope, and another owner's diagnostic is never this card's to repair."""
+    iid = str(item.get("id") or "")
+    if item.get("category") != "mandatory":
+        return {"owner": "", "blocks_this_card": False, "label": "not an acceptance obligation: does not block this card"}
+    if iid in ctx["mine"]:
+        return {"owner": ctx["self"], "card": ctx["task"], "blocks_this_card": True,
+                "label": "this card owns it: blocks this card until it is gone"}
+    owner = ctx["owners"].get(iid, "")
+    if owner:
+        t = ctx["tasks"].get(owner) or {}
+        return {"owner": owner, "card": t.get("id", ""), "card_status": t.get("status", ""), "blocks_this_card": False,
+                "label": "owned by %s (card %s, %s): not this card to repair; it does not block the obligations this card owns "
+                         "-- if it prevents your acceptance, say so naming that owner"
+                         % (owner, t.get("id") or "unknown", t.get("status") or "status unknown")}
+    return {"owner": "", "blocks_this_card": None,
+            "label": "owner unresolved: the plan names no owner (it may be new on this candidate); advance.py "
+                     "judges it through the measure"}
+
+
+def planned_owed_next(cid: str, write_set: list, planned: list, own: dict | None, root: Path) -> str:
+    """The one next action of an issued card whose compile items are gone while its planned requirements are
+    still owed (architect review 2026-09-29, G2): what is owed, where, by which shape, and how it is judged."""
+    subjects = ", ".join(_subject_label(r.get("subject") or r.get("id")) for r in planned[:6])
+    if own is not None:
+        checks = list(own.get("checks_now") or [])
+    else:
+        checks = sorted({str(c) for r in planned for c in r.get("acceptance") or []
+                         if str(c).startswith(("unit:", "structure:", "gate:compile", "config:"))})
+    absent = [w for w in write_set if not (root / w).exists()]
+    return ("The compile items issued to this card are no longer reported (earlier cards may have cleared them), but "
+            "this card still owes its planned requirement(s): %s. Make the write set satisfy the REQUIRED SHAPE this "
+            "brief shows for them, editing only these files: %s.%s They are judged by: %s. Then run `bash "
+            ".hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance` and `python3 "
+            ".hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster %s --card "
+            "$HERMES_KANBAN_TASK`, and follow its verdict; if the tree already satisfies them, those two commands are "
+            "the whole step. Other cards' files are not the specification; the recipe is. Do not kanban_block for this."
+            % (subjects, ", ".join(write_set) or "(none)",
+               (" Files of the write set that do not exist yet: %s." % ", ".join(absent)) if absent else "",
+               ", ".join(checks) or "the measured work list", cid))
 
 
 def planned_requirements(root: Path, write_set: list[str], own: dict | None = None) -> list[dict]:

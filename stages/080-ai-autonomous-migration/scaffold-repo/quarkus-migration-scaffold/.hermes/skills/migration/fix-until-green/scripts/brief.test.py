@@ -177,7 +177,7 @@ def _issued_cluster_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), __import__("contextlib").redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
         finally:
             os.environ.pop("HERMES_KANBAN_TASK", None)
         if rc != 0 or '"issued_not_open"' not in out.getvalue() or "advance.py" not in out.getvalue():
@@ -188,17 +188,28 @@ def _issued_cluster_case() -> int:
         try:
             buf = io.StringIO()
             with redirect_stderr(buf):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
             if rc != 1 or "LOOP_NO_OPEN_CLUSTER" not in buf.getvalue():
                 return _fail("brief.py on empty head refuses LOOP_NO_OPEN_CLUSTER: rc=%s %s" % (rc, buf.getvalue()))
             os.environ["HERMES_KANBAN_TASK"] = "t_abc12345"
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), __import__("contextlib").redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
             if rc != 0:
                 return _fail("brief.py with matching task serves the issued cluster: rc=%s %s" % (rc, err.getvalue()))
             if '"c:issued"' not in out.getvalue():
                 return _fail("brief.py must print the issued cluster: %s" % out.getvalue()[:400])
+            # architect review 2026-09-29, G2: without --json the worker reads the human digest, whatever the size,
+            # on stdout alone; --json and --full stay the complete JSON for programs
+            for argv, digest in ((["--root", str(root)], True), (["--root", str(root), "--full"], False)):
+                err, out = io.StringIO(), io.StringIO()
+                with redirect_stderr(err), __import__("contextlib").redirect_stdout(out):
+                    rc = __import__("brief").main(argv)
+                text = out.getvalue()
+                if rc != 0 or text.startswith("BRIEF (digest") != digest or (not digest and '"c:issued"' not in text) \
+                        or (digest and ("cluster c:issued" not in text or err.getvalue())):
+                    return _fail("brief.py %s prints %s: rc=%s %s | %s" % (argv[2:], "the digest" if digest else "JSON", rc,
+                                                                          text[:300], err.getvalue()[:200]))
         finally:
             if prev is None:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
@@ -268,7 +279,7 @@ def _unit_brief_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
         finally:
             if prev is None:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
@@ -466,7 +477,7 @@ def _verify_runs_brief_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), redirect_stdout(out):
-                rc = mod.main(["--root", str(root)])
+                rc = mod.main(["--root", str(root), "--json"])
         finally:
             os.environ.pop("HERMES_KANBAN_TASK", None)
         if rc != 0:
@@ -522,7 +533,7 @@ def _pending_recovery_case() -> int:
                 write_canonical(root / LOOP_DIR / "steps.json", {"pending": [row] if pending else []})
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    rc = mod.main(["--root", str(root), "--cluster", cid])
+                    rc = mod.main(["--root", str(root), "--cluster", cid, "--json"])
                 if rc:
                     return _fail("issued recovery brief must render")
                 doc = json.loads(out.getvalue())
@@ -573,7 +584,7 @@ def _candidate_checkpoint_case(pkg: str = "com/acme/shop") -> int:
         def brief() -> dict:
             out = io.StringIO()
             with redirect_stdout(out):
-                if mod.main(["--root", str(root), "--cluster", cid]):
+                if mod.main(["--root", str(root), "--cluster", cid, "--json"]):
                     raise SystemExit("brief must render")
             return json.loads(out.getvalue())
 
@@ -677,7 +688,7 @@ def _adapter_owned_brief_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
         finally:
             if prev is None:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
@@ -745,7 +756,7 @@ def _fragment_brief_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
         finally:
             if prev is None:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
@@ -814,7 +825,7 @@ def _handler_parameter_brief_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
         finally:
             if prev is None:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
@@ -907,7 +918,7 @@ def _package_validation_brief_case() -> int:
         try:
             err, out = io.StringIO(), io.StringIO()
             with redirect_stderr(err), redirect_stdout(out):
-                rc = __import__("brief").main(["--root", str(root)])
+                rc = __import__("brief").main(["--root", str(root), "--json"])
         finally:
             if prev is None:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
@@ -937,7 +948,7 @@ def _run_brief(root: Path, task: str) -> tuple[int, str]:
     try:
         err, out = io.StringIO(), io.StringIO()
         with redirect_stderr(err), redirect_stdout(out):
-            rc = __import__("brief").main(["--root", str(root)])
+            rc = __import__("brief").main(["--root", str(root), "--json"])
     finally:
         if prev is None:
             os.environ.pop("HERMES_KANBAN_TASK", None)
