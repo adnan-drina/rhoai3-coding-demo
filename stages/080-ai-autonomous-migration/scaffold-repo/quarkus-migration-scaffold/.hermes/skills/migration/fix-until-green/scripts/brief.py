@@ -356,9 +356,12 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
             out["do_not"] = ("Do not add this import again; it is already in the file. Replace %s with the "
                              "documented rename %s." % (imported, repl))
         else:
-            out["do_not"] = ("Do not add this import again; it is already in the file. The compiler cannot "
-                             "resolve it because the type is not on the destination classpath. Follow "
-                             "references[]; do not add a dependency or plugin the write set does not list.")
+            reference_action = ("Read the named references: %s. " % ", ".join(hits) if hits else
+                                "No matching reference is provided for this symbol. Use this card's qualified "
+                                "recipe or unit action if one is supplied; an empty search is not evidence of an API. ")
+            out["do_not"] = ("Do not add this import again; it is already in the file and the compiler cannot "
+                             "resolve it. An import alone does not establish classpath availability. " + reference_action +
+                             "Do not add a dependency or plugin the write set does not list.")
     return out
 
 
@@ -1341,7 +1344,7 @@ def main(argv: list[str] | None = None) -> int:
         elsewhere = sorted(r["id"] for r in others if r["id"] not in own["requirements"])
         if elsewhere:
             brief["issued_checks"]["other_owners_on_these_paths"] = elsewhere
-    if cluster.get("not_open") and planned and not pending:
+    if cluster.get("not_open") and planned and not pending and not changed_now:
         owed = planned_owed_next(cluster["id"], write_set, planned, own, root)
         cluster["not_open"]["next"] = owed
         brief["issued_not_open"]["next"] = owed
@@ -1350,6 +1353,13 @@ def main(argv: list[str] | None = None) -> int:
         for it in items:
             if isinstance(it, dict):
                 it["ownership"] = ownership_of(it, owners)
+    labels, ownership_note = diagnostic_ownership(doc, root)
+    if labels:
+        shared = [dict(i, issuance=labels[str(i.get("id"))]) for i in doc.get("items") or []
+                  if i.get("path") in write_set and str(i.get("id")) in labels
+                  and labels[str(i.get("id"))].startswith("not in")]
+        if shared:
+            brief["shared_path_diagnostics"] = {"note": ownership_note, "items": shared}
     stem = "brief-%s" % cluster["id"].replace(":", "-")
     write_canonical(root / LOOP_DIR / (stem + ".json"), brief)
     text = json.dumps(brief, indent=2, sort_keys=True)
@@ -1370,8 +1380,6 @@ def main(argv: list[str] | None = None) -> int:
     # on stderr is not proof of what the terminal shows first
     print(brief_digest(brief, stem))
     return 0
-
-
 
 
 def _clip(value, n: int = 220) -> str:
@@ -1492,6 +1500,11 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  the last revert DELETED: %s -- they are not on the tree now" % ", ".join(rs["deleted_by_last_revert"]))
         if rs.get("write_set_files_absent"):
             out.append("  write-set files that do not exist: %s" % ", ".join(rs["write_set_files_absent"]))
+            if (cl.get("not_open") or {}) and brief.get("planned_requirements"):
+                out.append("  the compile items of this cluster are already gone (earlier cards cleared them), but this "
+                           "card's planned requirements remain: implement the REQUIRED SHAPE below inside the write set, "
+                           "including each file the recipe requires, then run-verify.sh and advance.py. Other cards' files are not "
+                           "the specification; the recipe is.")
         if rs.get("last_rejection"):
             out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
             out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
@@ -1510,6 +1523,14 @@ def brief_digest(brief: dict, stem: str) -> str:
         if ic.get("other_owners_on_these_paths"):
             out.append("  %d requirement(s) on these files belong to OTHER cards -- not yours, not judged here"
                        % len(ic["other_owners_on_these_paths"]))
+    shared = brief.get("shared_path_diagnostics") or {}
+    if shared.get("items"):
+        out.append("OTHER MEASURED DIAGNOSTICS ON THESE FILES (not in this card's sealed diagnostic set):")
+        out.append("  " + shared["note"])
+        for i in shared["items"][:20]:
+            out.append("  %s: %s; %s" % (i.get("path"), _item_line(i).strip(), i["issuance"]))
+        if len(shared["items"]) > 20:
+            out.append("  remaining facts: --section shared_path_diagnostics or --symbol <name>")
     shapes = [r for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and (r.get("recipe") or {}).get("architecture")]
     if shapes:
         out += ["REQUIRED SHAPE (planned requirements this card owns%s):" % ("" if ic is not None else ", judged by these checks now")]
@@ -1524,6 +1545,22 @@ def brief_digest(brief: dict, stem: str) -> str:
             arch = " ".join(str(r["recipe"]["architecture"]).split())
             out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), arch if len(arch) <= 4000 else arch[:4000]
                        + " … (the rest: brief.py --root . --section planned_requirements)"))
+    # The catalog already supplies these actions. A section-size index is not
+    # an action: omitting them sent workers back to broad catalog/file searches.
+    actions: dict = {}
+    unit_action = (brief.get("unit") or {}).get("first_action")
+    if unit_action:
+        actions[str(unit_action)] = ["coordinated unit"]
+    for i in brief.get("items") or []:
+        action = (i.get("advice") or {}).get("first_action")
+        if action:
+            label = "%s:%s" % (i.get("path"), i.get("line"))
+            if label not in actions.setdefault(str(action), []):
+                actions[str(action)].append(label)
+    if actions:
+        out.append("DOCUMENTED FIRST ACTIONS (from this card's item/unit advice):")
+        for action, sites in actions.items():
+            out.append("  %s: %s" % (", ".join(sites), action))
     # an owned requirement no qualified recipe translates: say so before the first edit, by name
     # (v26 t_4fd2dcec cycled catalog greps for a Servlet rule that did not exist, then guessed a rename)
     gaps = [(r, u) for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and r.get("status") == "unresolved"
@@ -1548,17 +1585,11 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  it was a HALTED INVESTIGATION: it was stopped while investigating; no candidate was judged or "
                        "rejected. Continue from what it learned below, not from the start.")
         rep = pr.get("repeated")
-        if rep and rep.get("results") == "unchanged":
-            out.append("  it ran `%s` %d times with the same complete result each time (exit %s): that answer is known "
-                       "-- act on it or ask a different question" % (_clip(rep.get("command"), 160), rep.get("times"),
-                                                                     "/".join(rep.get("exit_codes") or []) or "unknown"))
-        elif rep:
-            out.append("  it spent %d calls on one investigation like `%s` (exit %s); its results %s. That does not "
-                       "mean the question was answered: read on only to ask something new, and for measured "
-                       "diagnostics use brief.py --root . --symbol <name> | --file <path> | --item <id>"
-                       % (rep.get("times"), _clip(rep.get("command"), 160),
-                          "/".join(rep.get("exit_codes") or []) or "unknown",
-                          "were not all identical" if rep.get("results") == "changing" else "were not all recorded"))
+        if rep:
+            out.append("  it repeated `%s` %d times (exit %s); %s" % (_clip(rep.get("command"), 160), rep.get("times"),
+                       "/".join(rep.get("exit_codes") or []) or "unknown",
+                       "the recorded complete results were identical" if rep.get("unchanged_result") else
+                       "result equality is unproven; the tail below is not the complete answer"))
             if rep.get("result_tail") is not None:
                 out.append("  what it returned (last %d of %s characters): %s" % (len(rep["result_tail"]), rep.get("result_chars"),
                                                                                  " ".join(str(rep["result_tail"]).split())))
@@ -1633,6 +1664,30 @@ def brief_digest(brief: dict, stem: str) -> str:
 SELECT_LIMIT = 80
 
 
+def diagnostic_ownership(doc: dict, root: Path) -> tuple[dict, str]:
+    """Describe issuance, not permission. A shared file is not shared ownership.
+    Newly introduced diagnostics remain for advance.py to judge; absence from
+    the seal never exempts a regression. Unknown/foreign issuance stays unknown."""
+    issued = load_issued(root) or {}
+    task = os.environ.get("HERMES_KANBAN_TASK") or ""
+    if not task or str(issued.get("task_id") or "") != task:
+        return {}, "ownership unknown: no sealed issuance for the current card"
+    own = set(constituents_open(issued, doc))
+    memberships: dict = {}
+    for c in doc.get("clusters") or []:
+        for iid in c.get("items") or []:
+            memberships.setdefault(str(iid), []).append(str(c.get("id") or ""))
+    labels = {}
+    for i in doc.get("items") or []:
+        iid = str(i.get("id") or "")
+        labels[iid] = ("issued to this card %s" % task if iid in own else
+                       "not in this card's sealed diagnostic set; measured cluster(s): %s" %
+                       (", ".join(sorted(memberships.get(iid) or [])) or "unassigned"))
+    return labels, ("issuance: %s / %s; sharing a file does not transfer ownership. "
+                    "This is descriptive: advance.py still judges newly introduced failures; "
+                    "these facts grant no additional write scope." % (task, issued.get("cluster")))
+
+
 def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbol: str = "",
                  owners: dict | None = None) -> str:
     """Bounded, read-only selectors over the MEASURED work list (v24 run: workers grepped a 143K items
@@ -1646,6 +1701,8 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
         measured[:12] or "(unrecorded)",
         "IS that candidate" if measured and measured == now else
         "is %s -- NOT the measured candidate: run run-verify.sh before relying on these facts" % now[:12])]
+    ownership, ownership_note = diagnostic_ownership(doc, root)
+    head.append(ownership_note)
     items = [i for i in doc.get("items") or [] if isinstance(i, dict)]
     if item:
         hit = next((i for i in items if str(i.get("id")) == item), None)
@@ -1653,7 +1710,7 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
             return "\n".join(head + ["no measured obligation %s: it is not reported on the measured candidate" % item])
         if owners is not None:
             hit = dict(hit, ownership=ownership_of(hit, owners))
-        return "\n".join(head + [json.dumps(hit, indent=2, sort_keys=True)[:12000]])
+        return "\n".join(head + [ownership.get(item, "ownership unknown"), json.dumps(hit, indent=2, sort_keys=True)[:12000]])
     def sym(i):
         adv = i.get("advice") if isinstance(i.get("advice"), dict) else {}
         return str(((adv.get("symbol") or {}) if isinstance(adv.get("symbol"), dict) else {}).get("name") or "")
@@ -1673,6 +1730,7 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
         out.append("  %s %s:%s %s: %s%s" % (i.get("id"), i.get("path"), i.get("line"), i.get("rule_id") or i.get("code") or i.get("kind"),
                                             _clip(i.get("message") or i.get("detail") or "", 160),
                                             (" [%s]" % ownership_of(i, owners)["label"]) if owners is not None else ""))
+        out.append("    " + ownership.get(str(i.get("id")), "ownership unknown"))
     if len(rows) > SELECT_LIMIT:
         out.append("  … %d more: narrow with --file or --item" % (len(rows) - SELECT_LIMIT))
     return "\n".join(out)
@@ -1774,10 +1832,10 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
     rows = [r for r in ledger if isinstance(r, dict) and str(r.get("run") or "") == rid]
     starts = [r for r in rows if r.get("phase") == "start"]
     ends = {str(r.get("tool_call_id") or ""): r for r in rows if r.get("phase") == "end"}
-    # calls that differ only in numbers are one question asked again (v28 t_1cec0a74 run 27:
-    # `grep -B10 ... -B130 "void delete" OwnerRepository.java`, one call per ten lines)
+    # Preserve operands: a number may identify a different file, range or diagnostic.
+    # Repetition is history, never permission to skip a read or an acceptance gate.
     def shape(c: str) -> str:
-        return re.sub(r"\d+", "N", c)
+        return c
     counts: dict = {}
     latest_of: dict = {}
     for r in starts[-15:]:
@@ -1793,17 +1851,13 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
             exits = sorted({str((e or {}).get("exit_code")) for e in calls})
             done = [e for e in calls if isinstance(e, dict)]
             tail = done[-1].get("output_tail") if done else None
-            # a known answer is PROVEN only by the same exact command with known exits and equal complete outputs;
-            # resemblance of commands is an investigation, not an answer (architect review 2026-09-29, G2)
-            group = [r for r in starts if shape(str(r.get("command") or "")) == key]
-            known = len(done) == len(calls) and all(isinstance(e.get("exit_code"), int) and e.get("output_sha256")
-                                                   for e in done)
-            if known and all(str(r.get("command") or "") == cmd for r in group) \
-                    and len({(e.get("exit_code"), e.get("output_sha256")) for e in done}) == 1:
-                results = "unchanged"
-            else:
-                results = "changing" if known else "unknown"
-            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits, "results": results,
+            complete = (len(done) == len(calls) and bool(done)
+                         and all(re.fullmatch(r"[a-f0-9]{64}", str(e.get("output_sha256") or ""))
+                                 and type(e.get("output_chars")) is int and e["output_chars"] >= 0
+                                 and type(e.get("exit_code")) is int for e in done))
+            unchanged = complete and len({(e["output_sha256"], e["output_chars"], e["exit_code"]) for e in done}) == 1
+            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits,
+                        "unchanged_result": unchanged,
                         "result_tail": tail[-RESULT_TAIL:] if isinstance(tail, str) else None,
                         "result_chars": done[-1].get("output_chars") if done else None}
     step = None
@@ -1973,10 +2027,12 @@ def planned_owed_next(cid: str, write_set: list, planned: list, own: dict | None
             "brief shows for them, editing only these files: %s.%s They are judged by: %s. Then run `bash "
             ".hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance` and `python3 "
             ".hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster %s --card "
-            "$HERMES_KANBAN_TASK`, and follow its verdict; if the tree already satisfies them, those two commands are "
-            "the whole step. Other cards' files are not the specification; the recipe is. Do not kanban_block for this."
+            "$HERMES_KANBAN_TASK`; only its verdict establishes completion. If the tree already satisfies them, those two "
+            "commands are the whole step. Other cards' files are not the specification; the recipe is. Do not repair "
+            "another card's diagnostics just because they share a file. Do not kanban_block for this."
             % (subjects, ", ".join(write_set) or "(none)",
-               (" Files of the write set that do not exist yet: %s." % ", ".join(absent)) if absent else "",
+               (" Write-set files that do not exist yet: %s (a missing path alone does not prove the file is "
+                "required: write one only where the REQUIRED SHAPE names it)." % ", ".join(absent)) if absent else "",
                ", ".join(checks) or "the measured work list", cid))
 
 

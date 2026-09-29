@@ -70,8 +70,12 @@ edit on a new card; a prior card's amendment never carries over.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
-#   a large brief prints a DIGEST (write set, obligations per file, procedure, a section index); read what
+#   the default always prints a DIGEST on stdout (write set, obligations per file, procedure, a section index); read what
 #   you need in full with --section <key> (e.g. --section unit --section items), never by grep/cut on the .json
+#   --full is the explicit machine-readable JSON interface, not the worker's first read.
+#   --file <path>, --symbol <name> and --item <id> give measured facts with candidate and issuance labels.
+#   A diagnostic on a shared file is not automatically this card's obligation; unsealed diagnostics may still be
+#   regressions, judged by advance.py. These selectors do not change scope or acceptance.
 #   … patch the write set one item at a time (the brief lists each item with its advice and,
 #     for pom.xml, the element at the reported line); never a whole-file rewrite; never tests … # 2. propose
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode acceptance  # 3. tools recompute the work list

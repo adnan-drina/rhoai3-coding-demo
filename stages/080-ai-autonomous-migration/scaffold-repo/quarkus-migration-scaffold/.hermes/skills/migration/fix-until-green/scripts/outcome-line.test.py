@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
+import os
 import sys
-import unittest
-import hashlib
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -133,10 +134,7 @@ class PreviousRun(unittest.TestCase):
         self.assertEqual(pr["last_loop_step"], {"script": "run-verify.sh", "exit_code": 0})
         text = BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-p")
         self.assertIn("PREVIOUS RUN of this card (run 17) ended crashed", text)
-        # five exact calls with known exits but no recorded output: an investigation, not a known answer
-        self.assertEqual(pr["repeated"]["results"], "unknown")
-        self.assertIn("it spent 5 calls on one investigation like", text)
-        self.assertNotIn("that answer is known", text)
+        self.assertIn("it repeated", text)
         self.assertIn("left in the working tree: src/main/java/a/R.java", text)
 
     def test_no_context_without_an_earlier_run_that_stopped(self):
@@ -206,57 +204,124 @@ class CapabilityGap(unittest.TestCase):
         self.assertLess(text.index("REQUIRED SHAPE"), text.index("WRITE SET"))
 
 
-class RetryAnswers(unittest.TestCase):
-    """Architect review 2026-09-29, G2: a retry brief calls an answer known only when it is PROVEN unchanged (the
-    same exact command, known exits, equal complete outputs); command resemblance is an investigation."""
-    STOPPED = [{"id": 27, "outcome": "crashed", "error": "STOP WORKER_TOOL_LOOP: read_family_no_new_content_halt"},
-               {"id": 28, "outcome": None}]
+class SmallBriefGuidance(unittest.TestCase):
+    """v28 t_1cec0a74: an 8 KB brief printed as raw JSON, its previous_run and planned requirement mid-document;
+    two runs read other cards' repositories (a `grep -B10 ... -B130` slow walk) instead of writing the owed file."""
 
-    @staticmethod
-    def _ledger(cmds, outs, *, exit_code=0):
-        rows = []
-        for i, (c, o) in enumerate(zip(cmds, outs)):
-            end = {"phase": "end", "run": "27", "tool_call_id": "w%d" % i, "exit_code": exit_code}
-            if o is not None:
-                end.update(output_tail=o[-800:], output_chars=len(o), output_sha256=hashlib.sha256(o.encode()).hexdigest())
-            rows += [{"phase": "start", "run": "27", "tool_call_id": "w%d" % i, "command": c}, end]
-        return rows
+    def test_a_changed_numeric_operand_does_not_prove_a_repeated_question(self):
+        walk = ['cat src/a/OwnerRepository.java | grep -B%d "void delete"' % n for n in range(10, 140, 10)]
+        ledger = []
+        for i, c in enumerate(walk):
+            ledger += [{"phase": "start", "run": "27", "tool_call_id": "w%d" % i, "command": c},
+                       {"phase": "end", "run": "27", "tool_call_id": "w%d" % i, "exit_code": 0, "output_tail": "void delete(Owner owner);"}]
+        pr = BR.previous_run_context([{"id": 27, "outcome": "crashed", "error": "STOP WORKER_TOOL_LOOP: read_family_no_new_content_halt"},
+                                      {"id": 28, "outcome": None}], ledger, "28", [], task="t_x")
+        self.assertIsNone(pr["repeated"])
 
-    def _text(self, ledger):
-        pr = BR.previous_run_context(self.STOPPED, ledger, "28", [], task="t_x")
-        return pr, BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-a")
+    def test_the_guidance_leads_a_small_brief_and_names_the_owed_file(self):
+        b = dict(BriefDigest.BRIEF)
+        b["cluster"] = dict(b["cluster"], not_open={"head": "u:other"})
+        b["previous_run"] = {"run": "27", "outcome": "crashed", "stop": "guard", "kind": "halted-investigation",
+                             "repeated": None, "last_loop_step": None, "left_in_tree": []}
+        head = BR.brief_digest(b, "brief-s").split("\ncluster ", 1)[0]
+        self.assertTrue(head.startswith("BRIEF (digest:"))
+        for want in ("write-set files that do not exist: a/PetRepositoryImpl.java",
+                     "card's planned requirements remain", "REQUIRED SHAPE",
+                     "PREVIOUS RUN of this card (run 27)"):
+            self.assertIn(want, head)
+        self.assertNotIn("\ncluster ", head)
 
-    def test_a_widening_walk_with_growing_output_is_not_a_known_answer(self):
-        # the review probe: four widening reads, four different outputs
-        walk = ['cat src/a/OwnerRepository.java | grep -B%d "void delete"' % n for n in (10, 20, 30, 40)]
-        pr, text = self._text(self._ledger(walk, ["line\n" * n for n in (10, 20, 30, 40)]))
-        self.assertEqual((pr["repeated"]["times"], pr["repeated"]["results"]), (4, "changing"))
-        self.assertNotIn("that answer is known", text)
-        self.assertNotIn("do not run it again", text)
-        self.assertIn("results were not all identical. That does not mean the question was answered", text)
+    def test_an_empty_digest_still_names_its_cluster_and_scope(self):
+        out = BR.brief_digest({"cluster": {"id": "c:1"}, "write_set": [], "items": []}, "brief-e")
+        self.assertIn("cluster c:1", out)
+        self.assertIn("WRITE SET (0 file(s)", out)
 
-    def test_missing_output_is_unknown_not_known(self):
-        walk = ['grep -B%d x A.java' % n for n in (10, 20, 30)]
-        pr, text = self._text(self._ledger(walk, [None, None, None]))
-        self.assertEqual(pr["repeated"]["results"], "unknown")
-        self.assertIn("were not all recorded", text)
-        self.assertNotIn("that answer is known", text)
 
-    def test_the_same_numbers_masked_are_not_the_same_command(self):
-        # equal outputs, but the commands differ in an operand: resemblance, not proof
-        cmds = ["cat src/a/Part%d.java" % n for n in (1, 2, 3)]
-        pr, text = self._text(self._ledger(cmds, ["class P {}"] * 3))
-        self.assertEqual(pr["repeated"]["results"], "changing")
-        self.assertNotIn("that answer is known", text)
+class WorkerInformation(unittest.TestCase):
+    """Exercise worker-visible outputs, not a model imitation or a new guard."""
 
-    def test_a_proven_unchanged_answer_is_named_as_known(self):
-        cmd = "grep -c Transactional src/a/ClinicServiceImpl.java"
-        pr, text = self._text(self._ledger([cmd] * 4, ["31\n"] * 4))
-        self.assertEqual(pr["repeated"]["results"], "unchanged")
-        self.assertIn("with the same complete result each time (exit 0): that answer is known", text)
-        # an unknown exit is never proof
-        pr, text = self._text(self._ledger([cmd] * 4, ["31\n"] * 4, exit_code=None))
-        self.assertEqual(pr["repeated"]["results"], "unknown")
+    def test_documented_actions_are_visible_without_another_catalog_search(self):
+        b = dict(BriefDigest.BRIEF, unit={"first_action": "replace the qualified handler parameter using UriInfo"},
+                 items=[{"path": "src/A.java", "line": 7, "advice": {"first_action": "retire @CrossOrigin"}}])
+        out = BR.brief_digest(b, "brief-x")
+        self.assertIn("coordinated unit: replace the qualified handler parameter using UriInfo", out)
+        self.assertIn("src/A.java:7: retire @CrossOrigin", out)
+        self.assertLess(out.index("DOCUMENTED FIRST ACTIONS"), out.index("WRITE SET"))
+
+    def test_missing_reference_is_explicit_and_is_not_a_classpath_claim(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "A.java").write_text("import example.Missing;\nclass A {}\n")
+            advice = BR.compile_advice({"path": "A.java", "message": "cannot find symbol\n symbol: class Missing"},
+                                       root, [], {}, [])
+            self.assertIn("No matching reference is provided", advice["do_not"])
+            self.assertNotIn("Follow references[]", advice["do_not"])
+            self.assertNotIn("type is not on the destination classpath", advice["do_not"])
+
+    def test_stdout_is_the_digest_even_for_small_briefs_and_full_is_json(self):
+        from planner.canonical import write_canonical
+        from planner.paths import WORKLIST
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            c = {"id": "c:one", "path": "src/A.java", "kind": "compile", "gate": "compile",
+                 "write_set": ["src/A.java"], "items": []}
+            write_canonical(root / WORKLIST, {"head": c["id"], "clusters": [c], "items": [],
+                                             "measure": {"tuple": [0, 0, 0], "known": True}, "not_counted": []})
+            for flags in ([], ["--full"]):
+                so, se = io.StringIO(), io.StringIO()
+                with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "", "HERMES_KANBAN_RUN_ID": ""}), \
+                        patch.object(BR, "product_paths_changed", return_value=[]), \
+                        patch.object(BR, "_previous_run", return_value=None), \
+                        patch.object(BR, "issued_ownership", return_value=None), \
+                        contextlib.redirect_stdout(so), contextlib.redirect_stderr(se):
+                    self.assertEqual(BR.main(["--root", td] + flags), 0)
+                self.assertEqual(se.getvalue(), "")
+                if flags:
+                    self.assertEqual(json.loads(so.getvalue())["cluster"]["id"], "c:one")
+                else:
+                    self.assertTrue(so.getvalue().startswith("BRIEF (digest:"))
+                    self.assertIn("WRITE SET", so.getvalue())
+                    self.assertIn("PROCEDURE", so.getvalue())
+
+    def test_shared_path_does_not_confer_ownership_and_line_shift_keeps_it(self):
+        doc = {"items": [{"id": "e:new", "identity": "diag:owned", "path": "src/A.java", "message": "Profile"},
+                         {"id": "e:other", "path": "src/A.java", "message": "Transactional"}],
+               "clusters": [{"id": "u:transactions", "items": ["e:other"]}]}
+        seal = {"task_id": "t_here", "cluster": "u:profile", "items": ["e:old"],
+                "item_identities": {"e:old": "diag:owned"}}
+        with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "t_here"}), patch.object(BR, "load_issued", return_value=seal), \
+                patch.object(BR, "candidate_sha256", return_value="c" * 64):
+            out = BR.select_facts(doc, Path("."), item="e:new")
+            self.assertIn("issued to this card t_here", out)
+            out = BR.select_facts(doc, Path("."), item="e:other")
+            self.assertIn("not in this card's sealed", out)
+            self.assertIn("u:transactions", out)
+            self.assertIn("advance.py still judges newly introduced failures", out)
+        with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "t_other"}), patch.object(BR, "load_issued", return_value=seal), \
+                patch.object(BR, "candidate_sha256", return_value="c" * 64):
+            out = BR.select_facts(doc, Path("."), file="src/A.java")
+            self.assertNotIn("issued to this card", out)
+            self.assertIn("ownership unknown", out)
+
+    def test_retry_does_not_call_changing_or_unknown_results_known(self):
+        for kind in ("changed-prefix", "missing-fingerprint", "unknown-exit", "identical"):
+            ledger = []
+            for i in range(4):
+                e = {"phase": "end", "run": "17", "tool_call_id": str(i), "exit_code": 0,
+                     "output_tail": "same last 800 characters", "output_chars": 2000,
+                     "output_sha256": (str(i) if kind == "changed-prefix" else "a") * 64}
+                if kind == "missing-fingerprint":
+                    e.pop("output_sha256")
+                if kind == "unknown-exit":
+                    e["exit_code"] = None
+                ledger += [{"phase": "start", "run": "17", "tool_call_id": str(i), "command": "cat build.log"}, e]
+            pr = BR.previous_run_context(PreviousRun.RUNS, ledger, "18", [])
+            text = BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-r")
+            self.assertNotIn("do not run it again", text)
+            if kind != "identical":
+                self.assertIn("result equality is unproven", text)
+            else:
+                self.assertIn("recorded complete results were identical", text)
 
 
 class OwedPlannedRequirement(unittest.TestCase):
@@ -270,7 +335,7 @@ class OwedPlannedRequirement(unittest.TestCase):
             nxt = BR.planned_owed_next("objective:x:1", ["a/PetTypeRepositoryImpl.java"], planned,
                                        {"checks_now": ["structure:single-injectable-implementation"]}, Path(td))
         for want in ("still owes its planned requirement(s): PetTypeRepositoryImpl", "editing only these files: a/PetTypeRepositoryImpl.java",
-                     "Files of the write set that do not exist yet: a/PetTypeRepositoryImpl.java",
+                     "Write-set files that do not exist yet: a/PetTypeRepositoryImpl.java",
                      "judged by: structure:single-injectable-implementation", "--cluster objective:x:1",
                      "those two commands are the whole step"):
             self.assertIn(want, nxt)

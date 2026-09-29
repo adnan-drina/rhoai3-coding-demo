@@ -92,37 +92,48 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   recorded 302), `response_injection.test.py` (renamed type and field, a `@JsonProperty`
   literal, unbound and foreign `Value`, `${…}` placeholders).
 
-- [x] The brief always shows the human digest (architect review G2; v28 `t_1cec0a74` gave
-  up, `t_85e348e7` run 29 halted: under 24,000 characters `brief.py` printed raw JSON, so
-  REQUIRED SHAPE, PREVIOUS RUN and the absent write-set files sat mid-document). `brief.py
-  --root .` prints the digest on stdout at any size; `--json` (or `--full`) prints the
-  complete JSON for programs. A card whose compile items are gone but whose planned
-  requirement is still owed gets one NEXT ACTION (the requirement, the write set, the
-  files still absent, the checks) in place of the generic not-open procedure. A retry
-  brief calls an answer known only when the same exact command returned the same complete
-  result with known exits; command resemblance is described as an investigation, never
-  as an answer. Evidence: `outcome-line.test.py` RetryAnswers and OwedPlannedRequirement,
-  `brief.test.py` (default digest, `--full` JSON). Live: `t_85e348e7` run 30 (with the
-  earlier guidance) edited and requested review in 11 calls.
+- [x] Worker information delivery (architect review G2 and the loop-root-cause change
+  `793c344a`, integrated): every default brief is the human digest on stdout at any size;
+  `--full` (alias `--json`) returns the complete JSON for programs, and persisted JSON is
+  unchanged. The documented unit and item first actions are printed before the write set
+  (`DOCUMENTED FIRST ACTIONS`; the earlier worker experiment inserted this action by hand,
+  so it tested a better prompt than workers received). A missing reference is said to be
+  missing, never a classpath conclusion. A card whose compile items are gone but whose
+  planned requirement is still owed gets one NEXT ACTION, identical to its PROCEDURE; a
+  retained or on-tree candidate keeps precedence. The retry history groups by the exact
+  command (numeric operands preserved) and calls results identical only on complete
+  recorded fingerprints and known exits. Evidence: `brief.test.py` (the real catalog ->
+  sealed unit -> default CLI first action), `outcome-line.test.py` (36 tests, including
+  WorkerInformation, OwedPlannedRequirement); five worker-visible regressions fail on
+  `ac24504d` and pass after. Live: none.
 
-- [x] Diagnostic ownership in the brief (architect ruling 5): on a native card, every
-  measured diagnostic in the digest and in `--file`/`--symbol`/`--item` says whether this
-  card owns it (it blocks this card), which card owns it (not this card's to repair), or
-  that its owner is unresolved. No write scope changes. Evidence: `outcome-line.test.py`
-  DiagnosticOwnership.
+- [x] Diagnostic ownership (architect ruling 5): selectors and the shared-file summary
+  label each diagnostic as issued to this card or not in its sealed set, with its measured
+  clusters (stable identities survive line shifts; foreign or missing issuance stays
+  unknown). On a native card each item also names its plan owner and card, and whether it
+  blocks this card. Nothing widens scope or exempts a regression. Evidence:
+  `outcome-line.test.py` WorkerInformation and DiagnosticOwnership.
 
-- [x] A proven duplicate observation is refused (architect review G1, which rejected the
-  number-masking rule: it refused different numbered files, output growing past the
-  800-character tail, changing counts, distinct product writes and unknown exits). v28
-  `t_564dfeaa` ran one query 213 times, writing each result to a newly named scratch file.
-  The K2 hook now refuses only when the previous four calls of the run were the same
-  recognized read-only query differing only in its scratch file name, each completed with
-  a known exit and the same complete output (the whole output, or its sha256 when longer
-  than the recorded tail), with no file edit between (edits are now recorded as
-  `mutation` rows). Anything unproven is allowed; nothing heuristic is refused.
-  Evidence: `k2_selftest.py` duplicate_observation_checks (three proven shapes refused;
-  the review's five counterexamples and seven controls allowed); the review's probe
-  re-run counting any refusal: five of five allowed.
+- [x] The K2 number-only repeat check is withdrawn (digit masking and equal output tails
+  refused distinct source files and expanding reads). Runtime exact-call and
+  unchanged-cycle protections remain. **Retained, for the architect's decision:** the
+  narrow G1 rule the review permitted, which refuses only a PROVEN duplicate observation:
+  the same recognized read-only query four times, differing only in the name of the scratch
+  file it writes, with known exits, equal complete outputs and no edit between (the v28
+  `t_564dfeaa` shape, 213 calls; the runtime counts a renamed scratch file as new
+  output). Anything unproven is allowed. Evidence: `k2_selftest.py`
+  duplicate_observation_checks, including the loop-root-cause change's counterexample
+  cases; runtime retry-path check `tmp/v26-corrections/g-corrections/`.
+
+- [ ] Residual model repetition is not qualified as fixed. The installed Qwen request
+  profile serializes the published non-thinking sampling values. In a four-request
+  same-profile probe, both original and both reformatted saved Root contexts repeated
+  the empty search (284,177 tokens). Rendering alone did not solve that case; its
+  missing Servlet translation must be distinguished from model capability. The
+  documented first-action delivery correction was added after this probe. No production
+  thinking switch, retry increase or new guard follows from this result. Evidence:
+  `tmp/model-loop-root-cause-20260929/REPORT.md`. Qualify the actual completed task
+  with its current recipes before claiming fewer loops or approving a model change.
 
 - [x] Architect review F1: a skipped `run-verify.sh` invocation earlier in the run no
   longer refuses a later successful verification (the latest invocation is judged by its

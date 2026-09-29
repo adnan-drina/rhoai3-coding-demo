@@ -1420,6 +1420,40 @@ attempts and the run deadline; read the official worker log after dispatch.
 
 **Related docs:** [Stage 080 operations](OPERATIONS.md#stage-080-golden).
 
+## Repeated tool calls: diagnose the input before changing the guard
+
+A `WORKER_TOOL_LOOP` stop describes the repeated calls, not their cause.
+Keep the task/run identity and inspect the messages the model actually received:
+the issued obligations, their qualified recipe actions, the complete tool results,
+and the legal next step after verification. Check both the pinned worker request
+profile and live server settings; explicit request sampling overrides server defaults.
+Do not infer effective sampling from a deployment manifest alone.
+
+`brief.py` now defaults to an ordered worker digest on stdout at every size.
+It includes documented item/unit first actions. `--full` is the explicit JSON
+interface; `--section` is unchanged. File, symbol and item selectors describe
+measured diagnostics and sealed issuance independently: sharing a file does not
+transfer ownership, and an unsealed diagnostic can still be a candidate regression.
+Retry summaries never infer identical results from numeric normalization or a
+matching output tail. Missing translation references are stated as missing.
+
+Qwen's non-thinking sampling is a supported profile, not proof of suitability
+for every migration task. Zero reasoning tokens or absent narration does not
+establish the cause of a loop. Compare matched saved contexts or bounded tasks
+with fixed serving identity, tools and budgets. Separate a formatting comparison
+from a model-profile comparison. A next-action improvement is not a successful
+repair; require the normal verification and acceptance before claiming that.
+Keep failed comparisons in the evidence. Do not use repeated full migration runs
+to tune sampling, and do not raise retries or add broader repetition heuristics
+as a substitute for fixing missing or contradictory instructions.
+
+The exact-call and unchanged-cycle runtime protections remain. K2 does not
+collapse numeric operands into one command: those operands can name different
+files, expanding ranges or genuinely changing results.
+The one K2 repetition refusal, `DUPLICATE_OBSERVATION`, needs proof: the same
+recognized read-only query four times in a row, differing only in the name of the
+scratch file it writes, with known exits, equal complete outputs and no edit between.
+
 ## M3 worker `REFUSE: LOOP_NO_OPEN_CLUSTER` then rummages `verification/loop/`
 
 **Affected stage:** Stage 080 dest loop card (measured live v9 `t_cc3b6aac`, 2026-09-15, after a workspace bounce)

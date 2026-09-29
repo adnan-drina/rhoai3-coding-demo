@@ -111,7 +111,7 @@ def _replay(run: str) -> int:
             f.write_text(f.read_text(encoding="utf-8").replace("import java.net.URI;\n", "import java.net.URI;\n// repaired\n"),
                          encoding="utf-8")
             specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
-            p = subprocess.run([sys.executable, str(HERE / "brief.py"), "--root", str(root), "--cluster", cluster["id"], "--json"],
+            p = subprocess.run([sys.executable, str(HERE / "brief.py"), "--full", "--root", str(root), "--cluster", cluster["id"]],
                                text=True, capture_output=True, env=dict(os.environ, HERMES_KANBAN_TASK="t_life"))
             ck = (json.loads(p.stdout or "{}").get("candidate_on_tree") or {}) if p.returncode == 0 else {}
             if not ck.get("verified") or owner not in ck.get("changed", []) or "advance.py" not in ck.get("next", ""):
