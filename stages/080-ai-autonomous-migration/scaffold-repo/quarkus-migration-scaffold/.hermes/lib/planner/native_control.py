@@ -1097,11 +1097,17 @@ def outcome_acceptance(root: Path, board: Board, task_id: str, plan: dict[str, A
     acceptance record says so, it was measured on exactly this product tree,
     and no obligation the outcome owns is open in the measured work list."""
     recs = _accept_records(board, task_id)
+    if node.get("pilot_pair"):
+        # a pair outcome is accepted by its latest INTEGRATION into the main tree: a later judgement of the same
+        # candidate in its worktree (v29 t_fa95d5e7: an unchanged rework after a change request, accept-evaluated
+        # on the worktree tree) never replaces it; a new worktree candidate is refused by integration_gap until
+        # it is integrated too
+        recs = [r for r in recs if r.get("pilot") == "integration"]
+        if not recs:
+            return False, "%s: its latest acceptance is a worktree candidate, not the main tree's integration" % node["outcome_id"]
     if not recs or not recs[-1].get("outcome_accepted"):
         return False, "no accepted measurement is recorded for %s" % node["outcome_id"]
     tree = _product_tree(root)
-    if node.get("pilot_pair") and recs[-1].get("pilot") != "integration":
-        return False, "%s: its latest acceptance is a worktree candidate, not the main tree's integration" % node["outcome_id"]
     if recs[-1].get("tree") != tree:
         # a pilot pair outcome accepted by integration stands while later commits (its sibling's
         # integration) leave everything it changed untouched (PARALLEL-M3-PILOT.md)

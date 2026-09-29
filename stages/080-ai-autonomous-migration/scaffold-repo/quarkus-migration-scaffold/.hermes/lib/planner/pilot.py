@@ -199,6 +199,12 @@ def integration_gap(root: Path, board: Any, task_id: str, node: dict[str, Any]) 
     commit = str(recs[-1].get("integrated_commit") or "")
     if not commit or git(Path(root), "merge-base", "--is-ancestor", commit, "HEAD").returncode != 0:
         return "the integrated commit %s of %s is not in the main tree's history" % (commit[:12], node["outcome_id"])
+    # a rework that changed the product in the worktree is a NEW candidate: the earlier integration never stands for it
+    wt = [r for r in board.records(task_id, "accept-commit") if r.get("pilot") == "worktree" and r.get("outcome_accepted")]
+    if wt and str(wt[-1].get("commit") or "") != str(recs[-1].get("wt_commit") or ""):
+        return ("the latest worktree candidate %s of %s is not integrated (the integration holds %s): run python3 "
+                ".hermes/kernel/native_gate.py --root . integrate" % (str(wt[-1].get("commit") or "")[:12],
+                                                                   node["outcome_id"], str(recs[-1].get("wt_commit") or "")[:12]))
     return ""
 
 

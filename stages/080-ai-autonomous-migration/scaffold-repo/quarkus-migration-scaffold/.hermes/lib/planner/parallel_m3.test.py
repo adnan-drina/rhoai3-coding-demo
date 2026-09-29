@@ -338,6 +338,55 @@ class Qualification(unittest.TestCase):
         self.assertEqual(r.native.task(m4)["status"], "todo")
         r.review_and_complete(tb, rb)
 
+    def _integrate_both(self):
+        w, r = self.w, self.w.r
+        (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
+        w.accept_in_worktree(ta, ra, wa, ia)
+        w.accept_in_worktree(tb, rb, wb, ib)
+        self.assertEqual(w.integrate(ta, ra, wa)["status"], "INTEGRATED")
+        self.assertEqual(w.integrate(tb, rb, wb)["status"], "INTEGRATED")
+        return (ta, ra, wa, ia), (tb, rb, wb, ib)
+
+    def _change_request(self, tid):
+        """The reviewer requests changes; the dispatcher starts the same card's next implementer run."""
+        r = self.w.r
+        r.native.request_review(tid)
+        r.native.claim_review(tid)
+        r.native.request_changes(tid, "procedural: a missing step in the log")
+        run, _lock = r.native.claim(tid)
+        return run
+
+    def test_an_unchanged_rework_in_the_worktree_keeps_the_integration_acceptance(self):
+        """v29 t_fa95d5e7: integrated (bc7be46), then a reviewer change request; the rework made no product change
+        and was judged again IN ITS WORKTREE (accept-evaluated on the worktree tree, no pilot mode). That record was
+        now the latest acceptance, so request_review refused OUTCOME_NOT_ACCEPTED ("its latest acceptance is a
+        worktree candidate") and the card blocked. The main tree's integration is the pair outcome's acceptance."""
+        w, r = self.w, self.w.r
+        _a, (tb, rb, wb, ib) = self._integrate_both()
+        run = self._change_request(tb)
+        w.env(tb, run)
+        NC.issue(wb, r.board, task_id=tb, run_id=run)
+        out = NC.evaluate_unchanged_rework(wb, r.board, task_id=tb, run_id=run,
+                                           measurement={"classes": ["build", "compile", "tests"]})
+        self.assertIsNotNone(out)
+        d = NC.check_terminator(r.root, r.board, task_id=tb, run_id=run, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        self.assertEqual(d["action"], "allow", d)
+
+    def test_a_new_worktree_candidate_after_integration_must_be_integrated_again(self):
+        """The guard that makes the rule above safe: a rework that CHANGES the product in the worktree is a new
+        candidate; the earlier integration never stands for it."""
+        w, r = self.w, self.w.r
+        _a, (tb, rb, wb, ib) = self._integrate_both()
+        run = self._change_request(tb)
+        w.env(tb, run)
+        iss = NC.issue(wb, r.board, task_id=tb, run_id=run)
+        w.accept_in_worktree(tb, run, wb, iss, text="// %s reworked after review\n" % iss["allowed_paths"][0])
+        with self.assertRaises(NC.Refusal) as cm:
+            NC.check_terminator(r.root, r.board, task_id=tb, run_id=run, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        self.assertEqual(cm.exception.code, "PILOT_NOT_INTEGRATED")
+
     def test_a_sibling_integration_in_flight_does_not_unaccept_the_integrated_member(self):
         """v29 t_0b68019a: its reviewer ran while the sibling's integration had applied its candidate to the main
         tree (integrate-begin; not yet verified or committed). Completion refused OUTCOME_NOT_ACCEPTED ("the tree is
