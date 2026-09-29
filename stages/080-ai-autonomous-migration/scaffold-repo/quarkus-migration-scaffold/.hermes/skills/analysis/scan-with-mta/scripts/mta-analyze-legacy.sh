@@ -324,6 +324,9 @@ echo "NOTE: --source is intentionally omitted (AD-003 amendment A)." >&2
 # --json-output is a boolean on the pinned MTA CLI 8.2.1 ("create analysis and
 # dependency output as json"): the findings are ${OUT_DIR}/output.json. The
 # console is kept beside the report because the exit judgement reads it.
+# the analyzer's Maven runs in the input copy; pin its project base there (see capture-build-evidence.sh:
+# a copy inside the destination tree otherwise inherits the destination's .mvn/maven.config)
+export MAVEN_BASEDIR="${INPUT}"
 ARGV=("${CLI}" analyze --input "${INPUT}" --output "${OUT_DIR}" "${TARGET_FLAGS[@]}" "${RULES_FLAGS[@]}" --json-output --overwrite)
 # --overwrite empties OUT_DIR when the analyzer starts, so what must survive the
 # run (start marker, console, verdict) is kept in harness scratch and copied in

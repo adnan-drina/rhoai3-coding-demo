@@ -22,6 +22,14 @@ COPY="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["analysi
 [[ -n "${COPY}" && -d "${COPY}" ]] || { echo "FAIL: BUILD_NO_ANALYSIS_COPY freeze receipt names no analysis_copy (pass --copy-to to freeze-migration-input)" >&2; exit 1; }
 [[ -f "${COPY}/pom.xml" ]] || { echo "FAIL: BUILD_NO_POM ${COPY}/pom.xml missing (non-Maven legacy is not supported by this producer)" >&2; exit 1; }
 
+# Maven looks for the project base directory (.mvn/maven.config, .mvn/jvm.config) by walking UP
+# from the working directory. The analysis copy lives inside the destination tree, so a source
+# without its own .mvn inherited the DESTINATION's .mvn/maven.config (-s .mvn/settings.xml,
+# resolved against the copy, where it does not exist): v27 M1 halted after five identical
+# `mvn -X` investigations of "The specified user settings file does not exist". The launcher
+# honours MAVEN_BASEDIR: pin it to the copy, so the source's own .mvn is read and nothing above it.
+export MAVEN_BASEDIR="${COPY}"
+
 RAW="${ROOT}/evidence/build"
 rm -rf "${RAW}"
 mkdir -p "${RAW}"

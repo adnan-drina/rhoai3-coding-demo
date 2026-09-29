@@ -255,7 +255,10 @@ class SourceRuntime:
 
     def package(self) -> str:
         log = self.log_dir / "source-package.log"
-        proc = subprocess.run([self.mvn, "-B", "-DskipTests", "package"], cwd=str(self.copy), text=True, capture_output=True)
+        # MAVEN_BASEDIR: the frozen copy is the Maven project base, never the destination tree above it
+        # (capture-build-evidence.sh: a source without its own .mvn inherited the destination's maven.config)
+        proc = subprocess.run([self.mvn, "-B", "-DskipTests", "package"], cwd=str(self.copy), text=True, capture_output=True,
+                              env=dict(os.environ, MAVEN_BASEDIR=str(self.copy)))
         log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
         if proc.returncode != 0:
             return "packaging the frozen source failed (%s); see %s" % (proc.returncode, log.name)
