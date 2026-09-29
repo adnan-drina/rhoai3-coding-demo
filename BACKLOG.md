@@ -45,34 +45,43 @@ Subsequent feature package (V26-1 with V26-2), not scheduled for a numbered run:
 Next reliability package, after v26 (recorded 2026-09-29, in priority order).
 v26 is not changed by any of these (no overlay):
 
-1. [ ] **V26-6 item 1: Servlet response/redirect guidance.**
+1. [x] **V26-6 item 1: Servlet response/redirect guidance.** Implemented on
+   `next/after-v26` (463dbd0a, source-level): undocumented catalog rows for the
+   jakarta and javax Servlet request/response types, routed to
+   controller-request-boundary; redirect becomes `ResponseEntity` with 302 and the
+   same `Location`.
    - It is live-relevant: v26 `t_4fd2dcec` run 1 (controller request boundaries,
      `RootRestController`) halted correctly on `read_cycle_no_new_content_halt`
      while cycling catalog greps for a Servlet rule that does not exist.
    - Add a qualified catalog and brief action for the supported source shape.
    - Preserve the redirect status, `Location` and context path.
-2. [ ] **V26-6 item 3: an authoritative verifier exit record.** Workers pipe
+2. [x] **V26-6 item 3: an authoritative verifier exit record.** Implemented
+   (c02e319b): `run-verify.sh` writes `verification/loop/last-verify.json`; the
+   brief prints it and the audit refuses when the verifier itself exited non-zero. Workers pipe
    `run-verify.sh | tail` or `mvn | grep; echo`, so the terminal and the ledger
    report the filter's exit code (seen on three v26 cards).
    - `run-verify.sh` should write its own exit record, and the brief should
      expose it.
    - `advance.py`'s verdict stays the authority, so acceptance is unaffected.
-3. [ ] **V26-6 item 2, remaining part: native retry handoff.** Carry the repeated
+3. [x] **V26-6 item 2, remaining part: native retry handoff.** Implemented
+   (657be426): the brief's PREVIOUS RUN block. Carry the repeated
    command and its result, and the last completed step, into the next native run.
    Introduced diagnostics, the REVERTED lockout and rework already ship in v26.
-4. [ ] **Card and handoff wording** (v26 completed-task audit):
+4. [x] **Card and handoff wording** (implemented, 398afb97) (v26 completed-task audit):
    - COMPILE bodies say "compile and pass its tests", while tests are owned by
      M4. Say that.
    - The M2 handoff says "34 children", while 31 are direct children. The
      reviewer then wrote that the M5 ids do not exist after Hermes's completion
      guard (`completion_blocked_hallucination`) rejected them as non-children.
      Name direct children and descendants separately.
-5. [ ] **Stale image values in the golden** (hygiene): `run-defaults.json`
+5. [x] **Stale image values in the golden** (implemented, edb93305; validate.sh
+   now refuses any rhoai3-ws-080 digest that differs from pins.json) (hygiene): `run-defaults.json`
    `workspace_overlay.digest` and the golden `devfile.yaml` still name
    `sha256:6a8a69a3…`. Nothing consumes them (workspaces render from the RHDH
    skeleton; launch compares `080.pins` with `pins.json`), but pin or remove them
    with each release.
-6. [ ] **V26-4 reporting tool.** v26 is reported by hand from existing records:
+6. [x] **V26-4 reporting tool.** Implemented (c3b3b80d): run-report's
+   Reliability section, `--kanban-db` for a board copy. v26 is reported by hand from existing records:
    native runs, the execution ledger and the request ledger. Script the report
    without adding a receipt or an authority.
 7. [ ] **Evidence gaps:**
@@ -82,6 +91,17 @@ v26 is not changed by any of these (no overlay):
      0015/0016 (missing local dependencies; identical on the base).
    - V26-6 acceptance still lacks a bounded worker replay of the no-local-example
      case and a same-model comparison of old and corrected brief inputs.
+
+Found in v26 and implemented on `next/after-v26` (source-level):
+
+- [x] The audit refused an abbreviated compound command (`💻 $ … + N commands`) as
+  "silence: step run-verify" on `t_d5579123` (29df6451). It now credits the line
+  only when the execution ledger records the loop script; prose is never a run.
+- [x] An empty checkpoint was accepted as a repair (`t_4fd2dcec`, 93bf5c97).
+  A checkpoint with no product change is now recorded as a witness (a9d81a3b).
+
+Publication of `next/after-v26` (main fast-forward and golden) is the Operator's
+step for a future run; no runtime patch changed, so the image stays 9147834b.
 
 Platform follow-ups (not package code):
 

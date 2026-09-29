@@ -341,6 +341,12 @@ rate.
 | 4. Brief agrees with the issued contract | **Done** | bb8e7cfd, 0b130728, 507af709 | checks from the owning outcome; other owners' requirements marked not yours; objective liveness from constituents; every obligation listed; required architecture printed whole (tests) |
 | 5. Near-duplicate progress classification | **Done** (runtime 0015) | 61d6b0ab | any new line is progress; printed identifiers, digests and timestamps are content; only the runtime's own notices are excluded; the page-13 reproduction and 25 distinct artifact pages no longer halt; identical calls and unchanged loops still halt (45 guard tests) |
 
+The open parts above are implemented after v26 on `next/after-v26`
+(source-level, not in the v26 golden): item 1 in 463dbd0a, the retry handoff
+of item 2 in 657be426, the verifier exit record of item 3 in c02e319b, and V26-4
+reporting from existing records in c3b3b80d. BACKLOG.md lists the rest of that
+package.
+
 Related defects found in v25 and fixed for v26, outside the five items:
 
 - **Unchanged rework after a procedural change request** (01c68fde, 337af57f):
