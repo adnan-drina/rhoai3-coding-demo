@@ -42,6 +42,68 @@ Subsequent feature package (V26-1 with V26-2), not scheduled for a numbered run:
 - [ ] Deferred pending measurements (V26-5): analysis reuse with complete cache
   invalidation.
 
+Next reliability package, after v26 (recorded 2026-09-29, in priority order).
+v26 is not changed by any of these (no overlay):
+
+1. [ ] **V26-6 item 1: Servlet response/redirect guidance.**
+   - It is live-relevant: v26 `t_4fd2dcec` run 1 (controller request boundaries,
+     `RootRestController`) halted correctly on `read_cycle_no_new_content_halt`
+     while cycling catalog greps for a Servlet rule that does not exist.
+   - Add a qualified catalog and brief action for the supported source shape.
+   - Preserve the redirect status, `Location` and context path.
+2. [ ] **V26-6 item 3: an authoritative verifier exit record.** Workers pipe
+   `run-verify.sh | tail` or `mvn | grep; echo`, so the terminal and the ledger
+   report the filter's exit code (seen on three v26 cards).
+   - `run-verify.sh` should write its own exit record, and the brief should
+     expose it.
+   - `advance.py`'s verdict stays the authority, so acceptance is unaffected.
+3. [ ] **V26-6 item 2, remaining part: native retry handoff.** Carry the repeated
+   command and its result, and the last completed step, into the next native run.
+   Introduced diagnostics, the REVERTED lockout and rework already ship in v26.
+4. [ ] **Card and handoff wording** (v26 completed-task audit):
+   - COMPILE bodies say "compile and pass its tests", while tests are owned by
+     M4. Say that.
+   - The M2 handoff says "34 children", while 31 are direct children. The
+     reviewer then wrote that the M5 ids do not exist after Hermes's completion
+     guard (`completion_blocked_hallucination`) rejected them as non-children.
+     Name direct children and descendants separately.
+5. [ ] **Stale image values in the golden** (hygiene): `run-defaults.json`
+   `workspace_overlay.digest` and the golden `devfile.yaml` still name
+   `sha256:6a8a69a3…`. Nothing consumes them (workspaces render from the RHDH
+   skeleton; launch compares `080.pins` with `pins.json`), but pin or remove them
+   with each release.
+6. [ ] **V26-4 reporting tool.** v26 is reported by hand from existing records:
+   native runs, the execution ledger and the request ledger. Script the report
+   without adding a receipt or an authority.
+7. [ ] **Evidence gaps:**
+   - Preloaded skill text cannot be corroborated from the session store (empty
+     `system_prompt`; the ledger records `prompt_sha256`).
+   - `test_stall_guards` and `test_cli_preloaded_skills` were not run for
+     0015/0016 (missing local dependencies; identical on the base).
+   - V26-6 acceptance still lacks a bounded worker replay of the no-local-example
+     case and a same-model comparison of old and corrected brief inputs.
+
+Platform follow-ups (not package code):
+
+- [ ] Plan the Qwen3.8 serving rollout for `c928d917` (non-thinking server
+  defaults plus `--default-chat-template-kwargs`).
+  - It is on `main`, but Argo 040 was deliberately not refreshed: the rollout
+    needs a free GPU, and the Qwen3.6 pod is already Pending.
+  - The flag is supported by vLLM `0.18.0+rhaiv.14`.
+- [ ] Qwen3.6 serves the thinking-mode sampling defaults while its workers run
+  with thinking off (the mismatch recorded for Qwen3.8 in v12). Out of v26 scope.
+- [ ] Reconcile the shared checkout: local `main` holds pre-cherry-pick copies
+  of the v26 commits, plus uncommitted edits the release has superseded.
+
+Deliberately not planned (architect rulings, 2026-09-29):
+
+- No guard for slow walks that yield a genuinely new line per call (v25 User run
+  50: 18.9M input tokens). It stays an efficiency observation with no per-card
+  cost bound; the causes (clipped text, no selectors) are fixed.
+- No model-profile switch. The screen was inconclusive: 24 requests attempted,
+  13 responses, 11 HTTP 429. A task-level comparison on the corrected harness is
+  separate work.
+
 Evidence history (v25):
 
 - V26-6 as recorded on v25: qualify Servlet response/redirect
