@@ -236,7 +236,7 @@ class VerificationState(unittest.TestCase):
     """V26-6 item 2: a verification already completed on this tree is not repeated because its run crashed;
     one of an older tree is marked stale."""
     REC = {"schema": "rhoai3.last-verify/v2", "status": "finished", "card": "t_x", "run": "17", "rc": 0,
-           "procedure": "completed", "compilation": "failed", "compilation_detail": "200 compile error(s)",
+           "procedure": "completed", "mode": "acceptance", "compilation": "failed", "compilation_detail": "200 compile error(s)",
            "tests": "not-run", "tests_detail": "compilation is not clean", "candidate_sha256": "a" * 64}
 
     def test_current_stale_unknown(self):
@@ -246,6 +246,19 @@ class VerificationState(unittest.TestCase):
         self.assertEqual(BR.verification_state(dict(self.REC, status="started"), "t_x", "a" * 64)["state"], "unknown")
         self.assertEqual(BR.verification_state(dict(self.REC, candidate_sha256=""), "t_x", "a" * 64)["state"], "unknown")
         self.assertEqual(BR.verification_state(None, "t_x", "a" * 64)["state"], "unknown")
+
+    def test_a_current_but_unusable_record_asks_for_acceptance_verification_not_an_edit(self):
+        # architect review F2: freshness is not eligibility
+        for rec, why in ((dict(self.REC, procedure="failed", rc=1, compilation="unknown"), "procedure did not complete"),
+                         (dict(self.REC, mode="diagnostic"), "diagnostic verification"),
+                         ({k: v for k, v in self.REC.items() if k not in ("procedure", "mode")}, "does not say")):
+            vs = BR.verification_state(rec, "t_x", "a" * 64)
+            self.assertEqual((vs["state"], vs["reusable"]), ("current", False))
+            text = BR.brief_digest(dict(BriefDigest.BRIEF, last_verify=dict(rec, schema="rhoai3.last-verify/v2"),
+                                        last_verify_state=vs), "brief-f2")
+            self.assertNotIn("do not re-run run-verify.sh", text)
+            self.assertIn("run run-verify.sh --mode acceptance on this tree now -- no product edit is needed", text)
+            self.assertIn(why, text)
 
     def test_the_digest_keeps_procedure_compilation_and_tests_apart(self):
         b = dict(BriefDigest.BRIEF, last_verify=self.REC, last_verify_state=BR.verification_state(self.REC, "t_x", "a" * 64))

@@ -1573,9 +1573,12 @@ def brief_digest(brief: dict, stem: str) -> str:
                       ("tests ran (Maven exit %s)" % lv.get("tests_rc")) if tests == "ran"
                       else ("tests not run: %s" % lv.get("tests_detail")) if tests == "not-run" else "tests unknown"))
         vs = brief.get("last_verify_state") or {}
-        if vs.get("state") == "current":
+        if vs.get("state") == "current" and vs.get("reusable"):
             out.append("  it is %s: that result stands -- do not re-run run-verify.sh until you change the tree "
                        "(a crashed or halted run does not make it stale)" % vs.get("why"))
+        elif vs.get("state") == "current":
+            out.append("  it is %s, but %s: run run-verify.sh --mode acceptance on this tree now -- no product edit is "
+                       "needed for that" % (vs.get("why"), vs.get("reason")))
         elif vs.get("state") == "stale":
             out.append("  it is STALE: %s -- run run-verify.sh after your edit" % vs.get("why"))
         else:
@@ -1823,7 +1826,21 @@ def verification_state(record: dict | None, task: str, candidate_now: str) -> di
         return {"state": "unknown", "why": "the record names no candidate digest"}
     if was != candidate_now:
         return {"state": "stale", "why": "the tree changed since (verified %s, now %s)" % (was[:12], candidate_now[:12])}
-    return {"state": "current", "why": "of this tree (candidate %s)" % was[:12]}
+    # current is about FRESHNESS; whether the result can stand in for the next step is separate
+    # (architect review F2): only a completed ACCEPTANCE procedure is a measurement advance.py
+    # can judge. A failed procedure or a diagnostic-only pass on this same tree calls for the
+    # acceptance verification again -- no product edit is needed for that. Missing fields are
+    # not a reason to forbid anything.
+    why = "of this tree (candidate %s)" % was[:12]
+    if record.get("procedure") == "completed" and record.get("mode") == "acceptance":
+        return {"state": "current", "reusable": True, "why": why}
+    if record.get("procedure") not in (None, "completed"):
+        reason = "its procedure did not complete (exit %s)" % record.get("rc")
+    elif record.get("mode") not in (None, "acceptance"):
+        reason = "it was a %s verification, not the acceptance measurement" % record.get("mode")
+    else:
+        reason = "the record does not say whether it was a completed acceptance measurement"
+    return {"state": "current", "reusable": False, "why": why, "reason": reason}
 
 
 def _previous_run(root: Path) -> dict | None:

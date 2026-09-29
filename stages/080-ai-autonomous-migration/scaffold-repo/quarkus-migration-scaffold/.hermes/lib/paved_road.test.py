@@ -1101,6 +1101,13 @@ class LedgerFirstAudit(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("answers terminal call cv, not the latest invocation cv2", err)
 
+    def test_a_skipped_invocation_before_a_valid_verification_does_not_poison_it(self):
+        # architect review F1: the latest invocation is judged by its own call-bound record
+        skipped = "cd /projects/modernized && false && " + self.VERIFY + " || true"
+        calls = [("cv0", skipped, 0), ("cv", self.PROFILE, 0)]
+        rc, err = self._grade("  ┊ 💻 $         false + 1 command  0.1s\n" + self.SHORT, record=self._record(), calls=calls)
+        self.assertEqual((rc, err), (0, ""))
+
     def test_an_interrupted_verifier_is_unknown(self):
         rc, err = self._both(record=self._record(status="started", rc=None))
         self.assertEqual(rc, 1)

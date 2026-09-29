@@ -686,7 +686,9 @@ def verifier_record_gap(root: Path, needle: str, task_id: str, run: str, invocat
     rc). The latest invocation is proven only when the record is this card's,
     this run's and THIS call's (tool_call_id), finished, and exited 0: a newer
     invocation that never reached the verifier leaves the older call's id, and
-    one still running leaves status started. Exit 0 is the
+    one still running leaves status started. Earlier invocations are not
+    counted: one that never reached the verifier (`false && run-verify.sh || true`)
+    says nothing about a later call that did (architect review F1). Exit 0 is the
     PROCEDURE completing; whether it compiled or ran tests is in the record's
     compilation and tests fields, never in this grade."""
     rel = VERIFIER_RECORDS.get(needle)
@@ -708,13 +710,6 @@ def verifier_record_gap(root: Path, needle: str, task_id: str, run: str, invocat
                 "the verifier to a recorded end (unknown, not success)" % (rel, doc.get("tool_call_id") or "(none)", tool_call_id))
     if doc.get("status") != "finished":
         return "the verifier's latest execution (%s) has no recorded finish: interrupted or still running, unknown" % rel
-    try:
-        seq = int(doc.get("seq"))
-    except (TypeError, ValueError):
-        seq = 0
-    if seq < invocations:
-        return ("the ledger shows %d invocation(s) of %s in run %s and the verifier recorded %d execution(s): the latest "
-                "invocation did not run it to completion (unknown, not success)" % (invocations, needle, run or "?", seq))
     try:
         rc = int(doc.get("rc"))
     except (TypeError, ValueError):
