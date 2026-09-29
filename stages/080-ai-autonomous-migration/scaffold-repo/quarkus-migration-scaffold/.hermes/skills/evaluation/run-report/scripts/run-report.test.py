@@ -806,7 +806,23 @@ class Reliability(unittest.TestCase):
         self.assertEqual(out["gave_up_cards"]["value"], ["t_b"])
         self.assertEqual(out["repeated_investigation"]["value"]["rows"][0]["identical_consecutive_calls"], 5)
         self.assertEqual(out["preload"]["value"], {"by_status": {"loaded": 1}, "runs_without_a_preload_row": 1})
-        self.assertEqual(out["checkpoints"]["value"], {"causal": 1, "witness": 1, "unrecorded": 1})
+        cp = dict(out["checkpoints"]["value"])
+        self.assertEqual(len(cp.pop("witness_rows")), 1)
+        self.assertEqual(cp, {"causal": 1, "witness": 1, "unrecorded": 1})
+
+    def test_the_v26_empty_checkpoint_gets_no_repair_credit(self):
+        # the v26 rows (no relation field yet): 93bf5c97 of t_4fd2dcec changed no product file
+        steps = {"steps": [
+            {"verdict": "baseline", "changed": ["pom.xml"]},
+            {"verdict": "accepted", "card": "t_4edde476", "commit": "a34dc895", "changed": ["pom.xml"]},
+            {"verdict": "accepted", "card": "t_bfea8f95", "commit": "6a2a0d51", "changed": ["src/main/resources/application.properties"]},
+            {"verdict": "accepted", "card": "t_730045d4", "commit": "982ba8eb", "changed": ["src/main/java/a/RootRestController.java"]},
+            {"verdict": "accepted", "card": "t_4fd2dcec", "commit": "93bf5c97", "changed": []},
+            {"verdict": "accepted", "card": "t_d5579123", "commit": "3932e158", "changed": ["src/main/java/a/R.java"]}]}
+        cp = rr.reliability(steps, "", None, None)["checkpoints"]["value"]
+        self.assertEqual((cp["causal"], cp["witness"]), (4, 1))
+        self.assertEqual([w["card"] for w in cp["witness_rows"]], ["t_4fd2dcec"])
+        self.assertEqual(rr.step_relation({"verdict": "accepted"}), "unrecorded")
 
     def test_unknown_without_the_records(self):
         out = rr.reliability(None, "no loop record", None, None)

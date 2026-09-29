@@ -1071,6 +1071,7 @@ def loop_work(tree: Tree, steps_doc: Any, steps_why: str, board: Dict[str, Any])
     out: Dict[str, Any] = {}
 
     accepted = [s for s in steps if s.get("verdict") == "accepted"]
+    repairs = [s for s in accepted if step_relation(s) == "causal"]
     classes: Dict[str, List[Dict[str, Any]]] = {"reverted": [], "closed-without-verdict": [], "m4-close": []}
     for r in rejected:
         classes[classify_rejected(r)].append(r)
@@ -1092,6 +1093,10 @@ def loop_work(tree: Tree, steps_doc: Any, steps_why: str, board: Dict[str, Any])
         cards["minted"] = U("%s: %s; no board export given" % (MINTS, mints_why or "no created cards"), MINTS)
     cards["in_loop_record"] = V(len(record_cards), STEPS + " (+ issued.json)")
     cards["accepted"] = V(len(accepted), STEPS + "#steps[verdict=accepted]")
+    # v26 93bf5c97: an accepted checkpoint that changed no product file is existing satisfaction, not a repair
+    cards["accepted_repairs"] = V(len(repairs), STEPS + "#steps[verdict=accepted, relation=causal else changed non-empty]")
+    cards["accepted_witnesses"] = V([{"card": s.get("card"), "commit": str(s.get("commit") or "")[:12]} for s in accepted
+                                     if step_relation(s) == "witness"], STEPS + "#steps[relation=witness else changed empty]")
     cards["reverted"] = V(len(classes["reverted"]), STEPS + "#rejected (attempt rows)")
     cards["reverted_then_rewound"] = V(sum(1 for r in classes["reverted"] if r.get("rewound")), STEPS + "#rejected[rewound]")
     cards["closed_without_verdict"] = V([{"card": r.get("card"), "cluster": r.get("cluster")} for r in classes["closed-without-verdict"]], STEPS + "#rejected")
@@ -2035,6 +2040,18 @@ def render(rep: Dict[str, Any]) -> str:
 GUARD_RE = re.compile(r"guardrail (\w+)")
 
 
+def step_relation(step: Dict[str, Any]) -> str:
+    """causal / witness / unrecorded for an accepted step: advance.py's relation when it
+    recorded one, else what its own changed list says (a step recorded before relations
+    existed, v26 and earlier)."""
+    r = str(step.get("relation") or "")
+    if r in ("causal", "witness"):
+        return r
+    if isinstance(step.get("changed"), list):
+        return "causal" if step["changed"] else "witness"
+    return "unrecorded"
+
+
 def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kanban_db: Optional[Path]) -> Dict[str, Any]:
     """V26-4: the reliability measures of one run, from records it already keeps -- native run
     rows (a read-only copy of the board database), the per-card execution ledgers and the
@@ -2124,10 +2141,16 @@ def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kan
         out["checkpoints"] = U(steps_why or "no loop record")
     else:
         rel: Dict[str, int] = {}
+        witnesses: List[Dict[str, Any]] = []
         for s in steps_doc.get("steps") or []:
             if isinstance(s, dict) and s.get("verdict") == "accepted":
-                rel[str(s.get("relation") or "unrecorded")] = rel.get(str(s.get("relation") or "unrecorded"), 0) + 1
-        out["checkpoints"] = V(rel, STEPS, "'unrecorded' = an acceptance recorded before checkpoint relations existed")
+                r = step_relation(s)
+                rel[r] = rel.get(r, 0) + 1
+                if r == "witness":
+                    witnesses.append({"card": s.get("card"), "commit": str(s.get("commit") or "")[:12], "cluster": s.get("cluster")})
+        out["checkpoints"] = V(dict(rel, witness_rows=witnesses), STEPS + "#steps[relation, else changed]",
+                               "causal = the accepted candidate changed product files (a repair); witness = it changed none "
+                               "(existing satisfaction recorded, no repair credit); unrecorded = neither field present")
     return out
 
 

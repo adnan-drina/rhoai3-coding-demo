@@ -789,11 +789,17 @@ def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: d
                                      "record": evidence["key"], "relation": "witness"}}, []
 
 
-def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: str = "") -> dict[str, Any]:
+def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: str = "",
+          replay_unchanged: bool = False) -> dict[str, Any]:
     """The scope of this native run: the one open cluster (or planned unit,
     owner repair unit, rework unit) of the task's outcome, the baseline it is
     measured against and the budget it spends from. Recorded as an ``issue``
-    record on the task; loop tools read its projection (issued.json)."""
+    record on the task; loop tools read its projection (issued.json).
+
+    ``replay_unchanged`` (the worker's own ``native_gate.py issue``): a repeat
+    that would record exactly this run's latest issue again returns it instead
+    of a duplicate record. A re-issue the loop makes after a verdict (the
+    bridge's CONTINUE) is a new attempt and always records a new issue."""
     root = Path(root)
     _gate(root)
     t = live_run(board, task_id, run_id)
@@ -885,10 +891,14 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             allowed = sorted(set(allowed) | amended_paths(board, task_id, cluster))
         elif satisfied is None and not (unit and unit.get("refusal")):
             satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
-    seq = len([r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]) + 1
-    rec = board.record(task_id, "issue", "issue:%d:%d" % (run_id, seq), run=int(run_id), seq=seq, outcome_id=oid,
-                       role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
-                       budget_key=budget["key"], revision=int(plan["revision"]))
+    fields = dict(outcome_id=oid, role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
+                  budget_key=budget["key"], revision=int(plan["revision"]))
+    rec = _unchanged_issue(board, task_id, run_id, fields) if replay_unchanged else None
+    replayed = rec is not None
+    if rec is None:
+        seq = len([r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]) + 1
+        rec = board.record(task_id, "issue", "issue:%d:%d" % (run_id, seq), run=int(run_id), seq=seq, **fields)
+    seq = int(rec.get("seq") or 0)
     nxt = ""
     if satisfied is not None:
         # recorded once per native run (a replayed issue finds the key); judged later exactly like any
@@ -906,7 +916,11 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         nxt = ("NOTHING ISSUED: %s has no open scope and is not satisfied (%s). kanban_block kind=needs_input naming "
                "these reasons." % (oid, "; ".join(([("planned unit refused: %s" % unit["refusal"])] if unit and unit.get("refusal") else [])
                                          + unsatisfied[:3]) or "no reason measured"))
-    return {"issue_id": seq, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
+    if replayed:
+        nxt = ("ALREADY ISSUED: issue %d of this run is unchanged (same scope, baseline, budget and plan revision; nothing "
+               "recorded since), so nothing new was recorded. To inspect it, read verification/loop/issued.json or run "
+               "brief.py; issuing again changes nothing. %s" % (seq, nxt)).strip()
+    return {"issue_id": seq, "replayed": replayed, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
             "cluster": cluster, "allowed_paths": allowed, "budget": budget, "retained_candidate": bool(pending),
             "objective": objective,
             "planned_unit": (dict(unit, owed=unit.get("owed") or [], bounds=unit.get("bounds") or {},
@@ -917,6 +931,24 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             "control": "native-cooperative", "record": rec["key"],
             "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
                            for a in board.records(task_id, "amend") if a.get("cluster") == cluster] if cluster else []}
+
+
+def _unchanged_issue(board: Board, task_id: str, run_id: int, fields: dict[str, Any]) -> dict[str, Any] | None:
+    """This run's latest issue record when a repeated issue would record the same thing again: the same
+    outcome, role, scope, baseline, budget key and plan revision, and no domain record of any kind written
+    on the task since it (a verdict, an acceptance, an amendment, a park all make the next issue a new one).
+    v26 t_7c356ade issued seven times in forty seconds while reading the output: seven identical records,
+    each with its own key, for one unchanged authority."""
+    recs = board.records(task_id)
+    mine = [r for r in recs if r.get("kind") == "issue" and int(r.get("run") or 0) == int(run_id)]
+    if not mine:
+        return None
+    last = mine[-1]
+    if any(int(r.get("_id") or 0) > int(last.get("_id") or 0) for r in recs):
+        return None
+    if any(last.get(k) != v for k, v in fields.items()):
+        return None
+    return last
 
 
 def active_issue(board: Board, task_id: str, run_id: int) -> dict[str, Any]:

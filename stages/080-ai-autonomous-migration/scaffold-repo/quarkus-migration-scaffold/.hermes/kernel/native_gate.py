@@ -236,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if not gaps else 1
         elif ns.cmd == "issue":
             out = NC.issue(root, board, task_id=task, run_id=run_id,
-                           claim_lock=(os.environ.get("HERMES_KANBAN_CLAIM_LOCK") or "").strip())
+                           claim_lock=(os.environ.get("HERMES_KANBAN_CLAIM_LOCK") or "").strip(), replay_unchanged=True)
             out["issued_record"] = write_issued_projection(root, out)
         elif ns.cmd == "verdict":
             from planner.canonical import product_tree_sha256

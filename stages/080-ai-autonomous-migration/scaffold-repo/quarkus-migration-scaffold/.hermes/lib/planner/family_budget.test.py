@@ -110,6 +110,35 @@ class FamilyBudget(unittest.TestCase):
         iss = NC.issue(r.root, r.board, task_id=ta, run_id=ra2)
         self.assertEqual((iss["budget"]["spent"], iss["budget"]["limit"]), (2, LIMIT))   # ten remain, nothing replenished
 
+    def test_an_unchanged_reissue_records_nothing_new(self):
+        # v26 t_7c356ade: seven issues in one run, nothing changed between them
+        r = self.r
+        NB.mirror_layout(r.root)
+        ta, ra, first = r.issue(self.a)
+        n = len(r.board.records(ta, "issue"))
+        again = [NC.issue(r.root, r.board, task_id=ta, run_id=ra, replay_unchanged=True) for _ in range(6)]
+        self.assertEqual(len(r.board.records(ta, "issue")), n)
+        self.assertEqual({i["issue_id"] for i in again}, {first["issue_id"]})
+        self.assertTrue(all(i["replayed"] for i in again))
+        self.assertIn("ALREADY ISSUED", again[-1]["next"])
+        self.assertEqual({(i["cluster"], tuple(i["allowed_paths"]), i["baseline_tree"], i["budget"]["key"], i["budget"]["spent"])
+                          for i in again}, {(first["cluster"], tuple(first["allowed_paths"]), first["baseline_tree"],
+                                             first["budget"]["key"], first["budget"]["spent"])})
+        if first.get("cluster"):
+            NG.write_issued_projection(r.root, first)
+            one = (r.root / "verification/loop/issued.json").read_text()
+            NG.write_issued_projection(r.root, again[-1])
+            self.assertEqual((r.root / "verification/loop/issued.json").read_text(), one)
+        # anything recorded since makes the next issue a new one, with its own key
+        _reject(r, ta, ra, 1)
+        nxt = NC.issue(r.root, r.board, task_id=ta, run_id=ra, replay_unchanged=True)
+        self.assertFalse(nxt["replayed"])
+        self.assertEqual(nxt["issue_id"], first["issue_id"] + 1)
+        self.assertEqual(nxt["budget"]["spent"], 1)
+        # the loop's own re-issue (the bridge's CONTINUE after a verdict) is always a new attempt
+        cont = NC.issue(r.root, r.board, task_id=ta, run_id=ra)
+        self.assertEqual((cont["replayed"], cont["issue_id"]), (False, nxt["issue_id"] + 1))
+
     def test_issue_projection_bridge_and_brief_show_the_same_numbers(self):
         r = self.r
         NB.mirror_layout(r.root)
