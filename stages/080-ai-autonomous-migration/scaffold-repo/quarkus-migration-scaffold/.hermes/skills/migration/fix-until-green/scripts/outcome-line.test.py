@@ -108,6 +108,42 @@ class LastVerification(unittest.TestCase):
         self.assertIn("LAST VERIFICATION: exit 1 (acceptance, card t_x, run 7, T)", text)
 
 
+class PreviousRun(unittest.TestCase):
+    """V26-6 item 2 (v25 t_e5f21725 run 18): the retry did not know its predecessor repeated a grep five times,
+    nor where the loop stood."""
+    GREP = 'mvn compile | grep -E "RootRestController|HttpServerResponse" ; echo "EXIT: $?"'
+    RUNS = [{"id": 17, "outcome": "crashed", "error": "STOP WORKER_TOOL_LOOP: tool terminal, guardrail identical_call_streak_halt"},
+            {"id": 18, "outcome": None}]
+
+    def _ledger(self):
+        rows = []
+        for i, cmd in enumerate(["python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .",
+                                 "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . | tail -40"]
+                                + [self.GREP] * 5):
+            rows += [{"phase": "start", "run": "17", "tool_call_id": "c%d" % i, "command": cmd},
+                     {"phase": "end", "run": "17", "tool_call_id": "c%d" % i, "exit_code": 0}]
+        return rows
+
+    def test_the_retry_learns_what_its_predecessor_repeated_and_where_it_stopped(self):
+        pr = BR.previous_run_context(self.RUNS, self._ledger(), "18", ["src/main/java/a/R.java"])
+        self.assertEqual((pr["run"], pr["outcome"]), ("17", "crashed"))
+        self.assertEqual((pr["repeated"]["times"], pr["repeated"]["command"]), (5, self.GREP))
+        self.assertEqual(pr["last_loop_step"], {"script": "run-verify.sh", "exit_code": 0})
+        text = BR.brief_digest(dict(BriefDigest.BRIEF, previous_run=pr), "brief-p")
+        self.assertIn("PREVIOUS RUN of this card (run 17) ended crashed", text)
+        self.assertIn("it repeated", text)
+        self.assertIn("left in the working tree: src/main/java/a/R.java", text)
+
+    def test_no_context_without_an_earlier_run_that_stopped(self):
+        self.assertIsNone(BR.previous_run_context([{"id": 18, "outcome": None}], [], "18", []))
+        self.assertIsNone(BR.previous_run_context([{"id": 17, "outcome": "review_requested"}, {"id": 18, "outcome": None}], [], "18", []))
+
+    def test_a_run_without_ledger_rows_keeps_unknowns_unknown(self):
+        pr = BR.previous_run_context(self.RUNS, [], "18", [])
+        self.assertIsNone(pr["repeated"])
+        self.assertIsNone(pr["last_loop_step"])
+
+
 class IssuedOwnership(unittest.TestCase):
     """Architect review 2026-09-29 §3 / v24 run t_dbde15ae: the Profile card shares repository paths with
     six repository-architecture requirements owned by other cards; its digest must not advertise their

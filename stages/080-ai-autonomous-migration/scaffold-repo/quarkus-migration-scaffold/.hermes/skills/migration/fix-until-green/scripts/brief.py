@@ -1308,6 +1308,9 @@ def main(argv: list[str] | None = None) -> int:
                     "still reported, or a sealed member that violates its rule all refuse the card. So repair the whole "
                     "unit in one candidate; do not stop half way to make the count fall."),
             }
+    pr = _previous_run(root)
+    if pr is not None:
+        brief["previous_run"] = pr
     lv = root / LOOP_DIR / "last-verify.json"
     if lv.is_file():
         try:
@@ -1492,6 +1495,17 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  budget %s: key %s, %s of %s spent (%s)" % (name, b.get("key"), b.get("spent"), b.get("limit"), b.get("means")))
         else:
             out.append("  budget: %s stops first" % b)
+    pr = brief.get("previous_run") if isinstance(brief.get("previous_run"), dict) else None
+    if pr is not None:
+        out.append("PREVIOUS RUN of this card (run %s) ended %s: %s" % (pr.get("run"), pr.get("outcome"), _clip(pr.get("stop"), 200)))
+        rep = pr.get("repeated")
+        if rep:
+            out.append("  it repeated `%s` %d times (exit %s): that answer is already known -- do not run it again; "
+                       "act on it or ask a different question" % (_clip(rep.get("command"), 160), rep.get("times"),
+                                                                   "/".join(rep.get("exit_codes") or []) or "unknown"))
+        st = pr.get("last_loop_step")
+        out.append("  last loop step it completed: %s" % ("%s (exit %s)" % (st["script"], st["exit_code"]) if st else "none recorded"))
+        out.append("  left in the working tree: %s" % (", ".join(pr.get("left_in_tree") or []) or "no product edits"))
     lv = brief.get("last_verify") if isinstance(brief.get("last_verify"), dict) else None
     if lv is not None:
         out.append("LAST VERIFICATION: exit %s (%s, card %s, run %s, %s) -- the verifier's own status; a filter piped "
@@ -1638,6 +1652,80 @@ def behaviour_brief(row: dict) -> dict:
                      "listed scenarios through the generated repository (reads, and writes read back in a later request); "
                      "an unresolved row stays an open verification debt owned by this unit, never a PASS")}
     return out
+
+
+LOOP_STEP_SCRIPTS = ("brief.py", "run-verify.sh", "advance.py", "native_gate.py", "restore-pending.py", "amend-scope.py")
+ENDED_WITHOUT_HANDOFF = ("crashed", "gave_up", "blocked", "timed_out", "spawn_failed", "reclaimed")
+
+
+def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list) -> dict | None:
+    """V26-6 item 2: what the previous native run of THIS card did before it stopped, from
+    existing records only -- the native run row (outcome, stop reason), the execution
+    ledger (the call it repeated, the last loop step it completed and how) and the working
+    tree (edits left behind). None when there is no earlier run that ended without a
+    handoff. Missing records stay unknown; nothing is inferred."""
+    try:
+        cur = int(current_run or 0)
+    except ValueError:
+        cur = 0
+    prev = [r for r in runs if isinstance(r, dict) and int(r.get("id") or 0) < cur
+            and str(r.get("outcome") or "") in ENDED_WITHOUT_HANDOFF]
+    if not prev:
+        return None
+    last = prev[-1]
+    rid = str(last.get("id"))
+    rows = [r for r in ledger if isinstance(r, dict) and str(r.get("run") or "") == rid]
+    starts = [r for r in rows if r.get("phase") == "start"]
+    ends = {str(r.get("tool_call_id") or ""): r.get("exit_code") for r in rows if r.get("phase") == "end"}
+    counts: dict = {}
+    for r in starts[-15:]:
+        c = str(r.get("command") or "")
+        counts[c] = counts.get(c, 0) + 1
+    repeated = None
+    if counts:
+        cmd, times = max(counts.items(), key=lambda kv: kv[1])
+        if times >= 3:
+            exits = sorted({str(ends.get(str(r.get("tool_call_id") or ""))) for r in starts if str(r.get("command") or "") == cmd})
+            repeated = {"command": cmd[:240], "times": times, "exit_codes": exits}
+    step = None
+    for r in reversed(starts):
+        c = str(r.get("command") or "")
+        hit = next((sname for sname in LOOP_STEP_SCRIPTS if sname in c), None)
+        if hit:
+            code = ends.get(str(r.get("tool_call_id") or ""))
+            step = {"script": hit, "exit_code": "unknown" if code is None else code}
+            break
+    return {"run": rid, "outcome": str(last.get("outcome") or ""), "stop": str(last.get("error") or last.get("summary") or "")[:300],
+            "repeated": repeated, "last_loop_step": step, "left_in_tree": list(dirty)[:10]}
+
+
+def _previous_run(root: Path) -> dict | None:
+    board = _outcome_bridge._native(root)
+    task, run = _outcome_bridge._ids()
+    if board is None or not task:
+        return None
+    try:
+        runs = board.native.runs(task)
+    except Exception:
+        return None
+    home = (os.environ.get("HERMES_HOME") or "").rstrip("/")
+    parent, name = os.path.split(home)
+    base, profiles = os.path.split(parent)
+    home = base if profiles == "profiles" and name and base else home
+    ledger = []
+    if home:
+        lp = Path(home) / "kanban" / "logs" / ("%s.exec.jsonl" % task)
+        if lp.is_file():
+            for line in lp.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    ledger.append(json.loads(line))
+                except ValueError:
+                    continue
+    try:
+        dirty = product_paths_changed(root)
+    except Exception:
+        dirty = []
+    return previous_run_context(runs, ledger, str(run), dirty)
 
 
 def issued_ownership(root: Path) -> dict | None:
