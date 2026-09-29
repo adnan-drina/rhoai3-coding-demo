@@ -101,6 +101,13 @@ class BriefDigest(unittest.TestCase):
         self.assertIn("a/R.java:21 cannot find symbol symbol: class HttpServerResponse", text)
 
 
+class LastVerification(unittest.TestCase):
+    def test_the_digest_names_the_verifiers_own_exit(self):
+        b = dict(BriefDigest.BRIEF, last_verify={"rc": 1, "mode": "acceptance", "card": "t_x", "run": "7", "finished_at": "T"})
+        text = BR.brief_digest(b, "brief-v")
+        self.assertIn("LAST VERIFICATION: exit 1 (acceptance, card t_x, run 7, T)", text)
+
+
 class IssuedOwnership(unittest.TestCase):
     """Architect review 2026-09-29 §3 / v24 run t_dbde15ae: the Profile card shares repository paths with
     six repository-architecture requirements owned by other cards; its digest must not advertise their

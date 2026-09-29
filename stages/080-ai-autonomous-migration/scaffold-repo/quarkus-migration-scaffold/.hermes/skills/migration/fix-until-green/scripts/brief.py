@@ -1308,6 +1308,12 @@ def main(argv: list[str] | None = None) -> int:
                     "still reported, or a sealed member that violates its rule all refuse the card. So repair the whole "
                     "unit in one candidate; do not stop half way to make the count fall."),
             }
+    lv = root / LOOP_DIR / "last-verify.json"
+    if lv.is_file():
+        try:
+            brief["last_verify"] = load_json(lv)
+        except (OSError, ValueError):
+            pass
     own = issued_ownership(root)
     planned = planned_requirements(root, write_set, own)
     if planned:
@@ -1486,6 +1492,11 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  budget %s: key %s, %s of %s spent (%s)" % (name, b.get("key"), b.get("spent"), b.get("limit"), b.get("means")))
         else:
             out.append("  budget: %s stops first" % b)
+    lv = brief.get("last_verify") if isinstance(brief.get("last_verify"), dict) else None
+    if lv is not None:
+        out.append("LAST VERIFICATION: exit %s (%s, card %s, run %s, %s) -- the verifier's own status; a filter piped "
+                   "after run-verify.sh does not change it" % (lv.get("rc"), lv.get("mode"), lv.get("card") or "?",
+                                                               lv.get("run") or "?", lv.get("finished_at") or "?"))
     out += ["cluster %s  kind %s  path %s" % (cl.get("id"), cl.get("kind"), cl.get("path")),
            "measure %s   loop-deferral attempts left %s   budget %s" % (_clip((brief.get("measure") or {}).get("tuple") or brief.get("measure"), 80),
                                                         brief.get("attempts_left"), _clip(brief.get("budget"), 160)),

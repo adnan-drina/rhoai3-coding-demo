@@ -1028,5 +1028,37 @@ class AbbreviatedCompoundCommand(unittest.TestCase):
         self.assertIn("silence: step", err)
 
 
+class VerifierOwnExit(unittest.TestCase):
+    """V26-6 item 3: `run-verify.sh | tail -40` records tail's exit 0 in the ledger; the verifier's own record
+    (verification/loop/last-verify.json, written on every exit path) is its status."""
+    FX = Path(__file__).resolve().parent.parent / "skills" / "paved-road" / "paved-road-m3" / "fixtures" / "green-m3"
+
+    def _grade(self, record):
+        import shutil
+        import tempfile
+        from paved_road import evaluate_audit, load_steps
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "fx"
+            shutil.copytree(self.FX, root)
+            if record is not None:
+                (root / "verification" / "loop" / "last-verify.json").write_text(json.dumps(record), encoding="utf-8")
+            text = (root / "official.log").read_text(encoding="utf-8")
+            ledger = intent_ledger(text)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                rc = evaluate_audit(text, load_steps(self.FX.parents[1] / "steps.json"), root, ledger)
+            return rc, err.getvalue()
+
+    def test_a_failed_verifier_behind_a_clean_pipeline_refuses(self):
+        rc, err = self._grade({"rc": 1, "card": "t_green", "run": "1"})
+        self.assertIn("the verifier itself exited 1", err)
+
+    def test_a_record_of_another_card_or_run_does_not_count(self):
+        self.assertNotIn("the verifier itself", self._grade({"rc": 1, "card": "t_other", "run": "1"})[1])
+        self.assertNotIn("the verifier itself", self._grade({"rc": 1, "card": "t_green", "run": "9"})[1])
+
+    def test_a_clean_verifier_record_passes(self):
+        self.assertEqual(self._grade({"rc": 0, "card": "t_green", "run": "1"}), (0, ""))
+
+
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

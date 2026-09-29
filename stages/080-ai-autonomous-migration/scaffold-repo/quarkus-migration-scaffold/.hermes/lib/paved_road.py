@@ -707,6 +707,28 @@ def handoff_review_failures(root: Path, task_id: str, phase: str) -> list[str]:
     return review_gaps(root, phase, task_id)
 
 
+VERIFIER_RECORDS = {"run-verify.sh": "verification/loop/last-verify.json"}
+
+
+def verifier_record(root: Path, needle: str, task_id: str, run: str) -> int | None:
+    """The exit code a verifier recorded for ITS OWN latest execution on this card
+    and native run (run-verify.sh writes it on every exit path), or None when the
+    script keeps no such record or the record is another card's or run's."""
+    rel = VERIFIER_RECORDS.get(needle)
+    if not rel:
+        return None
+    try:
+        doc = json.loads((Path(root) / rel).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or str(doc.get("card") or "") != task_id or (run and str(doc.get("run") or "") != run):
+        return None
+    try:
+        return int(doc.get("rc"))
+    except (TypeError, ValueError):
+        return None
+
+
 def preloaded_skill(ledger: list[dict[str, Any]] | None, task_id: str, skill: str, root: Path) -> bool:
     """The native --skills preload put ``skill`` into the LATEST implementer run of
     this task: the run-bound preload row the native finalizer wrote (runtime
@@ -832,6 +854,13 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
         if last_exit != 0:
             failures.append("the latest invocation of needle %r did not exit 0 (step %s exit_code=%s)"
                             % (needle, sid, "unknown" if last_exit is None else last_exit))
+            continue
+        # V26-6 item 3: a pipeline (`run-verify.sh | tail`) records the filter's exit; the verifier's
+        # own record for this card and run, when present, is its status
+        own = verifier_record(root, needle, task_id, str(latest["start"].get("run") or ""))
+        if own is not None and own != 0:
+            failures.append("the verifier itself exited %s for step %s (%s), whatever its pipeline returned"
+                            % (own, sid, VERIFIER_RECORDS[needle]))
             continue
         # a script whose default is a plan (dry run) exits 0 without doing the step: the step names the
         # flags that make it act, and the latest recorded invocation must carry them (v23 M1: a bare
