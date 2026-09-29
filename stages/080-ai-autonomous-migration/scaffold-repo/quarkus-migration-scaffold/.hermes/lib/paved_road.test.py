@@ -334,6 +334,40 @@ class TestAuditSemantics(unittest.TestCase):
         self.assertNotIn("lacks --exec", buf.getvalue())
         self.assertEqual(rc, 0, buf.getvalue())
 
+    def _m1_readback(self, *, exit_code=0, unfinished=False):
+        """v28 t_c5ac91e7: after the mandated `handoff_facts.py --write`, the worker read the facts back with a
+        bare `handoff_facts.py` (no --write); the latest-invocation rule refused a correct card for a round."""
+        doc = load_steps(M1 / "steps.json")
+        keep = M1 / "fixtures" / "green-m1"
+        text = (keep / "official.log").read_text(encoding="utf-8")
+        write = "  ┊ 💻 $         python3 .hermes/kernel/handoff_facts.py --root /projects/modernized --phase m1 --write  0.3s\n"
+        read = write.replace(" --write", "")
+        self.assertIn(write, text)
+        text = text.replace(write, write + read)
+        ledger = intent_ledger(text, run="1")
+        rows = [i for i, r in enumerate(ledger) if r["command"].endswith("--phase m1")]
+        end = rows[-1]
+        if unfinished:
+            del ledger[end]
+        else:
+            ledger[end]["exit_code"] = exit_code
+        buf = io.StringIO()
+        with patch.dict(os.environ, {"HERMES_BIN": str(FAKE_HERMES), "FAKE_ATTACHMENT_STORE": str(M1 / "fixtures" / "native-attachments")}):
+            with redirect_stderr(buf), contextlib.redirect_stdout(io.StringIO()):
+                rc = evaluate_audit(text, doc, keep, ledger)
+        return rc, buf.getvalue()
+
+    def test_a_clean_read_back_after_the_write_keeps_the_step(self):
+        self.assertEqual(self._m1_readback(), (0, ""))
+
+    def test_a_failed_or_unfinished_read_back_after_the_write_refuses(self):
+        rc, msg = self._m1_readback(exit_code=1)
+        self.assertEqual(rc, 1)
+        self.assertIn("a read-only invocation of needle 'handoff_facts.py' after the one carrying --write exited 1", msg)
+        rc, msg = self._m1_readback(unfinished=True)
+        self.assertEqual(rc, 1)
+        self.assertIn("has no recorded completion", msg)
+
     def test_require_args_is_validated(self):
         doc = load_steps(M2 / "steps.json")
         bad = json.loads(json.dumps(doc))

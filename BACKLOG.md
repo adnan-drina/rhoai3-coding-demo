@@ -71,6 +71,15 @@ qualified form, 1 dropped the redirect (a void handler). The second shape is now
 refused by the structural check (added from this result). Two samples per arm: a
 direction, not a rate. `tmp/v26-corrections/worker-exercise/`.
 
+Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5` untouched):
+
+- [x] A read-only call after a required-argument step no longer fails the step (v28
+  `t_c5ac91e7`: a bare `handoff_facts.py` read-back after the `--write` cost one review
+  round). The audit grades the latest invocation that CARRIES the required arguments; a
+  later invocation without them must have completed with exit 0, else it still refuses.
+  Evidence: `paved_road.test.py` (clean read-back keeps the step; failed or unfinished
+  read-back refuses; a plan-only call alone still refuses), paved-road selftests. Live: none.
+
 Still open (not blockers of this package's source work):
 
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);

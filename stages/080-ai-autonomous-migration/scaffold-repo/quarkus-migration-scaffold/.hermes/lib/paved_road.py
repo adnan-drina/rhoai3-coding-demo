@@ -828,7 +828,35 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
             if missing:
                 failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
             continue
-        latest = executed[-1]
+        # a script whose default is a plan (dry run) exits 0 without doing the step: the step names the
+        # flags that make it act (v23 M1: a bare kanban_attach.py printed "OK: kanban attach (6 file(s))"
+        # and attached nothing). The step is the latest invocation that ACTS; a later invocation without
+        # those flags only reads, and it leaves the step done only if it completed with exit 0 (v28
+        # t_c5ac91e7: a read-back of handoff_facts.py after the --write cost a review round)
+        required = [str(a) for a in step.get("require_args") or []]
+        if required:
+            acting = [i for i, e in enumerate(executed)
+                      if all(a in args_of_run(str(e["start"].get("command") or ""), needle) for a in required)]
+            if not acting:
+                cmd = str(executed[-1]["start"].get("command") or "")
+                absent = [a for a in required if a not in args_of_run(cmd, needle)]
+                failures.append("no invocation of needle %r (step %s) carries %s; the latest lacks %s: without it the script "
+                                "only plans and changes nothing, whatever it printed (%r)"
+                                % (needle, sid, " ".join(required), " ".join(absent), cmd[:160]))
+                continue
+            after = executed[acting[-1] + 1:]
+            unclean = [e for e in after if e["end"] is None or (e["end"] or {}).get("exit_code") != 0]
+            if unclean:
+                e = unclean[-1]
+                failures.append("step %s: a read-only invocation of needle %r after the one carrying %s %s (%r): what it "
+                                "checked is unknown or failed" % (sid, needle, " ".join(required),
+                                                                  "has no recorded completion" if e["end"] is None else
+                                                                  "exited %s" % (e["end"] or {}).get("exit_code"),
+                                                                  str(e["start"].get("command") or "")[:160]))
+                continue
+            latest = executed[acting[-1]]
+        else:
+            latest = executed[-1]
         last_exit = (latest["end"] or {}).get("exit_code") if latest["end"] else None
         if latest["end"] is None:
             failures.append("the latest invocation of needle %r (step %s, run %s) has no recorded completion: lost, "
@@ -847,18 +875,6 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
         if gap:
             failures.append("step %s: %s" % (sid, gap))
             continue
-        # a script whose default is a plan (dry run) exits 0 without doing the step: the step names the
-        # flags that make it act, and the latest recorded invocation must carry them (v23 M1: a bare
-        # kanban_attach.py printed "OK: kanban attach (6 file(s))" and attached nothing)
-        required = [str(a) for a in step.get("require_args") or []]
-        if required:
-            cmd = str(latest["start"].get("command") or "")
-            tokens = args_of_run(cmd, needle)
-            absent = [a for a in required if a not in tokens]
-            if absent:
-                failures.append("the latest invocation of needle %r (step %s) lacks %s: without it the script only plans "
-                                "and changes nothing, whatever it printed (%r)" % (needle, sid, " ".join(absent), cmd[:160]))
-                continue
         missing = keep_missing(root, keep)
         if missing:
             failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
