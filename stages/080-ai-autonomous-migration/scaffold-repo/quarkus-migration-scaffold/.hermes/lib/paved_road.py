@@ -680,13 +680,15 @@ def handoff_review_failures(root: Path, task_id: str, phase: str) -> list[str]:
 
 
 def preloaded_skill(ledger: list[dict[str, Any]] | None, task_id: str, skill: str, root: Path) -> bool:
-    """The dispatcher preloaded ``skill`` into the LATEST implementer run of this
-    task: the K2 hook's run-bound ``preload`` row (from the worker's own --skills
-    argv) names it, with the sha256 of the SKILL.md that is on disk now -- the
-    required instructions were in that run's context. A preload is evidence of
-    what the worker was given, never a fabricated skill_view; a skill_view line
-    in the log still counts on its own (v24: three accepted outcomes were sent
-    back because a retry run did not repeat the skill_view)."""
+    """The native --skills preload put ``skill`` into the LATEST implementer run of
+    this task: the run-bound preload row the native finalizer wrote (runtime
+    0016, source native-finalize) has status loaded, lists ``skill`` among what
+    ACTUALLY loaded, resolved to THIS destination's own SKILL.md, whose sha256 is
+    the digest of that file on disk now. A requested --skills name, a partial,
+    failed or timed-out preload, another run's preload, a different resolved
+    file or changed text never counts (architect review 2026-09-29, F2). It is
+    evidence of what the worker was given, never a fabricated skill_view; a
+    skill_view line in the log still counts on its own."""
     if not ledger or not task_id:
         return False
     runs = [str(r.get("run") or "") for r in ledger if isinstance(r, dict) and str(r.get("task") or "") == task_id
@@ -698,10 +700,20 @@ def preloaded_skill(ledger: list[dict[str, Any]] | None, task_id: str, skill: st
     if md is None:
         return False
     import hashlib
-    want = hashlib.sha256(md.read_bytes()).hexdigest()
-    return any(isinstance(r, dict) and r.get("phase") == "preload" and str(r.get("task") or "") == task_id
-               and str(r.get("run") or "") == latest and skill in (r.get("skills") or [])
-               and str((r.get("skill_sha256") or {}).get(skill) or "") == want for r in ledger)
+    import os
+    want_path = os.path.realpath(md)
+    want_sha = hashlib.sha256(md.read_bytes()).hexdigest()
+    for r in ledger:
+        if not (isinstance(r, dict) and r.get("phase") == "preload" and r.get("source") == "native-finalize"
+                and str(r.get("task") or "") == task_id and str(r.get("run") or "") == latest
+                and str(r.get("status") or "") == "loaded"):
+            continue
+        for d in r.get("loaded") or []:
+            if isinstance(d, dict) and str(d.get("skill") or "") == skill \
+                    and os.path.realpath(str(d.get("skill_md") or "")) == want_path \
+                    and str(d.get("skill_md_sha256") or "") == want_sha:
+                return True
+    return False
 
 
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict[str, Any]] | None = None) -> int:

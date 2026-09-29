@@ -113,84 +113,39 @@ def record_invocation():
 
 record_invocation()
 
-def worker_skills():
-    """The --skills the dispatcher gave THIS worker process: read from the argv of
-    the hook ancestry (the worker spawns the hook). K2_TEST_WORKER_ARGV stands in
-    for it in the selftest. None when no ancestor carries --skills."""
-    test = os.environ.get("K2_TEST_WORKER_ARGV")
-    argvs = []
-    if test is not None:
-        argvs.append(test.split())
-    else:
-        pid = os.getppid()
-        for _ in range(8):
-            if pid <= 1:
-                break
-            try:
-                raw = open("/proc/%d/cmdline" % pid, "rb").read()
-                stat = open("/proc/%d/stat" % pid, encoding="utf-8", errors="replace").read()
-            except OSError:
-                break
-            argvs.append([a.decode("utf-8", "replace") for a in raw.split(b"\0") if a])
-            try:
-                pid = int(stat.rsplit(")", 1)[1].split()[1])
-            except (IndexError, ValueError):
-                break
-    for argv in argvs:
-        if "--skills" in argv:
-            names = []
-            for i, a in enumerate(argv[:-1]):
-                if a == "--skills":
-                    names += [x.strip() for x in argv[i + 1].split(",") if x.strip()]
-            return names
-    return None
-
-def record_preload():
-    """Once per native run: the skills the dispatcher preloaded into this worker
-    (its --skills argv) and the sha256 of each preloaded SKILL.md -- genuine,
-    run-bound evidence that the required instructions were in the worker context
-    (v24: three accepted outcomes were sent back because a retry run did not
-    repeat a skill_view; the dispatcher preloads a task skills on every run)."""
+def preload_gaps():
+    """The native --skills preload of THIS run (runtime 0016: the run-bound
+    preload row the native finalizer appends to the execution ledger) left a
+    requested skill out: missing, disabled, timed out or failed. Returns
+    (status, missing) or None when the preload is complete or not recorded (a
+    runtime without 0016 records nothing; the audit then credits no preload).
+    A requested --skills name is never evidence that the skill loaded
+    (architect review 2026-09-29, F2)."""
     task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
     home = kanban_root_home()
     if not task or not run or not home:
-        return
-    logs = os.path.join(home, "kanban", "logs")
-    mark = os.path.join(logs, "%s.k2-preload.json" % task)
+        return None
+    row = None
     try:
-        if str(json.load(open(mark, encoding="utf-8")).get("run") or "") == run:
-            return
-    except (OSError, ValueError, AttributeError):
-        pass
-    names = worker_skills()
-    root = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip() or next((x for x in allow.split(os.pathsep) if x), "")
-    shas = {}
-    for n in names or []:
-        base = os.path.join(root, ".hermes", "skills")
-        for dirpath, dirnames, filenames in os.walk(base):
-            if os.path.basename(dirpath) == n and "SKILL.md" in filenames:
+        with open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
                 try:
-                    shas[n] = hashlib.sha256(open(os.path.join(dirpath, "SKILL.md"), "rb").read()).hexdigest()
-                except OSError:
-                    pass
-                break
-    row = {"schema": "rhoai3.exec-ledger/v1", "phase": "preload", "task": task, "run": run, "profile": profile,
-           "skills": names or [], "skill_sha256": shas,
-           "source": "worker --skills argv" if names is not None else "no --skills in the worker argv"}
-    try:
-        os.makedirs(logs, exist_ok=True)
-        fd = os.open(os.path.join(logs, "%s.exec.jsonl" % task), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-        try:
-            os.write(fd, (json.dumps(row, sort_keys=True) + "\n").encode("utf-8"))
-        finally:
-            os.close(fd)
-        tmp = mark + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump({"run": run}, fh)
-        os.replace(tmp, mark)
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and r.get("phase") == "preload" and r.get("source") == "native-finalize" \
+                        and str(r.get("task") or "") == task and str(r.get("run") or "") == run:
+                    row = r
     except OSError:
-        pass
+        return None
+    if row is None:
+        return None
+    loaded = {str(d.get("skill") or "") for d in (row.get("loaded") or []) if isinstance(d, dict)}
+    missing = sorted({str(x) for x in (row.get("requested") or [])} - loaded) or sorted(str(x) for x in (row.get("missing") or []))
+    if str(row.get("status") or "") == "loaded" and not missing:
+        return None
+    return str(row.get("status") or "unknown"), missing
 
 def resolve_rp(p):
     s = (p or "").strip()
@@ -336,7 +291,11 @@ def kanban_root_home():
         return root
     return home
 
-record_preload()
+_pg = preload_gaps()
+if _pg is not None and not is_block():
+    block("PRELOAD_INCOMPLETE: the required skill(s) %s of this run did not load (native preload status %s). "
+          "The required instructions are not in this worker context, so no migration work may start: "
+          "kanban_block kind=needs_input naming the skill(s)." % (", ".join(_pg[1]) or "(unknown)", _pg[0]))
 
 def record_complete_invocation(decision):
     """Append one hook-authored line. Absence of the file means the

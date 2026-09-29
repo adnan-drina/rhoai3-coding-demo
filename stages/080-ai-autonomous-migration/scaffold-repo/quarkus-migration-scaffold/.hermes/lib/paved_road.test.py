@@ -906,12 +906,14 @@ class TestNativeAttachments(unittest.TestCase):
 
 class PreloadedSkill(unittest.TestCase):
     """v24 (architect review 2026-09-29): three accepted outcomes were sent back because a retry run did not
-    repeat skill_view fix-until-green. The dispatcher now preloads the task skills on every run and the K2 hook
-    records that preload per run; the audit accepts it only for the LATEST implementer run, only for the
-    SKILL.md that is on disk now."""
+    repeat skill_view fix-until-green. The dispatcher preloads the task skills on every run and the native
+    finalizer (runtime 0016) records what ACTUALLY loaded; the audit credits only that record, for the LATEST
+    implementer run, for THIS destination's SKILL.md with the digest of the file on disk now."""
     FX = Path(__file__).resolve().parent.parent / "skills" / "paved-road" / "paved-road-m3" / "fixtures" / "no-skill-view"
 
-    def _grade(self, preload, *, runs=("7",), edit_skill=False):
+    def _grade(self, preload, *, runs=("7",), edit_skill=False, loaded_path=None):
+        """preload: None, or overrides for one native preload row; loaded_path "elsewhere" resolves the skill to
+        another file with the same text."""
         import hashlib
         import shutil
         import tempfile
@@ -923,6 +925,9 @@ class PreloadedSkill(unittest.TestCase):
             md.parent.mkdir(parents=True)
             md.write_text("# fix-until-green\nthe loop procedure\n", encoding="utf-8")
             sha = hashlib.sha256(md.read_bytes()).hexdigest()
+            other = Path(td) / "elsewhere" / "fix-until-green" / "SKILL.md"
+            other.parent.mkdir(parents=True)
+            other.write_text(md.read_text(encoding="utf-8"), encoding="utf-8")
             if edit_skill:
                 md.write_text("# fix-until-green\nchanged since the run\n", encoding="utf-8")
             text = (root / "official.log").read_text(encoding="utf-8")
@@ -931,7 +936,11 @@ class PreloadedSkill(unittest.TestCase):
                 ledger.append({"phase": "start", "task": "t_noskill", "run": r, "profile": "implementer", "command": "ls",
                                "tool_call_id": "c" + r})
             if preload is not None:
-                row = {"phase": "preload", "task": "t_noskill", "profile": "implementer", "skill_sha256": {"fix-until-green": sha}}
+                row = {"phase": "preload", "source": "native-finalize", "task": "t_noskill", "run": runs[-1],
+                       "profile": "implementer", "status": "loaded", "requested": ["paved-road-m3", "fix-until-green"],
+                       "missing": [],
+                       "loaded": [{"skill": "fix-until-green", "skill_md": str(other if loaded_path == "elsewhere" else md),
+                                   "skill_md_sha256": sha, "prompt_sha256": "p" * 64}]}
                 row.update(preload)
                 ledger.append(row)
             steps = self.FX.parents[1] / "steps.json"
@@ -944,20 +953,33 @@ class PreloadedSkill(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("fix-until-green", err)
 
-    def test_the_latest_runs_preload_of_the_current_skill_satisfies_the_step(self):
-        rc, err = self._grade({"run": "7", "skills": ["paved-road-m3", "fix-until-green"]})
+    def test_the_latest_runs_native_preload_of_the_current_skill_satisfies_the_step(self):
+        rc, err = self._grade({})
         self.assertEqual((rc, err), (0, ""))            # the fixture's only failure was the missing skill_view
 
     def test_an_older_runs_preload_does_not(self):
-        rc, err = self._grade({"run": "6", "skills": ["fix-until-green"]}, runs=("6", "7"))
+        rc, err = self._grade({"run": "6"}, runs=("6", "7"))
         self.assertIn("mandated skill_view absent for fix-until-green", err)
 
-    def test_a_preload_of_another_text_does_not(self):
-        rc, err = self._grade({"run": "7", "skills": ["fix-until-green"]}, edit_skill=True)
+    def test_changed_text_does_not(self):
+        rc, err = self._grade({}, edit_skill=True)
         self.assertIn("mandated skill_view absent for fix-until-green", err)
 
-    def test_a_preload_without_the_skill_does_not(self):
-        rc, err = self._grade({"run": "7", "skills": ["paved-road-m3"]})
+    def test_a_partial_preload_does_not(self):
+        rc, err = self._grade({"status": "partial", "missing": ["fix-until-green"]})
+        self.assertIn("mandated skill_view absent for fix-until-green", err)
+
+    def test_a_timed_out_preload_does_not(self):
+        rc, err = self._grade({"status": "timeout", "loaded": []})
+        self.assertIn("mandated skill_view absent for fix-until-green", err)
+
+    def test_a_different_resolved_file_cannot_borrow_the_digest(self):
+        rc, err = self._grade({}, loaded_path="elsewhere")
+        self.assertIn("mandated skill_view absent for fix-until-green", err)
+
+    def test_a_requested_only_record_is_not_a_preload(self):
+        """The superseded argv-based row (no native source, skills requested) proves nothing."""
+        rc, err = self._grade({"source": "", "skills": ["fix-until-green"]})
         self.assertIn("mandated skill_view absent for fix-until-green", err)
 
 

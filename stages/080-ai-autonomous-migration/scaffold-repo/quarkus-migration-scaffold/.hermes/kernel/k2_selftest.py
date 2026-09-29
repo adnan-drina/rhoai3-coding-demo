@@ -1158,41 +1158,42 @@ def main() -> int:
                                     "verify-admission-receipt.py --root . --any-status  0.2s [exit 1]\n")
         (loopd / "last-advance.json").unlink(missing_ok=True)
         (loopd / "issued.json").unlink(missing_ok=True)
-        # v24: the dispatcher preloads the task skills on EVERY run; the hook records that preload once per
-        # native run, from the worker's own --skills argv, with the sha256 of each preloaded SKILL.md.
+        # v24 / architect review F2: the native finalizer (runtime 0016) records what the --skills preload
+        # ACTUALLY loaded. A run whose required skill did not load may not start migration work; the hook never
+        # records requested skills as loaded.
         pre_home = Path(td) / "pre-home"
         (pre_home / "kanban" / "logs").mkdir(parents=True)
-        skill_dir = dest / ".hermes" / "skills" / "migration" / "fix-until-green"
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text("# fix-until-green\nthe loop procedure\n", encoding="utf-8")
-        want = hashlib.sha256((skill_dir / "SKILL.md").read_bytes()).hexdigest()
         led = pre_home / "kanban" / "logs" / "t_pre.exec.jsonl"
+        pre_env = {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(pre_home), "HERMES_KANBAN_TASK": "t_pre",
+                   "HERMES_KANBAN_RUN_ID": "41", "HERMES_WRITE_SAFE_ROOT": str(dest)}
 
-        def pre_env(run_id, argv):
-            return {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(pre_home), "HERMES_KANBAN_TASK": "t_pre",
-                    "HERMES_KANBAN_RUN_ID": run_id, "HERMES_WRITE_SAFE_ROOT": str(dest), "K2_TEST_WORKER_ARGV": argv}
+        def native(run_id, status, loaded, missing):
+            return {"phase": "preload", "source": "native-finalize", "task": "t_pre", "run": run_id, "status": status,
+                    "requested": ["paved-road-m3", "fix-until-green"], "missing": missing,
+                    "loaded": [{"skill": n, "skill_md": "/x/%s/SKILL.md" % n, "skill_md_sha256": "0" * 64} for n in loaded]}
 
-        def preloads():
-            return [json.loads(l) for l in led.read_text().splitlines() if '"preload"' in l] if led.is_file() else []
+        def pre_case(name, rows, cmd, blocked, needle=""):
+            led.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+            r = run(cmd, roots, cwd=cwd, extra_env=pre_env)
+            ok = (r.get("action") == "block") == blocked and (not needle or needle in (r.get("message") or ""))
+            print(("ok " if ok else "FAIL ") + name, "" if ok else r, file=sys.stdout if ok else sys.stderr)
+            return 0 if ok else 1
 
-        argv = "hermes chat --skills paved-road-m3 --skills fix-until-green -q work"
-        run("cat src/Main.java", roots, cwd=cwd, extra_env=pre_env("41", argv))
-        run("cat src/Main.java", roots, cwd=cwd, extra_env=pre_env("41", argv))        # same run: once
-        rows = preloads()
-        if len(rows) != 1 or rows[0].get("run") != "41" or rows[0].get("skills") != ["paved-road-m3", "fix-until-green"] \
-                or rows[0].get("skill_sha256", {}).get("fix-until-green") != want:
-            print("FAIL preload_recorded_once_per_run", rows, file=sys.stderr)
+        full = native("41", "loaded", ["paved-road-m3", "fix-until-green"], [])
+        partial = native("41", "partial", ["paved-road-m3"], ["fix-until-green"])
+        fails += pre_case("preload_complete_allows_work", [full], "cat src/Main.java", False)
+        fails += pre_case("preload_partial_blocks_work", [partial], "cat src/Main.java", True, "PRELOAD_INCOMPLETE: the required skill(s) fix-until-green")
+        fails += pre_case("preload_timeout_blocks_work", [native("41", "timeout", [], ["paved-road-m3", "fix-until-green"])],
+                          "cat src/Main.java", True, "PRELOAD_INCOMPLETE")
+        fails += pre_case("preload_partial_allows_kanban_block", [partial], "hermes kanban block t_pre", False)
+        fails += pre_case("preload_partial_of_another_run_does_not_block", [native("40", "partial", ["paved-road-m3"], ["fix-until-green"])],
+                          "cat src/Main.java", False)
+        fails += pre_case("preload_unrecorded_does_not_block", [], "cat src/Main.java", False)
+        if any('"phase": "preload"' in l and '"native-finalize"' not in l for l in led.read_text().splitlines()):
+            print("FAIL hook_never_records_requested_skills", file=sys.stderr)
             fails += 1
         else:
-            print("ok preload_recorded_once_per_run")
-        run("cat src/Main.java", roots, cwd=cwd, extra_env=pre_env("42", "hermes chat -q work"))   # a retry run
-        rows = preloads()
-        if len(rows) != 2 or rows[1].get("run") != "42" or rows[1].get("skills") != [] \
-                or rows[1].get("source") != "no --skills in the worker argv":
-            print("FAIL preload_recorded_truthfully_for_each_run", rows, file=sys.stderr)
-            fails += 1
-        else:
-            print("ok preload_recorded_truthfully_for_each_run")
+            print("ok hook_never_records_requested_skills")
         with (red_home / "kanban" / "logs" / "t_p0b.log").open(
             "a", encoding="utf-8"
         ) as fh:
