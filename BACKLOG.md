@@ -80,6 +80,13 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   Evidence: `paved_road.test.py` (clean read-back keeps the step; failed or unfinished
   read-back refuses; a plan-only call alone still refuses), paved-road selftests. Live: none.
 
+- [x] The Servlet redirect recipe refuses a SpEL servlet-context field left on the handler's
+  type (v28 `t_25819d9c`, commit `dfeda3d`: the verified redirect with
+  `@Value("#{servletContext.contextPath}")` kept). The pinned platform refuses to package it
+  ("SpEL expressions are not supported"), so v28 meets it at its first package gate as an
+  `unsupported-spel` obligation. Evidence: `servlet-redirect-package.test.py` (the v28 form is
+  refused structurally and does not package).
+
 Still open (not blockers of this package's source work):
 
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);

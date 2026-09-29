@@ -17,6 +17,8 @@ local Maven repository:
     API, and the structural check refuses the handler that still takes it;
   * a handler that drops the parameter and returns void (the worker exercise's sample 1) is refused
     by the structural check: it compiles and answers nothing;
+  * the verified redirect with the @Value("#{servletContext.contextPath}") field kept (v28 t_25819d9c) is
+    refused by the structural check, and the platform refuses to package it (SpEL is not supported);
   * URI.create of the context-relative target packages but answers a RELATIVE
     Location where the source answered an absolute one (the form the catalog
     forbids);
@@ -93,6 +95,34 @@ public class RootRestController {
 
     @RequestMapping(value = "/")
     public void redirectToSwagger() throws IOException {
+    }
+}
+"""
+
+# v28 t_25819d9c (commit dfeda3d): the verified redirect, with the SpEL field that read the Servlet context kept
+KEPT_FIELD = """package org.springframework.samples.petclinic.rest;
+
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.UriInfo;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/")
+public class RootRestController {
+
+    @Value("#{servletContext.contextPath}")
+    private String servletContextPath;
+
+    @RequestMapping(value = "/")
+    public ResponseEntity<Void> redirectToSwagger(@Context UriInfo uriInfo) {
+        return ResponseEntity.status(HttpStatus.FOUND)
+            .location(uriInfo.getBaseUriBuilder().path("swagger-ui/index.html").build())
+            .build();
     }
 }
 """
@@ -256,6 +286,17 @@ def main() -> int:
         if verdicts.get("redirectToSwagger(response)") != "violates":
             return _fail("the structural check refuses a handler that returns void after dropping the response: %s" % verdicts)
 
+        # --- the redirect translated but the SpEL servlet-context field kept (v28 t_25819d9c) ---
+        (root / CONTROLLER).write_text(KEPT_FIELD, encoding="utf-8")
+        verdicts = _structural(root)
+        if verdicts.get("redirectToSwagger(response)") != "violates":
+            return _fail("the structural check refuses a SpEL servlet-context field left on the handler's type: %s" % verdicts)
+        p = _package(root)
+        if p.returncode == 0 or "SpEL" not in (p.stdout + p.stderr):
+            gap = _offline_gap(p)
+            return _skip(gap) if gap else _fail("the kept SpEL field must fail packaging as SpEL: rc=%s %s"
+                                                % (p.returncode, (p.stdout + p.stderr)[-500:]))
+
         # --- URI.create of the context-relative target (the form the catalog forbids) ---
         (root / CONTROLLER).write_text(RELATIVE, encoding="utf-8")
         p = _package(root)
@@ -298,7 +339,7 @@ def main() -> int:
             return 1
     print("OK: servlet-redirect-package (pinned platform %s, offline, quarkus-spring-web + quarkus-rest-jackson, root path "
           "/petclinic/: the jakarta.servlet rename does not compile and the structural check refuses it; a void handler "
-          "that dropped the redirect is refused; URI.create of the "
+          "that dropped the redirect is refused; a kept SpEL servlet-context field is refused and does not package; URI.create of the "
           "context-relative target answers a relative Location, unlike the source; the recipe's @Context UriInfo form packages, "
           "the structural check accepts it, GET /petclinic/ matches the recorded source response (302, "
           "/petclinic/swagger-ui/index.html absolute, empty body) and the renamed equivalent answers 302 "

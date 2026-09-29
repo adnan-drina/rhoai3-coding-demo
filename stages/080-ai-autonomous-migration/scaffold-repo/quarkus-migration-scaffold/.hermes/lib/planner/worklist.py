@@ -6661,7 +6661,8 @@ def _location_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], s
                       "location_translation): %s" % (typ_fqn, name, "; ".join(problems[:3]))}
 
 
-def _response_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], spec: dict[str, Any]) -> dict[str, Any] | None:
+def _response_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], spec: dict[str, Any],
+                      typ: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """A handler that answered through the response parameter it no longer takes must now RETURN that
     response (spec.returns) and set what it wrote (spec.calls, from the destination model's call names):
     an emptied void handler compiles and drops the answer (v26 worker exercise). None when every handler
@@ -6679,6 +6680,13 @@ def _response_verdict(typ_fqn: str, name: str, handlers: list[dict[str, Any]], s
         if missing:
             return {"verdict": "violates", "detail": "the handler %s.%s returns %s but never calls %s: what the source wrote "
                                                       "to the response is not answered" % (typ_fqn, name, ret, ", ".join(missing))}
+    forbidden = [str(v) for v in spec.get("forbidden_field_values") or []]
+    for f in (typ or {}).get("fields") or []:
+        vals = [str(v) for a in (f.get("annotations") or []) if isinstance(a, dict) for v in a.get("values") or []]
+        hit = next((v for v in vals for pre in forbidden if v.startswith(pre)), "")
+        if hit:
+            return {"verdict": "violates", "detail": "the field %s.%s still reads %r: %s"
+                                                      % (typ_fqn, f.get("name"), hit, spec.get("forbidden_field_values_why") or "")}
     return None
 
 
@@ -6750,7 +6758,7 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
                     out.append(dict(base, **verdict))
                     continue
             if isinstance(row.get("response_translation"), dict):
-                verdict = _response_verdict(typ_fqn, name, handlers, row["response_translation"])
+                verdict = _response_verdict(typ_fqn, name, handlers, row["response_translation"], typ)
                 if verdict:
                     out.append(dict(base, **verdict))
                     continue

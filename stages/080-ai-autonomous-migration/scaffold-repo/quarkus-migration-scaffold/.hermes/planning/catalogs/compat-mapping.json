@@ -463,7 +463,11 @@
           "calls": [
             "location"
           ],
-          "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)"
+          "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)",
+          "forbidden_field_values": [
+            "#{servletContext"
+          ],
+          "forbidden_field_values_why": "a field of the handler's type that read the Servlet context through SpEL (@Value(\"#{servletContext.contextPath}\")) has no Servlet context on the destination and SpEL is unsupported there (the package gate fails with 'SpEL expressions are not supported'); the base URI already carries the root path, so the field goes with the parameter (v28 t_25819d9c kept it)"
         }
       },
       "jakarta.servlet.http.HttpServletRequest": {
@@ -484,7 +488,11 @@
           "calls": [
             "location"
           ],
-          "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)"
+          "why": "the source handler answered through the response it was given (sendRedirect: 302 and a Location); a translation that drops the parameter and returns void answers 200 with nothing, which compiles and loses the redirect (v26 worker exercise, corrected-brief sample 1)",
+          "forbidden_field_values": [
+            "#{servletContext"
+          ],
+          "forbidden_field_values_why": "a field of the handler's type that read the Servlet context through SpEL (@Value(\"#{servletContext.contextPath}\")) has no Servlet context on the destination and SpEL is unsupported there (the package gate fails with 'SpEL expressions are not supported'); the base URI already carries the root path, so the field goes with the parameter (v28 t_25819d9c kept it)"
         }
       },
       "javax.servlet.http.HttpServletRequest": {
@@ -999,7 +1007,8 @@
           "refuses": [
             "the handler still takes the Servlet response",
             "the handler deleted instead of translated",
-            "a handler that returns void or sets no Location (the redirect dropped)"
+            "a handler that returns void or sets no Location (the redirect dropped)",
+            "a field that read the Servlet context through SpEL left on the handler's type"
           ]
         },
         {
