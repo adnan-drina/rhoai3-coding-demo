@@ -772,6 +772,47 @@ class RunReportTest(unittest.TestCase):
         ast.parse(Path(__file__).read_text(encoding="utf-8"), feature_version=(3, 9))
 
 
+class ParallelPilot(unittest.TestCase):
+    """PARALLEL-M3-PILOT.md: the pair, the overlap of its workers and both integrations, from a board copy."""
+
+    def _db(self, td, a_run, b_run, integrate=True):
+        import sqlite3
+        db = Path(td) / "kanban.db"
+        con = sqlite3.connect(db)
+        con.executescript("CREATE TABLE tasks (id TEXT, title TEXT); CREATE TABLE task_comments (id INTEGER PRIMARY KEY, task_id TEXT, body TEXT);"
+                          "CREATE TABLE task_runs (id INTEGER PRIMARY KEY, task_id TEXT, profile TEXT, outcome TEXT, started_at INTEGER, ended_at INTEGER);")
+        con.executemany("INSERT INTO tasks VALUES (?,?)", [("t_a", "M3 COMPILE a"), ("t_b", "M3 COMPILE b")])
+        con.executemany("INSERT INTO task_runs (task_id, profile, outcome, started_at, ended_at) VALUES (?,?,?,?,?)",
+                        [("t_a", "implementer", "review_requested") + a_run, ("t_b", "implementer", "review_requested") + b_run])
+        rows = []
+        for t, c in (("t_a", "c1"), ("t_b", "c2")):
+            rows.append((t, "[native-control] " + json.dumps({"kind": "integrate-begin", "key": "b" + t})))
+            if integrate:
+                rows.append((t, "[native-control] " + json.dumps({"kind": "integrated", "key": "i" + t, "integrated_commit": c * 6,
+                                                                  "verification": {"procedure": "completed"}})))
+        con.executemany("INSERT INTO task_comments (task_id, body) VALUES (?,?)", rows)
+        con.commit()
+        con.close()
+        return db
+
+    def test_overlapping_workers_and_both_integrations_are_reported(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = rr.parallel_pilot(self._db(td, (100, 400), (150, 500)))
+        self.assertEqual([p["task"] for p in out["pair"]["value"]], ["t_a", "t_b"])
+        self.assertEqual(out["overlap_seconds"]["value"], 250)
+        self.assertEqual(out["integrated"]["value"]["t_b"][0]["integrated_commit"], "c2c2c2c2c2c2")
+        self.assertEqual(out["elapsed_seconds"]["value"], 400)
+        self.assertIsNone(out["tokens_and_requests"]["value"])
+
+    def test_workers_that_never_overlapped_are_not_a_parallel_demonstration(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = rr.parallel_pilot(self._db(td, (100, 200), (300, 400)))
+        self.assertLessEqual(out["overlap_seconds"]["value"], 0)
+
+    def test_no_board_copy_is_unknown(self):
+        self.assertIsNone(rr.parallel_pilot(None)["pair"]["value"])
+
+
 class Reliability(unittest.TestCase):
     """V26-4: reliability measures from the run's own records; unknown without them."""
 

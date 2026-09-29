@@ -52,6 +52,50 @@ def ready_waves(r) -> list[list[str]]:
     return waves
 
 
+class ExecutionPolicy(unittest.TestCase):
+    """The policy is pinned by the destination's INITIAL commit; the dispatcher cap follows it."""
+
+    def _dest(self, initial, later=None, working=None, protocol="outcome-board/v2"):
+        import tempfile
+        td = Path(tempfile.mkdtemp(prefix="pol-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(td, ignore_errors=True))
+
+        def write(value):
+            conf = {"board_protocol": protocol}
+            if value is not None:
+                conf["parallel_m3"] = value
+            (td / "run-defaults.json").write_text(json.dumps({"schema": "rhoai3.run-defaults/v1", "configuration": conf}))
+        write(initial)
+        (td / ".hermes").mkdir()
+        (td / ".hermes" / "pins.json").write_text(json.dumps({"pins": {"planner": {"outcome_board": {"execution": "qualification"}}}}))
+        NB.git(td, "init", "-q")
+        NB.git(td, "config", "user.email", "t@t")
+        NB.git(td, "config", "user.name", "t")
+        NB.git(td, "add", "-A")
+        NB.git(td, "commit", "-qm", "initial commit")
+        if later is not None:
+            write(later)
+            NB.git(td, "commit", "-qam", "later")
+        if working is not None:
+            write(working)
+        return td
+
+    def test_the_initial_commit_decides(self):
+        from planner.execution_policy import PILOT, SERIAL, pinned_policy
+        self.assertEqual(pinned_policy(self._dest("m3-pair-pilot/v1"))["policy"], PILOT)
+        self.assertEqual(pinned_policy(self._dest("deferred"))["policy"], SERIAL)
+        self.assertEqual(pinned_policy(self._dest(None))["policy"], SERIAL)
+        # a run created serial never becomes a pilot: not by a later commit, not by an edit of the tree
+        self.assertEqual(pinned_policy(self._dest("deferred", later="m3-pair-pilot/v1"))["policy"], SERIAL)
+        self.assertEqual(pinned_policy(self._dest("deferred", working="m3-pair-pilot/v1"))["policy"], SERIAL)
+        # nor does a pilot declaration on another board protocol
+        self.assertEqual(pinned_policy(self._dest("m3-pair-pilot/v1", protocol="serial-loop/v1"))["policy"], SERIAL)
+
+    def test_the_dispatcher_cap_follows_the_policy(self):
+        from planner.execution_policy import PILOT, SERIAL, max_in_progress
+        self.assertEqual((max_in_progress(PILOT), max_in_progress(SERIAL)), (2, 1))
+
+
 class PilotPublication(unittest.TestCase):
     def test_a_pilot_run_publishes_the_pair_in_worktrees_inside_one_serial_chain(self):
         r = NB.Run(pilot=True, structure=structure())

@@ -99,6 +99,7 @@ def this_invocation(card: str, run: str) -> str:
 
 def start(root: Path, mode: str) -> dict:
     card, run = _identity()
+    integration = os.environ.get("RHOAI3_PILOT_INTEGRATION") == "1"
     prev = _read(root / REL)
     same = prev.get("schema") == SCHEMA and str(prev.get("card") or "") == card and str(prev.get("run") or "") == run
     try:
@@ -106,7 +107,9 @@ def start(root: Path, mode: str) -> dict:
     except (TypeError, ValueError):
         seq = 1
     doc = {"schema": SCHEMA, "status": "started", "card": card, "run": run, "seq": seq, "mode": mode,
-           "tool_call_id": this_invocation(card, run),
+           # an integration's verification runs inside native_gate.py integrate, not in a terminal call of its own
+           "tool_call_id": ("integration:%s" % (os.environ.get("RHOAI3_PILOT_WT_COMMIT") or "")[:12]) if integration
+                           else this_invocation(card, run),
            "started_at": _now(), "pid": os.getpid()}
     _write(root, doc)
     return doc

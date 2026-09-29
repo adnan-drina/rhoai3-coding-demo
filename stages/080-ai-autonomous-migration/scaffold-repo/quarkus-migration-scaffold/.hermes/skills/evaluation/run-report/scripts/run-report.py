@@ -2020,6 +2020,16 @@ def render(rep: Dict[str, Any]) -> str:
     rl = rep.get("reliability") or {}
     if rl:
         L.append("")
+        pp = rep.get("parallel_pilot") or {}
+        if pp:
+            L.append("## Parallel M3 pilot (PARALLEL-M3-PILOT.md)")
+            for key, label in (("pair", "pair"), ("overlap_seconds", "overlap of the two implementer runs (s)"),
+                               ("integrated", "integrations"), ("conflicts", "integration conflicts"),
+                               ("rejections", "rejected integrations"), ("runs_per_card", "runs per card"),
+                               ("elapsed_seconds", "elapsed (s)"), ("tokens_and_requests", "tokens and requests")):
+                if key in pp:
+                    L.append("- %s: %s" % (label, val(pp[key])))
+            L.append("")
         L.append("## Reliability (V26-4, from existing records)")
         wh = rl.get("worker_halts") or {}
         whv = wh.get("value") if isinstance(wh, dict) else None
@@ -2050,6 +2060,68 @@ def step_relation(step: Dict[str, Any]) -> str:
     if isinstance(step.get("changed"), list):
         return "causal" if step["changed"] else "witness"
     return "unrecorded"
+
+
+PILOT_RECORD_PREFIX = "[native-control] "
+PILOT_KINDS = ("integrate-begin", "integrated", "integration-conflict", "integration-rejected")
+
+
+def parallel_pilot(kanban_db: Optional[Path]) -> Dict[str, Any]:
+    """PARALLEL-M3-PILOT.md: what the one-pair pilot actually did, from a read-only board copy -- the pair
+    (the tasks that integrated), whether their implementer runs OVERLAPPED in time, both integrated commits
+    and the combined verification each integration recorded, conflicts, rejections and runs per card.
+    Tokens and requests per card are not on the board: they stay unknown here (request ledger)."""
+    if kanban_db is None:
+        return {"pair": U("no --kanban-db (a read-only copy of the Hermes kanban.db) was given")}
+    import sqlite3
+    src = "kanban-db:%s task_comments + task_runs" % kanban_db.name
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % kanban_db, uri=True)
+        con.row_factory = sqlite3.Row
+        comments = [dict(r) for r in con.execute("SELECT task_id, body FROM task_comments ORDER BY id")]
+        runs = [dict(r) for r in con.execute("SELECT id, task_id, profile, outcome, started_at, ended_at FROM task_runs ORDER BY id")]
+        titles = {r["id"]: r["title"] for r in con.execute("SELECT id, title FROM tasks")}
+        con.close()
+    except Exception as exc:  # noqa: BLE001 - an unreadable copy is an unknown, not a zero
+        return {"pair": U("the board copy could not be read: %s" % exc, src)}
+    recs: Dict[str, List[Dict[str, Any]]] = {}
+    for c in comments:
+        body = str(c.get("body") or "")
+        if not body.startswith(PILOT_RECORD_PREFIX):
+            continue
+        try:
+            doc = json.loads(body[len(PILOT_RECORD_PREFIX):])
+        except ValueError:
+            continue
+        if isinstance(doc, dict) and doc.get("kind") in PILOT_KINDS:
+            recs.setdefault(str(c["task_id"]), []).append(doc)
+    pair = sorted(recs)
+    if not pair:
+        return {"pair": V([], src, "no task recorded an integration: this run had no pilot pair (or it never integrated)")}
+    impl = {t: [r for r in runs if r["task_id"] == t and r["profile"] == "implementer" and r["started_at"]] for t in pair}
+    overlap = 0
+    for i, a in enumerate(pair):
+        for b in pair[i + 1:]:
+            for ra in impl[a]:
+                for rb in impl[b]:
+                    lo, hi = max(ra["started_at"], rb["started_at"]), min(ra["ended_at"] or 0, rb["ended_at"] or 0)
+                    overlap = max(overlap, hi - lo)
+    starts = [r["started_at"] for t in pair for r in impl[t]]
+    ends = [r["ended_at"] for t in pair for r in runs if r["task_id"] == t and r["ended_at"]]
+    out: Dict[str, Any] = {
+        "pair": V([{"task": t, "title": titles.get(t)} for t in pair], src),
+        "overlap_seconds": V(overlap, src + " (implementer runs, pairwise)",
+                             "0 means the two workers never ran at the same time: not a parallel demonstration"),
+        "integrated": V({t: [{"integrated_commit": str(r.get("integrated_commit") or "")[:12], "wt_commit": str(r.get("wt_commit") or "")[:12],
+                              "verification": r.get("verification"), "recovered": r.get("recovered")}
+                             for r in recs[t] if r.get("kind") == "integrated"] for t in pair}, src),
+        "conflicts": V({t: sum(1 for r in recs[t] if r.get("kind") == "integration-conflict") for t in pair}, src),
+        "rejections": V({t: [r.get("verdict") for r in recs[t] if r.get("kind") == "integration-rejected"] for t in pair}, src),
+        "runs_per_card": V({t: len([r for r in runs if r["task_id"] == t]) for t in pair}, src),
+        "elapsed_seconds": V((max(ends) - min(starts)) if starts and ends else None, src, "first pair run start to last pair run end"),
+        "tokens_and_requests": U("per-card tokens and requests are in the run's request ledger, not on the board"),
+    }
+    return out
 
 
 def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kanban_db: Optional[Path]) -> Dict[str, Any]:
@@ -2192,6 +2264,7 @@ def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs:
         "budget": budget(tree, budget_file, decisions, dec_why, clock),
         "board": board_section(board, kanban_logs, steps_doc),
         "reliability": reliability(steps_doc, steps_why, kanban_logs, kanban_db),
+        "parallel_pilot": parallel_pilot(kanban_db),
     }
     rep["classification"] = classification(steps_doc, steps_why, inter, boot)
     if compare_with:

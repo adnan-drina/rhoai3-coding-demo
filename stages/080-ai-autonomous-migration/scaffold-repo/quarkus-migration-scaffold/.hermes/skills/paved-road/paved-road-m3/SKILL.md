@@ -241,6 +241,19 @@ review; the domain checks guard your native actions.
    runs this road's audit and completes the card, or requests changes: then
    this card is dispatched to you again, and `issue` grants the paths your
    accepted commits changed (`rework:<outcome>:<run>`).
+3a. **Parallel pilot pair** (the card body says "Parallel pilot"): you run
+   beside one sibling card, each in its own git worktree -- the directory you
+   start in -- not /projects/modernized. Run every tool with `--root .` from
+   there; K2 refuses writes to the main tree or the sibling's worktree
+   (`PILOT_CONFINED`). The first `issue` seeds the worktree's run state from
+   the main tree. `CANDIDATE ACCEPTED IN THIS WORKTREE` is not yet the
+   application's: run `python3 .hermes/kernel/native_gate.py --root . integrate`.
+   It applies the candidate to the main tree (one card at a time) and runs the
+   acceptance on the combined tree. `INTEGRATED`: then item 3. `CONFLICT` or
+   `REJECTED`: run `native_gate.py --root . rebase`, repair here again, and
+   integrate again -- the same card; a conflict spends no attempt, a rejected
+   combined tree is a rejected attempt. Review is refused until the card is
+   integrated (`PILOT_NOT_INTEGRATED`).
 4. `OUTCOME_BUDGET_EXHAUSTED` (rejected attempts plus change requests of this
    outcome's family): `kanban_block kind=needs_input` naming the outcome.
    One limit, one count: the M2-published family budget (the brief's
