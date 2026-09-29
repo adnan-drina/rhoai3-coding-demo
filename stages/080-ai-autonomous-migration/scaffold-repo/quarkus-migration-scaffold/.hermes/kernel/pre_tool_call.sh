@@ -552,8 +552,9 @@ def this_run_text(log, task, text):
 def bound_gates_red():
     """Needles whose last invocation is still [exit 1] in THIS run.
 
-    Same last-wins-within-needle rule as paved_road.unmatched_exit1:
-    omitted success marker is green. Skip FAIL:/REFUSE prose (reviewer
+    Last-wins-within-needle (the rule the paved-road audit applied to the
+    log before it graded from the execution ledger): omitted success marker
+    is green. Skip FAIL:/REFUSE prose (reviewer
     audit lines re-latched dest-22 after a later clean run).
     """
     env_exit = (os.environ.get("K2_BOUND_GATE_EXIT") or "").strip().lower()

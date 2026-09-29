@@ -80,18 +80,17 @@ done
 [[ "${MODE}" == "diagnostic" ]] && RUNTIME=0
 ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The verifier's OWN exit code, on every exit path from here on (V26-6 item 3). A worker's
-# pipeline (`run-verify.sh | tail`, `...; echo`) reports the filter's status to the terminal
-# and the execution ledger (v26: three cards). This record and the last output line are the
-# verifier's status; the paved-road audit and brief.py read the record.
+# The verifier's OWN record (V26-6 item 3, verify_record.py): started now, finished on every
+# exit path. A worker's pipeline (`run-verify.sh | tail`, `...; echo`) reports the filter's
+# status to the terminal and the execution ledger (v26: three cards); this record keeps the
+# procedure's exit, the compilation result and whether tests ran apart, and the paved-road
+# audit, brief.py and the run report read it. It never accepts anything (advance.py does).
 _rv_record() {
-  local rc="$1" dir="${ROOT}/verification/loop"
-  mkdir -p "${dir}" 2>/dev/null || true
-  printf '{"schema": "rhoai3.last-verify/v1", "rc": %d, "mode": "%s", "card": "%s", "run": "%s", "finished_at": "%s"}\n' \
-    "${rc}" "${MODE}" "${HERMES_KANBAN_TASK:-}" "${HERMES_KANBAN_RUN_ID:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    > "${dir}/last-verify.json.tmp.$$" 2>/dev/null && mv -f "${dir}/last-verify.json.tmp.$$" "${dir}/last-verify.json" 2>/dev/null || true
-  echo "VERIFY EXIT ${rc} (the verifier's own status; a filter after it does not change it)"
+  local rc="$1"
+  python3 "${SCRIPT_DIR}/verify_record.py" finish --root "${ROOT}" --rc "${rc}" 2>/dev/null \
+    || echo "VERIFY EXIT ${rc} (the verifier's own status; its record could not be written)"
 }
+python3 "${SCRIPT_DIR}/verify_record.py" start --root "${ROOT}" --mode "${MODE}" 2>/dev/null || true
 trap '_rv_record $?' EXIT
 # B10/B4: verification runs only under the harness release and the model
 # profile the run was created with; drift is refused before anything is measured

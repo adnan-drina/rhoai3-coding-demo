@@ -1,0 +1,26 @@
+{
+  "candidate_sha256": "fixture",
+  "card": "t_noskill",
+  "compilation": "failed",
+  "compilation_detail": "829 compile error(s)",
+  "compile_errors": 829,
+  "finished_at": "2026-09-29T00:01:10Z",
+  "measure": [
+    14,
+    829,
+    0
+  ],
+  "measure_known": true,
+  "mode": "acceptance",
+  "procedure": "completed",
+  "rc": 0,
+  "run": "",
+  "schema": "rhoai3.last-verify/v2",
+  "seq": 1,
+  "started_at": "2026-09-29T00:00:00Z",
+  "status": "finished",
+  "tests": "not-run",
+  "tests_detail": "compilation is not clean",
+  "tests_rc": null,
+  "tool_call_id": "fx-4"
+}

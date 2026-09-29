@@ -514,59 +514,22 @@ def matching_terminal_lines(text: str, basename: str) -> list[str]:
 
 
 TERMINAL_MARK = "💻 $"
-ABBREVIATED_RE = re.compile(r"💻 \$\s+(?P<head>.*?)\s+\+ \d+ commands?\b")
 
 
-def abbreviated_runs(text: str, ledger: list[dict[str, Any]] | None, basename: str) -> list[tuple[str, int | None]]:
-    """Runs of ``basename`` the official log shows only abbreviated: the runtime
-    prints a compound command as its first command plus ``+ N command(s)``. Each
-    such line counts only when its visible head is part of a ledger START row
-    whose full command RUNS the script (is_run_of); the exit code then comes
-    from the ledger, never from the abbreviated line. No ledger, no match."""
-    if not ledger:
-        return []
-    starts = [str(r.get("command") or "") for r in ledger
-              if isinstance(r, dict) and r.get("phase") == "start" and is_run_of(str(r.get("command") or ""), basename)]
-    out: list[tuple[str, int | None]] = []
-    for ln in text.splitlines():
-        m = ABBREVIATED_RE.search(ln)
-        if not m:
-            continue
-        head = m.group("head").strip()
-        if head and any(head in c for c in starts):
-            out.append((ln.strip(), None))
-    return out
+def terminal_call_count(text: str) -> int:
+    """How many terminal invocations the official log displays, however each is
+    displayed: the runtime prints a compound command as its first command plus
+    ``+ N command(s)`` (v26 t_d5579123: `rm -f ... + 1 command` hid
+    `&& bash .../run-verify.sh`) and drops a leading `cd <dir> &&`, so what a
+    line shows is a presentation. Only the count is used: the execution ledger
+    must hold at least this many invocations, or one the log shows may be
+    unrecorded."""
+    return sum(1 for ln in text.splitlines() if TERMINAL_MARK in ln)
 
 
 def followed_skill(text: str, name: str) -> bool:
     pat = skill_load_re(name)
     return any(pat.search(ln) for ln in text.splitlines())
-
-
-def terminal_runs(lines: list[str]) -> list[tuple[str, int | None]]:
-    out: list[tuple[str, int | None]] = []
-    for raw in lines:
-        if "$" not in raw:
-            continue
-        cmd = raw.split("$", 1)[1]
-        if "--help" in cmd:
-            continue
-        m = EXIT_RE.search(raw)
-        rc = int(m.group(1)) if m else None
-        out.append((raw.strip(), rc))
-    return out
-
-
-def unmatched_exit1(runs: list[tuple[str, int | None]]) -> list[tuple[str, int | None]]:
-    """Reds with no later success of this same needle (omitted marker = clean)."""
-    unmatched: list[tuple[str, int | None]] = []
-    for i, run in enumerate(runs):
-        if run[1] != 1:
-            continue
-        if any(later[1] in (0, None) for later in runs[i + 1 :]):
-            continue
-        unmatched.append(run)
-    return unmatched
 
 
 def keep_missing(root: Path, keep: list[str]) -> list[str]:
@@ -708,25 +671,57 @@ def handoff_review_failures(root: Path, task_id: str, phase: str) -> list[str]:
 
 
 VERIFIER_RECORDS = {"run-verify.sh": "verification/loop/last-verify.json"}
+VERIFIER_RECORD_SCHEMA = "rhoai3.last-verify/v2"
 
 
-def verifier_record(root: Path, needle: str, task_id: str, run: str) -> int | None:
-    """The exit code a verifier recorded for ITS OWN latest execution on this card
-    and native run (run-verify.sh writes it on every exit path), or None when the
-    script keeps no such record or the record is another card's or run's."""
+def verifier_record_gap(root: Path, needle: str, task_id: str, run: str, invocations: int, tool_call_id: str = "") -> str:
+    """Why the verifier's OWN record does not prove that the latest ledger
+    invocation of ``needle`` ran the verifier to completion with exit 0, or ''.
+
+    A terminal exit code is the exit of the WHOLE command: `run-verify.sh | tail`
+    reports tail, `...; echo` reports echo, and `false && run-verify.sh || true`
+    reports 0 without running it. The verifier writes its record when it starts
+    (status started, with the terminal call that runs it: the ledger's latest
+    START row of this card and run) and on every exit path (status finished,
+    rc). The latest invocation is proven only when the record is this card's,
+    this run's and THIS call's (tool_call_id), finished, and exited 0: a newer
+    invocation that never reached the verifier leaves the older call's id, and
+    one still running leaves status started. Exit 0 is the
+    PROCEDURE completing; whether it compiled or ran tests is in the record's
+    compilation and tests fields, never in this grade."""
     rel = VERIFIER_RECORDS.get(needle)
     if not rel:
-        return None
+        return ""
     try:
         doc = json.loads((Path(root) / rel).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(doc, dict) or str(doc.get("card") or "") != task_id or (run and str(doc.get("run") or "") != run):
-        return None
+    except OSError:
+        return "no verifier record %s: the verifier's own result is unknown (a pipeline's exit is its last command's)" % rel
+    except ValueError:
+        return "unreadable verifier record %s" % rel
+    if not isinstance(doc, dict) or doc.get("schema") != VERIFIER_RECORD_SCHEMA:
+        return "verifier record %s is not %s" % (rel, VERIFIER_RECORD_SCHEMA)
+    if str(doc.get("card") or "") != task_id or str(doc.get("run") or "") != run:
+        return ("verifier record %s is of card %s run %s, not of the latest invocation (card %s run %s)"
+                % (rel, doc.get("card") or "?", doc.get("run") or "?", task_id or "?", run or "?"))
+    if tool_call_id and str(doc.get("tool_call_id") or "") != tool_call_id:
+        return ("verifier record %s answers terminal call %s, not the latest invocation %s: that invocation did not run "
+                "the verifier to a recorded end (unknown, not success)" % (rel, doc.get("tool_call_id") or "(none)", tool_call_id))
+    if doc.get("status") != "finished":
+        return "the verifier's latest execution (%s) has no recorded finish: interrupted or still running, unknown" % rel
     try:
-        return int(doc.get("rc"))
+        seq = int(doc.get("seq"))
     except (TypeError, ValueError):
-        return None
+        seq = 0
+    if seq < invocations:
+        return ("the ledger shows %d invocation(s) of %s in run %s and the verifier recorded %d execution(s): the latest "
+                "invocation did not run it to completion (unknown, not success)" % (invocations, needle, run or "?", seq))
+    try:
+        rc = int(doc.get("rc"))
+    except (TypeError, ValueError):
+        return "verifier record %s carries no exit code" % rel
+    if rc != 0:
+        return "the verifier itself exited %s (%s), whatever its pipeline returned" % (rc, rel)
+    return ""
 
 
 def preloaded_skill(ledger: list[dict[str, Any]] | None, task_id: str, skill: str, root: Path) -> bool:
@@ -796,20 +791,31 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
                 failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
             continue
 
+        # The execution ledger is the invocation record: one start row per terminal call (K2 pre
+        # hook) and its result (post observer), matched by task, run and tool_call_id. The official
+        # log is a presentation of the same calls and may abbreviate a compound command to its
+        # first command (v26 t_d5579123), so whether a line SHOWS the needle decides nothing; the
+        # log only bounds the ledger's completeness below.
         try:
-            lines = matching_terminal_lines(text, needle)
+            shown = matching_terminal_lines(text, needle)
         except ValueError as exc:
             failures.append(str(exc))
             continue
-        runs = terminal_runs(lines) if lines else []
-        if not runs:
-            # v26 t_d5579123: the runtime logs a compound command as its first command plus
-            # "+ N command(s)" (`rm -f ... + 1 command`), hiding `&& bash .../run-verify.sh`.
-            # The execution ledger holds the whole command; an abbreviated log line whose
-            # visible prefix belongs to a ledger invocation of the needle is that run.
-            runs = abbreviated_runs(text, ledger, needle)
-        if not runs:
-            failures.append("silence: step %s needle %r has no terminal argv in official log" % (sid, needle))
+        executed = executions_of(ledger, needle)
+        if not executed and not shown:
+            failures.append("silence: step %s needle %r: no invocation in the execution ledger or the official log" % (sid, needle))
+            continue
+        if not executed:
+            failures.append("no positive execution evidence for step %s needle %r: the official log shows %d invocation(s) "
+                            "and the execution ledger records none (an unmarked line is unknown, not success)"
+                            % (sid, needle, len(shown)))
+            continue
+        logged, recorded = terminal_call_count(text), sum(1 for r in ledger or [] if r.get("phase") == "start")
+        if logged > recorded:
+            # a log line with no ledger row may be the needle's latest invocation, however it is displayed
+            failures.append("step %s needle %r: the official log shows %d terminal invocation(s) and the execution ledger %d; "
+                            "an invocation has no recorded result, and it may be this step's latest (unknown, not success)"
+                            % (sid, needle, logged, recorded))
             continue
         if step.get("verdict") is True:
             # the grade is the loop record, not the exit code: REVERTED and
@@ -822,29 +828,6 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
             if missing:
                 failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
             continue
-        reds = unmatched_exit1(runs)
-        if reds:
-            failures.append("unmatched [exit 1] on mandated needle %r (step %s, count=%d)" % (needle, sid, len(reds)))
-            continue
-        last_rc = runs[-1][1]
-        if last_rc not in (0, None):
-            failures.append("last matching line for needle %r is not success (step %s rc=%s)" % (needle, sid, last_rc))
-            continue
-        # V17-6b: an unmarked line is not a success; the last recorded
-        # execution of this command must have exited 0
-        executed = executions_of(ledger, needle)
-        if not executed:
-            failures.append("no positive execution evidence for step %s needle %r: the official log shows %d invocation(s) "
-                            "and the execution ledger records none (an unmarked line is unknown, not success)"
-                            % (sid, needle, len(runs)))
-            continue
-        if len(executed) < len(runs):
-            # the log shows more invocations than the ledger recorded: the
-            # latest one may be the unrecorded one, so no recorded success
-            # stands for it (a preview can hide a run, never invent one)
-            failures.append("step %s needle %r: the official log shows %d invocation(s) and the execution ledger %d; the "
-                            "latest invocation has no recorded result (unknown, not success)" % (sid, needle, len(runs), len(executed)))
-            continue
         latest = executed[-1]
         last_exit = (latest["end"] or {}).get("exit_code") if latest["end"] else None
         if latest["end"] is None:
@@ -855,12 +838,14 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
             failures.append("the latest invocation of needle %r did not exit 0 (step %s exit_code=%s)"
                             % (needle, sid, "unknown" if last_exit is None else last_exit))
             continue
-        # V26-6 item 3: a pipeline (`run-verify.sh | tail`) records the filter's exit; the verifier's
-        # own record for this card and run, when present, is its status
-        own = verifier_record(root, needle, task_id, str(latest["start"].get("run") or ""))
-        if own is not None and own != 0:
-            failures.append("the verifier itself exited %s for step %s (%s), whatever its pipeline returned"
-                            % (own, sid, VERIFIER_RECORDS[needle]))
+        # V26-6 item 3: the command's exit is its last command's; a verifier that keeps its own
+        # record is graded on that record, bound to this card, this run and this invocation
+        run_id = str(latest["start"].get("run") or "")
+        gap = verifier_record_gap(root, needle, task_id, run_id,
+                                  sum(1 for e in executed if str(e["start"].get("run") or "") == run_id),
+                                  str(latest["start"].get("tool_call_id") or ""))
+        if gap:
+            failures.append("step %s: %s" % (sid, gap))
             continue
         # a script whose default is a plan (dry run) exits 0 without doing the step: the step names the
         # flags that make it act, and the latest recorded invocation must carry them (v23 M1: a bare

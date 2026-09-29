@@ -673,7 +673,7 @@ class TestRunDetection(unittest.TestCase):
         text = self.green.replace(RUNNER_LINE, RUNNER_LINE.replace("  44.8s\n", "  44.8s [exit 1]\n"))
         rc, blob = _eval_msg(text, self.doc, self.root)
         self.assertEqual(rc, 1)
-        self.assertIn("unmatched [exit 1] on mandated needle 'run-m4-pre-verdict.sh'", blob)
+        self.assertIn("the latest invocation of needle 'run-m4-pre-verdict.sh' did not exit 0", blob)
 
     def test_reads_alone_are_not_a_run(self):
         reads = ("  ┊ 💻 $         cat %s  0.1s\n" % RUNNER_REL
@@ -682,7 +682,7 @@ class TestRunDetection(unittest.TestCase):
         text = self.green.replace(RUNNER_LINE, reads)
         rc, blob = _eval_msg(text, self.doc, self.root)
         self.assertEqual(rc, 1)
-        self.assertIn("silence: step pre-verdict needle 'run-m4-pre-verdict.sh' has no terminal argv", blob)
+        self.assertIn("silence: step pre-verdict needle 'run-m4-pre-verdict.sh'", blob)
 
     def test_run_forms_count(self):
         for cmd in ("bash %s /projects/modernized" % RUNNER_REL,
@@ -983,81 +983,121 @@ class PreloadedSkill(unittest.TestCase):
         self.assertIn("mandated skill_view absent for fix-until-green", err)
 
 
-class AbbreviatedCompoundCommand(unittest.TestCase):
-    """v26 t_d5579123: the runtime logged `rm -f ... && bash .../run-verify.sh --root . | tail -40` as
-    `rm -f ... + 1 command`; the audit found no run-verify line and refused a correct card. The ledger's
-    whole command, with its recorded exit, is that run."""
+class LedgerFirstAudit(unittest.TestCase):
+    """The audit grades an invocation from the execution ledger (task, run, tool_call_id) and a
+    verifier from its own record of THAT call; how the official log DISPLAYS the call decides nothing.
+
+    v26 t_d5579123 run 17 (the Profile card): the runtime displayed
+    `cd /projects/modernized && rm -f ... && bash .../run-verify.sh --root . 2>&1 | tail -40` as
+    `rm -f ... + 1 command`, and the audit refused a card whose verification had run."""
     FX = Path(__file__).resolve().parent.parent / "skills" / "paved-road" / "paved-road-m3" / "fixtures" / "green-m3"
     VERIFY = "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."
-    FULL = "cd /projects/modernized && rm -f verification/a.txt verification/b.txt && " + VERIFY + " 2>&1 | tail -40"
-    SHORT = "  ┊ 💻 $         rm -f verification/a.txt verification/b.txt + 1 command  109.3s"
+    # the actual v26 command (exec ledger run 17, tool call chatcmpl-tool-8e3894190c87bc8a)
+    PROFILE = ("cd /projects/modernized && rm -f verification/arc-jar-path.txt verification/core-jar-path.txt && "
+               + VERIFY + " 2>&1 | tail -40")
+    SHORT = "  ┊ 💻 $         rm -f verification/arc-jar-path.txt verification/core-jar-path.txt + 1 command  109.3s"
+    FULL = ("  ┊ 💻 $         rm -f verification/arc-jar-path.txt verification/core-jar-path.txt && " + VERIFY
+            + " 2>&1 | tail -40  109.3s")
 
-    def _grade(self, *, exit_code=0, ledger_cmd=None, short=None):
-        from paved_road import evaluate_audit, load_steps
-        text = (self.FX / "official.log").read_text(encoding="utf-8")
-        line = next(l for l in text.splitlines() if "run-verify.sh" in l)
-        text = text.replace(line, short or self.SHORT)
-        ledger = [r for r in intent_ledger(text) if "rm -f" not in r["command"]]
-        cmd = ledger_cmd or self.FULL
-        ledger += [{"task": "t", "run": "1", "tool_call_id": "cv", "command": cmd, "phase": "start"},
-                   {"task": "t", "run": "1", "tool_call_id": "cv", "command": cmd, "phase": "end", "exit_code": exit_code}]
-        steps = self.FX.parents[1] / "steps.json"
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = evaluate_audit(text, load_steps(steps), self.FX, ledger)
-        return rc, err.getvalue()
+    def _record(self, **over):
+        doc = {"schema": "rhoai3.last-verify/v2", "status": "finished", "card": "t_green", "run": "17", "seq": 1,
+               "tool_call_id": "cv", "rc": 0, "procedure": "completed", "compilation": "failed", "compile_errors": 200,
+               "tests": "not-run"}
+        doc.update(over)
+        return doc
 
-    def test_the_abbreviated_run_is_graded_from_the_ledger(self):
-        self.assertEqual(self._grade(), (0, ""))
-
-    def test_a_failed_ledger_exit_still_refuses(self):
-        rc, err = self._grade(exit_code=1)
-        self.assertEqual(rc, 1)
-        self.assertIn("did not exit 0", err)
-
-    def test_a_ledger_command_that_does_not_run_the_needle_is_not_the_run(self):
-        rc, err = self._grade(ledger_cmd="cd /projects/modernized && rm -f verification/a.txt verification/b.txt && "
-                                         "grep run-verify.sh notes.txt")
-        self.assertIn("silence: step", err)
-
-    def test_prose_quoting_a_dollar_and_the_script_is_not_a_run(self):
-        prose = "- run-verify.sh: 0 matched $-lines; bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."
-        self.assertEqual(matching_terminal_lines(prose, "run-verify.sh"), [])
-
-    def test_an_abbreviated_line_with_no_ledger_invocation_is_not_the_run(self):
-        rc, err = self._grade(short="  ┊ 💻 $         rm -f verification/other.txt + 1 command  1.0s")
-        self.assertIn("silence: step", err)
-
-
-class VerifierOwnExit(unittest.TestCase):
-    """V26-6 item 3: `run-verify.sh | tail -40` records tail's exit 0 in the ledger; the verifier's own record
-    (verification/loop/last-verify.json, written on every exit path) is its status."""
-    FX = Path(__file__).resolve().parent.parent / "skills" / "paved-road" / "paved-road-m3" / "fixtures" / "green-m3"
-
-    def _grade(self, record):
+    def _grade(self, display, *, record=None, calls=None, drop_rows=0):
+        """display: the official log line of the verification; calls: [(tool_call_id, command, exit or None)]."""
         import shutil
         import tempfile
         from paved_road import evaluate_audit, load_steps
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "fx"
             shutil.copytree(self.FX, root)
-            if record is not None:
-                (root / "verification" / "loop" / "last-verify.json").write_text(json.dumps(record), encoding="utf-8")
+            rec = root / "verification" / "loop" / "last-verify.json"
+            if record is None:
+                rec.unlink()
+            else:
+                rec.write_text(json.dumps(record), encoding="utf-8")
             text = (root / "official.log").read_text(encoding="utf-8")
-            ledger = intent_ledger(text)
+            line = next(l for l in text.splitlines() if "run-verify.sh" in l)
+            text = text.replace(line, display)
+            ledger = [dict(r, run="17") for r in intent_ledger(text) if "rm -f" not in r["command"]]
+            for cid, cmd, code in calls if calls is not None else [("cv", self.PROFILE, 0)]:
+                ledger.append({"task": "t_green", "run": "17", "tool_call_id": cid, "command": cmd, "phase": "start"})
+                if code != "unfinished":
+                    ledger.append({"task": "t_green", "run": "17", "tool_call_id": cid, "command": cmd, "phase": "end",
+                                   "exit_code": code})
+            if drop_rows:
+                ledger = ledger[drop_rows:]
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
                 rc = evaluate_audit(text, load_steps(self.FX.parents[1] / "steps.json"), root, ledger)
             return rc, err.getvalue()
 
-    def test_a_failed_verifier_behind_a_clean_pipeline_refuses(self):
-        rc, err = self._grade({"rc": 1, "card": "t_green", "run": "1"})
+    def _both(self, **kw):
+        short, full = self._grade(self.SHORT, **kw), self._grade(self.FULL, **kw)
+        self.assertEqual(short, full, "the shortened and the full display of one execution must grade the same")
+        return short
+
+    def test_the_v26_profile_shape_passes_in_either_display(self):
+        self.assertEqual(self._both(record=self._record()), (0, ""))
+
+    def test_failed_verifier_behind_a_clean_wrapper_refuses_in_either_display(self):
+        # the ledger says 0 (tail's exit); the verifier recorded its own 1
+        rc, err = self._both(record=self._record(rc=1, procedure="failed", compilation="unknown"))
+        self.assertEqual(rc, 1)
         self.assertIn("the verifier itself exited 1", err)
 
-    def test_a_record_of_another_card_or_run_does_not_count(self):
-        self.assertNotIn("the verifier itself", self._grade({"rc": 1, "card": "t_other", "run": "1"})[1])
-        self.assertNotIn("the verifier itself", self._grade({"rc": 1, "card": "t_green", "run": "9"})[1])
+    def test_a_wrapper_exit_alone_proves_nothing(self):
+        rc, err = self._both(record=None)
+        self.assertEqual(rc, 1)
+        self.assertIn("no verifier record", err)
 
-    def test_a_clean_verifier_record_passes(self):
-        self.assertEqual(self._grade({"rc": 0, "card": "t_green", "run": "1"}), (0, ""))
+    def test_a_newer_unfinished_invocation_cannot_borrow_an_older_success(self):
+        calls = [("cv", self.PROFILE, 0), ("cv2", self.PROFILE, "unfinished")]
+        rc, err = self._grade(self.SHORT + "\n" + self.SHORT, record=self._record(), calls=calls)
+        self.assertEqual(rc, 1)
+        self.assertIn("no recorded completion", err)
+
+    def test_a_newer_invocation_that_never_reached_the_verifier_cannot_borrow_its_success(self):
+        # `false && run-verify.sh || true` exits 0 and leaves the older call's record in place
+        never = "cd /projects/modernized && false && " + self.VERIFY + " || true"
+        calls = [("cv", self.PROFILE, 0), ("cv2", never, 0)]
+        rc, err = self._grade(self.SHORT + "\n  ┊ 💻 $         false + 1 command  0.1s", record=self._record(), calls=calls)
+        self.assertEqual(rc, 1)
+        self.assertIn("answers terminal call cv, not the latest invocation cv2", err)
+
+    def test_an_interrupted_verifier_is_unknown(self):
+        rc, err = self._both(record=self._record(status="started", rc=None))
+        self.assertEqual(rc, 1)
+        self.assertIn("no recorded finish", err)
+
+    def test_a_record_of_another_run_or_card_does_not_count(self):
+        for rec in (self._record(run="16"), self._record(card="t_other")):
+            rc, err = self._both(record=rec)
+            self.assertEqual(rc, 1)
+            self.assertIn("not of the latest invocation", err)
+
+    def test_a_ledger_that_misses_a_displayed_call_is_unknown(self):
+        # the log shows every call; the ledger lost its first row pair: the lost one may be the step's latest
+        rc, err = self._both(record=self._record(), drop_rows=2)
+        self.assertEqual(rc, 1)
+        self.assertIn("an invocation has no recorded result", err)
+
+    def test_a_failed_ledger_exit_still_refuses(self):
+        rc, err = self._both(record=self._record(), calls=[("cv", self.PROFILE, 1)])
+        self.assertEqual(rc, 1)
+        self.assertIn("did not exit 0", err)
+
+    def test_a_command_that_only_names_the_verifier_is_not_the_run(self):
+        rc, err = self._grade("  ┊ 💻 $         rm -f verification/a.txt + 1 command  0.1s", record=self._record(),
+                              calls=[("cv", "cd /projects/modernized && rm -f verification/a.txt && grep run-verify.sh notes.txt", 0)])
+        self.assertEqual(rc, 1)
+        self.assertIn("silence: step", err)
+
+    def test_prose_quoting_a_dollar_and_the_script_is_not_a_run(self):
+        prose = "- run-verify.sh: 0 matched $-lines; bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."
+        self.assertEqual(matching_terminal_lines(prose, "run-verify.sh"), [])
 
 
 if __name__ == "__main__":

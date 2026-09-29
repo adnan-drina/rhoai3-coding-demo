@@ -1,7 +1,9 @@
 # paved-road-m3 fixtures
 
 Each fixture is an official kanban log (`official.log`) plus the loop record
-(`verification/loop/steps.json`) the audit grades against.
+(`verification/loop/steps.json`) the audit grades against, the execution ledger
+(`official.exec.jsonl`), and the verifier's own record of the fixture's run-verify
+call (`verification/loop/last-verify.json`, bound to that call's `tool_call_id`).
 
 - `green-m3` — skill_view, brief, patches, run-verify, advance → `OK: ACCEPTED`; the record names the card as an accepted step → PASS.
 - `reverted-m3` — advance `[exit 1]` with `REVERTED`; the record names the card in `rejected` → PASS (a reverted attempt is a complete, recorded outcome).
