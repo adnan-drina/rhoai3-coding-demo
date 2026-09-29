@@ -84,28 +84,45 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   type (v28 `t_25819d9c`, commit `dfeda3d`: the verified redirect with
   `@Value("#{servletContext.contextPath}")` kept). The pinned platform refuses to package it
   ("SpEL expressions are not supported"), so v28 meets it at its first package gate as an
-  `unsupported-spel` obligation. Evidence: `servlet-redirect-package.test.py` (the v28 form is
-  refused structurally and does not package).
+  `unsupported-spel` obligation. Architect review G3 narrowed the check: only a field whose
+  Spring `@Value` (resolved through the type's imports) injects `#{servletContext…}` is
+  refused; the same text in another annotation is data, and an annotation no import binds
+  is left to the package gate. Evidence: `servlet-redirect-package.test.py` (the v28 form
+  is refused structurally and does not package; the recipe form packages and answers the
+  recorded 302), `response_injection.test.py` (renamed type and field, a `@JsonProperty`
+  literal, unbound and foreign `Value`, `${…}` placeholders).
 
-- [x] A small brief leads with its guidance (v28 `t_1cec0a74` gave up, `t_85e348e7` run 29
-  halted): under 24,000 characters `brief.py` printed raw JSON, so REQUIRED SHAPE, PREVIOUS
-  RUN and the absent write-set files sat mid-document behind "your cluster is no longer on the
-  open work list"; the workers read sibling repositories (28 of 52 calls) to learn what to write.
-  The digest's leading blocks now print first (stderr, which the Hermes terminal merges ahead of
-  the JSON on stdout), with a line naming the file the planned requirement still owes. The
-  retry context counts calls that differ only in numbers as one repeated question
-  (`grep -B10 … -B130`). Live: `t_85e348e7` run 30 (the retry, with previous_run) edited and
-  requested review in 11 calls. Evidence: `outcome-line.test.py` SmallBriefGuidance.
+- [x] The brief always shows the human digest (architect review G2; v28 `t_1cec0a74` gave
+  up, `t_85e348e7` run 29 halted: under 24,000 characters `brief.py` printed raw JSON, so
+  REQUIRED SHAPE, PREVIOUS RUN and the absent write-set files sat mid-document). `brief.py
+  --root .` prints the digest on stdout at any size; `--json` (or `--full`) prints the
+  complete JSON for programs. A card whose compile items are gone but whose planned
+  requirement is still owed gets one NEXT ACTION (the requirement, the write set, the
+  files still absent, the checks) in place of the generic not-open procedure. A retry
+  brief calls an answer known only when the same exact command returned the same complete
+  result with known exits; command resemblance is described as an investigation, never
+  as an answer. Evidence: `outcome-line.test.py` RetryAnswers and OwedPlannedRequirement,
+  `brief.test.py` (default digest, `--full` JSON). Live: `t_85e348e7` run 30 (with the
+  earlier guidance) edited and requested review in 11 calls.
 
-- [x] A number-only repeat is refused (v28 `t_564dfeaa`: one grep redirected to a new
-  `txn_clinic_fullN.txt` and read back, 213 times over an hour to the 500-iteration cap;
-  every call and result differed only in a number, which the byte-for-byte runtime guards
-  and patch 0015 count as new). The K2 pre-tool hook refuses the fifth terminal call of a
-  run whose previous four had this command and one output with digits masked (not all
-  byte-identical: exact repeats stay the runtime guard's), quoting the known answer and the
-  bounded brief selectors. A walk whose output grows is not refused (architect ruling kept).
-  Evidence: `k2_selftest.py` number_only_repeat_checks (the v28 shape; exact repeat, growing
-  walk, another run, unknown result and three prior calls are not refused).
+- [x] Diagnostic ownership in the brief (architect ruling 5): on a native card, every
+  measured diagnostic in the digest and in `--file`/`--symbol`/`--item` says whether this
+  card owns it (it blocks this card), which card owns it (not this card's to repair), or
+  that its owner is unresolved. No write scope changes. Evidence: `outcome-line.test.py`
+  DiagnosticOwnership.
+
+- [x] A proven duplicate observation is refused (architect review G1, which rejected the
+  number-masking rule: it refused different numbered files, output growing past the
+  800-character tail, changing counts, distinct product writes and unknown exits). v28
+  `t_564dfeaa` ran one query 213 times, writing each result to a newly named scratch file.
+  The K2 hook now refuses only when the previous four calls of the run were the same
+  recognized read-only query differing only in its scratch file name, each completed with
+  a known exit and the same complete output (the whole output, or its sha256 when longer
+  than the recorded tail), with no file edit between (edits are now recorded as
+  `mutation` rows). Anything unproven is allowed; nothing heuristic is refused.
+  Evidence: `k2_selftest.py` duplicate_observation_checks (three proven shapes refused;
+  the review's five counterexamples and seven controls allowed); the review's probe
+  re-run counting any refusal: five of five allowed.
 
 - [x] Architect review F1: a skipped `run-verify.sh` invocation earlier in the run no
   longer refuses a later successful verification (the latest invocation is judged by its
@@ -131,6 +148,13 @@ Still open (not blockers of this package's source work):
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);
   the runtime is unchanged (image `9147834b`).
 - [ ] Live evidence for A-D comes only from the next run.
+- [ ] v28 (continued past the architect's freeze ruling as an assisted diagnostic after
+  the Operator unblocked PetType `t_1cec0a74`, which then took one clean attempt): the
+  SpEL field the Root COMPILE card kept fails the package gate, so the Owner and Pet
+  BEHAVIOR cards (`t_9373a61f`, `t_ac4163cf`) blocked with OUT_OF_SCOPE_PREREQUISITE
+  instead of measuring parity. G3 refuses that field at the COMPILE card; whether a
+  package-gate failure no card owns reaches its owner through the attribution path is
+  still to be read from the rest of v28.
 - [ ] Evidence gaps kept from v26: preloaded skill text is not corroborated from the
   session store; `test_stall_guards` and `test_cli_preloaded_skills` were not run for
   0015/0016 (missing local dependencies).
