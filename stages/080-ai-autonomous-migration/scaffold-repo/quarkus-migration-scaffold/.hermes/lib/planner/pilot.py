@@ -222,9 +222,33 @@ def sibling_tolerant(root: Path, board: Any, task_id: str, node: dict[str, Any],
     since = set(git(r, "diff", "--name-only", commit, "HEAD").stdout.split())
     if mine & since:
         return "later commits changed %s, which this outcome changed" % sorted(mine & since)[0]
-    if _clean(r):
-        return "the main tree has uncommitted changes"
+    dirty = _clean(r)
+    if dirty:
+        # the sibling's integration in flight (v29 t_0b68019a: its reviewer ran while the sibling's candidate sat
+        # applied, not yet verified or committed, on the main tree) explains exactly its own issued paths
+        flight = sibling_integration_in_flight(board, task_id, node)
+        if flight is None or not set(dirty) <= flight or set(dirty) & mine:
+            return "the main tree has uncommitted changes"
     return ""
+
+
+def sibling_integration_in_flight(board: Any, task_id: str, node: dict[str, Any]) -> set[str] | None:
+    """The paths the OTHER pair member's integration may hold uncommitted in the main tree (its issued write
+    sets) while its latest integration record is an integrate-begin that no integrated, integration-conflict
+    or integration-rejected record has followed. None when no sibling integration is in flight."""
+    parsed = board.node_of(task_id)
+    if not parsed:
+        return None
+    tasks = board.run_tasks(parsed[1])
+    kinds = ("integrate-begin", "integrated", "integration-conflict", "integration-rejected")
+    for sib in node.get("pilot_pair") or []:
+        row = tasks.get(sib)
+        if not row:
+            continue
+        recs = sorted(((int(r.get("_id") or 0), k) for k in kinds for r in board.records(row["id"], k)))
+        if recs and recs[-1][1] == "integrate-begin":
+            return {str(p) for r in board.records(row["id"], "issue") for p in (r.get("allowed_paths") or [])}
+    return None
 
 
 # ---------------------------------------------------------------------------

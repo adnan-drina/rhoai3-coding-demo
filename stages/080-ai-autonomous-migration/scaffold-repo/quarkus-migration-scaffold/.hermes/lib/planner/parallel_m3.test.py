@@ -338,6 +338,28 @@ class Qualification(unittest.TestCase):
         self.assertEqual(r.native.task(m4)["status"], "todo")
         r.review_and_complete(tb, rb)
 
+    def test_a_sibling_integration_in_flight_does_not_unaccept_the_integrated_member(self):
+        """v29 t_0b68019a: its reviewer ran while the sibling's integration had applied its candidate to the main
+        tree (integrate-begin; not yet verified or committed). Completion refused OUTCOME_NOT_ACCEPTED ("the tree is
+        now ...") and the reviewer blocked asking the Operator. The sibling's own transaction explains exactly
+        those uncommitted paths; anything else uncommitted still refuses."""
+        w, r = self.w, self.w.r
+        (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
+        w.accept_in_worktree(ta, ra, wa, ia)
+        w.accept_in_worktree(tb, rb, wb, ib)
+        self.assertEqual(w.integrate(ta, ra, wa)["status"], "INTEGRATED")
+        w.fail_verify_once.add(tb)
+        with self.assertRaises(KeyboardInterrupt):
+            w.integrate(tb, rb, wb)
+        self.assertTrue(NB.git(r.root, "status", "--porcelain", "--", "src"))   # B's candidate sits uncommitted on main
+        plan = r.plan()
+        node = NC._node(plan, ITEM)
+        ok, why = NC.outcome_acceptance(r.root, r.board, ta, plan, node)
+        self.assertTrue(ok, why)
+        (r.root / W / "web" / "Stray.java").write_text("class Stray {}\n")        # not the sibling's: still refused
+        ok, why = NC.outcome_acceptance(r.root, r.board, ta, plan, node)
+        self.assertFalse(ok)
+
     def test_one_workers_rollback_leaves_its_sibling_and_the_main_tree_intact(self):
         w, r = self.w, self.w.r
         (ta, ra, wa, ia), (tb, rb, wb, ib) = w.start(ITEM), w.start(ORDER)
