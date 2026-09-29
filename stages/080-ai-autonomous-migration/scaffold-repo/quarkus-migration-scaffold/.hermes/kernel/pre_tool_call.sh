@@ -103,23 +103,37 @@ def task_roots():
 # INVOCATION (written here, before the call can run) with its COMPLETION
 # (written by the post_tool_call observer) by tool_call_id, so the audit can
 # tell a latest invocation whose result was lost or never came from a success.
+# A file-editing tool call is recorded too, as a "mutation" row (no pairing):
+# the duplicate-observation rule below resets at any edit.
 # Recording is best effort and never decides anything here: a missing start row
 # makes the audit read the call as unknown, never as a pass.
-def record_invocation():
-    if tool not in ("terminal", "bash", "shell"):
-        return
-    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+MUTATING_TOOLS = ("write_file", "write", "patch", "edit_file", "str_replace")
+
+def ledger_home():
     home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
-    if not task or not home:
-        return
+    if not home:
+        return ""
     parent, name = os.path.split(home)
     root, prof = os.path.split(parent)
     if prof == "profiles" and name and root:
         home = root
-    row = {"schema": "rhoai3.exec-ledger/v1", "phase": "start", "task": task,
+    return home
+
+def record_invocation():
+    terminal = tool in ("terminal", "bash", "shell")
+    if not terminal and tool not in MUTATING_TOOLS:
+        return
+    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    home = ledger_home()
+    if not task or not home:
+        return
+    row = {"schema": "rhoai3.exec-ledger/v1", "phase": "start" if terminal else "mutation", "task": task,
            "run": (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip(), "profile": profile,
-           "tool_call_id": str(extra.get("tool_call_id") or ""), "command": cmd,
-           "command_sha256": hashlib.sha256(cmd.encode("utf-8", errors="replace")).hexdigest()}
+           "tool_call_id": str(extra.get("tool_call_id") or "")}
+    if terminal:
+        row.update(command=cmd, command_sha256=hashlib.sha256(cmd.encode("utf-8", errors="replace")).hexdigest())
+    else:
+        row.update(tool=tool, path=str(inp.get("path") or inp.get("file_path") or "")[:400])
     try:
         fd = os.open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         try:
@@ -131,67 +145,185 @@ def record_invocation():
 
 record_invocation()
 
-# Number-only repeat (v28 t_564dfeaa: 213 calls of one grep, each redirected to a
-# new file txn_clinic_fullN.txt and read back; one hour, no edit, no guard fired).
-# The runtime guards compare calls and results byte for byte, and a new number in
-# the command or the output counts there as a new call and as progress. Here a
-# terminal call is refused when the previous NUMBER_REPEAT_LIMIT completed terminal
-# calls of this run had this command and one output, both with every digit run
-# masked, and not every one of them was this exact command (an exact repeat is the
-# runtime identical-call guard). A walk whose output really changes (grep -B10,
-# -B20, ... returning more lines) is never refused here. The answer is quoted back.
-NUMBER_REPEAT_LIMIT = 4
+# Duplicate observation (architect review 2026-09-29, G1). It replaces the v28
+# number-masking rule, which refused reads of different numbered files, output
+# that grew past the recorded tail, changing diagnostic counts, distinct product
+# writes and results of unknown exit. v28 t_564dfeaa ran one read-only query 213
+# times, each time writing its result to a newly named scratch file and reading
+# it back. A terminal call is refused here only when ALL of this is proven from
+# the execution ledger of this run:
+#   - the previous DUPLICATE_LIMIT calls are the last calls of the run, each a
+#     terminal call completed with a known exit code, with no file-editing call
+#     among them (an edit resets the comparison);
+#   - each of them and this call is one recognized read-only query: every
+#     command in it is a reader, and its only writes are redirects or tee to
+#     scratch files outside the product tree;
+#   - they differ from this call ONLY in those scratch file names, replaced
+#     consistently in the command and in the recorded output; every other
+#     operand, pattern, number and range is compared exactly as written;
+#   - their complete outputs are equal: the whole output when the ledger holds
+#     all of it, else the sha256 of the whole output (never a tail).
+# Anything else is not a proven duplicate and is allowed: an unrecognized shell
+# shape, a missing or partial record, an unknown exit, a changed operand or a
+# changed result. An exact repeat is the runtime identical-call guard. Nothing
+# heuristic is refused and no advice is counted here.
+DUPLICATE_LIMIT = 4
+LEDGER_OUTPUT_TAIL = 800  # post_tool_call.py OUTPUT_TAIL
+READERS = {"cat", "grep", "egrep", "fgrep", "rg", "head", "tail", "wc", "sort", "uniq", "cut", "ls", "nl", "tr", "echo",
+           "printf", "jq", "sed", "find", "diff", "cmp", "stat", "file", "basename", "dirname", "realpath", "readlink",
+           "cd", "pwd", "true", "tee"}
+SEPARATORS = {"|", "||", "&&", ";", "&", "|&"}
+SINK_OPS = {">", ">>", "&>", "&>>", ">|"}
+SCRATCH_STATE = ("verification/", "evidence/", ".hermes/", ".derived/", "target/", ".worktrees/")
 
-def _masked(v):
-    return re.sub(r"[0-9]+", "N", v)
+def _scratch_target(path, cwd):
+    """True when a write to path is outside the product tree (scratch); False for a product path."""
+    p = path if os.path.isabs(path) else os.path.join(cwd or os.getcwd(), path)
+    p = os.path.realpath(p)
+    for root in (PILOT_ROOT, DEST_CANON):
+        if root and (p == root or p.startswith(root + os.sep)):
+            rel = os.path.relpath(p, root)
+            return rel.startswith(SCRATCH_STATE)
+    return True
 
-def number_only_repeat():
+def observation_shape(c, cwd):
+    """(normalized tokens, scratch names) of a recognized read-only query, else None."""
+    import shlex
+    try:
+        lex = shlex.shlex(c, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        return None
+    if not toks:
+        return None
+    sinks, words, seg = [], [], []
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t in SINK_OPS or t in (">&", "<", "<<", "<<<"):
+            if seg and seg[-1].isdigit():
+                seg.pop()  # a file descriptor number (2>, 1>>)
+            target = toks[i + 1] if i + 1 < len(toks) else ""
+            if not target or target in SEPARATORS or target in SINK_OPS:
+                return None
+            if t in SINK_OPS and target != "/dev/null":
+                if not _scratch_target(target, cwd):
+                    return None  # a write to the product tree is work, never an observation
+                sinks.append(target)
+            seg.append(t)
+            seg.append(target)
+            i += 2
+            continue
+        if t in SEPARATORS:
+            words.append(seg)
+            words.append([t])
+            seg = []
+        elif t in ("(", ")", "{", "}", "<(", "$(", "`"):
+            return None  # subshells and substitutions are not a recognized shape
+        else:
+            seg.append(t)
+        i += 1
+    words.append(seg)
+    for s in words:
+        if not s or (len(s) == 1 and s[0] in SEPARATORS):
+            continue
+        k = 0
+        while k < len(s) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", s[k]):
+            k += 1
+        if k >= len(s):
+            return None
+        prog = os.path.basename(s[k])
+        if prog not in READERS:
+            return None
+        rest = s[k + 1:]
+        if prog == "sed" and any(a.startswith("-i") or a.startswith("--in-place") for a in rest):
+            return None
+        if prog == "find" and any(a in ("-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprintf", "-fls") for a in rest):
+            return None
+        if prog == "tee":
+            for a in rest:
+                if not a.startswith("-") and a not in SINK_OPS:
+                    if not _scratch_target(a, cwd):
+                        return None
+                    sinks.append(a)
+    names = []
+    for n in sinks:
+        if n not in names:
+            names.append(n)
+    ordered = sorted(names, key=len, reverse=True)
+    norm = []
+    for t in toks:
+        for n in ordered:
+            t = t.replace(n, "<scratch%d>" % names.index(n))
+        norm.append(t)
+    return json.dumps(norm), names
+
+def _normalized_output(text, names):
+    for n in sorted(names, key=len, reverse=True):
+        text = text.replace(n, "<scratch%d>" % names.index(n))
+    return text
+
+def duplicate_observation():
     if tool not in ("terminal", "bash", "shell") or not cmd:
         return ""
     task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     run_id = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
-    home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
+    home = ledger_home()
     if not task or not run_id or not home:
         return ""
-    parent, name = os.path.split(home)
-    root, prof = os.path.split(parent)
-    if prof == "profiles" and name and root:
-        home = root
+    cwd = hook_cwd or os.getcwd()
+    cur = observation_shape(cmd, cwd)
+    if cur is None or not cur[1]:
+        return ""  # not a recognized observation, or nothing renamed: the runtime guards decide
     try:
         with open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), encoding="utf-8", errors="replace") as fh:
             rows = [json.loads(x) for x in fh if x.strip()]
     except (OSError, ValueError):
         return ""
-    ends = {}
-    for r in rows:
-        if isinstance(r, dict) and r.get("phase") == "end" and str(r.get("run") or "") == run_id and r.get("tool_call_id"):
-            ends[str(r["tool_call_id"])] = r
-    done = []
-    for r in rows:
-        if isinstance(r, dict) and r.get("phase") == "start" and str(r.get("run") or "") == run_id:
-            e = ends.get(str(r.get("tool_call_id") or ""))
-            if e is not None:
-                done.append((str(r.get("command") or ""), e))
-    last = done[-NUMBER_REPEAT_LIMIT:]
-    if len(last) < NUMBER_REPEAT_LIMIT:
+    rows = [r for r in rows if isinstance(r, dict) and str(r.get("run") or "") == run_id]
+    ends = {str(r["tool_call_id"]): r for r in rows if r.get("phase") == "end" and r.get("tool_call_id")}
+    calls = [r for r in rows if r.get("phase") in ("start", "mutation")]
+    # this call has already been recorded as a start row: compare the calls before it
+    if calls and calls[-1].get("phase") == "start" and str(calls[-1].get("command") or "") == cmd \
+            and str(calls[-1].get("tool_call_id") or "") == str(extra.get("tool_call_id") or "") \
+            and str(calls[-1].get("tool_call_id") or "") not in ends:
+        calls = calls[:-1]
+    last = calls[-DUPLICATE_LIMIT:]
+    if len(last) < DUPLICATE_LIMIT or any(r.get("phase") != "start" for r in last):
         return ""
-    shape = _masked(cmd)
-    if any(_masked(c) != shape for c, _e in last):
+    if all(str(r.get("command") or "") == cmd for r in last):
+        return ""  # an exact repeat is the runtime identical-call guard
+    seen = set()
+    final = None
+    for r in last:
+        shp = observation_shape(str(r.get("command") or ""), cwd)
+        if shp is None or shp[0] != cur[0]:
+            return ""
+        e = ends.get(str(r.get("tool_call_id") or ""))
+        if not isinstance(e, dict):
+            return ""
+        code = e.get("exit_code")
+        if not isinstance(code, int) or isinstance(code, bool):
+            return ""  # unknown completion is unknown, never a known answer
+        tail, n, sha = e.get("output_tail"), e.get("output_chars"), e.get("output_sha256")
+        if not isinstance(tail, str) or not isinstance(n, int) or not sha:
+            return ""
+        if n == len(tail):
+            seen.add((code, "whole", _normalized_output(tail, shp[1])))
+        else:
+            seen.add((code, "sha256", str(sha)))
+        final = (code, tail, shp[1])
+    if len(seen) != 1 or final is None:
         return ""
-    if all(c == cmd for c, _e in last):
-        return ""
-    outs = [e.get("output_tail") for _c, e in last]
-    if any(not isinstance(o, str) for o in outs):
-        return ""
-    if len({_masked(o) for o in outs}) != 1 or len({str(e.get("exit_code")) for _c, e in last}) != 1:
-        return ""
-    answer = " ".join(outs[-1].split())[-300:]
-    return ("NUMBER_ONLY_REPEAT: your last %d terminal calls were this command with only a number changed, and each "
-            "returned the same answer with only a number changed (exit %s): %s -- that answer is known. Act on it: edit "
-            "the write set, or run run-verify.sh / advance.py. For a bounded view of the measured diagnostics use "
-            "brief.py --root . --symbol <name> | --file <path> | --item <id>, which also says whose obligation each is. "
-            "Changing a file name or a number does not change the question."
-            % (NUMBER_REPEAT_LIMIT, last[-1][1].get("exit_code"), answer))
+    answer = " ".join(final[1].split())[-300:]
+    return ("DUPLICATE_OBSERVATION: your last %d calls ran this same read-only query and each returned the same "
+            "complete result (exit %s); only the scratch file it writes was renamed (%s). That result is known: %s "
+            "-- act on it: edit the write set, or run run-verify.sh / advance.py. For a bounded view of the measured "
+            "diagnostics and whose obligation each is, use brief.py --root . --symbol <name> | --file <path> | "
+            "--item <id>. Renaming the scratch file does not ask a new question."
+            % (DUPLICATE_LIMIT, final[0], ", ".join(final[2][-2:]), answer))
+
 
 PILOT_LOOP_TOOLS = ("brief.py", "run-verify.sh", "advance.py", "native_gate.py", "restore-pending.py", "amend-scope.py",
                     "assert-paved-road-audit.py")
@@ -215,9 +347,9 @@ if _pre:
     block("PILOT_CONFINED: this pilot task runs its loop tools in its own worktree (%s), never at %s. Use --root . "
           "from the directory you start in; the main tree changes only through native_gate.py integrate" % (PILOT_ROOT, _pre))
 
-_nr = number_only_repeat()
-if _nr:
-    block(_nr)
+_dup = duplicate_observation()
+if _dup:
+    block(_dup)
 
 def preload_gaps():
     """The native --skills preload of THIS run (runtime 0016: the run-bound

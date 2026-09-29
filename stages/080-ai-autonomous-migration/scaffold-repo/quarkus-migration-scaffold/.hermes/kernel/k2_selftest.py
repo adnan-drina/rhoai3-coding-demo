@@ -1923,7 +1923,8 @@ def v17_6b_invocation_record() -> int:
     """V17-6b (review of 660c1c03): the hook writes the INVOCATION row the
     audit pairs with the observer COMPLETION by tool_call_id -- for an allowed
     and for a refused terminal call alike (a refused call never completes, so
-    the audit reads it as unknown) -- and never for another tool."""
+    the audit reads it as unknown). A file-editing tool call gets a "mutation" row (architect review
+    2026-09-29, G1: an edit resets the duplicate-observation comparison)."""
     fails = 0
     with tempfile.TemporaryDirectory() as td:
         home = Path(td) / "home"
@@ -1941,7 +1942,7 @@ def v17_6b_invocation_record() -> int:
         rows = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()] if ledger.exists() else []
         # invocation rows only: the once-per-run preload row is a separate record (phase "preload")
         got = [(r.get("phase"), r.get("tool_call_id"), r.get("run"), r.get("profile")) for r in rows if r.get("phase") != "preload"]
-        want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer")]
+        want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer"), ("mutation", "call-c", "5", "reviewer")]
         if got != want:
             print("FAIL v17_6b_invocation_record", got, file=sys.stderr)
             fails += 1
@@ -1950,54 +1951,84 @@ def v17_6b_invocation_record() -> int:
     return fails
 
 
-def number_only_repeat_checks() -> int:
-    """v28 t_564dfeaa: one grep redirected to a new numbered file each time and read back, 213 times; every
-    call and result differed only in a number, so no byte-for-byte guard fired. The fifth such call in a run is
-    refused, quoting the known answer; an exact repeat, a walk whose output grows, another run, an unknown result
-    and fewer than four prior calls are not."""
+def duplicate_observation_checks() -> int:
+    """Architect review 2026-09-29, G1 (replaces the v28 number-masking rule). v28 t_564dfeaa ran one read-only
+    query 213 times, each time writing its result to a newly named scratch file and reading it back. Only a
+    PROVEN duplicate observation is refused: the same recognized read-only query, differing only in its scratch
+    file name, four times in a row with known exits and equal complete outputs. The five counterexamples the
+    review reproduced against the number-masking rule, and every unproven variant, are allowed."""
+    import hashlib
     fails = 0
 
-    def case(name, prior, current, want_block, *, run_id="46", other_run=False, tail=True):
+    def case(name, prior, current, want_block, *, run_id="46", other_run=False, exit_code=0, fields=True,
+             mutation_after=None, quote=""):
         nonlocal fails
         with tempfile.TemporaryDirectory() as td:
             home = Path(td) / "home"
             (home / "kanban" / "logs").mkdir(parents=True)
             dest = Path(td) / "mod"
             (dest / "verification").mkdir(parents=True)
+            (dest / "src").mkdir(parents=True)
             rows = []
             for i, (cmd, out) in enumerate(prior):
                 cmd, out = cmd.replace("DEST", str(dest)), out.replace("DEST", str(dest))
-                base = {"task": "t_nr", "run": "45" if other_run else run_id, "tool_call_id": "c%d" % i, "command": cmd}
-                rows.append(dict(base, phase="start"))
-                end = dict(base, phase="end", exit_code=0)
-                if tail:
-                    end["output_tail"] = out
+                base = {"task": "t_nr", "run": "45" if other_run else run_id, "tool_call_id": "c%d" % i}
+                rows.append(dict(base, phase="start", command=cmd))
+                end = dict(base, phase="end", command=cmd, exit_code=exit_code)
+                if fields:
+                    end.update(output_tail=out[-800:], output_chars=len(out),
+                               output_sha256=hashlib.sha256(out.encode()).hexdigest())
                 rows.append(end)
+                if mutation_after == i:
+                    rows.append(dict(base, phase="mutation", tool_call_id="m%d" % i, tool="write_file",
+                                     path=str(dest / "src" / "A.java")))
             (home / "kanban" / "logs" / "t_nr.exec.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
             env = {"HERMES_HOME": str(home), "HERMES_KANBAN_TASK": "t_nr", "HERMES_KANBAN_RUN_ID": run_id,
-                   "HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
-            r = run(current.replace("DEST", str(dest)), [str(dest)], cwd=str(dest), extra_env=env)
-            got = r.get("action") == "block" and "NUMBER_ONLY_REPEAT" in str(r.get("message"))
+                   "HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0", "HERMES_WRITE_SAFE_ROOT": str(dest)}
+            r = run(current.replace("DEST", str(dest)), [str(dest)], cwd=str(dest), extra_env=env,
+                    extra_payload={"extra": {"tool_call_id": "now"}})
+            got = r.get("action") == "block" and "DUPLICATE_OBSERVATION" in str(r.get("message"))
             if got != want_block:
-                print("FAIL number_only_repeat %s: %s" % (name, r), file=sys.stderr)
+                print("FAIL duplicate_observation %s: %s" % (name, r), file=sys.stderr)
                 fails += 1
-            elif want_block and "12600 DEST/verification/txn_" not in str(r.get("message")).replace(str(dest), "DEST"):
-                print("FAIL number_only_repeat %s: the known answer is not quoted: %s" % (name, r), file=sys.stderr)
+            elif want_block and quote and quote not in str(r.get("message")):
+                print("FAIL duplicate_observation %s: the known answer is not quoted: %s" % (name, r), file=sys.stderr)
                 fails += 1
 
-    grep = "cat DEST/diagnostics.json | grep -o Transactional > DEST/verification/txn_clinic_full%d.txt; wc -c DEST/verification/txn_clinic_full%d.txt"
-    renamed = [(grep % (n, n), "12600 DEST/verification/txn_clinic_full%d.txt" % n) for n in range(1, 5)]
-    case("v28-shape", renamed, grep % (5, 5), True)
-    case("three-prior", renamed[1:], grep % (5, 5), False)
-    case("another-run", renamed, grep % (5, 5), False, other_run=True)
-    case("unknown-result", renamed, grep % (5, 5), False, tail=False)
-    same = [(grep % (1, 1), "12600 DEST/verification/txn_clinic_full1.txt")] * 4
-    case("exact-repeat-is-the-runtime-guard", same, grep % (1, 1), False)
-    walk = "grep -B%d void DEST/verification/Owner.java"
-    growing = [(walk % (10 * n), "\n".join("line %d" % k for k in range(n))) for n in range(1, 5)]
-    case("growing-walk", growing, walk % 50, False)
+    # the v28 shape: one query, a renamed scratch file under the run state, the name echoed in the output
+    q = "cat DEST/verification/diag.json | grep -o Transactional > DEST/verification/txn_clinic_full%d.txt; wc -c DEST/verification/txn_clinic_full%d.txt"
+    v28 = [(q % (n, n), "12600 DEST/verification/txn_clinic_full%d.txt" % n) for n in range(1, 5)]
+    case("v28-shape", v28, q % (5, 5), True, quote="12600")
+    tmpq = "grep -c Transactional DEST/src/A.java > /tmp/cnt%d.txt; cat /tmp/cnt%d.txt"
+    case("tmp-scratch", [(tmpq % (n, n), "31\n") for n in range(1, 5)], tmpq % (5, 5), True, quote="31")
+    teeq = "grep -n delete DEST/src/A.java | tee /tmp/del%d.txt"
+    case("tee-scratch", [(teeq % n, "12: void delete()\n") for n in range(1, 5)], teeq % 5, True)
+    # the five counterexamples the review reproduced
+    case("different-files", [("cat DEST/src/Part%d.java" % n, "class Part%d {}" % n) for n in range(1, 5)],
+         "cat DEST/src/Part5.java", False)
+    fq = "cat DEST/src/Part%d.java > /tmp/p%d.txt; cat /tmp/p%d.txt"
+    case("different-files-with-scratch", [(fq % (n, n, n), "class Part {}") for n in range(1, 5)], fq % (5, 5, 5), False)
+    big = "x" * 900
+    case("growing-past-the-tail", [("grep -B%d void DEST/src/A.java" % (10 * n), "l" * (100 * n) + big) for n in range(1, 5)],
+         "grep -B50 void DEST/src/A.java", False)
+    gq = "grep -B40 void DEST/src/A.java > /tmp/w%d.txt; cat /tmp/w%d.txt"
+    case("same-tail-different-whole", [(gq % (n, n), "l" * (100 * n) + big) for n in range(1, 5)], gq % (5, 5), False)
+    cq = "grep -c err DEST/verification/diag.json > /tmp/c%d.txt; cat /tmp/c%d.txt"
+    case("changing-counts", [(cq % (n, n), "%d\n" % (60 - 10 * n)) for n in range(1, 5)], cq % (5, 5), False)
+    case("product-touch", [("touch DEST/src/Part%d.java" % n, "") for n in range(1, 5)], "touch DEST/src/Part5.java", False)
+    wq = "echo x > DEST/src/Part%d.java"
+    case("product-redirect", [(wq % n, "") for n in range(1, 5)], wq % 5, False)
+    case("unknown-exit", v28, q % (5, 5), False, exit_code=None)
+    # further controls: fewer calls, another run, an exact repeat, an edit between, a partial record, an unknown shape
+    case("three-prior", v28[1:], q % (5, 5), False)
+    case("another-run", v28, q % (5, 5), False, other_run=True)
+    case("exact-repeat-is-the-runtime-guard", [(q % (1, 1), "12600 DEST/verification/txn_clinic_full1.txt")] * 4, q % (1, 1), False)
+    case("edit-between-resets", v28, q % (5, 5), False, mutation_after=1)
+    case("partial-record", v28, q % (5, 5), False, fields=False)
+    pq = "python3 -c print > /tmp/py%d.txt; cat /tmp/py%d.txt"
+    case("unrecognized-shape", [(pq % (n, n), "ok") for n in range(1, 5)], pq % (5, 5), False)
     if not fails:
-        print("ok number_only_repeat_checks")
+        print("ok duplicate_observation_checks")
     return fails
 
 
@@ -2038,4 +2069,4 @@ def pilot_confinement_checks() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record() + number_only_repeat_checks() + pilot_confinement_checks())
+    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record() + duplicate_observation_checks() + pilot_confinement_checks())
