@@ -81,6 +81,24 @@ for src in (data, extra, inp, args):
     if hook_cwd:
         break
 
+# Parallel M3 pilot (stages/080-ai-autonomous-migration/PARALLEL-M3-PILOT.md): a pair task works in
+# its own native worktree under <dest>/.worktrees/, which the dispatcher names in the worker env. For
+# such a task the worktree IS its destination root: writes, write sets and loop records resolve there,
+# and the main tree and the sibling worktree are refused. Recognized only from the dispatcher env, only
+# under the destination, only on a wt/m3- branch.
+DEST_CANON = os.path.realpath((os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()) if (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip() else ""
+PILOT_ROOT = ""
+_pws = (os.environ.get("HERMES_KANBAN_WORKSPACE") or "").strip()
+if DEST_CANON and _pws and (os.environ.get("HERMES_KANBAN_BRANCH") or "").startswith("wt/m3-"):
+    _pwr = os.path.realpath(_pws)
+    if os.path.dirname(_pwr) == os.path.join(DEST_CANON, ".worktrees"):
+        PILOT_ROOT = _pwr
+
+def task_roots():
+    """Where this task loop records live, in the order they are read: a pilot task worktree first."""
+    base = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    return ([PILOT_ROOT] if PILOT_ROOT else []) + base
+
 # V17-6b (review of 660c1c03): the execution ledger pairs every terminal
 # INVOCATION (written here, before the call can run) with its COMPLETION
 # (written by the post_tool_call observer) by tool_call_id, so the audit can
@@ -174,6 +192,28 @@ def number_only_repeat():
             "brief.py --root . --symbol <name> | --file <path> | --item <id>, which also says whose obligation each is. "
             "Changing a file name or a number does not change the question."
             % (NUMBER_REPEAT_LIMIT, last[-1][1].get("exit_code"), answer))
+
+PILOT_LOOP_TOOLS = ("brief.py", "run-verify.sh", "advance.py", "native_gate.py", "restore-pending.py", "amend-scope.py",
+                    "assert-paved-road-audit.py")
+
+def pilot_rooted_elsewhere():
+    """A pilot task loop tool whose command names the main tree (outside its worktree) as a root."""
+    if not PILOT_ROOT or tool not in ("terminal", "bash", "shell") or not cmd:
+        return ""
+    if not any(t in cmd for t in PILOT_LOOP_TOOLS):
+        return ""
+    spellings = {DEST_CANON, (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip().rstrip("/")} - {""}
+    for root in sorted(spellings, key=len, reverse=True):
+        for m in re.finditer(re.escape(root) + r"(/[^\s;&|]*)?(?=$|[\s;&|])", cmd):
+            rest = m.group(1) or ""
+            if not rest.startswith("/.worktrees/" + os.path.basename(PILOT_ROOT)):
+                return m.group(0)
+    return ""
+
+_pre = pilot_rooted_elsewhere()
+if _pre:
+    block("PILOT_CONFINED: this pilot task runs its loop tools in its own worktree (%s), never at %s. Use --root . "
+          "from the directory you start in; the main tree changes only through native_gate.py integrate" % (PILOT_ROOT, _pre))
 
 _nr = number_only_repeat()
 if _nr:
@@ -468,7 +508,7 @@ def loop_record_names_task(task):
     A VERIFICATION_PENDING row is not a complete-able verdict."""
     if not task:
         return False
-    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots = task_roots()
     for r in roots:
         if not r:
             continue
@@ -491,7 +531,7 @@ def loop_pending_for_task(task):
     restore-pending.py puts back (V16-6)."""
     if not task:
         return False
-    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots = task_roots()
     for r in roots:
         if not r:
             continue
@@ -512,7 +552,7 @@ def is_loop_card():
     task = hook_task_id()
     if not task:
         return False
-    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots = task_roots()
     for r in roots:
         if not r:
             continue
@@ -707,7 +747,7 @@ def last_advance_reverted(task):
     if not starts or not starts[-1] or ends.get(starts[-1]) != 1:
         return False
     latest = starts[-1]
-    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots = task_roots()
     for r in roots:
         if not r:
             continue
@@ -844,7 +884,7 @@ def loop_step_accepted():
     task = hook_task_id()
     if not task:
         return None
-    roots_ = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots_ = task_roots()
     for r in roots_:
         if not r:
             continue
@@ -864,7 +904,7 @@ def loop_continuation():
     task = hook_task_id()
     if not task:
         return None
-    roots_ = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots_ = task_roots()
     for r in roots_:
         if not r:
             continue
@@ -1384,6 +1424,8 @@ if paths and only_toolchain:
     raise SystemExit(0)
 
 def dest_root():
+    if PILOT_ROOT:
+        return PILOT_ROOT
     wr = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()
     if wr:
         try:
@@ -1792,7 +1834,7 @@ def loop_write_set():
     task = hook_task_id()
     if not task:
         return None
-    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    roots = task_roots()
     for r in roots:
         if not r:
             continue
@@ -1895,6 +1937,10 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
         rp = resolve_rp(p)
         if toolchain_read(rp) or toolchain_read(str(p).replace("\\", "/")):
             continue
+        if PILOT_ROOT and not in_dest_write_sandbox(rp) and (rp == DEST_CANON or rp.startswith(DEST_CANON + os.sep)):
+            block("PILOT_CONFINED: write %s is outside this pilot task worktree %s. A pair task edits only its own "
+                  "worktree; the main tree changes only through native_gate.py integrate, and the sibling worktree is "
+                  "the other card" % (p, PILOT_ROOT))
         if not in_dest_write_sandbox(rp):
             block("write %s is outside the dest write sandbox (legacy is read-only)" % p)
     outside = [] if scratch_ok else loop_product_write_refusals(list(effect) if effect else list(paths))

@@ -2001,5 +2001,41 @@ def number_only_repeat_checks() -> int:
     return fails
 
 
+def pilot_confinement_checks() -> int:
+    """PARALLEL-M3-PILOT.md: a pair task (dispatcher env names a worktree under <dest>/.worktrees/ on a wt/m3-
+    branch) writes only inside its worktree and runs its loop tools there; a serial task is unchanged."""
+    fails = 0
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "modernized"
+        wt, sib = dest / ".worktrees" / "m3-aaaaaaaaaaaa", dest / ".worktrees" / "m3-bbbbbbbbbbbb"
+        for d in (dest / "src", wt / "src", sib / "src"):
+            d.mkdir(parents=True)
+        roots = [str(dest)]
+        pilot = {"HERMES_WRITE_SAFE_ROOT": str(dest), "HERMES_KANBAN_WORKSPACE": str(wt), "HERMES_KANBAN_BRANCH": "wt/m3-aaaaaaaaaaaa",
+                 "HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+        serial = {"HERMES_WRITE_SAFE_ROOT": str(dest), "HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"}
+
+        def confined(cmd, env, cwd, want):
+            nonlocal fails
+            r = run(cmd, roots, cwd=str(cwd), extra_env=env)
+            got = r.get("action") == "block" and "PILOT_CONFINED" in str(r.get("message"))
+            if got != want:
+                print("FAIL pilot_confinement %r: %s" % (cmd, r), file=sys.stderr)
+                fails += 1
+
+        confined("echo x > %s/src/A.java" % wt, pilot, wt, False)
+        confined("echo x > %s/src/A.java" % dest, pilot, wt, True)
+        confined("echo x > %s/src/A.java" % sib, pilot, wt, True)
+        confined("cd %s && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root ." % dest, pilot, wt, True)
+        confined("python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root %s" % wt, pilot, wt, False)
+        confined("python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .", pilot, wt, False)
+        confined("echo x > %s/src/A.java" % dest, serial, dest, False)
+        # a workspace that merely looks like a worktree but is not on a pilot branch is not a pilot task
+        confined("echo x > %s/src/A.java" % dest, dict(pilot, HERMES_KANBAN_BRANCH="feature/x"), wt, False)
+    if not fails:
+        print("ok pilot_confinement_checks")
+    return fails
+
+
 if __name__ == "__main__":
-    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record() + number_only_repeat_checks())
+    raise SystemExit(main() + v17_1_qualification() + v17_6b_invocation_record() + number_only_repeat_checks() + pilot_confinement_checks())
