@@ -599,7 +599,7 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
     """
     if gen >= MAX_ASSESSMENT_GENERATIONS:
         return Refusal("ASSESSMENT_BOUND", "generation %d reached the bound %d; escalate" % (gen, MAX_ASSESSMENT_GENERATIONS))
-    from planner.outcome_graph import (ASSESS_PREFIX, ASSESS_SKILL, DELIVER_STAGES, IMPL, REPAIR_SKILL, declaring_type,
+    from planner.outcome_graph import (ASSESS_PREFIX, ASSESS_SKILL, DELIVER_STAGES, IMPL, REPAIR_SKILL, REPAIR_SKILLS, declaring_type,
                                        owner_of_finding, plan_digest, render_description)
     run_id = plan["run_id"]
     nodes = [dict(n) for n in plan["nodes"]]
@@ -641,7 +641,7 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
                 parent = by_id[owner]
                 by_id[target] = {"outcome_id": target, "role": "repair", "class": parent.get("class"), "subject": parent.get("subject"),
                                  "natural_key": "", "obligations": [], "clusters": [], "plan_paths": [], "entry_points": [],
-                                 "scenarios": [], "parents": [], "assignee": IMPL, "skills": [REPAIR_SKILL],
+                                 "scenarios": [], "parents": [], "assignee": IMPL, "skills": list(REPAIR_SKILLS),
                                  "lineage": [{"follows": owner, "reason": "assessment %s found new work after acceptance" % trigger}],
                                  "budget": dict(budget_of(owner))}
                 additions.append(target)
@@ -655,7 +655,7 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
                 by_id[target] = {"outcome_id": target, "role": "repair", "class": cls, "subject": typ or str(ob.get("path") or ob["id"]),
                                  "natural_key": "%s:%s" % (kind, typ) if typ else str(ob.get("key") or ""),
                                  "obligations": [], "clusters": [], "plan_paths": [], "entry_points": [], "scenarios": [],
-                                 "parents": [], "assignee": IMPL, "skills": [REPAIR_SKILL],
+                                 "parents": [], "assignee": IMPL, "skills": list(REPAIR_SKILLS),
                                  "lineage": [{"discovered_by": trigger}],
                                  "budget": {"key": "rk:outcome:%s:%s" % (run_id, target), "limit": 3}}
                 additions.append(target)
@@ -734,7 +734,7 @@ def owner_repair_revision(plan: dict[str, Any], doc: dict[str, Any], *, open_ass
     PARENT of the dependent (and of every open assessment), so the dependent
     waits on the repair, never the reverse. None when the revision already
     carries it (replay)."""
-    from planner.outcome_graph import IMPL, REPAIR_SKILL, plan_digest
+    from planner.outcome_graph import IMPL, REPAIR_SKILL, REPAIR_SKILLS, plan_digest
     owner, dep = doc["owner"], doc["dependent"]
     fid = owner_repair_id(owner, dep)
     by_id = {n["outcome_id"]: dict(n) for n in plan["nodes"]}
@@ -747,7 +747,7 @@ def owner_repair_revision(plan: dict[str, Any], doc: dict[str, Any], *, open_ass
             "obligations": [], "clusters": [], "plan_paths": sorted(doc.get("repair_paths") or []),
             "repair_paths": sorted(doc.get("repair_paths") or []), "repair_scenarios": list(doc.get("repair_scenarios") or []),
             "entry_points": [], "scenarios": [], "parents": [],
-            "assignee": IMPL, "skills": [REPAIR_SKILL], "budget": dict(doc["budget"]),
+            "assignee": IMPL, "skills": list(REPAIR_SKILLS), "budget": dict(doc["budget"]),
             "lineage": [{"repairs": owner, "for": dep, "cause": OWNER_DEFECT, "reason": doc.get("reason") or "",
                          "evidence": doc.get("evidence")}],
             "acceptance": {"checks": ["measure:compile", "measure:tests"] + ["scenario:%s" % x for x in doc.get("repair_scenarios") or []]}}

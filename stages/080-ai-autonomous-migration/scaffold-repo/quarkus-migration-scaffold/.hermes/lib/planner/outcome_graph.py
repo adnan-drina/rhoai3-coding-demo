@@ -64,6 +64,11 @@ DELIVER_STAGES = ("prepare", "push", "accept")
 DELIVER_TITLES = {"prepare": "M5 PREFLIGHT", "push": "M5 DEPLOY", "accept": "M5 VALIDATE"}
 IMPL = "implementer"
 REPAIR_SKILL = "paved-road-m3"
+# the skills the dispatcher preloads (--skills) on EVERY run of a repair outcome -- initial, retry and
+# rework: the paved road and the loop procedure it mandates (v24: three accepted outcomes were sent
+# back because a retry run did not repeat skill_view fix-until-green; the K2 hook records the preload
+# per run and the audit accepts it as evidence)
+REPAIR_SKILLS = (REPAIR_SKILL, "fix-until-green")
 ASSESS_SKILL = "paved-road-m4"
 DELIVER_SKILL = "paved-road-m5"
 CLASSES = ("build", "config", "source", "runtime", "behavior")
@@ -445,7 +450,7 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
             o["acceptance"]["requirement_checks"] = sorted(set(o.pop("_req_checks", [])))
             o["recipes"] = sorted(set(o.pop("_recipes", [])))
         o["assignee"] = IMPL
-        o["skills"] = [REPAIR_SKILL]
+        o["skills"] = list(REPAIR_SKILLS)
         o["budget"] = {"key": "rk:outcome:%s:%s" % (run_id, k), "limit": max_attempts * max(1, len(o["clusters"]))}
         o["description"] = render_description(o)
     assess_id = "%s:g1" % ASSESS_PREFIX

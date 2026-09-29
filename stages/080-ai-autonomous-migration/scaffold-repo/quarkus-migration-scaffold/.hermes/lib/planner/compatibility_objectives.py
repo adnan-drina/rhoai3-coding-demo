@@ -244,7 +244,7 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
     """The objective revision for this run, or ObjectiveError / a PlanError
     from the caller's validation. ``baseline`` is the current policy's revision
     1 on the same inputs (its digest excluded)."""
-    from planner.outcome_graph import CHECKS, CONTROL_M2, IMPL, REPAIR_SKILL, PlanError, _acyclic, _title, render_description
+    from planner.outcome_graph import CHECKS, CONTROL_M2, IMPL, REPAIR_SKILL, REPAIR_SKILLS, PlanError, _acyclic, _title, render_description
 
     fams = families(catalog)
     idx = _symbol_index(fams)
@@ -557,7 +557,7 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
         n["shared_prerequisite"] = False
         n["title"] = _title(n["class"], n["subject"])
         n["assignee"] = IMPL
-        n["skills"] = [REPAIR_SKILL]
+        n["skills"] = list(REPAIR_SKILLS)
         if len(n.get("objective", {}).get("constituents") or []) > 1:
             comp = [atoms[c["cluster"]] for c in n["objective"]["constituents"]]
             req_paths = {p for q in n.get("requirements") or [] for p in reqrows[q].get("paths") or []}

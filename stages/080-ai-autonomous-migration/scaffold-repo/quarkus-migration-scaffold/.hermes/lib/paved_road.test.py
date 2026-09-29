@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import contextlib
 import os
 import subprocess
 import sys
@@ -901,6 +902,63 @@ class TestNativeAttachments(unittest.TestCase):
         next(s for s in bad["steps"] if s["backing"] == "skill")["native_attachments"] = True
         self.assertTrue(any("native_attachments" in e for e in validate_steps_doc(bad, path=Path("x"))))
         self.assertTrue(next(s for s in doc["steps"] if s["id"] == "kanban-attach").get("native_attachments"))
+
+
+class PreloadedSkill(unittest.TestCase):
+    """v24 (architect review 2026-09-29): three accepted outcomes were sent back because a retry run did not
+    repeat skill_view fix-until-green. The dispatcher now preloads the task skills on every run and the K2 hook
+    records that preload per run; the audit accepts it only for the LATEST implementer run, only for the
+    SKILL.md that is on disk now."""
+    FX = Path(__file__).resolve().parent.parent / "skills" / "paved-road" / "paved-road-m3" / "fixtures" / "no-skill-view"
+
+    def _grade(self, preload, *, runs=("7",), edit_skill=False):
+        import hashlib
+        import shutil
+        import tempfile
+        from paved_road import evaluate_audit, load_exec_ledger, load_steps
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "fx"
+            shutil.copytree(self.FX, root)
+            md = root / ".hermes" / "skills" / "migration" / "fix-until-green" / "SKILL.md"
+            md.parent.mkdir(parents=True)
+            md.write_text("# fix-until-green\nthe loop procedure\n", encoding="utf-8")
+            sha = hashlib.sha256(md.read_bytes()).hexdigest()
+            if edit_skill:
+                md.write_text("# fix-until-green\nchanged since the run\n", encoding="utf-8")
+            text = (root / "official.log").read_text(encoding="utf-8")
+            ledger = list(load_exec_ledger(root / "official.log") or [])
+            for r in runs:
+                ledger.append({"phase": "start", "task": "t_noskill", "run": r, "profile": "implementer", "command": "ls",
+                               "tool_call_id": "c" + r})
+            if preload is not None:
+                row = {"phase": "preload", "task": "t_noskill", "profile": "implementer", "skill_sha256": {"fix-until-green": sha}}
+                row.update(preload)
+                ledger.append(row)
+            steps = self.FX.parents[1] / "steps.json"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                rc = evaluate_audit(text, load_steps(steps), root, ledger)
+            return rc, err.getvalue()
+
+    def test_without_a_preload_the_missing_skill_view_still_refuses(self):
+        rc, err = self._grade(None)
+        self.assertEqual(rc, 1)
+        self.assertIn("fix-until-green", err)
+
+    def test_the_latest_runs_preload_of_the_current_skill_satisfies_the_step(self):
+        rc, err = self._grade({"run": "7", "skills": ["paved-road-m3", "fix-until-green"]})
+        self.assertEqual((rc, err), (0, ""))            # the fixture's only failure was the missing skill_view
+
+    def test_an_older_runs_preload_does_not(self):
+        rc, err = self._grade({"run": "6", "skills": ["fix-until-green"]}, runs=("6", "7"))
+        self.assertIn("mandated skill_view absent for fix-until-green", err)
+
+    def test_a_preload_of_another_text_does_not(self):
+        rc, err = self._grade({"run": "7", "skills": ["fix-until-green"]}, edit_skill=True)
+        self.assertIn("mandated skill_view absent for fix-until-green", err)
+
+    def test_a_preload_without_the_skill_does_not(self):
+        rc, err = self._grade({"run": "7", "skills": ["paved-road-m3"]})
+        self.assertIn("mandated skill_view absent for fix-until-green", err)
 
 
 if __name__ == "__main__":

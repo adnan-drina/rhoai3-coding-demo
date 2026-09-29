@@ -2,6 +2,7 @@
 """K2 hook: env-assignment skip + opacity on every command (Operator 090438ZO)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -1157,6 +1158,41 @@ def main() -> int:
                                     "verify-admission-receipt.py --root . --any-status  0.2s [exit 1]\n")
         (loopd / "last-advance.json").unlink(missing_ok=True)
         (loopd / "issued.json").unlink(missing_ok=True)
+        # v24: the dispatcher preloads the task skills on EVERY run; the hook records that preload once per
+        # native run, from the worker's own --skills argv, with the sha256 of each preloaded SKILL.md.
+        pre_home = Path(td) / "pre-home"
+        (pre_home / "kanban" / "logs").mkdir(parents=True)
+        skill_dir = dest / ".hermes" / "skills" / "migration" / "fix-until-green"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text("# fix-until-green\nthe loop procedure\n", encoding="utf-8")
+        want = hashlib.sha256((skill_dir / "SKILL.md").read_bytes()).hexdigest()
+        led = pre_home / "kanban" / "logs" / "t_pre.exec.jsonl"
+
+        def pre_env(run_id, argv):
+            return {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(pre_home), "HERMES_KANBAN_TASK": "t_pre",
+                    "HERMES_KANBAN_RUN_ID": run_id, "HERMES_WRITE_SAFE_ROOT": str(dest), "K2_TEST_WORKER_ARGV": argv}
+
+        def preloads():
+            return [json.loads(l) for l in led.read_text().splitlines() if '"preload"' in l] if led.is_file() else []
+
+        argv = "hermes chat --skills paved-road-m3 --skills fix-until-green -q work"
+        run("cat src/Main.java", roots, cwd=cwd, extra_env=pre_env("41", argv))
+        run("cat src/Main.java", roots, cwd=cwd, extra_env=pre_env("41", argv))        # same run: once
+        rows = preloads()
+        if len(rows) != 1 or rows[0].get("run") != "41" or rows[0].get("skills") != ["paved-road-m3", "fix-until-green"] \
+                or rows[0].get("skill_sha256", {}).get("fix-until-green") != want:
+            print("FAIL preload_recorded_once_per_run", rows, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok preload_recorded_once_per_run")
+        run("cat src/Main.java", roots, cwd=cwd, extra_env=pre_env("42", "hermes chat -q work"))   # a retry run
+        rows = preloads()
+        if len(rows) != 2 or rows[1].get("run") != "42" or rows[1].get("skills") != [] \
+                or rows[1].get("source") != "no --skills in the worker argv":
+            print("FAIL preload_recorded_truthfully_for_each_run", rows, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok preload_recorded_truthfully_for_each_run")
         with (red_home / "kanban" / "logs" / "t_p0b.log").open(
             "a", encoding="utf-8"
         ) as fh:
@@ -1902,7 +1938,8 @@ def v17_6b_invocation_record() -> int:
             extra_payload={"extra": {"tool_call_id": "call-c"}})
         ledger = home / "kanban" / "logs" / "t_inv1.exec.jsonl"
         rows = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()] if ledger.exists() else []
-        got = [(r.get("phase"), r.get("tool_call_id"), r.get("run"), r.get("profile")) for r in rows]
+        # invocation rows only: the once-per-run preload row is a separate record (phase "preload")
+        got = [(r.get("phase"), r.get("tool_call_id"), r.get("run"), r.get("profile")) for r in rows if r.get("phase") != "preload"]
         want = [("start", "call-a", "5", "reviewer"), ("start", "call-b", "5", "reviewer")]
         if got != want:
             print("FAIL v17_6b_invocation_record", got, file=sys.stderr)

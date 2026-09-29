@@ -679,6 +679,31 @@ def handoff_review_failures(root: Path, task_id: str, phase: str) -> list[str]:
     return review_gaps(root, phase, task_id)
 
 
+def preloaded_skill(ledger: list[dict[str, Any]] | None, task_id: str, skill: str, root: Path) -> bool:
+    """The dispatcher preloaded ``skill`` into the LATEST implementer run of this
+    task: the K2 hook's run-bound ``preload`` row (from the worker's own --skills
+    argv) names it, with the sha256 of the SKILL.md that is on disk now -- the
+    required instructions were in that run's context. A preload is evidence of
+    what the worker was given, never a fabricated skill_view; a skill_view line
+    in the log still counts on its own (v24: three accepted outcomes were sent
+    back because a retry run did not repeat the skill_view)."""
+    if not ledger or not task_id:
+        return False
+    runs = [str(r.get("run") or "") for r in ledger if isinstance(r, dict) and str(r.get("task") or "") == task_id
+            and str(r.get("profile") or "") == "implementer" and str(r.get("run") or "").isdigit()]
+    if not runs:
+        return False
+    latest = max(runs, key=int)
+    md = next((m for m in sorted((Path(root) / ".hermes" / "skills").rglob("SKILL.md")) if m.parent.name == skill), None)
+    if md is None:
+        return False
+    import hashlib
+    want = hashlib.sha256(md.read_bytes()).hexdigest()
+    return any(isinstance(r, dict) and r.get("phase") == "preload" and str(r.get("task") or "") == task_id
+               and str(r.get("run") or "") == latest and skill in (r.get("skills") or [])
+               and str((r.get("skill_sha256") or {}).get(skill) or "") == want for r in ledger)
+
+
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict[str, Any]] | None = None) -> int:
     """Grade the official log + KEEP against steps.json.
 
@@ -698,7 +723,7 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
         keep = [str(x) for x in (step.get("keep") or [])]
 
         if backing == "skill":
-            if not followed_skill(text, needle):
+            if not followed_skill(text, needle) and not preloaded_skill(ledger, task_id, needle, root):
                 if matching_lines(text, needle):
                     failures.append("mandated skill_view absent for %s (path mention is not follow)" % needle)
                 else:
