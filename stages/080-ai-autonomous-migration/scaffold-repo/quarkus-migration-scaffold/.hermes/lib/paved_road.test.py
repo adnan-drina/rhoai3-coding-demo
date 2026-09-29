@@ -983,5 +983,50 @@ class PreloadedSkill(unittest.TestCase):
         self.assertIn("mandated skill_view absent for fix-until-green", err)
 
 
+class AbbreviatedCompoundCommand(unittest.TestCase):
+    """v26 t_d5579123: the runtime logged `rm -f ... && bash .../run-verify.sh --root . | tail -40` as
+    `rm -f ... + 1 command`; the audit found no run-verify line and refused a correct card. The ledger's
+    whole command, with its recorded exit, is that run."""
+    FX = Path(__file__).resolve().parent.parent / "skills" / "paved-road" / "paved-road-m3" / "fixtures" / "green-m3"
+    VERIFY = "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."
+    FULL = "cd /projects/modernized && rm -f verification/a.txt verification/b.txt && " + VERIFY + " 2>&1 | tail -40"
+    SHORT = "  ┊ 💻 $         rm -f verification/a.txt verification/b.txt + 1 command  109.3s"
+
+    def _grade(self, *, exit_code=0, ledger_cmd=None, short=None):
+        from paved_road import evaluate_audit, load_steps
+        text = (self.FX / "official.log").read_text(encoding="utf-8")
+        line = next(l for l in text.splitlines() if "run-verify.sh" in l)
+        text = text.replace(line, short or self.SHORT)
+        ledger = [r for r in intent_ledger(text) if "rm -f" not in r["command"]]
+        cmd = ledger_cmd or self.FULL
+        ledger += [{"task": "t", "run": "1", "tool_call_id": "cv", "command": cmd, "phase": "start"},
+                   {"task": "t", "run": "1", "tool_call_id": "cv", "command": cmd, "phase": "end", "exit_code": exit_code}]
+        steps = self.FX.parents[1] / "steps.json"
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = evaluate_audit(text, load_steps(steps), self.FX, ledger)
+        return rc, err.getvalue()
+
+    def test_the_abbreviated_run_is_graded_from_the_ledger(self):
+        self.assertEqual(self._grade(), (0, ""))
+
+    def test_a_failed_ledger_exit_still_refuses(self):
+        rc, err = self._grade(exit_code=1)
+        self.assertEqual(rc, 1)
+        self.assertIn("did not exit 0", err)
+
+    def test_a_ledger_command_that_does_not_run_the_needle_is_not_the_run(self):
+        rc, err = self._grade(ledger_cmd="cd /projects/modernized && rm -f verification/a.txt verification/b.txt && "
+                                         "grep run-verify.sh notes.txt")
+        self.assertIn("silence: step", err)
+
+    def test_prose_quoting_a_dollar_and_the_script_is_not_a_run(self):
+        prose = "- run-verify.sh: 0 matched $-lines; bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."
+        self.assertEqual(matching_terminal_lines(prose, "run-verify.sh"), [])
+
+    def test_an_abbreviated_line_with_no_ledger_invocation_is_not_the_run(self):
+        rc, err = self._grade(short="  ┊ 💻 $         rm -f verification/other.txt + 1 command  1.0s")
+        self.assertIn("silence: step", err)
+
+
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

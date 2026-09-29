@@ -499,14 +499,42 @@ def matching_terminal_lines(text: str, basename: str) -> list[str]:
     pat = script_basename_boundary_re(basename)
     out: list[str] = []
     for ln in text.splitlines():
-        if "$" not in ln or not pat.search(ln):
+        # only the runtime's terminal tool line (`┊ 💻 $  <command>`) is an invocation: model
+        # prose that quotes a `$` and the script name is not (v26 t_d5579123's reviewer wrote
+        # "run-verify.sh: 0 matched $-lines", which the unmarked rule counted as a run)
+        if TERMINAL_MARK not in ln or not pat.search(ln):
             continue
-        cmd = ln.split("$", 1)[1]
+        cmd = ln.split(TERMINAL_MARK, 1)[1]
         m = EXIT_RE.search(cmd)
         if m:
             cmd = cmd[: m.start()]
         if is_run_of(cmd, basename):
             out.append(ln)
+    return out
+
+
+TERMINAL_MARK = "💻 $"
+ABBREVIATED_RE = re.compile(r"💻 \$\s+(?P<head>.*?)\s+\+ \d+ commands?\b")
+
+
+def abbreviated_runs(text: str, ledger: list[dict[str, Any]] | None, basename: str) -> list[tuple[str, int | None]]:
+    """Runs of ``basename`` the official log shows only abbreviated: the runtime
+    prints a compound command as its first command plus ``+ N command(s)``. Each
+    such line counts only when its visible head is part of a ledger START row
+    whose full command RUNS the script (is_run_of); the exit code then comes
+    from the ledger, never from the abbreviated line. No ledger, no match."""
+    if not ledger:
+        return []
+    starts = [str(r.get("command") or "") for r in ledger
+              if isinstance(r, dict) and r.get("phase") == "start" and is_run_of(str(r.get("command") or ""), basename)]
+    out: list[tuple[str, int | None]] = []
+    for ln in text.splitlines():
+        m = ABBREVIATED_RE.search(ln)
+        if not m:
+            continue
+        head = m.group("head").strip()
+        if head and any(head in c for c in starts):
+            out.append((ln.strip(), None))
     return out
 
 
@@ -752,6 +780,12 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
             failures.append(str(exc))
             continue
         runs = terminal_runs(lines) if lines else []
+        if not runs:
+            # v26 t_d5579123: the runtime logs a compound command as its first command plus
+            # "+ N command(s)" (`rm -f ... + 1 command`), hiding `&& bash .../run-verify.sh`.
+            # The execution ledger holds the whole command; an abbreviated log line whose
+            # visible prefix belongs to a ledger invocation of the needle is that run.
+            runs = abbreviated_runs(text, ledger, needle)
         if not runs:
             failures.append("silence: step %s needle %r has no terminal argv in official log" % (sid, needle))
             continue
