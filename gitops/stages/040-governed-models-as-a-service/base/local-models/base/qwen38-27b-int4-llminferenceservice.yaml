@@ -105,8 +105,10 @@ spec:
         # tokens stay 4096, gpu-memory-utilization stays 0.90.
         # Hybrid prefix caching uses mamba-cache-mode=align because this
         # runtime rejects mode "all".
-        # Sampling matches generation_config.json at the pinned revision
-        # (temperature 1.0, top_p 0.95, top_k 20), not the Qwen 3.6 override.
+        # Sampling default matches the Qwen 3.6 vLLM override:
+        # temperature 0.6, top_p 0.95, top_k 20, min_p 0.0,
+        # presence_penalty 0.0, repetition_penalty 1.0.
+        # A client request body still overrides this default.
         # Thinking stays at the chat template default (enabled, effort xhigh).
         # Single-node rollout is a Deployment with maxSurge 25%. At one
         # replica that asks for a second pod. When both GPUs are occupied,
@@ -130,7 +132,7 @@ spec:
           - --language-model-only
           - --max-num-batched-tokens=4096
           - --max-num-seqs=2
-          - --override-generation-config={"temperature":1.0,"top_p":0.95,"top_k":20}
+          - --override-generation-config={"temperature":0.6,"top_p":0.95,"top_k":20,"min_p":0.0,"presence_penalty":0.0,"repetition_penalty":1.0}
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_xml
