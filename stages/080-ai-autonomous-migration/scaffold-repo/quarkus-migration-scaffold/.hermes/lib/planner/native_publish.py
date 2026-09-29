@@ -35,7 +35,7 @@ from typing import Any
 from planner.native_control import (CONTRACT, IMPL, MAX_RETRIES, REVIEWER, WORKSPACE, Board, Refusal, canonical_bytes,
                                     contract_doc, native_body, native_key, native_plan, plan_attachment, publication_lock,
                                     sha256)
-from planner.outcome_graph import CONTROL_M2, topo_order
+from planner.outcome_graph import CONTROL_M2, plan_digest, topo_order
 
 READBACK_ASSIGNEES = (IMPL, REVIEWER)
 
@@ -46,6 +46,55 @@ def workspace_for(root: Path, execution: str) -> str:
     if execution == "qualification":
         return "dir:" + str(Path(root).resolve())
     return WORKSPACE
+
+
+def node_workspace(workspace: str, node: dict[str, Any]) -> tuple[str, str]:
+    """(workspace, branch) a node is published with: a pilot pair outcome works in its own native
+    worktree under the destination root (PARALLEL-M3-PILOT.md), every other node in the root itself."""
+    if not node.get("pilot_pair"):
+        return workspace, ""
+    from planner.pair_selection import worktree_of
+    path, branch = worktree_of(workspace.split(":", 1)[1], node["outcome_id"])
+    return "worktree:" + path, branch
+
+
+def pilot_plan(root: Path, plan: dict[str, Any], execution: str) -> dict[str, Any]:
+    """Revision 1 as this run publishes it: unchanged for a serial run; for a run pinned to the pair
+    pilot, the selection recorded and the schedule edges added (planner.pair_selection)."""
+    from planner.execution_policy import PILOT, pinned_policy
+    if pinned_policy(root, execution=execution)["policy"] != PILOT:
+        return plan
+    from planner.canonical import load_json
+    from planner.pair_selection import apply_pilot
+    try:
+        bundle = load_json(Path(root) / "evidence" / "planning" / "evidence-bundle.json")
+    except (OSError, ValueError):
+        bundle = {}
+    return apply_pilot(plan, (bundle or {}).get("structure") if isinstance(bundle, dict) else None)
+
+
+def pilot_revision(root: Path, plan: dict[str, Any], added: list[str], holder_outcome: str, execution: str) -> dict[str, Any]:
+    """A later revision on a pilot run: its new repair outcomes chained after the pair members (except
+    the one that published it, which waits for the new outcome) and after each other."""
+    from planner.execution_policy import PILOT, pinned_policy
+    if pinned_policy(root, execution=execution)["policy"] != PILOT:
+        return plan
+    from planner.pair_selection import chain_revision
+    pair = list((((plan.get("execution") or {}).get("selection") or {}).get("pair")) or [])
+    extra = chain_revision(plan, added, [o for o in pair if o != holder_outcome])
+    if not extra:
+        return plan
+    nodes = [dict(n, **extra[n["outcome_id"]]) if n["outcome_id"] in extra else n for n in plan["nodes"]]
+    out = dict(plan, nodes=nodes)
+    out.pop("digest", None)
+    out["digest"] = plan_digest(out)
+    return out
+
+
+def published_parents(node: dict[str, Any]) -> list[str]:
+    """The outcome ids a node's native task depends on: its genuine parents and, on a pilot run, its
+    schedule parents (the serial chain). Genuine semantics read ``parents`` alone."""
+    return sorted(set(node.get("parents") or []) | set(node.get("schedule_parents") or []))
 
 
 def _attach_bytes(board: Board, task_id: str, name: str, data: bytes) -> None:
@@ -75,7 +124,8 @@ def _expected(node: dict[str, Any], parents: list[str]) -> dict[str, Any]:
             "parents": sorted(parents), "skills": list(node.get("skills") or [])}
 
 
-def _find_or_create(board: Board, run_id: str, node: dict[str, Any], parents: list[str], workspace: str) -> str:
+def _find_or_create(board: Board, run_id: str, node: dict[str, Any], parents: list[str], workspace: str,
+                    branch: str = "") -> str:
     key = native_key(run_id, node)
     rows = board.native.by_key(key)
     live = [r for r in rows if r["status"] != "archived"]
@@ -96,7 +146,8 @@ def _find_or_create(board: Board, run_id: str, node: dict[str, Any], parents: li
                           % (key, live[0]["id"], ", ".join(diffs)))
         return live[0]["id"]
     return board.native.create(title=exp["title"], body=exp["body"], assignee=exp["assignee"], parents=exp["parents"],
-                               key=key, skills=exp["skills"], workspace=workspace, max_retries=MAX_RETRIES)
+                               key=key, skills=exp["skills"], workspace=workspace, max_retries=MAX_RETRIES,
+                               **({"branch": branch} if branch else {}))
 
 
 def _attach_contract(board: Board, task_id: str, plan: dict[str, Any], node: dict[str, Any], want: str) -> None:
@@ -131,11 +182,12 @@ def _publish_nodes(board: Board, plan: dict[str, Any], added: list[str], *, work
         if oid not in wanted:
             continue
         parents = []
-        for p in node.get("parents") or []:
+        for p in published_parents(node):
             if p not in resolve:
                 raise Refusal("PUBLICATION_PARENT", "%s parent %s has no native task yet" % (oid, p))
             parents.append(resolve[p])
-        tid = _find_or_create(board, plan["run_id"], node, parents, workspace)
+        ws, branch = node_workspace(workspace, node)
+        tid = _find_or_create(board, plan["run_id"], node, parents, ws, branch)
         resolve[oid] = tid
         _attach_contract(board, tid, plan, node, digests[oid])
         created.append({"outcome_id": oid, "task_id": tid})
@@ -145,7 +197,7 @@ def _publish_nodes(board: Board, plan: dict[str, Any], added: list[str], *, work
         if not child or node["outcome_id"] in wanted:
             continue
         have = set((board.task(child) or {}).get("parents") or [])
-        for p in node.get("parents") or []:
+        for p in published_parents(node):
             if p in wanted and resolve.get(p) and resolve[p] not in have:
                 board.native.link(resolve[p], child)
     return created
@@ -185,7 +237,7 @@ def readback(board: Board, plan: dict[str, Any]) -> list[str]:
             gaps.append("%s: skills %s" % (oid, t.get("skills")))
         if (t.get("assignee") or None) not in READBACK_ASSIGNEES:
             gaps.append("%s: assignee %r" % (oid, t.get("assignee")))
-        want_parents = sorted(resolve.get(p, "?:" + p) for p in node.get("parents") or [])
+        want_parents = sorted(resolve.get(p, "?:" + p) for p in published_parents(node))
         have = sorted(t.get("parents") or [])
         if have != want_parents:
             gaps.append("%s: parents %s != %s" % (oid, have, want_parents))
@@ -228,7 +280,7 @@ def publish_initial(root: Path, board: Board, *, m2: str, plan_file: str = "") -
     else:
         from planner.outcome_checks import initial_plan_from_root
         plan = initial_plan_from_root(root)
-    plan = native_plan(plan)
+    plan = pilot_plan(root, native_plan(plan), sel.execution)
     workspace = workspace_for(root, sel.execution)
     added = [n["outcome_id"] for n in plan["nodes"]]
     with publication_lock(root):
@@ -246,6 +298,8 @@ def publish_revision(root: Path, board: Board, plan: dict[str, Any], *, added: l
     from planner.outcome_protocol import select_protocol
     root = Path(root)
     execution = select_protocol(root).execution
+    holder_node = board.node_of(holder)
+    plan = pilot_revision(root, plan, added, holder_node[2] if holder_node else "", execution)
     with publication_lock(root):
         _attach_plan(board, holder, plan, added)
         created = _publish_nodes(board, plan, added, workspace=workspace_for(root, execution))

@@ -199,9 +199,20 @@ def native_description(node: dict[str, Any]) -> str:
             "to this same card." % (what, done))
 
 
+PILOT_TEXT = ("\n\nParallel pilot (PARALLEL-M3-PILOT.md): this card runs beside %s, each in its own git worktree. Your "
+              "workspace is this task's worktree -- the directory you start in -- not /projects/modernized: run every "
+              "tool with --root . from it and never edit the main tree. Your accepted candidate is not yet the "
+              "application's: after advance.py accepts it, run python3 .hermes/kernel/native_gate.py --root . integrate, "
+              "which applies it to the main tree and verifies the combined result there; request review only after it "
+              "reports INTEGRATED.")
+
+
 def native_body(node: dict[str, Any]) -> str:
     """The task body as published (deterministic; the read-back compares exactly this)."""
-    return native_description(node)
+    body = native_description(node)
+    if node.get("pilot_pair"):
+        body += PILOT_TEXT % ", ".join(node["pilot_pair"])
+    return body
 
 
 # checks a requirement can only pass once the application runs: they gate M4,

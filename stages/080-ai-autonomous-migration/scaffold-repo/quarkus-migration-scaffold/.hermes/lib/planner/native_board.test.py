@@ -63,12 +63,19 @@ class Run:
     FakeNative board with the M2 card claimed, and (optionally) the shop plan
     published through native_publish."""
 
-    def __init__(self, publish=True, run_id="n1"):
+    def __init__(self, publish=True, run_id="n1", pilot=False, structure=None):
         self.tmp = Path(tempfile.mkdtemp(prefix="nc-"))
         self.root = self.tmp / "dest"
         self.root.mkdir()
+        conf = {"board_protocol": P.NATIVE}
+        if pilot:
+            conf["parallel_m3"] = "m3-pair-pilot/v1"   # pinned in the initial commit below
         (self.root / "run-defaults.json").write_text(json.dumps({"schema": "rhoai3.run-defaults/v1", "budget": {},
-                                                                 "configuration": {"board_protocol": P.NATIVE}}))
+                                                                 "configuration": conf}))
+        if structure is not None:
+            b = self.root / "evidence" / "planning" / "evidence-bundle.json"
+            b.parent.mkdir(parents=True, exist_ok=True)
+            b.write_text(json.dumps({"structure": structure}))
         (self.root / ".hermes").mkdir()
         (self.root / ".hermes" / "pins.json").write_text(json.dumps({"pins": {"planner": {"outcome_board": {"execution": "qualification"}}}}))
         git(self.root, "init", "-q")
@@ -82,7 +89,7 @@ class Run:
         self.worklist = copy.deepcopy(SHOP["worklist"])
         self.save_worklist()
         shutil.copy(LIB.parents[1] / "decisions.yaml", self.root / "decisions.yaml")
-        (self.root / ".gitignore").write_text("verification/\nevidence/\n")
+        (self.root / ".gitignore").write_text("verification/\nevidence/\n.worktrees/\n")
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "baseline")
         self.native = FakeNative(self.tmp)

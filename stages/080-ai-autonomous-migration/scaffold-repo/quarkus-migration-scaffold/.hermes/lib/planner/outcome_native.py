@@ -164,9 +164,12 @@ class KanbanNative:
         return out
 
     def create(self, *, title: str, body: str, assignee: str | None, parents: list[str], key: str,
-               skills: list[str], workspace: str, max_retries: int, max_runtime: str = "2h") -> str:
+               skills: list[str], workspace: str, max_retries: int, max_runtime: str = "2h", branch: str = "") -> str:
         args = ["create", title, "--body", body, "--idempotency-key", key, "--max-retries", str(max_retries),
                 "--max-runtime", max_runtime, "--json"]
+        if branch:
+            # a worktree task's branch (pinned CLI: --branch is only valid with --workspace worktree)
+            args += ["--branch", branch]
         if assignee:
             args += ["--assignee", assignee]
         for p in parents:
@@ -297,7 +300,7 @@ class FakeNative:
     def run(self, run_id: int) -> dict[str, Any] | None:
         return self.runs_.get(run_id)
 
-    def create(self, *, title, body, assignee, parents, key, skills, workspace, max_retries, max_runtime="2h") -> str:
+    def create(self, *, title, body, assignee, parents, key, skills, workspace, max_retries, max_runtime="2h", branch="") -> str:
         self.calls.append(("create", key))
         self._maybe_fail("create")
         for t in self.tasks.values():
@@ -308,6 +311,8 @@ class FakeNative:
         status = "todo" if any(self.tasks.get(p, {}).get("status") not in ("done", "archived") for p in parents) else "ready"
         self.tasks[tid] = {"id": tid, "title": title, "body": body, "assignee": assignee, "status": status,
                            "idempotency_key": key, "skills": list(skills), "workspace_path": workspace,
+                           "workspace_kind": workspace.split(":", 1)[0] if ":" in workspace else "dir",
+                           "branch_name": branch or None,
                            "max_retries": max_retries, "current_run_id": None, "claim_lock": None,
                            "worker_pid": None}
         for p in parents:
