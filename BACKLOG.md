@@ -4,30 +4,71 @@ Open limitations, unfinished work, and the evidence needed to understand them.
 Completed run narratives remain in Git history. Paths under `tmp/` are local
 evidence, excluded from Git.
 
-## v25 improvements: reusable migration repairs — planned after v24 (2026-09-28)
+## v26 reliability release and the subsequent feature package (scope decided 2026-09-29)
 
-Naming note: this section is the future v25 *improvement package*. The v24 *validation run* was created as
-`spring-petclinic-rest-legacy-v25` by mistake (see the v24 section); that run is not this package.
+v25 (`spring-petclinic-rest-legacy-v25`, the v24 package) is preserved as an
+**assisted diagnostic run**: 21 of 36 cards, two recorded harness rebases and
+four unblocks. It is a partial baseline for M1, M2 and part of M3, not an
+end-to-end one.
 
-Finish the agreed v24 package and its validation run first. The detailed scope,
-design decisions and acceptance criteria are in
-[V25-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V25-IMPROVEMENTS.md).
-This is a future improvement list, not an implementation or release claim.
+**v26 is the reliability validation release:** M1→M5 without harness overlays or
+Operator rescues, with every acceptance gate preserved. Scope and per-item
+evidence status are in
+[V26-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V26-IMPROVEMENTS.md).
+Status there is source-level (tests, model-free reproductions) unless marked live.
+
+In v26:
+
+- [x] V26-6 known defects: brief ownership, liveness, selectors and whole
+  architecture; retry-state diagnostics; the REVERTED lockout; unchanged rework;
+  the preload of required skills; near-duplicate progress (runtime 0015).
+  Source-level evidence; see V26-IMPROVEMENTS.md.
+- [ ] V26-6 open items: Servlet response/redirect guidance (item 1); the repeated
+  command/result and last step in the native retry handoff (item 2); the producer
+  exit code through a worker's own filter or trailing echo (item 3).
+- [x] V26-3 targeted context (instructions, selectors, owned obligations, saved
+  diagnostics, retry context). The resolved-context attachment and a
+  classpath/API lookup are deferred.
+- [ ] V26-4: report actual verification, retries, assistance, requests, tokens
+  and elapsed time from existing records at the close of the v26 run.
+
+Subsequent feature package (V26-1 with V26-2), not scheduled for a numbered run:
 
 - [ ] Execute two qualified repairs deterministically inside existing M3 scopes:
   selected repository CDI exposure and handler URI parameter translation.
 - [ ] Qualify recipes with before/after, no-change, idempotence, type-resolution,
   scope and real behavioural checks; preserve native review and acceptance gates.
-- [ ] Generate compact, evidence-bound objective context from existing analysis.
-- [ ] Extend v24 reporting with actual transformation results and measured cost.
-- [ ] Compare against the completed v24 baseline, then validate on a fresh v25 run.
-- [ ] Later optimization only: analysis reuse with complete cache invalidation.
+- [ ] Recipe-specific V26-4 reporting ships with the executor.
+- [ ] Deferred pending measurements (V26-5): analysis reuse with complete cache
+  invalidation.
+
+Evidence history (v25):
+
+- V26-6 as recorded on v25: qualify Servlet response/redirect
+  guidance, carry actionable context into native retries, and expose saved
+  verification diagnostics to prevent repeated searches and recompilation.
+  Preserve the build's exit code through output filtering; run 18's final echo
+  returned 0 while masking Maven's status, then the loop exhausted native retries.
+  Keep the five-repeat guard and existing budgets; qualify the no-local-example
+  and Profile recovery cases. Count worker halts even when native retry later
+  completes the card. No overlay onto the active v25 run.
+  Confirmed follow-up: derive the brief's immediate checks from its issued
+  outcome; same-file repository requirements were incorrectly labelled as due
+  now on the Profile compile card. Tool results and repeat warnings were present
+  in all three failed sessions, with no observed compression. Qualify corrected
+  inputs against both cases before attributing all loops to the model.
+  DAO follow-up `t_90e674d6`: also fix composite-objective liveness and provide
+  bounded brief selectors. Runtime patch 0014 falsely treats new diagnostic IDs
+  in repeated JSON as no progress (installed-runtime reproduction: page 13).
+  Its fix needs runtime tests and a new image alongside the golden; preserve
+  the identical-repeat halt and the inline-Python restriction.
 
 Licensing stays within the existing boundary: adopt eligible open-source
 components under their licenses; avoid proprietary or restricted dependencies,
 or independently implement similar behaviour from public contracts. Do not copy
-restricted implementation code. No v24 scope expansion, live overlay, isolation
-campaign, additional scheduler or parallel M3 execution is authorized by this plan.
+restricted implementation code. No live overlay, isolation campaign, additional
+scheduler, retry-budget increase, acceptance waiver or parallel M3 execution is
+authorized by this plan.
 
 ## v24 package — golden `221de165` published; validation run `spring-petclinic-rest-legacy-v25`
 
