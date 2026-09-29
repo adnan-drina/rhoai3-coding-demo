@@ -27,7 +27,7 @@ from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
 from planner.worklist import OBJECTIVE_RULE  # noqa: E402
 import _outcome_bridge  # noqa: E402  outcome-board/v2: the issued contract this card owns
-from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, adapter_owned_annotations, assess_unit, head_cluster, items_of  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, adapter_owned_annotations, assess_unit, handler_parameters, head_cluster, items_of  # noqa: E402
 
 # H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
 # replaces "never touch a path outside the write set" beside "add it with
@@ -277,13 +277,15 @@ def reference_hits(refs: list[tuple[Path, str]], token: str, root: Path) -> list
 
 
 def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[str, str], refs: list[tuple[Path, str]],
-                   owned: dict[str, dict] | None = None) -> dict:
+                   owned: dict[str, dict] | None = None, handlers: dict[str, dict] | None = None) -> dict:
     """What the compiler said, and the facts the tools hold about the name it could not resolve:
     the inventory row (a legacy type not yet in the destination tree), the documented Jakarta
     rename for a javax.* package, the spring-to-quarkus-patterns reference that covers the symbol,
     and, for an annotation a harness adapter owns (compat-mapping adapter_owned_annotations), the
-    retirement row's action as the item's first action. That row applies only to the QUALIFIED
-    name: the file's explicit import, or the package javac names as the symbol's location."""
+    retirement row's action as the item's first action; for a handler parameter type the stack does
+    not provide (compat-mapping handler_parameters.undocumented), that row's documented translation.
+    Both apply only to the QUALIFIED name: the file's explicit import (also the import a "package X
+    does not exist" diagnostic stands on), or the package javac names as the symbol's location."""
     msg = str(item.get("message") or item.get("detail") or "")
     out: dict = {"description": "compiler diagnostic", "message": msg}
     sym = _SYMBOL_RE.search(msg)
@@ -340,6 +342,35 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
         out["references"] = hits
     loc = _PACKAGE_LOCATION_RE.search(msg) if sym else None
     qualified = imported if imported and not imported.endswith(".*") else ("%s.%s" % (loc.group(1), token) if loc else "")
+    if pkg and not qualified:
+        # "package X does not exist" reported AT an explicit import names that import's type
+        # (a wildcard import binds nothing, as for handler parameters)
+        src = root / str(item.get("path") or "")
+        line = int(item.get("line") or 0) if str(item.get("line") or "").isdigit() else 0
+        text = ""
+        if src.is_file() and line > 0:
+            lines = src.read_text(encoding="utf-8", errors="replace").splitlines()
+            text = lines[line - 1].strip() if line <= len(lines) else ""
+        m = re.match(r"import\s+([\w.]+)\s*;", text)
+        if m and m.group(1).startswith(token + ".") and not m.group(1).endswith(".*"):
+            qualified = m.group(1)
+    # a handler parameter type the selected stack does not provide: its compat-mapping
+    # handler_parameters row is the documented translation (v28 t_25819d9c and v26 Root17 were
+    # issued "package javax.servlet.http does not exist" / "cannot find symbol HttpServletResponse"
+    # with no action, while the row sat in the catalog and its recipe on another card)
+    hrow = (handlers or {}).get(qualified) if qualified else None
+    if hrow is not None and str(hrow.get("action") or "").strip():
+        gap = str(hrow.get("capability_gap") or "")
+        out["handler_translation"] = {"symbol": qualified, "catalog_row": {
+            "catalog": "compat-mapping.json", "block": "handler_parameters.undocumented", "key": qualified,
+            "source": str(hrow.get("source") or ""), "capability_gap": gap}}
+        out["first_action"] = str(hrow["action"])
+        out["do_not"] = ("Do not add this import again and do not search for another package: %s is not available on "
+                         "the selected stack. Apply the documented translation (first action)%s.%s"
+                         % (qualified, ("; any use it does not qualify is capability gap %s: block the card naming "
+                                        "it" % gap) if gap else "",
+                            (" Read the named references: %s." % ", ".join(hits)) if hits else ""))
+        return out
     own = (owned or {}).get(qualified) if qualified else None
     if own is not None:
         out["retire"] = {"symbol": qualified, "action": str(own.get("action") or ""),
@@ -661,6 +692,7 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     managed, aliases = bom_managed(root), artifact_aliases(root)
     inventory, renames, refs, cat = load_inventory(root), package_renames(root), _references(root), catalog(root)
     owned = adapter_owned_annotations(root)
+    handlers = dict(handler_parameters(root).get("undocumented") or {})
     out: list[dict] = []
     for it in items:
         row = dict(it)
@@ -674,7 +706,7 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
                              "message": str(it.get("message") or ""), "generated_path": gen,
                              "plugin": owner, "plugin_config": pc.get(owner) or {}, "links": [str((pc.get(owner) or {}).get("docs") or "")] if owner else []}
         elif it.get("source") == "javac" and it.get("rule_id") != "BUILD_UNRESOLVABLE":
-            row["advice"] = compile_advice(it, root, inventory, renames, refs, owned)
+            row["advice"] = compile_advice(it, root, inventory, renames, refs, owned, handlers)
         if it.get("source") == "mta" and it.get("kind") == "config":
             cfg = config_advice(it, root, rules, cat)
             if cfg:
@@ -1512,6 +1544,24 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  the rejected patch introduced (in the write set; the reverted tree no longer has them):")
             out += ["    %s" % r for r in rs["introduced_in_write_set"]]
         out.append("  refusals so far: %s" % ", ".join("%s x%d" % (r["refusal"], r["times"]) for r in rs.get("refusals") or []))
+    # The catalog already supplies these actions. A section-size index is not
+    # (placed right after RETRY STATE: workers read a brief's head first, and a long REQUIRED SHAPE or
+    # other-diagnostics list must not push the documented action out of it)
+    # an action: omitting them sent workers back to broad catalog/file searches.
+    actions: dict = {}
+    unit_action = (brief.get("unit") or {}).get("first_action")
+    if unit_action:
+        actions[str(unit_action)] = ["coordinated unit"]
+    for i in brief.get("items") or []:
+        action = (i.get("advice") or {}).get("first_action")
+        if action:
+            label = "%s:%s" % (i.get("path"), i.get("line"))
+            if label not in actions.setdefault(str(action), []):
+                actions[str(action)].append(label)
+    if actions:
+        out.append("DOCUMENTED FIRST ACTIONS (from this card's item/unit advice):")
+        for action, sites in actions.items():
+            out.append("  %s: %s" % (", ".join(sites), action))
     # the required shape of each planned requirement, before the first edit (v23: the
     # PetType/Specialty/Visit briefs named @ApplicationScoped and @Typed-to-the-fragment only
     # inside planned_requirements, which a 64K brief's digest never showed; each card then
@@ -1521,8 +1571,9 @@ def brief_digest(brief: dict, stem: str) -> str:
         out.append("CHECKS THIS CARD IS JUDGED BY NOW (its issued contract, %s): %s"
                    % (ic.get("outcome"), ", ".join(ic.get("checks_now") or []) or "the measured work list only"))
         if ic.get("other_owners_on_these_paths"):
-            out.append("  %d requirement(s) on these files belong to OTHER cards -- not yours, not judged here"
-                       % len(ic["other_owners_on_these_paths"]))
+            out.append("  %d requirement(s) on these files belong to OTHER cards (owned and judged there, not this card's "
+                       "checks); the diagnostics issued to this card are still this card's to repair, with their "
+                       "documented first actions" % len(ic["other_owners_on_these_paths"]))
     shared = brief.get("shared_path_diagnostics") or {}
     if shared.get("items"):
         out.append("OTHER MEASURED DIAGNOSTICS ON THESE FILES (not in this card's sealed diagnostic set):")
@@ -1545,22 +1596,6 @@ def brief_digest(brief: dict, stem: str) -> str:
             arch = " ".join(str(r["recipe"]["architecture"]).split())
             out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), arch if len(arch) <= 4000 else arch[:4000]
                        + " … (the rest: brief.py --root . --section planned_requirements)"))
-    # The catalog already supplies these actions. A section-size index is not
-    # an action: omitting them sent workers back to broad catalog/file searches.
-    actions: dict = {}
-    unit_action = (brief.get("unit") or {}).get("first_action")
-    if unit_action:
-        actions[str(unit_action)] = ["coordinated unit"]
-    for i in brief.get("items") or []:
-        action = (i.get("advice") or {}).get("first_action")
-        if action:
-            label = "%s:%s" % (i.get("path"), i.get("line"))
-            if label not in actions.setdefault(str(action), []):
-                actions[str(action)].append(label)
-    if actions:
-        out.append("DOCUMENTED FIRST ACTIONS (from this card's item/unit advice):")
-        for action, sites in actions.items():
-            out.append("  %s: %s" % (", ".join(sites), action))
     # an owned requirement no qualified recipe translates: say so before the first edit, by name
     # (v26 t_4fd2dcec cycled catalog greps for a Servlet rule that did not exist, then guessed a rename)
     gaps = [(r, u) for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and r.get("status") == "unresolved"

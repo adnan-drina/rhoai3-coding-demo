@@ -763,6 +763,74 @@ def _fragment_brief_case() -> int:
     return 0
 
 
+def _servlet_compile_item_first_action_case() -> int:
+    """v28 t_25819d9c / v26 Root17: a plain file cluster (no sealed unit) was issued "package
+    javax.servlet.http does not exist" at the import and "cannot find symbol class HttpServletResponse"
+    at the handler, with no first action: the documented translation sat in the catalog's
+    handler_parameters row and its recipe was a requirement of ANOTHER card, which the brief called
+    "not yours". The item's advice now carries that row's action, and the DEFAULT CLI output shows it
+    at both lines. The real catalog, the real renderer; the specimen shares no name with PetClinic, and
+    the pre-Jakarta and Jakarta spellings each resolve their own row."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from planner.paths import LOOP_ISSUED, WORKLIST
+    from planner.worklist import handler_parameters
+
+    rows = handler_parameters(GOLDEN)["undocumented"]
+    rel = "src/main/java/z/portal/PortalResource.java"
+    for ns in ("javax", "jakarta"):
+        fqn = "%s.servlet.http.HttpServletResponse" % ns
+        act = str(rows[fqn]["action"])
+        with tempfile.TemporaryDirectory(prefix="servlet-item-") as td:
+            root = Path(td)
+            (root / ".hermes").mkdir()
+            os.symlink(GOLDEN / ".hermes" / "planning", root / ".hermes" / "planning")
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(
+                "package z.portal;\n\nimport java.io.IOException;\nimport %s;\n\npublic class PortalResource {\n"
+                "    public void go(HttpServletResponse out) throws IOException {\n"
+                "        out.sendRedirect(\"/portal/docs/index.html\");\n    }\n}\n" % fqn, encoding="utf-8")
+            items = [{"id": "err:imp", "source": "javac", "kind": "compile", "category": "mandatory", "path": rel, "line": 4,
+                      "rule_id": "compiler.err.doesnt.exist", "message": "package %s.servlet.http does not exist" % ns},
+                     {"id": "err:use", "source": "javac", "kind": "compile", "category": "mandatory", "path": rel, "line": 7,
+                      "rule_id": "compiler.err.cant.resolve.location",
+                      "message": "cannot find symbol\n  symbol:   class HttpServletResponse\n  location: class z.portal.PortalResource"}]
+            cluster = {"id": "c:portal", "kind": "compile", "path": rel, "write_set": [rel], "items": ["err:imp", "err:use"]}
+            write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "c:portal",
+                                              "measure": {"tuple": [0, 2, 0], "known": True, "blocked": []},
+                                              "clusters": [cluster], "not_counted": [], "items": items})
+            write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:portal", "task_id": "t_srv0001",
+                                                 "write_set": [rel], "items": ["err:imp", "err:use"]})
+            prev = os.environ.get("HERMES_KANBAN_TASK")
+            os.environ["HERMES_KANBAN_TASK"] = "t_srv0001"
+            try:
+                err, out = io.StringIO(), io.StringIO()
+                with redirect_stderr(err), redirect_stdout(out):
+                    rc = __import__("brief").main(["--root", str(root)])
+            finally:
+                if prev is None:
+                    os.environ.pop("HERMES_KANBAN_TASK", None)
+                else:
+                    os.environ["HERMES_KANBAN_TASK"] = prev
+            text = out.getvalue()
+            if rc != 0 or not text.startswith("BRIEF (digest:"):
+                return _fail("[%s] the default brief renders a digest: rc=%s %s %s" % (ns, rc, text[:200], err.getvalue()[:300]))
+            head = text.split("\nWRITE SET", 1)[0]
+            if "DOCUMENTED FIRST ACTIONS" not in head or " ".join(act.split())[:200] not in " ".join(head.split()):
+                return _fail("[%s] the catalog's documented translation leads the default output, before the write set: %s"
+                             % (ns, head[-1500:]))
+            if "%s:4" % rel not in head or "%s:7" % rel not in head:
+                return _fail("[%s] the action names both issued lines (the import and the handler): %s" % (ns, head[-800:]))
+            from planner.canonical import load_json
+            adv = [i.get("advice") or {} for i in load_json(root / "verification" / "loop" / "brief-c-portal.json").get("items") or []]
+            if len(adv) != 2 or any("classpath" in str(a.get("do_not") or "") or not a.get("handler_translation") for a in adv):
+                return _fail("[%s] both issued items carry the row, and no classpath conclusion: %s" % (ns, adv))
+            if "not yours" in text or "not in this card's sealed diagnostic set" in head:
+                return _fail("[%s] the card's own issued diagnostics are never labelled as someone else's: %s" % (ns, head[:900]))
+    return 0
+
+
 def _handler_parameter_brief_case() -> int:
     """V16-5: the brief's first action for a UriComponentsBuilder unit is the
     handler_parameters action at the handlers it names, THEN the rename for
@@ -1195,6 +1263,8 @@ def main() -> int:
     if _fragment_brief_case():
         return 1
     if _handler_parameter_brief_case():
+        return 1
+    if _servlet_compile_item_first_action_case():
         return 1
     if _package_validation_brief_case():
         return 1

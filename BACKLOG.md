@@ -125,6 +125,23 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   duplicate_observation_checks, including the loop-root-cause change's counterexample
   cases; runtime retry-path check `tmp/v26-corrections/g-corrections/`.
 
+- [x] The card that must repair a Servlet diagnostic is given its documented translation
+  (v28 `t_25819d9c`, v26 Root17). M2 formed two outcomes for RootRestController: the file
+  cluster `source:c:488e7e2d2ac4` owns all four compile diagnostics and no requirement;
+  `objective:controller-request-boundary:1053f4400b4b` owns the `servlet-redirect-response`
+  and CrossOrigin requirements, no diagnostic, and runs after it. The COMPILE card was
+  issued `package javax.servlet.http does not exist` and `cannot find symbol
+  HttpServletResponse` with no first action (only the CrossOrigin items had one), no
+  REQUIRED SHAPE, and a line calling the recipe's requirements "not yours". The
+  documented-first-action rendering could not help: there was no action to render. A
+  compile item whose qualified type (explicit import, or the import a "package X does not
+  exist" diagnostic stands on) has a compat-mapping `handler_parameters` row now carries
+  that row's action as its first action. The other-owners line says the issued
+  diagnostics are still this card's. DOCUMENTED FIRST ACTIONS now follow RETRY STATE,
+  ahead of the checks, other diagnostics and REQUIRED SHAPE. Evidence: `brief.test.py`
+  `_servlet_compile_item_first_action_case` (real catalog, default CLI output, a renamed
+  specimen, both spellings) fails on `8c61115e` and passes after. Live: none.
+
 - [ ] Residual model repetition is not qualified as fixed. The installed Qwen request
   profile serializes the published non-thinking sampling values. In a four-request
   same-profile probe, both original and both reformatted saved Root contexts repeated
