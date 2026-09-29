@@ -29,6 +29,7 @@ harness, task history, retry allowance or deadline.
 | V26-4 | **Included, from existing records only**: actual verification, retries, assistance, requests, tokens, elapsed time | Reported at the close of the v26 run from the native run records, execution ledger and request ledger; no new receipt. Recipe-specific reporting ships with the executor |
 | V26-1, V26-2 | **Subsequent feature package** (paired) | Not started; design and mandatory qualification below are unchanged |
 | V26-5 | **Deferred** pending measurements | Not started |
+| P-1 (scope decision 2026-09-29) | **Included in the next validation package**: exactly one pair of independent M3 repair outcomes executes concurrently in native Hermes worktrees; everything else stays serial. Supersedes the previous deferral of parallel M3 execution for this one pair only | Implemented (source-level, synthetic, real-git and native-runtime evidence); live evidence owed by the next validation run. Design, requirements and evidence: [PARALLEL-M3-PILOT.md](PARALLEL-M3-PILOT.md) |
 
 No deferred item is promised for a particular numbered run.
 
@@ -480,8 +481,9 @@ overhead and regressions even if model usage falls.
 
 Full migration, M4 parity and M5 delivery remain governed by their existing gates.
 Recipe qualification does not establish end-to-end migration success. No additional
-isolation campaign, sidecar, scheduler, parallel M3 execution, whole-platform clone
-or broad task repartitioning is part of this package.
+isolation campaign, sidecar, scheduler, whole-platform clone or broad task
+repartitioning is part of this package. Parallel M3 execution is limited to the one
+qualified pair of P-1 (PARALLEL-M3-PILOT.md); no other parallelism is.
 
 ## References
 

@@ -107,6 +107,25 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   Evidence: `k2_selftest.py` number_only_repeat_checks (the v28 shape; exact repeat, growing
   walk, another run, unknown result and three prior calls are not refused).
 
+- [x] Architect review F1: a skipped `run-verify.sh` invocation earlier in the run no
+  longer refuses a later successful verification (the latest invocation is judged by its
+  own call-bound record). F2: a current but failed or diagnostic-only verification asks
+  for acceptance verification without a product edit, instead of forbidding it
+  (`a7050053`; the architect's `architect-regressions.py` passes).
+- [x] v27 M1: the source analysis copy is its own Maven project base (`MAVEN_BASEDIR`
+  pinned by the build, source-packaging and MTA producers), so a source without `.mvn`
+  no longer inherits the destination's `maven.config` (`beb8e4f7`;
+  `maven-basedir-isolation.test.py` with real Maven on the nested layout).
+- [x] **Parallel M3 pilot (scope decision 2026-09-29, supersedes the deferral for one
+  pair):** exactly one pair of independent M3 repair outcomes runs concurrently in native
+  worktrees; everything else stays serial. Requirements, implementation and evidence
+  (synthetic, real-git, native-runtime) are in
+  [PARALLEL-M3-PILOT.md](stages/080-ai-autonomous-migration/PARALLEL-M3-PILOT.md). On
+  v28's real plan it selects RootRestController with `@Profile`. Live demonstration is
+  owed by the next validation run: two overlapping workers and both changes verified
+  after integration. Trade-off: in the pilot's chain, a blocked card holds back the cards
+  after it.
+
 Still open (not blockers of this package's source work):
 
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);

@@ -108,3 +108,30 @@ an implementer and an unrelated reviewer. The pilot is therefore expressed in th
 - A scheduler, sidecar, poller or second task database.
 - Any change to retry allowances or quotas.
 - The deferred transformation executor.
+
+## Requirements, implementation and evidence (2026-09-29)
+
+Evidence layers:
+- **synthetic:** the FakeNative board and the production planner and pilot code;
+- **real-git:** actual `git worktree` checkouts of a disposable destination;
+- **native-runtime:** the pinned Hermes `37b147ba` image's own `kanban_db`, dispatcher and CLI;
+- **live:** a validation run.
+
+| Requirement | Implementation | Evidence | Live |
+|---|---|---|---|
+| Policy pinned at creation; existing runs stay serial | `planner/execution_policy.py`; golden `run-defaults.json` `parallel_m3: m3-pair-pilot/v1` | real-git: `parallel_m3.test.py` ExecutionPolicy (the initial commit decides; a later commit or tree edit cannot make a serial run a pilot) | owed |
+| One dispatcher; the cap follows the policy | Stage 050 dest-init (`kanban.max_in_progress` 2 only for a pilot run; the check compares it with the policy) | the dest-init script parses; `outcome-board-hooks.test.py` | owed |
+| Deterministic pair; unknown, overlapping or dependent pairs stay serial; no pair is reported as such | `planner/pair_selection.py` | synthetic: `pair_selection.test.py`. On **v28's real plan and frozen model** it selects `source:c:488e7e2d2ac4` (RootRestController) with `source:u:cd4a81a71d9f` (`@Profile`, 15 repository files), and rejects the dependent and overlapping candidates | owed |
+| Only the pair is ever concurrently eligible; genuine dependencies are kept | schedule edges in `native_publish.py` (revision 1 and later revisions) | synthetic: PilotPublication (board walk). Native-runtime: `native_dispatch_probe.py` in the pinned image (cap 2: one tick spawns both pair tasks in worktrees at one HEAD while the successor waits; cap 1: one per tick) | owed |
+| One native worktree and branch per pair task from the same baseline | `node_workspace` (`worktree:<dest>/.worktrees/<slug>`, `wt/<slug>`) | native-runtime: pinned CLI `--workspace worktree:… --branch`; pinned `resolve_workspace` ran `git worktree add` | owed |
+| Isolated candidate, index, build output, issuance, verification, rollback | `pilot.seed`; `run-verify.sh` runs no runtime gates in a worktree; `.worktrees/` is gitignored and not product | real-git: Qualification (separate issuance; a rollback in one worktree leaves the sibling and the main tree intact) | owed |
+| Neither worker writes the main tree or the sibling | K2 `PILOT_CONFINED` | `k2_selftest.py` pilot_confinement_checks | owed |
+| Serial integration; only this path writes the main tree | `pilot.integrate` (one-writer lock; ordinary `run-verify.sh` + `advance.py` on the combined tree) | real-git: the second integration was verified on the combined tree | owed |
+| Survives interruption without double application | integrate-begin, accepted-before-record, `_restore` | real-git: interrupted apply resumed; one commit, one record | owed |
+| Conflict and regression go to bounded same-card rework | CONFLICT (no attempt), REJECTED (one attempt), `pilot.rebase` | real-git: a conflict spends nothing and blocks completion; a rejected combined tree spends one attempt and keeps the first member's state | owed |
+| No duplicate issuance, budget or quota reset, or early M4/M5 | shared board and budgets; `PILOT_NOT_INTEGRATED` terminator gate; chain edges | real-git: M4 stays todo until both are done; family budget counts across worktree and integration | owed |
+| Existing serial behavior stays green | — | all golden suites | — |
+| Report and serial comparison | run-report `parallel_pilot`; `tmp/v26-corrections/parallel-pilot/serial_replay.py` | synthetic: `run-report.test.py` ParallelPilot; the replay was smoke-tested | owed |
+
+**Not demonstrated yet:** two workers actually overlapping in a live run, with both changes
+passing verification after integration. The next validation run owes this; it is not claimed here.

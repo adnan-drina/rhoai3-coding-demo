@@ -164,6 +164,14 @@ hermes kanban runs <task_id>   # task_id required
 hermes kanban log <task_id>
 ```
 
+**Parallel pair (runs created from the current golden):** the board runs the M3
+repairs one at a time, except for one pair of independent repairs that M2 selects
+from the frozen plan. Those two run at the same time, each in its own git worktree
+under `.worktrees/`, and each is integrated into the main tree one after the other
+before review. `hermes kanban list` shows the pair as two running tasks with
+`wt/` branches. Selection, isolation and integration are described in
+[PARALLEL-M3-PILOT.md](PARALLEL-M3-PILOT.md).
+
 **Honest exit of this act:** M4 **`PROVISIONAL_ACCEPT`** for Owner/Pet
 (`ship=false`, kill-ratio `pending_threshold`) — not “migration finished and shipped.”
 
