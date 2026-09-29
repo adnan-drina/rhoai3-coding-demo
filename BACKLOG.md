@@ -148,13 +148,31 @@ Still open (not blockers of this package's source work):
 - [ ] Publication: fast-forward `main` and publish the golden (Operator steps);
   the runtime is unchanged (image `9147834b`).
 - [ ] Live evidence for A-D comes only from the next run.
-- [ ] v28 (continued past the architect's freeze ruling as an assisted diagnostic after
-  the Operator unblocked PetType `t_1cec0a74`, which then took one clean attempt): the
-  SpEL field the Root COMPILE card kept fails the package gate, so the Owner and Pet
-  BEHAVIOR cards (`t_9373a61f`, `t_ac4163cf`) blocked with OUT_OF_SCOPE_PREREQUISITE
-  instead of measuring parity. G3 refuses that field at the COMPILE card; whether a
-  package-gate failure no card owns reaches its owner through the attribution path is
-  still to be read from the rest of v28.
+- [x] An obligation no open card discharges no longer strands M3 BEHAVIOR (v28, an
+  assisted diagnostic after the Operator unblocked PetType `t_1cec0a74`). Once compilation
+  reached zero errors the package gate ran for the first time and failed at
+  RootRestController.java (the SpEL field the accepted COMPILE card `t_25819d9c` kept;
+  G3 now refuses it there). No plan node owned `rt:package:f4aa0ab756c50669`: M2 froze
+  ownership before it existed, and M4's routing of later findings is never reached,
+  because M4 waits on the BEHAVIOR cards. Five of the eight (Owner, Pet, PetType, Root,
+  Specialty) were issued no write set, recorded witness checkpoints, stayed PENDING and
+  blocked asking the Operator. Now `native_control.issue` on a behavior or runtime card
+  first routes every open mandatory obligation no open outcome owns (only on a work
+  list measured on the current tree), by M4's rules:
+  - to its frozen owner, where `owner_of_finding` now also resolves the work-list
+    cluster one outcome was formed from;
+  - through a follow-up sharing that owner's budget when the owner is accepted, which
+    becomes a prerequisite of every open behavior/runtime card and of M4 (the card ends
+    with `OWNER_REPAIR_PENDING`, i.e. `kanban_block kind=dependency`, and native
+    promotion resumes the waiting cards);
+  - to the card itself when it owns the file;
+  - otherwise to a named `ISSUE_ORPHANED_OBLIGATION` (`kind=needs_input`).
+  FakeNative `link` now demotes a ready child as the pinned `kanban_db.link_tasks` does.
+  Evidence: `native_m3_recovery.test.py` OrphanedObligations (5 tests); a replay on
+  v28's plan r1 and live work list routes the one orphan to
+  `followup:source:c:488e7e2d2ac4:m3g1` (RootRestController.java, the owner's budget),
+  with all 8 BEHAVIOR cards and M4 waiting on it (`tmp/v26-corrections/orphan-route/`).
+  Live: none.
 - [ ] Evidence gaps kept from v26: preloaded skill text is not corroborated from the
   session store; `test_stall_guards` and `test_cli_preloaded_skills` were not run for
   0015/0016 (missing local dependencies).

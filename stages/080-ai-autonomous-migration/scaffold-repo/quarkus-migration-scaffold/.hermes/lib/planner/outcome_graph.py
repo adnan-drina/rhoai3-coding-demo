@@ -832,6 +832,13 @@ def owner_of_finding(plan: dict[str, Any], item: dict[str, Any]) -> dict[str, An
     semantics v1), whatever order the destination revealed it in.
 
       obligation   the plan already owns this obligation id
+      cluster      exactly one repair outcome was formed from the finding's
+                   work-list cluster (a path- or symbol-derived id, stable
+                   across rebuilds): the outcome that owned that file's work
+                   owns what appears there later (v28: the package gate's
+                   failure at RootRestController.java belongs to the outcome
+                   formed from c:488e7e2d2ac4, not to the two requirement
+                   outcomes that also list the file)
       requirement  a planned requirement's scope holds the finding's locus
                    (its file, or for a behaviour finding its entry point):
                    one owner, so a defect seen through several endpoints or
@@ -846,6 +853,12 @@ def owner_of_finding(plan: dict[str, Any], item: dict[str, Any]) -> dict[str, An
     own = plan.get("ownership") or {}
     if iid and iid in own:
         return {"owner": own[iid], "resolution": "obligation"}
+    cl = _s(item.get("cluster"))
+    if cl:
+        claim = sorted(n["outcome_id"] for n in plan.get("nodes") or []
+                       if n.get("role") == "repair" and cl in (n.get("clusters") or []))
+        if len(claim) == 1:
+            return {"owner": claim[0], "resolution": "cluster"}
     path = _s(item.get("path"))
     ep = _s(item.get("entry_point"))
     repair = {n["outcome_id"]: n for n in plan.get("nodes") or [] if n.get("role") == "repair" and n.get("requirements")}

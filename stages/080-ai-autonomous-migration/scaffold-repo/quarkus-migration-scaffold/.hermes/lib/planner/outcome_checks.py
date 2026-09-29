@@ -618,7 +618,7 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
         if owner is None:
             # plan semantics v1: the frozen owner of a later finding, or a typed revision class
             found = owner_of_finding(plan, {"id": ob["id"], "path": ob.get("path") or "", "entry_point": ob.get("entry_point") or "",
-                                            "kind": ob.get("kind") or ""})
+                                            "kind": ob.get("kind") or "", "cluster": ob.get("cluster") or ""})
             if found.get("owner"):
                 owner = str(found["owner"])
             elif found.get("class") in ("ambiguous-ownership", "evidence-gap") and (plan.get("requirements") or []):
@@ -725,6 +725,126 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
                 doc[k] = plan[k]
     doc["digest"] = plan_digest(doc)
     return doc
+
+
+def orphaned_obligations(plan: dict[str, Any], worklist: dict[str, Any], status_of: Callable[[str], str]) -> list[dict[str, Any]]:
+    """Open mandatory obligations of the measured work list that no OPEN outcome
+    will discharge: owned by no plan node (they appeared after M2 froze
+    ownership -- v28: the package gate first ran once compilation reached zero
+    errors and failed at RootRestController.java), or owned by an outcome that
+    is already accepted (reopened after acceptance). Each with its work-list
+    cluster and write set. Pure."""
+    owner_of: dict[str, str] = {str(k): str(v) for k, v in (plan.get("ownership") or {}).items()}
+    for n in plan.get("nodes") or []:
+        for ob in n.get("obligations") or []:
+            owner_of.setdefault(str(ob), str(n.get("outcome_id") or ""))
+    cluster_of: dict[str, dict[str, Any]] = {}
+    for c in worklist.get("clusters") or []:
+        if isinstance(c, dict):
+            for i in c.get("items") or []:
+                cluster_of.setdefault(str(i), c)
+    out = []
+    for i in worklist.get("items") or []:
+        if not isinstance(i, dict) or i.get("category") != "mandatory" or not i.get("id"):
+            continue
+        iid = str(i["id"])
+        owner = owner_of.get(iid, "")
+        if owner and status_of(owner) not in ("accepted", "done"):
+            continue
+        c = cluster_of.get(iid) or {}
+        out.append({"id": iid, "path": str(i.get("path") or ""), "kind": str(i.get("kind") or ""),
+                    "entry_point": str(i.get("entry_point") or ""), "cluster": str(c.get("id") or ""),
+                    "write_set": [str(w) for w in c.get("write_set") or []],
+                    "status": "blocked" if c.get("status") == "blocked" else "open",
+                    "reopened_from": owner, "detail": str(i.get("message") or i.get("detail") or "")[:300]})
+    return out
+
+
+def orphan_revision(plan: dict[str, Any], orphans: list[dict[str, Any]], *, holder: str,
+                    status_of: Callable[[str], str], budget_of: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
+    """M3 routing of orphaned obligations (orphaned_obligations) found by a card
+    that measures the running application, by the rules refuse_revision applies
+    at M4: the frozen owner (owner_of_finding: the obligation, its work-list
+    cluster, a planned requirement's scope), then a follow-up of that owner
+    sharing its budget when the owner is accepted. Never reopens an accepted
+    outcome, never renews a budget, never widens another card's scope.
+
+    Returns {"plan": the next revision or None, "added": new follow-ups,
+    "self": obligations now owned by the holder, "unresolved": [(obligation,
+    reason)]}. The new follow-ups become parents of every open behavior or
+    runtime outcome (the holder included) and of every open assessment: none of
+    them can measure while the application does not build or start."""
+    from planner.outcome_graph import REPAIR_SKILLS, owner_of_finding, plan_digest, render_description
+    by_id = {n["outcome_id"]: dict(n) for n in plan["nodes"]}
+    ownership = dict(plan.get("ownership") or {})
+    added: list[str] = []
+    mine: list[str] = []
+    unresolved: list[tuple[str, str]] = []
+    for ob in orphans:
+        if ob.get("status") == "blocked" or not ob.get("write_set"):
+            unresolved.append((ob["id"], "its work-list cluster has no write set a card could be granted"))
+            continue
+        found = {} if ob.get("reopened_from") else owner_of_finding(plan, ob)
+        owner = str(ob.get("reopened_from") or found.get("owner") or "")
+        if not owner or owner not in by_id:
+            unresolved.append((ob["id"], "no single planned owner (%s%s)" % (
+                found.get("class") or "unowned", (": " + ", ".join(found.get("candidates") or [])) if found.get("candidates") else "")))
+            continue
+        if owner == holder:
+            ownership[ob["id"]] = holder
+            mine.append(ob["id"])
+            continue
+        if status_of(owner) not in ("accepted", "done"):
+            unresolved.append((ob["id"], "its owner %s is still open and does not own it" % owner))
+            continue
+        g = 1
+        while "followup:%s:m3g%d" % (owner, g) in by_id and status_of("followup:%s:m3g%d" % (owner, g)) in ("accepted", "done"):
+            g += 1
+        target = "followup:%s:m3g%d" % (owner, g)
+        if target not in by_id:
+            parent = by_id[owner]
+            by_id[target] = {"outcome_id": target, "role": "repair", "class": parent.get("class"), "subject": parent.get("subject"),
+                             "natural_key": "", "obligations": [], "clusters": [], "plan_paths": [], "entry_points": [],
+                             "scenarios": [], "parents": [], "assignee": parent.get("assignee"), "skills": list(REPAIR_SKILLS),
+                             "lineage": [{"follows": owner, "found_by": holder,
+                                          "reason": "M3 found an obligation no open outcome discharges after %s was accepted" % owner}],
+                             "budget": dict(budget_of(owner))}
+            added.append(target)
+        n = by_id[target]
+        n["obligations"] = sorted(set(n.get("obligations") or []) | {ob["id"]})
+        if ob.get("cluster"):
+            n["clusters"] = sorted(set(n.get("clusters") or []) | {ob["cluster"]})
+        n["plan_paths"] = sorted(set(n.get("plan_paths") or []) | set(ob.get("write_set") or []))
+        ownership[ob["id"]] = target
+    if not added and not mine:
+        return {"plan": None, "added": [], "self": [], "unresolved": unresolved}
+    for oid in added:
+        n = by_id[oid]
+        n["title"] = "Follow-up: %s" % n["subject"]
+        n["description"] = render_description(n)
+        n["acceptance"] = {"checks": {"behavior": ["worklist-absent", "parity:scenarios"],
+                                      "runtime": ["worklist-absent", "gate:runtime"]}.get(
+            n.get("class"), ["worklist-absent", "measure:compile", "measure:tests"])}
+    if added:
+        for oid, n in list(by_id.items()):
+            waits = (n.get("role") == "repair" and str(n.get("class") or "") in ("behavior", "runtime")
+                     and status_of(oid) not in ("accepted", "done")) or oid == holder \
+                or (n.get("role") == "assess" and status_of(oid) not in ("accepted", "done"))
+            if waits and oid not in added:
+                by_id[oid] = dict(n, parents=sorted(set(n.get("parents") or []) | set(added)))
+    counts = dict(plan.get("counts") or {})
+    counts["additions"] = int(counts.get("additions") or 0) + len(added)
+    doc = {"schema": plan["schema"], "run_id": plan["run_id"], "revision": int(plan["revision"]) + 1,
+           "parent_revision": int(plan["revision"]), "kind": "m3-orphan-route", "provenance": plan.get("provenance"),
+           "trigger": {"intent": "m3-orphans:%s" % holder}, "nodes": [by_id[k] for k in sorted(by_id)],
+           "ownership": ownership, "dispositions": list(plan.get("dispositions") or []),
+           "unresolved": list(plan.get("unresolved") or []), "counts": counts,
+           "additions": sorted(set(plan.get("additions") or []) | set(added)), "claimed_control": False}
+    for k in ("requirements", "requirement_ownership", "execution"):
+        if k in plan:
+            doc[k] = plan[k]
+    doc["digest"] = plan_digest(doc)
+    return {"plan": doc, "added": added, "self": mine, "unresolved": unresolved}
 
 
 def owner_repair_revision(plan: dict[str, Any], doc: dict[str, Any], *, open_assessments: set[str]) -> dict[str, Any] | Refusal | None:

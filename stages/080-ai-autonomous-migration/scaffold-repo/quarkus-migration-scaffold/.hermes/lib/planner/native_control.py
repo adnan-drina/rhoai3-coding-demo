@@ -856,6 +856,11 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     worklist, why = load_worklist(root)
     if role == "repair" and worklist is None:
         raise Refusal("ISSUE_" + why, "an outcome is issued against the measured work list")
+    if role == "repair" and str(node.get("class") or "") in ORPHAN_WAITERS:
+        routed = route_orphans(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, worklist=worklist, tree=tree)
+        if routed is not None and routed.get("self"):
+            plan = board.plan(run)
+            node = _node(plan, oid) or node
     cluster, allowed, unit = "", [], None
     satisfied, unsatisfied = None, []
     objective = None
@@ -942,6 +947,64 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             "control": "native-cooperative", "record": rec["key"],
             "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
                            for a in board.records(task_id, "amend") if a.get("cluster") == cluster] if cluster else []}
+
+
+ORPHAN_WAITERS = ("behavior", "runtime")
+
+
+def route_orphans(root: Path, board: Board, *, task_id: str, run_id: int, run: str, plan: dict[str, Any],
+                  worklist: dict[str, Any], tree: str) -> dict[str, Any] | None:
+    """A behavior or runtime outcome measures the RUNNING application. An open
+    mandatory obligation no open outcome will discharge (orphaned_obligations:
+    it appeared after M2 froze ownership, or reopened after its owner was
+    accepted) keeps the application from building or starting, so no such card
+    can measure anything. v28: the package gate first ran once compilation
+    reached zero errors, failed on a SpEL field the RootRestController COMPILE
+    card kept, and every M3 BEHAVIOR card -- issued no write set -- recorded a
+    witness checkpoint, stayed PENDING and blocked asking the Operator.
+
+    Routed here by the rules M4's refuse_revision applies (orphan_revision):
+    a follow-up of the frozen owner sharing its budget, published as a
+    prerequisite of this card, the other open behavior/runtime cards and the
+    open assessments; this run then ends with kanban_block kind=dependency
+    (OWNER_REPAIR_PENDING) and native promotion resumes the cards after it. An
+    obligation this card owns is issued to it. Anything no rule can route is a
+    named ISSUE_ORPHANED_OBLIGATION refusal (kanban_block kind=needs_input),
+    never an empty scope. Only a work list measured on THIS product tree
+    routes anything. None when nothing is orphaned."""
+    if not tree or str(worklist.get("candidate_sha256") or "") != tree:
+        return None
+    from planner.outcome_checks import orphan_revision, orphaned_obligations
+    tasks = board.run_tasks(run)
+
+    def status_of(o: str) -> str:
+        row = tasks.get(o)
+        return "done" if row and (board.task(row["id"]) or {}).get("status") == "done" else "open"
+
+    orphans = orphaned_obligations(plan, worklist, status_of)
+    if not orphans:
+        return None
+    oid = str(board.node_of(task_id)[2])
+    out = orphan_revision(plan, orphans, holder=oid, status_of=status_of,
+                          budget_of=lambda o: dict((_node(plan, o) or {}).get("budget") or {}))
+    if out["plan"] is not None:
+        nxt = native_revision(out["plan"])
+        board.record(task_id, "orphan-route", "orphan-route:%d:r%d" % (int(run_id), int(nxt["revision"])), run=int(run_id),
+                     revision=int(nxt["revision"]), added=out["added"], owned_here=out["self"],
+                     orphans=[o["id"] for o in orphans][:20], unresolved=[u[0] for u in out["unresolved"]][:20])
+        from planner.native_publish import publish_revision
+        publish_revision(root, board, nxt, added=out["added"], holder=task_id)
+    named = "; ".join("%s at %s" % (o["id"], o.get("path") or o.get("cluster") or "?") for o in orphans[:3])
+    if out["added"]:
+        raise Refusal("OWNER_REPAIR_PENDING", "%s measures the running application, which %s keeps from building or starting; "
+                      "no open outcome discharged it, so %s (its owner's follow-up, sharing the owner's budget) is now a "
+                      "prerequisite of this card, of the other behavior cards and of M4. End this run with kanban_block "
+                      "kind=dependency; this card resumes after it" % (oid, named, ", ".join(out["added"])))
+    if out["unresolved"] and not out["self"]:
+        raise Refusal("ISSUE_ORPHANED_OBLIGATION", "%s cannot measure the running application: %s. No open outcome discharges "
+                      "it and it cannot be routed (%s). End this run with kanban_block kind=needs_input naming it"
+                      % (oid, named, "; ".join("%s: %s" % u for u in out["unresolved"][:3])))
+    return out
 
 
 def _unchanged_issue(board: Board, task_id: str, run_id: int, fields: dict[str, Any]) -> dict[str, Any] | None:

@@ -29,7 +29,7 @@ _spec = importlib.util.spec_from_file_location("native_board_test", HERE / "nati
 NB = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(NB)
 
-NC, OG, Refusal, VERDICT = NB.NC, NB.OG, NB.Refusal, NB.VERDICT
+NC, OG, NP, Refusal, VERDICT = NB.NC, NB.OG, NB.NP, NB.Refusal, NB.VERDICT
 Run, git, status, mirror_layout = NB.Run, NB.git, NB.status, NB.mirror_layout
 KERNEL, SCRIPTS = NB.KERNEL, NB.LIB.parent / "skills" / "migration" / "fix-until-green" / "scripts"
 DASH = "—"
@@ -650,6 +650,132 @@ class RepeatedRefusal(unittest.TestCase):
             n = NC.note_refusal(self.r.root, self.tid, self.run, code)
         self.assertEqual(n, 1)
         self.assertIsNone(NC.refusal_stop(self.r.root, self.tid, self.run))
+
+
+# ===========================================================================
+class OrphanedObligations(unittest.TestCase):
+    """v28: once compilation reached zero errors the package gate ran for the first time and failed at
+    RootRestController.java (a SpEL field the accepted COMPILE card kept). No plan node owned that
+    obligation; every M3 BEHAVIOR card was issued no write set, recorded a witness checkpoint, stayed
+    PENDING and blocked asking the Operator. A behavior card now routes it by M4's rules before any scope:
+    the follow-up of the file's accepted owner, sharing its budget, as a prerequisite of every waiting card."""
+    ITEM_BEH = "behavior:http:com.acme.shop.web.ItemController"
+    ORDER_BEH = "behavior:http:com.acme.shop.web.OrderController"
+    ITEM_FILE = "src/main/java/com/acme/shop/web/ItemController.java"
+    ORDER_FILE = "src/main/java/com/acme/shop/web/OrderController.java"
+    LATE = "rt:package:late-expression"
+
+    def build(self, *, requirement_on: str = ""):
+        r = Run(publish=False)
+        if requirement_on:
+            with_check(r, requirement_on, "parity:late")
+        r.out = r.publish()
+        r.release()
+        r.drop("inc:unlocatable:jndi")
+        for n in OG.topo_order(r.plan()["nodes"]):
+            if n["role"] != "repair" or n["class"] == "behavior":
+                continue
+            r.accept(n["outcome_id"], classes=("build", "compile", "tests") + (("runtime",) if n["class"] == "runtime" else ()),
+                     scenarios=n.get("scenarios") or ())
+        return r
+
+    def late(self, r: Run, *, cluster: str, path: str, fresh: bool = True) -> None:
+        """The package gate's failure, first measured after every compile card was accepted."""
+        wl = r.worklist
+        wl["items"].append({"id": self.LATE, "category": "mandatory", "kind": "compile", "source": "runtime", "path": path,
+                            "message": "package gate failed: SpEL expressions are not supported"})
+        c = next((c for c in wl["clusters"] if c["id"] == cluster), None)
+        if c is None:
+            c = {"id": cluster, "items": [], "kind": "compile", "path": path, "status": "open", "write_set": [path]}
+            wl["clusters"].append(c)
+        c["items"].append(self.LATE)
+        wl["candidate_sha256"] = r.tree() if fresh else "0" * 64
+        r.save_worklist()
+
+    def test_the_owners_follow_up_becomes_every_waiting_cards_prerequisite(self):
+        r = self.build()
+        try:
+            self.late(r, cluster="c:item", path=self.ITEM_FILE)            # the accepted source:rk:item formed c:item
+            m4, other = r.tid("assess:m4:g1"), r.tid(self.ORDER_BEH)
+            self.assertEqual(status(r, other), "ready")
+            tid, run, lock = r.claim(self.ITEM_BEH)
+            with self.assertRaises(Refusal) as cm:
+                NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+            self.assertEqual(cm.exception.code, "OWNER_REPAIR_PENDING")
+            fid = "followup:source:rk:item:m3g1"
+            self.assertIn(fid, cm.exception.detail)
+            self.assertIn("kanban_block kind=dependency", cm.exception.detail)
+            plan = r.plan()
+            fnode = NC._node(plan, fid)
+            self.assertEqual((plan["revision"], plan["ownership"][self.LATE]), (2, fid))
+            self.assertEqual(fnode["budget"], NC._node(plan, "source:rk:item")["budget"])    # never a fresh budget
+            self.assertEqual((fnode["plan_paths"], fnode["clusters"]), ([self.ITEM_FILE], ["c:item"]))
+            ftid = r.tid(fid)
+            for t in (tid, other, m4):
+                self.assertIn(ftid, r.native.task(t)["parents"])
+            self.assertNotIn(tid, r.native.task(ftid)["parents"])
+            self.assertEqual(status(r, other), "todo")                      # the sibling waits before it is dispatched
+            self.assertEqual(NP.readback(r.board, plan), [])
+            self.assertEqual(len(r.board.records(tid, "orphan-route")), 1)
+            self.assertEqual(NC.check_terminator(r.root, r.board, task_id=tid, run_id=run, kind="block", profile="implementer",
+                                                 audit_green=lambda: True)["action"], "allow")
+            r.native.block_dependency(tid)
+            # the follow-up is issued the owner's file and discharges the obligation there
+            rtid, rrun, riss = r.issue(fid)
+            self.assertEqual(riss["allowed_paths"], [self.ITEM_FILE])
+            acc = r.accept_on_run(rtid, rrun, riss)
+            self.assertTrue(acc["outcome_accepted"], acc)
+            r.review_and_complete(rtid, rrun)
+            self.assertEqual((status(r, tid), status(r, other)), ("ready", "ready"))   # native promotion, no Operator
+            r.worklist["candidate_sha256"] = r.tree()
+            r.save_worklist()
+            r.issue(self.ORDER_BEH)                                          # nothing orphaned: no second revision
+            self.assertEqual(r.plan()["revision"], 2)
+        finally:
+            r.close()
+
+    def test_an_obligation_the_card_owns_is_issued_to_it(self):
+        r = self.build(requirement_on=self.ORDER_BEH)
+        try:
+            self.late(r, cluster="c:late-order", path=self.ORDER_FILE)     # unclaimed cluster; its file is this card's
+            tid, run, iss = r.issue(self.ORDER_BEH)
+            self.assertEqual((iss["cluster"], iss["allowed_paths"]), ("c:late-order", [self.ORDER_FILE]))
+            plan = r.plan()
+            self.assertEqual((plan["revision"], plan["ownership"][self.LATE]), (2, self.ORDER_BEH))
+            self.assertFalse([n for n in plan["nodes"] if n["outcome_id"].startswith("followup:")])
+        finally:
+            r.close()
+
+    def test_an_obligation_without_an_owner_is_a_named_refusal(self):
+        r = self.build()
+        try:
+            self.late(r, cluster="c:late", path="src/main/java/com/acme/shop/web/NobodysController.java")
+            tid, run, lock = r.claim(self.ITEM_BEH)
+            with self.assertRaises(Refusal) as cm:
+                NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+            self.assertEqual(cm.exception.code, "ISSUE_ORPHANED_OBLIGATION")
+            self.assertIn(self.LATE, cm.exception.detail)
+            self.assertIn("kind=needs_input", cm.exception.detail)
+            self.assertEqual(r.plan()["revision"], 1)
+        finally:
+            r.close()
+
+    def test_a_work_list_of_another_tree_routes_nothing(self):
+        r = self.build()
+        try:
+            self.late(r, cluster="c:item", path=self.ITEM_FILE, fresh=False)
+            r.issue(self.ITEM_BEH)
+            self.assertEqual(r.plan()["revision"], 1)
+        finally:
+            r.close()
+
+    def test_owner_of_finding_resolves_a_cluster_one_outcome_formed(self):
+        plan = NB.derive()
+        got = OG.owner_of_finding(plan, {"id": "x", "cluster": "c:item", "path": self.ITEM_FILE})
+        self.assertEqual(got, {"owner": "source:rk:item", "resolution": "cluster"})
+        twin = copy.deepcopy(plan)
+        next(n for n in twin["nodes"] if n["outcome_id"] == "source:rk:order")["clusters"].append("c:item")
+        self.assertIsNone(OG.owner_of_finding(twin, {"id": "x", "cluster": "c:item", "path": self.ITEM_FILE})["owner"])
 
 
 if __name__ == "__main__":

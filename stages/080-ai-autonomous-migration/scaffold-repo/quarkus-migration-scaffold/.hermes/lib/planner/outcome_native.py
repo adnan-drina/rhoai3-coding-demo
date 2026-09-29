@@ -342,6 +342,10 @@ class FakeNative:
     def link(self, parent: str, child: str) -> None:
         self.calls.append(("link", parent, child))
         self.links.add((parent, child))
+        # pinned kanban_db.link_tasks: a ready child of a parent that is not done goes back to todo
+        ch, pa = self.tasks.get(child), self.tasks.get(parent)
+        if ch and pa and pa["status"] != "done" and ch["status"] == "ready":
+            ch["status"] = "todo"
 
     def comment(self, task_id: str, text: str, author: str = "") -> None:
         self.calls.append(("comment", task_id))

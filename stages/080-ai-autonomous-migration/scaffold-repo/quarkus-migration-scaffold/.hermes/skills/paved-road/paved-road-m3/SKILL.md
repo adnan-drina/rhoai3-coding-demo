@@ -221,6 +221,15 @@ review; the domain checks guard your native actions.
      brief.py or advance.py: there is nothing to edit.
    - `NOTHING ISSUED: …` — no scope and not satisfied: `kanban_block
      kind=needs_input` naming the reasons it lists. Do not search for work.
+   - A **behavior or runtime card** measures the running application. When
+     the work list reports an obligation no open card discharges (for
+     example the package gate failing at another card's file), `issue`
+     refuses before any scope: `OWNER_REPAIR_PENDING` names the follow-up it
+     published for that file's owner (now this card's prerequisite): end the
+     run with `kanban_block kind=dependency`; this card resumes after it.
+     `ISSUE_ORPHANED_OBLIGATION` means no owner could be established: end
+     the run with `kanban_block kind=needs_input` naming it. Never edit the
+     other card's file, and never record a witness checkpoint to get past it.
 2. The same road: brief, patch, run-verify, advance. A REVERTED attempt stays
    on this card: advance re-issues the scope (`CONTINUE THIS CARD`), read the
    brief again.
