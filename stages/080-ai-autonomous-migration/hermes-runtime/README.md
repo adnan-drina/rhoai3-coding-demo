@@ -8,8 +8,8 @@ patches are build inputs; keep their contents and application order intact.
 |-------|----------|
 | Hermes base | `NousResearch/hermes-agent`, tag `v2026.8.19`, version `0.20.5` |
 | Base commit | `fcbd1076a93841fa88855acce810e342a5b78101` |
-| Patch series | [patches/](patches/), 0001–0015 in filename order |
-| Expected patched Git tree | `11840dfc8c8ee99889de8b7b0502fb8249934b0b` (0001–0014: `498e2faf`, the published image) |
+| Patch series | [patches/](patches/), 0001–0016 in filename order |
+| Expected patched Git tree | `37b147baef0c2678507c52e59e3b9231ab6ab64f` (0001–0014: `498e2faf`, the published image) |
 | Release manifest | [RELEASE.md](RELEASE.md): published image, qualification, and the image each run uses |
 
 ## Patch responsibilities
@@ -27,7 +27,8 @@ patches are build inputs; keep their contents and application order intact.
 | 0012 | Halt redundant read cycles and repeated identical refusals before tool execution |
 | 0013 | Review handoff (kanban_request_review / kanban_request_changes) is a terminal worker exit; the stop nudge applies only to the dispatcher-owned worker (backport of upstream 2bd0f1c5, 474db536, 42500bf0, 41fe679d) |
 | 0014 | Halt near-duplicate tool-call loops (`near_duplicate_loop_halt`): calls with the same operands after number normalisation, a growing literal, or an exact alternation, with no progress, edit or board transition in between; a new query or file is progress. Local extension, active only under `tool_loop_guardrails.hard_stop_enabled` |
-| 0015 | Any new line is progress in the near-duplicate guard: a call that shows a line not shown before (incidental timestamps, durations and hex digests masked) is not counted toward `near_duplicate_loop_halt`, so paging that yields one new diagnostic per page continues; exact repetitions and unchanged-output loops still halt. Not in a published image yet |
+| 0015 | Any new line is progress in the near-duplicate guard: a call that shows a line not shown before is not counted toward `near_duplicate_loop_halt`. Identifiers, digests and timestamps the tool printed are content; only the runtime's own appended notices (loop warnings, hard stops, identical-call notes) are excluded, and the terminal envelope is read even when they follow it. Exact repetitions and unchanged-output loops still halt |
+| 0016 | The `--skills` preload records what it actually loaded: a Kanban worker's native finalizer appends one run-bound `preload` row to the task's execution ledger (status loaded / partial / failed / timeout / error / no-result; per loaded skill the resolved `SKILL.md`, its sha256 and the prompt-text digest). A requested skill that did not load is never listed as loaded. Local extension |
 
 Patch 0001 backports the controller/runtime changes from upstream commit
 `76648a7faf7822cdd6c0e147c35857e15780c1af`; patch 0013 backports the upstream
@@ -41,7 +42,7 @@ The upstream test hunk inside 0001 is part of the pinned tree identity.
 ## Build contract
 
 Image assembly lives in the local, Git-ignored `workspace-images/` directory.
-From a clean checkout of the base commit, apply all fifteen patches in order
+From a clean checkout of the base commit, apply all sixteen patches in order
 with `git apply --index`. Require `git write-tree` to equal the expected tree
 above before building. The image build must check the patch count and tree,
 record patch checksums in `/opt/rhoai3/hermes-runtime-patches.sha256`, and stamp

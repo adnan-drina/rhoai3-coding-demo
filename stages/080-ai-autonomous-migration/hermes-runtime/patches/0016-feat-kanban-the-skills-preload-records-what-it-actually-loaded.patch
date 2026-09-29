@@ -1,0 +1,291 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Tue, 29 Sep 2026 08:38:07 +0200
+Subject: [PATCH] feat(kanban): the --skills preload records what it
+ actually loaded
+
+RHOAI3 v24 review (2026-09-29): a Kanban worker's required skills are preloaded
+with --skills on every run, but the evidence of that preload was the requested
+argv, and the native finalizer continues when one skill loads and another is
+missing, disabled or times out. The native preload now records, for a Kanban
+worker (HERMES_KANBAN_TASK and _RUN_ID set), one 'preload' row in the task's
+execution ledger: status loaded / partial / failed / timeout / error /
+no-result, the requested names, the missing ones, and for each skill that
+ACTUALLY loaded its resolved SKILL.md, that file's sha256 and the digest of
+the text folded into the prompt. A requested skill that did not load is never
+listed as loaded. Best-effort; no sidecar, no second controller.
+---
+ agent/skill_commands.py                    |  31 +++--
+ cli.py                                     |  45 ++++++++
+ tests/agent/test_rhoai3_preload_receipt.py | 127 +++++++++++++++++++++
+ 3 files changed, 196 insertions(+), 7 deletions(-)
+ create mode 100644 tests/agent/test_rhoai3_preload_receipt.py
+
+diff --git a/agent/skill_commands.py b/agent/skill_commands.py
+index f1e42e6..26b6a37 100644
+--- a/agent/skill_commands.py
++++ b/agent/skill_commands.py
+@@ -839,6 +839,7 @@ def build_stacked_skill_invocation_message(
+ def build_preloaded_skills_prompt(
+     skill_identifiers: list[str],
+     task_id: str | None = None,
++    details: list | None = None,
+ ) -> tuple[str, list[str], list[str]]:
+     """Load one or more skills for session-wide CLI/TUI preloading.
+ 
+@@ -891,14 +892,30 @@ def build_preloaded_skills_prompt(
+             "preloaded. Treat its instructions as active guidance for the duration of this "
+             "session unless the user overrides them.]"
+         )
+-        prompt_parts.append(
+-            _build_skill_message(
+-                loaded_skill,
+-                skill_dir,
+-                activation_note,
+-                session_id=task_id,
+-            )
++        message = _build_skill_message(
++            loaded_skill,
++            skill_dir,
++            activation_note,
++            session_id=task_id,
+         )
++        prompt_parts.append(message)
+         loaded_names.append(skill_name)
++        if details is not None:
++            # RHOAI3 (0016): what was ACTUALLY loaded -- the resolved SKILL.md and its bytes'
++            # digest, and the digest of the text folded into the prompt -- for the run's
++            # preload receipt; the requested name is not evidence that a skill loaded.
++            import hashlib
++            md = (Path(skill_dir) / "SKILL.md") if skill_dir else None
++            try:
++                md_sha = hashlib.sha256(md.read_bytes()).hexdigest() if md is not None else ""
++            except OSError:
++                md_sha = ""
++            details.append({
++                "skill": skill_name,
++                "requested": identifier,
++                "skill_md": str(md) if md is not None else "",
++                "skill_md_sha256": md_sha,
++                "prompt_sha256": hashlib.sha256(message.encode("utf-8", "surrogatepass")).hexdigest(),
++            })
+ 
+     return "\n\n".join(prompt_parts), loaded_names, missing
+diff --git a/cli.py b/cli.py
+index 558a7eb..d3280c2 100644
+--- a/cli.py
++++ b/cli.py
+@@ -4802,6 +4802,37 @@ def build_skill_invocation_message(*args, **kwargs):
+     return _impl(*args, **kwargs)
+ 
+ 
++def _record_preload_receipt(status, requested, loaded, missing):
++    """RHOAI3 (0016): the run-bound record of what the native --skills preload
++    actually put into this worker's prompt, appended as a ``preload`` row to the
++    Kanban task's execution ledger (<kanban root>/kanban/logs/<task>.exec.jsonl).
++    Written only for a Kanban worker (HERMES_KANBAN_TASK and _RUN_ID set);
++    best-effort, never raises. ``loaded`` holds, per loaded skill, the resolved
++    SKILL.md and its sha256 and the digest of the text folded into the prompt."""
++    import json as _json
++    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
++    run = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
++    home = (os.environ.get("HERMES_HOME") or "").strip().rstrip("/")
++    if not task or not run or not home:
++        return
++    parent, name = os.path.split(home)
++    root, profiles = os.path.split(parent)
++    base = root if profiles == "profiles" and name and root else home
++    row = {"schema": "rhoai3.exec-ledger/v1", "phase": "preload", "source": "native-finalize",
++           "task": task, "run": run, "profile": (os.environ.get("HERMES_PROFILE") or "").strip().lower(),
++           "status": status, "requested": list(requested), "loaded": list(loaded), "missing": list(missing)}
++    try:
++        logs = os.path.join(base, "kanban", "logs")
++        os.makedirs(logs, exist_ok=True)
++        fd = os.open(os.path.join(logs, "%s.exec.jsonl" % task), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
++        try:
++            os.write(fd, (_json.dumps(row, sort_keys=True) + "\n").encode("utf-8"))
++        finally:
++            os.close(fd)
++    except OSError:
++        pass
++
++
+ def build_preloaded_skills_prompt(*args, **kwargs):
+     from agent.skill_commands import build_preloaded_skills_prompt as _impl
+ 
+@@ -8332,13 +8363,24 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
+             return
+         thread.join(timeout=120)
+         self._preload_skills_finalized = True
++        requested = list(getattr(self, "_preload_skills_requested", None) or [])
++        if getattr(thread, "is_alive", lambda: False)():
++            _record_preload_receipt("timeout", requested, [], requested)
++            return
+         err = getattr(self, "_preload_skills_error", None)
+         if err is not None:
++            _record_preload_receipt("error", requested, [], requested)
+             raise err
+         result = getattr(self, "_preload_skills_result", None)
+         if not result:
++            _record_preload_receipt("no-result", requested, [], requested)
+             return
+         skills_prompt, loaded_skills, missing_skills = result
++        details = [d for d in (getattr(self, "_preload_skills_details", None) or []) if d.get("skill") in loaded_skills]
++        if missing_skills and not loaded_skills:
++            _record_preload_receipt("failed", requested, [], list(missing_skills))
++        elif skills_prompt:
++            _record_preload_receipt("partial" if missing_skills else "loaded", requested, details, list(missing_skills))
+         if missing_skills:
+             missing_display = ", ".join(missing_skills)
+             # If at least one skill loaded, degrade gracefully: skip the
+@@ -21066,11 +21108,14 @@ def main(
+         # thread via cli.finalize_preloaded_skills() before any consumer
+         # reads cli.system_prompt — HermesCLI._create_agent calls it too,
+         # so no agent can be built with the skills missing.
++        cli._preload_skills_details = []
++
+         def _load_preloaded_skills() -> None:
+             try:
+                 cli._preload_skills_result = build_preloaded_skills_prompt(
+                     parsed_skills,
+                     task_id=cli.session_id,
++                    details=cli._preload_skills_details,
+                 )
+             except Exception as exc:  # surfaced by finalize below
+                 cli._preload_skills_error = exc
+diff --git a/tests/agent/test_rhoai3_preload_receipt.py b/tests/agent/test_rhoai3_preload_receipt.py
+new file mode 100644
+index 0000000..4966327
+--- /dev/null
++++ b/tests/agent/test_rhoai3_preload_receipt.py
+@@ -0,0 +1,127 @@
++"""RHOAI3 (0016): the native --skills preload records what it ACTUALLY loaded.
++
++A Kanban worker's preload receipt is a ``preload`` row in the task's execution
++ledger, written by the native finalizer: the loaded skills (resolved SKILL.md,
++its sha256, the digest of the text folded into the prompt) and the missing
++ones. A requested skill that did not load is never listed as loaded; a timed-out
++or failed preload records that status instead of a loaded list.
++"""
++
++import ast
++import hashlib
++import json
++import logging
++import os
++import types
++from pathlib import Path
++
++import pytest
++
++from agent import skill_commands
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++def _finalizer_namespace():
++    """The real finalize_preloaded_skills and _record_preload_receipt from cli.py,
++    without importing the whole CLI (the same technique as the review probe)."""
++    tree = ast.parse((ROOT / "cli.py").read_text())
++    wanted = {"finalize_preloaded_skills", "_record_preload_receipt"}
++    fns = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in wanted]
++    assert {f.name for f in fns} == wanted
++    ns = {"logger": logging.getLogger("preload-test"), "os": os}
++    exec(compile(ast.Module(body=fns, type_ignores=[]), "cli-preload", "exec"), ns)
++    return ns
++
++
++def _worker(result, *, alive=False, error=None, details=(), requested=("paved-road-m3", "fix-until-green")):
++    return types.SimpleNamespace(
++        _preload_skills_thread=types.SimpleNamespace(join=lambda **kw: None, is_alive=lambda: alive),
++        _preload_skills_error=error, _preload_skills_result=result,
++        _preload_skills_details=list(details), _preload_skills_requested=list(requested),
++        system_prompt="system", preloaded_skills=[],
++    )
++
++
++@pytest.fixture
++def kanban_env(tmp_path, monkeypatch):
++    home = tmp_path / "home"
++    (home / "profiles" / "implementer").mkdir(parents=True)
++    monkeypatch.setenv("HERMES_HOME", str(home / "profiles" / "implementer"))
++    monkeypatch.setenv("HERMES_KANBAN_TASK", "t_pre")
++    monkeypatch.setenv("HERMES_KANBAN_RUN_ID", "12")
++    monkeypatch.setenv("HERMES_PROFILE", "implementer")
++    return home / "kanban" / "logs" / "t_pre.exec.jsonl"
++
++
++def _rows(ledger):
++    return [json.loads(l) for l in ledger.read_text().splitlines()] if ledger.is_file() else []
++
++
++def test_the_builder_records_only_what_loaded(tmp_path, monkeypatch):
++    skill_dir = tmp_path / "skills" / "paved-road" / "paved-road-m3"
++    skill_dir.mkdir(parents=True)
++    (skill_dir / "SKILL.md").write_text("---\nname: paved-road-m3\n---\nthe road\n")
++
++    def fake_view(name, task_id=None, preprocess=False):
++        if name == "paved-road-m3":
++            return json.dumps({"success": True, "name": "paved-road-m3", "skill_dir": str(skill_dir),
++                               "path": "paved-road/paved-road-m3/SKILL.md", "content": "the road"})
++        return json.dumps({"success": False, "error": "not found"})
++
++    import tools.skills_tool as st
++    monkeypatch.setattr(st, "skill_view", fake_view)
++    details = []
++    prompt, loaded, missing = skill_commands.build_preloaded_skills_prompt(
++        ["paved-road-m3", "fix-until-green"], task_id="s1", details=details)
++    assert loaded == ["paved-road-m3"] and missing == ["fix-until-green"]
++    assert [d["skill"] for d in details] == ["paved-road-m3"]
++    d = details[0]
++    assert d["skill_md"] == str(skill_dir / "SKILL.md")
++    assert d["skill_md_sha256"] == hashlib.sha256((skill_dir / "SKILL.md").read_bytes()).hexdigest()
++    assert d["prompt_sha256"] == hashlib.sha256(prompt.encode()).hexdigest()
++
++
++def test_a_full_preload_is_recorded_as_loaded(kanban_env):
++    ns = _finalizer_namespace()
++    det = [{"skill": "paved-road-m3", "skill_md": "/s/a/SKILL.md", "skill_md_sha256": "a" * 64, "prompt_sha256": "1" * 64},
++           {"skill": "fix-until-green", "skill_md": "/s/b/SKILL.md", "skill_md_sha256": "b" * 64, "prompt_sha256": "2" * 64}]
++    ns["finalize_preloaded_skills"](_worker(("text", ["paved-road-m3", "fix-until-green"], []), details=det))
++    (row,) = _rows(kanban_env)
++    assert (row["phase"], row["source"], row["status"], row["run"]) == ("preload", "native-finalize", "loaded", "12")
++    assert [d["skill"] for d in row["loaded"]] == ["paved-road-m3", "fix-until-green"] and row["missing"] == []
++
++
++def test_a_partial_preload_never_lists_the_missing_skill_as_loaded(kanban_env):
++    ns = _finalizer_namespace()
++    det = [{"skill": "paved-road-m3", "skill_md": "/s/a/SKILL.md", "skill_md_sha256": "a" * 64, "prompt_sha256": "1" * 64}]
++    w = _worker(("text", ["paved-road-m3"], ["fix-until-green"]), details=det)
++    ns["finalize_preloaded_skills"](w)
++    (row,) = _rows(kanban_env)
++    assert row["status"] == "partial"
++    assert [d["skill"] for d in row["loaded"]] == ["paved-road-m3"] and row["missing"] == ["fix-until-green"]
++    assert w.preloaded_skills == ["paved-road-m3"]
++
++
++def test_a_timed_out_preload_records_timeout_and_no_loaded_skill(kanban_env):
++    ns = _finalizer_namespace()
++    ns["finalize_preloaded_skills"](_worker(None, alive=True))
++    (row,) = _rows(kanban_env)
++    assert (row["status"], row["loaded"]) == ("timeout", [])
++
++
++def test_a_preload_where_every_skill_is_missing_records_failed_and_raises(kanban_env):
++    ns = _finalizer_namespace()
++    with pytest.raises(ValueError):
++        ns["finalize_preloaded_skills"](_worker(("", [], ["paved-road-m3", "fix-until-green"])))
++    (row,) = _rows(kanban_env)
++    assert (row["status"], row["loaded"]) == ("failed", [])
++
++
++def test_no_receipt_outside_a_kanban_worker(tmp_path, monkeypatch):
++    for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_RUN_ID"):
++        monkeypatch.delenv(k, raising=False)
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "h"))
++    ns = _finalizer_namespace()
++    ns["finalize_preloaded_skills"](_worker(("text", ["paved-road-m3"], [])))
++    assert not (tmp_path / "h" / "kanban").exists()
+-- 
+2.54.0 (Apple Git-157)
+

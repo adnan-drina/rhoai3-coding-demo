@@ -5,25 +5,25 @@ Subject: [PATCH] fix(guardrails): any new line is progress in the
  near-duplicate guard
 
 RHOAI3 v24 (2026-09-29): the near-duplicate guard (0014) halted a worker paging a
-143K section whose pages each showed new diagnostic lines, and would halt
-paging that yields one new diagnostic per page, reporting both as "no new
-output". A call now makes progress when it shows at least min_new_lines (1)
-line not shown before since the last edit or transition. Incidental
-timestamps, durations and long hex digests are masked before lines are
-compared, so they never count as new: polling whose only change is a clock
-or a self-generated digest still halts. Exact repetitions and unchanged-output
-loops still halt as near_duplicate_loop_halt, whose message now states how
-many of the counted calls showed no new output.
+143K section whose pages each showed new diagnostic lines, and would halt paging
+that yields one new diagnostic per page, reporting both as "no new output". A
+call now makes progress when it shows at least min_new_lines (1) line not shown
+before since the last edit or transition. Identifiers, digests and timestamps
+the tool printed are content: a page of distinct artifact SHA-256s is new
+information. Only the runtime's own appended notices (loop warnings, hard stops,
+identical-call notes) are excluded, and the terminal envelope is read even when
+such notices follow it, so a changing notice count is never new output. Exact
+repetitions and unchanged-output loops still halt as near_duplicate_loop_halt.
 ---
- agent/tool_guardrails.py                      | 40 ++++++++-
- .../test_tool_guardrails_near_duplicate.py    | 82 ++++++++++++++++++-
- 2 files changed, 114 insertions(+), 8 deletions(-)
+ agent/tool_guardrails.py                      | 42 +++++++--
+ .../test_tool_guardrails_near_duplicate.py    | 88 ++++++++++++++++++-
+ 2 files changed, 121 insertions(+), 9 deletions(-)
 
 diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
-index 4fca31b..1dc0ada 100644
+index 4fca31b..9b1e0c2 100644
 --- a/agent/tool_guardrails.py
 +++ b/agent/tool_guardrails.py
-@@ -249,6 +249,13 @@ class NearDuplicateConfig:
+@@ -249,6 +249,14 @@ class NearDuplicateConfig:
        of its output lines were not shown since the last edit or transition.
        A call that names a new operand (query term, literal or path) makes
        progress whatever its output.
@@ -31,13 +31,14 @@ index 4fca31b..1dc0ada 100644
 +      before also makes progress, whatever their share (RHOAI3 v24: a page of
 +      850 lines with 26 new diagnostic lines, and pages that each added ONE new
 +      diagnostic, were halted as "no new output"). Default 1: any new line is
-+      information. Lines are compared with incidental timestamps, durations and
-+      long hex digests masked, so those alone never count as new; exact
-+      repetitions and unchanged-output loops still halt.
++      information, including identifiers, digests and timestamps the tool
++      printed. Only the runtime's own appended notices (loop warnings, hard
++      stops, identical-call notes) are excluded, so a changing notice count is
++      never new output; exact repetitions and unchanged-output loops still halt.
      """
  
      enabled: bool = True
-@@ -259,6 +266,7 @@ class NearDuplicateConfig:
+@@ -259,6 +267,7 @@ class NearDuplicateConfig:
      warn_after: int = 8
      similarity: float = 0.75
      new_output_share: float = 0.5
@@ -45,7 +46,7 @@ index 4fca31b..1dc0ada 100644
  
      @classmethod
      def from_mapping(cls, data: Mapping[str, Any] | None) -> "NearDuplicateConfig":
-@@ -276,6 +284,7 @@ class NearDuplicateConfig:
+@@ -276,6 +285,7 @@ class NearDuplicateConfig:
              warn_after=_positive_int(data.get("warn_after"), d.warn_after),
              similarity=_unit_float(data.get("similarity"), d.similarity),
              new_output_share=_unit_float(data.get("new_output_share"), d.new_output_share),
@@ -53,12 +54,7 @@ index 4fca31b..1dc0ada 100644
          )
  
  
-@@ -824,11 +833,12 @@ class ToolCallGuardrailController:
-         lines = _result_content_lines(result)
-         new = 0
-         for line in lines:
--            digest = hashlib.sha256(line.encode("utf-8", "surrogatepass")).digest()[:16]
-+            digest = hashlib.sha256(_novelty_key(line).encode("utf-8", "surrogatepass")).digest()[:16]
+@@ -828,7 +838,8 @@ class ToolCallGuardrailController:
              if digest not in self._nd_seen:
                  self._nd_seen.add(digest)
                  new += 1
@@ -68,7 +64,7 @@ index 4fca31b..1dc0ada 100644
          entry = _NearDuplicateCall(
              tool_name=tool_name,
              tokens=shape,
-@@ -837,6 +847,7 @@ class ToolCallGuardrailController:
+@@ -837,6 +848,7 @@ class ToolCallGuardrailController:
              exact=exact,
              operands=operands,
              head=head,
@@ -76,7 +72,7 @@ index 4fca31b..1dc0ada 100644
          )
          self._nd_history.append(entry)
          keep = max(cfg.window, cfg.cycle_laps * cfg.max_cycle_period)
-@@ -852,6 +863,8 @@ class ToolCallGuardrailController:
+@@ -852,6 +864,8 @@ class ToolCallGuardrailController:
          ]
          count = len(similar)
          loop = ""
@@ -85,7 +81,7 @@ index 4fca31b..1dc0ada 100644
          if count >= cfg.similar_calls:
              loop = (
                  f"{count} of the last {min(len(history), cfg.window)} {tool_name} calls "
-@@ -863,17 +876,20 @@ class ToolCallGuardrailController:
+@@ -863,17 +877,20 @@ class ToolCallGuardrailController:
                  if laps >= cfg.cycle_laps:
                      members = "; ".join(e.description for e in history[-period:])
                      count = laps
@@ -107,7 +103,7 @@ index 4fca31b..1dc0ada 100644
                      "and no board transition in between. Only numbers, a growing "
                      "quoted argument or a chained part changed between these "
                      "calls, and none of them asked about a new term or file, so "
-@@ -902,7 +918,7 @@ class ToolCallGuardrailController:
+@@ -902,7 +919,7 @@ class ToolCallGuardrailController:
                  action="warn",
                  code=NEAR_DUPLICATE_WARN_CODE,
                  message=(
@@ -116,28 +112,40 @@ index 4fca31b..1dc0ada 100644
                      "looks like a loop: use what was already shown, make the "
                      "change, or stop."
                  ),
-@@ -1724,6 +1740,21 @@ def _result_content_lines(result: str | None) -> list:
- # ── Near-duplicate loop guard (_observe_near_duplicate) ──────────────────
+@@ -1706,17 +1723,31 @@ def _parse_read_command(command: str) -> _ParsedRead | None:
+     return _ParsedRead(family_tokens, is_search, context, patterns, files)
  
- NEAR_DUPLICATE_HALT_CODE = "near_duplicate_loop_halt"
-+# Incidental output that changes on every call without saying anything new: masked before a
-+# line is compared, so it never counts as a new line (RHOAI3 v24 review: timestamps and
-+# self-generated digests must not justify endless polling).
-+_INCIDENTAL = (
-+    (re.compile(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?\b"), "<time>"),
-+    (re.compile(r"\b\d{1,2}:\d{2}:\d{2}(\.\d+)?\b"), "<time>"),
-+    (re.compile(r"\b\d+(\.\d+)?(ms|s)\b"), "<dur>"),
-+    (re.compile(r"\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*[0-9])[0-9a-f]{12,}\b"), "<hex>"),
-+)
+ 
++# Notices the RUNTIME appends to a tool result (loop warnings, hard stops, identical-call
++# notes). They carry changing counts and are not the tool's output, so they are never new
++# information. Only these recognized runtime lines are excluded; everything the tool itself
++# printed -- identifiers, digests, timestamps -- keeps its content (RHOAI3 v24 review: a page
++# of distinct artifact SHA-256s is new information, not incidental metadata).
++_RUNTIME_NOTICE = re.compile(r"^\[(hermes note:|Tool loop (warning|hard stop):)")
 +
 +
-+def _novelty_key(line: str) -> str:
-+    for pattern, repl in _INCIDENTAL:
-+        line = pattern.sub(repl, line)
-+    return line
- NEAR_DUPLICATE_WARN_CODE = "near_duplicate_loop_warning"
- # Board transitions: after one of these the model is on a new step. Reads of
- # the board (kanban_show/kanban_list), heartbeats and comments are not.
+ def _result_content_lines(result: str | None) -> list:
+     """Output lines a read showed (terminal envelope ``output``), minus grep
+-    group separators and the runtime's truncation notice."""
++    group separators, the runtime's truncation notice and the runtime's own
++    appended notices. The envelope is read even when notices follow it."""
+     text = result or ""
+     parsed = safe_json_loads(text)
++    if not isinstance(parsed, dict) and text.lstrip().startswith("{"):
++        try:
++            parsed, _end = json.JSONDecoder().raw_decode(text.lstrip())
++        except ValueError:
++            parsed = None
+     if isinstance(parsed, dict) and isinstance(parsed.get("output"), str):
+         text = parsed["output"]
+     lines = []
+     for raw in text.splitlines():
+         line = raw.rstrip()
+-        if not line or line == "--" or _TRUNCATION_NOTICE.match(line.strip()):
++        if not line or line == "--" or _TRUNCATION_NOTICE.match(line.strip()) or _RUNTIME_NOTICE.match(line.strip()):
+             continue
+         lines.append(line)
+     return lines
 @@ -1777,6 +1808,7 @@ class _NearDuplicateCall:
      exact: tuple = ()  # digit runs as ``#``, quoted text kept
      operands: tuple = ()  # query terms, literals and paths, digit-normalised
@@ -147,7 +155,7 @@ index 4fca31b..1dc0ada 100644
  
  def _shell_tokens(command: str) -> list:
 diff --git a/tests/agent/test_tool_guardrails_near_duplicate.py b/tests/agent/test_tool_guardrails_near_duplicate.py
-index 758a634..7fcbaa6 100644
+index 758a634..e80f1b9 100644
 --- a/tests/agent/test_tool_guardrails_near_duplicate.py
 +++ b/tests/agent/test_tool_guardrails_near_duplicate.py
 @@ -120,8 +120,13 @@ def test_sed_window_walk_run37_halts():
@@ -183,7 +191,7 @@ index 758a634..7fcbaa6 100644
  
  
  def test_exact_alternation_run44_halts_even_when_each_call_shows_its_lines():
-@@ -391,3 +399,69 @@ def test_terminal_write_classifier():
+@@ -391,3 +399,75 @@ def test_terminal_write_classifier():
      ]
      assert all(_terminal_command_mutates(c) for c in writes), [c for c in writes if not _terminal_command_mutates(c)]
      assert not any(_terminal_command_mutates(c) for c in reads), [c for c in reads if _terminal_command_mutates(c)]
@@ -204,23 +212,29 @@ index 758a634..7fcbaa6 100644
 +    assert halt is None, (index, halt)
 +
 +
-+def test_one_new_digest_per_page_is_not_new_output():
-+    """M1 reviewer: paging a ledger where the only new line is a self-generated
-+    digest is masked as incidental and halts as a no-new-output loop."""
-+    base = [f"record field {i}" for i in range(35)]
++def test_distinct_artifact_ids_are_new_output():
++    """RHOAI3 v24 review: pages of a frozen artifact list, each with a different
++    SHA-256, are new information; an identifier the tool printed is never masked."""
++    base = [f"artifact field {i}" for i in range(35)]
++    calls = []
++    for k in range(25):
++        digest = "%064x" % (0xabc123 + k * 7919)
++        calls.append(_term(f"sed -n '{k + 1},{k + 36}p' artifacts.txt", "\n".join(base + [f"artifact {k} sha256={digest}"])))
++    index, halt, _ = _replay(_hard_stop(), calls)
++    assert halt is None, (index, halt)
++
++
++def test_runtime_notices_alone_are_not_new_output():
++    """Only the runtime's own appended notices are incidental: the same tool
++    output with a changing loop-warning count still halts."""
 +    calls = []
 +    for k in range(20):
-+        digest = "%064x" % (0xabc123 + k * 7919)
-+        calls.append(_term(f"sed -n '{k + 1},{k + 36}p' exec.jsonl", "\n".join(base + [f"line 16 start sha={digest}"])))
++        envelope = json.dumps({"output": "BUILD FAILURE\n[ERROR] Pet.java:[42,8] cannot find symbol", "exit_code": 1, "error": None})
++        notice = (f"\n\n[Tool loop warning: near_duplicate_loop_warning; count={k}; {k} of the last 16 terminal calls "
++                  f"were near-duplicates]\n\n[hermes note: this is the {k}th consecutive identical call]")
++        calls.append(("terminal", {"command": f"mvn -q compile | head -{10 + k % 3}"}, envelope + notice))
 +    index, halt, _ = _replay(_hard_stop(), calls)
-+    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
-+
-+
-+def test_timestamps_alone_are_not_new_output():
-+    calls = [_term("tail -3 build.log", f"2026-09-28T22:{m:02d}:0{m % 10}Z still building\nelapsed {m}.2s\nwaiting")
-+             for m in range(20)]
-+    index, halt, _ = _replay(_hard_stop(), calls)
-+    assert halt is not None and halt.code == NEAR_DUPLICATE_HALT_CODE
++    assert halt is not None and halt.code in (NEAR_DUPLICATE_HALT_CODE, "read_family_no_new_content_halt")
 +
 +
 +def test_unchanged_pom_grep_still_halts():
