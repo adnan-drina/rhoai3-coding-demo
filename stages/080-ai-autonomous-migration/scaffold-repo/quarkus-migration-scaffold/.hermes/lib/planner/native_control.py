@@ -1372,6 +1372,50 @@ def recover_accept(root: Path, board: Board, *, task_id: str, skip_run: int | No
     return out
 
 
+def evaluate_unchanged_rework(root: Path, board: Board, *, task_id: str, run_id: int,
+                              measurement: dict[str, Any]) -> dict[str, Any] | None:
+    """A reviewer's change request answered with NO product change (v24 run
+    t_e2932aa0: the request was procedural -- a missing skill_view line -- and
+    the product was already accepted). The outcome is judged again ON THE
+    CURRENT TREE, exactly as an acceptance is judged, and recorded as
+    accept-evaluated: nothing is committed, no attempt is spent, and the old
+    tree's acceptance is never carried over to a tree other cards have moved.
+
+    None unless: the issued unit is a rework unit, changes were requested since
+    the task's last accepted outcome, and none of the paths that task's own
+    accepted commits changed differs from the last accepted commit (committed
+    or in the working tree). A changed candidate takes the normal path."""
+    root = Path(root)
+    iss = active_issue(board, task_id, run_id)
+    if not str(iss.get("cluster") or "").startswith("rework:") or not _changes_requested_since_accept(board, task_id):
+        return None
+    rows = _accept_records(board, task_id)
+    accepted = [r for r in rows if r.get("outcome_accepted") and r.get("commit")]
+    if not accepted:
+        return None
+    base = str(accepted[-1]["commit"])
+    paths = _rework_paths(root, board, task_id)
+    if not paths:
+        return None
+    if _git(root, "diff", "--quiet", base, "--", *paths).returncode != 0:
+        return None          # committed or uncommitted change to the task's own paths: judged normally
+    role, run, oid, plan, node = node_context(board, task_id)
+    tree = _product_tree(root)
+    wl, why = load_worklist(root)
+    if wl is None:
+        raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
+    m = _measure(root, plan, node, wl, tree, measurement)
+    gaps = repair_evidence_gaps(root, node, tree)
+    covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
+    done = not m["open_owned"] and covered and not gaps
+    board.record(task_id, "accept-evaluated", "accept-evaluated:rework:%d:%d" % (int(run_id), len(rows)),
+                 run=int(run_id), commit=base, tree=tree, outcome_accepted=done, measurement=m,
+                 basis="rework-unchanged", accepted_commit=base, repair_evidence_gaps=gaps)
+    return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "covered": covered,
+            "commit": base,
+            "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": gaps})}
+
+
 def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, measurement: dict[str, Any]) -> dict[str, Any] | None:
     """Finish an acceptance that recovery recorded: the recovered commit is
     the current tree, re-measured, judged exactly as accept_commit judges.

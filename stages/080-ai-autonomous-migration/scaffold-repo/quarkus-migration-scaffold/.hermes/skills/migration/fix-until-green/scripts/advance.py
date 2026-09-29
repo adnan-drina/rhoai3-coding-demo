@@ -650,8 +650,13 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
     # a new candidate and takes the normal path (and its own refusals)
     if product_paths_changed(root):
         return None
+    issued_cluster = str((load_issued(root) or {}).get("cluster") or "")
     for row in reversed(steps.get("rejected") or []):
         if isinstance(row, dict) and str(row.get("card") or "") == card and not row.get("rewound"):
+            if issued_cluster and str(row.get("cluster") or "") != issued_cluster:
+                # the rejection belongs to another unit of this card (v24 run t_e2932aa0: the run-26
+                # rework rejection was replayed on the run-55 rework unit): this unit is judged normally
+                continue
             deferred = load_deferred(root)
             cluster = str(row.get("cluster") or "")
             if cluster in set(deferred.get("clusters") or []):
@@ -817,7 +822,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cluster.startswith("rework:") and not changed:
         # v24 run t_e2932aa0: the reviewer's change request was procedural (a missing skill_view line),
         # the product was already accepted, and a no-op advance.py was REVERTED ("did not decrease") and
-        # charged the family budget. An unchanged rework candidate is not an attempt: nothing is judged.
+        # charged the family budget. An unchanged rework candidate is not an attempt. On the native board
+        # the outcome is judged again on the CURRENT tree (other cards may have moved it since).
+        ob = _outcome_bridge.rework_unchanged(root, cur, load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
+        if ob is not None:
+            return ob
         print("REWORK UNCHANGED %s: no product file changed since the accepted commit %s, so nothing is judged and no "
               "attempt is spent. If the change request needs no product edit, run python3 .hermes/kernel/native_gate.py "
               "--root . handoff and kanban_request_review reviewer=reviewer with its summary (the reviewer re-judges the "

@@ -463,6 +463,52 @@ class SameTaskReview(unittest.TestCase):
         self.assertEqual(outcomes, ["review_requested", "changes_requested", "review_requested", "completed"])
         self.assertEqual(len([t for t in r.native.tasks.values() if t.get("idempotency_key") == NC.native_key(r.run_id, NC._node(r.plan(), "build:rk:pom"))]), 1)
 
+    def test_a_procedural_change_request_on_a_moved_tree_is_judged_again_without_a_charge(self):
+        """v24 run t_e2932aa0: the reviewer requested changes for a missing skill_view line on an accepted
+        outcome; other cards then moved the tree. The unchanged rework is judged again ON THE CURRENT TREE
+        (accept-evaluated), spends nothing, and only then may be handed to review."""
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        self.assertTrue(r.accept_on_run(tid, run, iss, attempt="1")["outcome_accepted"])
+        r.native.request_review(tid)
+        r.native.claim_review(tid)
+        r.native.request_changes(tid, "procedural: the skill_view line is missing from the run log")
+        node = NC._node(r.plan(), "build:rk:pom")
+        spent = NC.budget_state(r.board, r.run_id, r.plan(), node)["spent"]
+        r.edit("src/main/java/other/Moved.java", "// another card's accepted work\n")      # the tree moves
+        git(r.root, "add", "-A")
+        git(r.root, "commit", "-qm", "another card")
+        run2, lock2 = r.native.claim(tid)
+        iss2 = NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)
+        self.assertTrue(iss2["cluster"].startswith("rework:"))
+        self.assertFalse(NC.handoff(r.root, r.board, task_id=tid)["metadata"]["accepted_on_current_tree"])
+        with self.assertRaises(Refusal):
+            NC.check_terminator(r.root, r.board, task_id=tid, run_id=run2, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        out = NC.evaluate_unchanged_rework(r.root, r.board, task_id=tid, run_id=run2,
+                                           measurement={"classes": ["build", "compile", "tests"], "scenarios": []})
+        self.assertTrue(out and out["outcome_accepted"], out)
+        self.assertTrue(NC.handoff(r.root, r.board, task_id=tid)["metadata"]["accepted_on_current_tree"])
+        self.assertEqual(NC.budget_state(r.board, r.run_id, r.plan(), node)["spent"], spent)          # nothing spent
+        d = NC.check_terminator(r.root, r.board, task_id=tid, run_id=run2, kind="request_review", profile="implementer",
+                                audit_green=lambda: False)
+        self.assertEqual(d["action"], "allow", d)
+        rec = [x for x in r.board.records(tid, "accept-evaluated")][-1]
+        self.assertEqual((rec.get("basis"), rec.get("accepted_commit")), ("rework-unchanged", out["commit"]))
+
+    def test_a_changed_own_path_is_not_an_unchanged_rework(self):
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        self.assertTrue(r.accept_on_run(tid, run, iss, attempt="1")["outcome_accepted"])
+        r.native.request_review(tid)
+        r.native.claim_review(tid)
+        r.native.request_changes(tid, "the pom keeps a Spring Boot parent")
+        run2, lock2 = r.native.claim(tid)
+        NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)
+        r.edit("pom.xml", "<project>edited for the change request</project>\n")
+        self.assertIsNone(NC.evaluate_unchanged_rework(r.root, r.board, task_id=tid, run_id=run2,
+                                                       measurement={"classes": ["build"], "scenarios": []}))
+
     def test_stale_wrong_run_and_missing_evidence_refuse(self):
         r = self.r
         tid, run, iss = r.issue("build:rk:pom")

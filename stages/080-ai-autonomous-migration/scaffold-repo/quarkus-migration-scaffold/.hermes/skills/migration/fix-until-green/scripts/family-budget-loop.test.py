@@ -141,6 +141,21 @@ class ReworkUnchanged(unittest.TestCase):
             self.assertEqual(steps.get("attempts") or {}, {})
             self.assertEqual(load_json(root / "verification" / "loop" / "last-advance.json")["verdict"], "OK")
 
+    def test_an_older_units_rejection_is_not_replayed_on_the_rework_unit(self):
+        """v24 run t_e2932aa0: the run-26 rework rejection was replayed ("REVERTED already") on the run-55 rework unit."""
+        with tempfile.TemporaryDirectory(prefix="rework-old-") as td:
+            root, cluster, errors = self._dest(td)
+            steps = load_json(root / LOOP_STEPS)
+            steps.setdefault("rejected", []).append({"card": "t_rw", "cluster": "rework:source:c:x:26", "reason": "measure did not decrease"})
+            write_canonical(root / LOOP_STEPS, steps)
+            rework = dict(cluster, id="rework:source:c:x:55")
+            FUG._issue_cluster(root, rework, "t_rw")
+            specimens.verify(root, errors=errors, failures=[], findings=load_json(root / MTA_FINDINGS))
+            p = FUG._advance(root, rework["id"], "t_rw")
+            self.assertNotIn("REVERTED already", p.stdout + p.stderr)
+            self.assertIn("REWORK UNCHANGED rework:source:c:x:55", p.stdout)
+            self.assertEqual(p.returncode, 0)
+
     def test_an_unchanged_ordinary_candidate_is_still_judged(self):
         with tempfile.TemporaryDirectory(prefix="rework-ctl-") as td:
             root, cluster, errors = self._dest(td)

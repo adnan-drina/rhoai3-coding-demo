@@ -200,6 +200,33 @@ def resume_recovered(root: Path, worklist: dict[str, Any], run: dict[str, Any]) 
     return reissue(root, note="recovered commit %s; outcome still owns %s" % (out["commit"][:12], ", ".join(out["open_owned"][:4])))
 
 
+def rework_unchanged(root: Path, worklist: dict[str, Any], run: dict[str, Any]) -> int | None:
+    """An unchanged rework candidate after a change request: the outcome is judged
+    again on the current tree (native_control.evaluate_unchanged_rework), nothing is
+    committed or spent. None off the native board or when the unit does not qualify."""
+    board = _native(root)
+    if board is None:
+        return None
+    from planner import native_control as NC
+    task, run_id = _ids()
+    try:
+        out = NC.evaluate_unchanged_rework(Path(root), board, task_id=task, run_id=run_id,
+                                           measurement=_measurement(worklist, run, "", root))
+    except Exception as exc:
+        return _refuse(exc)
+    if out is None:
+        return None
+    if out["outcome_accepted"]:
+        print(_REVIEW % (out["outcome_id"], "commit " + str(out["commit"])[:12] + " unchanged, judged again on the current tree; "
+                         "no attempt spent"))
+        return 0
+    reasons = out.get("not_accepted_because") or ["open obligation %s" % o for o in out["open_owned"][:4]]
+    print("OUTCOME PENDING %s: the product is unchanged since commit %s, and judged again on the current tree it is NOT "
+          "accepted: %s. No attempt was spent. Make the repair in the write set, run run-verify.sh --mode acceptance, then "
+          "advance.py." % (out["outcome_id"], str(out["commit"])[:12], "; ".join(reasons[:4])))
+    return 0
+
+
 def rejection_is_latest(root: Path) -> bool | None:
     """outcome-board/v2: whether this task's latest verdict record is a rejection
     that still stands (not voided). A later accept-commit or accept-evaluated
