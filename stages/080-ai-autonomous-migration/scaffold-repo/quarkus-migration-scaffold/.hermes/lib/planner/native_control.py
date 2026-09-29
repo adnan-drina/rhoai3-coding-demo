@@ -144,10 +144,12 @@ STAGE_TEXT = {
 
 
 DONE_WHEN = {
-    "build": "every owned obligation is gone from the measured work list, the build passes, and the reviewer approves.",
-    "config": "every owned obligation is gone from the measured work list, the build passes, and the reviewer approves.",
+    "build": "every owned obligation is gone from the measured work list, the build classpath resolves, and the reviewer approves "
+             "(compile is judged on the COMPILE cards).",
+    "config": "every owned obligation is gone from the measured work list, the owned configuration checks hold, and the reviewer "
+              "approves (compile is judged on the COMPILE cards).",
     "source": "every owned obligation is gone from the measured work list for the current candidate, and the reviewer "
-              "approves.",
+              "approves; tests run at M4.",
     "runtime": "the package and startup gate passes on the packaged candidate (compiling alone is not enough), and the "
                "reviewer approves.",
     "behavior": "the assigned parity checks pass for the current candidate with no owned obligation open, and the "
@@ -2068,15 +2070,22 @@ def handoff(root: Path, board: Board, *, task_id: str) -> dict[str, Any]:
         gaps = readback(board, plan)
         tasks = board.run_tasks(run)
         created = [tasks[n["outcome_id"]]["id"] for n in plan["nodes"] if n["outcome_id"] in tasks]
+        # v26 M2 review: "34 children" were cited, but only the cards linked to M2 itself are its
+        # children (Hermes's completion guard rejects the chained M5 ids as not children); name both
+        direct = [tasks[n["outcome_id"]]["id"] for n in plan["nodes"]
+                  if n["outcome_id"] in tasks and CONTROL_M2 in (n.get("parents") or [])]
+        chained = [t for t in created if t not in set(direct)]
         roles = {r: sum(1 for n in plan["nodes"] if n.get("role") == r) for r in ("repair", "assess", "deliver")}
         unresolved = [u["id"] for u in plan.get("unresolved") or []]
         receipt = _read_json(root / "evidence" / "planning" / "admission-receipt.json") or {}
-        summary = ("Plan %s: published %d cards (%d repair outcomes, M4, %d M5 stages); read-back %s. %s"
+        summary = ("Plan %s: published %d cards (%d repair outcomes, M4, %d M5 stages): %d are this card's direct "
+                   "children, %d are chained below them; read-back %s. %s"
                    % (receipt.get("status") or "admitted", len(created), roles["repair"], roles["deliver"],
-                      "equal" if not gaps else "has %d gap(s)" % len(gaps),
+                      len(direct), len(chained), "equal" if not gaps else "has %d gap(s)" % len(gaps),
                       ("Unresolved: %s." % ", ".join(unresolved[:5])) if unresolved else "No unresolved responsibility."))
         return {"summary": summary, "metadata": {
-            "created_cards": created, "plan_revision": int(plan["revision"]), "plan_digest": plan["digest"],
+            "created_cards": created, "direct_children": direct, "chained_descendants": chained,
+            "plan_revision": int(plan["revision"]), "plan_digest": plan["digest"],
             "attachments": ["plan.r%d.json" % int(plan["revision"])], "read_back": gaps,
             "admission": {"path": "evidence/planning/admission-receipt.json", "status": receipt.get("status")},
             "unresolved": unresolved, "limitations": ["worker-produced receipts are trusted subject to binding (cooperative-receipts)"]}}

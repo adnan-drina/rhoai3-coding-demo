@@ -171,13 +171,13 @@ def outcome_summary(outcome: dict[str, Any]) -> tuple[str, str]:
     what = {
         "build": "Make the destination build configuration satisfy its {n} owned obligation(s) for {subject}.",
         "config": "Migrate the configuration owned here ({n} obligation(s)) for {subject}.",
-        "source": "Make {subject} compile and pass its tests on the target platform ({n} owned obligation(s)).",
+        "source": "Make {subject} compile on the target platform ({n} owned obligation(s)); its tests run at M4, which owns test execution.",
         "runtime": "Make the application {subject} on the target platform ({n} owned obligation(s)).",
         "behavior": "Restore source-equivalent behavior of {subject} ({n} owned obligation(s)).",
     }[cls]
     accept = {
-        "build": "Complete when the owned obligations are gone from the measured work list and the build passes.",
-        "config": "Complete when the owned obligations are gone from the measured work list and the build passes.",
+        "build": "Complete when the owned obligations are gone from the measured work list and the build classpath resolves; compile is judged on the COMPILE cards.",
+        "config": "Complete when the owned obligations are gone from the measured work list and the owned configuration checks hold; compile is judged on the COMPILE cards.",
         "source": "Complete when the owned obligations are gone from the measured work list for the current candidate.",
         "runtime": "Complete when that gate passes on the packaged candidate; compiling alone does not satisfy it.",
         "behavior": "Complete when the assigned parity checks pass for the current candidate and no owned obligation remains open.",

@@ -307,6 +307,24 @@ class Publication(unittest.TestCase):
         self.runs = getattr(self, "runs", []) + [r]
         return r
 
+    def test_the_m2_handoff_names_its_direct_children_apart_from_chained_cards(self):
+        """v26 M2 review: the handoff said every published card was a child of M2; Hermes's completion guard
+        treats only cards linked to M2 itself as its children."""
+        r = self.mk()
+        out = NC.handoff(r.root, r.board, task_id=r.m2)
+        md = out["metadata"]
+        linked = sorted(tid for tid, t in ((row["id"], r.native.task(row["id"])) for row in r.board.run_tasks(r.run_id).values())
+                        if r.m2 in (t.get("parents") or []))
+        self.assertEqual(sorted(md["direct_children"]), linked)
+        self.assertEqual(sorted(md["direct_children"] + md["chained_descendants"]), sorted(md["created_cards"]))
+        self.assertTrue(md["chained_descendants"], "the fixture chains M4/M5 below the repair outcomes")
+        self.assertIn("%d are this card's direct children, %d are chained below them"
+                      % (len(md["direct_children"]), len(md["chained_descendants"])), out["summary"])
+        # every published card body states what it is judged by; a source outcome does not promise tests
+        for row in r.board.run_tasks(r.run_id).values():
+            body = str(r.native.task(row["id"]).get("body") or "")
+            self.assertNotIn("pass its tests", body)
+
     def inventory(self, r):
         plan = r.plan()
         tasks = r.board.run_tasks(r.run_id)
