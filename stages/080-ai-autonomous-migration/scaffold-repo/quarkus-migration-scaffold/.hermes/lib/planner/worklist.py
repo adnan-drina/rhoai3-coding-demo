@@ -1206,6 +1206,34 @@ DOC_UI_LINKS = ["https://quarkus.io/version/3.27/guides/openapi-swaggerui"]
 REDIRECT_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#configure-http-access"]
 
 
+def canonical_media_type(value: str) -> str:
+    """A media type in RFC 9110 section 8.3.1 canonical form: the type,
+    subtype and parameter names are case-insensitive, whitespace around ';'
+    and '=' is optional, and a charset value is case-insensitive (section
+    8.3.2). Parameter order is kept; nothing else is normalized."""
+    parts = [p.strip() for p in str(value or "").split(";")]
+    out = [parts[0].lower()] if parts else [""]
+    for p in parts[1:]:
+        if not p:
+            continue
+        k, _, v = p.partition("=")
+        k, v = k.strip().lower(), v.strip()
+        out.append("%s=%s" % (k, v.lower() if k == "charset" else v))
+    return ";".join(out)
+
+
+def canonical_diff(diff: str) -> str:
+    """A comparator diff with a Content-Type value in canonical form (v29: the
+    same charset-parameter difference, spelled 'application/json;
+    charset=utf-8' on a 500 and 'application/json;charset=UTF-8' on the
+    repaired 200, is one difference, not a new one); every other diff as it
+    stands."""
+    d = parse_parity_diff(diff)
+    if d["kind"] == "header" and d["name"].lower() == "content-type":
+        return "header content-type %s vs %s" % (canonical_media_type(d["have"]), canonical_media_type(d["want"]))
+    return str(diff or "").strip()
+
+
 def parse_parity_diff(diff: str) -> dict[str, str]:
     """One comparator diff, taken apart: what the DESTINATION answered
     (``have``) and what the SOURCE answered (``want``). ``kind`` is status,
@@ -2149,7 +2177,7 @@ def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: se
         return False, "its own difference(s) remain: %s" % "; ".join(own)[:200]
     now = set(_split_diffs(str(cur.get("reason") or "")))
     was = set(_split_diffs(str(prev.get("reason") or ""))) if str(prev.get("verdict")) == "FAIL" else set()
-    new = sorted(now - was)
+    new = sorted(d for d in now if canonical_diff(d) not in {canonical_diff(w) for w in was})
     if new:
         return False, "the candidate changed or introduced %s in %s" % ("; ".join(new)[:200], name)
     return True, ("its own difference(s) are gone from the re-run %s; what remains (%s) belongs to other obligations "

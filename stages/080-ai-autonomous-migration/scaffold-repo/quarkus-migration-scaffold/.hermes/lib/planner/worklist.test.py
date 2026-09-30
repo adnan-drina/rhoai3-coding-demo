@@ -4148,6 +4148,16 @@ def _split_discharge_case() -> int:
         (ok, why), _ = attempt("body 11aa vs 22bb; " + charset, rep_id)
         if ok is not False:
             return _fail("an unchanged scenario discharges nothing: %s" % why)
+        # v29 t_65445e69: the baseline 500 spelled the charset difference 'application/json; charset=utf-8'; the
+        # repaired 200 spells it 'application/json;charset=UTF-8'. RFC 9110: one media type, one difference.
+        (acc / "scenarios" / "sc.json").write_text(json.dumps(rec(
+            "status 500 vs 200; body 11aa vs 22bb; header content-type application/json; charset=utf-8 vs application/json")))
+        (ok, why), _ = attempt(charset, body_id)
+        if ok is not True:
+            return _fail("a respelled media type is the same charset difference, not a new one: %s" % why)
+        (ok, why), _ = attempt("header content-type application/json;charset=ISO-8859-1 vs application/json", body_id)
+        if ok is not False or "ISO-8859-1" not in why:
+            return _fail("a charset that really changed is a new difference and is REVERTED, naming it: %s %s" % (ok, why))
         (acc / "scenarios" / "sc.json").write_text(json.dumps(rec("body 11aa vs 22bb; " + charset)))
         (root / PARITY_DIR / "scenarios" / "sc.json").write_text(json.dumps(rec("body 11aa vs 22bb")))
         row = {"entry_point": ep, "scenario": sid, "what": "representation", "verdict": "FAIL"}
