@@ -220,5 +220,29 @@ class PlannedVerification(unittest.TestCase):
         self.assertIn("auth-anonymous-items-list", cm.exception.detail)
 
 
+class OneModePerRepairCluster(unittest.TestCase):
+    """v29 Owner run 82: the verification measured failures in both security modes at one controller; one
+    cluster held them all and every repair was refused LOOP_MIXED_SECURITY_MODE (ADR-014), the revert hid the
+    failures and issuance alternated. A file's parity failures now form one cluster per mode."""
+
+    def test_both_modes_at_one_file_form_two_single_mode_clusters(self):
+        from planner.worklist import cluster_items, issued_parity_plan, sha256_bytes
+        f = "src/main/java/com/acme/shop/web/ItemController.java"
+        items = [{"id": "parity:d1", "source": "parity", "kind": "parity", "path": f, "security_mode": "disabled",
+                  "scenario": "sc:items-create", "category": "mandatory"},
+                 {"id": "parity:e1", "source": "parity", "kind": "parity", "path": f, "security_mode": "enabled",
+                  "scenario": "sc:auth-anonymous-items-list", "category": "mandatory"}]
+        got = {c["id"]: c["items"] for c in cluster_items(items, {f: 0}, set())}
+        base = "c:%s" % sha256_bytes(f.encode("utf-8"))[:12]
+        self.assertEqual(got[base], ["parity:d1"])                              # the default mode keeps the file's id
+        self.assertEqual(len(got), 2)
+        self.assertEqual([v for k, v in got.items() if k != base], [["parity:e1"]])
+        for it in items:                                                        # each is a single-mode repair card
+            plan = issued_parity_plan({"security_mode": it["security_mode"], "scenarios": [it["scenario"]], "items": [it["id"]]})
+            self.assertEqual((plan["kind"], plan["mode"]), ("run", it["security_mode"]))
+        # a file with one mode only is unchanged
+        self.assertEqual(list({c["id"] for c in cluster_items(items[:1], {f: 0}, set())}), [base])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

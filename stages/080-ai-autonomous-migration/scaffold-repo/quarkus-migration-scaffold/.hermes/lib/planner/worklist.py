@@ -4098,10 +4098,20 @@ def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred:
             "write_set": files,
             "block": "",
         })
+    # ADR-014: one repair card compares one security mode. A file whose parity failures span both modes
+    # forms one cluster per mode (v29 Owner: one cluster held disabled and enabled failures and every
+    # repair was refused LOOP_MIXED_SECURITY_MODE). The default-mode cluster keeps the file's id.
+    def _mode_key(i: dict[str, Any]) -> str:
+        return "enabled" if str(i.get("source") or "") == "parity" and _item_security_mode(i) == "enabled" else ""
+
+    groups: list[tuple[str, str, list[dict[str, Any]]]] = []
     for path in sorted(by_path):
-        its = sorted(by_path[path], key=lambda i: i["id"])
+        its_all = sorted(by_path[path], key=lambda i: i["id"])
+        for mode in sorted({_mode_key(i) for i in its_all}):
+            groups.append((path, mode, [i for i in its_all if _mode_key(i) == mode]))
+    for path, mode, its in groups:
         kind = min((i["kind"] for i in its), key=lambda k: KIND_RANK[k])
-        cid = "c:%s" % sha256_bytes(path.encode("utf-8"))[:12]
+        cid = "c:%s" % sha256_bytes((path + ("#" + mode if mode else "")).encode("utf-8"))[:12]
         if path == GLOBAL:
             write_set = ["pom.xml"]
         elif path_class(path) == "test":
