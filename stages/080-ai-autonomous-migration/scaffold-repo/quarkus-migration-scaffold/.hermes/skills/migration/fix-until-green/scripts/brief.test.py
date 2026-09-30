@@ -1219,6 +1219,74 @@ def _planned_generated_body_brief_case() -> int:
     return 0
 
 
+def _voided_history_brief_case() -> int:
+    """Architect review of 602f696c: voids are matched by the EXACT native rejection. Two rejections with
+    the same reason, one voided: the genuine one stays in previous_attempts and drives the last refusal;
+    an identity-less old row whose reason matches a void is kept, marked unresolved; the void count is one."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    import brief as mod
+    from planner.paths import LOOP_ISSUED, LOOP_STEPS, WORKLIST
+
+    same = "the parity obligation parity:a is still reported"
+    task = "t_void0001"
+
+    class Board:
+        def records(self, t, kind=None):
+            rows = {"reject": [{"key": "reject:5:aaaa", "run": 5, "candidate": "a" * 64, "cluster": "c:x", "reason": same},
+                               {"key": "reject:6:bbbb", "run": 6, "candidate": "b" * 64, "cluster": "c:x", "reason": same}],
+                    "reject-voided": [{"reject": "reject:5:aaaa", "reason": "harness: mixed security modes"}]}
+            return list(rows.get(kind, [])) if t == task else []
+
+    with tempfile.TemporaryDirectory(prefix="void-brief-") as td:
+        root = Path(td)
+        cluster = {"id": "c:x", "kind": "parity", "path": "src/main/java/A.java", "write_set": ["src/main/java/A.java"],
+                   "items": ["parity:a"], "retry_key": "rk:x"}
+        write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "c:x",
+                                          "measure": {"tuple": [0, 0, 1], "known": True, "blocked": []}, "clusters": [cluster],
+                                          "items": [{"id": "parity:a", "source": "parity", "kind": "parity", "category": "mandatory",
+                                                     "path": "src/main/java/A.java", "line": 0, "rule_id": "PARITY", "message": "a"}],
+                                          "not_counted": []})
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:x", "task_id": task,
+                                             "write_set": ["src/main/java/A.java"]})
+        row = {"cluster": "c:x", "card": task, "retry_key": "rk:x", "reason": same, "changed": ["src/main/java/A.java"],
+               "legal_next": "try the other branch"}
+        write_canonical(root / LOOP_STEPS, {"steps": [], "rejected": [
+            dict(row, reason="an older refusal with no identity"),                          # unrelated, kept
+            dict(row),                                                                         # identity-less, same reason as the void
+            dict(row, native_reject="reject:5:aaaa", legal_next="voided"),                   # voided exactly
+            dict(row, native_run=6, candidate_sha256="b" * 64, legal_next="genuine next")]})  # genuine, matched by run+candidate
+        prev, env = mod._native_board, os.environ.get("HERMES_KANBAN_TASK")
+        mod._native_board = lambda _root: Board()
+        os.environ["HERMES_KANBAN_TASK"] = task
+        try:
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = mod.main(["--root", str(root), "--json"])
+            doc = json.loads(out.getvalue())
+            out2 = io.StringIO()
+            with redirect_stdout(out2), redirect_stderr(io.StringIO()):
+                mod.main(["--root", str(root)])
+            text = out2.getvalue()
+        finally:
+            mod._native_board = prev
+            os.environ.pop("HERMES_KANBAN_TASK") if env is None else os.environ.__setitem__("HERMES_KANBAN_TASK", env)
+        if rc != 0:
+            return _fail("the brief rendered: rc %s %s" % (rc, err.getvalue()[:300]))
+        prev_rows = doc.get("previous_attempts") or []
+        voided = doc.get("voided_attempts") or []
+        if len(prev_rows) != 3 or len(voided) != 1 or voided[0].get("native_reject") != "reject:5:aaaa":
+            return _fail("exactly the voided rejection leaves the attempts: %d previous, %s voided" % (len(prev_rows), voided))
+        if [r.get("void_status") for r in prev_rows] != [None, "unresolved", None]:
+            return _fail("an identity-less row sharing a voided reason is kept and marked unresolved: %s" % prev_rows)
+        if "last refusal: %s" % same not in text or "legal next: genuine next" not in text:
+            return _fail("the genuine rejection drives the retry guidance:\n%s" % text[:1500])
+        if "1 earlier rejection(s) of this family were VOIDED" not in text:
+            return _fail("the rendered brief counts the one void:\n%s" % text[:1500])
+    return 0
+
+
 def _large_brief_digest_case() -> int:
     """v21 t_0bc6319b: a large unit's brief is printed as a readable digest (write set, obligations
     per file on one line each, procedure and rules in full, a section index naming how to read each)."""
@@ -1242,6 +1310,8 @@ def _large_brief_digest_case() -> int:
 
 
 def main() -> int:
+    if _voided_history_brief_case():
+        return 1
     if _large_brief_digest_case():
         return 1
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):

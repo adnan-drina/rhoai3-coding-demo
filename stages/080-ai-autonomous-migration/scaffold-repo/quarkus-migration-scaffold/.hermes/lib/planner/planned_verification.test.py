@@ -125,7 +125,8 @@ class PlannedVerification(unittest.TestCase):
                    "diagnostics": {"ran": True}, "tests": {"ran": True, "rc": 0},
                    "runtime": {"parity": {"ran": True, "rc": 0, "trigger": "issued-card", "scoped": True,
                                           "scenarios": DISABLED + ENABLED, "security_mode": "disabled",
-                                          "modes": {"disabled": {"rc": 0}, "enabled": {"rc": 0}}}}}
+                                          "modes": {"disabled": {"rc": 0, "scenarios": DISABLED},
+                                                    "enabled": {"rc": 0, "scenarios": ENABLED}}}}}
         (r.root / VERIFY_RUN).parent.mkdir(parents=True, exist_ok=True)
         (r.root / VERIFY_RUN).write_text(json.dumps(run_doc))
         r.worklist.update({"candidate_sha256": tree, "measure": {"known": True, "tuple": [0, 0, 0], "compile_errors": 0,
@@ -207,6 +208,42 @@ class PlannedVerification(unittest.TestCase):
     def test_disabled_pass_beside_enabled_fail_fails(self):
         self.assertEqual(self.assert_unfinished(enabled_verdict="FAIL")["state"], "failed")
 
+    def test_an_enabled_scenario_never_passes_on_disabled_evidence(self):
+        """Architect review of 7d77d14f, reproduced verbatim: the enabled scenario's PASS moved into the disabled
+        receipt and scenario directory (labelled disabled), the enabled receipt row left with no scenarios, both
+        receipts bound to the right candidate. No enabled measurement exists: it must stay unaccepted."""
+        r = self.r
+        tid, run, _ver = self.repair_then_verification_issue()
+        self.evidence(r.tree())
+        parity = r.root / "verification" / "parity"
+        sid = ENABLED[0]
+        disabled = json.loads((parity / "receipt.json").read_text())
+        disabled["entry_points"][0]["scenarios"].append(sid)
+        (parity / "receipt.json").write_text(json.dumps(disabled))
+        enabled = json.loads((parity / "receipt-enabled.json").read_text())
+        enabled["entry_points"][0]["scenarios"] = []
+        (parity / "receipt-enabled.json").write_text(json.dumps(enabled))
+        name = sid.replace(":", "_") + ".json"
+        record = json.loads((parity / "scenarios-enabled" / name).read_text())
+        record["security_mode"] = "disabled"
+        (parity / "scenarios" / name).write_text(json.dumps(record))
+        (parity / "scenarios-enabled" / name).unlink()
+        out, stage = self.judge(tid, run)
+        self.assertFalse(out["outcome_accepted"], out)
+        self.assertNotEqual(stage["state"], "passed", stage)
+
+    def test_a_wrong_mode_record_in_the_right_directory_does_not_discharge(self):
+        r = self.r
+        tid, run, _ver = self.repair_then_verification_issue()
+        self.evidence(r.tree())
+        name = ENABLED[0].replace(":", "_") + ".json"
+        p = r.root / "verification" / "parity" / "scenarios-enabled" / name
+        rec = json.loads(p.read_text())
+        rec["security_mode"] = "disabled"
+        p.write_text(json.dumps(rec))
+        out, _stage = self.judge(tid, run)
+        self.assertFalse(out["outcome_accepted"], out)
+
     def test_an_unresolvable_target_is_a_named_harness_refusal(self):
         r = self.r
         (r.root / "verification" / "scenarios-enabled" / "corpus.json").unlink()
@@ -240,10 +277,20 @@ class VoidedRejectionsInTheBrief(unittest.TestCase):
             old = os.environ.get("HERMES_KANBAN_TASK")
             os.environ["HERMES_KANBAN_TASK"] = tid
             try:
-                got = B._voided_rejections(r.root, board=r.board)
+                got = B._void_index(r.root, board=r.board)
             finally:
                 os.environ.pop("HERMES_KANBAN_TASK") if old is None else os.environ.__setitem__("HERMES_KANBAN_TASK", old)
-            self.assertEqual(got, {(iss["cluster"], "harness: mixed modes"): "LOOP_MIXED_SECURITY_MODE was the harness"})
+            self.assertEqual(got["voided"], {first: "LOOP_MIXED_SECURITY_MODE was the harness"})   # by exact identity
+            second = r.board.records(tid, "reject")[1]
+            row = {"cluster": iss["cluster"], "reason": "a real regression", "native_reject": second["key"]}
+            self.assertEqual(B._void_status(row, got), ("", ""))                                   # the genuine one stays
+            self.assertEqual(B._void_status(dict(row, native_reject=first), got)[0], "voided")
+            # reasons that differ only after their first 300 characters: identity decides, not the prefix
+            long_a, long_b = "x" * 300 + " first", "x" * 300 + " second"
+            idx = {"voided": {"reject:9:a": "harness"}, "by_run": {}, "reasons": {(iss["cluster"], long_a[:300])}}
+            self.assertEqual(B._void_status({"cluster": iss["cluster"], "reason": long_b, "native_reject": "reject:9:b"}, idx), ("", ""))
+            # an identity-less row sharing a voided prefix is kept and flagged, never hidden
+            self.assertEqual(B._void_status({"cluster": iss["cluster"], "reason": long_b}, idx)[0], "unresolved")
         finally:
             r.close()
 
@@ -268,8 +315,30 @@ class OneModePerRepairCluster(unittest.TestCase):
         for it in items:                                                        # each is a single-mode repair card
             plan = issued_parity_plan({"security_mode": it["security_mode"], "scenarios": [it["scenario"]], "items": [it["id"]]})
             self.assertEqual((plan["kind"], plan["mode"]), ("run", it["security_mode"]))
-        # a file with one mode only is unchanged
-        self.assertEqual(list({c["id"] for c in cluster_items(items[:1], {f: 0}, set())}), [base])
+        # a disabled-only file keeps the file's id; an enabled-only file is identified by file AND mode
+        # (c:<sha(path#enabled)>): the same id whether or not the file also has disabled failures
+        self.assertEqual([c["id"] for c in cluster_items(items[:1], {f: 0}, set())], [base])
+        enabled_id = "c:%s" % sha256_bytes((f + "#enabled").encode("utf-8"))[:12]
+        self.assertEqual([c["id"] for c in cluster_items(items[1:], {f: 0}, set())], [enabled_id])
+        self.assertIn(enabled_id, got)
+
+    def test_the_owner_reaches_both_mode_clusters_one_at_a_time_under_one_budget(self):
+        from planner.worklist import cluster_items
+        f = "src/main/java/com/acme/shop/web/ItemController.java"
+        items = [{"id": "parity:d1", "source": "parity", "kind": "parity", "path": f, "security_mode": "disabled",
+                  "scenario": "sc:items-create", "category": "mandatory"},
+                 {"id": "parity:e1", "source": "parity", "kind": "parity", "path": f, "security_mode": "enabled",
+                  "scenario": "sc:auth-anonymous-items-list", "category": "mandatory"}]
+        wl = {"items": items, "clusters": cluster_items(items, {f: 0}, set())}
+        node = {"role": "repair", "outcome_id": BEH, "clusters": [], "budget": {"key": "rk:family:x", "limit": 3}}
+        own = {"parity:d1", "parity:e1"}                                        # ownership is by item, not by cluster id
+        first, _ = NC._allowed_paths(node, wl, own)
+        closed = [dict(c, status="closed") if c["id"] == first else c for c in wl["clusters"]]
+        second, _ = NC._allowed_paths(node, dict(wl, clusters=closed), own)
+        self.assertEqual({first, second}, {c["id"] for c in wl["clusters"]})
+        self.assertNotEqual(first, second)
+        # one outcome, one family budget: both mode clusters spend against the node's key
+        self.assertEqual(node["budget"]["key"], "rk:family:x")
 
 
 if __name__ == "__main__":

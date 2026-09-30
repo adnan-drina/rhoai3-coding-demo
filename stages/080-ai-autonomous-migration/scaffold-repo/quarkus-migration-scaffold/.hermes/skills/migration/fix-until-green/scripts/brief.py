@@ -1109,7 +1109,7 @@ def main(argv: list[str] | None = None) -> int:
     # previous card's deletion and was vetoed for the same reason)
     previous = []
     voided_rows: list = []
-    voided = _voided_rejections(root)
+    voided = _void_index(root)
     rk = str(cluster.get("retry_key") or cluster["id"])
     retry_map = steps.get("retry_keys") or {}
     for r in (steps.get("rejected") or []):
@@ -1119,14 +1119,15 @@ def main(argv: list[str] | None = None) -> int:
         rkey = str(r.get("retry_key") or retry_map.get(cid) or "")
         if cid != cluster["id"] and rkey != rk:
             continue
-        why = voided.get((cid, str(r.get("reason") or "")[:300]))
-        if why is not None:
-            # the Operator voided it as harness-caused: history, not an attempt this card must avoid repeating
-            # (v29 run 85 spent its whole run reading six voided refusals in previous_attempts)
+        status, why = _void_status(r, voided)
+        if status == "voided":
+            # the Operator voided THIS rejection as harness-caused: history, not an attempt this card must avoid
+            # repeating (v29 run 85 spent its whole run reading six voided refusals in previous_attempts)
             voided_rows.append({"card": r.get("card"), "cluster": cid, "reason": _clip(r.get("reason"), 160),
-                                "voided_because": _clip(why, 200)})
+                                "native_reject": str(r.get("native_reject") or ""), "voided_because": _clip(why, 200)})
             continue
         previous.append({
+            **({"void_status": "unresolved", "void_note": why} if status == "unresolved" else {}),
             "card": r.get("card"),
             "reason": r.get("reason"),
             "changed": r.get("changed"),
@@ -1453,28 +1454,52 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _voided_rejections(root: Path, board=None) -> dict:
-    """{(cluster, reason[:300]): why voided} for this card's rejections the Operator voided on the native
-    board (native_gate.py void-rejects). {} without a native board (the serial loop) or a readable card."""
+def _native_board(root: Path):
+    """The native board of this root, or None (the serial loop, or unreadable)."""
+    from planner import native_control as NC
+    from planner.outcome_protocol import select_protocol
+    if not select_protocol(Path(root)).native:
+        return None
+    return NC.board_for(Path(root))
+
+
+def _void_index(root: Path, board=None) -> dict:
+    """The Operator's voids on this card's native board, by EXACT rejection identity (architect review of
+    602f696c: a (cluster, reason) key hid a genuine rejection that shared a voided one's reason).
+
+      voided    {native reject key: why voided}
+      by_run    {(native run, candidate digest): native reject key}
+      reasons   {(cluster, reason[:300])} of voided rejections -- only to flag an identity-less row as
+                unresolved; never to hide one
+    Empty without a readable board: every row stays an attempt."""
+    empty = {"voided": {}, "by_run": {}, "reasons": set()}
     try:
-        from planner import native_control as NC
         task = os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")
-        if not task:
-            return {}
-        if board is None:
-            from planner.outcome_protocol import select_protocol
-            if not select_protocol(Path(root)).native:
-                return {}
-            board = NC.board_for(Path(root))
+        board = board if board is not None else (_native_board(root) if task else None)
+        if board is None or not task:
+            return empty
         rejects = {r["key"]: r for r in board.records(task, "reject")}
-        out = {}
-        for v in board.records(task, "reject-voided"):
-            r = rejects.get(str(v.get("reject") or ""))
-            if r is not None:
-                out[(str(r.get("cluster") or ""), str(r.get("reason") or "")[:300])] = str(v.get("reason") or "")
-        return out
-    except Exception:  # noqa: BLE001 - an unreadable board voids nothing: every row stays an attempt
-        return {}
+        voided = {str(v.get("reject") or ""): str(v.get("reason") or "") for v in board.records(task, "reject-voided")
+                  if str(v.get("reject") or "") in rejects}
+        return {"voided": voided,
+                "by_run": {(int(r.get("run") or 0), str(r.get("candidate") or "")): k for k, r in rejects.items()},
+                "reasons": {(str(rejects[k].get("cluster") or ""), str(rejects[k].get("reason") or "")[:300]) for k in voided}}
+    except Exception:  # noqa: BLE001 - an unreadable board voids nothing
+        return empty
+
+
+def _void_status(row: dict, index: dict) -> tuple[str, str]:
+    """('voided', why) for a row whose exact native rejection was voided; ('unresolved', why) for an
+    identity-less row whose reason matches a voided rejection (kept visible); ('', '') otherwise."""
+    key = str(row.get("native_reject") or "")
+    if not key and row.get("native_run") and row.get("candidate_sha256"):
+        key = index["by_run"].get((int(row["native_run"]), str(row["candidate_sha256"])), "")
+    if key:
+        return ("voided", index["voided"][key]) if key in index["voided"] else ("", "")
+    if (str(row.get("cluster") or ""), str(row.get("reason") or "")[:300]) in index["reasons"]:
+        return "unresolved", ("a native rejection with this reason was voided, but this row carries no rejection "
+                              "identity to match it: it is kept as an attempt")
+    return "", ""
 
 
 def _clip(value, n: int = 220) -> str:

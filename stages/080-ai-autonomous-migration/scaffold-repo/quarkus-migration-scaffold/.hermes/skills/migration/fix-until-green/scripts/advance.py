@@ -357,8 +357,10 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     cluster (K4 mints the next attempt); defer + stop at the threshold.
     `legal_next` is what the retry brief tells the next attempt it may do;
     a reason that knows better than the default says so here."""
-    if _outcome_bridge.active(root) and _outcome_bridge.record(root, "REVERTED", candidate_sha256(root), reason):
+    judged = candidate_sha256(root)
+    if _outcome_bridge.active(root) and _outcome_bridge.record(root, "REVERTED", judged, reason):
         return 1  # the outcome ledger refused (stale run, no issue): nothing moves
+    native_identity = _outcome_bridge.native_reject_identity(root, judged)
     verify = _verify_meta(load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
     issued = load_issued(root) or {}
     loci_before = [{"id": str(i.get("id") or i), "path": str(i.get("path") or ""), "line": i.get("line")}
@@ -418,6 +420,7 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
         "changed": changed, "verify": verify, "loci_before": loci_before, "loci_after": loci_after,
         "write_set": list(issued.get("write_set") or []), "legal_next": legal_next,
         "patch_summary": sorted(changed), "deleted_by_revert": deleted, "retry_key": key,
+        **native_identity,
         "budget": ({"retry_key": key, "spent": attempts[key], "limit": limit, "left": max(0, limit - attempts[key]),
                     "authority": "native family budget (M2-published)"} if governed
                    else budget(steps, cluster, key, max_attempts(load_decisions(root)))),

@@ -118,7 +118,7 @@ def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, 
         return _stage(UNKNOWN, "no destination root to read the %s-mode receipt from" % mode, **base)
     modes = par.get("modes") if isinstance(par.get("modes"), dict) and par.get("modes") else None
     if modes is not None:
-        return _multi_mode_stage(root, tree, sorted(modes), requested, oracles, dict(base, security_mode="+".join(sorted(modes))))
+        return _multi_mode_stage(root, tree, modes, requested, oracles, dict(base, security_mode="+".join(sorted(modes))))
     from planner.worklist import load_parity_receipt, parity_state
     receipt = load_parity_receipt(root, mode)
     if not receipt:
@@ -146,20 +146,27 @@ def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, 
     return _stage(UNKNOWN, "inconclusive or unmeasured in the bound %s-mode receipt" % mode, **base)
 
 
-def _multi_mode_stage(root: Any, tree: str, modes: list[str], requested: list[str], oracles: list[str],
+def _multi_mode_stage(root: Any, tree: str, modes: dict[str, Any], requested: list[str], oracles: list[str],
                       base: dict[str, Any]) -> dict[str, Any]:
     """A planned verification compared several security modes, one after the
-    other (v29 Owner: 18 disabled-mode and 8 enabled-mode scenarios). Every
-    mode's own receipt must be composed, taken in that mode and bound to THIS
-    tree; each requested scenario is judged in the one receipt that measured
-    it; a FAIL in any mode fails the stage, and a scenario no bound receipt
-    measured leaves it unknown. A disabled PASS never stands for an enabled
-    FAIL: the ids differ and each is read in its own mode's receipt."""
-    from planner.worklist import load_parity_receipt, parity_state
-    scen_v: dict[str, str] = {}
-    ep_v: dict[str, str] = {}
+    other (v29 Owner: 10 disabled-mode and 16 enabled-mode scenarios). Each
+    scenario is judged ONLY in the receipt of the mode it was assigned
+    (modes[m].scenarios, the issued assignment run-verify compared): that
+    receipt must be composed, taken in that mode and bound to THIS tree, and
+    must record the scenario. A requested scenario no mode was assigned, or
+    one only another mode's receipt records, is unmeasured (architect review
+    of 7d77d14f: an enabled scenario passed on disabled evidence). A FAIL in
+    any mode fails the stage."""
+    from planner.worklist import _sid, load_parity_receipt, parity_state
+    verdict_of: dict[str, str] = {}
     gaps: list[str] = []
-    for m in modes:
+    assigned: dict[str, str] = {}
+    for m, row in sorted(modes.items()):
+        asked = [str(x) for x in ((row or {}).get("scenarios") or []) if str(x)] if isinstance(row, dict) else []
+        for x in asked:
+            if _sid(x) in assigned and assigned[_sid(x)] != m:
+                gaps.append("%s is assigned to two modes" % x)
+            assigned[_sid(x)] = m
         receipt = load_parity_receipt(root, m)
         if not receipt:
             gaps.append("no %s-mode receipt was composed" % m)
@@ -175,21 +182,26 @@ def _multi_mode_stage(root: Any, tree: str, modes: list[str], requested: list[st
         if not st["known"]:
             gaps.append("the %s-mode receipt measured nothing" % m)
             continue
-        for k, v in (st.get("scenarios") or {}).items():
-            if k in scen_v and scen_v[k] != v:
-                gaps.append("%s is recorded in two modes" % k)
-            scen_v[k] = v
+        by_id = {_sid(k): v for k, v in (st.get("scenarios") or {}).items()}
+        for x in asked:
+            if _sid(x) in by_id:
+                verdict_of[_sid(x)] = by_id[_sid(x)]
         if m == "disabled":
-            ep_v.update(st.get("entry_points") or {})
-    verdicts = [scen_v.get(x, "") for x in requested] + [ep_v.get(e, "") for e in oracles]
-    base = dict(base, scenarios=sorted(x for x in requested if scen_v.get(x)), modes=modes)
+            for e in oracles:
+                if e in (st.get("entry_points") or {}):
+                    verdict_of["ep:" + e] = st["entry_points"][e]
+    for x in requested:
+        if _sid(x) not in assigned:
+            gaps.append("%s was requested but assigned to no mode" % x)
+    verdicts = [verdict_of.get(_sid(x), "") for x in requested] + [verdict_of.get("ep:" + e, "") for e in oracles]
+    base = dict(base, scenarios=sorted(x for x in requested if verdict_of.get(_sid(x))), modes=sorted(modes))
     if any(v == "FAIL" for v in verdicts):
-        return _stage(FAILED, "%d FAIL across the %s receipts" % (sum(1 for v in verdicts if v == "FAIL"), "+".join(modes)), **base)
+        return _stage(FAILED, "%d FAIL across the %s receipts" % (sum(1 for v in verdicts if v == "FAIL"), "+".join(sorted(modes))), **base)
     if gaps:
         return _stage(UNKNOWN, "; ".join(gaps)[:300], **base)
     if verdicts and all(v == "PASS" for v in verdicts):
-        return _stage(PASSED, "%d requested check(s) PASS across the bound %s receipts" % (len(verdicts), "+".join(modes)), **base)
-    return _stage(UNKNOWN, "inconclusive or unmeasured across the bound %s receipts" % "+".join(modes), **base)
+        return _stage(PASSED, "%d requested check(s) PASS, each in its assigned mode's bound receipt" % len(verdicts), **base)
+    return _stage(UNKNOWN, "inconclusive or unmeasured in the assigned modes' receipts", **base)
 
 
 def classes(ex: dict[str, Any] | None) -> list[str]:

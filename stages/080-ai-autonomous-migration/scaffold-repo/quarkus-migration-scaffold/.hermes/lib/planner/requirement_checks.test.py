@@ -275,7 +275,11 @@ def classes_case() -> int:
         for sid in sc:
             (bdir / ("%s.json" % sid.replace(":", "_"))).write_text(
                 json.dumps({"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": "PASS"}))
-        if RC.measure(root, [full], worklist=wl, scenarios=sc)["parity:request-body-positive-negative"]["status"] != "pass":
+        (bdir.parent / "receipt.json").write_text(json.dumps(
+            {"schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+             "entry_points": [{"entry_point": "ep:create", "verdict": "PASS", "scenarios": sc}]}))
+        rcpt = {"disabled": json.loads((bdir.parent / "receipt.json").read_text())}
+        if RC.measure(root, [full], worklist=wl, scenarios=sc, receipts=rcpt)["parity:request-body-positive-negative"]["status"] != "pass":
             return _fail("a lifted condition with every captured case discharged passes")
         still = {"items": [{"id": "par:x", "source": "parity", "scenario": "sc:create"}], "measure": {"known": True}}
         if RC.measure(root, [full], worklist=still, scenarios=sc)["parity:request-body-positive-negative"]["status"] != "fail":

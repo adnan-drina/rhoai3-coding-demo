@@ -106,9 +106,46 @@ def _fragment_rows(requirement: dict[str, Any]) -> list[dict[str, Any]]:
                      "source": FRAGMENT_IMPL_CDI_SOURCE}}]
 
 
+def corpus_scenario_modes(root: Path | None) -> dict[str, str]:
+    """{scenario id (no sc: prefix): security mode} for every scenario exactly one bound corpus holds
+    (ADR-014: one corpus per mode). The same authority the issued verification scope is derived from."""
+    import json
+    from planner.worklist import SCENARIO_CORPORA, SECURITY_MODES, _sid
+    if root is None:
+        return {}
+    seen: dict[str, set[str]] = {}
+    for mode, rel in zip(SECURITY_MODES, SCENARIO_CORPORA):
+        p = Path(root) / rel
+        try:
+            doc = json.loads(p.read_text()) if p.is_file() else {}
+        except (OSError, ValueError):
+            continue
+        for sc in doc.get("scenarios") or []:
+            if isinstance(sc, dict) and sc.get("id"):
+                seen.setdefault(_sid(sc["id"]), set()).add(mode)
+    return {k: next(iter(v)) for k, v in seen.items() if len(v) == 1}
+
+
+def _mode_record(root: Path, sid: str, mode: str) -> dict[str, Any]:
+    """The one verdict record of `sid` in `mode`'s OWN scenario directory, or {}."""
+    import json
+    from planner.paths import PARITY_DIR
+    from planner.worklist import PARITY_SCENARIO_SUBDIRS, SECURITY_MODES, _sid
+    d = Path(root) / PARITY_DIR / PARITY_SCENARIO_SUBDIRS[SECURITY_MODES.index(mode)]
+    hits = []
+    for p in sorted(d.glob("*.json")) if d.is_dir() else []:
+        try:
+            doc = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and _sid(doc.get("scenario")) == _sid(sid):
+            hits.append(doc)
+    return hits[0] if len(hits) == 1 else {}
+
+
 def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[str, Any], scenarios: list[str],
             model: dict[str, Any] | None = None, tree: str = "", receipts: dict[str, dict[str, Any]] | None = None,
-            diagnostics: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:
+            diagnostics: dict[str, Any] | None = None, scenario_modes: dict[str, str] | None = None) -> dict[str, dict[str, str]]:
     """{check: {"status": pass|fail|unknown, "detail"}} for every check the
     given requirements name, on the tree `worklist` measures. `scenarios` are
     the parity scenarios this measurement ran; `model` the destination model
@@ -122,8 +159,10 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
     from planner.worklist import _assess_implementations, _unit_path, _unit_types
     out: dict[str, dict[str, str]] = {}
     from planner.paths import PARITY_DIR
-    from planner.worklist import _sid, scenario_record
+    from planner.worklist import _sid, parity_state, scenario_record
     ran = {_sid(s) for s in scenarios or []}
+    expected_mode = {_sid(k): v for k, v in (scenario_modes if scenario_modes is not None
+                                             else corpus_scenario_modes(root)).items()}
     open_sc = {_sid(s) for s in _open_scenarios(worklist)}
     state = {"model": model, "tried": model is not None}
 
@@ -144,7 +183,25 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
             return UNKNOWN, "scenario %s was not measured on this tree" % sid
         if _sid(sid) in open_sc:
             return FAIL, "scenario %s still has an open obligation" % sid
-        rec = scenario_record(Path(root) / PARITY_DIR, sid) if root is not None else {}
+        mode = expected_mode.get(_sid(sid))
+        if mode:
+            # judged ONLY in its assigned mode (architect review of 7d77d14f: an enabled scenario passed on
+            # disabled evidence): that mode's receipt, bound to this tree, records it PASS, and its own record
+            # sits in that mode's directory, bound to this tree
+            rc = (receipts or {}).get(mode) or {}
+            rbind = rc.get("binding") if isinstance(rc.get("binding"), dict) else {}
+            if str(rc.get("security_mode") or "disabled") != mode or (tree and str(rbind.get("candidate_sha256") or "") != tree):
+                return UNKNOWN, "scenario %s has no %s-mode receipt bound to this tree" % (sid, mode)
+            rv = {_sid(k): v for k, v in (parity_state(rc).get("scenarios") or {}).items()}.get(_sid(sid), "")
+            if rv == "FAIL":
+                return FAIL, "scenario %s is FAIL in the %s-mode receipt" % (sid, mode)
+            if rv != "PASS":
+                return UNKNOWN, "scenario %s is %s in the %s-mode receipt" % (sid, rv or "not recorded", mode)
+            rec = _mode_record(Path(root), sid, mode) if root is not None else {}
+            if rec and str(rec.get("security_mode") or mode) != mode:
+                return UNKNOWN, "scenario %s's record was taken in %s mode, not %s" % (sid, rec.get("security_mode"), mode)
+        else:
+            rec = scenario_record(Path(root) / PARITY_DIR, sid) if root is not None else {}
         verdict = str(rec.get("verdict") or "")
         if verdict == "FAIL":
             return FAIL, "scenario %s came back FAIL: %s" % (sid, str(rec.get("reason") or "")[:200])

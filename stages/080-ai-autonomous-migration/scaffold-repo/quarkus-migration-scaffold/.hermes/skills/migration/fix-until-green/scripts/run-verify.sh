@@ -653,6 +653,7 @@ PYEOF
         PARITY_MODE_RUNS+=("${PARITY_MODE}:${SIDS}")
       fi
     fi
+    # >>> parity-execution (run-verify-modes.test.sh runs this region with a fake comparator)
     PARITY_ISSUED="${ROOT}/verification/loop/issued.json"
     PARITY_MS=0
     PARITY_RC=0
@@ -740,7 +741,11 @@ PYEOF
       run_one_parity "${PARITY_MODE:-disabled}" "${SIDS}"
     fi
     if [[ "${PARITY_PENDING_SCOPE}" -ne 1 ]]; then
-    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE PARITY_MODE_RESULTS="${PARITY_MODE_RESULTS:-}"
+    PARITY_MODE_SPECS=""
+    if [[ -n "${PARITY_MODE_RESULTS:-}" ]]; then
+      PARITY_MODE_SPECS="$(IFS=';'; printf '%s' "${PARITY_MODE_RUNS[*]}")"
+    fi
+    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE PARITY_MODE_RESULTS="${PARITY_MODE_RESULTS:-}" PARITY_MODE_SPECS
     PARITY_ORACLES=""
     if [[ ${#PLAN_ORACLES[@]} -gt 0 ]]; then
       PARITY_ORACLES="$(IFS=,; printf '%s' "${PLAN_ORACLES[*]}")"
@@ -805,7 +810,10 @@ for part in (os.environ.get("PARITY_MODE_RESULTS") or "").split(","):
         rv = str((json.loads(rp.read_text(encoding="utf-8")) or {}).get("verdict") or "") if rp.is_file() else ""
     except ValueError:
         rv = ""
-    modes[m] = {"rc": int(rc or 0), "receipt_verdict": rv}
+    # the scenarios THIS mode was asked to compare (the issued assignment; judged only in this mode)
+    asked = [x for spec in (os.environ.get("PARITY_MODE_SPECS") or "").split(";") if spec.startswith(m + ":")
+             for x in spec.split(":", 1)[1].split(",") if x]
+    modes[m] = {"rc": int(rc or 0), "receipt_verdict": rv, "scenarios": asked}
 if modes:
     doc["runtime"]["parity"]["modes"] = modes
 doc.setdefault("stages_ms", {})["parity"] = ms
@@ -817,6 +825,7 @@ PYEOF
     python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
     VERIFY_RC=$?
     fi
+    # <<< parity-execution
   fi
 fi
 # The verify count for the issued card and the obligations the rebuilt work
