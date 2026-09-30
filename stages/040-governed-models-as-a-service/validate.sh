@@ -1069,6 +1069,17 @@ else
 fi
 check "MaaS Gateway generated policy filters are healthy" "$R"
 
+GATEWAY_PARAMETERS=$(jsonpath "gateway/maas-default-gateway" "openshift-ingress" "{.spec.infrastructure.parametersRef.name}")
+GATEWAY_MEMORY_REQUEST=$(jsonpath "deployment/maas-default-gateway-data-science-gateway-class" "openshift-ingress" '{.spec.template.spec.containers[?(@.name=="istio-proxy")].resources.requests.memory}')
+GATEWAY_MEMORY_LIMIT=$(jsonpath "deployment/maas-default-gateway-data-science-gateway-class" "openshift-ingress" '{.spec.template.spec.containers[?(@.name=="istio-proxy")].resources.limits.memory}')
+if [[ "$GATEWAY_PARAMETERS" == "maas-gateway-resources" &&
+      "$GATEWAY_MEMORY_REQUEST" == "1Gi" && "$GATEWAY_MEMORY_LIMIT" == "2Gi" ]]; then
+  R="pass"
+else
+  R="gateway resource rollout pending: parameters=${GATEWAY_PARAMETERS:-missing}, request=${GATEWAY_MEMORY_REQUEST:-missing}, limit=${GATEWAY_MEMORY_LIMIT:-missing}"
+fi
+check "MaaS Gateway generated proxy has the GitOps memory reservation and headroom" "$R"
+
 NP_MAAS_GITOPS="${ROOT_DIR}/gitops/stages/040-governed-models-as-a-service/base/gateway/base/networkpolicy-payload-processing-maas-gateway.yaml"
 NP_MAAS_KUSTOMIZATION="${ROOT_DIR}/gitops/stages/040-governed-models-as-a-service/base/gateway/base/kustomization.yaml"
 if [[ -f "$NP_MAAS_GITOPS" ]] &&

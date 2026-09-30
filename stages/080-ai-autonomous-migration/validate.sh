@@ -656,6 +656,9 @@ check "080 run_declaration refuses missing, foreign, stale and rewritten declara
 check "080 launch preflight shell syntax is valid" \
   "bash -n '${SCRIPT_DIR}/run-preflight.sh' && echo RUN_PREFLIGHT_SYNTAX_OK || echo RUN_PREFLIGHT_SYNTAX_FAILED" \
   "RUN_PREFLIGHT_SYNTAX_OK"
+check "080 launch preflight preserves pinned images and worker identity without historical campaign receipts" \
+  "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_TEST_OK || echo RUN_PREFLIGHT_TEST_FAILED" \
+  "RUN_PREFLIGHT_TEST_OK"
 check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
   "T='${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
   "FACTORY_DECLARES_RUN"

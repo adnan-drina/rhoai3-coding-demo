@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maas-gateway-resources
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/name: maas-default-gateway
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+data:
+  # The proxy approached its previous 1Gi limit during long migration sessions.
+  # Reserve that working set and add headroom through the generated Deployment.
+  # Ref: https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#automated-deployment
+  deployment: |
+    spec:
+      template:
+        spec:
+          containers:
+            - name: istio-proxy
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 1Gi
+                limits:
+                  cpu: "2"
+                  memory: 2Gi
