@@ -104,6 +104,16 @@ class V29PlanInventory(unittest.TestCase):
         self.plan = v29_plan()
         self.inputs = {"plans": [self.plan], "decisions": golden_decisions(), "missing": {}, "parity_evidence": (None, "no M4 verdict")}
 
+    def test_adr025_outside_root_is_an_explicit_scope_limitation(self):
+        cm = CM.build(self.inputs)
+        lims = cm["contract"]["scope_limitations"]
+        self.assertEqual([(x["id"], x["adr"], x["owner_label"]) for x in lims],
+                         [("outside-application-root", "ADR-025", "explicit scope decision with evidence")])
+        self.assertIn("status only", lims[0]["limitation"])
+        self.assertTrue(any("scope limit [explicit scope decision with evidence, ADR-025]" in ln for ln in CM.render_lines(cm)))
+        # a run whose decisions do not accept ADR-025 declares nothing
+        self.assertEqual(CM.build(dict(self.inputs, decisions={}))["contract"]["scope_limitations"], [])
+
     def test_counts(self):
         inv = CM.inventory(self.plan)
         self.assertEqual(inv["requirements"], 80)

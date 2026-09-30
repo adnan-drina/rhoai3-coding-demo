@@ -122,13 +122,16 @@ def _tokens(value: str | None) -> frozenset[str] | None:
     return frozenset(t.strip().lower() for t in str(value).split(",") if t.strip())
 
 
-def header_diffs(expected: Any, observed: Any, *, source_origin: str = "", dest_origin: str = "") -> list[str]:
+def header_diffs(expected: Any, observed: Any, *, source_origin: str = "", dest_origin: str = "",
+                 challenge_sets: bool = False) -> list[str]:
     """Diffs for asserted headers. A missing expected map is a legacy capture
     (the caller decides whether this exchange REQUIRED one: required_headers).
 
     Location is compared after mapping the declared source origin to the
     declared destination origin, and nothing else; list-valued CORS headers
-    are compared as token sets. Each diff names the raw values."""
+    are compared as token sets; with ``challenge_sets`` (ADR-025 accepted)
+    WWW-Authenticate is compared as its set of parsed challenges. Each diff
+    names the raw values."""
     if not isinstance(expected, dict):
         return []
     got = observed if isinstance(observed, dict) else {}
@@ -139,6 +142,12 @@ def header_diffs(expected: Any, observed: Any, *, source_origin: str = "", dest_
             mapped = map_origin(want, source_origin, dest_origin)
             if have != mapped:
                 diffs.append("header Location %s vs %s (source %s)" % (have, mapped, want))
+            continue
+        if challenge_sets and str(key).lower() == "www-authenticate":
+            # ADR-025 (2): the set of parsed challenges (RFC 9110 section 11.6.1)
+            from response_equivalence import challenges_equal
+            if not challenges_equal(want, have):
+                diffs.append("header %s %s vs %s" % (key, have, want))
             continue
         if key in LIST_HEADERS:
             if _tokens(have) != _tokens(want):

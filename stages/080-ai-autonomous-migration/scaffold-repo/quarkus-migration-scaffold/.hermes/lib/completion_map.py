@@ -204,7 +204,24 @@ def contract(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[str, A
                           if plan is None else []),
         "unknown_inputs": dict(sorted((k, v) for k, v in missing.items() if k in (
             "decisions", "pins", "freeze", "source_manifest", "build_receipt", "m1_facts", "migration"))),
+        "scope_limitations": scope_limitations(dec),
     }
+
+
+def scope_limitations(dec: dict[str, Any]) -> list[dict[str, Any]]:
+    """Explicit scope decisions with evidence (owner scope-decision): ADR-025 (3), when
+    accepted -- a request outside the application root path is the servlet container's,
+    compared by status only."""
+    try:
+        from planner.decisions import accepted_adrs
+        accepted = accepted_adrs(dec) if dec else set()
+    except Exception:  # noqa: BLE001 - an unreadable decision records nothing
+        accepted = set()
+    if "ADR-025" not in accepted:
+        return []
+    import response_equivalence
+    lim = response_equivalence.scope_limitation()
+    return [dict(lim, owner_label=OWNERS[lim["owner"]])]
 
 
 # --------------------------------------------------------------------------- release blockers
@@ -818,6 +835,8 @@ def render_lines(cm: dict[str, Any]) -> list[str]:
             g["exception"], g["mechanism"], g["producer"]["family"], ",".join(g["producer"]["recipes"]), len(g["owners"]), len(g["checks"])))
     for lim in cm["contract"]["limitations"]:
         L.append("- scope limit: %s" % lim)
+    for lim in cm["contract"].get("scope_limitations") or []:
+        L.append("- scope limit [%s, %s]: %s" % (lim["owner_label"], lim["adr"], lim["limitation"]))
     return L
 
 
