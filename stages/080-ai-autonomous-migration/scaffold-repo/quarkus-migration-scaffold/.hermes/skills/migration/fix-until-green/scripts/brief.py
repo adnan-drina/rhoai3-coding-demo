@@ -1108,6 +1108,8 @@ def main(argv: list[str] | None = None) -> int:
     # them: the retry card must not repeat them (v6 t_fc2b54c5 copied the
     # previous card's deletion and was vetoed for the same reason)
     previous = []
+    voided_rows: list = []
+    voided = _voided_rejections(root)
     rk = str(cluster.get("retry_key") or cluster["id"])
     retry_map = steps.get("retry_keys") or {}
     for r in (steps.get("rejected") or []):
@@ -1116,6 +1118,13 @@ def main(argv: list[str] | None = None) -> int:
         cid = str(r.get("cluster") or "")
         rkey = str(r.get("retry_key") or retry_map.get(cid) or "")
         if cid != cluster["id"] and rkey != rk:
+            continue
+        why = voided.get((cid, str(r.get("reason") or "")[:300]))
+        if why is not None:
+            # the Operator voided it as harness-caused: history, not an attempt this card must avoid repeating
+            # (v29 run 85 spent its whole run reading six voided refusals in previous_attempts)
+            voided_rows.append({"card": r.get("card"), "cluster": cid, "reason": _clip(r.get("reason"), 160),
+                                "voided_because": _clip(why, 200)})
             continue
         previous.append({
             "card": r.get("card"),
@@ -1143,6 +1152,7 @@ def main(argv: list[str] | None = None) -> int:
         # few lines -- the full attempt history stays in previous_attempts
         "_retry_state": retry_state,
         "previous_attempts": previous,
+        "voided_attempts": voided_rows,
         # the one budget answer (planner.budget): the same numbers the issued
         # card, a rejection and a deferral carry
         "budget": _governing_budget(root, steps, cluster["id"], rk),
@@ -1443,6 +1453,30 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _voided_rejections(root: Path, board=None) -> dict:
+    """{(cluster, reason[:300]): why voided} for this card's rejections the Operator voided on the native
+    board (native_gate.py void-rejects). {} without a native board (the serial loop) or a readable card."""
+    try:
+        from planner import native_control as NC
+        task = os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")
+        if not task:
+            return {}
+        if board is None:
+            from planner.outcome_protocol import select_protocol
+            if not select_protocol(Path(root)).native:
+                return {}
+            board = NC.board_for(Path(root))
+        rejects = {r["key"]: r for r in board.records(task, "reject")}
+        out = {}
+        for v in board.records(task, "reject-voided"):
+            r = rejects.get(str(v.get("reject") or ""))
+            if r is not None:
+                out[(str(r.get("cluster") or ""), str(r.get("reason") or "")[:300])] = str(v.get("reason") or "")
+        return out
+    except Exception:  # noqa: BLE001 - an unreadable board voids nothing: every row stays an attempt
+        return {}
+
+
 def _clip(value, n: int = 220) -> str:
     s = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
     s = " ".join(s.split())                      # a javac message spans lines; one line per item here
@@ -1573,6 +1607,9 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  the rejected patch introduced (in the write set; the reverted tree no longer has them):")
             out += ["    %s" % r for r in rs["introduced_in_write_set"]]
         out.append("  refusals so far: %s" % ", ".join("%s x%d" % (r["refusal"], r["times"]) for r in rs.get("refusals") or []))
+    if brief.get("voided_attempts"):
+        out.append("  %d earlier rejection(s) of this family were VOIDED by the Operator as harness-caused; they are not "
+                   "attempts to avoid repeating and are not in previous_attempts" % len(brief["voided_attempts"]))
     # The catalog already supplies these actions. A section-size index is not
     # (placed right after RETRY STATE: workers read a brief's head first, and a long REQUIRED SHAPE or
     # other-diagnostics list must not push the documented action out of it)

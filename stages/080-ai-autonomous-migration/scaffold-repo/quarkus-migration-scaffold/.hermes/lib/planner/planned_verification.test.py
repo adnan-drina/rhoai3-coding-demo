@@ -220,6 +220,34 @@ class PlannedVerification(unittest.TestCase):
         self.assertIn("auth-anonymous-items-list", cm.exception.detail)
 
 
+class VoidedRejectionsInTheBrief(unittest.TestCase):
+    """v29 run 85 spent its whole run re-reading previous_attempts, where six rejections the Operator had voided
+    as harness-caused were listed as attempts to avoid. The brief keeps them as history, out of the retry state."""
+
+    def test_a_voided_rejection_is_recognised_and_an_unvoided_one_is_not(self):
+        import os
+        sys.path.insert(0, str(HERMES / "skills" / "migration" / "fix-until-green" / "scripts"))
+        import brief as B
+        r = T.Run()
+        try:
+            r.release()
+            tid, run, iss = r.issue("build:rk:pom")
+            for i, why in enumerate(("harness: mixed modes", "a real regression")):
+                NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="REVERTED", candidate="%064x" % i,
+                                  attempt=str(i), reason=why)
+            first = r.board.records(tid, "reject")[0]["key"]
+            NC.void_rejects(r.board, task_id=tid, keys=[first], reason="LOOP_MIXED_SECURITY_MODE was the harness", by="operator")
+            old = os.environ.get("HERMES_KANBAN_TASK")
+            os.environ["HERMES_KANBAN_TASK"] = tid
+            try:
+                got = B._voided_rejections(r.root, board=r.board)
+            finally:
+                os.environ.pop("HERMES_KANBAN_TASK") if old is None else os.environ.__setitem__("HERMES_KANBAN_TASK", old)
+            self.assertEqual(got, {(iss["cluster"], "harness: mixed modes"): "LOOP_MIXED_SECURITY_MODE was the harness"})
+        finally:
+            r.close()
+
+
 class OneModePerRepairCluster(unittest.TestCase):
     """v29 Owner run 82: the verification measured failures in both security modes at one controller; one
     cluster held them all and every repair was refused LOOP_MIXED_SECURITY_MODE (ADR-014), the revert hid the
