@@ -75,6 +75,26 @@ def _open_scenarios(worklist: dict[str, Any]) -> set[str]:
     return out
 
 
+# header-only comparison findings (worklist.CORS_CAUSE, REPRESENTATION_CAUSE): obligations of their own,
+# owned where they are; they say nothing about a repository's read/write effect
+HEADER_CAUSES = ("cors-response", "content-type-parameter")
+
+
+def _open_effect_scenarios(worklist: dict[str, Any]) -> set[str]:
+    """_open_scenarios without the header-only findings: what a repository's
+    effect is judged on (status, body, committed state, a server error)."""
+    out: set[str] = set()
+    for i in worklist.get("items") or []:
+        if not isinstance(i, dict):
+            continue
+        if str(i.get("cause") or "") in HEADER_CAUSES and not (i.get("advice") or {}).get("server_error"):
+            continue
+        for s in [i.get("scenario")] + list(i.get("scenarios") or []):
+            if s:
+                out.add(str(s))
+    return out
+
+
 def _gate(worklist: dict[str, Any], name: str) -> str:
     from planner.worklist import _gate_passing
     rt = worklist.get("runtime") if isinstance(worklist.get("runtime"), dict) else {}
@@ -146,6 +166,19 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
             return FAIL, "scenario %s still has an open obligation" % sid
         return PASS, "scenario %s measured and discharged" % sid
 
+    effect_sc = _open_effect_scenarios(worklist)
+
+    def effect(sid: str) -> tuple[str, str]:
+        # a repository effect is judged on status/body/committed-state findings; a header-only
+        # difference on the same scenario is another obligation and stays owned where it is
+        if sid not in ran:
+            return UNKNOWN, "scenario %s was not measured on this tree" % sid
+        if sid in effect_sc:
+            return FAIL, "scenario %s still has an open status/body obligation" % sid
+        if sid in open_sc:
+            return PASS, "scenario %s: the effect is discharged; only a header difference is open (owned elsewhere)" % sid
+        return PASS, "scenario %s measured and discharged" % sid
+
     for req in requirements or []:
         if not isinstance(req, dict):
             continue
@@ -208,7 +241,7 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
                                                "debt; never PASS)" % ", ".join(str(v.get("member")) for v in ver
                                                                                 if v.get("status") != "applicable")[:300])
                 else:
-                    res = [scen(str(s)) for v in ver for s in v.get("scenarios") or []]
+                    res = [effect(str(s)) for v in ver for s in v.get("scenarios") or []]
                     if any(r[0] == FAIL for r in res):
                         status, detail = FAIL, "; ".join(r[1] for r in res if r[0] == FAIL)[:300]
                     elif any(r[0] == UNKNOWN for r in res):

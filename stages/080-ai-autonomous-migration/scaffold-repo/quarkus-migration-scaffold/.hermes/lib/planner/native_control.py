@@ -1353,7 +1353,7 @@ def _producer_difference(m: dict[str, Any], reqs: dict[str, dict[str, Any]], wor
 
 
 def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, run: str, plan: dict[str, Any],
-                      holder: str, worklist: dict[str, Any] | None, tree: str) -> dict[str, Any] | None:
+                      holder: str, worklist: dict[str, Any] | None, tree: str, accepted: str = "") -> dict[str, Any] | None:
     """Measure every later row scheduled at this card (scheduled_rows) on the
     measured candidate, record the result on this card (``schedule-measure``,
     keyed per run, revision and tree), and route each FAIL to the row's owner
@@ -1365,7 +1365,14 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
     card judges itself as an immediate check, one already routed, one whose
     owner is still open, and a scenario failure that is only a header
     difference. A pending or unknown row stays owed (M4 remains the backstop
-    and measures it again). None when nothing is scheduled here."""
+    and measures it again). None when nothing is scheduled here.
+
+    ``accepted`` (the accept-commit key; accept_commit): the same measurement
+    of the candidate this card just had judged, so a row still pending when
+    its last earliest-point card is accepted is not left to M4. Same
+    prerequisites, same keyed record (a replay records nothing), same routing
+    -- except that the accepted card itself does not wait on the follow-up and
+    nothing is raised: the other open behavior/runtime cards and M4 do."""
     rows = scheduled_rows(plan, holder)
     if not rows:
         return None
@@ -1397,7 +1404,8 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
             m["route"] = "owner"
             fails.append(m)
     rec = board.record(task_id, "schedule-measure", "schedule-measure:%d:r%d:%s" % (int(run_id), int(plan["revision"]), tree[:16]),
-                       run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=measured)
+                       run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=measured,
+                       **({"at": "accept", "accept": accepted} if accepted else {}))
     orphans, unrouted = [], []
     for m in fails:
         ob = SCHEDULED_OBLIGATION % (m["owner"], m["check"])
@@ -1429,6 +1437,11 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
         n["class"] = "behavior"          # measured on the running application, exactly like an M4 deferred-check follow-up
         n["schedule"] = [{"check": m["check"], "measured_at": holder, "milestone": m["milestone"]}
                          for m in sorted(mine, key=lambda x: x["check"])]
+    if accepted:
+        # the card whose acceptance measured the failure is not held by it: its own checks passed
+        for n in nxt["nodes"]:
+            if n["outcome_id"] == holder:
+                n["parents"] = sorted(set(n.get("parents") or []) - set(routed["added"]))
     nxt["trigger"] = {"intent": "m3-schedule:%s" % holder}
     nxt.pop("digest", None)
     nxt["digest"] = plan_digest(nxt)
@@ -1439,6 +1452,8 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
     from planner.native_publish import publish_revision
     publish_revision(root, board, nxt, added=routed["added"], holder=task_id)
     out["routed"] = routed["added"]
+    if accepted:
+        return out
     named = "; ".join("%s of %s (%s)" % (m["check"], m["owner"], m["detail"][:120]) for m in fails[:3])
     raise Refusal("OWNER_REPAIR_PENDING", "%s is the earliest measurement point of %s, which FAILS on this candidate; the "
                   "check is owed by its owner, so %s (the owner's follow-up, sharing the owner's budget) is now a prerequisite "
@@ -1995,7 +2010,15 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
                  **(extra or {}))
     # check-schedule/v1: an accepted repair of a shared producer marks every affected path for remeasurement
     marked = mark_remeasure(board, run, plan, node, task_id=task_id, accept_key="accept-commit:%s" % key, tree=tree) if done else []
+    schedule = None
+    if role == "repair" and str(node.get("class") or "") in ORPHAN_WAITERS:
+        # check-schedule/v1: the rows scheduled at this card measured on the candidate just judged
+        schedule = schedule_at_issue(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, holder=oid,
+                                     worklist=wl, tree=tree, accepted="accept-commit:%s" % key)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "remeasure": marked,
+            "schedule": [{k: x.get(k) for k in ("owner", "check", "state", "missing", "route")}
+                         for x in (schedule or {}).get("rows") or []],
+            "schedule_routed": list((schedule or {}).get("routed") or []),
             "covered": covered, "repair_evidence_gaps": evidence_gaps,
             "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": evidence_gaps})}
 
