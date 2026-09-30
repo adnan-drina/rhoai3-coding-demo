@@ -221,6 +221,8 @@ class EarliestMeasurement(unittest.TestCase):
             d.close()
 
     def test_a_header_only_difference_is_the_cards_own_cluster_not_a_producer_repair(self):
+        """The repository effect is judged on status/body/committed-state findings: a CORS header difference on
+        one of its scenarios is the card's own obligation (owned where it is) and does not FAIL the contract."""
         d = Desk()
         r = d.r
         try:
@@ -228,10 +230,99 @@ class EarliestMeasurement(unittest.TestCase):
             d.measured(items=items, clusters=[cluster("u:cors-actual", "parity:cors-actual")])
             tid, run, iss = r.issue(B_ORDER)
             self.assertEqual(iss["cluster"], "u:cors-actual")
-            row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
-            self.assertEqual(row["state"], "fail")                            # recorded as measured, never a pass
-            self.assertIn("header-only", row["route"])
+            self.assertEqual(r.plan()["ownership"]["parity:cors-actual"], B_ORDER)   # the header obligation stays here
+            rows = r.board.records(tid, "schedule-measure")[-1]["rows"]
+            row = next(m for m in rows if m["check"] == EFFECTS)
+            self.assertEqual(row["state"], "pass", row)
+            # the plain comparison of that scenario is still a FAIL, judged by the card itself
+            plain = [m for m in rows if m["check"] == "parity:sc:cors-actual-0a"]
+            self.assertTrue(plain and all(m["state"] == "fail" and m["route"].startswith("judged by") for m in plain), plain)
             self.assertFalse([n for n in r.plan()["nodes"] if n["outcome_id"].startswith("followup:")])
+        finally:
+            d.close()
+
+    def test_repository_effects_ignore_header_only_findings_but_not_status_body_or_server_errors(self):
+        from planner import requirement_checks as RC
+        req = next(q for q in CO_T.desk()[0].reqs if q["id"] == CO_T.REPO_O)
+
+        def effects(*items):
+            return RC.measure(Path("."), [req], worklist={"items": list(items), "measure": {"known": True}},
+                              scenarios=REPO_SCENARIOS)[EFFECTS]["status"]
+        cors = parity_item("i1", "sc:cors-actual-0a", CO_T.EP_LIST, cause="cors-response")
+        ctype = parity_item("i2", "sc:read-orders", CO_T.EP_LIST, cause="content-type-parameter")
+        self.assertEqual(effects(), RC.PASS)
+        self.assertEqual(effects(cors, ctype), RC.PASS)
+        self.assertEqual(effects(parity_item("i3", "sc:read-orders", CO_T.EP_LIST)), RC.FAIL)          # a body difference
+        self.assertEqual(effects(parity_item("i4", "sc:cors-actual-0a", CO_T.EP_LIST, cause="cors-response",
+                                             server_error=True)), RC.FAIL)                                 # it threw
+        self.assertEqual(effects(dict(parity_item("i5", "", CO_T.EP_LIST), scenarios=["sc:create-orders"])), RC.FAIL)
+        # the plain comparison of the header-only scenario is still its own FAIL
+        plain = dict(req, acceptance=["parity:sc:cors-actual-0a"])
+        self.assertEqual(RC.measure(Path("."), [plain], worklist={"items": [cors], "measure": {"known": True}},
+                                    scenarios=REPO_SCENARIOS)["parity:sc:cors-actual-0a"]["status"], RC.FAIL)
+
+    def _accept_order(self, d, tid, run, iss, *, items=(), clusters=(), started=True, attempt="1"):
+        """The Order card's candidate committed and judged, the verification having measured it (started or not)."""
+        r = d.r
+        r.edit(iss["allowed_paths"][0], "// Order accepted %s\n" % attempt)
+        NC.check_write(r.board, task_id=tid, run_id=run, rel_paths=list(iss["allowed_paths"]))
+        NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="ACCEPTED", candidate=r.tree(), attempt=attempt)
+        NB.git(r.root, "add", "-A")
+        NB.git(r.root, "commit", "-qm", "order %s" % attempt)
+        d.measured(started=started, items=items, clusters=clusters)
+        return NC.accept_commit(r.root, r.board, task_id=tid, run_id=run, attempt=attempt,
+                                commit=NB.git(r.root, "rev-parse", "HEAD"),
+                                measurement={"classes": ["build", "compile", "tests", "runtime", "parity"],
+                                             "scenarios": list(REPO_SCENARIOS)})
+
+    def test_a_row_pending_at_issue_is_measured_on_the_accepted_candidate(self):
+        d = Desk()
+        r = d.r
+        try:
+            own = [parity_item("parity:read", "sc:read-orders", CO_T.EP_LIST)]
+            d.measured(started=False, items=own, clusters=[cluster("c:read", "parity:read")])
+            tid, run, iss = r.issue(B_ORDER)
+            self.assertEqual({m["check"]: m["state"] for m in iss["schedule"]}[EFFECTS], "pending")
+            acc = self._accept_order(d, tid, run, iss)                       # started, nothing open
+            self.assertEqual({m["check"]: m["state"] for m in acc["schedule"]}[EFFECTS], "pass")
+            recs = r.board.records(tid, "schedule-measure")
+            self.assertEqual((len(recs), recs[-1]["at"]), (2, "accept"))
+            st = NC.schedule_status(r.board, r.run_id, r.plan())["%s|%s" % (d.owner, EFFECTS)]
+            self.assertEqual((st["state"], st["at"]), ("pass", B_ORDER))       # not left to M4
+            # a replay of the same acceptance measurement records nothing new
+            NC.schedule_at_issue(r.root, r.board, task_id=tid, run_id=run, run=r.run_id, plan=r.plan(), holder=B_ORDER,
+                                 worklist=r.worklist, tree=r.tree(), accepted=recs[-1]["accept"])
+            self.assertEqual(len(r.board.records(tid, "schedule-measure")), 2)
+        finally:
+            d.close()
+
+    def test_a_failure_measured_at_acceptance_is_routed_to_the_owner_without_holding_the_accepted_card(self):
+        d = Desk()
+        r = d.r
+        try:
+            own = [parity_item("parity:read", "sc:read-orders", CO_T.EP_LIST)]
+            d.measured(started=False, items=own, clusters=[cluster("c:read", "parity:read")])
+            tid, run, iss = r.issue(B_ORDER)
+            owner_budget = dict(NC._node(r.plan(), d.owner)["budget"])
+            # the accepted candidate starts; a committed write another path owns still fails there
+            other = parity_item("parity:item", "sc:read-items-1", CO_T.EP_ITEM)
+            acc = self._accept_order(d, tid, run, iss, items=[other], clusters=[cluster("c:item", "parity:item")])
+            fid = "followup:%s:m3g1" % d.owner
+            self.assertEqual(acc["schedule_routed"], [fid])
+            self.assertEqual({m["check"]: m["route"] for m in acc["schedule"]}[EFFECTS], "owner")
+            plan = r.plan()
+            self.assertEqual(NC._node(plan, fid)["budget"], owner_budget)
+            ftid = r.tid(fid)
+            self.assertNotIn(ftid, r.native.task(tid)["parents"])            # the accepted card is not held
+            for t in (r.tid(B_ITEM), r.tid(B_STATUS), r.tid("assess:m4:g1")):
+                self.assertIn(ftid, r.native.task(t)["parents"])
+            self.assertEqual(len(r.board.records(tid, "schedule-route")), 1)
+            # replay: already routed, nothing new
+            key = r.board.records(tid, "schedule-measure")[-1]["accept"]
+            NC.schedule_at_issue(r.root, r.board, task_id=tid, run_id=run, run=r.run_id, plan=r.plan(), holder=B_ORDER,
+                                 worklist=r.worklist, tree=r.tree(), accepted=key)
+            self.assertEqual(len([n for n in r.plan()["nodes"] if n["outcome_id"].startswith("followup:")]), 1)
+            self.assertEqual(len(r.board.records(tid, "schedule-route")), 1)
         finally:
             d.close()
 
