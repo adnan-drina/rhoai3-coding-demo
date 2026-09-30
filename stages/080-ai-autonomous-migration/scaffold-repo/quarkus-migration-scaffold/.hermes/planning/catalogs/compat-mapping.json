@@ -1281,5 +1281,23 @@
         "acceptance_intent": "the source-selected behaviour, no stub bodies, one intended injectable implementation; runtime effects stay owed to verification"
       }
     }
+  },
+  "exception_advice": {
+    "note": "Behaviour a source exception advice (@ControllerAdvice/@RestControllerAdvice with @ExceptionHandler) produced that the destination platform answers BEFORE the advice can run (ADR-025). A row applies to a parity obligation whose SOURCE capture is the advice's response (response_equivalence.deserialization_advice over the frozen source oracle, never the destination response); brief.py renders its action as a documented first action on that card.",
+    "request-body-unreadable": {
+      "adr": "ADR-025",
+      "source_semantics": "the source's advice caught Spring's HttpMessageNotReadableException (a malformed JSON document or a value of the wrong type) and answered 400 with the advice's own body and media type (a String body: text/plain;charset=UTF-8) -- here the JSON object {className, exMessage}",
+      "when": "a parity obligation whose source capture is a 400 {className, exMessage} naming the source framework's body-read failure",
+      "action": "keep the advice as it is, and add two jakarta.ws.rs.ext.ExceptionMapper @Provider classes beside it that answer through the advice's OWN handler method (new <Advice>().<handler>(e), or the injected bean) with the status it returns, the media type the source capture recorded and its body: one for com.fasterxml.jackson.databind.exc.MismatchedInputException (the platform's Jackson reader rethrows a wrong-type value as-is, and its built-in mapper answers an empty 400), and one for jakarta.ws.rs.WebApplicationException that handles ONLY a cause of type com.fasterxml.jackson.core.exc.StreamReadException (a malformed document is wrapped in a 400 WebApplicationException) and returns e.getResponse() for every other one. Never hard-code the source framework's class name or message: the values are the destination's own diagnostics (ADR-025 compares them as present, non-empty strings)",
+      "unsupported": [
+        "an advice whose body depends on request state the mapper cannot see",
+        "a source capture whose body is not the advice's (another exception path): not this row"
+      ],
+      "checks": [
+        "skills/migration/fix-until-green/scripts/deserialization-advice-runtime.test.py (the advice alone answers an empty 400; with the two mappers both failures answer 400 text/plain with non-empty {className, exMessage}; a readable body still creates)",
+        "M4 parity under ADR-025 (status, media type and keys enforced; values present)"
+      ],
+      "source": "quarkus-rest-jackson 3.27.3 FullyFeaturedServerJacksonMessageBodyReader.readFrom (MismatchedInputException rethrown; StreamReadException wrapped in WebApplicationException(BAD_REQUEST)), read from the pinned jar; https://jakarta.ee/specifications/restful-ws/3.1/jakarta-restful-ws-spec-3.1#exceptionmapper"
+    }
   }
 }

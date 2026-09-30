@@ -42,6 +42,13 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import test_runtime_fixture as rt
 
+rt_lib = rt.GOLDEN / ".hermes" / "lib"
+import sys as _sys  # noqa: E402
+if str(rt_lib) not in _sys.path:
+    _sys.path.insert(0, str(rt_lib))
+from response_equivalence import (adr_accepted, advice_values_equivalent, challenge_set,  # noqa: E402,F401  ADR-025
+                                  deserialization_advice, outside_application_root)
+
 Skip = rt.Skip
 HERE = Path(__file__).resolve().parent
 QUAL = rt.FIXTURES / "reference-qualification"
@@ -334,8 +341,10 @@ def _errors_header(v: str) -> Any:
     return rows
 
 
-def normalize(step: dict, exchange: dict, bound: Mapping[str, str], origin: str, corpus: dict) -> dict:
-    """The comparable view of one exchange under the corpus's declared rules."""
+def normalize(step: dict, exchange: dict, bound: Mapping[str, str], origin: str, corpus: dict,
+              adr025: bool = False) -> dict:
+    """The comparable view of one exchange under the corpus's declared rules
+    (and, with adr025, WWW-Authenticate as its set of parsed challenges)."""
     if "response" not in exchange:
         return {"absent": exchange.get("skipped", "not executed")}
     resp = exchange["response"]
@@ -361,6 +370,9 @@ def normalize(step: dict, exchange: dict, bound: Mapping[str, str], origin: str,
             v = _canon_list(v)
         elif h == "access-control-allow-origin":
             v = v.strip()
+        elif h == "www-authenticate" and adr025:
+            cs = challenge_set(v)
+            v = sorted(json.dumps(c) for c in cs) if cs is not None else v
         elif h == "errors":
             v = _unbind(_errors_header(v), bound)
             if isinstance(v, list):
@@ -391,14 +403,36 @@ def first_difference(a: Any, b: Any, path: str = "$") -> Tuple[str, Any, Any]:
 
 def compare(step: dict, oracle_ex: dict, dest_ex: dict, oracle_bound: Mapping[str, str],
             dest_bound: Mapping[str, str], corpus: dict,
-            ignore_headers: Optional[List[str]] = None) -> Tuple[str, List[str]]:
+            ignore_headers: Optional[List[str]] = None, adr025: bool = False,
+            notes: Optional[List[str]] = None) -> Tuple[str, List[str]]:
     """MATCH / MISMATCH / UNMEASURED with the list of differences. A caller that
-    narrows the header set (ignore_headers) must record that scope with its result."""
+    narrows the header set (ignore_headers) must record that scope with its result.
+    With adr025 (ADR-025 accepted in the golden decisions) the three ruled
+    equivalences apply, each identified from the corpus and the SOURCE capture
+    only, and each application is appended to `notes`."""
     if ignore_headers:
         corpus = dict(corpus, compared_headers=[h for h in corpus["compared_headers"]
                                                 if h.lower() not in {x.lower() for x in ignore_headers}])
-    o = normalize(step, oracle_ex, oracle_bound, "", corpus)
-    d = normalize(step, dest_ex, dest_bound, "", corpus)
+    o = normalize(step, oracle_ex, oracle_bound, "", corpus, adr025)
+    d = normalize(step, dest_ex, dest_bound, "", corpus, adr025)
+    if (adr025 and "absent" not in o and "absent" not in d and step.get("kind") != "sql"
+            and outside_application_root(_subst(str(step.get("path") or ""), {}, corpus["application_root"]),
+                                         corpus["application_root"])):
+        # ADR-025 (3): the servlet container's answer: status only; body and headers out of scope
+        if notes is not None:
+            notes.append("ADR-025 outside-application-root: status only (body and headers out of scope)")
+        if o["status"] != d["status"]:
+            return "MISMATCH", ["status: source %s, destination %s" % (o["status"], d["status"])]
+        return "MATCH", []
+    if (adr025 and "absent" not in o and "absent" not in d and step.get("kind") != "sql"
+            and deserialization_advice(o.get("status"), (oracle_ex.get("response") or {}).get("body"))):
+        ok, why = advice_values_equivalent((oracle_ex.get("response") or {}).get("body"),
+                                           (dest_ex.get("response") or {}).get("body"))
+        if ok:
+            # ADR-025 (1): keys enforced, the framework-diagnostic values present and non-empty
+            if notes is not None:
+                notes.append(why)
+            d = dict(d, body=o["body"])
     if "absent" in o:
         return "UNMEASURED", ["the source oracle has no capture: %s" % o["absent"]]
     if "absent" in d:
@@ -433,7 +467,8 @@ def load_reference_oracles(corpus: dict, mode: str) -> Dict[str, dict]:
 
 
 def compare_all(corpus: dict, oracles: Dict[str, dict], dest_steps: Dict[str, dict], mode: str, engine: str,
-                only_tags: Optional[List[str]] = None, ignore_headers: Optional[List[str]] = None) -> Dict[str, dict]:
+                only_tags: Optional[List[str]] = None, ignore_headers: Optional[List[str]] = None,
+                adr025: bool = False) -> Dict[str, dict]:
     """Per applicable step: MATCH / MISMATCH / UNMEASURED against the oracle
     its kind is bound to. `oracles` maps kind -> oracle document."""
     db = (dest_steps.get("_bound") or {}).get("response", {}).get("value") or {}
@@ -450,10 +485,12 @@ def compare_all(corpus: dict, oracles: Dict[str, dict], dest_steps: Dict[str, di
         osteps = o["steps"]
         ob = {k: v for k, v in ((osteps.get("_bound") or {}).get("response", {}).get("value") or {}).items()
               if k in bindable}
+        notes: List[str] = []
         verdict, diffs = compare(step, osteps.get(step["id"], {"skipped": "not in the oracle"}),
-                                 dest_steps.get(step["id"], {"skipped": "not sent"}), ob, db, corpus, ignore_headers)
+                                 dest_steps.get(step["id"], {"skipped": "not sent"}), ob, db, corpus, ignore_headers,
+                                 adr025=adr025, notes=notes)
         classes = sorted({d.split(":", 1)[0] for d in diffs})
-        rows[step["id"]] = {"outcome": verdict, "differences": diffs, "difference_classes": classes,
+        rows[step["id"]] = {"outcome": verdict, "differences": diffs, "difference_classes": classes, "equivalences": notes,
                             "tags": step.get("tags") or [], "case": step.get("case", ""),
                             "oracle": "%s-security-%s" % (o["provenance"]["db"]["engine"], mode)}
     return rows

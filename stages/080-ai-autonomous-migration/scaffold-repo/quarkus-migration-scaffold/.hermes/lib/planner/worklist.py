@@ -6328,6 +6328,11 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
                                        parent.rsplit(".", 1)[-1], str(typ.get("fqn") or "").rsplit(".", 1)[-1],
                                        parent.rsplit(".", 1)[-1])))
             continue
+        from planner.static_triggers import absent_result_verdict  # isolated per-member check (ADR-025 follow-up)
+        absent = absent_result_verdict(typ, row)
+        if absent:
+            out.append(dict(base, verdict="violates", detail=absent))
+            continue
         if isinstance(row.get("cdi"), dict):
             verdict, detail = fragment_cdi_exposure(typ, row["cdi"])
             if verdict != "ok":
@@ -6614,6 +6619,8 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
                         detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
     out.extend(_assess_implementations(Path(root), scope, model, by_path, rule))
     out.extend(_assess_handler_parameters(scope, by_path, rule, root=Path(root)))
+    from planner.static_triggers import unit_transaction_verdicts  # isolated per-site check (ADR-025 follow-up)
+    out.extend(unit_transaction_verdicts(Path(root), scope, model, rule))
     return out
 
 
@@ -7677,6 +7684,9 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     planned_notes: list[str] = []
     if semantics == IDENTITY_V1:
         planned, planned_notes = static_generated_body_items(root, bundle)
+        from planner.static_triggers import required_read_only_items  # isolated static trigger (ADR-025 follow-up)
+        _rro, _rro_notes = required_read_only_items(root, bundle)
+        planned, planned_notes = planned + _rro, planned_notes + _rro_notes
     items = sorted(mandatory + comp + tst + par + rt + planned, key=lambda i: i["id"])
     # ADR-015/ADR-019: nothing a worker could be issued may land in a
     # harness-owned generated root. Such findings stay VISIBLE -- recorded

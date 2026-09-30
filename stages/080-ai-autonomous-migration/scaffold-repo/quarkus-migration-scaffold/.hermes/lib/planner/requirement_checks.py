@@ -500,6 +500,9 @@ def _body_check(root: Path, req: dict[str, Any], scen: Any) -> tuple[str, str]:
     except (OSError, ValueError):
         return UNKNOWN, "the evidence bundle is unreadable"
     items, notes = static_generated_body_items(Path(root), bundle)
+    from planner.static_triggers import required_read_only_items
+    rro, rro_notes = required_read_only_items(Path(root), bundle)
+    items, notes = items + rro, notes + rro_notes
     if items:
         return FAIL, "the generated-body condition still holds: %s" % items[0].get("message", "")[:300]
     if notes:

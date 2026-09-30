@@ -61,6 +61,68 @@ def _row(case, step, executed, outcome, mode, artifact, evidence, db="postgresql
             "db": db, "mode": mode, "artifact": artifact, "evidence": evidence}
 
 
+# The catalog guidance a worker now receives for a remaining difference (M-4, ADR-025
+# follow-up). A MISMATCH row is "guided" only when EVERY difference maps to a row here;
+# a Content-Type difference that follows a guided status difference is that status's.
+GUIDANCE = {
+    "content-type-parameter": "PARITY_CONTENT_TYPE: source-media-type-parameter-adapter/v1 (restore-source-response-shape, ADR-019)",
+    "cors": "PARITY_CORS: source-cors-response-adapter/v1 (restore-source-response-shape, ADR-019)",
+    "object-name": "validation_helpers getObjectName(): Introspector.decapitalize(<body short name>) (validation-object-name)",
+    "absent-row": "repository_behaviour.query_result_semantics + the unit check static_triggers.absent_result_verdict",
+    "required-read-only": "build_plugins jaxrs-spec required_read_only, planned as plan:gbro (static_triggers.required_read_only_items)",
+    "advice": "exception_advice.request-body-unreadable (reader-exception mappers answering through the application's advice)",
+}
+
+
+def _ct(v: str) -> str:
+    return (v or "").strip('"').split(";")[0].strip().lower()
+
+
+def guidance_for(step_id: str, diffs: list) -> tuple:
+    """(guidance keys, unexplained differences) for one remaining MISMATCH."""
+    keys, rest = [], []
+    status = next((d for d in diffs if d.startswith("status:")), "")
+    for d in diffs:
+        if d.startswith("header access-control-"):
+            keys.append("cors")
+        elif d.startswith("status: source 404, destination 500"):
+            keys.append("absent-row")
+        elif d.startswith("status: source 400, destination 500"):
+            keys.append("required-read-only")
+        elif d.startswith("header content-type:"):
+            m = re.match(r'header content-type: source (.*), destination (.*)$', d)
+            src, dst = (m.group(1), m.group(2)) if m else ("", "")
+            if src.startswith('"application/json"') and "charset" in dst and _ct(src) == _ct(dst):
+                keys.append("content-type-parameter")
+            elif status:
+                continue                      # follows the status difference
+            elif "text/plain" in src and dst == "null":
+                keys.append("advice")
+            else:
+                rest.append(d)
+        elif d.startswith("header errors:"):
+            m = re.match(r"header errors: source (.*), destination (.*)$", d)
+            try:
+                a, b = json.loads(m.group(1)), json.loads(m.group(2))
+            except (AttributeError, ValueError):
+                a, b = None, None
+            lower = lambda rows: [dict(r, objectName=(r["objectName"][:1].lower() + r["objectName"][1:]))  # noqa: E731
+                                  for r in rows] if isinstance(rows, list) else rows
+            if isinstance(a, list) and isinstance(b, list) and a != b and lower(b) == a:
+                keys.append("object-name")
+            elif status:
+                continue
+            else:
+                rest.append(d)
+        elif d.startswith("body at") and status:
+            continue
+        elif d.startswith("body at") and '"className"' in d and '"exMessage"' in d:
+            keys.append("advice")
+        else:
+            rest.append(d)
+    return sorted(set(keys)), rest
+
+
 def clean_generation(root: Path) -> tuple:
     """(outcome, evidence) for the generated-body-binding row's build:clean-generation check."""
     catalog = json.loads((rt.GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json").read_text())
@@ -132,10 +194,20 @@ def main() -> int:
                                                              "sha256": s["sha256"]} for s in pg["scripts"]]}
                 logtext = log.read_text(errors="replace")
                 soe = logtext.count("java.lang.StackOverflowError")
-                cmp_rows = rq.compare_all(corpus, oracles[mode], dest, mode, "postgresql")
+                (work / ("destination-%s.json" % mode)).write_text(json.dumps(dest, indent=1, sort_keys=True))
+                adr = rq.adr_accepted(rt.GOLDEN)
+                raw_rows = rq.compare_all(corpus, oracles[mode], dest, mode, "postgresql")
+                cmp_rows = rq.compare_all(corpus, oracles[mode], dest, mode, "postgresql", adr025=adr)
                 for sid, r in cmp_rows.items():
                     ex = dest.get(sid, {})
+                    raw = raw_rows.get(sid) or {}
+                    keys, rest = guidance_for(sid, r["differences"]) if r["outcome"] == "MISMATCH" else ([], [])
                     ev = {"differences": r["differences"], "difference_classes": r["difference_classes"],
+                          "adr025": {"accepted": adr, "equivalences": r.get("equivalences") or [],
+                                     "outcome_without": raw.get("outcome"), "differences_without": raw.get("differences")},
+                          "classification": (None if r["outcome"] != "MISMATCH" else
+                                             {"class": "guided" if keys and not rest else "candidate-defect",
+                                              "guidance": [GUIDANCE[k] for k in keys], "unexplained": rest}),
                           "db": db_ev, "oracle": "source-oracle/%s.json" % r["oracle"],
                           "oracle_db": r["oracle"].split("-security-")[0],
                           "destination_status": (ex.get("response") or {}).get("status"),
@@ -166,6 +238,20 @@ def main() -> int:
         return 0
     cand = [r for r in rows if r["test_id"].split("::")[1] not in ("candidate", "package", "clean-generation")
             and r["case"] != "source-engine-sensitivity"]
+    # the three-way account the ADR-025 ruling asks for: of the mismatches WITHOUT the ruling,
+    # (b) equal under ADR-025, (a) guided (a worker now receives the repair), (c) candidate defects
+    account = {"equal_under_adr025": [], "guided": [], "candidate_defect": []}
+    for r in cand:
+        adr_ev = (r["evidence"] or {}).get("adr025") if isinstance(r["evidence"], dict) else None
+        if not adr_ev or adr_ev.get("outcome_without") != "MISMATCH":
+            continue
+        sid = "%s[%s]" % (r["test_id"].split("::")[1], r["mode"])
+        if r["outcome"] == "MATCH":
+            account["equal_under_adr025"].append(sid)
+        elif (r["evidence"].get("classification") or {}).get("class") == "guided":
+            account["guided"].append(sid)
+        else:
+            account["candidate_defect"].append(sid)
     counts = {}
     for r in cand:
         counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
@@ -174,8 +260,10 @@ def main() -> int:
         print("%-26s %-44s %-8s %-12s %s" % (r["case"], r["test_id"].split("::")[1], r["mode"], r["outcome"],
                                               ("; ".join(d)[:220] if d else "")))
     status = "MEASURED"
-    rq.write_results(a.results, {"test": TEST_ID, "status": status, "counts": counts, "rows": rows,
+    rq.write_results(a.results, {"test": TEST_ID, "status": status, "counts": counts, "rows": rows, "adr025_account": account,
                                  "seconds": round(time.time() - started, 1)})
+    print("ADR-025 account of the mismatches without the ruling: (b) equal under ADR-025 %d, (a) guided %d, (c) candidate "
+          "defects %d" % (len(account["equal_under_adr025"]), len(account["guided"]), len(account["candidate_defect"])))
     print("MEASURED: %s (candidate tree %s, PostgreSQL 16 in podman, pinned platform %s): %s"
           % (TEST_ID, rows[0]["artifact"].get("candidate_tree", "?")[:12], rt.pin()["version"],
              ", ".join("%s %d" % kv for kv in sorted(counts.items()))))
