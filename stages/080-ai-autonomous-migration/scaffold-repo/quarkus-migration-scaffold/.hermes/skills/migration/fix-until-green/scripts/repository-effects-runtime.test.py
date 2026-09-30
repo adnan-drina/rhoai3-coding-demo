@@ -25,6 +25,12 @@ Variants (text edits of the delegate):
   faithful       every check passes
   noop-writes    "reads pass, writes do nothing" (save/delete bodies empty):
                  reads pass, every write check fails
+  routed-back    (M-3, INTERVENTIONS I-6) the delegate calls the Spring Data
+                 repository that extends its own fragment: Quarkus routes the
+                 call back to the delegate, the reads and the create fail and
+                 the log shows java.lang.StackOverflowError
+  throwing       (M-3) reads and save are throwing placeholders with the
+                 approved CDI shape: the reads and the create fail
   remove-first   the literal port of a source override that removes the entity
                  and THEN bulk-deletes its dependents: Hibernate 6 flushes the
                  pending removal before the native statement, so the delete
@@ -53,7 +59,26 @@ REMOVE_FIRST = ("LabelRepositoryImpl.java", "// DELETE-ORDER", "// END-DELETE-OR
                 "        // the literal port: remove the entity first, then its dependents\n"
                 "        em.remove(em.contains(label) ? label : em.merge(label));\n"
                 "        em.createNativeQuery(\"delete from pallet_labels where label_id = ?1\").setParameter(1, label.id).executeUpdate();\n")
-VARIANTS = {"faithful": [], "noop-writes": [NOOP_SAVE, NOOP_DELETE], "remove-first": [REMOVE_FIRST]}
+# M-3 (INTERVENTIONS I-6): the delegate calls the Spring Data repository that EXTENDS its own
+# fragment; Quarkus routes the call back to the delegate, which recurses (StackOverflowError)
+ROUTED_FIELD = ("CrateRepositoryImpl.java", "// DELEGATE-FIELD", "// END-DELEGATE-FIELD",
+                "    @Inject\n    org.acme.depot.springdatajpa.SpringDataCrateRepository springData;\n")
+ROUTED_ALL = ("CrateRepositoryImpl.java", "// READ-ALL", "// END-READ-ALL", "        return springData.findAll();\n")
+ROUTED_ONE = ("CrateRepositoryImpl.java", "// READ-BY-ID", "// END-READ-BY-ID", "        return springData.findById(id);\n")
+# M-3 (v17 t_eca28a3c): a throwing placeholder with the approved CDI shape
+THROW_ALL = ("CrateRepositoryImpl.java", "// READ-ALL", "// END-READ-ALL",
+             "        throw new UnsupportedOperationException(\"not implemented\");\n")
+THROW_ONE = ("CrateRepositoryImpl.java", "// READ-BY-ID", "// END-READ-BY-ID",
+             "        throw new UnsupportedOperationException(\"not implemented\");\n")
+THROW_SAVE = ("CrateRepositoryImpl.java", "// WRITE-SAVE", "// END-WRITE-SAVE",
+              "        throw new UnsupportedOperationException(\"not implemented\");\n")
+VARIANTS = {"faithful": [], "noop-writes": [NOOP_SAVE, NOOP_DELETE], "remove-first": [REMOVE_FIRST],
+            "routed-back": [ROUTED_FIELD, ROUTED_ALL, ROUTED_ONE],
+            "throwing": [THROW_ALL, THROW_ONE, THROW_SAVE]}
+LOG_TOKENS = {"remove-first": ("violates foreign key constraint", "TransientPropertyValueException",
+                               "ConstraintViolationException"),
+              "routed-back": ("java.lang.StackOverflowError",),
+              "throwing": ("java.lang.UnsupportedOperationException",)}
 WRITES = ("create", "update", "crate-delete")
 
 
@@ -131,11 +156,10 @@ def main() -> int:
                 with rt.boot(root, "/api/crates", props) as base:
                     table[label] = exercise(base)
                 (Path(td) / ("%s.log" % label)).write_text((root / "run.log").read_text(errors="replace"))
-                if label == "remove-first":
+                if label in LOG_TOKENS:
                     log = (root / "run.log").read_text(errors="replace")
-                    hits = [t for t in ("violates foreign key constraint", "TransientPropertyValueException",
-                                        "ConstraintViolationException") if t in log]
-                    table[label]["_log"] = (bool(hits), "the destination log names the flush-order failure: %s" % ", ".join(hits))
+                    hits = [t for t in LOG_TOKENS[label] if t in log]
+                    table[label]["_log"] = (bool(hits), "the destination log names the failure: %s" % ", ".join(hits))
     except rt.Skip as exc:
         print("SKIP: repository-effects-runtime: %s" % exc)
         return 0
@@ -152,12 +176,21 @@ def main() -> int:
     if r["label-delete"][0] or not all(r[k][0] for k in ("reads", "create", "update", "link", "crate-delete")) or not r["_log"][0]:
         print("FAIL: the remove-first delete order must fail (and only it), with the flush-order failure in the log", file=sys.stderr)
         return 1
+    for label in ("routed-back", "throwing"):
+        v = table[label]
+        if v["reads"][0] or v["create"][0] or not v["_log"][0]:
+            print("FAIL: the %s delegate must fail the reads and the create, with its failure in the log" % label,
+                  file=sys.stderr)
+            return 1
     print("OK: repository-effects-runtime (pinned platform %s, PostgreSQL 16 in podman, packaged jar over HTTP, every effect "
           "read back by an independent request after its transaction: faithful @Typed delegates pass reads, create with "
           "cascaded children, update of a detached row, a label link, the label delete removing its join row, and the "
           "crate delete cascading to its pallets; the no-op-write delegates pass the reads and fail create/update/delete; "
-          "the remove-first label delete fails on Hibernate 6's flush (%s) while the dependents-first port passes)"
-          % (rt.pin()["version"], r["label-delete"][1]))
+          "the remove-first label delete fails on Hibernate 6's flush (%s) while the dependents-first port passes; "
+          "a delegate routed back through the Spring Data repository that extends its fragment fails the reads "
+          "and the create with %s, and a throwing placeholder fails them with %s)"
+          % (rt.pin()["version"], r["label-delete"][1], table["routed-back"]["_log"][1].rsplit(": ", 1)[-1],
+             table["throwing"]["_log"][1].rsplit(": ", 1)[-1]))
     return 0
 
 

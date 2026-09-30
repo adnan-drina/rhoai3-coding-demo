@@ -14,13 +14,19 @@ import org.acme.depot.model.Crate;
 public class CrateRepositoryImpl implements CrateRepository {
     @Inject
     EntityManager em;
+    // DELEGATE-FIELD
+    // END-DELEGATE-FIELD
 
     public Collection<Crate> findAll() {
+        // READ-ALL
         return em.createQuery("select distinct c from Crate c order by c.id", Crate.class).getResultList();
+        // END-READ-ALL
     }
 
     public Crate findById(int id) {
+        // READ-BY-ID
         return em.find(Crate.class, id);
+        // END-READ-BY-ID
     }
 
     public void save(Crate crate) {
