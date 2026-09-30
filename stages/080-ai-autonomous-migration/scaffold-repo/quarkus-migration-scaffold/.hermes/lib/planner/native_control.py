@@ -981,7 +981,7 @@ def route_orphans(root: Path, board: Board, *, task_id: str, run_id: int, run: s
         row = tasks.get(o)
         return "done" if row and (board.task(row["id"]) or {}).get("status") == "done" else "open"
 
-    orphans = orphaned_obligations(plan, worklist, status_of)
+    orphans = orphaned_obligations(plan, worklist, status_of, holder=str(board.node_of(task_id)[2]))
     if not orphans:
         return None
     oid = str(board.node_of(task_id)[2])

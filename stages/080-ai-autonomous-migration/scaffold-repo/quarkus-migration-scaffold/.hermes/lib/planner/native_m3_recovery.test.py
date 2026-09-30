@@ -799,6 +799,34 @@ class OrphanedObligations(unittest.TestCase):
         finally:
             r.close()
 
+    def test_another_open_cards_finding_neither_refuses_nor_moves_to_the_holder(self):
+        """v29 t_65445e69 (after rebase 3): re-issue refused ISSUE_ORPHANED_OBLIGATION over parity failures at the
+        Vet, Specialty and Pet controllers -- each claimed by that controller's own open behavior card. Such a
+        finding is not an orphan for the holder; the claiming card takes it when it runs."""
+        r = self.build()
+        try:
+            wl = r.worklist
+            wl["items"] += [
+                {"id": "parity:item-own", "category": "mandatory", "kind": "parity", "source": "parity", "scenario": "items-list",
+                 "entry_point": "com.acme.shop.web.ItemController#list():http", "path": ""},
+                {"id": "parity:order-other", "category": "mandatory", "kind": "parity", "source": "parity",
+                 "entry_point": "com.acme.shop.web.OrderController#create(com.acme.shop.dto.OrderDto):http", "path": ""}]
+            wl["clusters"] += [
+                {"id": "c:item-parity", "items": ["parity:item-own"], "kind": "parity", "path": self.ITEM_FILE, "status": "open",
+                 "write_set": [self.ITEM_FILE]},
+                {"id": "c:order-parity", "items": ["parity:order-other"], "kind": "parity", "path": self.ORDER_FILE, "status": "open",
+                 "write_set": [self.ORDER_FILE]}]
+            wl["candidate_sha256"] = r.tree()
+            r.save_worklist()
+            tid, run, iss = r.issue(self.ITEM_BEH)                      # not refused over the Order card's finding
+            self.assertEqual(iss["cluster"], "c:item-parity")
+            own = r.plan().get("ownership") or {}
+            self.assertEqual(own.get("parity:item-own"), self.ITEM_BEH)
+            self.assertNotIn("parity:order-other", own)                 # left for the Order card
+            NC.issue(r.root, r.board, task_id=tid, run_id=run)          # a re-issue is not refused either
+        finally:
+            r.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

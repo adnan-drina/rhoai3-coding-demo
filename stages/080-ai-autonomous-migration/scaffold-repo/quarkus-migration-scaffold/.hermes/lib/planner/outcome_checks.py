@@ -727,17 +727,32 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
     return doc
 
 
-def orphaned_obligations(plan: dict[str, Any], worklist: dict[str, Any], status_of: Callable[[str], str]) -> list[dict[str, Any]]:
+def orphaned_obligations(plan: dict[str, Any], worklist: dict[str, Any], status_of: Callable[[str], str],
+                         holder: str = "") -> list[dict[str, Any]]:
     """Open mandatory obligations of the measured work list that no OPEN outcome
     will discharge: owned by no plan node (they appeared after M2 froze
     ownership -- v28: the package gate first ran once compilation reached zero
     errors and failed at RootRestController.java), or owned by an outcome that
     is already accepted (reopened after acceptance). Each with its work-list
-    cluster and write set. Pure."""
+    cluster and write set. Pure.
+
+    A finding at an entry point or scenario an OPEN outcome other than
+    ``holder`` claims is that outcome's, not an orphan: it takes it when it runs
+    (v29 t_65445e69 was refused over the Vet, Specialty and Pet controllers'
+    own parity failures, each claimed by that controller's open behavior card)."""
     owner_of: dict[str, str] = {str(k): str(v) for k, v in (plan.get("ownership") or {}).items()}
+    claims: dict[str, set[str]] = {}
+
+    def _bare(v: str) -> str:
+        return v[3:] if v.startswith(("ep:", "sc:")) else v
+
     for n in plan.get("nodes") or []:
+        oid = str(n.get("outcome_id") or "")
         for ob in n.get("obligations") or []:
-            owner_of.setdefault(str(ob), str(n.get("outcome_id") or ""))
+            owner_of.setdefault(str(ob), oid)
+        if n.get("role") == "repair" and status_of(oid) not in ("accepted", "done"):
+            for k in list(n.get("entry_points") or []) + list(n.get("scenarios") or []):
+                claims.setdefault(_bare(str(k)), set()).add(oid)
     cluster_of: dict[str, dict[str, Any]] = {}
     for c in worklist.get("clusters") or []:
         if isinstance(c, dict):
@@ -750,6 +765,9 @@ def orphaned_obligations(plan: dict[str, Any], worklist: dict[str, Any], status_
         iid = str(i["id"])
         owner = owner_of.get(iid, "")
         if owner and status_of(owner) not in ("accepted", "done"):
+            continue
+        claimed = claims.get(_bare(str(i.get("entry_point") or "")), set()) | claims.get(_bare(str(i.get("scenario") or "")), set())
+        if claimed and holder not in claimed:
             continue
         c = cluster_of.get(iid) or {}
         out.append({"id": iid, "path": str(i.get("path") or ""), "kind": str(i.get("kind") or ""),
