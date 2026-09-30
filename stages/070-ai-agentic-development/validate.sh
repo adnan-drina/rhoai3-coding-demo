@@ -85,7 +85,7 @@ check_golden_drift() {
     local tmp
     tmp=$(mktemp -d)
     if git clone -q --depth 1 "https://github.com/adnan-drina/${repo}.git" "$tmp/live" 2>/dev/null \
-       && diff -r -q -x .git "$REPO_ROOT/$local_dir" "$tmp/live" >/dev/null 2>&1; then
+       && diff -r -q -x .git -x __pycache__ "$REPO_ROOT/$local_dir" "$tmp/live" >/dev/null 2>&1; then
         echo -e "${GREEN}[PASS]${NC} ${repo}: checked-in staging matches the live scaffold repo"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
