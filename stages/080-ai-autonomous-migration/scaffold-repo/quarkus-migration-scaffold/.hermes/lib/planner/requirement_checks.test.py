@@ -17,6 +17,12 @@ by a measurement that RECOMPUTES its requirement checks on the tree.
    it); after the retirement it is accepted, and the recorded measurement
    carries the recomputed checks. An outcome owning a check with no producer
    is never accepted.
+4. location:<entry point> has a producer (the Location a handler builds, from
+   the requirement's own Location-asserting scenarios): pass / fail / unknown
+   exactly as those scenarios; none captured is unknown. has_producer agrees
+   with measure() on every check name the saved v29 initial plan issues, and
+   every one of them has a producer (v29 issued two location checks that no
+   producer implemented: the Owner behaviour card could never be accepted).
 """
 from __future__ import annotations
 
@@ -278,13 +284,49 @@ def classes_case() -> int:
     return 0
 
 
+def location_case() -> int:
+    ep = "ep:p.Api#add(p.Body):http"
+    req = {"id": "req:bv", "acceptance": ["parity:sc:create", "parity:sc:create-bad", "location:" + ep]}
+    wl = {"items": [], "measure": {"known": True}}
+    for measured, items, want in ((["sc:create", "sc:create-bad"], [], "pass"),
+                                  (["sc:create", "sc:create-bad"], [{"id": "par:1", "scenario": "sc:create"}], "fail"),
+                                  (["sc:create"], [], "unknown")):
+        got = RC.measure(Path("."), [req], worklist=dict(wl, items=items), scenarios=measured)["location:" + ep]
+        if got["status"] != want:
+            return _fail("location with %s measured, %s open: %s != %s" % (measured, items, got, want))
+    none = RC.measure(Path("."), [{"id": "r", "acceptance": ["location:" + ep]}], worklist=wl, scenarios=["sc:create"])
+    if none["location:" + ep]["status"] != "unknown":
+        return _fail("a Location no scenario captures is unknown, never PASS")
+    import gzip
+    doc = json.load(gzip.open(HERE / "fixtures" / "v29-plan-r1-schedule.json.gz", "rt", encoding="utf-8"))["plan"]
+    names = sorted({r["check"] for n in doc["nodes"] for r in n.get("check_plan") or []})
+    if not any(c.startswith("location:") for c in names):
+        return _fail("the v29 fixture must carry its location checks")
+    for c in names + ["coverage:unresolved", "bogus:x", "location:", "parity:"]:
+        got = RC.measure(Path("/nonexistent"), [{"id": "r", "acceptance": [c]}], worklist=wl, scenarios=[])[c]
+        silent = got["detail"].startswith("no measurement producer")
+        if silent == RC.has_producer(c) and c not in ("coverage:unresolved", "location:", "parity:"):
+            return _fail("has_producer(%s)=%s disagrees with measure(): %s" % (c, RC.has_producer(c), got["detail"][:120]))
+    missing = [c for c in names if not RC.has_producer(c)]
+    if missing or RC.has_producer("coverage:unresolved") or RC.has_producer("bogus:x"):
+        return _fail("every check the v29 plan issues has a producer; unresolved coverage and unknown names do not: %s" % missing[:4])
+    owner = next(r for r in doc["requirements"] if r["rule"] == "behavior-verification/v1" and any(
+        str(a).startswith("location:") for a in r["acceptance"]))
+    scen = [a[len("parity:"):] for a in owner["acceptance"] if a.startswith("parity:")]
+    loc = next(a for a in owner["acceptance"] if a.startswith("location:"))
+    if RC.measure(Path("."), [owner], worklist=wl, scenarios=scen)[loc]["status"] != "pass":
+        return _fail("the v29 Owner create Location passes once its scenarios are measured and discharged")
+    return 0
+
+
 def main() -> int:
-    for case in (unit_case, fragment_case, board_case, classes_case):
+    for case in (unit_case, fragment_case, board_case, classes_case, location_case):
         if case():
             return 1
     print("OK: requirement checks (recomputed per tree: gates, compile items, parity measured-and-discharged, repository "
           "effects with unresolved writes as owned debt, fragment bodies on the real model; no producer = unknown = never "
-          "covered; accept_commit keeps a requirement owner open while its check fails and accepts it once it passes)")
+          "covered; accept_commit keeps a requirement owner open while its check fails and accepts it once it passes; "
+          "location checks have a producer and every check the v29 plan issues is measurable)")
     return 0
 
 
