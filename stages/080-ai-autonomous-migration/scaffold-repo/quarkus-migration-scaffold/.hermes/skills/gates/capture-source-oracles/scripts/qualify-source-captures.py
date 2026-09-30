@@ -90,13 +90,13 @@ _ORACLES_DIR = SCENARIO_ORACLES
 KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
                 "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable",
-                "cors_browser_access", "db_unchanged")
+                "cors_browser_access", "db_unchanged", "delete_outcome_consistent")
 CONTRACT_KEYS = ("intent", "identity_field", "read_back_properties", "creates_without_location")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before", "before_reads_usable")
 # checks that read a read-back ROW without reading its body: they are about
 # the state a request left just as much, so they are judged against the same
 # identity question (whose probes these are)
-READ_BACK_CHECKS = ("after_effect_status",)
+READ_BACK_CHECKS = ("after_effect_status", "delete_outcome_consistent")
 HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers",
                  "cors_browser_access")
 _STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
@@ -631,6 +631,30 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                     if int(row.get("status") or 0) != int(status):
                         bad.append("%s answered %s, expected %s" % (eid, row.get("status"), status))
                 record(name, not bad, "; ".join(bad) or "effects answered as the contract names")
+            elif name == "delete_outcome_consistent":
+                # the outcome is the SOURCE's (the derivation could not
+                # establish it); what is judged is that the answer and the
+                # committed state agree, and the observed outcome is recorded
+                eff_id = str((want or {}).get("item_effect") or "") if isinstance(want, dict) else ""
+                if not eff_id:
+                    raise Unjudgeable("delete_outcome_consistent must name its item_effect")
+                row = after.get(eff_id)
+                if row is None:
+                    raise Unusable("effect %s was not captured" % eff_id)
+                got = int(resp.get("status") or 0)
+                read = int(row.get("status") or 0)
+                if 200 <= got < 300:
+                    outcome, ok = "removed", read == 404
+                elif 400 <= got < 500:
+                    outcome, ok = "refused", read == 200
+                else:
+                    outcome, ok = "status %s" % got, False
+                base["observed_outcome"] = outcome
+                checks.append({"check": name, "ok": ok, "observed_outcome": outcome,
+                               "detail": "the source answered %s (%s) and %s reads back %s%s"
+                                         % (got, outcome, eff_id, read, "" if ok else ": the answer and the committed state disagree")})
+                if not ok:
+                    known_failures.append("%s: the source answered %s and %s reads back %s" % (name, got, eff_id, read))
             elif name == "cors_allow_origin":
                 if not isinstance(headers, dict):
                     raise Unusable("the capture recorded no header map")

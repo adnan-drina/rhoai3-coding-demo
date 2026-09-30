@@ -2656,6 +2656,13 @@ class Derivation:
                                      % (eid, r["fk"]["table"], r["fk"]["column"], r["why"]))
             return
         if "none" in removal:
+            # NOT a refusal the evidence establishes: the structure model
+            # records the entity's JPA relationships, not the repository or
+            # service code that may remove the references first (petclinic's
+            # PetType delete override answers 204). So the derivation proposes
+            # the request and the capture decides the outcome; the contract
+            # asks only that the outcome and the read-back agree
+            # (delete_outcome_consistent: 2xx -> the row reads 404, 4xx -> 200)
             eff = "eff:%s-%s-after-refused-delete" % (resource, blocked_id)
             self._add({
                 "id": "sc:delete-referenced-%s-%s" % (resource, blocked_id), "entry_point": eid, "method": "DELETE", "path": item_path,
@@ -2666,10 +2673,11 @@ class Derivation:
                                  "evidence": ["bundle:%s" % eid] + fk_evidence
                                  + ["schema:%s declares no ON DELETE CASCADE or SET NULL" % constraints]
                                  + list(target["mappings"]) + sorted(dict.fromkeys(removal["none"]))},
-                "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_effect_status": {eff: 200}},
-                "why": "seed row %s is referenced by %s, the schema carries no ON DELETE CASCADE or SET NULL and the application declares "
-                       "nothing that removes those references, so the source refuses the delete: the response is a 4xx (any) and the "
-                       "read-back still answers 200 with the row" % (blocked_id, constraints),
+                "qualify": {"intent": "observed", "delete_outcome_consistent": {"item_effect": eff}},
+                "why": "seed row %s is referenced by %s, the schema carries no ON DELETE CASCADE or SET NULL and no JPA relationship "
+                       "the structure model records removes those references; code the model does not record (a repository or "
+                       "service override) may still remove them, so the source's own answer decides: a refusal (4xx) must leave "
+                       "the row readable (200), a delete (2xx) must leave it gone (404)" % (blocked_id, constraints),
             })
             return
         # the references go with the parent: what the source demonstrates is a
@@ -2781,7 +2789,8 @@ _AUTH_INVALID = "invalid"       # the reserved --identity name: a credential dec
 # the allowed probe (its status is not carried: the source's actual outcome is
 # what the capture records, and 201-or-not is not knowable for an identity
 # nobody has run the request as yet)
-_EFFECT_CHECKS = ("after_effect_status", "after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
+_EFFECT_CHECKS = ("after_effect_status", "after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before",
+                  "delete_outcome_consistent")
 _READ_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
