@@ -635,25 +635,49 @@ def budget_state(board: Board, run_id: str, plan: dict[str, Any], node: dict[str
 # issue: the run-bound scope of THIS native run
 # ---------------------------------------------------------------------------
 
-def _allowed_paths(node: dict[str, Any], worklist: dict[str, Any] | None, own: set[str]) -> tuple[str, list[str]]:
+def _allowed_paths(node: dict[str, Any], worklist: dict[str, Any] | None, own: set[str],
+                   order: dict[str, set[str]] | None = None) -> tuple[str, list[str]]:
     """The ONE open cluster this outcome may edit now, and its write set.
 
     A cluster holding an item the destination answered with a server error
     goes first: a request that throws cannot show whether a header or body
     repair of the same request is right (v29 t_65445e69 spent two CORS
-    attempts on a scenario a StackOverflowError answered). Otherwise the work
-    list's order stands."""
+    attempts on a scenario a StackOverflowError answered).
+
+    check-schedule/v1 generalizes that rule (``order``, issue_order): a
+    cluster holding a scenario of a producer this card's comparisons come
+    ``after`` -- while that producer is not measured PASS -- goes first too,
+    and a cluster whose every item is such a dependent comparison is held
+    last. A cluster of comparisons without ``after`` (a preflight, an
+    anonymous rejection) is never held. Otherwise the work list's order
+    stands."""
     if node.get("role") != "repair" or worklist is None:
         return "", []
     items = {str(i.get("id")): i for i in worklist.get("items") or [] if isinstance(i, dict)}
+    first = set((order or {}).get("first") or ())
+    held = set((order or {}).get("held") or ())
 
-    def _throws(c: dict[str, Any]) -> bool:
-        return any(((items.get(str(x)) or {}).get("advice") or {}).get("server_error") for x in c.get("items") or [])
+    def _scen(x: Any) -> str:
+        return _bare_scenario((items.get(str(x)) or {}).get("scenario"))
+
+    def _producer_item(x: Any) -> bool:
+        # the producer's repair: a status/body difference on one of its own scenarios, never a header-only one
+        it = items.get(str(x)) or {}
+        return bool(_scen(x)) and _scen(x) in first and str(it.get("cause") or "") not in HEADER_CAUSES
+
+    def _rank(c: dict[str, Any]) -> int:
+        ids = list(c.get("items") or [])
+        if any(((items.get(str(x)) or {}).get("advice") or {}).get("server_error") for x in ids) \
+                or any(_producer_item(x) for x in ids):
+            return 0
+        if held and ids and all(_scen(x) in held for x in ids):
+            return 2
+        return 1
 
     mine = [c for c in worklist.get("clusters") or []
             if isinstance(c, dict) and c.get("status") == "open"
             and (own & set(c.get("items") or []) or c.get("id") in set(node.get("clusters") or []))]
-    for c in sorted(mine, key=lambda c: not _throws(c)):
+    for c in sorted(mine, key=_rank):
         return str(c["id"]), sorted(str(p) for p in c.get("write_set") or [])
     return "", []
 
@@ -779,6 +803,13 @@ def _satisfied(root: Path, board: Board, run: str, plan: dict[str, Any], node: d
     still = sorted(open_obligations(worklist) & owned(plan, node))
     if still:
         return None, ["open obligation %s" % o for o in still[:6]]
+    now = {str(r.get("check")) for r in node.get("check_plan") or [] if r.get("stage") != "later"} \
+        | set(((node.get("acceptance") or {}).get("requirement_checks")) or [])
+    owed = [c for c in remeasure_owed(board, run, node["outcome_id"]) if c in now]
+    if owed:
+        # a shared producer's repair marked this path: only a measurement of THIS outcome discharges it
+        # (a later row it owns is remeasured at its earliest points and at M4, not here)
+        return None, ["remeasure owed after a shared producer's repair: %s" % ", ".join(owed[:4])]
     evidence = None
     for oid, row in (board.run_tasks(run) or {}).items():
         for r in _accept_records(board, row["id"]):
@@ -890,6 +921,12 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         if routed is not None and routed.get("self"):
             plan = board.plan(run)
             node = _node(plan, oid) or node
+    schedule = None
+    if role == "repair" and str(node.get("class") or "") in ORPHAN_WAITERS and in_progress is None:
+        # check-schedule/v1: the later checks whose earliest point is this card are measured now on the
+        # measured candidate; a FAIL is routed to its owner (OWNER_REPAIR_PENDING), a pending row stays owed
+        schedule = schedule_at_issue(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, holder=oid,
+                                     worklist=worklist, tree=tree)
     cluster, allowed, unit = "", [], None
     satisfied, unsatisfied = None, []
     objective = None
@@ -908,7 +945,11 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                 raise Refusal("ISSUE_OBJECTIVE_SCOPE", str(exc)[:400])
             cluster, allowed, objective = "objective:%s" % oid, sorted(env["writable_paths"]), eu
         else:
-            cluster, allowed = _allowed_paths(node, worklist, own)
+            order = None
+            if any(r.get("after") for r in node.get("check_plan") or []):
+                known = {"%s#%s" % (m["owner"], m["check"]): m["state"] for m in (schedule or {}).get("rows") or []}
+                order = issue_order(plan, node, _producer_states(root, plan, node, worklist, tree, _status_fn(board, run), known))
+            cluster, allowed = _allowed_paths(node, worklist, own, order)
         if not cluster and node.get("repair_paths"):
             cluster = planned_cluster_id(oid)
             allowed = sorted(node["repair_paths"])[:AMEND_MAX_FILES]
@@ -979,6 +1020,8 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             "held_candidate": bool(board.records(task_id, "owner-hold")) and not board.records(task_id, "restore-held"),
             "parked_candidate": bool(parked_pending(board, task_id)),
             "run": run, "baseline_commit": head, "baseline_tree": tree, "claimed_control": False,
+            "schedule": [{k: m.get(k) for k in ("owner", "check", "state", "missing")} for m in (schedule or {}).get("rows") or []],
+            "remeasure_owed": remeasure_owed(board, run, oid) if role == "repair" else [],
             "control": "native-cooperative", "record": rec["key"],
             "amendments": [amendment_projection(root, head, a) for a in board.records(task_id, "amend")
                            if a.get("cluster") == cluster] if cluster else []}
@@ -1079,6 +1122,421 @@ def route_orphans(root: Path, board: Board, *, task_id: str, run_id: int, run: s
                       "it and it cannot be routed (%s). End this run with kanban_block kind=needs_input naming it"
                       % (oid, named, "; ".join("%s: %s" % u for u in out["unresolved"][:3])))
     return out
+
+
+# ---------------------------------------------------------------------------
+# check-schedule/v1 executed through the lifecycle (roadmap M-2): a later check
+# is measured at its earliest useful point, its failure routed to its owner
+# ---------------------------------------------------------------------------
+
+SCHEDULE_FIRST_PACKAGE = "first-package"          # compatibility_objectives.FIRST_PACKAGE
+# worklist.CORS_CAUSE / REPRESENTATION_CAUSE: header-only comparisons, never a producer's repair
+HEADER_CAUSES = ("cors-response", "content-type-parameter")
+SCHEDULED_OBLIGATION = "scheduled-check:%s:%s"     # owner, check
+SCHEDULE_STATES = ("pass", "fail", "unknown", "pending")
+
+
+def _bare_scenario(s: Any) -> str:
+    s = str(s or "")
+    return s[3:] if s.startswith("sc:") else s
+
+
+def _status_fn(board: Board, run: str) -> Callable[[str], str]:
+    tasks = board.run_tasks(run)
+
+    def status_of(o: str) -> str:
+        row = tasks.get(o)
+        return "done" if row and (board.task(row["id"]) or {}).get("status") == "done" else "open"
+    return status_of
+
+
+def scheduled_rows(plan: dict[str, Any], holder: str) -> list[dict[str, Any]]:
+    """The LATER check-plan rows whose earliest measurement point is the card
+    ``holder``: its own outcome id in ``earliest.at``, or ``first-package``
+    when the holder measures the running application (a behavior or runtime
+    card runs only after every build, configuration and source outcome is
+    accepted). One row per (owner, check): the requirements that use it and
+    the union of their prerequisites; the owner's own card never measures its
+    later debt here. Pure; deterministic."""
+    hnode = _node(plan, holder) or {}
+    runs_app = hnode.get("role") == "repair" and str(hnode.get("class") or "") in ORPHAN_WAITERS
+    rows: dict[tuple[str, str], dict[str, Any]] = {}
+    for n in plan.get("nodes") or []:
+        if n.get("role") != "repair" or n["outcome_id"] == holder:
+            continue
+        for r in n.get("check_plan") or []:
+            if r.get("stage") != "later" or not isinstance(r.get("earliest"), dict):
+                continue
+            at = [str(x) for x in r["earliest"].get("at") or []]
+            if holder not in at and not (runs_app and SCHEDULE_FIRST_PACKAGE in at):
+                continue
+            owner = str(r.get("owner") or n["outcome_id"])
+            got = rows.setdefault((owner, str(r["check"])), {
+                "owner": owner, "check": str(r["check"]), "requirements": set(), "requires": set(), "after": set(),
+                "milestone": str(r["earliest"].get("milestone") or ""), "qualification": str(r.get("qualification") or "")})
+            got["requirements"].add(str(r.get("requirement") or ""))
+            got["requires"] |= {str(x) for x in r.get("requires") or []}
+            got["after"] |= {str(x) for x in r.get("after") or []}
+    return [dict(v, requirements=sorted(v["requirements"] - {""}), requires=sorted(v["requires"]), after=sorted(v["after"]))
+            for _k, v in sorted(rows.items())]
+
+
+def _receipts(root: Path) -> dict[str, dict[str, Any]]:
+    from planner.worklist import parity_receipt_file
+    got = {m: _read_json(Path(root) / parity_receipt_file(m)) for m in ("disabled", "enabled")}
+    return {m: r for m, r in got.items() if isinstance(r, dict)}
+
+
+def measured_scenarios(root: Path, tree: str) -> list[str]:
+    """The parity scenarios the composed receipts measured on THIS candidate
+    (a receipt bound to another tree measured nothing here)."""
+    from planner.worklist import parity_state
+    out: set[str] = set()
+    for rec in _receipts(root).values():
+        bind = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+        if tree and str(bind.get("candidate_sha256") or "") == tree:
+            out |= set((parity_state(rec).get("scenarios") or {}).keys())
+    return sorted(out)
+
+
+def unmet_requires(root: Path, requires: list[str], worklist: dict[str, Any] | None, tree: str,
+                   status_of: Callable[[str], str]) -> list[str]:
+    """Each verification prerequisite of a scheduled row that does NOT hold on
+    the measured candidate, named. Fail closed: an unknown prerequisite is
+    unmet. application:* read the package/boot gate rows of the work list
+    measured on this tree; database:working is the boot gate's start against
+    the decided database with no environment blocker; mode-receipt:<m> a
+    composed receipt of that mode bound to this tree; compiled:/repair:<o>
+    that outcome's card is done."""
+    from planner.requirement_checks import PASS, _gate
+    from planner.worklist import parity_state
+    if not isinstance(worklist, dict) or not tree or str(worklist.get("candidate_sha256") or "") != tree:
+        return ["a work list measured on this candidate %s (measured: %s)"
+                % (tree[:12], str((worklist or {}).get("candidate_sha256") or "none")[:12])]
+    out: list[str] = []
+    rt = worklist.get("runtime") if isinstance(worklist.get("runtime"), dict) else {}
+    receipts = None
+    for req in requires:
+        kind, _, arg = req.partition(":")
+        if req == "application:packaged":
+            if _gate(worklist, "package") != PASS:
+                out.append("%s (the package gate did not pass on this candidate)" % req)
+        elif req == "application:started":
+            if _gate(worklist, "boot") != PASS:
+                out.append("%s (the packaged application did not start on this candidate)" % req)
+        elif req == "database:working":
+            if _gate(worklist, "boot") != PASS or rt.get("blockers"):
+                out.append("%s (the application did not start against the decided database%s)"
+                           % (req, ": %s" % "; ".join(str(b) for b in rt["blockers"])[:160] if rt.get("blockers") else ""))
+        elif kind == "mode-receipt":
+            receipts = _receipts(root) if receipts is None else receipts
+            rec = receipts.get(arg) or {}
+            bind = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+            if str(bind.get("candidate_sha256") or "") != tree or not parity_state(rec).get("known"):
+                out.append("%s (no %s-mode receipt measured on this candidate)" % (req, arg))
+        elif kind in ("compiled", "repair"):
+            if status_of(arg) != "done":
+                out.append("%s (%s is not accepted)" % (req, arg))
+        else:
+            out.append("%s (an unknown prerequisite is never met)" % req)
+    return out
+
+
+def measure_scheduled(root: Path, plan: dict[str, Any], row: dict[str, Any], worklist: dict[str, Any] | None, tree: str,
+                      status_of: Callable[[str], str], scenarios: list[str] | None = None) -> dict[str, Any]:
+    """One scheduled row on the measured candidate: ``pending`` naming each
+    unmet prerequisite (never a pass, never dropped), else the owner's check
+    measured exactly as M4 measures a deferred check (requirement_measurement
+    of the owner's requirements): pass | fail | unknown. A repository row
+    carries its focused qualification's evidence (read only; it grants
+    nothing)."""
+    out = {"owner": row["owner"], "check": row["check"], "requirements": list(row.get("requirements") or []),
+           "milestone": row.get("milestone") or ""}
+    if row.get("qualification"):
+        from planner.qualification_evidence import resolve
+        q = resolve(row["qualification"], Path(root), tree=tree)
+        out["qualification"] = {"id": q["id"], "status": q["status"], "test": q["test"], "missing": q["missing"][:2]}
+    missing = unmet_requires(root, list(row.get("requires") or []), worklist, tree, status_of)
+    if missing:
+        return dict(out, state="pending", missing=missing, detail="not measured: %d prerequisite(s) unmet" % len(missing))
+    scen = measured_scenarios(root, tree) if scenarios is None else list(scenarios)
+    pseudo = {"outcome_id": row["owner"], "requirements": list(row.get("requirements") or []),
+              "acceptance": {"requirement_checks": [row["check"]]}}
+    got = (requirement_measurement(root, plan, pseudo, worklist or {}, scen, tree) or {}).get(row["check"]) \
+        or {"status": "unknown", "detail": "not measured"}
+    state = str(got.get("status") or "unknown")
+    return dict(out, state=state if state in ("pass", "fail") else "unknown", missing=[], detail=str(got.get("detail") or "")[:300])
+
+
+def _producer_states(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any] | None, tree: str,
+                     status_of: Callable[[str], str], known: dict[str, str]) -> dict[str, str]:
+    """'<owner>#<check>' -> pass | fail | unknown | pending for every producer
+    this card's own comparisons come ``after``; one measurement per producer."""
+    out: dict[str, str] = {}
+    for r in node.get("check_plan") or []:
+        for key in r.get("after") or []:
+            key = str(key)
+            if key in out:
+                continue
+            if key in known:
+                out[key] = known[key]
+                continue
+            owner, _, chk = key.partition("#")
+            onode = _node(plan, owner) or {}
+            rows = [x for x in onode.get("check_plan") or [] if str(x.get("check")) == chk]
+            if not rows:
+                out[key] = "unknown"
+                continue
+            got = measure_scheduled(root, plan, {"owner": owner, "check": chk,
+                                                 "requirements": sorted({str(x.get("requirement")) for x in rows}),
+                                                 "requires": sorted({str(q) for x in rows for q in x.get("requires") or []})},
+                                    worklist, tree, status_of)
+            out[key] = got["state"]
+    return out
+
+
+def issue_order(plan: dict[str, Any], node: dict[str, Any], producers: dict[str, str]) -> dict[str, set[str]]:
+    """check-schedule/v1 issuance order of a card's open clusters, as the
+    scenarios that go FIRST and the ones HELD. A comparison whose ``after``
+    producer is not measured PASS is held behind the producer's own
+    scenarios (the repository contract's read/write scenarios: its repair
+    cluster: a status/body difference there, not a header-only one). A row
+    without ``after`` -- a preflight, an anonymous rejection that never
+    reaches the repository -- is never held behind CRUD. Pure."""
+    reqs = {str(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}
+    first: set[str] = set()
+    held: set[str] = set()
+    failing = {k for k, v in producers.items() if v != "pass"}
+    for key in failing:
+        owner, _, chk = key.partition("#")
+        for row in (_node(plan, owner) or {}).get("check_plan") or []:
+            if str(row.get("check")) != chk:
+                continue
+            facts = (reqs.get(str(row.get("requirement"))) or {}).get("facts") or {}
+            for v in facts.get("verification") or []:
+                if isinstance(v, dict):
+                    first |= {_bare_scenario(s) for s in v.get("scenarios") or []}
+    for row in node.get("check_plan") or []:
+        chk = str(row.get("check") or "")
+        if chk.startswith("parity:") and "-mode:" not in chk and set(str(x) for x in row.get("after") or []) & failing:
+            held.add(_bare_scenario(chk[len("parity:"):]))
+    return {"first": first, "held": held}
+
+
+def _row_scenarios(m: dict[str, Any], reqs: dict[str, dict[str, Any]]) -> set[str]:
+    chk = str(m.get("check") or "")
+    if chk.startswith("parity:") and "-mode:" not in chk:
+        return {_bare_scenario(chk[len("parity:"):])}
+    if chk.startswith("behavior:repository-effects:"):
+        return {_bare_scenario(s) for rq in m.get("requirements") or []
+                for v in ((reqs.get(rq) or {}).get("facts") or {}).get("verification") or [] if isinstance(v, dict)
+                for s in v.get("scenarios") or []}
+    return set()
+
+
+def _producer_difference(m: dict[str, Any], reqs: dict[str, dict[str, Any]], worklist: dict[str, Any] | None) -> bool:
+    """Does a FAILing scheduled row point at its owner's producer? For a
+    scenario-backed row: at least one open finding on its scenarios is a
+    status/body difference or a server error, not only a header (CORS,
+    representation) difference the measuring card repairs itself. A row not
+    backed by scenarios is its owner's by construction."""
+    scen = _row_scenarios(m, reqs)
+    if not scen:
+        return True
+    for it in (worklist or {}).get("items") or []:
+        if not isinstance(it, dict):
+            continue
+        s = {_bare_scenario(x) for x in [it.get("scenario")] + list(it.get("scenarios") or []) if x}
+        if s & scen and (str(it.get("cause") or "") not in HEADER_CAUSES or (it.get("advice") or {}).get("server_error")):
+            return True
+    return False
+
+
+def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, run: str, plan: dict[str, Any],
+                      holder: str, worklist: dict[str, Any] | None, tree: str) -> dict[str, Any] | None:
+    """Measure every later row scheduled at this card (scheduled_rows) on the
+    measured candidate, record the result on this card (``schedule-measure``,
+    keyed per run, revision and tree), and route each FAIL to the row's owner
+    as an owed repair obligation by the existing M3 orphan-routing rules
+    (orphan_revision): the follow-up of the accepted owner, sharing its family
+    budget, becomes a prerequisite of this card, the other open behavior and
+    runtime cards and M4 -- then OWNER_REPAIR_PENDING (kanban_block
+    kind=dependency). Not routed (named in the row's ``route``): a check this
+    card judges itself as an immediate check, one already routed, one whose
+    owner is still open, and a scenario failure that is only a header
+    difference. A pending or unknown row stays owed (M4 remains the backstop
+    and measures it again). None when nothing is scheduled here."""
+    rows = scheduled_rows(plan, holder)
+    if not rows:
+        return None
+    status_of = _status_fn(board, run)
+    scen = measured_scenarios(root, tree)
+    measured = [measure_scheduled(root, plan, r, worklist, tree, status_of, scen) for r in rows]
+    hnode = _node(plan, holder) or {}
+    judged_here = {str(r.get("check")) for r in hnode.get("check_plan") or [] if r.get("stage") != "later"} \
+        | set(((hnode.get("acceptance") or {}).get("requirement_checks")) or [])
+    reqs = {str(q.get("id")): q for q in plan.get("requirements") or [] if isinstance(q, dict)}
+    ownership = plan.get("ownership") or {}
+    fails = []
+    for m in measured:
+        if m["state"] != "fail":
+            continue
+        ob = SCHEDULED_OBLIGATION % (m["owner"], m["check"])
+        cur = str(ownership.get(ob) or "")
+        if m["check"] in judged_here:
+            # the same comparison is this card's own immediate check: its finding is this card's cluster
+            m["route"] = "judged by %s itself (its own immediate check); the owner still owes it at M4" % holder
+        elif cur and status_of(cur) != "done":
+            m["route"] = "already routed to %s" % cur
+        elif status_of(m["owner"]) != "done":
+            m["route"] = "its owner %s is still open: judged there and at M4" % m["owner"]
+        elif not _producer_difference(m, reqs, worklist):
+            m["route"] = ("only header-only differences are open on its scenarios: this card's own clusters, "
+                          "not a producer repair")
+        else:
+            m["route"] = "owner"
+            fails.append(m)
+    rec = board.record(task_id, "schedule-measure", "schedule-measure:%d:r%d:%s" % (int(run_id), int(plan["revision"]), tree[:16]),
+                       run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=measured)
+    orphans, unrouted = [], []
+    for m in fails:
+        ob = SCHEDULED_OBLIGATION % (m["owner"], m["check"])
+        onode = _node(plan, m["owner"]) or {}
+        orphans.append({"id": ob, "path": "", "kind": "requirement-check", "entry_point": "", "scenario": "",
+                        "cluster": "", "write_set": sorted(set(onode.get("plan_paths") or [])
+                                                           | {str(p) for q in plan.get("requirements") or [] if isinstance(q, dict)
+                                                              and q.get("id") in m["requirements"] for p in q.get("paths") or []}),
+                        "status": "open", "reopened_from": m["owner"], "detail": m["detail"][:300]})
+    out = {"record": rec["key"], "rows": measured, "routed": [], "unrouted": unrouted}
+    if not orphans:
+        return out
+    from planner.outcome_checks import orphan_revision
+    routed = orphan_revision(plan, orphans, holder=holder, status_of=status_of,
+                             budget_of=lambda o: dict((_node(plan, o) or {}).get("budget") or {}))
+    if routed["plan"] is None:
+        out["unrouted"] += routed["unresolved"]
+        return out
+    nxt = routed["plan"]
+    by_ob = {SCHEDULED_OBLIGATION % (m["owner"], m["check"]): m for m in fails}
+    for n in nxt["nodes"]:
+        mine = [by_ob[o] for o in n.get("obligations") or [] if o in by_ob]
+        if n.get("role") != "repair" or not mine or not n["outcome_id"].startswith("followup:"):
+            continue
+        acc = dict(n.get("acceptance") or {})
+        acc["requirement_checks"] = sorted(set(acc.get("requirement_checks") or []) | {m["check"] for m in mine})
+        n["acceptance"] = acc
+        n["requirements"] = sorted(set(n.get("requirements") or []) | {q for m in mine for q in m["requirements"]})
+        n["class"] = "behavior"          # measured on the running application, exactly like an M4 deferred-check follow-up
+        n["schedule"] = [{"check": m["check"], "measured_at": holder, "milestone": m["milestone"]}
+                         for m in sorted(mine, key=lambda x: x["check"])]
+    nxt["trigger"] = {"intent": "m3-schedule:%s" % holder}
+    nxt.pop("digest", None)
+    nxt["digest"] = plan_digest(nxt)
+    nxt = native_revision(nxt)
+    board.record(task_id, "schedule-route", "schedule-route:%d:r%d" % (int(run_id), int(nxt["revision"])), run=int(run_id),
+                 revision=int(nxt["revision"]), added=routed["added"], obligations=sorted(by_ob)[:20],
+                 unresolved=[u[0] for u in routed["unresolved"]][:20])
+    from planner.native_publish import publish_revision
+    publish_revision(root, board, nxt, added=routed["added"], holder=task_id)
+    out["routed"] = routed["added"]
+    named = "; ".join("%s of %s (%s)" % (m["check"], m["owner"], m["detail"][:120]) for m in fails[:3])
+    raise Refusal("OWNER_REPAIR_PENDING", "%s is the earliest measurement point of %s, which FAILS on this candidate; the "
+                  "check is owed by its owner, so %s (the owner's follow-up, sharing the owner's budget) is now a prerequisite "
+                  "of this card, of the other behavior cards and of M4. End this run with kanban_block kind=dependency; this "
+                  "card resumes after it" % (holder, named, ", ".join(routed["added"]) or "its open follow-up"))
+
+
+def schedule_status(board: Board, run: str, plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Read-only: '<owner>|<check>' -> the latest scheduled measurement of every
+    later row (state, missing, where, tree), or ``not-reached`` when no card at
+    its earliest point has been issued yet. A pending row is never reported
+    as passed; M4 still measures every row."""
+    latest: dict[str, dict[str, Any]] = {}
+    for oid, row in sorted((board.run_tasks(run) or {}).items()):
+        for rec in board.records(row["id"], "schedule-measure"):
+            for m in rec.get("rows") or []:
+                k = "%s|%s" % (m.get("owner"), m.get("check"))
+                if k not in latest or int(rec["_id"]) > int(latest[k]["_id"]):
+                    latest[k] = dict(m, at=oid, tree=rec.get("tree"), _id=int(rec["_id"]))
+    out: dict[str, dict[str, Any]] = {}
+    for n in plan.get("nodes") or []:
+        for r in n.get("check_plan") or []:
+            if r.get("stage") != "later":
+                continue
+            k = "%s|%s" % (r.get("owner") or n["outcome_id"], r["check"])
+            out[k] = latest.get(k) or {"state": "not-reached", "at": "", "missing": [],
+                                       "earliest": list((r.get("earliest") or {}).get("at") or [])}
+    return out
+
+
+# ---------------------------------------------------------------------------
+# a shared producer's accepted repair: every affected path is remeasured
+# ---------------------------------------------------------------------------
+
+def _causal_scope(plan: dict[str, Any], node: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """(producer outcome, its causal_scope) for a producer or a follow-up /
+    owner repair of one (lineage), else ('', {})."""
+    if isinstance(node.get("causal_scope"), dict):
+        return node["outcome_id"], node["causal_scope"]
+    for ln in node.get("lineage") or []:
+        p = _node(plan, str((ln or {}).get("follows") or "")) or {}
+        if isinstance(p.get("causal_scope"), dict):
+            return p["outcome_id"], p["causal_scope"]
+    return "", {}
+
+
+def mark_remeasure(board: Board, run: str, plan: dict[str, Any], node: dict[str, Any], *, task_id: str, accept_key: str,
+                   tree: str) -> list[str]:
+    """After an accepted repair of a shared producer: every affected path of
+    its causal_scope is marked for remeasurement on its own card
+    (``remeasure`` record, keyed by the producer and the acceptance). The
+    producer's acceptance discharges no affected path. Returns the marked
+    outcomes. Replay-safe (keyed)."""
+    producer, scope = _causal_scope(plan, node)
+    marked = []
+    for a in scope.get("affects") or []:
+        target = _node(plan, str(a.get("outcome") or ""))
+        tid = board.task_of(run, target) if target else ""
+        if not tid:
+            continue
+        board.record(tid, "remeasure", "remeasure:%s:%s" % (producer, accept_key), producer=producer, repair=node["outcome_id"],
+                     repair_task=task_id, accept=accept_key, tree=tree, checks=sorted(str(c) for c in a.get("checks") or []))
+        marked.append(target["outcome_id"])
+    return marked
+
+
+def _passes_since(board: Board, run: str, oid: str, since: int) -> set[str]:
+    """Checks measured PASS for outcome ``oid`` after board comment ``since``:
+    its own acceptance measurements, and scheduled measurements of rows it owns."""
+    out: set[str] = set()
+    tasks = board.run_tasks(run) or {}
+    row = tasks.get(oid)
+    if row:
+        for r in board.records(row["id"], "accept-commit"):
+            if int(r["_id"]) <= since:
+                continue
+            m = r.get("measurement") or {}
+            out |= set(m.get("checks") or [])
+    for _o, t in tasks.items():
+        for rec in board.records(t["id"], "schedule-measure"):
+            if int(rec["_id"]) <= since:
+                continue
+            out |= {str(m.get("check")) for m in rec.get("rows") or [] if m.get("owner") == oid and m.get("state") == "pass"}
+    return out
+
+
+def remeasure_owed(board: Board, run: str, oid: str) -> list[str]:
+    """The checks of ``oid`` marked for remeasurement after a shared
+    producer's repair and not measured PASS for ``oid`` itself since. Another
+    path's pass never discharges them."""
+    tasks = board.run_tasks(run) or {}
+    row = tasks.get(oid)
+    if not row:
+        return []
+    owed: set[str] = set()
+    for mark in board.records(row["id"], "remeasure"):
+        owed |= set(mark.get("checks") or []) - _passes_since(board, run, oid, int(mark["_id"]))
+    return sorted(owed)
 
 
 def _unchanged_issue(board: Board, task_id: str, run_id: int, fields: dict[str, Any]) -> dict[str, Any] | None:
@@ -1535,7 +1993,9 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     board.record(task_id, "accept-commit", "accept-commit:%s" % key, run=int(run_id), commit=commit, tree=tree,
                  cluster=iss.get("cluster") or "", outcome_accepted=done, measurement=m, repair_evidence_gaps=evidence_gaps,
                  **(extra or {}))
-    return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"],
+    # check-schedule/v1: an accepted repair of a shared producer marks every affected path for remeasurement
+    marked = mark_remeasure(board, run, plan, node, task_id=task_id, accept_key="accept-commit:%s" % key, tree=tree) if done else []
+    return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "remeasure": marked,
             "covered": covered, "repair_evidence_gaps": evidence_gaps,
             "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": evidence_gaps})}
 
