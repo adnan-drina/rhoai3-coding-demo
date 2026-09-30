@@ -30,14 +30,14 @@ log_step "Golden-path template readiness (remote check)"
 check "golden branch exists upstream for scaffold template" \
   "git ls-remote --heads https://github.com/adnan-drina/agentic-quarkus-scaffold.git golden | wc -l | tr -d ' '" \
   "1"
-check "scaffold devfile uses the shared UDI base image (udi-rhel9)" \
-  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q 'devspaces/udi-rhel9' && echo present || echo missing" \
+check "scaffold devfile uses the ws-070 overlay image (built FROM the shared UDI), pinned by digest" \
+  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | contains 'quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:' && echo present || echo missing" \
   "present"
 check "scaffold devfile runs the platform init script on postStart" \
-  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q 'devspace-ai-tools-init' && echo present || echo missing" \
+  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | contains 'devspace-ai-tools-init' && echo present || echo missing" \
   "present"
 check "scaffold carries the OpenCode selector signal (.opencode/skills)" \
-  "curl -fsSL 'https://api.github.com/repos/adnan-drina/agentic-quarkus-scaffold/contents/.opencode/skills?ref=main' | grep -cq 'quarkus-rest-conventions' && echo present || echo missing" \
+  "curl -fsSL 'https://api.github.com/repos/adnan-drina/agentic-quarkus-scaffold/contents/.opencode/skills?ref=main' | contains 'quarkus-rest-conventions' && echo present || echo missing" \
   "present"
 # Factory destfile is the GitOps skeleton (template replace:true), not the
 # GitHub golden destfile. per-workspace avoids RWO FailedMount when the
@@ -56,10 +56,10 @@ log_step "OpenCode gateway trust (Bun system-CA fix)"
 # (oven-sh/bun#23735) — without NODE_USE_SYSTEM_CA it rejects the MaaS gateway's
 # ingress cert and reaches zero models. Validate both surfaces carry it.
 check "init script exports NODE_USE_SYSTEM_CA" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -q NODE_USE_SYSTEM_CA && echo present || echo missing" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | contains NODE_USE_SYSTEM_CA && echo present || echo missing" \
   "present"
 check "scaffold devfile sets NODE_USE_SYSTEM_CA container env" \
-  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q NODE_USE_SYSTEM_CA && echo present || echo missing" \
+  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | contains NODE_USE_SYSTEM_CA && echo present || echo missing" \
   "present"
 
 log_step "MaaS prerequisites from earlier stages"

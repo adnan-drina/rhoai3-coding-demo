@@ -1004,12 +1004,13 @@ check "devspaces-coding-models subscription has the local coding model @20M/1h (
 
 DS_QWEN38_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"${QWEN38_MODEL_RESOURCE}\")].tokenRateLimits[0].limit}")
 if contains_word "$DS_MODELS" "$QWEN38_MODEL_RESOURCE" &&
-  [[ "$DS_QWEN38_LIMIT" == "20000000" ]]; then
+  [[ "$DS_QWEN38_LIMIT" == "60000000" ]]; then
   R="pass"
 else
   R="devspaces=${DS_QWEN38_LIMIT:-missing}"
 fi
-check "Qwen3.8 INT4 has an explicit devspaces quota of 20M/1h" "$R"
+# 60M/1h since 7501f854 (v12 measured 25M in its busiest hour; see the policy comment).
+check "Qwen3.8 INT4 has an explicit devspaces quota of 60M/1h" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")

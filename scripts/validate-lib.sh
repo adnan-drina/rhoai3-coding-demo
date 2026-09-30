@@ -12,6 +12,11 @@
 #   check_warn "Label" "oc get ..." "expected-substring"
 #   validation_summary
 
+# Match a pattern on a pipe without stopping early. `grep -q` exits at the first
+# match; the producer (oc, curl) then dies of SIGPIPE on a large document and
+# pipefail turns the match into a miss. Use: `oc get ... | contains -E 'x' && echo present`.
+contains() { grep "$@" >/dev/null; }
+
 VALIDATE_PASS=0
 VALIDATE_WARN=0
 VALIDATE_FAIL=0

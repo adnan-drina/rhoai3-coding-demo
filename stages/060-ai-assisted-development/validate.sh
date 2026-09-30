@@ -41,25 +41,25 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.metadata.name}'" \
         "vscode-editor-configurations"
     check "Che Code editor configuration does not force Kilo into factory workspaces: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'kilocode.kilo-code' && echo present || echo absent" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | contains 'kilocode.kilo-code' && echo present || echo absent" \
         "absent"
     check "Che Code editor configuration recommends OpenShift Toolkit: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'redhat.vscode-openshift-connector' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | contains 'redhat.vscode-openshift-connector' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration defaults to bash: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration sets Kilo Code default model: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen38' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.providerID.: .qwen38' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration defaults Kilo to qwen3-8-27b-int4: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.modelID.: .qwen3-8-27b-int4' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.modelID.: .qwen3-8-27b-int4' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration disables Workspace Trust so Kilo activates: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
         "present"
     check "Che Code product defaults disable Workspace Trust before first UI: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.product\\.json}' | grep -q 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.product\\.json}' | contains 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
         "present"
     for retired in getting-started-ai-coding coolstore-inventory-service mca-coolstore; do
         check "Retired standing DevWorkspace is absent: $ns/$retired" \
@@ -77,16 +77,16 @@ for ns in wksp-ai-developer wksp-ai-admin; do
         "case \"\$(oc get devworkspace agentic-coolstore -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
         "pinned"
     check "agentic-coolstore declares Java 21 JAVA_HOME: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
         "present"
     check "agentic-coolstore startup configures Java 21 shell default: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
         "present"
     check "agentic-coolstore declares Kilo Code default extension: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix' && echo present || echo missing" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains '/tmp/kilo.vsix' && echo present || echo missing" \
         "present"
     check "agentic-coolstore downloads Kilo Code extension 7.4.8: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q 'kilo-code-7.4.8' && echo present || echo missing" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains 'kilo-code-7.4.8' && echo present || echo missing" \
         "present"
     phase=$(oc get devworkspace agentic-coolstore -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
     if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
@@ -98,21 +98,21 @@ for ns in wksp-ai-developer wksp-ai-admin; do
     fi
 done
 check "agentic-coolstore tracks main branch" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -A2 'checkoutFrom' | grep -q 'revision: main' && echo main || echo other" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -A2 'checkoutFrom' | contains 'revision: main' && echo main || echo other" \
     "main"
 check "agentic-coolstore exposes quarkus-dev endpoint" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -q 'name: quarkus-dev' && echo present || echo missing" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | contains 'name: quarkus-dev' && echo present || echo missing" \
     "present"
 check "agentic-coolstore has package command" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -q 'id: package' && echo present || echo missing" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | contains 'id: package' && echo present || echo missing" \
     "present"
 check "agentic-coolstore has start-dev command" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -q 'id: start-dev' && echo present || echo missing" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | contains 'id: start-dev' && echo present || echo missing" \
     "present"
 
 log_step "RHDH Platform Integration"
 check "Runtime catalog contains SonarQube URL" \
-    "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -q 'sonarqube-sonarqube' && echo present || echo missing" \
+    "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | contains 'sonarqube-sonarqube' && echo present || echo missing" \
     "present"
 check "rhdh-secrets contains SONARQUBE_URL key" \
     "[ -n \"\$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.SONARQUBE_URL}' 2>/dev/null)\" ] && echo present || echo missing" \
@@ -142,22 +142,22 @@ check "DevWorkspace AI tools init ConfigMap exists" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "devspace-ai-tools-init"
 check "Init script defaults Kilo to qwen3-8-27b-int4" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen38/qwen3-8-27b-int4' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'qwen38/qwen3-8-27b-int4' && echo present || echo missing" \
     "present"
 check "Init script keeps qwen3-6-27b selectable in Kilo" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen27b/qwen3-6-27b' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains '/models-as-a-service/qwen3-6-27b/v1' && echo present || echo missing" \
     "present"
 check "Init script allow-lists the MaaS Qwen providers for Kilo" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'enabled_providers.: \\[\"qwen38\", \"qwen27b\"\\]' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'enabled_providers.: \\[\"qwen38\", \"qwen27b\"\\]' && echo present || echo missing" \
     "present"
 check "Init script writes kilo.jsonc (Kilo 7.4 primary config)" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'kilo.jsonc' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'kilo.jsonc' && echo present || echo missing" \
     "present"
 check "Init script disables ungoverned Kilo providers (kilo gateway, z.ai)" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'disabled_providers' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'disabled_providers' && echo present || echo missing" \
     "present"
 check "Init script configures git identity on fresh volumes" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'ensure_git_identity' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'ensure_git_identity' && echo present || echo missing" \
     "present"
 check "DevWorkspace MaaS API key Secret exists" \
     "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \

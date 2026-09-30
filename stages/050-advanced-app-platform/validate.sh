@@ -258,10 +258,10 @@ check "050 RHDH catalog bundle: one revision, skew refused, last good catalog ke
   "python3 '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py' >/dev/null 2>&1 && echo BUNDLE_OK || echo BUNDLE_BROKEN" \
   "BUNDLE_OK"
 check "050 live runtime catalog carries its bundle id and a pinned revision" \
-  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' 2>/dev/null | grep -qE '^[0-9a-f]{64}$' && echo LIVE_BUNDLE_STAMPED || echo LIVE_BUNDLE_UNSTAMPED" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' 2>/dev/null | contains -E '^[0-9a-f]{64}$' && echo LIVE_BUNDLE_STAMPED || echo LIVE_BUNDLE_UNSTAMPED" \
   "LIVE_BUNDLE_STAMPED"
 check "050 live catalog publishes the validated in-cluster MaaS route on the platform entity" \
-  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null | grep -qE 'rhoai3.redhat.com/maas-internal-ip: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && echo LIVE_CATALOG_HAS_MAAS_ROUTE || echo LIVE_CATALOG_MISSING_MAAS_ROUTE" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null | contains -E 'rhoai3.redhat.com/maas-internal-ip: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && echo LIVE_CATALOG_HAS_MAAS_ROUTE || echo LIVE_CATALOG_MISSING_MAAS_ROUTE" \
   "LIVE_CATALOG_HAS_MAAS_ROUTE"
 check "050 Operator script still routes a pre-existing workspace to the in-cluster gateway with a validated host and IP" \
   "test -x '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' && grep -c 'RFC 1123 subdomain' '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' | head -1 || echo 0" \
