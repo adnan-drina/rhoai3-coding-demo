@@ -91,3 +91,6 @@ REFACTORING_V1.md
 .rhoai3-free-primitives-apply-log.json
 **/.rhoai3-free-primitives-apply-log.json
 
+
+# typed repair executor build output (the jar ships in the workspace image, pins.json typed_repair)
+.hermes/skills/migration/fix-until-green/typed-repair/target/
