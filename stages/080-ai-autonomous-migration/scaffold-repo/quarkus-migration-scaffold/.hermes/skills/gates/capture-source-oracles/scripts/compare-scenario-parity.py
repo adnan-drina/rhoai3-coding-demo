@@ -535,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
                           % (source_effects.get("reason") or ("the capture records no database comparison"
                                                               if source_effects.get("observed") else
                                                               "the capture records no source observation"))}
+    unread: list[str] = []
     for eff in expected_after:
         if str(eff.get("kind") or "") == "sql":
             # ADR-026: the committed state, compared value for value
@@ -542,9 +543,13 @@ def main(argv: list[str] | None = None) -> int:
             row = {"id": eff.get("id"), "kind": "sql", "query": eff.get("query"), "expected": {"value": eff.get("value")},
                    "observed": got_c, "match": got_c.get("value") is not None and got_c.get("value") == eff.get("value")}
             verdict["effects"].append(row)
-            if not row["match"]:
-                diffs.append("effect %s: committed state %r vs %r%s" % (row["id"], got_c.get("value"), eff.get("value"),
-                                                                     " (%s)" % got_c["error"] if got_c.get("error") else ""))
+            if got_c.get("value") is None:
+                # a read that failed observed nothing: never a value, never a difference -- the effect is
+                # unmeasured (INCONCLUSIVE below) unless something else was measured to differ
+                row["unread"] = True
+                unread.append("effect %s: the committed state could not be read (%s)" % (row["id"], got_c.get("error") or "no value"))
+            elif not row["match"]:
+                diffs.append("effect %s: committed state %r vs %r" % (row["id"], got_c.get("value"), eff.get("value")))
             continue
         probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers)
         row = {"id": eff.get("id"), "method": eff.get("method"), "path": eff.get("path"),
@@ -599,9 +604,14 @@ def main(argv: list[str] | None = None) -> int:
             else "destination_no_effect"
         verdict["results"][name] = "FAIL" if effect_diffs else "PASS"
     source_open = verdict["results"].get("source_effect", {}).get("verdict") == "INCONCLUSIVE"
+    if unread and verdict["effects"]:
+        verdict["results"][name] = "FAIL" if effect_diffs else "INCONCLUSIVE"
     if diffs:
         verdict["verdict"] = "FAIL"
-        verdict["reason"] = "; ".join(diffs)
+        verdict["reason"] = "; ".join(diffs + unread)
+    elif unread:
+        verdict["verdict"] = "INCONCLUSIVE"
+        verdict["reason"] = "; ".join(unread)
     elif source_open:
         verdict["verdict"] = "INCONCLUSIVE"
         verdict["reason"] = verdict["results"]["source_effect"]["reason"]

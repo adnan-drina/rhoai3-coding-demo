@@ -579,6 +579,13 @@ def _committed_state_case() -> int:
         rc, v = compare(["FAIL", "FAIL"])
         if rc != 1 or v["verdict"] != "INCONCLUSIVE":
             return _fail("a committed state that cannot be read is never a value: %s %s" % (rc, v.get("reason")))
+        # the start state read, the committed state after the request NOT read: unmeasured, never a FAIL on
+        # a value nobody observed (F3: a query failure is never counted as observed data)
+        rc, v = compare(["1", "FAIL"])
+        if rc != 1 or v["verdict"] != "INCONCLUSIVE" or "could not be read" not in v["reason"] \
+                or v["results"].get("destination_effect") != "INCONCLUSIVE" or not v["effects"][0].get("unread"):
+            return _fail("an unread committed state after the request is INCONCLUSIVE, never FAIL: %s %s"
+                         % (rc, {k: v.get(k) for k in ("verdict", "reason", "results")}))
     return 0
 
 
