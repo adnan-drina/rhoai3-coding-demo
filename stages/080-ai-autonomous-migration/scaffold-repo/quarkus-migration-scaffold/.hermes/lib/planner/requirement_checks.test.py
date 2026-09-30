@@ -327,10 +327,22 @@ def location_case() -> int:
     ep = "ep:p.Api#add(p.Body):http"
     req = {"id": "req:bv", "acceptance": ["parity:sc:create", "parity:sc:create-bad", "location:" + ep]}
     wl = {"items": [], "measure": {"known": True}}
+    # a measured scenario passes only on its own PASS record (architect review of the v29 Owner
+    # verification, 7d77d14f): the Location's covering scenarios carry theirs
+    import tempfile as _tempfile
+    td = Path(_tempfile.mkdtemp(prefix="rc-loc-"))
+    sdir = td / "verification" / "parity" / "scenarios"
+    sdir.mkdir(parents=True)
+
+    def passed_records(ids):
+        for sid in ids:
+            (sdir / ("%s.json" % str(sid).replace(":", "_"))).write_text(json.dumps(
+                {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": "PASS"}))
+    passed_records(["sc:create", "sc:create-bad"])
     for measured, items, want in ((["sc:create", "sc:create-bad"], [], "pass"),
                                   (["sc:create", "sc:create-bad"], [{"id": "par:1", "scenario": "sc:create"}], "fail"),
                                   (["sc:create"], [], "unknown")):
-        got = RC.measure(Path("."), [req], worklist=dict(wl, items=items), scenarios=measured)["location:" + ep]
+        got = RC.measure(td, [req], worklist=dict(wl, items=items), scenarios=measured)["location:" + ep]
         if got["status"] != want:
             return _fail("location with %s measured, %s open: %s != %s" % (measured, items, got, want))
     none = RC.measure(Path("."), [{"id": "r", "acceptance": ["location:" + ep]}], worklist=wl, scenarios=["sc:create"])
@@ -353,7 +365,9 @@ def location_case() -> int:
         str(a).startswith("location:") for a in r["acceptance"]))
     scen = [a[len("parity:"):] for a in owner["acceptance"] if a.startswith("parity:")]
     loc = next(a for a in owner["acceptance"] if a.startswith("location:"))
-    if RC.measure(Path("."), [owner], worklist=wl, scenarios=scen)[loc]["status"] != "pass":
+    cover = list(((owner.get("facts") or {}).get("location") or {}).get("coverage") or [])
+    passed_records(scen + cover)
+    if RC.measure(td, [owner], worklist=wl, scenarios=scen + cover)[loc]["status"] != "pass":
         return _fail("the v29 Owner create Location passes once its scenarios are measured and discharged")
     return 0
 

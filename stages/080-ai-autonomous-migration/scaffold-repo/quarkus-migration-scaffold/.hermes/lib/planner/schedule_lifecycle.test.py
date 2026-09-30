@@ -53,8 +53,10 @@ def _load(name: str, path: Path):
 NB = _load("nb_schedule", HERE / "native_board.test.py")
 CO_T = _load("co_schedule", HERE / "compatibility_objectives.test.py")
 NC, OG, Refusal = NB.NC, NB.OG, NB.Refusal
+from planner import measurement as ME  # noqa: E402
 from planner import qualification_evidence as QE  # noqa: E402
-from planner.worklist import PARITY_RECEIPT_SCHEMA, parity_receipt_file  # noqa: E402
+from planner.paths import VERIFY_RUN  # noqa: E402
+from planner.worklist import PARITY_RECEIPT_SCHEMA, SCENARIO_CORPORA, parity_receipt_file  # noqa: E402
 
 B_ORDER, B_ITEM, B_STATUS = "behavior:http:" + CO_T.O, "behavior:http:" + CO_T.ITEM, "behavior:http:" + CO_T.STATUS
 EFFECTS = "behavior:repository-effects:" + CO_T.FRAG_O
@@ -68,8 +70,18 @@ class Desk:
 
     def __init__(self):
         w, eps, oracles = CO_T.desk()
+        # the shape the real producers give (source_requirements: a Location-building handler names the
+        # scenarios that capture its Location; one bound corpus per mode): without them a planned
+        # verification unit refuses VERIFICATION_SCOPE_UNRESOLVED, as it must (v29 Owner, 7d77d14f)
+        for q in w.reqs:
+            if q["id"] == "req:behavior-verification:" + CO_T.EP_ADD:
+                q["facts"]["location"] = {"builds_location": True, "coverage": ["sc:create-orders"]}
         self.r = r = NB.Run(publish=False)
         NB.mirror_layout(r.root)
+        corpus = r.root / SCENARIO_CORPORA[0]
+        corpus.parent.mkdir(parents=True, exist_ok=True)
+        corpus.write_text(json.dumps({"scenarios": [{"id": s} for s in sorted(
+            {x for v in CO_T.ORDERS.values() for x in v} | set(REPO_SCENARIOS))]}))
         paths = {p for q in w.reqs for p in q.get("paths") or []} | {p for c in w.clusters for p in c["write_set"]}
         for p in sorted(paths):
             f = r.root / p
@@ -107,12 +119,53 @@ class Desk:
                                    "boot": {"ran": started, "rc": 0 if started else None, "ready": started},
                                    "blockers": [], "ready": started})
         r.save_worklist()
-        receipt = {"schema": PARITY_RECEIPT_SCHEMA, "security_mode": "disabled", "verdict": "FAIL",
-                   "binding": {"candidate_sha256": tree},
-                   "entry_points": [{"entry_point": "ep:x", "verdict": "PASS", "scenarios": list(scenarios)}]}
+        # what the comparator leaves (68152b24 / 945db1ab: a scenario passes only on its own record in its
+        # mode's receipt bound to this candidate): a verdict record per compared scenario, FAIL where an open
+        # finding names it, and the receipt row that declares it
+        failing = {str(x) for i in items for x in [i.get("scenario")] + list(i.get("scenarios") or []) if x}
+        verdict = {s: ("FAIL" if s in failing else "PASS") for s in scenarios}
+        receipt = {"schema": PARITY_RECEIPT_SCHEMA, "security_mode": "disabled",
+                   "verdict": "FAIL" if "FAIL" in verdict.values() else "PASS",
+                   "binding": {"mode": "candidate", "candidate_sha256": tree},
+                   "entry_points": [{"entry_point": "ep:x:" + s, "verdict": v, "scenarios": [s]}
+                                    for s, v in sorted(verdict.items())]}
         p = r.root / parity_receipt_file("disabled")
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(receipt))
+        sdir = r.root / "verification" / "parity" / "scenarios"
+        sdir.mkdir(parents=True, exist_ok=True)
+        for old in sdir.glob("*.json"):
+            old.unlink()
+        for s, v in verdict.items():
+            (sdir / ("%s.json" % s.replace(":", "_"))).write_text(json.dumps(
+                {"schema": "rhoai3.scenario-parity/v1", "scenario": s, "verdict": v, "security_mode": "disabled",
+                 "binding": {"mode": "candidate", "candidate_sha256": tree}}))
+
+    def accept_verified(self, tid, run, scope_by_mode, *, attempt):
+        """run-verify's acceptance measurement of an issued verification scope: every issued scenario compared
+        in its mode on this candidate (records + receipt), run.json naming each mode's assignment, and the
+        acceptance judged on that execution record rather than on a worker's list."""
+        r = self.r
+        NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="ACCEPTED", candidate=r.tree(), attempt=attempt)
+        NB.git(r.root, "add", "-A")
+        NB.git(r.root, "commit", "-qm", "verify %s" % attempt, "--allow-empty")
+        sids = [s for m in sorted(scope_by_mode) for s in scope_by_mode[m]]
+        self.measured(scenarios=sids)
+        r.worklist.update(measure={"known": True, "tuple": [0, 0, 0], "compile_errors": 0, "failing_tests": 0},
+                          sources={"surefire": {"reports": 1}})
+        r.save_worklist()
+        run_doc = {"candidate_sha256": r.tree(), "mode": "acceptance", "classpath": {"ran": True, "rc": 0},
+                   "diagnostics": {"ran": True}, "tests": {"ran": True, "rc": 0},
+                   "runtime": {"parity": {"ran": True, "rc": 0, "trigger": "issued-card", "scoped": True,
+                                          "scenarios": sids, "security_mode": "disabled",
+                                          "modes": {m: {"rc": 0, "scenarios": list(v)} for m, v in scope_by_mode.items()}}}}
+        (r.root / VERIFY_RUN).parent.mkdir(parents=True, exist_ok=True)
+        (r.root / VERIFY_RUN).write_text(json.dumps(run_doc))
+        ex = ME.execution(r.worklist, run_doc, "", r.root)
+        return NC.accept_commit(r.root, r.board, task_id=tid, run_id=run, attempt=attempt,
+                                commit=NB.git(r.root, "rev-parse", "HEAD"),
+                                measurement={"classes": ME.classes(ex), "execution": ex,
+                                             "scenarios": list(ex["stages"]["parity"].get("scenarios") or [])})
 
     def close(self):
         self.r.close()
@@ -186,11 +239,11 @@ class EarliestMeasurement(unittest.TestCase):
             acc = r.accept_on_run(ftid, frun, fiss, classes=("build", "compile", "tests"), scenarios=REPO_SCENARIOS, drop=False)
             self.assertFalse(acc["outcome_accepted"])                           # still failing: a budgeted rejection
             self.assertTrue(any(EFFECTS in x and "fail" in x for x in acc["not_accepted_because"]), acc)
-            r.worklist["items"], r.worklist["clusters"] = [], []
-            r.save_worklist()
+            # the repaired candidate is compared again: nothing open, every repository scenario PASS on it
+            d.measured()
             fiss = NC.issue(r.root, r.board, task_id=ftid, run_id=frun)
             acc = r.accept_on_run(ftid, frun, fiss, classes=("build", "compile", "tests"), scenarios=REPO_SCENARIOS,
-                                  attempt="2", drop=False)
+                                  attempt="2", edit=False, drop=False)
             self.assertTrue(acc["outcome_accepted"], acc)
             # 3. the shared producer's repair marks every affected path: Order, Item, the Item contract, the URI source
             self.assertEqual(sorted(acc["remeasure"]), sorted(a["outcome"] for a in NC._node(plan, d.owner)["causal_scope"]["affects"]))
@@ -206,9 +259,30 @@ class EarliestMeasurement(unittest.TestCase):
             rows = {m["check"]: m for m in r.board.records(tid2, "schedule-measure")[-1]["rows"]}
             self.assertEqual(rows[EFFECTS]["state"], "pass")
             self.assertEqual(len([n for n in r.plan()["nodes"] if n["outcome_id"].startswith("followup:")]), 1)
-            # the Order path is measured on its own acceptance; that pass is evidence for Order only
+            # nothing is left to repair: the Order card is its verification-only unit, and the ISSUED scope is
+            # the acceptance authority (945db1ab): worker receipts naming a subset leave it unaccepted
+            self.assertEqual((iss2["allowed_paths"], iss2["cluster"].startswith("planned:")), ([], True))
+            scope = iss2["planned_unit"]["verification"]["scenarios_by_mode"]
+            self.assertEqual(sorted(scope), ["disabled"])
+            self.assertIn("sc:create-orders", scope["disabled"])
             acc = r.accept_on_run(tid2, run2, iss2, classes=("build", "compile", "tests", "runtime", "parity"),
-                                  scenarios=REPO_SCENARIOS, attempt="o1", edit=False, drop=False)
+                                  scenarios=REPO_SCENARIOS, attempt="o0", edit=False, drop=False)
+            self.assertFalse(acc["outcome_accepted"])
+            self.assertTrue(any("runner did not compare" in x for x in acc["not_accepted_because"]), acc)
+            # the Order path is measured on its own acceptance (run-verify compared the issued scope in its
+            # mode); that pass is evidence for Order only
+            iss2 = NC.issue(r.root, r.board, task_id=tid2, run_id=run2)
+            self.assertEqual(iss2["planned_unit"]["verification"]["scenarios_by_mode"], scope)
+            acc = d.accept_verified(tid2, run2, scope, attempt="o1")
+            self.assertTrue(acc["outcome_accepted"], acc)
+            # M-2 on the verification-only unit: the schedule measured at its issue (schedule_at_issue) passes
+            # and at its acceptance neither refuses nor routes anything once the owner's repair holds
+            self.assertEqual({m["check"]: m["state"] for m in iss2["schedule"]}[EFFECTS], "pass")
+            # at acceptance the row is re-measured on the scope this unit compared: sc:read-items-1 (the Item
+            # path) is not in it, so the row is unknown there -- never a FAIL routed, never a refusal
+            got = {m["check"]: m["state"] for m in acc["schedule"]}[EFFECTS]
+            self.assertEqual((got, acc["schedule_routed"]), ("unknown", []))
+            self.assertNotIn("sc:read-items-1", scope["disabled"])
             passed = set(r.board.records(tid2, "accept-commit")[-1]["measurement"].get("checks") or [])
             self.assertIn("parity:sc:create-orders", passed)
             self.assertNotIn("parity:sc:create-orders", NC.remeasure_owed(r.board, r.run_id, B_ORDER))
@@ -245,9 +319,22 @@ class EarliestMeasurement(unittest.TestCase):
         from planner import requirement_checks as RC
         req = next(q for q in CO_T.desk()[0].reqs if q["id"] == CO_T.REPO_O)
 
-        def effects(*items):
-            return RC.measure(Path("."), [req], worklist={"items": list(items), "measure": {"known": True}},
-                              scenarios=REPO_SCENARIOS)[EFFECTS]["status"]
+        # every repository scenario was compared and recorded PASS (a header-only finding sits beside its own
+        # FAIL record); an effect stands on that measured record, never on the absence of a finding
+        td = tempfile.mkdtemp(prefix="sl-effects-")
+        root = Path(td)
+        sdir = root / "verification" / "parity" / "scenarios"
+        sdir.mkdir(parents=True)
+
+        def record(sid, verdict):
+            (sdir / ("%s.json" % sid.replace(":", "_"))).write_text(json.dumps(
+                {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": verdict}))
+        for s in REPO_SCENARIOS:
+            record(s, "PASS")
+
+        def effects(*items, scenarios=REPO_SCENARIOS):
+            return RC.measure(root, [req], worklist={"items": list(items), "measure": {"known": True}},
+                              scenarios=scenarios)[EFFECTS]["status"]
         cors = parity_item("i1", "sc:cors-actual-0a", CO_T.EP_LIST, cause="cors-response")
         ctype = parity_item("i2", "sc:read-orders", CO_T.EP_LIST, cause="content-type-parameter")
         self.assertEqual(effects(), RC.PASS)
@@ -256,9 +343,17 @@ class EarliestMeasurement(unittest.TestCase):
         self.assertEqual(effects(parity_item("i4", "sc:cors-actual-0a", CO_T.EP_LIST, cause="cors-response",
                                              server_error=True)), RC.FAIL)                                 # it threw
         self.assertEqual(effects(dict(parity_item("i5", "", CO_T.EP_LIST), scenarios=["sc:create-orders"])), RC.FAIL)
+        # no finding open but the comparison did not establish the effect: unknown, never a discharged PASS
+        record("sc:read-orders", "INCONCLUSIVE")
+        self.assertEqual(effects(), RC.UNKNOWN)
+        (sdir / "sc_read-orders.json").unlink()
+        self.assertEqual(effects(), RC.UNKNOWN)                                                          # no record
+        record("sc:read-orders", "PASS")
+        self.assertEqual(effects(scenarios=[s for s in REPO_SCENARIOS if s != "sc:read-orders"]), RC.UNKNOWN)
+        self.assertEqual(effects(), RC.PASS)
         # the plain comparison of the header-only scenario is still its own FAIL
         plain = dict(req, acceptance=["parity:sc:cors-actual-0a"])
-        self.assertEqual(RC.measure(Path("."), [plain], worklist={"items": [cors], "measure": {"known": True}},
+        self.assertEqual(RC.measure(root, [plain], worklist={"items": [cors], "measure": {"known": True}},
                                     scenarios=REPO_SCENARIOS)["parity:sc:cors-actual-0a"]["status"], RC.FAIL)
 
     def _accept_order(self, d, tid, run, iss, *, items=(), clusters=(), started=True, attempt="1"):

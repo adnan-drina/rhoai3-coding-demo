@@ -118,7 +118,10 @@ class LifecycleReplay(unittest.TestCase):
         review_spend = self.spent(tb)
 
         # 6. the Operator retires A's stale projection while a new claim lands between the record and the
-        #    removal: the new claim keeps its own projection (V29-2)
+        #    removal: the new claim keeps its own projection (V29-2). Retirement is the lock-bound digest move
+        #    (architect review cf164288): the judged bytes are moved away BEFORE the record, so a projection
+        #    written during the record is a new file the retirement never touches, and the retirement of the
+        #    judged one completes
         self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "expired")
         record, seen = r.board.record, {}
 
@@ -130,11 +133,11 @@ class LifecycleReplay(unittest.TestCase):
             return got
         r.board.record = claim_during_retirement
         try:
-            with self.assertRaises(Refusal) as cm:
-                NC.retire_issuance(r.root, r.board, by="operator", reason="stale run %d" % ra)
+            out6 = NC.retire_issuance(r.root, r.board, by="operator", reason="stale run %d" % ra)
         finally:
             r.board.record = record
-        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual((out6["state"], out6["run"]), ("expired", ra))
+        self.assertTrue((r.root / out6["retired"]).is_file())
         ra3 = seen["run"]
         self.assertIn(":r%d" % ra3, json.loads(stale.read_text())["idempotency_key"])
 

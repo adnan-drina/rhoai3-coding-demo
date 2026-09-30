@@ -243,18 +243,23 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
                 sid, str(bound.get("candidate_sha256") or bound.get("mode") or "nothing")[:12], tree[:12])
         return PASS, "scenario %s measured PASS on this tree" % sid
 
-    effect_sc = _open_effect_scenarios(worklist)
+    effect_sc = {_sid(s) for s in _open_effect_scenarios(worklist)}
 
     def effect(sid: str) -> tuple[str, str]:
         # a repository effect is judged on status/body/committed-state findings; a header-only
-        # difference on the same scenario is another obligation and stays owned where it is
-        if sid not in ran:
+        # difference on the same scenario is another obligation and stays owned where it is.
+        # Ids compare with or without the sc: prefix, as scen() does (ran / open_sc are normalised).
+        if _sid(sid) not in ran:
             return UNKNOWN, "scenario %s was not measured on this tree" % sid
-        if sid in effect_sc:
+        if _sid(sid) in effect_sc:
             return FAIL, "scenario %s still has an open status/body obligation" % sid
-        if sid in open_sc:
+        if _sid(sid) in open_sc:
             return PASS, "scenario %s: the effect is discharged; only a header difference is open (owned elsewhere)" % sid
-        return PASS, "scenario %s measured and discharged" % sid
+        # no finding open: the effect stands on the scenario's own measured PASS, exactly as a parity check
+        # does (7d77d14f / 68152b24) -- an INCONCLUSIVE, stale, wrong-mode or missing record mints no finding
+        # and must not read as a discharged effect
+        st, why = scen(sid)
+        return (PASS, "scenario %s measured PASS and discharged" % sid) if st == PASS else (st, why)
 
     for req in requirements or []:
         if not isinstance(req, dict):
