@@ -12,9 +12,11 @@ No `SKILL.md`. Discovery does not list this directory.
 | `specimen_agnostic.py` | remainder (oracles / operand / refs) + re-exports |
 | `generated_sources.py` | generator classification at **read** (stamp is a hint) |
 | `human_home.py` | OS-account home (`pwd`/`getent`), not `Path.home()` / `$HOME` |
+| `completion_map.py` | M-1 completion map: a read-only derived view (release blockers per entry point, milestones, measurement validity) for `run-report`; outside `planner/` so it never enters the planner code fingerprint |
 
 Importable modules only — no `__main__` CLIs — except `paved_road.py`, which
-is the coverage/audit/generate/sync CLI for the paved-road index. Dashboard
+is the coverage/audit/generate/sync CLI for the paved-road index, and
+`completion_map.py`, whose read-only print the M2 handoff points to. Dashboard
 pin is overlay bake `HERMES_WEB_DIST`; dest `.hermes/checks/` is retired.
 Java type walk lives in `inventory-legacy-surface/scripts/type_graph.py`
 (relocate, not delete).

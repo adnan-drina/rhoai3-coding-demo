@@ -64,7 +64,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 SCHEMA = "rhoai3.run-report/v1"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 OUT_REL = Path("evidence") / "reports" / "run-report.json"
 
 STEPS = "verification/loop/steps.json"
@@ -1778,6 +1778,51 @@ def when(e: Any) -> str:
     return "%s (start %s, baseline %s)" % (e["value"], e.get("since_start"), e.get("since_baseline"))
 
 
+def render_end_to_end(rep: Dict[str, Any]) -> List[str]:
+    """The headline (M-6): application state first; task activity follows as detail."""
+    e = as_dict(rep.get("end_to_end"))
+    cm = as_dict(rep.get("completion_map"))
+    L = ["## End-to-end state"]
+    if not e.get("state"):
+        return L + ["- unknown: %s" % e.get("reason"), ""]
+    try:
+        from completion_map import render_lines
+        L.extend(render_lines(cm))
+    except Exception as exc:  # noqa: BLE001
+        L.append("- %s (%s)" % (e["state"], exc))
+    dc = as_dict(e.get("delivery_chain"))
+    if dc.get("verdict"):
+        L.append("- delivery: candidate %s -> PipelineRun %s -> image %s -> %s -> live %s -> M5 %s ship=%s" % (
+            str(dc.get("candidate") or "none")[:12], dc.get("pipeline_run") or "none", str(dc.get("image_digest") or "none")[:19],
+            dc.get("route_url") or "no URL", "ok" if dc.get("live_ok") else "not ok (%s)" % ", ".join(dc.get("live_issues") or []) or "-",
+            dc.get("verdict"), str(dc.get("ship")).lower()))
+    for mode, x in sorted(as_dict(e.get("parity_by_mode")).items()):
+        x = as_dict(x)
+        if x.get("verdict") is None:
+            L.append("- parity %s: unknown (%s)" % (mode, x.get("reason") or "no receipt"))
+            continue
+        L.append("- parity %s: %s (PASS %s / FAIL %s / INCONCLUSIVE %s of %s)" % (
+            mode, x.get("verdict"), x.get("PASS"), x.get("FAIL"), x.get("INCONCLUSIVE"), x.get("denominator")))
+    pa = as_dict(e.get("planned_vs_added"))
+    L.append("- planned repair outcomes %s; added %s%s" % (
+        pa.get("planned_repair_outcomes"), len(as_list(pa.get("added"))) if pa.get("added") is not None else "unknown",
+        (" (%s)" % pa["note"]) if pa.get("note") else ""))
+    al = as_dict(e.get("acceptance_levels"))
+    L.append("- structurally accepted loop steps %s (activity); working behavior %s; deployed %s; full release %s" % (
+        as_dict(al.get("structurally_accepted_work")).get("accepted_loop_steps"), al.get("working_behavior"),
+        as_dict(al.get("deployed_application")).get("state"), al.get("full_release")))
+    c = as_dict(e.get("cost"))
+    vs = as_dict(c.get("verification_seconds"))
+    L.append("- cost: model requests/tokens %s; verification time %s; assisted interventions %s" % (
+        val(c.get("model_requests_and_tokens")), ("%s s" % vs["value"]) if vs.get("value") is not None else val(vs),
+        val(c.get("assisted_interventions"))))
+    L.append("- %s" % e.get("note"))
+    L.append("")
+    L.append("Task activity below is supporting detail.")
+    L.append("")
+    return L
+
+
 def render(rep: Dict[str, Any]) -> str:
     L: List[str] = []
     p = rep["pinned_inputs"]
@@ -1790,6 +1835,7 @@ def render(rep: Dict[str, Any]) -> str:
     bs = rep["bootstrap_repairs"]
     L.append("# Run report: %s" % val(p.get("pilot_run_id")))
     L.append("")
+    L.extend(render_end_to_end(rep))
     L.append("Classification: **%s**" % (c.get("value") or "unknown (%s)" % c.get("reason")))
     for r in c.get("reasons") or []:
         L.append("- %s" % r)
@@ -2226,9 +2272,74 @@ def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kan
     return out
 
 
+def end_to_end(root: Path, rep: Dict[str, Any], plans: Optional[List[Path]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """M-6: the end-to-end state first, task activity after it. The completion
+    map (lib/completion_map.py, M-1) is derived from the admitted plan and the
+    recorded measurements and M5 delivery records (lib/m5_delivery.py
+    contracts); nothing here judges acceptance again. Unknown stays unknown:
+    completed-card counts are activity, never a migration percentage."""
+    try:
+        import completion_map as CM
+        cm = CM.build(CM.load_inputs(root, list(plans or [])), classification=as_dict(rep.get("classification")).get("value"))
+    except Exception as exc:  # noqa: BLE001 - a map that cannot be derived is an unknown, never a green
+        why = "the completion map could not be derived: %s" % exc
+        return {"schema": None, "reason": why}, {"headline": None, "reason": why}
+    h = cm["headline"]
+    st = {m["id"]: m for m in cm["milestones"]}
+    d = cm["delivery"]
+    cls = as_dict(rep.get("classification"))
+    counts = as_dict(cls.get("counts"))
+    overlays = len(as_list(as_dict(rep.get("harness_changes")).get("installs_after_start")))
+    live = sum(int(counts.get(k) or 0) for k in ("operator_steps", "rewinds", "dispositions"))
+    ver = as_dict(as_dict(rep.get("cost")).get("verifications"))
+    tokens = as_dict(as_dict(rep.get("parallel_pilot")).get("tokens_and_requests"))
+    parity = {}
+    for mode, e in as_dict(as_dict(rep.get("final_state")).get("parity")).items():
+        e = as_dict(e)
+        ep = as_dict(e.get("entry_points"))
+        parity[mode] = {"verdict": e.get("value"), "PASS": ep.get("PASS"), "FAIL": ep.get("FAIL"),
+                        "INCONCLUSIVE": ep.get("INCONCLUSIVE"), "denominator": ep.get("denominator"),
+                        "reason": e.get("reason") if e.get("value") is None else None}
+    accepted = as_dict(as_dict(as_dict(rep.get("loop_work")).get("cards")).get("accepted")).get("value")
+    out = {
+        "state": h["state"],
+        "last_demonstrated_milestone": h["last_demonstrated_milestone"],
+        "current_candidate": h["current_candidate"],
+        "next_missing_prerequisite": h["next_missing_prerequisite"],
+        "oldest_unresolved_cause": h["oldest_unresolved_cause"],
+        "release_verdict": h["release_verdict"],
+        "acceptance_levels": {
+            "structurally_accepted_work": {"accepted_loop_steps": accepted, "note": "task activity; not behavior"},
+            "working_behavior": st["application-behavior-preserved"]["state"],
+            "deployed_application": {"state": st["delivered-and-usable"]["state"], "url": d["route_url"]},
+            "full_release": cm["distinctions"]["full_release"],
+        },
+        "delivery_chain": {k: d[k] for k in ("candidate", "pipeline_run", "image_digest", "deployed_image", "route_url",
+                                             "live_ok", "live_issues", "verdict", "ship", "stale_evidence")},
+        "source_qualification": {"milestone": st["source-understood"]["state"], "evidence": st["source-understood"]["evidence"],
+                                 "gaps": st["source-understood"]["gaps"]},
+        "missing_oracles": cm["release_blocker_summary"],
+        "planned_vs_added": cm["planned_vs_added"],
+        "parity_by_mode": parity,
+        "measurement": cm["measurement"],
+        "causal_groups": cm["causal_groups"],
+        "cost": {
+            "model_requests_and_tokens": tokens if tokens.get("value") is not None else
+            U("no request ledger with model requests or reported token usage is among the recorded inputs; unknown, not zero"),
+            "verification_seconds": V(as_dict(ver.get("value")).get("total_s"), STEPS) if ver.get("value") else U(str(ver.get("reason") or "no verification record"), STEPS),
+            "assisted_interventions": V(live + overlays, "classification counts + harness installs after the clock start",
+                                        "%d live intervention(s), %d harness overlay(s)" % (live, overlays)) if cls.get("counts") is not None
+            else U("the run could not be classified: %s" % cls.get("reason")),
+        },
+        "note": "completed-card percentages are not migration percentages",
+    }
+    return cm, out
+
+
 def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs: Optional[Path] = None, git_log: Optional[Path] = None,
                  hermes_configs: Optional[List[Path]] = None, budget_file: Optional[Path] = None,
-                 compare_with: Optional[List[Tuple[str, Dict[str, Any]]]] = None, kanban_db: Optional[Path] = None) -> Dict[str, Any]:
+                 compare_with: Optional[List[Tuple[str, Dict[str, Any]]]] = None, kanban_db: Optional[Path] = None,
+                 plans: Optional[List[Path]] = None) -> Dict[str, Any]:
     ensure_hermes_lib()
     tree = Tree(root)
     hist = load_history(root, git_log)
@@ -2267,6 +2378,7 @@ def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs:
         "parallel_pilot": parallel_pilot(kanban_db),
     }
     rep["classification"] = classification(steps_doc, steps_why, inter, boot)
+    rep["completion_map"], rep["end_to_end"] = end_to_end(root, rep, plans)
     if compare_with:
         rep["comparison"] = compare(rep, compare_with)
     return rep
@@ -2283,6 +2395,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--hermes-config", type=Path, action="append", default=[], help="a copy of the live Hermes config (YAML/JSON); repeatable")
     ap.add_argument("--budget", type=Path, help="the run budget and stopping conditions declared before launch (JSON/YAML)")
     ap.add_argument("--compare", action="append", default=[], help="[LABEL=]another run-report.json to compare with; repeatable")
+    ap.add_argument("--plan", type=Path, action="append", default=[],
+                    help="a plan revision plan.r<N>.json (repeatable); default the frozen evidence/planning/plan-semantics.json")
     args = ap.parse_args(argv)
     root = args.root.resolve()
     if not root.is_dir():
@@ -2303,7 +2417,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         rep = build_report(root, kanban_json=args.kanban_json, kanban_logs=args.kanban_logs, git_log=args.git_log,
                            hermes_configs=args.hermes_config, budget_file=args.budget, compare_with=others,
-                           kanban_db=args.kanban_db)
+                           kanban_db=args.kanban_db, plans=args.plan)
     except (OSError, ValueError) as exc:
         print("FAIL: %s" % exc, file=sys.stderr)
         return 2
