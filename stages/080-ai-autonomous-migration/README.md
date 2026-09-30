@@ -331,6 +331,8 @@ declaration, and autostart does not mint M1 without a valid one; reopening or
 restarting the workspace re-reads the same committed bytes. After creation, run
 the read-only `run-preflight.sh` with `WORKSPACE` set to the project name (see
 [OPERATIONS](../../docs/OPERATIONS.md#stage-080-run-declaration-and-launch-preflight)).
+Repeated isolation campaigns are retired; the preflight still checks the new
+workspace against the released image pins, identity and source protections.
 
 A v13+ run is governed by **run control**. Its initial-commit `run-budget.json`
 declares it, and the migration-run provisioner writes the record from the

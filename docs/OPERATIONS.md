@@ -144,7 +144,7 @@ run-agnostic; the expected model and wall budget come from the golden checkout:
 
 ```bash
 WORKSPACE=<project-name> POD=<workspace-pod> GOLDEN_CHECKOUT=<clean golden clone> \
-GOLDEN_SHA=<full sha> PLATFORM_SHA=<full sha> ISOLATION_RECEIPT=<receipt.json> \
+GOLDEN_SHA=<full sha> PLATFORM_SHA=<full sha> \
   bash stages/080-ai-autonomous-migration/run-preflight.sh
 ```
 
@@ -154,26 +154,26 @@ as stale. New runs use the current preflight above.
 
 `validate.sh` checks stage readiness and the remaining scaffold/platform checks.
 The retired Stage 080 helper suites are no longer part of validation;
-the launch preflight has a shell syntax check only in this entrypoint.
+the launch preflight has syntax and image/identity regression checks in this entrypoint.
 
 ### Stage 080 run isolation
 
-Qualify isolation using fresh disposable runs and the exact platform,
-golden and image pins. The retired detailed procedure is available in Git history.
-`run-preflight.sh` consumes the retained receipt and requires all 13 checks to
-PASS, including worker identity. It does not bootstrap, reset a database or
-dispatch work. Earlier isolation receipts remain in Git history. A fresh run
-needs its own receipt for the golden and platform it will use.
+Repeated isolation campaigns are retired by the operator's decision. New runs
+use the current read-only preflight against the selected platform and golden.
+It still checks the live worker identity, ephemeral kubeconfig, source protection,
+secret targeting, pinned database/provisioner images, model, quota, declaration,
+and installed harness. Image identities come from the published golden's
+`run-defaults.json`; no previous run's receipt is promoted to a new qualification.
+Historical PASS and FAIL receipts retain their original meaning.
 
 The factory selects the per-run `<run>-worker` identity through pod overrides.
-Check the admitted pod identity and CLI credentials after startup and restart;
-other-run parity Secrets must remain inaccessible.
-Restricting new workers does not revoke existing `workspace*-sa` accounts still
-bound to `devworkspace-default-role`. Requalify isolation against the resulting
-platform revision after identity changes.
+A worker in `devworkspace-default-rolebinding` still refuses preflight. Restricting
+new workers does not revoke existing legacy workspace accounts. Future changes to
+that security boundary need a targeted review; they do not silently restart the
+retired campaign.
 
-Stage 050 reserves three concurrent workspace slots per user. Start the first
-disposable alone and prove IDE/tool initialization before starting the second.
+Stage 050 reserves three concurrent workspace slots per user. The next migration
+uses one fresh workspace and its bounded startup preflight.
 The existing group grant still permits GET of the two named MaaS Secrets;
 other-run parity Secrets must remain forbidden. The MaaS route helper loads the
 cluster guard and refuses to change a started workspace. Stop through Dev Spaces
@@ -541,6 +541,15 @@ To compare the two private models with the same governed MaaS traffic shape, run
 ./stages/040-governed-models-as-a-service/compare-private-models.sh
 ./stages/040-governed-models-as-a-service/summarize-guidellm-results.sh
 ```
+
+The MaaS gateway's generated proxy Deployment takes its resource settings from
+`maas-gateway-resources`, referenced by the Gateway's `infrastructure.parametersRef`.
+Stage 040 owns a 1 GiB memory reservation and 2 GiB limit. This adds headroom above
+the observed near-1 GiB working set; it does not establish the cause of continued
+memory growth. Sync Stage 040 first, read back the generated Deployment resources,
+then verify readiness, restart counts and memory before starting a migration.
+Do not edit the generated Deployment directly. Roll back by reverting the
+ConfigMap and Gateway reference together through GitOps.
 
 Useful checks:
 

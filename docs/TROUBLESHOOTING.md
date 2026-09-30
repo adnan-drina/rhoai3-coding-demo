@@ -785,6 +785,20 @@ GUIDELLM_PROMPT="Explain why governed model access matters for enterprise softwa
 
 Set `GUIDELLM_SKIP_LOAD_TEST=true` when you need Stage 040 structural validation without exercising the model endpoint.
 
+## MaaS Gateway Approaches Its Memory Limit
+
+**Affected stage:** Stage 040; long-running migration workers may see delayed or
+failed requests even when the model and authentication service are ready.
+
+Check the gateway proxy's current memory, last termination reason and restart
+count before assigning the failure to the model. The resource configuration is
+`gitops/stages/040-governed-models-as-a-service/base/gateway/base/configmap-maas-gateway-resources.yaml`.
+Stage 040 validation reads back the generated Deployment's 1 GiB reservation and
+2 GiB limit. A successful sync is resource headroom, not proof of a memory-leak fix.
+If memory continues to grow, retain the resource time series and gateway/control-plane
+logs for diagnosis; do not rely on a periodic restart to certify the next run.
+See [Stage 040 operations](OPERATIONS.md) for the GitOps rollout and rollback.
+
 ## MaaS Gateway Is Not Reachable
 
 **Affected stage:** Stage 040

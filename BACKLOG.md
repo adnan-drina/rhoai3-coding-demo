@@ -342,6 +342,8 @@ Compatibility objectives (`loop.compatibility_objectives: v1`) and plan semantic
 
 ## Workarounds still required
 
+- [ ] **MaaS gateway memory growth.** Release consolidation adds a GitOps-managed 1 GiB reservation / 2 GiB limit after a 912 MiB observation under the old 1 GiB limit. Resource rollout and bounded observation remain required; the cause of sustained growth is not established. Do not claim that extra capacity fixes a leak.
+
 - [ ] **External-model streaming is buffered by IPP.** No viable 3.4 workaround. Internal models stream. `qwen3-235b` and `minimax-m2` stay off the gateway path until that changes. Diagnosis: [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 - [ ] **Gateway AuthPolicy patch for user OAuth tokens** (`jobs/configure-kuadrant.yaml`): dashboard `gen-ai-ui` forwards user tokens; the operator policy accepts ServiceAccount tokens.
 - [ ] **Authorino SSL env vars** on the same job, so Authorino trusts the OpenShift service CA.

@@ -5,7 +5,8 @@
 # scripts remain available in Git history.
 # Required: WORKSPACE (the run: the full project name, never a suffix), POD,
 # GOLDEN_CHECKOUT (verified published checkout), GOLDEN_SHA, PLATFORM_SHA (the
-# merged platform revision), ISOLATION_RECEIPT (local JSON).
+# merged platform revision). No isolation campaign is required for each run.
+# Existing isolation receipts remain historical evidence, not new-run claims.
 # The expected model and wall budget are read from the golden's
 # run-defaults.json, so a pin change is made once, in the golden.
 set -euo pipefail
@@ -16,8 +17,7 @@ load_env
 check_oc_logged_in
 export POD="${POD:?set POD}" GOLDEN_CHECKOUT="${GOLDEN_CHECKOUT:?set GOLDEN_CHECKOUT}"
 export GOLDEN_SHA="${GOLDEN_SHA:?set the full published golden commit}"
-export PLATFORM_SHA="${PLATFORM_SHA:?set the qualified platform commit}"
-export ISOLATION_RECEIPT="${ISOLATION_RECEIPT:?set the retained live demonstration receipt}"
+export PLATFORM_SHA="${PLATFORM_SHA:?set the merged platform commit}"
 export WORKSPACE="${WORKSPACE:?set the run: the full project name the factory was given}"
 export NS="${NS:-wksp-ai-developer}" CONTAINER="${CONTAINER:-development-tooling}"
 python3 - <<'PY'
@@ -34,13 +34,13 @@ def need(condition, message):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def check_isolation(proof, workspace):
-    required = {'secret_binding','wrong_targets','assignment_removal','receipt_fields','delayed_resources',
-                'data_independence','credential_independence','workspace_independence','repository_non_authority',
-                'duplicate_delivery','overlapping_retirement','retirement','workspace_identity'}
-    need(all(proof.get('checks',{}).get(k) == 'PASS' for k in required), 'operational isolation demonstration incomplete')
-    identity = proof.get('checks',{}).get('workspace_identity')
-    need(identity == 'PASS', 'workspace identity missing, unmeasured, or failed; v10-only FAIL deferral does not apply')
+def check_image_bindings(defaults, receipt):
+    images = defaults.get('configuration', {}).get('images', {})
+    for key in ('databaseImage', 'provisionerImage'):
+        expected = images.get(key, '')
+        need(isinstance(expected, str) and bool(re.fullmatch(r'.+@sha256:[0-9a-f]{64}', expected)),
+             'golden lacks a pinned ' + key)
+        need(receipt.get(key) == expected, 'provisioning receipt differs from golden: ' + key)
 
 def check_worker_identity(pod, receipt, default_binding, namespace, workspace):
     expected = workspace + '-worker'
@@ -103,19 +103,12 @@ defaults = json.loads((golden / 'run-defaults.json').read_text())
 need(defaults.get('schema') == 'rhoai3.run-defaults/v1', 'golden predates run-defaults.json; use the preflight of that run')
 os.environ['EXPECTED_MODEL'] = os.environ.get('EXPECTED_MODEL') or defaults['configuration']['model']['id']
 expected_hours = defaults['budget']['max_wall_hours']
-proof = json.loads(Path(os.environ['ISOLATION_RECEIPT']).read_text())
-need(proof.get('schema') == 'rhoai3.run-isolation/v1' and proof.get('platform_commit') == platform
-     and proof.get('golden_commit') == sha, 'isolation receipt does not bind the selected revisions')
-check_isolation(proof, workspace)
-files = proof.get('evidence',[])
-need(bool(files), 'isolation receipt has no retained evidence')
-for row in files:
-    p = Path(os.environ['ISOLATION_RECEIPT']).parent / row['path']
-    need(p.is_file() and digest(p) == row['sha256'], 'isolation evidence missing or changed')
+# The operator retired repeated isolation campaigns. Validate this workspace
+# against the released defaults and live platform; do not promote old receipts.
 app = json.loads(oc('get','application','050-advanced-app-platform','-n','openshift-gitops','-o','json'))
 need(app.get('status',{}).get('sync',{}).get('revision') == platform
      and app['status']['sync'].get('status') == 'Synced'
-     and app['status'].get('health',{}).get('status') == 'Healthy', 'Stage 050 is not healthy at the qualified revision')
+     and app['status'].get('health',{}).get('status') == 'Healthy', 'Stage 050 is not healthy at the selected revision')
 tekton = json.loads(oc('get','tektonconfig','config','-o','json'))
 need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in tekton.get('status',{}).get('conditions',[])), 'TektonConfig is not Ready')
 listener = json.loads(oc('get','deployment','el-app-platform-listener','-n','app-platform-build','-o','json'))
@@ -131,13 +124,11 @@ default_binding = json.loads(oc('get','rolebinding','devworkspace-default-rolebi
 check_worker_identity(p, receipt, default_binding, ns, workspace)
 need(worker_kubeconfig_mount_ok(p, os.environ['CONTAINER']),
      'worker kubeconfig directory lacks its ephemeral mount; late Dashboard token injection is possible')
-for key in ('databaseImage','provisionerImage'):
-    need(bool(re.fullmatch(r'.+@sha256:[0-9a-f]{64}',receipt.get(key,''))), 'unpinned '+key)
-    need(receipt[key] == proof.get('images',{}).get(key), 'image differs from isolation qualification: '+key)
+check_image_bindings(defaults, receipt)
 deployment = json.loads(oc('get','deployment',receipt['host'],'-n',ns,'-o','json'))
 need(deployment.get('status',{}).get('availableReplicas',0) == 1
      and deployment['spec']['template']['spec']['containers'][0]['image'] == receipt['databaseImage'],
-     'assigned database is not available on the qualified image')
+     'assigned database is not available on the pinned image')
 for secret in (receipt['workspaceSecret'],receipt['fixtureSecret']):
     doc = json.loads(oc('get','secret',secret,'-n',ns,'-o','json'))
     labels, ann = doc['metadata'].get('labels',{}), doc['metadata'].get('annotations',{})
