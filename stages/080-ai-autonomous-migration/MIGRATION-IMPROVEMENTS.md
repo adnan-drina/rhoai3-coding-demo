@@ -58,15 +58,26 @@ The watch folder is not a complete export of official logs and native state.
 Its intervention narrative is saved reported evidence; its untimestamped
 `state.txt` is not a fresh live-board observation.
 
-| ID | Implementation | Publication / installation | Demonstrated evidence and remaining work |
+| ID | Implementation (package `feat/migration-reliability-m1-m7`) | Publication / installation | Demonstrated evidence and remaining work |
 |---|---|---|---|
-| V26-1 — typed repair execution | Implemented on branch `wp/typed-repairs` (SAD §7.3): executor on OpenRewrite 8.89.0, both transformations, `typed-repair.py` as the issued unit's first action | Not published; the ws-080 recipe builds and bakes the pinned jar, no image built | Qualified locally on fixtures and the v28 specimen; no live run has used it. |
-| V26-2 — reusable recipe qualification | Implemented: 32 rewrite-test cases, 15 loop-path cases, 4 runtime package cases (SAD §7.3) | Ships with V26-1 | Runtime checks ran on the pinned platform and PostgreSQL locally; not yet in a live run. |
-| V26-3 — resolved task context | Targeted brief, actions, ownership, selectors and retry context implemented | Targeted corrections are present in v29's recorded release; broader context/API lookup is not shipped | v29 Root completed its implementation with the qualified form. This is one case, not a reliability rate. Broader evidence-bound context and classpath/API lookup remain open. |
-| V26-4 — results and cost accounting | Verification records and run-report machinery implemented; full accounting is incomplete | Existing machinery is in the harness; recipe-specific reporting awaits the executor | Finish measured run accounting; do not claim a complete comparison from partial runs. |
-| V26-5 — analysis reuse | Defined; deferred | Not part of this release scope | First measure avoidable producer/build cost; preserve fresh acceptance evidence. |
-| V26-6 — actionable guidance and recovery | Many specific defects corrected; recurring model repetition remains unresolved | Distinguish published corrections from v29's assisted overlays | Root guidance has a positive v29 observation; ORM still halted once and recovered through a native retry. The controlled formatting comparison was negative. |
-| P-1 — one independent M3 pair | Implemented; publication/integration/review defects subsequently corrected | Pilot is in v29; follow-up fixes remain pending golden publication at this cutoff | Saved logs show overlapping Root/Profile workers and both changes verified on the combined tree. Review recovery was assisted. Broader parallel execution is not authorized by this roadmap. |
+| M-1 — supported migration and finish line | `lib/completion_map.py` (24b7f864): contract, milestones, every ship-blocking verification gap with owner, prerequisites and exit; ADR-025 scope limitation | Not published | v29 r1 recomputed: 80 requirements, 7 groups, 12 entry points, all owned by source-capture work. Source Git revision is not recorded by M1 (content digest only). |
+| M-2 — executable milestones | check-schedule/v1 (2e8d99d7), executed by the native lifecycle at issue and at acceptance (9ca09fb6, 17d90c22); runtime findings a declared recipe discharges are its objective's (e55407c3) | Not published | Exit fixtures pass through the lifecycle; a scheduled row's own `after` orders issue only; crash between acceptance and schedule measurement is picked up at the next issue or M4. |
+| M-3 — rehearse risky behavior | Reference qualification on PostgreSQL 16 against the frozen source oracle (91109348..a3dfc05c), rehearsal (28f39ec0, 03874abf) | Not published | Controls pass. v28 candidate: 19/47 match. Rehearsal (one patch per catalog repair): 47/47 in both modes. CI/CD and deployed-route checks are live-only. |
+| M-4 — reusable capability | Coverage table SAD §7.3; known guidance added (960a767c, c3067478, 962931d9); ADR-025 | Not published | Every known pattern is a qualified recipe, a tested bounded procedure or an ADR-025 ruling; no known gap without guidance. |
+| M-5 — state ownership and evidence | 9fcd639b..2c2973cc | Not published | Architect counterexamples corrected; lifecycle replay passes; not exercised on a live board. |
+| M-6 — end-to-end headline | run-report headline through M5 (ad5d059c) | Not published | False-green and deployed-INCONCLUSIVE fixtures render correctly; token totals stay unknown without a request ledger. |
+| M-7 — frozen program | Combined validation on the integrated revision (see Package status) | Owed: runtime image, golden, platform pins | Local only; the clean full run and its confirming repeat are the remaining claims. |
+| V26-1 — typed repair execution | Executor on OpenRewrite 8.89.0 (Apache-2.0), both transformations, first action of the issued unit (481b4b0b, af47c117, 8ffdfd9d) | Image recipe step 2b ready (5d282010); no image built | Fixtures and the v28 specimen; no live run has used it. |
+| V26-2 — recipe qualification | 32 rewrite-test cases, loop-path and runtime package tests | Ships with V26-1 | Reproducible jar sha256 `66d1b6f4`. |
+| V26-3 — resolved task context | Targeted brief, actions, ownership, selectors and retry context | As before | Broader evidence-bound context and classpath/API lookup remain open. |
+| V26-4 — results and cost accounting | Typed-repair records (`rhoai3.typed-repair-record/v1`); run-report headline | Not published | Model requests/tokens remain unknown without a request ledger. |
+| V26-5 — analysis reuse | Deferred | Not in scope | No measurement yet justifies it. |
+| V26-6 — guidance and recovery | Unchanged by this package | As before | Recurring model repetition remains an open, measured-only risk. |
+| V29-1 — void, deferral, admission | 6087c94d | Not published | Exact-condition reconcile, effective budget before/after, idempotent. |
+| V29-2 — issuance liveness | 7fb8d98e | Not published | Concurrent-claim interleaving refuses `ISSUANCE_CHANGED`; the new projection survives. |
+| V29-3 — rejected candidate cleanup | 8aa81b64, 919c01ae | Not published | Current-run edits survive repeated issue; interrupted rejection set aside by identity and restored. |
+| V29-4 — media-type values | 9fcd639b | Not published | Distinct quoted values stay distinct; charset respelling still equal. |
+| P-1 — one independent M3 pair | Unchanged scope | As before | Broader parallel execution is not authorized. |
 
 ## Objective and comparison baseline
 
@@ -315,7 +326,7 @@ Use recipe tests for before/after, unchanged negatives and repeated application,
 and our runtime tests for semantic correctness. A recipe's text diff or
 idempotence cannot prove persistence or HTTP behavior. [R4]
 
-Coverage table (2026-09-30): SAD §7.3; three patterns remain GAPs that need a contract decision.
+Coverage table (2026-09-30): SAD §7.3. The three patterns that needed a contract decision are ruled by ADR-025.
 
 **Exit:** a coverage table maps each known pattern to a qualified recipe or tested
 bounded agent procedure. An unsupported shape returns an actionable result before
