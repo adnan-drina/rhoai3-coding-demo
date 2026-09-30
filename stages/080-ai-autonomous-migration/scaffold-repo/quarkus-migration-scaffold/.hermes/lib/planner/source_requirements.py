@@ -530,11 +530,14 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
     for e in eps:
         scen = sorted(set((oracles or {}).get(e["id"]) or []))
         loc = e["id"] in location_eps
-        out.append(_req("behavior-verification", e["id"], APPLICABLE if scen else UNRESOLVED,
+        blind = _unobservable_write(e, scen, scenario_facts)
+        out.append(_req("behavior-verification", e["id"], APPLICABLE if scen and not blind else UNRESOLVED,
                         evidence=[_sel("entry_points[%s]" % e["id"])], paths=[], consumers=[e["id"]],
                         acceptance=(["parity:%s" % s for s in scen] or ["coverage:unresolved"])
                         + (["location:%s" % e["id"]] if loc and scen else []),
                         unknowns=([] if scen else ["no captured oracle for %s (%s): behaviour is unverified, never PASS" % (e["id"], _s(e.get("kind")))])
+                        + (["the captured scenarios of %s declare no read-back of what the write persisted (%s): the response is "
+                            "captured, the write is unverified, never PASS" % (e["id"], blind)] if blind else [])
                         + (["no capture of the source's create/Location behaviour for %s: the Location it builds, a null "
                             "expansion argument included, is unverified, never PASS" % e["id"]] if loc and not scen else []),
                         facts=dict({"kind": _s(e.get("kind")), "type": _s(e.get("type"))},
@@ -892,6 +895,25 @@ def source_configuration(root: Path, *, frozen_dir: Path | None = None) -> dict[
 # ---------------------------------------------------------------------------
 # reading a destination root (I/O lives here, never in derive)
 # ---------------------------------------------------------------------------
+
+_READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _unobservable_write(ep: dict[str, Any], scen: list[str], facts: dict[str, dict[str, Any]] | None) -> str:
+    """Why a WRITE entry point's captured scenarios cannot verify the write;
+    "" when they can, or when that is not decidable. Every write scenario of
+    it declares no read-back (the derivation found no route that reads what
+    it persists and said so in ``effects_unobservable``): the comparator
+    refuses such a scenario at M4, so counting it as the entry point's oracle
+    would make a capability that stays unknown disappear from the plan (M-1)."""
+    if not scen or facts is None or _s(ep.get("http_method")).upper() in _READ_METHODS + ("",):
+        return ""
+    writes = [facts.get(s) for s in scen if _s((facts.get(s) or {}).get("method")).upper() not in _READ_METHODS]
+    if not writes or any(w is None or w.get("effects") for w in writes):
+        return ""
+    reasons = sorted({_s(w.get("effects_unobservable")) for w in writes if _s(w.get("effects_unobservable"))})
+    return "; ".join(reasons) or "no scenario declares an effect"
+
 
 def _scenario_facts(root: Path) -> dict[str, dict[str, Any]] | None:
     from planner.worklist import corpus_scenario_facts
