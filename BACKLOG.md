@@ -14,7 +14,7 @@ end-to-end one.
 **v26 is the reliability validation release:** M1→M5 without harness overlays or
 Operator rescues, with every acceptance gate preserved. Scope and per-item
 evidence status are in
-[V26-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/V26-IMPROVEMENTS.md).
+[MIGRATION-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
 Status there is source-level (tests, model-free reproductions) unless marked live.
 
 In v26:
@@ -22,7 +22,7 @@ In v26:
 - [x] V26-6 known defects: brief ownership, liveness, selectors and whole
   architecture; retry-state diagnostics; the REVERTED lockout; unchanged rework;
   the preload of required skills; near-duplicate progress (runtime 0015).
-  Source-level evidence; see V26-IMPROVEMENTS.md.
+  Source-level evidence; see MIGRATION-IMPROVEMENTS.md.
 - [x] V26-6 open items (Servlet redirect guidance, native retry handoff, producer
   exit code through a filter) were NOT in v26; they are implemented after it
   (source-level, unpublished): see the correction package table below.
