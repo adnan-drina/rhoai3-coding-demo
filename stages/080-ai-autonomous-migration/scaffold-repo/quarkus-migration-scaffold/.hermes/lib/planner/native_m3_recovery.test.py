@@ -799,6 +799,23 @@ class OrphanedObligations(unittest.TestCase):
         finally:
             r.close()
 
+    def test_a_cluster_the_destination_answers_with_a_server_error_is_issued_first(self):
+        """v29 t_65445e69: the Owner card was issued its CORS header cluster before the cluster whose
+        requests threw StackOverflowError; the CORS verdict could not pass while the request 500'd, and two
+        attempts were spent. The server-error cluster goes first; otherwise the work list's order stands."""
+        node = {"role": "repair", "outcome_id": self.ITEM_BEH, "clusters": []}
+        wl = {"items": [
+            {"id": "parity:cors", "advice": {"write_set": ["A.java"]}},
+            {"id": "parity:boom", "advice": {"server_error": {"exception": "java.lang.StackOverflowError"}}}],
+            "clusters": [
+                {"id": "u:cors", "items": ["parity:cors"], "status": "open", "write_set": ["A.java"]},
+                {"id": "c:boom", "items": ["parity:boom"], "status": "open", "write_set": [self.ITEM_FILE]},
+                {"id": "c:other", "items": ["parity:x"], "status": "open", "write_set": ["X.java"]}]}
+        own = {"parity:cors", "parity:boom"}
+        self.assertEqual(NC._allowed_paths(node, wl, own), ("c:boom", [self.ITEM_FILE]))
+        wl["items"][1]["advice"] = {}
+        self.assertEqual(NC._allowed_paths(node, wl, own), ("u:cors", ["A.java"]))
+
     def test_another_open_cards_finding_neither_refuses_nor_moves_to_the_holder(self):
         """v29 t_65445e69 (after rebase 3): re-issue refused ISSUE_ORPHANED_OBLIGATION over parity failures at the
         Vet, Specialty and Pet controllers -- each claimed by that controller's own open behavior card. Such a

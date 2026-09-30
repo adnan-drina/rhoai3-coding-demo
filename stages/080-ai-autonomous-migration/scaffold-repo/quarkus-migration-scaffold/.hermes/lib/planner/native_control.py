@@ -636,14 +636,25 @@ def budget_state(board: Board, run_id: str, plan: dict[str, Any], node: dict[str
 # ---------------------------------------------------------------------------
 
 def _allowed_paths(node: dict[str, Any], worklist: dict[str, Any] | None, own: set[str]) -> tuple[str, list[str]]:
-    """The ONE open cluster this outcome may edit now, and its write set."""
+    """The ONE open cluster this outcome may edit now, and its write set.
+
+    A cluster holding an item the destination answered with a server error
+    goes first: a request that throws cannot show whether a header or body
+    repair of the same request is right (v29 t_65445e69 spent two CORS
+    attempts on a scenario a StackOverflowError answered). Otherwise the work
+    list's order stands."""
     if node.get("role") != "repair" or worklist is None:
         return "", []
-    for c in worklist.get("clusters") or []:
-        if not isinstance(c, dict) or c.get("status") != "open":
-            continue
-        if own & set(c.get("items") or []) or c.get("id") in set(node.get("clusters") or []):
-            return str(c["id"]), sorted(str(p) for p in c.get("write_set") or [])
+    items = {str(i.get("id")): i for i in worklist.get("items") or [] if isinstance(i, dict)}
+
+    def _throws(c: dict[str, Any]) -> bool:
+        return any(((items.get(str(x)) or {}).get("advice") or {}).get("server_error") for x in c.get("items") or [])
+
+    mine = [c for c in worklist.get("clusters") or []
+            if isinstance(c, dict) and c.get("status") == "open"
+            and (own & set(c.get("items") or []) or c.get("id") in set(node.get("clusters") or []))]
+    for c in sorted(mine, key=lambda c: not _throws(c)):
+        return str(c["id"]), sorted(str(p) for p in c.get("write_set") or [])
     return "", []
 
 
