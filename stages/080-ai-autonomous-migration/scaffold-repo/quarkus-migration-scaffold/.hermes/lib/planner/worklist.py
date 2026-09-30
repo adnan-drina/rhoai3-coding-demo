@@ -1207,18 +1207,73 @@ REDIRECT_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#configu
 
 
 def canonical_media_type(value: str) -> str:
-    """A media type in RFC 9110 section 8.3.1 canonical form: the type,
-    subtype and parameter names are case-insensitive, whitespace around ';'
-    and '=' is optional, and a charset value is case-insensitive (section
-    8.3.2). Parameter order is kept; nothing else is normalized."""
-    parts = [p.strip() for p in str(value or "").split(";")]
-    out = [parts[0].lower()] if parts else [""]
-    for p in parts[1:]:
-        if not p:
+    """A media type in RFC 9110 section 8.3.1 canonical form, parsed by its
+    grammar (not split on every ';'):
+
+        media-type = type "/" subtype parameters
+        parameters = *( OWS ";" OWS [ parameter ] )
+        parameter  = name "=" ( token / quoted-string )
+        quoted-string = DQUOTE *( qdtext / "\\" char ) DQUOTE
+
+    Only what the RFC defines as case-insensitive is folded: the type, the
+    subtype, every parameter NAME and the charset VALUE (section 8.3.2). A
+    quoted value is unquoted and unescaped -- a token sent as a quoted-string
+    is the same value -- so a ';' or '=' inside quotes is part of the value,
+    and every other value keeps its case (v29 0dd677ba review: note="A; X=Y"
+    and note="A; x=Y" were collapsed into one). The parameters are sorted by
+    name (their order carries no meaning); a value that is not a token is
+    re-quoted with its '"' and '\\' escaped. Self-contained on purpose: the
+    architect's reproduction executes this function alone."""
+    s = str(value or "")
+    tchar = set("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    n = len(s)
+    semi = s.find(";")
+    head = (s if semi < 0 else s[:semi]).strip().lower()
+    i = n if semi < 0 else semi
+    params = []
+    while i < n:
+        i += 1                                     # past the ';'
+        while i < n and s[i] in " \t":
+            i += 1
+        start = i
+        while i < n and s[i] not in "=;":
+            i += 1
+        name = s[start:i].strip().lower()
+        if i >= n or s[i] == ";":
+            if name:
+                params.append((name, None))        # malformed (no '='): kept, never guessed
             continue
-        k, _, v = p.partition("=")
-        k, v = k.strip().lower(), v.strip()
-        out.append("%s=%s" % (k, v.lower() if k == "charset" else v))
+        i += 1                                     # past the '='
+        while i < n and s[i] in " \t":
+            i += 1
+        if i < n and s[i] == '"':
+            i += 1
+            buf = []
+            while i < n and s[i] != '"':
+                if s[i] == "\\" and i + 1 < n:
+                    i += 1
+                buf.append(s[i])
+                i += 1
+            i += 1                                 # past the closing quote (or the end)
+            tail_start = i
+            while i < n and s[i] != ";":
+                i += 1
+            val = "".join(buf) + s[tail_start:i].strip()
+        else:
+            start = i
+            while i < n and s[i] != ";":
+                i += 1
+            val = s[start:i].strip()
+        if name:
+            params.append((name, val.lower() if name == "charset" else val))
+    out = [head]
+    for name, val in sorted(params, key=lambda p: (p[0], "" if p[1] is None else p[1])):
+        if val is None:
+            out.append(name)
+        elif val and all(c in tchar for c in val):
+            out.append("%s=%s" % (name, val))
+        else:
+            out.append('%s="%s"' % (name, val.replace("\\", "\\\\").replace('"', '\\"')))
     return ";".join(out)
 
 

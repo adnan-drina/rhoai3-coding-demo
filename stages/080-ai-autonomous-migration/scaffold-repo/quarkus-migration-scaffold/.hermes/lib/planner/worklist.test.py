@@ -4077,6 +4077,43 @@ def _navigation_mode_independence_case() -> int:
     return 0
 
 
+def _media_type_grammar_case() -> int:
+    """V29-4 (architect review of 0dd677ba): canonical_media_type parses the
+    RFC 9110 media-type grammar. Splitting on every ';' collapsed the distinct
+    quoted values note="A; X=Y" and note="A; x=Y" into one difference."""
+    from planner.worklist import canonical_diff, canonical_media_type as c
+
+    same = [
+        ("application/json;charset=UTF-8", "Application/JSON ; Charset=utf-8", "charset respelled (case, spaces)"),
+        ('application/json;charset="UTF-8"', "application/json;charset=utf-8", "a token sent as a quoted-string"),
+        ("text/plain;a=1;b=2", "text/plain; b=2; a=1", "parameter order carries no meaning"),
+        ('application/x;note="A; X=Y"', 'application/x; NOTE="A; X=Y"', "a parameter NAME is case-insensitive"),
+        ('application/x;q="a\\"b"', 'application/x;q="a\\"b"', "an escaped quote round-trips"),
+        ('application/x;q="\\a"', "application/x;q=a", "a quoted-pair is the character it escapes"),
+    ]
+    for a, b, why in same:
+        if c(a) != c(b):
+            return _fail("V29-4 %s: %r and %r must be one media type (%r vs %r)" % (why, a, b, c(a), c(b)))
+    distinct = [
+        ('application/example; note="A; X=Y"', 'application/example; note="A; x=Y"', "a quoted value keeps its case (the review counterexample)"),
+        ('application/x;note="a;b"', "application/x;note=a;b", "a ';' inside quotes belongs to the value"),
+        ('application/x;note="a=b"', "application/x;note=a", "an '=' inside quotes belongs to the value"),
+        ('application/x;q="a\\"b"', 'application/x;q="a\\\\b"', "an escaped quote is not an escaped backslash"),
+        ("application/json;charset=utf-8", "application/json;charset=iso-8859-1", "a charset that really changed"),
+        ("application/json;profile=A", "application/json;profile=a", "a non-charset value is case-sensitive"),
+        ("application/json", "application/json;charset=utf-8", "an added parameter"),
+    ]
+    for a, b, why in distinct:
+        if c(a) == c(b):
+            return _fail("V29-4 %s: %r and %r must stay distinct (both %r)" % (why, a, b, c(a)))
+    if c('application/x;note="A; X=Y"') != 'application/x;note="A; X=Y"':
+        return _fail("V29-4 a non-token value is re-quoted verbatim: %r" % c('application/x;note="A; X=Y"'))
+    if canonical_diff("header content-type application/json; charset=utf-8 vs application/json") != \
+            canonical_diff("header content-type application/json;charset=UTF-8 vs application/json"):
+        return _fail("V29-4 the ed9d31ac respelling is still one difference")
+    return 0
+
+
 def _split_discharge_case() -> int:
     """G1 (v9 t_55220d84) and G2: a scenario whose diffs F3 split across
     obligations discharges each obligation by its OWN diffs; a mid-card
@@ -5471,7 +5508,7 @@ def main() -> int:
         return 1
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _media_type_grammar_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case() or _issued_parity_plan_case() or _adapter_owned_retirement_case()
