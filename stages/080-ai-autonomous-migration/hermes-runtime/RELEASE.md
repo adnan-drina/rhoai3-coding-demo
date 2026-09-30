@@ -49,6 +49,21 @@ Not established here: a live model-driven run on this image.
 | F2 requested `--skills` were credited as loaded | fixed: 0016 records the native loader's actual result per run; the golden hook and audit consume only that record |
 | Unversioned build recipe | fixed: [build-recipe/](build-recipe/) is the canonical recipe; the build context identity is recorded |
 
+## Next build (not built, not published)
+
+The recipe now also stages the **typed repair executor** (V26-1): step 2b of
+`build-080-runtime-image.sh` builds `.hermes/skills/migration/fix-until-green/typed-repair`
+from the golden's pinned sources (Maven, output outside `.hermes`, its OpenRewrite
+recipe tests included), checks every shipped dependency's POM license
+(`scripts/license-inventory.py --check`), refuses a jar whose sha256 is not
+`pins.json` `typed_repair.executor.jar_sha256`, and copies it to
+`/opt/rhoai3/typed-repair/typed-repair.jar` (root-owned, read-only, ~17.7 MB;
+`080.pins` gains `typed_repair.jar_sha256`). The same sources, dependency jars and
+JDK 21.0.5 reproduce the digest; another JDK gives another digest, which is re-pinned
+deliberately in `pins.json` and the Dockerfile `ARG` together. Until an image carrying
+it is built and pinned, `typed-repair.py` reports the executor as not installed and the
+unit continues with its bounded agent procedure.
+
 ## Superseded
 
 | Image | Tree | Why superseded |

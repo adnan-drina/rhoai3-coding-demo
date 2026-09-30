@@ -264,6 +264,18 @@ RUN test -n "${OUTCOME_AUTHORITY_CODE_SHA256}" \
     && test "${ident}" = "${OUTCOME_AUTHORITY_CODE_SHA256}" \
     && printf 'outcome_authority.code_sha256=%s\n' "${ident}" >> /opt/rhoai3/080.pins \
     && chmod 0644 /opt/rhoai3/080.pins
+# Typed repair executor (V26-1; golden .hermes/pins.json typed_repair): harness
+# tooling built by build-080-runtime-image.sh step 2b from the pinned sources
+# (OpenRewrite 8.89.0, Apache-2.0; notices inside the jar), never a dependency
+# of the migrated application. Checksum-gated, root-owned and read-only; the
+# loop refuses any other jar by digest (_typed_repair.executor).
+ARG TYPED_REPAIR_JAR_SHA256=66d1b6f4c507dbf50e38dcf44bd2673267f5fef0d598618bc2c0fb8a9d6506ad
+COPY out/typed-repair/typed-repair.jar /opt/rhoai3/typed-repair/typed-repair.jar
+RUN echo "${TYPED_REPAIR_JAR_SHA256}  /opt/rhoai3/typed-repair/typed-repair.jar" | sha256sum -c - \
+    && chown -R 0:0 /opt/rhoai3/typed-repair \
+    && chmod 0755 /opt/rhoai3/typed-repair \
+    && chmod 0644 /opt/rhoai3/typed-repair/typed-repair.jar \
+    && printf 'typed_repair.jar_sha256=%s\n' "${TYPED_REPAIR_JAR_SHA256}" >> /opt/rhoai3/080.pins
 ENV MTA_CLI_HOME=/opt/mta-cli
 ENV DEFAULT_EXTENSIONS="/opt/rhoai3/extensions/mta.vsix;/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/redhat-java.vsix;/opt/rhoai3/extensions/mta-java.vsix"
 USER 10001

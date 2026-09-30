@@ -15,3 +15,7 @@ out/*
 # outcome-board authority (local build only)
 !out/outcome-authority/
 !out/outcome-authority/**
+# typed repair executor jar (built and sha-checked by build-080-runtime-image.sh step 2b)
+!out/typed-repair/
+!out/typed-repair/typed-repair.jar
+out/typed-repair/build/
