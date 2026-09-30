@@ -1239,8 +1239,12 @@ def main(argv: list[str] | None = None) -> int:
             by_c = {}
             for v in verdicts.values():
                 by_c.setdefault(str(v.get("constituent") or ""), []).append(v)
+            fam = (((catalog(root).get("objective_families") or {}).get("families") or {}).get(str(desc.get("family") or ""))
+                   or {})
             brief["objective"] = {
                 "family": desc.get("family"),
+                # M-4: the family's documented translation, delivered with the objective (not only as a reference hit)
+                **{k: fam[k] for k in ("source_semantics", "action", "unsupported") if fam.get(k)},
                 "actions": [{"constituent": u["cluster"], "rule": (u.get("seal") or {}).get("rule") or "cluster",
                              "files": list(u.get("write_set") or []), "obligations": len(u.get("items") or []),
                              "members_still_violating": sum(1 for v in by_c.get(u["cluster"], []) if v.get("verdict") == "violates")}
@@ -1334,7 +1338,7 @@ def main(argv: list[str] | None = None) -> int:
                                                                 str(r.get("parent") or "").rsplit(".", 1)[-1],
                                                                 str(r.get("parent") or "").rsplit(".", 1)[-1]))}
                                                if isinstance(r.get("cdi"), dict) else {}),
-                                            **behaviour_brief(r))
+                                            **behaviour_brief(r, absent_result_semantics(root)))
                                        for r in (scope.get("implementation_obligations") or [])
                                        if isinstance(r, dict) and r.get("verify") != "template"]}
                    if any(isinstance(r, dict) and r.get("verify") != "template"
@@ -1561,6 +1565,9 @@ def brief_digest(brief: dict, stem: str) -> str:
     unit_action = (brief.get("unit") or {}).get("first_action")
     if unit_action:
         actions[str(unit_action)] = ["coordinated unit"]
+    obj = brief.get("objective") if isinstance(brief.get("objective"), dict) else {}
+    if obj.get("action"):
+        actions.setdefault(str(obj["action"]), []).append("objective family %s" % obj.get("family"))
     for i in brief.get("items") or []:
         action = (i.get("advice") or {}).get("first_action")
         if action:
@@ -1785,7 +1792,15 @@ def _size(v) -> str:
     return "%d item(s), %d chars" % (len(v), n) if isinstance(v, (list, dict)) else "%d chars" % n
 
 
-def behaviour_brief(row: dict) -> dict:
+def absent_result_semantics(root: Path) -> str:
+    """compat-mapping repository_behaviour.query_result_semantics as one line: what a READ member answers for no
+    row (M-3 2026-09-30: a bare getSingleResult answered 500 where Spring Data's null gave the source's 404)."""
+    q = (catalog(root).get("repository_behaviour") or {}).get("query_result_semantics") or {}
+    return " ".join("%s: %s." % (k.replace("_", " "), " ".join(str(q[k]).split())) for k in ("single_entity", "optional", "collection")
+                    if q.get(k))
+
+
+def behaviour_brief(row: dict, absent: str = "") -> dict:
     """V17-3: what each owed fragment member must DO, as sealed on the
     obligation (worklist.fragment_behaviour_rows): the selected source
     behaviour per member -- the override fragment's method, the repository's
@@ -1814,6 +1829,8 @@ def behaviour_brief(row: dict) -> dict:
             what = "UNRESOLVED: %s -- stop and report it (kanban_block needs_input); do not guess" % (m.get("why") or "no source behaviour")
         entry = {"member": m.get("signature"), "behaviour": kind, "source": m.get("source"), "do": what,
                  "effect": m.get("effect") or ""}
+        if absent and str(m.get("effect") or "") == "read" and kind in ("query", "derived-query", "crud-default"):
+            entry["absent_result"] = absent
         if m.get("translations"):
             entry["translations"] = [{"id": t.get("id"), "obligation": t.get("obligation"), "calls": t.get("calls")}
                                      for t in m["translations"] if isinstance(t, dict)]

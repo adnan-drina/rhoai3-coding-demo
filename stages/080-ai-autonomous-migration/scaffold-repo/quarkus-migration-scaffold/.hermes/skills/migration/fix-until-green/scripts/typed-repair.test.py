@@ -296,16 +296,23 @@ def compile_stubs(out: Path, files: dict[str, str]) -> None:
 
 
 def built_jar() -> tuple[Path | None, str]:
-    """The executor jar: RHOAI3_TYPED_REPAIR_JAR, the image path, or built from the module (offline)."""
+    """The executor jar: RHOAI3_TYPED_REPAIR_JAR, the image path, or built from the module (offline) into a
+    directory OUTSIDE the harness tree (a build under .hermes is release drift: run_control.release_gaps)."""
     for c in ([Path(os.environ["RHOAI3_TYPED_REPAIR_JAR"])] if os.environ.get("RHOAI3_TYPED_REPAIR_JAR") else []) + [TR.IMAGE_JAR]:
         if c.is_file():
             return c, ""
-    jar = MODULE / "target" / "typed-repair-1.0.0.jar"
+    import hashlib
+    h = hashlib.sha256()
+    for p in sorted(MODULE.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(MODULE)).encode() + b"\0" + p.read_bytes())
+    out = Path(tempfile.gettempdir()) / ("rhoai3-typed-repair-%s" % h.hexdigest()[:16])
+    jar = out / "typed-repair-1.0.0.jar"
     if not jar.is_file():
         if not (shutil.which("mvn") and shutil.which("java") and shutil.which("javac")):
             return None, "mvn/java/javac not on PATH, and no executor jar is installed"
-        p = subprocess.run(["mvn", "-B", "-q", "-o", "-f", str(MODULE / "pom.xml"), "package", "-DskipTests"],
-                           capture_output=True, text=True, timeout=900)
+        p = subprocess.run(["mvn", "-B", "-q", "-o", "-f", str(MODULE / "pom.xml"), "-Dtyped-repair.build.dir=%s" % out,
+                            "package", "-DskipTests"], capture_output=True, text=True, timeout=900)
         if p.returncode != 0 or not jar.is_file():
             return None, "the executor could not be built offline: %s" % (p.stdout + p.stderr)[-300:]
     return jar, ""

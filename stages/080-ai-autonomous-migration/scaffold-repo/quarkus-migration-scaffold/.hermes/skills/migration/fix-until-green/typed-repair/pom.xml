@@ -23,6 +23,9 @@
     <project.build.outputTimestamp>2026-09-30T00:00:00Z</project.build.outputTimestamp>
     <rewrite.version>8.89.0</rewrite.version>
     <junit.version>5.14.4</junit.version>
+    <!-- build output OUTSIDE the harness tree in every scripted build (-Dtyped-repair.build.dir=...): a workspace's
+         .hermes must stay byte-identical to its release (run_control.release_gaps counts ignored files too) -->
+    <typed-repair.build.dir>${project.basedir}/target</typed-repair.build.dir>
   </properties>
 
   <dependencyManagement>
@@ -87,6 +90,7 @@
   </dependencies>
 
   <build>
+    <directory>${typed-repair.build.dir}</directory>
     <finalName>typed-repair-${project.version}</finalName>
     <plugins>
       <plugin>

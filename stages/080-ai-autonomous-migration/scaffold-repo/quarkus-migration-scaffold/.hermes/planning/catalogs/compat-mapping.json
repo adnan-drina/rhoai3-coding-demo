@@ -605,7 +605,18 @@
       "exists",
       "delete",
       "remove"
-    ]
+    ],
+    "query_result_semantics": {
+      "single_entity": "Spring Data JPA returns null when a query method declared with a single entity (not Optional, not a collection) finds no row -- a @Query, a derived query or findById on the repository -- and raises IncorrectResultSizeDataAccessException for more than one. JPA's TypedQuery.getSingleResult() throws NoResultException for no row, which answers 500 where the source answered its own null path (typically 404). Port the member as query.getResultStream().findFirst().orElse(null) when the source guarantees at most one row (an id or unique key), or catch NoResultException and return null; never getSingleResult() bare, and never turn the source's null into an exception or an empty object",
+      "optional": "an Optional return is Optional.empty() for no row (getResultStream().findFirst())",
+      "collection": "a collection return is an empty collection for no row (getResultList())",
+      "source": "https://docs.spring.io/spring-data/jpa/reference/repositories/null-handling.html (repository query methods return null for an absent single result); https://jakarta.ee/specifications/persistence/3.1/apidocs/jakarta.persistence/jakarta/persistence/typedquery#getSingleResult() (NoResultException if there is no result)",
+      "evidence": "M-3 reference qualification 2026-09-30 (wp/m3-qualification, reference-owner-path-runtime): owner-get-missing, owner-update-missing, owner-delete-missing and the delete read-backs answered 500 on the v28 candidate (NoResultException from OwnerRepositoryImpl.findById) where the source answered 404",
+      "checked_by": [
+        "skills/migration/fix-until-green/scripts/single-result-null-runtime.test.py (the bare getSingleResult 500 and the translation's 404 on the pinned platform)",
+        "M4 parity over the corpus scenarios that read a missing row"
+      ]
+    }
   },
   "persistence_behaviour_translations": {
     "note": "Behaviour a LITERAL port of source persistence code does not preserve on the destination's persistence provider (V17-3). Each row is matched against the ORDERED calls the frozen structural model records for the selected source method (owner type and method name, pre-order); a match adds an obligation to that owed member: port the BEHAVIOUR (the committed effects the source produced), not the text. Evidence is cited per row.",
@@ -648,38 +659,41 @@
     "org.springframework.validation.BindingResult": {
       "kind": "type",
       "when": "a constructor or method that is NOT an HTTP handler takes a BindingResult or Errors (an error-response helper the handler fed with its BindingResult)",
-      "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> getRootBeanClass().getSimpleName()); keep the helper's output (the header or body it renders) exactly as it was",
+      "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())); keep the helper's output (the header or body it renders) exactly as it was",
       "mapping": {
         "getField()": "getPropertyPath().toString()",
         "getDefaultMessage()": "getMessage()",
         "getRejectedValue()": "getInvalidValue()",
-        "getObjectName()": "getRootBeanClass().getSimpleName()"
+        "getObjectName()": "java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())"
       },
-      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation (a violation carries its property path, message, invalid value and root bean class); https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html"
+      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation (a violation carries its property path, message, invalid value and root bean class); https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html; https://github.com/spring-projects/spring-framework/blob/v5.3.31/spring-core/src/main/java/org/springframework/core/Conventions.java (getVariableNameForParameter) and .../util/ClassUtils.java (getShortNameAsProperty)",
+      "object_name": "getObjectName() is the BINDING name Spring gave the validated @RequestBody, not the class name: RequestResponseBodyMethodProcessor binds it under Conventions.getVariableNameForParameter, which for a non-collection, non-array type is ClassUtils.getShortNameAsProperty = java.beans.Introspector.decapitalize(<short name>) (OwnerDto -> ownerDto, URLDto -> URLDto). A body declared as a collection or array is named differently (Conventions pluralizes, e.g. ownerDtoList): that shape is unresolved here and the source capture's errors header decides. Checked by validation-object-name.test.py (Spring's own ClassUtils against this expression) and by M4 parity on the errors header (M-3 2026-09-30: the v28 candidate rendered OwnerDto where the source sent ownerDto)"
     },
     "org.springframework.validation.FieldError": {
       "kind": "type",
       "when": "a constructor or method that is NOT an HTTP handler takes a FieldError (one row of an error response)",
-      "action": "change that parameter to ConstraintViolation<?> (jakarta.validation.ConstraintViolation) and read FieldError.getField() as violation.getPropertyPath().toString(), getDefaultMessage() as getMessage(), getRejectedValue() as getInvalidValue(), getObjectName() as getRootBeanClass().getSimpleName(); keep the output the helper renders exactly as it was",
+      "action": "change that parameter to ConstraintViolation<?> (jakarta.validation.ConstraintViolation) and read FieldError.getField() as violation.getPropertyPath().toString(), getDefaultMessage() as getMessage(), getRejectedValue() as getInvalidValue(), getObjectName() as java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName()); keep the output the helper renders exactly as it was",
       "mapping": {
         "getField()": "getPropertyPath().toString()",
         "getDefaultMessage()": "getMessage()",
         "getRejectedValue()": "getInvalidValue()",
-        "getObjectName()": "getRootBeanClass().getSimpleName()"
+        "getObjectName()": "java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())"
       },
-      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation; https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html"
+      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation; https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html; https://github.com/spring-projects/spring-framework/blob/v5.3.31/spring-core/src/main/java/org/springframework/core/Conventions.java (getVariableNameForParameter) and .../util/ClassUtils.java (getShortNameAsProperty)",
+      "object_name": "getObjectName() is the BINDING name Spring gave the validated @RequestBody, not the class name: RequestResponseBodyMethodProcessor binds it under Conventions.getVariableNameForParameter, which for a non-collection, non-array type is ClassUtils.getShortNameAsProperty = java.beans.Introspector.decapitalize(<short name>) (OwnerDto -> ownerDto, URLDto -> URLDto). A body declared as a collection or array is named differently (Conventions pluralizes, e.g. ownerDtoList): that shape is unresolved here and the source capture's errors header decides. Checked by validation-object-name.test.py (Spring's own ClassUtils against this expression) and by M4 parity on the errors header (M-3 2026-09-30: the v28 candidate rendered OwnerDto where the source sent ownerDto)"
     },
     "org.springframework.validation.Errors": {
       "kind": "type",
       "when": "a constructor or method that is NOT an HTTP handler takes a BindingResult or Errors (an error-response helper the handler fed with its BindingResult)",
-      "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> getRootBeanClass().getSimpleName()); keep the helper's output (the header or body it renders) exactly as it was",
+      "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())); keep the helper's output (the header or body it renders) exactly as it was",
       "mapping": {
         "getField()": "getPropertyPath().toString()",
         "getDefaultMessage()": "getMessage()",
         "getRejectedValue()": "getInvalidValue()",
-        "getObjectName()": "getRootBeanClass().getSimpleName()"
+        "getObjectName()": "java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())"
       },
-      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation (a violation carries its property path, message, invalid value and root bean class); https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html"
+      "source": "https://jakarta.ee/specifications/bean-validation/3.0/apidocs/jakarta/validation/constraintviolation (a violation carries its property path, message, invalid value and root bean class); https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/validation/FieldError.html; https://github.com/spring-projects/spring-framework/blob/v5.3.31/spring-core/src/main/java/org/springframework/core/Conventions.java (getVariableNameForParameter) and .../util/ClassUtils.java (getShortNameAsProperty)",
+      "object_name": "getObjectName() is the BINDING name Spring gave the validated @RequestBody, not the class name: RequestResponseBodyMethodProcessor binds it under Conventions.getVariableNameForParameter, which for a non-collection, non-array type is ClassUtils.getShortNameAsProperty = java.beans.Introspector.decapitalize(<short name>) (OwnerDto -> ownerDto, URLDto -> URLDto). A body declared as a collection or array is named differently (Conventions pluralizes, e.g. ownerDtoList): that shape is unresolved here and the source capture's errors header decides. Checked by validation-object-name.test.py (Spring's own ClassUtils against this expression) and by M4 parity on the errors header (M-3 2026-09-30: the v28 candidate rendered OwnerDto where the source sent ownerDto)"
     }
   },
   "build_plugins": {
@@ -735,6 +749,21 @@
             "while": "generateJsonCreator is not false (default true)",
             "omitted_required": "Jackson refuses the body before the handler (an empty 400 at the boundary)",
             "source": "https://openapi-generator.tech/docs/generators/jaxrs-spec (generateJsonCreator)"
+          },
+          "required_read_only": {
+            "fact": "jaxrs-spec 7.25.0 omits @NotNull on a property the spec lists as `required` AND marks readOnly: its template JavaJaxRS/spec/beanValidation.mustache begins {{#required}}{{^isReadOnly}}@NotNull {{/isReadOnly}}{{/required}}. The spring generator the legacy build used (5.2.1, library spring-boot) annotates every required property @NotNull, readOnly or not, so the source answered an explicit null with 400 and the errors row 'must not be null' while the destination binds the null and fails later (the v28 candidate: NullPointerException in the mapper, 500)",
+            "when": "a request-body model property is required and readOnly in the spec, the source generated model carried @NotNull on it (or a source capture answers 400 'must not be null' for an explicit null of it), and the destination's generated getter carries no @NotNull",
+            "action": "restore the constraint through the generator, never in the generated file: add <templateDirectory>${project.basedir}/src/main/openapi-templates</templateDirectory> to the plugin's <configuration> and a src/main/openapi-templates/beanValidation.mustache that is 7.25.0's JavaJaxRS/spec/beanValidation.mustache with only `{{^isReadOnly}}` and its closing `{{/isReadOnly}}` removed. Keep generateJsonCreator=false and the field's own initializer (new ArrayList<>()), so an OMITTED property still binds as the empty collection the source accepted (V16-8) and only an explicit null is refused, with the platform's default 'must not be null' message",
+            "unsupported": [
+              "a generator, library or version other than jaxrs-spec/quarkus 7.25.0 (the template text is version-specific)",
+              "a readOnly required property the source did NOT constrain (the source's own generated model decides)",
+              "templates already overridden for another reason (merge by hand is a decision, not this rule)"
+            ],
+            "checked_by": [
+              "skills/migration/fix-until-green/scripts/generated-required-readonly.test.py (generates the model with and without the override offline and validates an explicit null with Hibernate Validator)",
+              "parity:request-body-positive-negative NULL case (generated-body-binding acceptance)"
+            ],
+            "evidence": "M-3 reference qualification 2026-09-30: owner-create-null-pets answered 500 on the v28 candidate where the source answered 400 with errors [{objectName: ownerDto, fieldName: pets, fieldValue: null, errorMessage: must not be null}]; template text read from openapi-generator-7.25.0.jar"
           }
         },
         "spring": {
@@ -762,7 +791,7 @@
       ],
       "implementation": {
         "kind": "agent-bounded",
-        "architecture": "handler_parameters.undocumented[<type>].action and .translation: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator BEFORE any side effect, keep every other operand and operator of the source guard verbatim, remove @Valid from the self-validated body (the jakarta.validation.Valid row), keep the DTO's own and nested constraints, build the source's error response from the violations; the errors header's object name is the binding name the SOURCE capture records for that body (Spring names a @RequestBody binding by its conventional bean name), derived from the capture, never the DTO class's simple name and never a constant"
+        "architecture": "handler_parameters.undocumented[<type>].action and .translation: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator BEFORE any side effect, keep every other operand and operator of the source guard verbatim, remove @Valid from the self-validated body (the jakarta.validation.Valid row), keep the DTO's own and nested constraints, build the source's error response from the violations; the errors header's object name is the binding name the SOURCE capture records for that body (Spring names a @RequestBody binding by its conventional bean name), derived from the capture, never the DTO class's simple name and never a constant: Spring's convention is java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName()) (validation_helpers getObjectName) for a non-collection body; a collection or array body is unresolved"
       },
       "acceptance": [
         {
@@ -794,6 +823,10 @@
       "refuse": [
         "the validated body parameter cannot be identified from the handler signature",
         "the handler's parameters are not fully resolved"
+      ],
+      "qualification": [
+        "skills/migration/fix-until-green/scripts/validation-object-name.test.py (Spring's own ClassUtils.getShortNameAsProperty against the validation_helpers getObjectName translation)",
+        "skills/migration/fix-until-green/scripts/handler-validation-package.test.py"
       ]
     },
     "handler-uri-parameter": {
@@ -918,7 +951,7 @@
       },
       "implementation": {
         "kind": "agent-bounded",
-        "architecture": "build_plugins[org.openapitools:openapi-generator-maven-plugin].generators[<name>]: an option changes ONLY under that row's conditional rule (V16-8: the recorded source request omits a property the generated constructor requires and the source accepted it); generateJsonCreator=false, disabled validation or permissive null handling are never a universal workaround"
+        "architecture": "build_plugins[org.openapitools:openapi-generator-maven-plugin].generators[<name>]: an option changes ONLY under that row's conditional rule (V16-8: the recorded source request omits a property the generated constructor requires and the source accepted it); generateJsonCreator=false, disabled validation or permissive null handling are never a universal workaround; a required readOnly property keeps the source's @NotNull through a generator template override (build_plugins[...].generators[jaxrs-spec].required_read_only), so an explicit null answers 400 'must not be null' while an omitted one still binds as the initialized empty collection"
       },
       "acceptance": [
         {
@@ -1085,7 +1118,19 @@
             ]
           }
         ],
-        "acceptance_intent": "the source comparator's property, direction, case and null semantics, tested on actual order -- not symbol absence alone"
+        "acceptance_intent": "the source comparator's property, direction, case and null semantics, tested on actual order -- not symbol absence alone",
+        "source_semantics": "PropertyComparator.sort(list, new MutableSortDefinition(<property>, <ignoreCase>, <ascending>)) sorts by the bean property in place: the THIRD argument is ascending (false = descending); with ignoreCase both String values are compared after String.toLowerCase(); a null value sorts after every non-null value and the whole result is negated for a descending sort (so nulls come FIRST when descending); Collections.sort is stable (equal keys keep their input order)",
+        "action": "replace PropertyComparator.sort(<list>, new MutableSortDefinition(\"<p>\", <ignoreCase>, <ascending>)) with <list>.sort(Comparator.comparing(<x -> x.get<P>()>, Comparator.nullsLast(Comparator.naturalOrder()))), mapping the key through (v == null ? null : v.toLowerCase()) when ignoreCase, and appending .reversed() when ascending is false; keep the collection type and never add spring-beans (skills/migration/spring-to-quarkus-patterns/references/sorting.md)",
+        "unsupported": [
+          "a nested property path (\"owner.lastName\") or a property that is not a readable bean getter",
+          "a MutableSortDefinition changed at runtime (toggleAscendingOnProperty, setProperty) -- the order is not a constant of the call",
+          "values that are not Comparable (Spring then keeps the input order for them; decide from the source's data)"
+        ],
+        "checks": [
+          "skills/migration/fix-until-green/scripts/sorting-oracle.test.py (Spring's own PropertyComparator against this action over nulls, case and ties in both directions)",
+          "M4 parity order (worklist body_diff order_explained)"
+        ],
+        "source": "https://github.com/spring-projects/spring-framework/blob/v5.3.14/spring-beans/src/main/java/org/springframework/beans/support/PropertyComparator.java; .../MutableSortDefinition.java"
       },
       "retired-configuration-rule": {
         "title": "retire an obsolete configuration rule",
@@ -1144,7 +1189,42 @@
             ]
           }
         ],
-        "acceptance_intent": "the source transaction boundaries and propagation are preserved"
+        "acceptance_intent": "the source transaction boundaries and propagation are preserved",
+        "source_semantics": "Spring's @org.springframework.transaction.annotation.Transactional on a class or public method demarcates a transaction (REQUIRED by default) that rolls back on RuntimeException and Error; attributes select propagation, isolation, timeout, read-only, rollback rules and the transaction manager",
+        "action": "replace it at the SAME element with @jakarta.transaction.Transactional (never delete the boundary): propagation -> value (TxType) by `propagation` below; rollbackFor -> rollbackOn; noRollbackFor -> dontRollbackOn; readOnly=true -> drop only the attribute and keep the annotation (JTA has no read-only transaction); a default attribute needs nothing. The method must not be private (ArC does not intercept it: quarkus.arc.fail-on-intercepted-private-method); the default rollback rules match (unchecked exceptions and errors)",
+        "propagation": {
+          "REQUIRED": "REQUIRED",
+          "REQUIRES_NEW": "REQUIRES_NEW",
+          "SUPPORTS": "SUPPORTS",
+          "NOT_SUPPORTED": "NOT_SUPPORTED",
+          "MANDATORY": "MANDATORY",
+          "NEVER": "NEVER",
+          "NESTED": null
+        },
+        "attributes": {
+          "value": "unsupported (a named transaction manager is a decision)",
+          "transactionManager": "unsupported (a decision)",
+          "label": "dropped (descriptive only)",
+          "propagation": "value (TxType), mapped above; NESTED unsupported",
+          "isolation": "unsupported unless DEFAULT (JTA has no per-transaction isolation: a datasource decision)",
+          "timeout": "unsupported unless -1 (a Narayana configuration decision: quarkus.transaction-manager.default-transaction-timeout or @TransactionConfiguration)",
+          "timeoutString": "unsupported unless empty (as timeout)",
+          "readOnly": "dropped; the annotation stays",
+          "rollbackFor": "rollbackOn",
+          "rollbackForClassName": "rollbackOn (the named classes, resolved)",
+          "noRollbackFor": "dontRollbackOn",
+          "noRollbackForClassName": "dontRollbackOn (the named classes, resolved)"
+        },
+        "unsupported": [
+          "propagation NESTED (no savepoint semantics in JTA)",
+          "a non-default isolation, timeout or named transaction manager (a decision, not a rename)",
+          "@Transactional on a private method (move the boundary to a non-private method; never drop it)"
+        ],
+        "checks": [
+          "skills/migration/fix-until-green/scripts/transaction-mapping.test.py (spring-tx's own @Transactional attributes and Propagation constants against this table and jakarta.transaction's TxType)",
+          "behavior:repository-effects (committed effects read back across a request boundary)"
+        ],
+        "source": "https://jakarta.ee/specifications/transactions/2.0/apidocs/jakarta/transaction/transactional; https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/transaction/annotation/Transactional.html; skills/migration/spring-to-quarkus-patterns/references/cdi-service-facade.md"
       },
       "controller-request-boundary": {
         "title": "translate controller request boundaries",

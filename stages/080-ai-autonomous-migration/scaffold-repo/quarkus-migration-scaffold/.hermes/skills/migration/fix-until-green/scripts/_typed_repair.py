@@ -48,7 +48,6 @@ CLASSPATH = Path("verification") / "build" / ".work" / "classpath.txt"
 FROZEN_CLASSPATH = Path("evidence") / "build" / "classpath.txt"
 CATALOG = Path(".hermes") / "planning" / "catalogs" / "compat-mapping.json"
 PINS = Path(".hermes") / "pins.json"
-DEV_JAR = Path(".hermes") / "skills" / "migration" / "fix-until-green" / "typed-repair" / "target" / "typed-repair-1.0.0.jar"
 IMAGE_JAR = Path("/opt/rhoai3/typed-repair/typed-repair.jar")
 UCB = "org.springframework.web.util.UriComponentsBuilder"
 TIMEOUT_S = 600
@@ -237,7 +236,7 @@ def executor(root: Path) -> dict[str, Any]:
     pin = pins(root)
     want = str((pin.get("executor") or {}).get("jar_sha256") or "")
     cands = [Path(os.environ["RHOAI3_TYPED_REPAIR_JAR"])] if os.environ.get("RHOAI3_TYPED_REPAIR_JAR") else []
-    cands += [IMAGE_JAR, Path(root) / DEV_JAR]
+    cands += [IMAGE_JAR]   # never a build inside the harness tree: it would be release drift
     jar = next((c for c in cands if c.is_file()), None)
     if jar is None:
         return {"jar": "", "sha256": "", "pinned": False,
