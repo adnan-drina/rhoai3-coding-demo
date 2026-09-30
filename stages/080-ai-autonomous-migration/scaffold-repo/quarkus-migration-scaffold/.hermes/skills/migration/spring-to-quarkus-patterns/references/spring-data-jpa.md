@@ -58,7 +58,20 @@ defines `@Typed` as a bean-type restriction, not a change to Java inheritance.
 The harness owes this exposure on every delegate it seals: the
 `spring-data-fragment-impl/v1` obligation names `@ApplicationScoped` and
 `@Typed(XImpl.class)`, and the unit assessment refuses a delegate without
-them. That check is structural. Require the packaged build to prove both
+them. That check is structural.
+
+A fragment implementation never answers its members through a repository
+that extends its fragment interface. The generated repository extends that
+interface and sends every one of its methods to the implementation, so a
+call from `XImpl` back to it (or to `X` itself) returns to `XImpl`: a
+`StackOverflowError` on every request that reaches it (v29, every
+repository read). Implement each member in `XImpl` itself: the source's
+JPQL through an injected `jakarta.persistence.EntityManager`, `find` for a
+primary-key read, `persist`/`merge`/`remove` for writes. The unit assessment
+refuses a member whose body calls a method declared by `X` or by a type
+extending `X`, read from the compiler's resolved call targets.
+
+Require the packaged build to prove both
 unambiguous application injection and successful delegate injection on the
 shipped platform. Runtime persistence
 behavior still needs its source-derived scenarios.

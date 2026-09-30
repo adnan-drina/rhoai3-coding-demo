@@ -2386,6 +2386,14 @@ def server_error_advice(root: Path | None, doc: dict[str, Any], item_id: str, di
             % (where, se.get("status"), se.get("expected_status"), exc or "an exception",
                (": " + out["message"]) if out["message"] else "",
                hints[0]["type"], hints[0]["member"], hints[0]["line"] or "?", where, item_id))
+        if exc.endswith("StackOverflowError"):
+            # v29: the fragment implementation called the Spring Data repository
+            # that extends its interface; the generated repository routed it back
+            out["locus"] += (" A StackOverflowError through a repository fragment implementation is the call routed back "
+                             "to it: the generated Spring Data repository extends the fragment interface and sends every "
+                             "one of its methods to the implementation. Implement each member in %s itself -- the source's "
+                             "JPQL through an injected EntityManager -- and never through a repository that extends its "
+                             "interface (spring-data-jpa.md, fragment implementations)." % where)
     elif exc:
         out["locus"] = (
             "the destination answered %s where the source answered %s because %s%s was thrown, and none of its frames "
@@ -6031,6 +6039,33 @@ def owed_member_body(typ: dict[str, Any], sig: str) -> tuple[str, str]:
         return "ok", "%s has a substantive body%s" % (sig, (" (through %s)" % " -> ".join(chain + [cur])) if chain else "")
 
 
+def fragment_routed_back(model: dict[str, Any] | None, typ: dict[str, Any], parent: str,
+                         members: list[str]) -> list[tuple[str, str, str]]:
+    """v29: [(member, callee, declaring type)] for each owed member of the
+    fragment implementation `typ` whose body calls a method declared by the
+    fragment interface `parent` or by a project type that extends it.
+
+    Quarkus's generated repository extends `parent` and routes every one of its
+    methods to the fragment implementation, so such a call returns to it
+    (v29: OwnerRepositoryImpl.findAll -> SpringDataOwnerRepository.findAll ->
+    OwnerRepositoryImpl.findAll, a StackOverflowError on every read). Read from
+    the compiler's resolved call targets (DestModel `calls`: declaring type +
+    signature), so an inherited method counts under the type that declares
+    it."""
+    fqn = str(typ.get("fqn") or "")
+    back = {parent} | {str(t.get("fqn") or "") for t in _unit_types(model)
+                       if str(t.get("fqn") or "") not in ("", fqn) and _implements(t, parent)}
+    declared = {str(m.get("signature") or ""): m for m in (typ.get("declared") or []) if isinstance(m, dict)}
+    out: list[tuple[str, str, str]] = []
+    for sig in members:
+        for call in (declared.get(sig) or {}).get("calls") or []:
+            owner = str(call).split("(", 1)[0].rsplit(".", 1)[0]
+            if owner in back:
+                out.append((sig, str(call)[len(owner) + 1:], owner))
+                break
+    return out
+
+
 def fragment_behaviour_rows(root: Path | None, owed: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """V17-3: each owed fragment implementation, annotated with the SELECTED
     source behaviour of every member (source_requirements.repository_behaviour:
@@ -6177,6 +6212,18 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
         if unshaped:
             out.append(dict(base, verdict="inconclusive",
                             detail="the bodies of %s cannot be judged: %s" % (typ.get("fqn"), "; ".join(unshaped[:3]))))
+            continue
+        routed = fragment_routed_back(model, typ, parent, judged)
+        if routed:
+            out.append(dict(base, verdict="violates",
+                            detail="%s answers %s by calling %s, which %s declares: the generated Spring Data repository "
+                                   "that extends %s routes every %s method to %s, so the call comes back to it "
+                                   "(StackOverflowError at runtime). Implement each owed member itself -- the source's "
+                                   "JPQL through an injected EntityManager -- and never through a repository that extends "
+                                   "%s (spring-data-fragment-impl/v1, v29)" % (
+                                       typ.get("fqn"), routed[0][0], routed[0][1], routed[0][2], parent.rsplit(".", 1)[-1],
+                                       parent.rsplit(".", 1)[-1], str(typ.get("fqn") or "").rsplit(".", 1)[-1],
+                                       parent.rsplit(".", 1)[-1])))
             continue
         if isinstance(row.get("cdi"), dict):
             verdict, detail = fragment_cdi_exposure(typ, row["cdi"])
