@@ -140,7 +140,8 @@ def main() -> int:
                           "oracle_db": r["oracle"].split("-security-")[0],
                           "destination_status": (ex.get("response") or {}).get("status"),
                           "destination_log_stackoverflow_count": soe}
-                    rows.append(_row(r["case"], sid, r["outcome"] != "UNMEASURED", r["outcome"], mode, art, ev))
+                    rows.append(_row(r["case"], sid, r["outcome"] != "UNMEASURED", r["outcome"], mode, art, ev,
+                                     db="destination postgresql; oracle source %s" % ev["oracle_db"]))
         # the source's own engine sensitivity (captures only; nothing booted)
         for mode in ("disabled", "enabled"):
             try:

@@ -504,7 +504,8 @@ def podman_ready() -> Tuple[bool, str]:
         return False, "podman is not on PATH"
     r = subprocess.run(["podman", "info", "--format", "{{.Host.Arch}}"], capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
-        return False, "podman cannot reach its machine/socket: %s" % (r.stderr or r.stdout).strip()[-200:]
+        last = [ln.strip() for ln in (r.stderr or r.stdout or "").splitlines() if ln.strip()]
+        return False, "podman cannot reach its machine/socket: %s" % (last[-1] if last else "no output")[-240:]
     return True, ""
 
 
