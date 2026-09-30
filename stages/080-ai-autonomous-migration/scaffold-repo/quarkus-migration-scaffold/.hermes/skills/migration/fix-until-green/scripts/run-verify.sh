@@ -483,16 +483,19 @@ if not force and str(issued.get("gate") or "") != "parity":
     if want and str(binding.get("mode") or "") == "candidate" and str(binding.get("candidate_sha256") or "") == want:
         print("done:the parity receipt is already bound to this candidate (%s); the sweep would replay it" % want[:12])
         raise SystemExit(0)
-    # v29 I-11: with no issued card the comparison binds to the admission SEAL. A seal that is
-    # not ADMITTED makes every verdict INCONCLUSIVE, which overwrote each recorded FAIL and left
-    # the rebuilt work list empty at a known [0,0,0]. A comparison that cannot be authoritative
-    # replaces nothing. (No apostrophes: see above.)
+    # v29 I-11: with no issued card the comparison binds to the admission SEAL, and the comparator
+    # asks it exactly this question (admission.verify_receipt). This stage runs after the work
+    # list was rebuilt on the new measurement, so the seal usually no longer seals it: every
+    # verdict then comes back INCONCLUSIVE over its recorded FAIL, and the rebuilt work list was
+    # empty at a known [0,0,0] (twice on v29). A comparison that cannot be authoritative replaces
+    # nothing. (No apostrophes: see above.)
     if not issued:
-        from planner.paths import ADMISSION_RECEIPT  # noqa: E402
-        sealed = str(doc(ADMISSION_RECEIPT).get("status") or "missing")
-        if sealed != "ADMITTED":
-            print("done:no issued card and the admission seal is %s; an unscoped comparison bound to it cannot be "
-                  "authoritative and would replace the recorded verdicts with INCONCLUSIVE" % sealed)
+        from planner.admission import verify_receipt  # noqa: E402
+        _sealed, gaps = verify_receipt(root, require_admitted=True)
+        if gaps:
+            print("done:no issued card and the admission seal does not seal this work list (%s); an unscoped comparison "
+                  "bound to it cannot be authoritative and would replace the recorded verdicts with INCONCLUSIVE"
+                  % "; ".join(gaps)[:300])
             raise SystemExit(0)
     print("sweep:")
     raise SystemExit(0)
