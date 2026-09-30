@@ -5,7 +5,38 @@ the ordered patch series in [patches/](patches/). This record names what was
 published, how it was qualified, and which image each run uses. A pin edit
 alone does not prove an image was built or deployed.
 
-## Current release (2026-09-29, v26)
+## Current release (2026-09-30, consolidated migration package)
+
+| Item | Identity |
+|---|---|
+| Source | platform release `e772e344` (code qualified at `5280670b`, tree `038da64c`; reliability package, v29 corrections through `c9ab129d`, architect release prerequisites `ee7bc6d6`) |
+| Base | `NousResearch/hermes-agent` `fcbd1076a93841fa88855acce810e342a5b78101` (tag `v2026.8.19`, 0.20.5) |
+| Series | 0001–0016, unchanged from v26 |
+| Patched tree | `37b147baef0c2678507c52e59e3b9231ab6ab64f` (re-verified from a fresh base by the recipe) |
+| Typed repair executor | `/opt/rhoai3/typed-repair/typed-repair.jar`, sha256 `66d1b6f4c507dbf50e38dcf44bd2673267f5fef0d598618bc2c0fb8a9d6506ad`, 17,684,782 bytes, built by recipe step 2b from the golden's pinned sources (JDK 21.0.5) and equal to `pins.json` `typed_repair.executor.jar_sha256` |
+| Image | `quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:8b1fe34a9e8467010ac78a4dc36fa851a145c534142e2ebfdabe6ebc87be4ffd` (tag `080-runtime-37b147ba`, moved from the v26 image; config `sha256:85b3d0e0…`; digest from `podman push --digestfile` and read back from the registry) |
+| Image stamp | `/opt/rhoai3/080.pins`: `hermes.patched_tree=37b147ba…`, 16 patch checksums, `outcome_authority.code_sha256=c974f26d…` (unchanged), `typed_repair.jar_sha256=66d1b6f4…` |
+| Build context | identity `4f315cdecbe34f96873d8ee170b041495502e35ae64352efe2b7d369a8c220db` over 766 files (recipe, patches, authority tree, dashboard assets, MTA CLI archive `988db13d…`, typed repair jar) |
+| Pins | golden `.hermes/pins.json` `workspace_overlay.ws_080.digest`, `run-defaults.json` `configuration.workspace_overlay.digest`, scaffold `devfile.yaml`, app-migration skeleton devfile (both ws-080 components); `validate.sh` requires them equal |
+
+### Verification of the built image
+
+Evidence: `tmp/next-migration-release/build/`.
+
+- Recipe steps 0–6 rc=0: series re-verified, jar digest equal to the pin, stamps read back.
+- Pulled by registry digest: the same stamps, 16 patch checksums, jar bytes `66d1b6f4…`.
+- The typed repair executor runs in the image (`typed-repair.test.py RealExecutor`, network
+  off, worker UID): the pinned jar translates a bounded handler fixture and a second run
+  reports `already-in-required-form` with the file unchanged.
+- The executor calls `java` from `PATH`. The workspace Hermes gateway runs with
+  `${JAVA_HOME_21}/bin` first (observed in a live workspace), which gives 21.0.12; the image's
+  bare default `PATH` resolves Java 17, on which the jar refuses to load (class file 65).
+  The check therefore uses the gateway's `PATH`; a process started without it cannot run
+  the executor.
+
+Not established here: a live model-driven run on this image.
+
+## Previous release (2026-09-29, v26)
 
 | Item | Identity |
 |---|---|
@@ -49,25 +80,11 @@ Not established here: a live model-driven run on this image.
 | F2 requested `--skills` were credited as loaded | fixed: 0016 records the native loader's actual result per run; the golden hook and audit consume only that record |
 | Unversioned build recipe | fixed: [build-recipe/](build-recipe/) is the canonical recipe; the build context identity is recorded |
 
-## Next build (not built, not published)
-
-The recipe now also stages the **typed repair executor** (V26-1): step 2b of
-`build-080-runtime-image.sh` builds `.hermes/skills/migration/fix-until-green/typed-repair`
-from the golden's pinned sources (Maven, output outside `.hermes`, its OpenRewrite
-recipe tests included), checks every shipped dependency's POM license
-(`scripts/license-inventory.py --check`), refuses a jar whose sha256 is not
-`pins.json` `typed_repair.executor.jar_sha256`, and copies it to
-`/opt/rhoai3/typed-repair/typed-repair.jar` (root-owned, read-only, ~17.7 MB;
-`080.pins` gains `typed_repair.jar_sha256`). The same sources, dependency jars and
-JDK 21.0.5 reproduce the digest; another JDK gives another digest, which is re-pinned
-deliberately in `pins.json` and the Dockerfile `ARG` together. Until an image carrying
-it is built and pinned, `typed-repair.py` reports the executor as not installed and the
-unit continues with its bounded agent procedure.
-
 ## Superseded
 
 | Image | Tree | Why superseded |
 |---|---|---|
+| `sha256:9147834b1ba45f6431bf2da6b33b62d47801b33de66e23cce18efcb007f4b1e1` | `37b147ba…` (0001–0016) | no typed repair executor; the consolidated package needs it |
 | `sha256:2ea8ebd6860519c450730f72550201b191beda7374275a79c79ec811689c93b7` | `498e2faf…` (0001–0014) | 0014 false halts on new diagnostic facts; no record of the actual preload (v26 review F1/F2); ran v25 |
 | `sha256:7490502c71993c86be593956702b1070fb63590e32ebdd8d037ff97fb61dcec2` | `ccb6a5ee…` (0001–0014) | 0014 false halts, 0006 and 0011 defects (review F1–F3); never ran a card |
 | `sha256:6a8a69a38aa2973973039cb3492b08083bc98da2698cb7ba1ca088b4d6e5f291` | `8a3bb406…` (0001–0012) | no review-handoff stop-guard fix (0013), no near-duplicate loop halt |

@@ -42,8 +42,8 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:9147834b1ba45f6431bf2da6b33b62d47801b33de66e23cce18efcb007f4b1e1",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-09-28 (tag 080-runtime-498e2faf): Hermes runtime series 0001-0014 as corrected by the independent runtime review (/opt/rhoai3/080.pins hermes.patched_tree=37b147baef0c2678507c52e59e3b9231ab6ab64f; 0006 neutral rate_limited requeue, 0011 owned-worker stop request, 0014 operand-preserving near-duplicate halt) plus the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc). Superseded: sha256:7490502c71993c86be593956702b1070fb63590e32ebdd8d037ff97fb61dcec2 (ccb6a5ee, 0014 false halts). Qualified: tmp/v21-fixes/qualification-498e (27/27, review probes). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
+        "digest": "sha256:8b1fe34a9e8467010ac78a4dc36fa851a145c534142e2ebfdabe6ebc87be4ffd",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-09-30 (tag 080-runtime-37b147ba): Hermes runtime series 0001-0016 (/opt/rhoai3/080.pins hermes.patched_tree=37b147baef0c2678507c52e59e3b9231ab6ab64f), the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc) and the typed repair executor (typed_repair.jar_sha256=66d1b6f4c507dbf50e38dcf44bd2673267f5fef0d598618bc2c0fb8a9d6506ad, built from the pinned sources by the recipe). Built from the consolidated migration package (release source e772e344, code qualified at 5280670b); see hermes-runtime/RELEASE.md. Superseded: sha256:9147834b1ba45f6431bf2da6b33b62d47801b33de66e23cce18efcb007f4b1e1 (same runtime tree, no typed repair jar). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {
