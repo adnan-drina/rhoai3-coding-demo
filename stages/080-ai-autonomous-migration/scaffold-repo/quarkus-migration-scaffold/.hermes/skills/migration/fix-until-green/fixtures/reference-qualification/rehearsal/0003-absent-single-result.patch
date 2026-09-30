@@ -1,0 +1,25 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepositoryImpl.java
+index 19b8d69..e4b6edf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepositoryImpl.java
+@@ -21,6 +21,7 @@ import java.util.Collection;
+ import jakarta.enterprise.context.ApplicationScoped;
+ import jakarta.enterprise.inject.Typed;
+ import jakarta.persistence.EntityManager;
++import jakarta.persistence.NoResultException;
+ import jakarta.persistence.PersistenceContext;
+ import jakarta.persistence.Query;
+ 
+@@ -65,7 +66,11 @@ public class OwnerRepositoryImpl implements OwnerRepository {
+         // using 'left join fetch' because it might happen that an owner does not have pets yet
+         Query query = this.em.createQuery("SELECT owner FROM Owner owner left join fetch owner.pets WHERE owner.id =:id");
+         query.setParameter("id", id);
+-        return (Owner) query.getSingleResult();
++        try {
++            return (Owner) query.getSingleResult();
++        } catch (NoResultException ex) {
++            return null;
++        }
+     }
+ 
+     @Override

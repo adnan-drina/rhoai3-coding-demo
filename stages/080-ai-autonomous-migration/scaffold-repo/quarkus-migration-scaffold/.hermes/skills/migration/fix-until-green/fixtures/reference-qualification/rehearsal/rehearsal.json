@@ -1,0 +1,88 @@
+{
+ "schema": "rhoai3.reference-rehearsal/v1",
+ "label": "REHEARSAL (not a migration output, not a run result)",
+ "note": "M-3 bounded rehearsal (MIGRATION-IMPROVEMENTS.md M-3; the 'controlled smoke test' pattern): does the catalog guidance a worker receives for each remaining Owner-path difference COMPOSE into a working Owner path? The tree is the qualification candidate (candidate/candidate.json) plus ONE patch per guided repair, each applied exactly as the rendered guidance instructs: adapters through the harness's ADR-019 installer (never hand-written), the generator change through the generator's template and plugin configuration (never generated output), the other repairs as the catalog row's action states. No typed-repair recipe covers any of these units (typed recipes: spring-data-fragment-impl, handler-uri-parameter), so none was run. The source implementation under .derived/frozen-input was never read for any patch; no oracle, corpus or comparator file changed. reference-owner-path-runtime.test.py --rehearsal builds and measures this tree; reference-qualification.sh --rehearsal adds that measurement.",
+ "base": {
+  "spec": "../candidate/candidate.json",
+  "tree": "70f2c9f3fa7d8524a5ba311046623a577527d60a"
+ },
+ "render": {
+  "how": "render-guidance.py --root <base tree with v28's frozen M1/M2 evidence (v28-frozen-evidence.tgz: evidence/structure, evidence/planning, .derived/frozen-input/pom.xml) and THIS harness's .hermes>; its output is rendered-guidance.json",
+  "adapter_authority": "the ADR-019 installer requires a work-list obligation. The rehearsal work list (evidence/planning/worklist.json, git-ignored, not in the tree) holds PARITY_CORS / PARITY_CONTENT_TYPE items typed by the harness's own response_adapters functions (media_type_difference, contract) from the M-3 comparator differences of the 70f2c9f3 measurement; each receipt (evidence/response-adapters/*.json) names them"
+ },
+ "steps": [
+  {
+   "id": "R1",
+   "patch": "0001-cors-response-adapter.patch",
+   "patch_sha256": "155e9bf5da7904381ebc4a4f0c256221e4d0923b77b268869e5177f283b236a9",
+   "guidance": {
+    "key": "cors",
+    "catalog": "PARITY_CORS obligation -> source-cors-response-adapter/v1 (restore-source-response-shape, ADR-019)",
+    "applied_by": "python3 .hermes/skills/migration/restore-source-response-shape/scripts/install-response-adapter.py --root . --adapter cors (then --check: installed exactly as rendered, 50 rows)"
+   },
+   "addresses": ["cors-preflight[disabled]", "cors-actual-read[disabled]", "cors-actual-invalid-create[disabled]"],
+   "tree_after": "2f4a017bab4fb253e82c37421c2e105c445005d2"
+  },
+  {
+   "id": "R2",
+   "patch": "0002-media-type-parameter-adapter.patch",
+   "patch_sha256": "96be23fd8063100d48373a1dc65350034cb09d46119ddfc014ba42abbc19102d",
+   "guidance": {
+    "key": "content-type-parameter",
+    "catalog": "PARITY_CONTENT_TYPE obligation -> source-media-type-parameter-adapter/v1 (restore-source-response-shape, ADR-019); decision by response_adapters.media_type_decision: charset=utf-8 on application/json",
+    "applied_by": "python3 .hermes/skills/migration/restore-source-response-shape/scripts/install-response-adapter.py --root . --adapter media-type (then --check: 3 rows)"
+   },
+   "addresses": ["every Content-Type charset difference (15 steps)"],
+   "tree_after": "6c3e0536438dc0a01a43876d177bd12030513320"
+  },
+  {
+   "id": "R3",
+   "patch": "0003-absent-single-result.patch",
+   "patch_sha256": "7d4c3afdeea046a84900e6dc3d209486df49a382cf1847723670fc2fe6b16f3f",
+   "guidance": {
+    "key": "absent-row",
+    "catalog": "compat-mapping repository_behaviour.query_result_semantics.single_entity (brief.absent_result_semantics) + static_triggers.absent_result_verdict",
+    "applied_by": "the row's second sanctioned form, 'catch NoResultException and return null', at the only bare getSingleResult() of a single-entity READ member in the tree (OwnerRepositoryImpl.findById); the query text is unchanged"
+   },
+   "addresses": ["owner-get-missing", "owner-update-missing", "owner-delete-missing", "owner-delete-created-readback", "owner-delete-dependents-readback"],
+   "tree_after": "5040d71c61170b258cc947e73e9edf52f2ec0093"
+  },
+  {
+   "id": "R4",
+   "patch": "0004-validation-object-name.patch",
+   "patch_sha256": "61e2140a48ad2a659f0e43b30534c82cff847382ec83517ba9b4bf38c4267afb",
+   "guidance": {
+    "key": "object-name",
+    "catalog": "compat-mapping validation_helpers[org.springframework.validation.BindingResult].mapping getObjectName() -> java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())",
+    "applied_by": "the mapping's expression at the helper's one getObjectName() equivalent (BindingErrorsResponse.addAllErrors)"
+   },
+   "addresses": ["owner-create-blank-firstname", "owner-create-bad-telephone", "owner-update-invalid", "cors-actual-invalid-create"],
+   "tree_after": "7bc6458deecaa6253f17c0a3db3a4b316f675c39"
+  },
+  {
+   "id": "R5",
+   "patch": "0005-required-read-only-template.patch",
+   "patch_sha256": "3262090b7b5f1cd0c6610be52bc1c077bf228d68a23dde3794c9c4cd592e74cd",
+   "guidance": {
+    "key": "required-read-only",
+    "catalog": "compat-mapping build_plugins[org.openapitools:openapi-generator-maven-plugin].generators.jaxrs-spec.required_read_only.action, planned as plan:gbro (static_triggers.required_read_only_items)",
+    "applied_by": "<templateDirectory>${project.basedir}/src/main/openapi-templates</templateDirectory> in the generator execution's <configuration>; src/main/openapi-templates/beanValidation.mustache = openapi-generator-7.25.0.jar JavaJaxRS/spec/beanValidation.mustache with only {{^isReadOnly}} and {{/isReadOnly}} removed (bytes from the pinned jar); generateJsonCreator=false kept; no generated file touched"
+   },
+   "addresses": ["owner-create-null-pets"],
+   "tree_after": "a955a9a67e65e826e07d74601daef3ce63fae5b5"
+  },
+  {
+   "id": "R6",
+   "patch": "0006-request-body-unreadable-mappers.patch",
+   "patch_sha256": "8a74ea8f9e83b362b17962e2a881884ae2d7eaebd73c742cea14bd9b5b5a35a6",
+   "guidance": {
+    "key": "advice",
+    "catalog": "compat-mapping exception_advice.request-body-unreadable.action (ADR-025; brief.advice_guidance)",
+    "applied_by": "ExceptionControllerAdvice kept as it is; two @Provider ExceptionMappers beside it (MismatchedInputException; WebApplicationException with a StreamReadException cause only, e.getResponse() otherwise) answering through new ExceptionControllerAdvice().exception(e) with its status, the source capture's media type text/plain;charset=UTF-8 and its body"
+   },
+   "addresses": ["owner-create-pets-not-a-list", "owner-create-malformed"],
+   "tree_after": "aac90798072607e66f721681529367f668a8d3b6"
+  }
+ ],
+ "rehearsal_tree": "aac90798072607e66f721681529367f668a8d3b6"
+}

@@ -593,6 +593,37 @@ def build_candidate(bundle: Optional[str], dest: Path) -> dict:
             "recipe_applications": applied, "candidate_tree": cand_tree}
 
 
+REHEARSAL = QUAL / "rehearsal" / "rehearsal.json"
+REHEARSAL_LABEL = "REHEARSAL (not a migration output, not a run result)"
+
+
+def build_rehearsal(bundle: Optional[str], dest: Path) -> dict:
+    """The M-3 rehearsal tree (rehearsal/rehearsal.json): the qualification
+    candidate built by build_candidate, then each guided-repair patch applied
+    in order, the tree id verified after EVERY step. The measured tree is
+    labelled REHEARSAL: the patches apply the catalog guidance a worker
+    receives, applied by the qualification, never a loop's output."""
+    spec = json.loads(REHEARSAL.read_text(encoding="utf-8"))
+    ident = build_candidate(bundle, dest)
+    if ident["candidate_tree"] != spec["base"]["tree"]:
+        raise RuntimeError("the rehearsal base is %s, rehearsal.json expects %s" % (ident["candidate_tree"], spec["base"]["tree"]))
+    steps = []
+    for st in spec["steps"]:
+        patch = REHEARSAL.parent / st["patch"]
+        _git(dest, "apply", "--check", str(patch))
+        _git(dest, "apply", str(patch))
+        _git(dest, "add", "-A")
+        tree = _git(dest, "write-tree")
+        if tree != st["tree_after"]:
+            raise RuntimeError("after %s the tree is %s, rehearsal.json expects %s" % (st["patch"], tree, st["tree_after"]))
+        steps.append({"step": st["id"], "patch": st["patch"], "patch_sha256": sha256_file(patch), "tree_after": tree,
+                      "guidance": st["guidance"]["key"]})
+    if steps and steps[-1]["tree_after"] != spec["rehearsal_tree"]:
+        raise RuntimeError("the rehearsal tree is %s, rehearsal.json expects %s" % (steps[-1]["tree_after"], spec["rehearsal_tree"]))
+    return dict(ident, label=REHEARSAL_LABEL, rehearsal_steps=steps, rehearsal_tree=spec["rehearsal_tree"],
+                measured_tree=spec["rehearsal_tree"])
+
+
 def tree_identity(root: Path, base_identity: dict, replaced: Optional[Dict[str, Path]] = None) -> dict:
     """The candidate identity plus any file a variant replaced (path, sha256)
     and the resulting git tree id."""

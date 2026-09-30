@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/RequestBodyMismatchMapper.java b/src/main/java/org/springframework/samples/petclinic/rest/RequestBodyMismatchMapper.java
+new file mode 100644
+index 0000000..3c979e4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/RequestBodyMismatchMapper.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest;
++
++import jakarta.ws.rs.core.Response;
++import jakarta.ws.rs.ext.ExceptionMapper;
++import jakarta.ws.rs.ext.Provider;
++
++import org.springframework.http.ResponseEntity;
++
++import com.fasterxml.jackson.databind.exc.MismatchedInputException;
++
++/**
++ * A request body whose value has the wrong type: the platform's Jackson reader rethrows
++ * {@link MismatchedInputException} as-is. Answered through {@link ExceptionControllerAdvice}'s own
++ * handler, with the status it returns and the media type the source recorded
++ * (compat-mapping exception_advice.request-body-unreadable, ADR-025).
++ */
++@Provider
++public class RequestBodyMismatchMapper implements ExceptionMapper<MismatchedInputException> {
++
++    @Override
++    public Response toResponse(MismatchedInputException e) {
++        ResponseEntity<String> answer = new ExceptionControllerAdvice().exception(e);
++        return Response.status(answer.getStatusCode().value())
++                .type("text/plain;charset=UTF-8")
++                .entity(answer.getBody())
++                .build();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/RequestBodyUnreadableMapper.java b/src/main/java/org/springframework/samples/petclinic/rest/RequestBodyUnreadableMapper.java
+new file mode 100644
+index 0000000..c761233
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/RequestBodyUnreadableMapper.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest;
++
++import jakarta.ws.rs.WebApplicationException;
++import jakarta.ws.rs.core.Response;
++import jakarta.ws.rs.ext.ExceptionMapper;
++import jakarta.ws.rs.ext.Provider;
++
++import org.springframework.http.ResponseEntity;
++
++import com.fasterxml.jackson.core.exc.StreamReadException;
++
++/**
++ * A malformed request body: the platform's Jackson reader wraps the {@link StreamReadException}
++ * in a 400 {@link WebApplicationException}. Only that cause is answered through
++ * {@link ExceptionControllerAdvice}'s own handler (its status, the media type the source recorded);
++ * every other WebApplicationException keeps its own response
++ * (compat-mapping exception_advice.request-body-unreadable, ADR-025).
++ */
++@Provider
++public class RequestBodyUnreadableMapper implements ExceptionMapper<WebApplicationException> {
++
++    @Override
++    public Response toResponse(WebApplicationException e) {
++        if (!(e.getCause() instanceof StreamReadException)) {
++            return e.getResponse();
++        }
++        ResponseEntity<String> answer = new ExceptionControllerAdvice().exception((Exception) e.getCause());
++        return Response.status(answer.getStatusCode().value())
++                .type("text/plain;charset=UTF-8")
++                .entity(answer.getBody())
++                .build();
++    }
++}

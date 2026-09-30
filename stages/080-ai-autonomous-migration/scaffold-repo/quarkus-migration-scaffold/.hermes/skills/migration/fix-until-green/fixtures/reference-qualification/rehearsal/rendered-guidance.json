@@ -1,0 +1,155 @@
+{
+ "harness_catalog_sha256": "a0ce3fc69caa91f661a17d8303973fd47f6d9845bbb2e3ca17378c0190ea51e0",
+ "label": "REHEARSAL (not a migration output, not a run result)",
+ "schema": "rhoai3.reference-rehearsal-guidance/v1",
+ "steps": {
+  "R1": {
+   "owed": {
+    "config": "src/main/resources/application.properties",
+    "contract": "source-cors-response-adapter/v1",
+    "families": [
+     "quarkus.http.cors",
+     "rhoai3.source-cors."
+    ],
+    "install": "python3 .hermes/skills/migration/restore-source-response-shape/scripts/install-response-adapter.py --root . --adapter cors",
+    "kind": "cors",
+    "path": "src/main/java/io/rhoai3/migration/response/SourceCorsResponseAdapter.java",
+    "source": "https://quarkus.io/version/3.27/guides/http-reference#filters (the platform answers a preflight in its CORS route filter before any endpoint: https://quarkus.io/version/3.27/guides/security-cors)",
+    "template": "skills/migration/restore-source-response-shape/templates/SourceCorsResponseAdapter.java.template",
+    "template_sha256": "014068d737381a335d26339b3b407be6e50aab68c6f46405f355ada9f4114860",
+    "type": "io.rhoai3.migration.response.SourceCorsResponseAdapter"
+   },
+   "rendered_by": "response_adapters.contract + rows_for (install-response-adapter.py --print)",
+   "rows": 50,
+   "security": {
+    "configs": [
+     {
+      "condition": "petclinic.security.enable=true",
+      "cors": false,
+      "known": true,
+      "permits_anonymous": false,
+      "rejects_anonymous": true,
+      "type": "org.springframework.samples.petclinic.security.BasicAuthenticationConfig"
+     },
+     {
+      "condition": "petclinic.security.enable=false",
+      "cors": false,
+      "known": true,
+      "permits_anonymous": true,
+      "rejects_anonymous": false,
+      "type": "org.springframework.samples.petclinic.security.DisableSecurityConfig"
+     }
+    ],
+    "precedes_cors": true,
+    "preflight_authenticated_when": [
+     "petclinic.security.enable=true"
+    ]
+   },
+   "source_policies": [
+    "crossorigin:7b1a3d9234cd"
+   ]
+  },
+  "R2": {
+   "decision": {
+    "media_types": [
+     "application/json"
+    ],
+    "parameter": "charset",
+    "value": "utf-8"
+   },
+   "owed": {
+    "config": "src/main/resources/application.properties",
+    "contract": "source-media-type-parameter-adapter/v1",
+    "families": [
+     "rhoai3.source-media-type."
+    ],
+    "install": "python3 .hermes/skills/migration/restore-source-response-shape/scripts/install-response-adapter.py --root . --adapter media-type",
+    "kind": "media-type",
+    "path": "src/main/java/io/rhoai3/migration/response/SourceMediaTypeParameterAdapter.java",
+    "source": "https://quarkus.io/version/3.27/guides/http-reference#filters",
+    "template": "skills/migration/restore-source-response-shape/templates/SourceMediaTypeParameterAdapter.java.template",
+    "template_sha256": "95ba774c07980cf706ab6c919cc94657f0598fd3c0ca82821aa203a03b8a092c",
+    "type": "io.rhoai3.migration.response.SourceMediaTypeParameterAdapter"
+   },
+   "rendered_by": "response_adapters.media_type_decision over the rehearsal PARITY_CONTENT_TYPE items",
+   "rows": [
+    [
+     "rhoai3.source-media-type.parameter",
+     "charset"
+    ],
+    [
+     "rhoai3.source-media-type.parameter-value",
+     "utf-8"
+    ],
+    [
+     "rhoai3.source-media-type.media-types",
+     "application/json"
+    ]
+   ]
+  },
+  "R3": {
+   "check": "static_triggers.absent_result_verdict (needs the destination compiler model; not rendered here)",
+   "rendered_by": "brief.absent_result_semantics (the line a fragment card's brief carries)",
+   "text": "single entity: Spring Data JPA returns null when a query method declared with a single entity (not Optional, not a collection) finds no row -- a @Query, a derived query or findById on the repository -- and raises IncorrectResultSizeDataAccessException for more than one. JPA's TypedQuery.getSingleResult() throws NoResultException for no row, which answers 500 where the source answered its own null path (typically 404). Port the member as query.getResultStream().findFirst().orElse(null) when the source guarantees at most one row (an id or unique key), or catch NoResultException and return null; never getSingleResult() bare, and never turn the source's null into an exception or an empty object. optional: an Optional return is Optional.empty() for no row (getResultStream().findFirst()). collection: a collection return is an empty collection for no row (getResultList())."
+  },
+  "R4": {
+   "action": "change that parameter to Set<? extends ConstraintViolation<?>> (jakarta.validation.ConstraintViolation) and have the handler pass the set validator.validate(<body>) returned; where the helper walked bindingResult.getFieldErrors(), iterate the violations and read each FieldError accessor from its ConstraintViolation equivalent (FieldError.getField() -> violation.getPropertyPath().toString(), getDefaultMessage() -> getMessage(), getRejectedValue() -> getInvalidValue(), getObjectName() -> java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())); keep the helper's output (the header or body it renders) exactly as it was",
+   "getObjectName": "java.beans.Introspector.decapitalize(violation.getRootBeanClass().getSimpleName())",
+   "object_name": "getObjectName() is the BINDING name Spring gave the validated @RequestBody, not the class name: RequestResponseBodyMethodProcessor binds it under Conventions.getVariableNameForParameter, which for a non-collection, non-array type is ClassUtils.getShortNameAsProperty = java.beans.Introspector.decapitalize(<short name>) (OwnerDto -> ownerDto, URLDto -> URLDto). A body declared as a collection or array is named differently (Conventions pluralizes, e.g. ownerDtoList): that shape is unresolved here and the source capture's errors header decides. Checked by validation-object-name.test.py (Spring's own ClassUtils against this expression) and by M4 parity on the errors header (M-3 2026-09-30: the v28 candidate rendered OwnerDto where the source sent ownerDto)",
+   "rendered_by": "compat-mapping validation_helpers (the planner renders the row at a member taking the type)"
+  },
+  "R5": {
+   "items": [
+    {
+     "cases": [
+      {
+       "model": "org.springframework.samples.petclinic.dto.OwnerDto",
+       "property": "pets",
+       "schema": "Owner"
+      },
+      {
+       "model": "org.springframework.samples.petclinic.dto.PetDto",
+       "property": "id",
+       "schema": "Pet"
+      },
+      {
+       "model": "org.springframework.samples.petclinic.dto.PetDto",
+       "property": "visits",
+       "schema": "Pet"
+      },
+      {
+       "model": "org.springframework.samples.petclinic.dto.PetTypeDto",
+       "property": "id",
+       "schema": "PetType"
+      },
+      {
+       "model": "org.springframework.samples.petclinic.dto.SpecialtyDto",
+       "property": "id",
+       "schema": "Specialty"
+      },
+      {
+       "model": "org.springframework.samples.petclinic.dto.VetDto",
+       "property": "id",
+       "schema": "Vet"
+      },
+      {
+       "model": "org.springframework.samples.petclinic.dto.VisitDto",
+       "property": "id",
+       "schema": "Visit"
+      }
+     ],
+     "first_action": "restore the constraint through the generator, never in the generated file: add <templateDirectory>${project.basedir}/src/main/openapi-templates</templateDirectory> to the plugin's <configuration> and a src/main/openapi-templates/beanValidation.mustache that is 7.25.0's JavaJaxRS/spec/beanValidation.mustache with only `{{^isReadOnly}}` and its closing `{{/isReadOnly}}` removed. Keep generateJsonCreator=false and the field's own initializer (new ArrayList<>()), so an OMITTED property still binds as the empty collection the source accepted (V16-8) and only an explicit null is refused, with the platform's default 'must not be null' message",
+     "id": "plan:gbro:73e36e7da165",
+     "path": "src/main/openapi-templates/beanValidation.mustache"
+    }
+   ],
+   "notes": [],
+   "rendered_by": "static_triggers.required_read_only_items (plan:gbro, its first_action)"
+  },
+  "R6": {
+   "action": "keep the advice as it is, and add two jakarta.ws.rs.ext.ExceptionMapper @Provider classes beside it that answer through the advice's OWN handler method (new <Advice>().<handler>(e), or the injected bean) with the status it returns, the media type the source capture recorded and its body: one for com.fasterxml.jackson.databind.exc.MismatchedInputException (the platform's Jackson reader rethrows a wrong-type value as-is, and its built-in mapper answers an empty 400), and one for jakarta.ws.rs.WebApplicationException that handles ONLY a cause of type com.fasterxml.jackson.core.exc.StreamReadException (a malformed document is wrapped in a 400 WebApplicationException) and returns e.getResponse() for every other one. Never hard-code the source framework's class name or message: the values are the destination's own diagnostics (ADR-025 compares them as present, non-empty strings)",
+   "rendered_by": "compat-mapping exception_advice.request-body-unreadable (brief.advice_guidance renders this row when the card's SOURCE capture is the advice's 400; the v28 frozen evidence holds no verification/source-oracles, so the selection is not re-run here)",
+   "source_semantics": "the source's advice caught Spring's HttpMessageNotReadableException (a malformed JSON document or a value of the wrong type) and answered 400 with the advice's own body and media type (a String body: text/plain;charset=UTF-8) -- here the JSON object {className, exMessage}"
+  }
+ }
+}
