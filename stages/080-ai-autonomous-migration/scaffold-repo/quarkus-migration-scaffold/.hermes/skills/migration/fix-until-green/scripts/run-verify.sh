@@ -483,6 +483,17 @@ if not force and str(issued.get("gate") or "") != "parity":
     if want and str(binding.get("mode") or "") == "candidate" and str(binding.get("candidate_sha256") or "") == want:
         print("done:the parity receipt is already bound to this candidate (%s); the sweep would replay it" % want[:12])
         raise SystemExit(0)
+    # v29 I-11: with no issued card the comparison binds to the admission SEAL. A seal that is
+    # not ADMITTED makes every verdict INCONCLUSIVE, which overwrote each recorded FAIL and left
+    # the rebuilt work list empty at a known [0,0,0]. A comparison that cannot be authoritative
+    # replaces nothing. (No apostrophes: see above.)
+    if not issued:
+        from planner.paths import ADMISSION_RECEIPT  # noqa: E402
+        sealed = str(doc(ADMISSION_RECEIPT).get("status") or "missing")
+        if sealed != "ADMITTED":
+            print("done:no issued card and the admission seal is %s; an unscoped comparison bound to it cannot be "
+                  "authoritative and would replace the recorded verdicts with INCONCLUSIVE" % sealed)
+            raise SystemExit(0)
     print("sweep:")
     raise SystemExit(0)
 if not booted:

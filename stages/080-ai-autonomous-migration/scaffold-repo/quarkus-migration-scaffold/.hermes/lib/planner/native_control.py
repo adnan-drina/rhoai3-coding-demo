@@ -1999,7 +1999,30 @@ def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reas
         doc["clusters"] = [c for c in doc.get("clusters") or [] if c not in lifted]
         doc["reasons"] = {k: v for k, v in reasons.items() if k not in lifted}
         write_canonical(p, doc)
-    return {"lifted": lifted, "kept": kept, "budget": {k: b[k] for k in ("key", "spent", "limit", "exhausted")}}
+    return {"lifted": lifted, "kept": kept, "budget": {k: b[k] for k in ("key", "spent", "limit", "exhausted")},
+            "admission": _readmit_if_stale(root, set(doc.get("clusters") or []))}
+
+
+def _readmit_if_stale(root: Path, deferred: set[str]) -> str:
+    """The admission seal still blocking on a cluster that is no longer deferred
+    is stale (v29 I-11: the lifted cluster kept MANUAL_CLUSTER, the parity
+    composer refused a receipt against it, and the sweep wrote INCONCLUSIVE over
+    every FAIL). Rebuild the work list and re-seal, as the loop does after any
+    disposition; nothing is minted. Checked on every call, so an interrupted
+    reconciliation re-seals on the repeat."""
+    from planner.canonical import load_json
+    from planner.paths import ADMISSION_RECEIPT
+    p = Path(root) / ADMISSION_RECEIPT
+    if not p.is_file():
+        return "no admission receipt"
+    rec = load_json(p)
+    stale = [b for b in rec.get("blocks") or [] if b.get("class") == "MANUAL_CLUSTER" and b.get("subject") not in deferred]
+    if not stale:
+        return str(rec.get("status") or "")
+    from planner import pipeline
+    from planner.worklist import build_worklist
+    build_worklist(Path(root))
+    return str(pipeline.admit(Path(root)).get("status") or "")
 
 
 def parked_pending(board: Board, task_id: str) -> dict[str, Any] | None:

@@ -291,6 +291,15 @@ issued_scope "${K}" '["parity:aaaa","parity:bbbb"]' "disabled" '["sc:a-first","s
 [[ "$(plan "${K}")" == $'run:sc:a-first,sc:b-second\nmode:disabled\nrun-mode:disabled:sc:a-first,sc:b-second' ]] \
   || fail "a parity card keeps its own scoped comparison: $(plan "${K}")"
 
+# v29 I-11: with NO issued card the sweep binds to the admission seal; unless that seal is ADMITTED
+# every verdict comes back INCONCLUSIVE and replaces the recorded FAILs, so it does not run
+L="${TMP}/l"; mkroot "${L}"; mkdir -p "${L}/verification/parity"; boot_ok "${L}"; worklist "${L}"; feedback "${L}" v1; candidate "${L}" "c0ffee"
+[[ "$(plan "${L}")" == done:*"seal is missing"* ]] || fail "no card and no admission seal: nothing authoritative to compare against: $(plan "${L}")"
+printf '{"status":"INCONCLUSIVE"}' >"${L}/evidence/planning/admission-receipt.json"
+[[ "$(plan "${L}")" == done:*"seal is INCONCLUSIVE"* ]] || fail "no card and a stale seal must skip the sweep by name: $(plan "${L}")"
+printf '{"status":"ADMITTED"}' >"${L}/evidence/planning/admission-receipt.json"
+[[ "$(plan "${L}")" == "sweep:" ]] || fail "no card and an ADMITTED seal: the sweep runs: $(plan "${L}")"
+
 # what the two triggers are recorded as, and that the sweep is never scoped
 grep -qF 'PARITY_TRIGGER="runtime-feedback"' "${SCRIPT}" || fail "the sweep must record why it ran"
 grep -qF 'PARITY_TRIGGER="issued-card"' "${SCRIPT}" || fail "a card's own comparison must record why it ran"

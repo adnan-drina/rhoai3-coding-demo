@@ -1229,6 +1229,40 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual(got["lifted"], [iss["cluster"]])
         self.assertEqual(len(r.board.records(tid, "deferral-lifted")), 1)     # the record was not duplicated
 
+    def test_a_seal_still_blocking_on_a_lifted_cluster_is_resealed_once(self):
+        """v29 I-11: the lifted cluster kept its MANUAL_CLUSTER block, the parity composer refused against the
+        stale seal and the sweep overwrote every FAIL with INCONCLUSIVE."""
+        from planner import pipeline, worklist as W
+        from planner.paths import ADMISSION_RECEIPT
+        r = self.r
+        tid, _run, iss, _key, _limit, _p = self.exhaust()
+        seal = r.root / ADMISSION_RECEIPT
+        seal.parent.mkdir(parents=True, exist_ok=True)
+        seal.write_text(json.dumps({"status": "INCONCLUSIVE", "blocks": [
+            {"class": "MANUAL_CLUSTER", "subject": iss["cluster"]}, {"class": "MANUAL_CLUSTER", "subject": "c:other"}]}))
+        calls = []
+        orig = (pipeline.admit, W.build_worklist)
+
+        def admit(root, **k):
+            calls.append("admit")
+            seal.write_text(json.dumps({"status": "INCONCLUSIVE", "blocks": [{"class": "MANUAL_CLUSTER", "subject": "c:other"}]}))
+            return {"status": "INCONCLUSIVE"}
+        pipeline.admit, W.build_worklist = admit, (lambda root, **k: calls.append("build"))
+        try:
+            NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="h",
+                            by="operator")
+            got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+            self.assertEqual((got["lifted"], calls), ([iss["cluster"]], ["build", "admit"]))
+            # the block that remains is another family's, still deferred: nothing to re-seal
+            NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+            self.assertEqual(calls, ["build", "admit"])
+            # interrupted before the re-seal: the repeat re-seals although nothing is left to lift
+            seal.write_text(json.dumps({"status": "INCONCLUSIVE", "blocks": [{"class": "MANUAL_CLUSTER", "subject": iss["cluster"]}]}))
+            again = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+            self.assertEqual((again["lifted"], calls[-2:]), ([], ["build", "admit"]))
+        finally:
+            pipeline.admit, W.build_worklist = orig
+
     def projection(self, tid, run):
         from planner.paths import LOOP_ISSUED
         p = self.r.root / LOOP_ISSUED
