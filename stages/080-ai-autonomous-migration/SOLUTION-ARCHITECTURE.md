@@ -36,7 +36,7 @@ The governing decisions:
 1. **The work list is the plan.** MTA mandatory incidents, JDK compiler diagnostics, failing tests, and runtime-parity mismatches, each with a file locus, clustered by file, in a fixed order. It is recomputed by tools after every change and never written by a model or a human.
 2. **A strict progress measure decides.** The tuple *(mandatory incidents, observed compile errors, failing tests)* must strictly decrease lexicographically with no new mandatory incident, **or** a typed gate/coverage outcome must retain the candidate unaccepted. The compile slot is an observed diagnostic count: javac reports one error at a time, so `[0,1,0]` cannot establish that only one defect remains. An issued compile diagnostic that disappears while the count stays the same is `VERIFICATION_PENDING` (`unproven-repair`), not ACCEPTED and not a spent attempt. Disappearance, a changed diagnostic id, or a moved line never earns ACCEPTED. A true count drop still accepts. Strict decrease plus the typed pending outcome is the termination argument.
 3. **AI proposes; tools decide.** A worker edits only the head cluster's write set. It never authors the list, the measure, the acceptance, or a decision. A cluster that fails the attempt threshold becomes a human's card and the loop stops until the human clears it (pilot rule: a deferral is never routed around).
-4. **Product tooling only, permissively licensed.** MTA CLI 8.2 (analysis), the pinned toolchain JDK's compiler API (structure and diagnostics), Maven and surefire (build and tests), Hermes v0.20.5 (cards), git (state). No third-party analysis library, no source-available recipe bundle, no regex extraction.
+4. **Product tooling only, permissively licensed.** MTA CLI 8.2 (analysis), the pinned toolchain JDK's compiler API (structure and diagnostics), Maven and surefire (build and tests), Hermes v0.20.5 (cards), git (state), and one pinned execution component: OpenRewrite 8.89.0 (`rewrite-core`, `rewrite-java`, `rewrite-java-21`; Apache-2.0) inside the harness's typed repair executor, which applies this project's own two recipes to an issued unit (§7.3). It never produces M1/M2 evidence and never plans. No third-party analysis library, no recipe bundle (`rewrite-spring`, `rewrite-quarkus`, `rewrite-migrate-java`), no source-available or proprietary component, no regex extraction.
 5. **The Spring-compatibility path first.** The deterministic bootstrap targets the Quarkus Spring compatibility extensions; the native path is the same loop with a second mapping catalog and one more work-list source (`org.springframework` imports), applied class by class as the Quarkus guidance recommends.
 6. **Specimen independence is required from the outset.** PetClinic is the current proving application. Every harness component must express a reusable capability or consume an evidence-bound application contract; a PetClinic repair must satisfy this boundary before it ships. Successful PetClinic migration is followed by validation on a new application, not by a deferred generalization rewrite. See §2.1.
 
@@ -52,6 +52,7 @@ Spec Kit, the typed partition, the ownership map, the capability DAG, the contex
 | Red Hat OpenShift Dev Spaces | Per-run workspace with legacy read-only and destination writable | Platform-managed |
 | MTA CLI | Mandatory incidents on the frozen source and on the destination after every step; the canary rule proves the effective ruleset | `pins.mta_cli` **8.2** product line; measured binary version and sha256 recorded in every receipt; an Operator freezes `artifact_sha256` from a measured receipt; kantra is provisional and non-admissible |
 | JDK compiler API (`javax.lang.model`, `com.sun.source`, `javax.tools`) | Structural inventory of the frozen source (`JdkModelExtract.java`) and compiler diagnostics of the destination (`JdkDiagnostics.java`) | `pins.structure_extractor` **jdk-21** = the toolchain JDK; the launcher refuses on a feature-release mismatch; no third-party library, no separate license |
+| OpenRewrite (typed repair executor, harness only) | Apply the two qualified typed repairs (§7.3) inside an issued write grant; never a dependency of the migrated application | `pins.typed_repair`: executor jar sha256 and build, rewrite 8.89.0 (Apache-2.0) and every shipped artifact with its POM license; baked at `/opt/rhoai3/typed-repair/typed-repair.jar` in ws-080 |
 | Maven + surefire | Offline build and tests of the destination | Compiler and surefire plugin pins; offline (`-o`) after the warm-up |
 | Hermes Agent Kanban | One card per loop step; native dispatch and review | **v0.20.5**, build **2026.8.19** |
 | Red Hat build of Quarkus | Destination platform, compat path first | BOM **3.27.3.SP1-redhat-00002** (`pins.quarkus_platform`) |
@@ -432,7 +433,7 @@ into objectives using the versioned `objective_families` of
   constituent with its own assessor. A blocked objective parks without
   spending budget, and an independent objective proceeds.
 
-Borrowed from OpenRewrite/Moderne as patterns only, with no recipe engine:
+Borrowed from OpenRewrite/Moderne as patterns; no recipe engine composes objectives (the one reused OpenRewrite component is the §7.3 executor, which edits a single issued unit and composes nothing):
 declarative, versioned composition metadata; preconditions (applicability)
 separated from the transformation; idempotent edits; data-table style
 reporting of what each objective covers.
@@ -465,6 +466,60 @@ pinned ws-080 image: MTA CLI 8.2.1, JDK 21 and Maven.
 NOT RUN: a live Hermes board, M4 packaging, startup and parity on the
 migrated application (it does not build yet), and the decided PostgreSQL.
 Every later check stays due at M4: none was discharged or reclassified.
+
+### 7.3 Typed repair execution (V26-1/V26-2) and known-pattern coverage (M-4)
+
+A `migration_recipes` row whose `implementation.kind` is `typed-repair` names an operation of the harness executor
+`.hermes/skills/migration/fix-until-green/typed-repair` (this project's recipes on OpenRewrite's typed LST). The loop
+does not change: issued unit → `typed-repair.py` (the brief's FIRST ACTION) → `run-verify.sh` → `advance.py` → native
+review. The executor plans only from the issued unit's sealed rows and owned requirements, collects every cross-file
+fact before deciding (scan → decide → edit), matches typed references only, stages the complete patch outside the tree,
+and the caller applies it only when every changed path is inside the issued write set and the candidate is unchanged,
+through a journal (an interrupted apply is rolled back). Outcomes `applied | already-in-required-form | not-applicable |
+unresolved | failed` are recorded as `rhoai3.typed-repair-record/v1` under `verification/loop/typed-repair/` (recipe,
+executor and classpath identity, candidate before/after, matched symbols, changed files, reasons, elapsed). A record is
+never acceptance: the edit is judged by the same checks as an agent's, a no-op establishes nothing, and an unresolved
+result returns the unit to its bounded agent procedure with the reason; no attempt is granted.
+
+*Licensing and provenance.* Reused directly: `org.openrewrite:rewrite-core`, `rewrite-java`, `rewrite-java-21` 8.89.0
+(Apache-2.0; `rewrite-test` for tests only). Every shipped transitive artifact declares Apache-2.0, MIT, BSD-2/3-Clause or
+CC0-1.0 in its POM (`typed-repair/scripts/license-inventory.py --check`; lombok, JNA and jsonrpc are excluded). The jar
+carries `META-INF/THIRD-PARTY-NOTICES.txt`, the merged NOTICE and the appended LICENSE texts. Independently implemented:
+both recipes, the request/record contract and the grant inspection. Pins, per-artifact sha256 and the reproducible build
+are in `pins.json` `typed_repair`; the image recipe builds, license-checks and bakes the jar (hermes-runtime/RELEASE.md).
+
+*Qualification (2026-09-30, local, pinned platform 3.27.3.SP1-redhat-00002).* 32 OpenRewrite `rewrite-test` cases
+(before/after, unchanged negatives, second cycle, same-named types, renamed packages, missing types, the v29 routed-back
+recursion refused, identical patch on reordered sources, grant refusal); `typed-repair.test.py` 15 (planning inside the
+grant, pin refusal, diff inspection, interruption rollback, brief rendering, the real jar end to end);
+`typed-repair-package.test.py` 4 runtime cases (CDI packaging and ArC wiring; repository reads and committed writes on
+PostgreSQL with a StackOverflowError negative control; Location under `/ledger`; the null Location). On the v28 specimen:
+the seven handler sites translate to the loop's own accepted form, the seven fragment implementations are
+already-in-required-form, and the v29 delegating shape is unresolved.
+
+*Coverage of the known applicable patterns* (status: **Q** qualified typed recipe, **B** tested bounded procedure with
+catalog guidance delivered in the brief, **GAP** needs something this package cannot supply):
+
+| Pattern | Source semantics → action (catalog) | Independent checks | Unsupported / unresolved | Status |
+|---|---|---|---|---|
+| Repository CDI exposure | Spring Data wires `<Fragment>Impl`; `@ApplicationScoped @Typed(<Fragment>Impl.class)` (`spring-data-fragment-impl`, typed) | `structure:single-injectable-implementation` (fragment-cdi-package), `unit:fragment-implementation`, `gate:package`; FragmentCdiExposureTest, typed-repair-package | absent Impl, another scope or stereotype, unattributed facts | Q |
+| Repository delegation, recursion, member behaviour | selected profile's override / `@Query` / CRUD / derived query, ported on `EntityManager`; never through a repository extending the fragment | `unit:fragment-behaviour-bodies`, `worklist.fragment_routed_back`, `behavior:repository-effects` (repository-effects-runtime), executor refusal | inactive-profile source, no captured scenario (open debt) | B |
+| Absent single result | Spring Data returns null; `getResultStream().findFirst().orElse(null)` (`repository_behaviour.query_result_semantics`, shown on every read member) | single-result-null-runtime (500 vs 404), M4 parity | more than one row stays an error | B |
+| Servlet redirect | `sendRedirect` → 302 + absolute Location from `UriInfo` (`servlet-redirect-response`) | `unit:handler-parameter-sites`, servlet-redirect-package | any other response member (gap `servlet-response-member`) | B |
+| URI handling | `UriComponentsBuilder` → `@Context UriInfo`, null-tolerant `build` (`handler-uri-parameter`, typed) | `unit:handler-parameter-sites`, handler-location-package, `unit:location-null-arguments`, location-null-runtime, typed-repair-package | uses outside `path…buildAndExpand…toUri`, Map expansion, unattributed builder | Q |
+| Validation semantics | guard kept, `validator.validate` before side effects; objectName = `Introspector.decapitalize(<body short name>)` (`handler-validation-translation`, `validation_helpers`) | `unit:handler-validation-guards`, handler-validation-package, validation-object-name, parity errors header | collection/array body names | B |
+| Generated-body binding | `generateJsonCreator=false`; required readOnly keeps `@NotNull` by template override (`generated-body-binding`, `required_read_only`) | `build:clean-generation`, request-body-runtime, generated-required-readonly, parity NULL/OMITTED cases | other generator versions or overridden templates | B |
+| Transactions | Spring `@Transactional` → Jakarta at the same element; attribute table (`transaction-annotations`) | transaction-mapping (API completeness), `behavior:repository-effects` | NESTED, isolation, timeout, named manager, private methods; **GAP**: no per-site boundary check (needs a requirement check in the requirement-checks workstream) | B / GAP |
+| Collection ordering | `PropertyComparator` → `Comparator…nullsLast…reversed` (`collection-sorting`) | sorting-oracle (Spring's comparator), M4 parity order | nested paths, runtime-toggled definitions | B |
+| Root paths | context/servlet paths → `quarkus.http.root-path` / `quarkus.rest.path` (`application_paths`) | `config:application-path`; redirect and Location fixtures under non-root paths | undecided paths | B |
+| Security/CORS ordering (both modes) | `source-cors-response-adapter/v1` above the platform CORS filter (ADR-019) | runtime-check.sh (24 cases, both modes, below-filter control), CORS parity scenarios | wildcard inference, comparator changes | B |
+| Content-Type parameter | `source-media-type-parameter-adapter/v1` removes the decided parameter | runtime-check.sh, PARITY_CONTENT_TYPE parity | more than one differing parameter | B |
+| Deserialization-failure body | source advice renders Spring's exception class and message (`HttpMessageNotReadableException`, Jackson text) | M4 parity | **GAP**: reproducing Spring's class name and reader-specific message is a contract decision (ADR: normalize or adapt) | GAP |
+| Duplicate `WWW-Authenticate` | Spring Security 5.6 adds the Basic challenge twice; RFC 7235 treats them as one | M4 parity (enabled mode) | **GAP**: emit a duplicate or compare the challenge set: a comparator/ADR decision | GAP |
+| Request outside the root path | the servlet container's HTML 404, not the application | M4 parity | **GAP**: outside the application contract; scope decision (status-only or excluded) | GAP |
+
+M-3 (2026-09-30) found the v28 candidate missing the adapters (CORS, Content-Type), the absent-result, objectName and
+required-readOnly translations; the last three are now catalog guidance with checks, the adapters were already qualified.
 
 ---
 

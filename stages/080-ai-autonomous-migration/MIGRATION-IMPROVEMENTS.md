@@ -60,8 +60,8 @@ Its intervention narrative is saved reported evidence; its untimestamped
 
 | ID | Implementation | Publication / installation | Demonstrated evidence and remaining work |
 |---|---|---|---|
-| V26-1 — typed repair execution | Defined; the proposed M3 executor is not implemented | No executor release | Catalog guidance and existing bootstrap repairs are not this executor. Implement the two selected transformations. |
-| V26-2 — reusable recipe qualification | Defined; individual defect tests exist | Ships with V26-1 | Qualify the actual executor through repeatable edits and independent behavior checks. |
+| V26-1 — typed repair execution | Implemented on branch `wp/typed-repairs` (SAD §7.3): executor on OpenRewrite 8.89.0, both transformations, `typed-repair.py` as the issued unit's first action | Not published; the ws-080 recipe builds and bakes the pinned jar, no image built | Qualified locally on fixtures and the v28 specimen; no live run has used it. |
+| V26-2 — reusable recipe qualification | Implemented: 32 rewrite-test cases, 15 loop-path cases, 4 runtime package cases (SAD §7.3) | Ships with V26-1 | Runtime checks ran on the pinned platform and PostgreSQL locally; not yet in a live run. |
 | V26-3 — resolved task context | Targeted brief, actions, ownership, selectors and retry context implemented | Targeted corrections are present in v29's recorded release; broader context/API lookup is not shipped | v29 Root completed its implementation with the qualified form. This is one case, not a reliability rate. Broader evidence-bound context and classpath/API lookup remain open. |
 | V26-4 — results and cost accounting | Verification records and run-report machinery implemented; full accounting is incomplete | Existing machinery is in the harness; recipe-specific reporting awaits the executor | Finish measured run accounting; do not claim a complete comparison from partial runs. |
 | V26-5 — analysis reuse | Defined; deferred | Not part of this release scope | First measure avoidable producer/build cost; preserve fresh acceptance evidence. |
@@ -314,6 +314,8 @@ for a target pattern is package work, not an observation to rediscover next run.
 Use recipe tests for before/after, unchanged negatives and repeated application,
 and our runtime tests for semantic correctness. A recipe's text diff or
 idempotence cannot prove persistence or HTTP behavior. [R4]
+
+Coverage table (2026-09-30): SAD §7.3; three patterns remain GAPs that need a contract decision.
 
 **Exit:** a coverage table maps each known pattern to a qualified recipe or tested
 bounded agent procedure. An unsupported shape returns an actionable result before
