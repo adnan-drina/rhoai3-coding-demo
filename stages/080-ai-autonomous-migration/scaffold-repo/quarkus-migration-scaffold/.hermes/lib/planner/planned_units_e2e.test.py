@@ -335,6 +335,21 @@ def run_world(base: str, names: dict[str, str]) -> int:
             run.worklist["runtime"] = {"package": {"ran": True, "rc": 0 if runtime_ok else 1},
                                        "boot": {"ran": True, "rc": 0 if runtime_ok else 1, "ready": runtime_ok}}
             run.save_worklist()
+            # the scenarios this attempt claims are MEASURED: a PASS record bound to the candidate tree each
+            # (requirement_checks accepts nothing else, v29 Owner)
+            sdir = root / "verification" / "parity" / "scenarios"
+            sdir.mkdir(parents=True, exist_ok=True)
+            for f in sdir.glob("*.json"):
+                f.unlink()
+            for sid in scenarios:
+                (sdir / ("%s.json" % sid.replace(":", "_"))).write_text(json.dumps(
+                    {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": "PASS",
+                     "binding": {"mode": "candidate", "candidate_sha256": ctx.product_tree()}}))
+            # ...and its mode's receipt, bound to the same candidate, records them PASS
+            (sdir.parent / "receipt.json").write_text(json.dumps(
+                {"schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+                 "binding": {"mode": "candidate", "candidate_sha256": ctx.product_tree()},
+                 "entry_points": [{"entry_point": "ep:measured", "verdict": "PASS", "scenarios": list(scenarios)}]}))
             out = L.accept_commit(ctx, task_id=tid, run_id=rid, attempt=attempt_no, commit=ob.git(root, "rev-parse", "HEAD"),
                                   measurement={"classes": ["build", "compile", "tests", "runtime", "parity"], "scenarios": list(scenarios)})
             meas = [r["doc"] for r in run.store.ledger("_measure")][-1]

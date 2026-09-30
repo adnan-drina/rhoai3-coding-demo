@@ -967,6 +967,18 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                 if not g.get("refusal"):
                     cluster = planned_cluster_id(oid)
                     allowed = sorted(g.get("paths") or [])
+                    # the unit's checks are MEASURED: its issue carries what they measure (v29 Owner: a
+                    # verification-only unit was issued with no scenarios and no comparison ever ran)
+                    if any(str(r.get("check") or "").startswith(("parity:sc:", "parity:ep:", "location:"))
+                           for r in node.get("check_plan") or [] if isinstance(r, dict)):
+                        from planner.requirement_checks import verification_scope
+                        scope = verification_scope(root, plan, node)
+                        if scope["unresolved"]:
+                            raise Refusal("VERIFICATION_SCOPE_UNRESOLVED", "%s: the planned checks name targets no bound "
+                                          "corpus resolves -- %s. A harness defect: kanban_block kind=needs_input quoting "
+                                          "this line" % (oid, "; ".join("%s (%s)" % (u["check"], u["why"])
+                                                                          for u in scope["unresolved"][:4])))
+                        unit["verification"] = scope
         if not cluster and _changes_requested_since_accept(board, task_id):
             paths = _rework_paths(root, board, task_id)
             if paths:
@@ -979,10 +991,14 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
     fields = dict(outcome_id=oid, role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
                   budget_key=budget["key"], revision=int(plan["revision"]))
+    if unit and isinstance(unit.get("verification"), dict):
+        # the issued verification scope is recorded ON the native issue: acceptance judges against it
+        fields["verification"] = unit["verification"]
     rec = _unchanged_issue(board, task_id, run_id, fields) if replay_unchanged else None
-    if in_progress is not None and rec is None:
-        # a NEW issue would re-scope or re-baseline over edits nobody has judged yet
-        raise Refusal("ISSUE_IN_PROGRESS", "run %d of %s holds unjudged edits of its issue %s (%s); judge them first "
+    if in_progress is not None:
+        # architect review cf164288: a re-issue -- replayed or not -- never blesses unjudged edits as a baseline;
+        # they stay in the tree, attributed to this run and to nobody else
+        raise Refusal("ISSUE_BASELINE_DRIFT", "run %d of %s holds unjudged edits of its issue %s (%s); judge them first "
                       "(run-verify.sh --mode acceptance, then advance.py). Nothing was set aside and nothing was recorded"
                       % (int(run_id), oid, in_progress["key"], in_progress.get("cluster") or "no cluster"))
     replayed = rec is not None
@@ -1867,8 +1883,43 @@ def record_verdict(root: Path, board: Board, *, task_id: str, run_id: int, verdi
     raise Refusal("VERDICT_UNKNOWN", verdict)
 
 
+def issued_verification(board: Board, task_id: str, run_id: int) -> dict[str, Any] | None:
+    """The verification scope of the planned unit THIS run was last issued, or None."""
+    rows = [r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]
+    ver = (rows[-1].get("verification") or (rows[-1].get("planned_unit") or {}).get("verification")) if rows else None
+    return dict(ver) if isinstance(ver, dict) else None
+
+
+def verification_input_gaps(root: Path, scope: dict[str, Any], ex: dict[str, Any] | None) -> list[str]:
+    """What makes a measurement unfit to judge an issued verification scope (architect re-review of
+    68152b24): a required mode's corpus that is missing or no longer the one issued, and a runner
+    assignment that moved or dropped an issued scenario. Each is a named reason the outcome stays
+    unaccepted; nothing falls back to either mode's evidence."""
+    import hashlib
+    from planner.worklist import SCENARIO_CORPORA, SECURITY_MODES, _sid
+    gaps: list[str] = []
+    issued = {m: {_sid(x) for x in sids or []} for m, sids in (scope.get("scenarios_by_mode") or {}).items() if sids}
+    for m in sorted(issued):
+        rel = dict(zip(SECURITY_MODES, SCENARIO_CORPORA)).get(m)
+        p = Path(root) / rel if rel else None
+        now = hashlib.sha256(p.read_bytes()).hexdigest() if p is not None and p.is_file() else ""
+        want = str((scope.get("corpus_sha256") or {}).get(m) or "")
+        if not now:
+            gaps.append("the %s-mode corpus the scope was issued from is missing" % m)
+        elif want and now != want:
+            gaps.append("the %s-mode corpus changed since issuance (%s, issued %s)" % (m, now[:12], want[:12]))
+    par = ((ex or {}).get("stages") or {}).get("parity") or {}
+    ran = {m: {_sid(x) for x in sids or []} for m, sids in (par.get("assigned") or {}).items()}
+    for m, want in sorted(issued.items()):
+        missing = sorted(want - ran.get(m, set()))
+        if missing:
+            gaps.append("the runner did not compare %d issued %s-mode scenario(s) in that mode (%s)" % (
+                len(missing), m, ", ".join(missing[:3])))
+    return gaps
+
+
 def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any], tree: str,
-             measurement: dict[str, Any]) -> dict[str, Any]:
+             measurement: dict[str, Any], issued_scope: dict[str, Any] | None = None) -> dict[str, Any]:
     from planner.requirement_checks import passed
     scenarios = [str(s) for s in measurement.get("scenarios") or []]
     open_now = open_obligations(worklist)
@@ -1880,12 +1931,13 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
         m["execution"] = {k: {"state": v.get("state"), "detail": v.get("detail")} for k, v in (ex.get("stages") or {}).items()}
         m["execution_tree"] = str(ex.get("tree") or "")
         m["execution_bound"] = bool(ex.get("bound"))
-    checks = requirement_measurement(root, plan, node, worklist, scenarios, tree)
+    scoped = {"issued_scope": issued_scope} if issued_scope is not None else {}
+    checks = requirement_measurement(root, plan, node, worklist, scenarios, tree, **scoped)
     if checks and node.get("check_plan"):
         # compatibility-objectives/v1: judged per (requirement, check); a check
         # name passes only when it passes for every requirement that uses it
         from planner.outcome_checks import requirement_matrix
-        matrix = requirement_matrix(root, plan, node, worklist, scenarios, tree)
+        matrix = requirement_matrix(root, plan, node, worklist, scenarios, tree, **scoped)
         m["check_matrix"] = {rq: {c: v.get("status") for c, v in cs.items()} for rq, cs in matrix.items()}
         names = {c for cs in matrix.values() for c in cs}
         m["checks"] = sorted(c for c in names if all(cs[c].get("status") == "pass" for cs in matrix.values() if c in cs))
@@ -1902,13 +1954,22 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
         deferred = sorted(k for k, v in checks.items() if k not in kept and v.get("status") != "pass")
         if deferred:
             m["deferred_to_m4"] = deferred
+    if issued_scope is not None:
+        gaps = verification_input_gaps(root, issued_scope, ex)
+        if gaps:
+            # a verification input is missing or moved: nothing this measurement says can discharge the scope
+            m["verification_input_gaps"] = gaps
+            m["checks"] = []
+            m.setdefault("unmet_checks", {})["verification-input"] = {"status": "unknown", "detail": "; ".join(gaps)[:300]}
     # the classes the node's DECLARED acceptance still requires (a measure:tests
     # deferred to M4 at publication is not required here; see defer_runtime_checks)
     from planner.measurement import needed_classes
     need = needed_classes(node)
     missing = sorted(need - set(m["classes"]))
     if str(node.get("class") or "") == "behavior":
-        missing += ["scenario %s" % x for x in sorted(set(node.get("scenarios") or []) - set(m["scenarios"]))]
+        from planner.worklist import _sid
+        seen = {_sid(x) for x in m["scenarios"]}
+        missing += ["scenario %s" % x for x in sorted(node.get("scenarios") or []) if _sid(x) not in seen]
     if missing:
         m["missing_classes"] = missing
     return m
@@ -2001,7 +2062,7 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement)
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
     evidence_gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not evidence_gaps)
     done = not m["open_owned"] and covered and not evidence_gaps
@@ -2088,7 +2149,7 @@ def evaluate_unchanged_rework(root: Path, board: Board, *, task_id: str, run_id:
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement)
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
@@ -2123,7 +2184,7 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement)
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
@@ -2412,26 +2473,50 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     as a candidate to restore -- when, and only when, every changed product
     path lies inside what the card's most recent ENDED run was issued, and no
     candidate of the card is retained. Anything else stays the drift refusal:
-    an edit no ended run of this card was issued is not this card's to discard."""
+    an edit no ended run of this card was issued is not this card's to discard.
+
+    Ownership is proven, never inferred from path overlap (architect review of
+    0dd677ba: a replacement run that edited an allowed file and asked for its
+    issue again had its own work archived as its predecessor's). So this runs
+    only on the TRANSITION into the current run -- before its first issue --
+    and only when the native run table shows the predecessor ENDED, the
+    current run started after it, and every changed file was last written
+    inside the predecessor's run window. A deletion carries no time, and any
+    missing fact leaves the tree untouched for the drift refusal."""
     root = Path(root)
+    records = board.records(task_id, "issue")
+    if any(int(r.get("run") or 0) == int(run_id) for r in records):
+        return None                       # this run has been issued: the tree's edits are its own
     head, changed = _changed_vs_head(root)
     if not changed or _open_pending(board, task_id) is not None:
         return None
-    issues = board.records(task_id, "issue")
-    if any(int(r.get("run") or 0) == int(run_id) for r in issues):
-        return None           # V29-3: the current run was issued, so the edits may be its own: never parked
-    runs = sorted({int(r.get("run") or 0) for r in issues} - {0, int(run_id)})
-    if not runs:
+    runs = sorted({int(r.get("run") or 0) for r in records} - {0})
+    if not runs or runs[-1] >= int(run_id):
         return None
     last = runs[-1]
-    if not run_ended(board, task_id, last):
-        return None           # a run not proven ended may still be writing: its edits are not "abandoned"
-    issued = {p for r in board.records(task_id, "issue") if int(r.get("run") or 0) == last
-              for p in (r.get("allowed_paths") or [])}
+    prev, cur = board.native.run(last) or {}, board.native.run(int(run_id)) or {}
+    if (str(prev.get("task_id") or "") != task_id or str(prev.get("status") or "") in ("", "running")
+            or not prev.get("started_at") or not prev.get("ended_at")):
+        return None                       # no native proof the predecessor ended
+    t0, t1 = float(prev["started_at"]), float(prev["ended_at"])
+    if not cur.get("started_at") or float(cur["started_at"]) < t1:
+        return None                       # the current run is not provably its successor
+    issued = {p for r in records if int(r.get("run") or 0) == last for p in (r.get("allowed_paths") or [])}
     if not set(changed) <= issued:
         return None
+    for rel in changed:
+        p = root / rel
+        if not p.is_file() or p.is_symlink():
+            return None                   # a deletion carries no time: ownership unproven
+        if not (t0 <= p.stat().st_mtime <= t1 + ABANDON_WINDOW_SLACK):
+            return None                   # written outside the predecessor's run: not provably its own
     return dict(_stash(root, board, task_id=task_id, run_id=last, head=head, changed=sorted(changed), kind=ABANDONED),
-                run=last)
+                run=last, window=[t0, t1])
+
+
+# seconds past a run's recorded end in which its own last write may still land (the runtime records the
+# end after it stops the worker)
+ABANDON_WINDOW_SLACK = 5.0
 
 
 def _attached_state(board: Board, task_id: str, rec: dict[str, Any]) -> dict[str, str] | None:
@@ -2566,10 +2651,16 @@ def issuance_state(root: Path, board: Board, data: bytes | None = None) -> dict[
         return {"state": "unbound", "why": "the projection could not be read"}
     if not isinstance(doc, dict):
         return {"state": "unbound", "why": "the projection is not a document"}
+    return _issuance_of(board, doc, sha256(data))
+
+
+def _issuance_of(board: Board, doc: dict[str, Any], digest: str) -> dict[str, Any]:
+    """The state of ONE projection's identity: its task, its run, the native
+    run row. A missing or malformed run identity is unbound, never expired."""
     task = str(doc.get("task_id") or "")
     m = _ISSUED_KEY_RE.search(str(doc.get("idempotency_key") or ""))
     out = {"task": task, "run": int(m.group(2)) if m else 0, "issue": int(m.group(1)) if m else 0,
-           "cluster": str(doc.get("cluster") or "")}
+           "cluster": str(doc.get("cluster") or ""), "digest": digest}
     t = board.task(task) if task else None
     if t is None:
         return dict(out, state="unbound", why="the projection names no task on this board")
@@ -2582,116 +2673,78 @@ def issuance_state(root: Path, board: Board, data: bytes | None = None) -> dict[
     alive = [int(r.get("id") or 0) for r in board.native.runs(task) if str(r.get("status") or "") == "running"]
     if alive:
         return dict(out, state="live", why="native run %s of the card has not ended" % ", ".join(map(str, alive)))
-    if out["run"] and board.native.run(out["run"]) is None:
-        return dict(out, state="unbound", why="the board knows no run %d" % out["run"])
-    return dict(out, state="expired", status=str(t.get("status") or ""))
-
-
-def _claim_snapshot(board: Board, task_id: str) -> tuple[Any, ...]:
-    """What must still hold when a retirement commits: the card's status, its
-    current run and claim, and the newest native run it has."""
-    t = board.task(task_id) or {}
-    runs = [int(r.get("id") or 0) for r in board.native.runs(task_id)]
-    return (t.get("status"), t.get("current_run_id"), t.get("claim_lock"), max(runs) if runs else 0)
-
-
-RETIRING_PREFIX = ".issued.retiring."
-
-
-def _recover_retiring(root: Path, board: Board) -> list[str]:
-    """A retirement interrupted between moving the projection aside and
-    removing it: a leftover whose retirement is recorded and whose card is
-    not live is removed (its history copy is kept); anything else goes back
-    to the empty slot, or -- when a newer projection holds the slot -- into
-    issued-history as displaced. Nothing is ever just deleted."""
-    from planner.paths import LOOP_ISSUED
-    slot = Path(root) / LOOP_ISSUED
-    done: list[str] = []
-    for f in sorted(slot.parent.glob(RETIRING_PREFIX + "*")) if slot.parent.is_dir() else []:
-        data = f.read_bytes()
-        digest = sha256(data)
-        st = issuance_state(root, board, data)
-        recorded = bool(st.get("task")) and any(r["key"] == "issuance-retired:%s" % digest[:16]
-                                                for r in board.records(st["task"], "issuance-retired"))
-        hist = Path(root) / ISSUED_HISTORY
-        if recorded and st["state"] == "expired" and any(hist.glob("issued.*.%s.json" % digest[:12])):
-            f.unlink()
-            done.append("removed %s (retired)" % f.name)
-            continue
-        try:
-            os.link(f, slot)
-            f.unlink()
-            done.append("restored %s" % f.name)
-        except FileExistsError:
-            hist.mkdir(parents=True, exist_ok=True)
-            os.replace(f, hist / ("issued.displaced.%s.json" % digest[:12]))
-            done.append("kept %s as displaced history" % f.name)
-    return done
+    if not m:
+        return dict(out, state="unbound", why="the projection carries no run identity")
+    row = board.native.run(out["run"]) or {}
+    if str(row.get("task_id") or "") != task:
+        return dict(out, state="unbound", why="run %d is not a run of %s on this board" % (out["run"], task))
+    if str(row.get("status") or "") in ("", "running") or not row.get("ended_at"):
+        return dict(out, state="unbound", why="run %d has not ended natively (%s)" % (out["run"], row.get("status")))
+    return dict(out, state="expired", status=str(t.get("status") or ""), run_status=str(row.get("status") or ""),
+                ended_at=row.get("ended_at"))
 
 
 def retire_issuance(root: Path, board: Board, *, by: str, reason: str) -> dict[str, Any]:
     """Move an EXPIRED projection into verification/loop/issued-history/ and
-    record it on the card: the history is kept, the live slot is freed. Copy,
-    record, then remove, so an interrupted retirement re-runs to the same
-    record; a projection that is live, retained or unbound is refused.
+    record it on the card: the history is kept, the live slot is freed. A
+    projection that is live, retained or unbound is refused.
 
-    V29-2: the removal is CONDITIONAL AT COMMIT on the exact issuance and the
-    native claim: the claim snapshot taken with the liveness check must still
-    hold, and the projection is moved aside atomically (rename) and removed
-    only if the moved bytes are the ones judged expired and the claim still
-    has not moved. Otherwise it is put back (or, if a newer projection holds
-    the slot, kept as displaced history) and ISSUANCE_CHANGED refuses: a new
-    claim that wrote its own issued.json between the check and the removal
-    keeps it (the architect's reproduction retired run 32's projection)."""
+    Bound to ONE projection identity (architect review of 0dd677ba: a claim
+    and a new projection that appeared between the check and the unlink were
+    deleted). Under the publication lock that issue publication also takes,
+    the projection is MOVED atomically to a name carrying the digest that was
+    judged; the moved bytes must be those bytes, and anything else -- a newer
+    projection written without the lock -- is put back and the retirement
+    refused. Only then is it archived, recorded and dropped; an interrupted
+    retirement finds its moved file and finishes it, to the same record."""
     from planner.paths import LOOP_ISSUED
     if by != "operator":
         raise Refusal("RETIRE_NOT_OPERATOR", "only the Operator retires an issuance (profile %r)" % by)
-    recovered = _recover_retiring(root, board)
     src = Path(root) / LOOP_ISSUED
-    try:
-        data = src.read_bytes()
-    except FileNotFoundError:
-        return {"retired": None, "state": "none", "recovered": recovered}
-    st = issuance_state(root, board, data)
-    if st["state"] != "expired":
-        raise Refusal("ISSUANCE_NOT_EXPIRED", "the issuance of %s (run %s) is %s%s" % (
-            st.get("task") or "?", st.get("run"), st["state"], (": " + st["why"]) if st.get("why") else ""))
-    snap = _claim_snapshot(board, st["task"])
+    with publication_lock(root):
+        done = [_finish_retirement(root, board, f, reason) for f in sorted(src.parent.glob(src.name + RETIRING + "*"))]
+        st = issuance_state(root, board)
+        if st["state"] == "none":
+            return {"retired": done[-1] if done else None, "state": "none"}
+        if st["state"] != "expired":
+            raise Refusal("ISSUANCE_NOT_EXPIRED", "the issuance of %s (run %s) is %s%s" % (
+                st.get("task") or "?", st.get("run"), st["state"], (": " + st["why"]) if st.get("why") else ""))
+        moved = src.with_name(src.name + RETIRING + st["digest"][:16])
+        os.rename(src, moved)
+        if sha256(moved.read_bytes()) != st["digest"]:
+            if not src.exists():
+                os.link(moved, src)
+            moved.unlink()
+            raise Refusal("ISSUANCE_CHANGED", "the projection changed while it was judged expired (a newer issuance "
+                                              "was published); it is left in place")
+        return {"retired": _finish_retirement(root, board, moved, reason), "state": "expired", "task": st["task"],
+                "run": st["run"]}
+
+
+RETIRING = ".retiring."
+
+
+def _finish_retirement(root: Path, board: Board, moved: Path, reason: str) -> str:
+    """Archive a moved projection, record it on its card and drop the moved
+    file; idempotent in every step (history by digest, record by key)."""
+    from planner.canonical import load_json
+    data = moved.read_bytes()
     digest = sha256(data)
+    if not moved.name.endswith(RETIRING + digest[:16]):
+        raise Refusal("RETIRING_CORRUPT", "%s does not hold the bytes its name records" % moved.name)
+    st = _issuance_of(board, load_json(moved), digest)
     rel = ISSUED_HISTORY / ("issued.%s.r%d.i%d.%s.json" % (st["task"], st["run"], st["issue"], digest[:12]))
     dest = Path(root) / rel
     if not dest.is_file():
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
-    rec = board.record(st["task"], "issuance-retired", "issuance-retired:%s" % digest[:16], run=st["run"],
-                       issue=st["issue"], cluster=st["cluster"], history=rel.as_posix(), status=st.get("status"),
-                       reason=reason[:500])
-
-    def still() -> bool:
-        return _claim_snapshot(board, st["task"]) == snap
-
-    changed = "the native claim of %s moved (%s -> %s)" % (st["task"], snap, _claim_snapshot(board, st["task"]))
-    if still():
-        aside = src.with_name("%s%s.%d.json" % (RETIRING_PREFIX, digest[:12], os.getpid()))
-        try:
-            os.rename(src, aside)
-        except FileNotFoundError:
-            return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired", "recovered": recovered}
-        moved = aside.read_bytes()
-        if moved == data and still():
-            aside.unlink()
-            return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired", "recovered": recovered}
-        changed = ("another projection took the slot (%s)" % sha256(moved)[:12] if moved != data else
-                   "the native claim of %s moved while it was retired" % st["task"])
-        try:
-            os.link(aside, src)
-            aside.unlink()
-        except FileExistsError:
-            hist = Path(root) / ISSUED_HISTORY
-            hist.mkdir(parents=True, exist_ok=True)
-            os.replace(aside, hist / ("issued.displaced.%s.json" % sha256(moved)[:12]))
-    raise Refusal("ISSUANCE_CHANGED", "%s: the live slot was left to it (history %s and record %s stand for the "
-                  "expired projection %s); re-check before retiring again" % (changed, rel.as_posix(), rec["key"], digest[:12]))
+    elif dest.read_bytes() != data:
+        raise Refusal("RETIRING_CORRUPT", "%s exists with other bytes" % rel)
+    board.record(st["task"], "issuance-retired", "issuance-retired:%s" % digest[:16], run=st["run"],
+                 issue=st["issue"], cluster=st["cluster"], history=rel.as_posix(), status=st.get("status"),
+                 run_status=st.get("run_status"), ended_at=st.get("ended_at"), reason=reason[:500])
+    moved.unlink()
+    return rel.as_posix()
 
 
 EXHAUSTION_REASON = re.compile(r"^(\d+) of (\d+) attempt\(s\) spent against (\S+); last: ")

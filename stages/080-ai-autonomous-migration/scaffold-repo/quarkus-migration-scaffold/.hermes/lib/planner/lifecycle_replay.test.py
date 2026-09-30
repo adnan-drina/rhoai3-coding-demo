@@ -68,12 +68,15 @@ class LifecycleReplay(unittest.TestCase):
         steps.write_text(json.dumps({"steps": [], "attempts": {}}))
         steps_bytes = steps.read_bytes()
 
-        # 1. issue -> edit -> the worker re-reads its issue: its edits are kept, nothing is recorded
+        # 1. issue -> edit -> a re-issue over unjudged edits refuses (architect review cf164288); edits kept, nothing recorded
         ta, ra, ia = r.issue(A)
         rel, cluster = ia["allowed_paths"][0], ia["cluster"]
         r.edit(rel, "<project>attempt 1</project>\n")
-        rep = NC.issue(r.root, r.board, task_id=ta, run_id=ra, replay_unchanged=True)
-        self.assertTrue(rep["replayed"] and rep["in_progress"])
+        n_issue = len(r.board.records(ta, "issue"))
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=ta, run_id=ra, replay_unchanged=True)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual(len(r.board.records(ta, "issue")), n_issue)
         self.assertEqual((r.root / rel).read_text(), "<project>attempt 1</project>\n")
 
         # 2. verify -> a GENUINE rejection -> the loop's revert -> the same card is re-issued (continuation)

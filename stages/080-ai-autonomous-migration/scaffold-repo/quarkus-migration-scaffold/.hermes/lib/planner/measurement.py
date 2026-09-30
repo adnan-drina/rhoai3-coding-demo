@@ -116,6 +116,9 @@ def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, 
     base = {"requested": requested, "scenarios": [], "security_mode": mode, "scoped": bool(par.get("scoped"))}
     if root is None:
         return _stage(UNKNOWN, "no destination root to read the %s-mode receipt from" % mode, **base)
+    modes = par.get("modes") if isinstance(par.get("modes"), dict) and par.get("modes") else None
+    if modes is not None:
+        return _multi_mode_stage(root, tree, modes, requested, oracles, dict(base, security_mode="+".join(sorted(modes))))
     from planner.worklist import load_parity_receipt, parity_state
     receipt = load_parity_receipt(root, mode)
     if not receipt:
@@ -141,6 +144,66 @@ def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, 
     if any(v == "FAIL" for v in verdicts):
         return _stage(FAILED, "%d FAIL in the bound %s-mode receipt" % (sum(1 for v in verdicts if v == "FAIL"), mode), **base)
     return _stage(UNKNOWN, "inconclusive or unmeasured in the bound %s-mode receipt" % mode, **base)
+
+
+def _multi_mode_stage(root: Any, tree: str, modes: dict[str, Any], requested: list[str], oracles: list[str],
+                      base: dict[str, Any]) -> dict[str, Any]:
+    """A planned verification compared several security modes, one after the
+    other (v29 Owner: 10 disabled-mode and 16 enabled-mode scenarios). Each
+    scenario is judged ONLY in the receipt of the mode it was assigned
+    (modes[m].scenarios, the issued assignment run-verify compared): that
+    receipt must be composed, taken in that mode and bound to THIS tree, and
+    must record the scenario. A requested scenario no mode was assigned, or
+    one only another mode's receipt records, is unmeasured (architect review
+    of 7d77d14f: an enabled scenario passed on disabled evidence). A FAIL in
+    any mode fails the stage."""
+    from planner.worklist import _sid, load_parity_receipt, parity_state
+    verdict_of: dict[str, str] = {}
+    gaps: list[str] = []
+    assigned: dict[str, str] = {}
+    for m, row in sorted(modes.items()):
+        asked = [str(x) for x in ((row or {}).get("scenarios") or []) if str(x)] if isinstance(row, dict) else []
+        for x in asked:
+            if _sid(x) in assigned and assigned[_sid(x)] != m:
+                gaps.append("%s is assigned to two modes" % x)
+            assigned[_sid(x)] = m
+        receipt = load_parity_receipt(root, m)
+        if not receipt:
+            gaps.append("no %s-mode receipt was composed" % m)
+            continue
+        if str(receipt.get("security_mode") or "disabled") != m:
+            gaps.append("the %s-mode receipt was taken in another mode" % m)
+            continue
+        bind = receipt.get("binding") if isinstance(receipt.get("binding"), dict) else {}
+        if not tree or str(bind.get("candidate_sha256") or "") != tree:
+            gaps.append("the %s-mode receipt is bound to %s, not to this candidate" % (m, str(bind.get("candidate_sha256") or "nothing")[:12]))
+            continue
+        st = parity_state(receipt)
+        if not st["known"]:
+            gaps.append("the %s-mode receipt measured nothing" % m)
+            continue
+        by_id = {_sid(k): v for k, v in (st.get("scenarios") or {}).items()}
+        for x in asked:
+            if _sid(x) in by_id:
+                verdict_of[_sid(x)] = by_id[_sid(x)]
+        if m == "disabled":
+            for e in oracles:
+                if e in (st.get("entry_points") or {}):
+                    verdict_of["ep:" + e] = st["entry_points"][e]
+    for x in requested:
+        if _sid(x) not in assigned:
+            gaps.append("%s was requested but assigned to no mode" % x)
+    verdicts = [verdict_of.get(_sid(x), "") for x in requested] + [verdict_of.get("ep:" + e, "") for e in oracles]
+    base = dict(base, scenarios=sorted(x for x in requested if verdict_of.get(_sid(x))), modes=sorted(modes),
+                assigned={m: sorted(str(x) for x in ((row or {}).get("scenarios") or []))
+                          for m, row in sorted(modes.items()) if isinstance(row, dict)})
+    if any(v == "FAIL" for v in verdicts):
+        return _stage(FAILED, "%d FAIL across the %s receipts" % (sum(1 for v in verdicts if v == "FAIL"), "+".join(sorted(modes))), **base)
+    if gaps:
+        return _stage(UNKNOWN, "; ".join(gaps)[:300], **base)
+    if verdicts and all(v == "PASS" for v in verdicts):
+        return _stage(PASSED, "%d requested check(s) PASS, each in its assigned mode's bound receipt" % len(verdicts), **base)
+    return _stage(UNKNOWN, "inconclusive or unmeasured in the assigned modes' receipts", **base)
 
 
 def classes(ex: dict[str, Any] | None) -> list[str]:

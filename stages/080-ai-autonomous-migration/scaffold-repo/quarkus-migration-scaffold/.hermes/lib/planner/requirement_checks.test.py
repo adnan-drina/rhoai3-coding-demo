@@ -60,12 +60,41 @@ def unit_case() -> int:
           "runtime": {"package": {"ran": True, "rc": 0}, "boot": {"ran": True, "rc": 1}}}
     req = {"id": "req:x", "acceptance": ["gate:compile", "gate:package", "gate:startup", "parity:sc:done", "parity:sc:open",
                                           "parity:sc:unmeasured", "unit:handler-validation-guards", "coverage:unresolved"]}
-    got = {k: v["status"] for k, v in RC.measure(Path("."), [req], worklist=wl, scenarios=["sc:done", "sc:open"]).items()}
+    import json as _json
+    import tempfile as _tempfile
+    td = _tempfile.mkdtemp(prefix="rc-scen-")
+    sdir = Path(td) / "verification" / "parity" / "scenarios"
+    sdir.mkdir(parents=True)
+
+    def rec(sid, verdict, cand=None):
+        doc = {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": verdict}
+        if cand is not None:
+            doc["binding"] = {"mode": "candidate", "candidate_sha256": cand}
+        (sdir / ("%s.json" % sid.replace(":", "_"))).write_text(_json.dumps(doc))
+    rec("sc:done", "PASS")
+    got = {k: v["status"] for k, v in RC.measure(Path(td), [req], worklist=wl, scenarios=["sc:done", "sc:open"]).items()}
     want = {"gate:compile": "pass", "gate:package": "pass", "gate:startup": "fail", "parity:sc:done": "pass",
             "parity:sc:open": "fail", "parity:sc:unmeasured": "unknown", "unit:handler-validation-guards": "unknown",
             "coverage:unresolved": "unknown"}
     if got != want:
         return _fail("measure: %s != %s" % (got, want))
+    # v29 Owner (architect): a measured PASS is a PASS record of THIS tree; nothing else stands for one
+    one = lambda sid, tree="t" * 64: RC.measure(Path(td), [{"id": "r", "acceptance": ["parity:" + sid]}], worklist={"items": [], "measure": {"known": True}},
+                                                scenarios=[sid], tree=tree)["parity:" + sid]["status"]
+    rec("sc:inc", "INCONCLUSIVE", "t" * 64)
+    rec("sc:stale", "PASS", "s" * 64)
+    rec("sc:sealed", "PASS")
+    rec("sc:red", "FAIL", "t" * 64)
+    rec("sc:green", "PASS", "t" * 64)
+    got2 = {s_: one(s_) for s_ in ("sc:inc", "sc:stale", "sc:sealed", "sc:red", "sc:green", "sc:missing")}
+    if got2 != {"sc:inc": "unknown", "sc:stale": "unknown", "sc:sealed": "unknown", "sc:red": "fail", "sc:green": "pass", "sc:missing": "unknown"}:
+        return _fail("only a PASS record bound to this tree passes: %s" % got2)
+    loc = {"id": "req:loc", "acceptance": ["location:ep:A#create():http"], "facts": {"location": {"coverage": ["sc:green", "sc:inc"]}}}
+    if RC.measure(Path(td), [loc], worklist={"items": [], "measure": {"known": True}}, scenarios=["sc:green", "sc:inc"], tree="t" * 64)["location:ep:A#create():http"]["status"] != "unknown":
+        return _fail("a Location covered by an INCONCLUSIVE scenario is not measured")
+    loc["facts"]["location"]["coverage"] = ["sc:green"]
+    if RC.measure(Path(td), [loc], worklist={"items": [], "measure": {"known": True}}, scenarios=["sc:green"], tree="t" * 64)["location:ep:A#create():http"]["status"] != "pass":
+        return _fail("a Location whose covering scenarios all measured PASS passes")
     wl2 = dict(wl, items=[{"id": "err:1", "source": "javac"}])
     if RC.measure(Path("."), [{"id": "r", "acceptance": ["gate:compile"]}], worklist=wl2, scenarios=[])["gate:compile"]["status"] != "fail":
         return _fail("an open compile item fails gate:compile")
@@ -73,11 +102,11 @@ def unit_case() -> int:
     rep = {"id": "req:repo", "acceptance": ["behavior:repository-effects:p.Frag"],
            "facts": {"verification": [{"member": "p.Frag#findAll()", "status": "applicable", "scenarios": ["sc:done"]},
                                       {"member": "p.Frag#save(p.E)", "status": "unresolved", "scenarios": []}]}}
-    st = RC.measure(Path("."), [rep], worklist=wl, scenarios=["sc:done"])["behavior:repository-effects:p.Frag"]
+    st = RC.measure(Path(td), [rep], worklist=wl, scenarios=["sc:done"])["behavior:repository-effects:p.Frag"]
     if st["status"] != "unknown" or "save" not in st["detail"]:
         return _fail("an unresolved write coverage is an owned debt, never PASS: %s" % st)
     rep["facts"]["verification"][1] = {"member": "p.Frag#save(p.E)", "status": "applicable", "scenarios": ["sc:open"]}
-    if RC.measure(Path("."), [rep], worklist=wl, scenarios=["sc:done", "sc:open"])["behavior:repository-effects:p.Frag"]["status"] != "fail":
+    if RC.measure(Path(td), [rep], worklist=wl, scenarios=["sc:done", "sc:open"])["behavior:repository-effects:p.Frag"]["status"] != "fail":
         return _fail("a write scenario still open fails the repository effects")
     # _covers: requirement checks must all be recorded as passing
     node = {"class": "source", "acceptance": {"requirement_checks": ["gate:compile", "unit:handler-validation-guards"]}}
@@ -246,7 +275,17 @@ def classes_case() -> int:
         full = {"id": "b2", "acceptance": ["parity:request-body-positive-negative"],
                 "facts": {"body_cases": [dict(c, status="covered", scenarios=c.get("scenarios") or ["sc:create"])
                                          for c in breq["facts"]["body_cases"]]}}
-        if RC.measure(root, [full], worklist=wl, scenarios=sc)["parity:request-body-positive-negative"]["status"] != "pass":
+        # each captured case MEASURED PASS: a verdict record per scenario (v29 Owner: nothing else is a PASS)
+        bdir = root / "verification" / "parity" / "scenarios"
+        bdir.mkdir(parents=True, exist_ok=True)
+        for sid in sc:
+            (bdir / ("%s.json" % sid.replace(":", "_"))).write_text(
+                json.dumps({"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": "PASS"}))
+        (bdir.parent / "receipt.json").write_text(json.dumps(
+            {"schema": "rhoai3.parity-receipt/v1", "security_mode": "disabled", "verdict": "PASS",
+             "entry_points": [{"entry_point": "ep:create", "verdict": "PASS", "scenarios": sc}]}))
+        rcpt = {"disabled": json.loads((bdir.parent / "receipt.json").read_text())}
+        if RC.measure(root, [full], worklist=wl, scenarios=sc, receipts=rcpt)["parity:request-body-positive-negative"]["status"] != "pass":
             return _fail("a lifted condition with every captured case discharged passes")
         still = {"items": [{"id": "par:x", "source": "parity", "scenario": "sc:create"}], "measure": {"known": True}}
         if RC.measure(root, [full], worklist=still, scenarios=sc)["parity:request-body-positive-negative"]["status"] != "fail":

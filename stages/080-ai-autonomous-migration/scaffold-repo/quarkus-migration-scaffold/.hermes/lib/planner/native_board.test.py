@@ -1364,19 +1364,15 @@ class LifecycleReconciliation(unittest.TestCase):
         (r.root / LOOP_ISSUED).write_text(json.dumps(proj))
         live = "<project>legitimate current-run repair</project>\n"
         r.edit(rel, live)
-        again = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
-        self.assertEqual((r.root / rel).read_text(), live)                   # byte-identical
-        self.assertTrue(again["replayed"] and again["in_progress"], again)
-        self.assertEqual(NG._keep_or_write_projection(r.root, again), key)  # the projection is kept as it stands
+        # architect review cf164288: a re-issue over unjudged edits -- replayed or not -- refuses and changes nothing
+        for replay in (True, False):
+            with self.assertRaises(Refusal) as cm:
+                NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=replay)
+            self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+            self.assertEqual((r.root / rel).read_text(), live)               # byte-identical
         self.assertEqual(json.loads((r.root / LOOP_ISSUED).read_text())["continuations"], proj["continuations"])
-        self.assertEqual((again["record"], again["baseline_tree"]), (first["record"], first["baseline_tree"]))
-        ab = r.board.records(tid, NC.ABANDONED)
-        self.assertEqual([a["run"] for a in ab], [old])                       # nothing new attributed to any run
+        self.assertEqual([a["run"] for a in r.board.records(tid, NC.ABANDONED)], [old])   # nothing new attributed
         self.assertEqual(len([x for x in r.board.records(tid, "issue") if x["run"] == run]), 1)
-        # the loop's re-issue (a new attempt) would re-baseline over unjudged edits: refused, edits kept
-        with self.assertRaises(Refusal) as cm:
-            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
-        self.assertEqual(cm.exception.code, "ISSUE_IN_PROGRESS")
         # an edit outside what this run was issued: the drift refusal, and still nothing is set aside
         r.edit("src/main/java/com/acme/shop/Unrelated.java", "class Unrelated {}\n")
         with self.assertRaises(Refusal) as cm:
@@ -1410,7 +1406,8 @@ class LifecycleReconciliation(unittest.TestCase):
 
     def test_a_claim_made_while_the_record_is_written_keeps_its_projection(self):
         """V29-2 (architect reproduction): a new claim wrote its issued.json between the liveness check and the
-        unlink, and the retirement deleted it."""
+        unlink, and the retirement deleted it. The judged projection is moved aside by digest before anything is
+        recorded, so a projection written afterwards is never the one removed."""
         r = self.r
         tid, old, p = self.expired_projection()
         old_bytes = p.read_bytes()
@@ -1425,11 +1422,9 @@ class LifecycleReconciliation(unittest.TestCase):
             return got
         r.board.record = claim_before_unlink
         try:
-            with self.assertRaises(Refusal) as cm:
-                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+            NC.retire_issuance(r.root, r.board, by="operator", reason="race")
         finally:
             r.board.record = record
-        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
         self.assertEqual(p.read_text(), self.new_projection(tid, seen["run"]))           # the new run keeps its own
         hist = list((r.root / NC.ISSUED_HISTORY).glob("issued.%s.r%d.*.json" % (tid, old)))
         self.assertEqual([h.read_bytes() for h in hist], [old_bytes])                    # the old one is history
@@ -1437,6 +1432,7 @@ class LifecycleReconciliation(unittest.TestCase):
         with self.assertRaises(Refusal):                                                  # a delayed retirement
             NC.retire_issuance(r.root, r.board, by="operator", reason="late event")
         self.assertTrue(p.is_file())
+        self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
 
     def test_a_projection_written_just_before_the_move_is_put_back(self):
         from unittest import mock
@@ -1454,9 +1450,10 @@ class LifecycleReconciliation(unittest.TestCase):
                 NC.retire_issuance(r.root, r.board, by="operator", reason="race")
         self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
         self.assertEqual(p.read_text(), newer)
-        self.assertEqual(list(p.parent.glob(NC.RETIRING_PREFIX + "*")), [])
+        self.assertEqual(list(p.parent.glob(p.name + NC.RETIRING + "*")), [])
+        self.assertEqual(r.board.records(tid, "issuance-retired"), [])                   # nothing recorded
 
-    def test_a_claim_made_after_the_move_puts_the_projection_back(self):
+    def test_a_claim_made_after_the_move_does_not_lose_the_judged_projection(self):
         from unittest import mock
         r = self.r
         tid, old, p = self.expired_projection()
@@ -1469,16 +1466,11 @@ class LifecycleReconciliation(unittest.TestCase):
                 seen["run"] = r.native.claim(tid)[0]
             return out
         with mock.patch.object(NC.os, "rename", move_then_claim):
-            with self.assertRaises(Refusal) as cm:
-                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
-        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
-        self.assertEqual(p.read_bytes(), body)                                            # back in its slot
-        # once the new run has ended too, the same projection retires to the same record, once
-        r.native.end_run(tid, "ready", "gave_up")
-        got = NC.retire_issuance(r.root, r.board, by="operator", reason="after")
-        self.assertFalse(p.exists())
-        self.assertEqual((r.root / got["retired"]).read_bytes(), body)
+            got = NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        self.assertEqual((r.root / got["retired"]).read_bytes(), body)                   # the judged bytes, archived
+        self.assertFalse(p.exists())                                                      # the slot is the new run's
         self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "none")
 
     def test_a_live_or_unknown_run_refuses_retirement(self):
         r = self.r
@@ -1503,27 +1495,27 @@ class LifecycleReconciliation(unittest.TestCase):
         real_unlink = Path.unlink
 
         def crash(self_, *a, **k):
-            if self_.name.startswith(NC.RETIRING_PREFIX):
-                raise OSError("killed between the move and the removal")
+            if NC.RETIRING in self_.name:
+                raise OSError("killed between the record and the removal")
             return real_unlink(self_, *a, **k)
         with mock.patch.object(Path, "unlink", crash):
             with self.assertRaises(OSError):
                 NC.retire_issuance(r.root, r.board, by="operator", reason="x")
         self.assertFalse(p.exists())
-        self.assertEqual(len(list(p.parent.glob(NC.RETIRING_PREFIX + "*"))), 1)
-        got = NC.retire_issuance(r.root, r.board, by="operator", reason="x")            # restart
-        self.assertEqual((got["retired"], len(got["recovered"])), (None, 1))
-        self.assertEqual(list(p.parent.glob(NC.RETIRING_PREFIX + "*")), [])
+        self.assertEqual(len(list(p.parent.glob(p.name + NC.RETIRING + "*"))), 1)
+        got = NC.retire_issuance(r.root, r.board, by="operator", reason="x")            # restart finishes it
+        self.assertEqual(got["state"], "none")
+        self.assertEqual((r.root / got["retired"]).read_bytes(), body)
+        self.assertEqual(list(p.parent.glob(p.name + NC.RETIRING + "*")), [])
         self.assertEqual(len(list((r.root / NC.ISSUED_HISTORY).glob("*.json"))), 1)
         self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
-        # a leftover that is NOT a recorded retirement (a new run's projection moved aside) goes back to the slot
-        run, _lock = r.native.claim(tid)
-        leftover = p.parent / (NC.RETIRING_PREFIX + "x.1.json")
-        leftover.write_text(self.new_projection(tid, run))
-        with self.assertRaises(Refusal):                                                  # live: refused ...
+        # a leftover whose name does not carry its own digest is refused and never deleted
+        leftover = p.parent / (p.name + NC.RETIRING + "0" * 16)
+        leftover.write_text(self.new_projection(tid, old))
+        with self.assertRaises(Refusal) as cm:
             NC.retire_issuance(r.root, r.board, by="operator", reason="x")
-        self.assertEqual(p.read_text(), self.new_projection(tid, run))                   # ... after putting it back
-        self.assertNotEqual(p.read_bytes(), body)
+        self.assertEqual(cm.exception.code, "RETIRING_CORRUPT")
+        self.assertTrue(leftover.is_file())
 
     def test_void_and_reconcile_conserve_the_account_and_agree_with_admission(self):
         """V29-1: an authorized void lifts only its now-invalid exhaustion hold; an unrelated blocker that merely
@@ -1706,8 +1698,9 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual((len(ab), ab[0]["run"]), (1, run))
         # an older rejection of this run (before its latest issue) never matches a later identical edit
         r.edit(iss["allowed_paths"][0], "<project>rejected candidate</project>\n")
-        rep = NC.issue(r.root, r.board, task_id=tid, run_id=run, replay_unchanged=True)
-        self.assertTrue(rep["in_progress"])
+        with self.assertRaises(Refusal) as cm:                                            # unjudged edits: refused
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, replay_unchanged=True)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
         self.assertEqual((r.root / iss["allowed_paths"][0]).read_text(), "<project>rejected candidate</project>\n")
         self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
 

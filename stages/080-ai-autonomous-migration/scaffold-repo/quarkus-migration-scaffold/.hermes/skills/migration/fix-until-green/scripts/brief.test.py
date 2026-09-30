@@ -1294,6 +1294,204 @@ def _planned_generated_body_brief_case() -> int:
     return 0
 
 
+def _voided_history_brief_case() -> int:
+    """Architect review of 602f696c: voids are matched by the EXACT native rejection. Two rejections with
+    the same reason, one voided: the genuine one stays in previous_attempts and drives the last refusal;
+    an identity-less old row whose reason matches a void is kept, marked unresolved; the void count is one."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    import brief as mod
+    from planner.paths import LOOP_ISSUED, LOOP_STEPS, WORKLIST
+
+    same = "the parity obligation parity:a is still reported"
+    task = "t_void0001"
+
+    class Board:
+        def records(self, t, kind=None):
+            rows = {"reject": [{"key": "reject:5:aaaa", "run": 5, "candidate": "a" * 64, "cluster": "c:x", "reason": same},
+                               {"key": "reject:6:bbbb", "run": 6, "candidate": "b" * 64, "cluster": "c:x", "reason": same}],
+                    "reject-voided": [{"reject": "reject:5:aaaa", "reason": "harness: mixed security modes"}]}
+            return list(rows.get(kind, [])) if t == task else []
+
+    with tempfile.TemporaryDirectory(prefix="void-brief-") as td:
+        root = Path(td)
+        cluster = {"id": "c:x", "kind": "parity", "path": "src/main/java/A.java", "write_set": ["src/main/java/A.java"],
+                   "items": ["parity:a"], "retry_key": "rk:x"}
+        write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "c:x",
+                                          "measure": {"tuple": [0, 0, 1], "known": True, "blocked": []}, "clusters": [cluster],
+                                          "items": [{"id": "parity:a", "source": "parity", "kind": "parity", "category": "mandatory",
+                                                     "path": "src/main/java/A.java", "line": 0, "rule_id": "PARITY", "message": "a"}],
+                                          "not_counted": []})
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:x", "task_id": task,
+                                             "write_set": ["src/main/java/A.java"]})
+        row = {"cluster": "c:x", "card": task, "retry_key": "rk:x", "reason": same, "changed": ["src/main/java/A.java"],
+               "legal_next": "try the other branch"}
+        write_canonical(root / LOOP_STEPS, {"steps": [], "rejected": [
+            dict(row, reason="an older refusal with no identity"),                          # unrelated, kept
+            dict(row),                                                                         # identity-less, same reason as the void
+            dict(row, native_reject="reject:5:aaaa", legal_next="voided"),                   # voided exactly
+            dict(row, native_run=6, candidate_sha256="b" * 64, legal_next="genuine next")]})  # genuine, matched by run+candidate
+        prev, env = mod._native_board, os.environ.get("HERMES_KANBAN_TASK")
+        mod._native_board = lambda _root: Board()
+        os.environ["HERMES_KANBAN_TASK"] = task
+        try:
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = mod.main(["--root", str(root), "--json"])
+            doc = json.loads(out.getvalue())
+            out2 = io.StringIO()
+            with redirect_stdout(out2), redirect_stderr(io.StringIO()):
+                mod.main(["--root", str(root)])
+            text = out2.getvalue()
+        finally:
+            mod._native_board = prev
+            os.environ.pop("HERMES_KANBAN_TASK") if env is None else os.environ.__setitem__("HERMES_KANBAN_TASK", env)
+        if rc != 0:
+            return _fail("the brief rendered: rc %s %s" % (rc, err.getvalue()[:300]))
+        prev_rows = doc.get("previous_attempts") or []
+        voided = doc.get("voided_attempts") or []
+        if len(prev_rows) != 3 or len(voided) != 1 or voided[0].get("native_reject") != "reject:5:aaaa":
+            return _fail("exactly the voided rejection leaves the attempts: %d previous, %s voided" % (len(prev_rows), voided))
+        if [r.get("void_status") for r in prev_rows] != [None, "unresolved", None]:
+            return _fail("an identity-less row sharing a voided reason is kept and marked unresolved: %s" % prev_rows)
+        if "last refusal: %s" % same not in text or "legal next: genuine next" not in text:
+            return _fail("the genuine rejection drives the retry guidance:\n%s" % text[:1500])
+        if "1 earlier rejection(s) of this family were VOIDED" not in text:
+            return _fail("the rendered brief counts the one void:\n%s" % text[:1500])
+    return 0
+
+
+def _unresolved_history_digest_case() -> int:
+    """Architect re-review of 68152b24: an identity-less row whose reason matches a voided rejection is kept,
+    but the short brief must say it is unresolved and never turn its old 'legal next' into a prohibition.
+    Two renders: the newest row unresolved beside an older confirmed refusal, and every row unresolved."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    import brief as mod
+    from planner.paths import LOOP_ISSUED, LOOP_STEPS, WORKLIST
+
+    voided_reason = "the parity obligation parity:a is still reported"
+    task = "t_void0002"
+
+    class Board:
+        def records(self, t, kind=None):
+            rows = {"reject": [{"key": "reject:5:aaaa", "run": 5, "candidate": "a" * 64, "cluster": "c:x", "reason": voided_reason}],
+                    "reject-voided": [{"reject": "reject:5:aaaa", "reason": "harness: mixed security modes"}]}
+            return list(rows.get(kind, [])) if t == task else []
+
+    def render(rejected):
+        with tempfile.TemporaryDirectory(prefix="unresolved-brief-") as td:
+            root = Path(td)
+            cluster = {"id": "c:x", "kind": "parity", "path": "src/main/java/A.java", "write_set": ["src/main/java/A.java"],
+                       "items": ["parity:a"], "retry_key": "rk:x"}
+            write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "c:x",
+                                              "measure": {"tuple": [0, 0, 1], "known": True, "blocked": []}, "clusters": [cluster],
+                                              "items": [{"id": "parity:a", "source": "parity", "kind": "parity", "category": "mandatory",
+                                                         "path": "src/main/java/A.java", "line": 0, "rule_id": "PARITY", "message": "a"}],
+                                              "not_counted": []})
+            write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:x", "task_id": task,
+                                                 "write_set": ["src/main/java/A.java"]})
+            write_canonical(root / LOOP_STEPS, {"steps": [], "rejected": rejected})
+            prev, env = mod._native_board, os.environ.get("HERMES_KANBAN_TASK")
+            mod._native_board = lambda _root: Board()
+            os.environ["HERMES_KANBAN_TASK"] = task
+            try:
+                out = io.StringIO()
+                with redirect_stdout(out), redirect_stderr(io.StringIO()):
+                    mod.main(["--root", str(root)])
+                return out.getvalue()
+            finally:
+                mod._native_board = prev
+                os.environ.pop("HERMES_KANBAN_TASK") if env is None else os.environ.__setitem__("HERMES_KANBAN_TASK", env)
+
+    base = {"cluster": "c:x", "card": task, "retry_key": "rk:x", "changed": ["src/main/java/A.java"]}
+    stale = dict(base, reason=voided_reason, legal_next="Do not repeat this patch")
+    confirmed = dict(base, reason="a confirmed refusal of the current repair", legal_next="try the confirmed alternative",
+                     native_reject="reject:9:cccc")
+    # newest row unresolved, an older confirmed refusal: the confirmed one leads; the unresolved one is qualified
+    text = render([confirmed, stale])
+    if "last refusal: a confirmed refusal of the current repair" not in text or "legal next: try the confirmed alternative" not in text:
+        return _fail("the confirmed refusal drives the guidance when the newest row is unresolved:\n%s" % text[:1500])
+    if "UNRESOLVED history: 1" not in text or "legal next: Do not repeat this patch" in text:
+        return _fail("the unresolved row is disclosed and issues no prohibition:\n%s" % text[:1500])
+    # every row unresolved: no confirmed refusal, no stale prohibition, the current action leads
+    text = render([stale, dict(stale)])
+    if "no confirmed current refusal" not in text or "UNRESOLVED history: 2" not in text:
+        return _fail("with only unresolved history the brief says no confirmed refusal exists:\n%s" % text[:1500])
+    if "last refusal:" in text or "Do not repeat this patch" in text:
+        return _fail("unresolved history never becomes a last refusal or a prohibition:\n%s" % text[:1500])
+    return 0
+
+
+def _worker_evidence_access_case() -> int:
+    """Architect diagnosis of Owner run 89: the worker must reach its evidence through allowed, bounded
+    selectors. A one-line 300K spill shaped like the kanban_show response is read field by field with honest
+    truncation metadata; the card view is bounded and names what it omits; an obligation's scenario evidence
+    names the two bodies in its mode, the binding, the differing subtree and the state it was captured after."""
+    import brief as mod
+
+    with tempfile.TemporaryDirectory(prefix="evidence-access-") as td:
+        root = Path(td)
+        # the saved large-show shape: a short body, 86 large machine comments, a large worker context, ONE line
+        show = {"task": {"id": "t_ev0001", "title": "M3 BEHAVIOR -- Owner", "body": "Owner behaviour card." * 20},
+                "comments": [{"id": i, "body": "[native-control] " + json.dumps({"kind": "accept-evaluated", "n": i,
+                                                                                   "pad": "x" * 1800})} for i in range(86)],
+                "worker_context": "y" * 74000}
+        spill = root / "spill.txt"
+        spill.write_text(json.dumps(show), encoding="utf-8")
+        if "\n" in spill.read_text() or len(spill.read_text()) < 200000:
+            return _fail("the fixture is a one-line spill of the saved size")
+        body = mod.select_spill(spill, "task.body")
+        if body.get("truncated") is not False or body.get("value") != show["task"]["body"] or body.get("total_chars") != len(show["task"]["body"]):
+            return _fail("a small field comes back whole, marked not truncated: %s" % {k: body.get(k) for k in ("truncated", "total_chars")})
+        many = mod.select_spill(spill, "comments", limit=3000)
+        if many.get("truncated") is not True or many.get("length") != 86 or many.get("shown_chars") != 3000 or many.get("total_chars", 0) <= 3000:
+            return _fail("a large field is bounded and says so: %s" % {k: many.get(k) for k in ("truncated", "length", "shown_chars", "total_chars")})
+        last = mod.select_spill(spill, "comments[-2:]")
+        if last.get("length") != 2:
+            return _fail("a list slice selects: %s" % last.get("length"))
+        miss = mod.select_spill(spill, "task.nothing")
+        if "error" not in miss or "task" not in (miss.get("keys") or []):
+            return _fail("a missing path is an answer naming what exists: %s" % miss)
+
+        # the bounded card view over a board: every record retained, only the latest verdicts shown
+        class Board:
+            def task(self, t):
+                return {"id": t, "title": "M3 BEHAVIOR -- Owner", "status": "running", "body": "Owner behaviour card."}
+
+            def records(self, t, kind=None):
+                rows = [{"kind": "accept-evaluated", "run": 70 + i, "outcome_accepted": False} for i in range(40)]
+                rows.append({"kind": "issue", "run": 89, "seq": 1, "cluster": "c:215b", "allowed_paths": ["A.java"]})
+                return [r for r in rows if kind is None or r["kind"] == kind]
+
+        text = mod.card_view(root, "t_ev0001", board=Board())
+        if len(text.splitlines()) > 14 or len(text) > 3000 or "41 record(s)" not in text or "5 verdict record(s) shown of 40" not in text:
+            return _fail("the card view is bounded and names what it omits:\n%s" % text)
+
+        # scenario evidence: the two bodies in the obligation's mode, the binding, the diff and the prerequisites
+        corpus = {"scenarios": [{"id": "sc:delete-visits-1", "method": "DELETE", "path": "/api/visits/1", "reset_before": True},
+                                {"id": "sc:read-owners", "method": "GET", "path": "/api/owners", "reset_before": False}]}
+        for rel, payload in (("verification/scenarios-enabled/corpus.json", json.dumps(corpus)),
+                             ("verification/source-oracles/scenarios-enabled/sc_read-owners.json", "{}"),
+                             ("verification/source-oracles/scenarios-enabled/bodies/sc_read-owners/response.body", "[]"),
+                             ("verification/parity/scenarios-enabled/sc_read-owners.json",
+                              json.dumps({"verdict": "FAIL", "binding": {"mode": "candidate", "candidate_sha256": "c" * 64}})),
+                             ("verification/parity/scenarios-enabled/_bodies/sc_read-owners/response.body", "[]")):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(payload, encoding="utf-8")
+        item = {"id": "parity:x", "scenario": "sc:read-owners", "security_mode": "enabled",
+                "advice": {"body_diff": {"differences": [{"path": "$[*].pets[*].visits", "kind": "length", "observed": 2, "expected": 1}]}}}
+        ev = "\n".join(mod.scenario_evidence(root, item))
+        for must in ("(enabled mode)", "verification/source-oracles/scenarios-enabled/bodies/sc_read-owners/response.body",
+                     "verification/parity/scenarios-enabled/_bodies/sc_read-owners/response.body", "bound to candidate cccccccccccc",
+                     "differs at $[*].pets[*].visits: length", "captured AFTER (state prerequisites, corpus order): sc:delete-visits-1 DELETE /api/visits/1"):
+            if must not in ev:
+                return _fail("scenario evidence names %r:\n%s" % (must, ev))
+    return 0
+
+
 def _large_brief_digest_case() -> int:
     """v21 t_0bc6319b: a large unit's brief is printed as a readable digest (write set, obligations
     per file on one line each, procedure and rules in full, a section index naming how to read each)."""
@@ -1317,6 +1515,8 @@ def _large_brief_digest_case() -> int:
 
 
 def main() -> int:
+    if _voided_history_brief_case() or _unresolved_history_digest_case() or _worker_evidence_access_case():
+        return 1
     if _large_brief_digest_case():
         return 1
     if _candidate_checkpoint_case() or _candidate_checkpoint_case("org/example/ledger"):

@@ -966,7 +966,36 @@ def _issued_not_open(issued: dict, doc: dict) -> dict:
     if live:
         row["liveness"] = "%d of %d issued constituent(s) still reported" % (len(live), len(issued.get("items") or []))
         return row
+    if str(issued.get("gate") or "") == "planned-unit" and not ws:
+        return dict(row, not_open={"head": str(doc.get("head") or ""), "next": verification_next(issued, cid)})
     return dict(row, not_open={"head": str(doc.get("head") or ""), "next": NOT_OPEN_NEXT % cid})
+
+
+VERIFY_ONLY_NEXT = (
+    "VERIFICATION ONLY: this planned unit's write set is empty -- no product edit is required or allowed. Its checks "
+    "are measured, not edited: run `bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . "
+    "--mode acceptance` ONCE (it compares exactly the issued scope, %s, on the packaged artifact, one mode after the "
+    "other), then `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster %s --card "
+    "$HERMES_KANBAN_TASK` and follow its verdict. A check that FAILs becomes a parity obligation and the next issue "
+    "routes it to repair; do not edit anything for it in this unit. Do not re-read this brief to find another action.")
+
+VERIFY_SCOPE_MISSING_NEXT = (
+    "HARNESS ERROR VERIFICATION_SCOPE_MISSING: planned unit %s has an empty write set and its issue carries no "
+    "verification scope, so no verification can measure its checks. Nothing in this card can fix that: end this run "
+    "with kanban_block kind=needs_input quoting this line.")
+
+
+def verification_next(issued: dict, cid: str) -> str:
+    """The executable next action of a verification-only planned unit (v29 Owner: the worker was told to
+    'run-verify then advance' on a scope no verification could measure, and re-read the brief in a loop)."""
+    ver = issued.get("verification") if isinstance(issued.get("verification"), dict) else None
+    if not ver:
+        return VERIFY_SCOPE_MISSING_NEXT % cid
+    by_mode = ver.get("scenarios_by_mode") if isinstance(ver.get("scenarios_by_mode"), dict) else {}
+    parts = ["%d %s-mode scenario(s)" % (len(v), m) for m, v in sorted(by_mode.items()) if v]
+    if ver.get("read_oracles"):
+        parts.append("%d read oracle(s)" % len(ver["read_oracles"]))
+    return VERIFY_ONLY_NEXT % (", ".join(parts) or "nothing", cid)
 
 
 def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tuple[dict | None, str, str]:
@@ -1062,8 +1091,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--file", default="", metavar="PATH", help="every measured obligation at this path, one line each (bounded)")
     ap.add_argument("--item", default="", metavar="ID", help="one measured obligation in full")
     ap.add_argument("--symbol", default="", metavar="NAME", help="every measured obligation naming this symbol (bounded)")
+    ap.add_argument("--card", action="store_true", help="a bounded view of THIS native card (its body, current issue, "
+                    "budget and latest verdicts); the full history stays on the board")
+    ap.add_argument("--spill", default="", metavar="FILE", help="a one-line JSON tool-result spill file to select from")
+    ap.add_argument("--field", default="", metavar="PATH", help="with --spill: a dotted path (task.body, comments[-3:], "
+                    "worker_context.issue)")
+    ap.add_argument("--limit", type=int, default=4000, help="with --spill: the most characters of the value to print")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if args.spill:
+        print(json.dumps(select_spill(Path(args.spill), args.field, args.limit), indent=2))
+        return 0
+    if args.card:
+        print(card_view(root, os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")))
+        return 0
     doc = load_json(root / WORKLIST)
     owners = diagnostic_owners(root)
     if args.file or args.item or args.symbol:
@@ -1080,6 +1121,8 @@ def main(argv: list[str] | None = None) -> int:
     # them: the retry card must not repeat them (v6 t_fc2b54c5 copied the
     # previous card's deletion and was vetoed for the same reason)
     previous = []
+    voided_rows: list = []
+    voided = _void_index(root)
     rk = str(cluster.get("retry_key") or cluster["id"])
     retry_map = steps.get("retry_keys") or {}
     for r in (steps.get("rejected") or []):
@@ -1089,7 +1132,15 @@ def main(argv: list[str] | None = None) -> int:
         rkey = str(r.get("retry_key") or retry_map.get(cid) or "")
         if cid != cluster["id"] and rkey != rk:
             continue
+        status, why = _void_status(r, voided)
+        if status == "voided":
+            # the Operator voided THIS rejection as harness-caused: history, not an attempt this card must avoid
+            # repeating (v29 run 85 spent its whole run reading six voided refusals in previous_attempts)
+            voided_rows.append({"card": r.get("card"), "cluster": cid, "reason": _clip(r.get("reason"), 160),
+                                "native_reject": str(r.get("native_reject") or ""), "voided_because": _clip(why, 200)})
+            continue
         previous.append({
+            **({"void_status": "unresolved", "void_note": why} if status == "unresolved" else {}),
             "card": r.get("card"),
             "reason": r.get("reason"),
             "changed": r.get("changed"),
@@ -1115,6 +1166,7 @@ def main(argv: list[str] | None = None) -> int:
         # few lines -- the full attempt history stays in previous_attempts
         "_retry_state": retry_state,
         "previous_attempts": previous,
+        "voided_attempts": voided_rows,
         # the one budget answer (planner.budget): the same numbers the issued
         # card, a rejection and a deferral carry
         "budget": _governing_budget(root, steps, cluster["id"], rk),
@@ -1429,6 +1481,130 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def select_spill(path: Path, field: str, limit: int = 4000) -> dict:
+    """One field of a JSON tool-result spill, bounded, with honest metadata (v29 Owner run 89: the 308K-character
+    kanban_show spill was previewed with 'truncated: false, total_lines: 0' and a suggestion to use execute_code,
+    which the loop card refuses). The path is dotted keys and [n] / [a:b] list selections."""
+    import re as _re
+    out: dict = {"file": str(path), "field": field or "(whole document)"}
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        doc = json.loads(raw)
+    except (OSError, ValueError) as exc:
+        return dict(out, error="not a readable JSON document: %s" % str(exc)[:200])
+    out["file_chars"] = len(raw)
+    val = doc
+    for part in [p for p in _re.split(r"\.(?![^\[]*\])", field) if p] if field else []:
+        m = _re.fullmatch(r"([^\[\]]*)((?:\[[^\]]*\])*)", part)
+        key, sels = (m.group(1), _re.findall(r"\[([^\]]*)\]", m.group(2))) if m else (part, [])
+        try:
+            if key:
+                val = val[key] if isinstance(val, dict) else None
+            for sel in sels:
+                if ":" in sel:
+                    a, b = sel.split(":", 1)
+                    val = val[int(a) if a else None:int(b) if b else None]
+                else:
+                    val = val[int(sel)]
+        except (KeyError, IndexError, TypeError, ValueError):
+            val = None
+        if val is None:
+            return dict(out, error="no value at %s" % part, keys=sorted(doc)[:40] if isinstance(doc, dict) else [])
+    text = val if isinstance(val, str) else json.dumps(val, indent=1, sort_keys=True)
+    out.update({"type": type(val).__name__, "total_chars": len(text), "shown_chars": min(len(text), max(0, limit)),
+                "truncated": len(text) > max(0, limit), "value": text[:max(0, limit)]})
+    if isinstance(val, (list, dict)):
+        out["length"] = len(val)
+    return out
+
+
+def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:
+    """A bounded view of this native card (architect diagnosis of Owner run 89: the full show response was
+    308K characters, 159K of them machine accept records; the task body was 466). The board keeps every record;
+    this names what it omits and how to read it."""
+    from planner import native_control as NC
+    board = board if board is not None else _native_board(root)
+    if board is None or not task:
+        return "no native card here (task %r)" % task
+    t = board.task(task) or {}
+    recs = board.records(task)
+    kinds: dict = {}
+    for r in recs:
+        kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+    issue = next((r for r in reversed(recs) if r["kind"] == "issue"), {})
+    ver = issue.get("verification") or {}
+    out = ["CARD %s -- %s (%s)" % (task, _clip(t.get("title"), 90), t.get("status")),
+           "body: %s" % _clip(t.get("body"), 600),
+           "current issue: run %s seq %s cluster %s, %d writable path(s)%s" % (
+               issue.get("run"), issue.get("seq"), issue.get("cluster") or "(none)", len(issue.get("allowed_paths") or []),
+               ("; verification %s" % ", ".join("%d %s-mode" % (len(v), m) for m, v in sorted((ver.get("scenarios_by_mode") or {}).items())))
+               if ver else "")]
+    try:
+        role, run, oid, plan, node = NC.node_context(board, task)
+        b = NC.budget_state(board, run, plan, node)
+        out.append("budget: %s of %s spent against %s" % (b["spent"], b["limit"], b["key"]))
+    except Exception:  # noqa: BLE001 - a card without a plan node has no family budget to show
+        pass
+    verdicts = [r for r in recs if r["kind"] in ("reject", "reject-voided", "accept-commit", "accept-evaluated")]
+    for r in verdicts[-recent:]:
+        out.append("  %s run %s %s%s" % (r["kind"], r.get("run"), r.get("cluster") or "",
+                                        (": " + _clip(r.get("reason"), 140)) if r.get("reason") else
+                                        (" outcome_accepted=%s" % r.get("outcome_accepted")) if "outcome_accepted" in r else ""))
+    out.append("history: %d record(s) on the board (%s); %d verdict record(s) shown of %d. Full history: hermes kanban "
+               "show %s (large). Evidence of one obligation: brief.py --root . --item <id>." % (
+                   len(recs), ", ".join("%s %d" % kv for kv in sorted(kinds.items())), min(recent, len(verdicts)),
+                   len(verdicts), task))
+    return "\n".join(out)
+
+
+def _native_board(root: Path):
+    """The native board of this root, or None (the serial loop, or unreadable)."""
+    from planner import native_control as NC
+    from planner.outcome_protocol import select_protocol
+    if not select_protocol(Path(root)).native:
+        return None
+    return NC.board_for(Path(root))
+
+
+def _void_index(root: Path, board=None) -> dict:
+    """The Operator's voids on this card's native board, by EXACT rejection identity (architect review of
+    602f696c: a (cluster, reason) key hid a genuine rejection that shared a voided one's reason).
+
+      voided    {native reject key: why voided}
+      by_run    {(native run, candidate digest): native reject key}
+      reasons   {(cluster, reason[:300])} of voided rejections -- only to flag an identity-less row as
+                unresolved; never to hide one
+    Empty without a readable board: every row stays an attempt."""
+    empty = {"voided": {}, "by_run": {}, "reasons": set()}
+    try:
+        task = os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")
+        board = board if board is not None else (_native_board(root) if task else None)
+        if board is None or not task:
+            return empty
+        rejects = {r["key"]: r for r in board.records(task, "reject")}
+        voided = {str(v.get("reject") or ""): str(v.get("reason") or "") for v in board.records(task, "reject-voided")
+                  if str(v.get("reject") or "") in rejects}
+        return {"voided": voided,
+                "by_run": {(int(r.get("run") or 0), str(r.get("candidate") or "")): k for k, r in rejects.items()},
+                "reasons": {(str(rejects[k].get("cluster") or ""), str(rejects[k].get("reason") or "")[:300]) for k in voided}}
+    except Exception:  # noqa: BLE001 - an unreadable board voids nothing
+        return empty
+
+
+def _void_status(row: dict, index: dict) -> tuple[str, str]:
+    """('voided', why) for a row whose exact native rejection was voided; ('unresolved', why) for an
+    identity-less row whose reason matches a voided rejection (kept visible); ('', '') otherwise."""
+    key = str(row.get("native_reject") or "")
+    if not key and row.get("native_run") and row.get("candidate_sha256"):
+        key = index["by_run"].get((int(row["native_run"]), str(row["candidate_sha256"])), "")
+    if key:
+        return ("voided", index["voided"][key]) if key in index["voided"] else ("", "")
+    if (str(row.get("cluster") or ""), str(row.get("reason") or "")[:300]) in index["reasons"]:
+        return "unresolved", ("a native rejection with this reason was voided, but this row carries no rejection "
+                              "identity to match it: it is kept as an attempt")
+    return "", ""
+
+
 def _clip(value, n: int = 220) -> str:
     s = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
     s = " ".join(s.split())                      # a javac message spans lines; one line per item here
@@ -1458,7 +1634,10 @@ def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previo
     "2 of 12". This names the rollback's effect, the write-set files that do
     not exist, one line per distinct refusal, and every budget with its label.
     """
-    last = previous[-1] if previous else {}
+    # the last CONFIRMED rejection drives the guidance; an identity-less row whose reason matches a voided
+    # rejection is history of unresolved standing, never a prohibition (architect re-review of 68152b24)
+    last = next((r for r in reversed(previous) if not r.get("void_status")), {})
+    unresolved = [r for r in previous if r.get("void_status") == "unresolved"]
     reasons: list = []
     for r in previous:
         head = str(r.get("reason") or "").split(":", 1)[0][:80]
@@ -1486,6 +1665,8 @@ def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previo
         "rejected_attempts_listed": len(previous),
         "last_rejection": ({"card": last.get("card"), "reason": str(last.get("reason") or "")[:300],
                             "legal_next": last.get("legal_next")} if last else None),
+        "unresolved_history": ({"rows": len(unresolved), "last_reason": str(unresolved[-1].get("reason") or "")[:200]}
+                               if unresolved else None),
         "deleted_by_last_revert": list(last.get("deleted_by_revert") or []),
         # v24 run t_e5f21725: after a revert the worker grepped `mvn compile` for its own file and
         # found nothing (javac prints the first 100 of 231 errors), five identical calls, halted.
@@ -1555,10 +1736,21 @@ def brief_digest(brief: dict, stem: str) -> str:
         if rs.get("last_rejection"):
             out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
             out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
+        elif rs.get("unresolved_history"):
+            out.append("  no confirmed current refusal: follow NEXT ACTION and the issued failures")
+        if rs.get("unresolved_history"):
+            uh = rs["unresolved_history"]
+            out.append("  UNRESOLVED history: %d earlier refusal(s), the last '%s', match a rejection the Operator voided "
+                       "as harness-caused, and carry no identity to tell which; they are NOT established product "
+                       "failures, do not prohibit any repair, and their old 'legal next' does not apply"
+                       % (uh["rows"], _clip(uh["last_reason"], 120)))
         if rs.get("introduced_in_write_set"):
             out.append("  the rejected patch introduced (in the write set; the reverted tree no longer has them):")
             out += ["    %s" % r for r in rs["introduced_in_write_set"]]
         out.append("  refusals so far: %s" % ", ".join("%s x%d" % (r["refusal"], r["times"]) for r in rs.get("refusals") or []))
+    if brief.get("voided_attempts"):
+        out.append("  %d earlier rejection(s) of this family were VOIDED by the Operator as harness-caused; they are not "
+                   "attempts to avoid repeating and are not in previous_attempts" % len(brief["voided_attempts"]))
     out += _typed_repair.digest_lines(brief.get("typed_repair"))
     # The catalog already supplies these actions. A section-size index is not
     # (placed right after RETRY STATE: workers read a brief's head first, and a long REQUIRED SHAPE or
@@ -1745,6 +1937,74 @@ def diagnostic_ownership(doc: dict, root: Path) -> tuple[dict, str]:
                     "these facts grant no additional write scope." % (task, issued.get("cluster")))
 
 
+def _scenario_files(root: Path, sid: str, mode: str) -> dict:
+    """The source oracle and destination verdict of one scenario, with their response bodies, in ITS mode's
+    directories (ADR-014: the enabled mode keeps its own), as paths relative to the root; only files that exist."""
+    sub = "scenarios" if mode in ("", "disabled") else "scenarios-%s" % mode
+    slug = str(sid).replace(":", "_")
+    cand = {"source_record": "verification/source-oracles/%s/%s.json" % (sub, slug),
+            "source_body": "verification/source-oracles/%s/bodies/%s/response.body" % (sub, slug),
+            "destination_record": "verification/parity/%s/%s.json" % (sub, slug),
+            "destination_body": "verification/parity/%s/_bodies/%s/response.body" % (sub, slug)}
+    return {k: v for k, v in cand.items() if (Path(root) / v).is_file()}
+
+
+def _segment_before(root: Path, sid: str, mode: str) -> list:
+    """The scenarios a scenario's captured state depends on: those before it in its mode's corpus, back to
+    the nearest one that resets before its request (inclusive); [] for a scenario that resets itself."""
+    rel = "verification/scenarios/corpus.json" if mode in ("", "disabled") else "verification/scenarios-%s/corpus.json" % mode
+    try:
+        rows = [sc for sc in json.loads((Path(root) / rel).read_text()).get("scenarios") or [] if isinstance(sc, dict)]
+    except (OSError, ValueError):
+        return []
+    ids = [str(sc.get("id") or "") for sc in rows]
+    if sid not in ids:
+        return []
+    i = ids.index(sid)
+    if rows[i].get("reset_before", True):
+        return []
+    start = i
+    while start > 0 and not rows[start].get("reset_before", True):
+        start -= 1
+    return [{"id": ids[j], "method": rows[j].get("method"), "path": rows[j].get("path"),
+             "reset_before": bool(rows[j].get("reset_before", True))} for j in range(start, i)]
+
+
+def scenario_evidence(root: Path, item: dict) -> list:
+    """The evidence of a parity obligation's scenario, directly (v29 Owner run 89: the worker needed 60 calls
+    to find the two bodies that differed): its security mode, the source and destination records and bodies
+    in that mode, the destination record's candidate binding, the differing subtree, and the scenarios whose
+    state it was captured after. [] for an obligation that names no scenario."""
+    sid = str(item.get("scenario") or "")
+    if not sid:
+        return []
+    mode = str(item.get("security_mode") or "disabled")
+    files = _scenario_files(root, sid, mode)
+    out = ["SCENARIO EVIDENCE %s (%s mode)" % (sid, mode)]
+    for k in ("source_record", "source_body", "destination_record", "destination_body"):
+        out.append("  %s: %s" % (k.replace("_", " "), files.get(k, "(absent)")))
+    rec = {}
+    if files.get("destination_record"):
+        try:
+            rec = json.loads((Path(root) / files["destination_record"]).read_text())
+        except (OSError, ValueError):
+            rec = {}
+    bind = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+    out.append("  destination verdict %s, bound to %s %s" % (rec.get("verdict") or "(none)", bind.get("mode") or "nothing",
+                                                           str(bind.get("candidate_sha256") or "")[:12]))
+    diff = ((item.get("advice") or {}).get("body_diff") or {}) if isinstance(item.get("advice"), dict) else {}
+    for d in (diff.get("differences") or [])[:4]:
+        out.append("  differs at %s: %s (observed %s, expected %s)" % (d.get("path"), d.get("kind"),
+                                                                        str(d.get("observed"))[:80], str(d.get("expected"))[:80]))
+    chain = _segment_before(root, sid, mode)
+    if chain:
+        out.append("  captured AFTER (state prerequisites, corpus order): %s" % ", ".join(
+            "%s %s %s" % (c["id"], c["method"], c["path"]) for c in chain))
+    if rec.get("prerequisite_gap"):
+        out.append("  prerequisite not reproduced: %s" % rec["prerequisite_gap"])
+    return out
+
+
 def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbol: str = "",
                  owners: dict | None = None) -> str:
     """Bounded, read-only selectors over the MEASURED work list (v24 run: workers grepped a 143K items
@@ -1767,7 +2027,8 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
             return "\n".join(head + ["no measured obligation %s: it is not reported on the measured candidate" % item])
         if owners is not None:
             hit = dict(hit, ownership=ownership_of(hit, owners))
-        return "\n".join(head + [ownership.get(item, "ownership unknown"), json.dumps(hit, indent=2, sort_keys=True)[:12000]])
+        return "\n".join(head + [ownership.get(item, "ownership unknown")] + scenario_evidence(root, hit)
+                         + [json.dumps(hit, indent=2, sort_keys=True)[:12000]])
     def sym(i):
         adv = i.get("advice") if isinstance(i.get("advice"), dict) else {}
         return str(((adv.get("symbol") or {}) if isinstance(adv.get("symbol"), dict) else {}).get("name") or "")

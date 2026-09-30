@@ -65,6 +65,20 @@ def active(root: Path) -> bool:
     return maybe(str(root)) and select_protocol(Path(root)).outcome and store_present(Path(root))
 
 
+def native_reject_identity(root: Path, candidate: str) -> dict[str, Any]:
+    """The native rejection this run just recorded for `candidate`: {native_reject, native_run,
+    candidate_sha256}, or {} when not native or not found. Persisted on the local rejected row so a later
+    void is matched by identity, never by reason text (architect review of 602f696c)."""
+    board = _native(root)
+    if board is None:
+        return {}
+    task, run = _ids()
+    rows = [r for r in board.records(task, "reject") if int(r.get("run") or 0) == int(run)
+            and str(r.get("candidate") or "") == str(candidate)]
+    return ({"native_reject": rows[-1]["key"], "native_run": int(run), "candidate_sha256": str(candidate)}
+            if rows else {})
+
+
 def _ids() -> tuple[str, int]:
     task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     try:

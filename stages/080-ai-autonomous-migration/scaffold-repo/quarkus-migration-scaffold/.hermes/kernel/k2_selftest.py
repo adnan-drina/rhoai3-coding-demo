@@ -1483,7 +1483,17 @@ def main() -> int:
                 fails += 1
             else:
                 print("ok loop_card_inline_python_refused")
-        for cmdline in ("python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .", "cat verification/loop/brief-c-1.json", "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."):
+        r = run("python3 -c \"print(1)\"", roots, cwd=cwd, extra_env=loop_card_env)
+        if not all(x in (r.get("message") or "") for x in ("--card", "--spill <file> --field <path>", "--item <id>")):
+            print("FAIL loop_card_refusal_names_the_selectors", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok loop_card_refusal_names_the_selectors")
+        for cmdline in ("python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .", "cat verification/loop/brief-c-1.json", "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .",
+                        # v29 Owner run 89: the selectors the refusal names are themselves allowed on the loop card
+                        "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --card",
+                        "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --spill .hermes/home/profiles/implementer/cache/spillover/chatcmpl-tool-x.txt --field task.body",
+                        "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --item parity:4a43e638d94c08fb"):
             r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
             if r.get("action") == "block" and "inline python" in (r.get("message") or ""):
                 print("FAIL loop_card_road_allowed %r" % cmdline, r, file=sys.stderr)

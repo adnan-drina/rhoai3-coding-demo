@@ -504,7 +504,183 @@ def _server_error_case() -> int:
     return 0
 
 
+class VisitClinic(BaseHTTPRequestHandler):
+    """Owner 6 has pet 7 with visits 1 and 4; DELETE /api/visits/1 removes visit 1.
+
+    ``delete_mode`` "noop" answers 204 and deletes nothing (a broken prerequisite); ``extra_visit`` makes the
+    owners list carry a visit the source never had (a genuine Owner defect)."""
+
+    visits: set = {1, 4}
+    delete_mode = "ok"
+    extra_visit = False
+
+    def log_message(self, *a):  # noqa: D102 - quiet
+        return
+
+    def _send(self, code: int, payload=None):
+        body = json.dumps(payload).encode() if payload is not None else b""
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def do_GET(self):
+        cls = type(self)
+        if self.path == "/__reset":
+            cls.visits = {1, 4}
+            return self._send(200, {"reset": True})
+        if self.path == "/api/owners":
+            seen = sorted(cls.visits | ({99} if cls.extra_visit else set()))
+            return self._send(200, [{"id": 6, "pets": [{"id": 7, "visits": seen}]}])
+        if self.path == "/api/visits/1":
+            return self._send(200, {"id": 1}) if 1 in cls.visits else self._send(404, {"error": "absent"})
+        return self._send(404, {"error": "absent"})
+
+    def do_DELETE(self):
+        cls = type(self)
+        if self.path == "/api/visits/1":
+            if cls.delete_mode == "ok":
+                cls.visits.discard(1)
+            return self._send(204)
+        return self._send(404, {"error": "absent"})
+
+
+VISIT_CORPUS = {
+    "schema": "rhoai3.scenario-corpus/v1",
+    "approved_by": "operator:test",
+    "initial_state": {"reset": "GET /__reset", "dataset": "clinic"},
+    "scenarios": [
+        # an independent reset boundary before the pair: a scoped read of the owners after the delete must
+        # replay the delete, and only the delete
+        {"id": "sc:owners-pristine", "entry_point": CREATE_EP, "method": "GET", "path": "/api/owners",
+         "body_absent": True, "reset_before": True, "effects": [], "normalization": []},
+        {"id": "sc:delete-visit-1", "entry_point": CREATE_EP, "method": "DELETE", "path": "/api/visits/1",
+         "body_absent": True, "reset_before": True,
+         "effects": [{"id": "eff:visit-1", "method": "GET", "path": "/api/visits/1"}], "normalization": []},
+        {"id": "sc:owners-after-delete", "entry_point": CREATE_EP, "method": "GET", "path": "/api/owners",
+         "body_absent": True, "reset_before": False, "effects": [], "normalization": []},
+    ],
+}
+
+
+def _capture_visit_corpus(root: Path, base: str, mode: str) -> None:
+    """Record the source the way the capture records it: in corpus order, a reset only where the scenario
+    declares one, the effects read back -- so the after-delete read is captured after the delete."""
+    receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+    bundle_sha = digest(load_json(root / "evidence/planning/evidence-bundle.json"))
+    corpus = json.loads(json.dumps(VISIT_CORPUS))
+    extra: dict = {}
+    if mode == ENABLED:
+        for sc in corpus["scenarios"]:
+            sc["identity"] = dict(ENABLED_IDENTITY)
+        extra = {"security_mode": ENABLED, "security_variant": ""}
+    write_canonical(root / corpus_path(mode), corpus)
+    corpus_sha = corpus_digest(load_json(root / corpus_path(mode)))
+    auth, gap = auth_headers(ENABLED_IDENTITY) if mode == ENABLED else ({}, "")
+    if gap:
+        raise SystemExit("the enabled visit fixture cannot authenticate: %s" % gap)
+    VisitClinic.delete_mode, VisitClinic.extra_visit = "ok", False
+    for sc in corpus["scenarios"]:
+        req = request_of(root, sc)
+        if sc.get("reset_before"):
+            http_observe(base, "GET", "/__reset")
+        effects = [dict(e) for e in sc.get("effects") or []]
+        before = [http_observe(base, e["method"], e["path"], headers=auth) for e in effects]
+        got = http_observe(base, str(sc["method"]), str(sc["path"]), headers={**req["headers"], **auth})
+        after = [http_observe(base, e["method"], e["path"], headers=auth) for e in effects]
+        write_canonical(root / scenario_oracles_dir(mode) / (scenario_slug(str(sc["id"])) + ".json"), {
+            "schema": "rhoai3.source-scenario/v1", "scenario": str(sc["id"]), "entry_point": CREATE_EP,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": base},
+            "initial_state": dict(corpus["initial_state"]), "normalization": [], "reset_before": bool(sc.get("reset_before")),
+            **extra,
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": got["status"], "body_kind": got["body_kind"], "body_sha256": got["body_sha256"],
+                         "headers": got["headers"]},
+            "before": [{"id": e["id"], "method": e["method"], "path": e["path"], "status": b["status"],
+                        "body_sha256": b["body_sha256"]} for e, b in zip(effects, before)],
+            "effects": [{"id": e["id"], "method": e["method"], "path": e["path"], "status": x["status"],
+                         "body_sha256": x["body_sha256"]} for e, x in zip(effects, after)],
+        })
+    if mode == ENABLED:
+        write_canonical(root / capture_receipt_path(ENABLED), {
+            "schema": "rhoai3.source-capture/v1", "producer": "run-parity.test.py", "status": "ok", "reason": "",
+            "security_mode": ENABLED, "security_variant": "", "corpus_sha256": corpus_sha,
+            "captured": len(corpus["scenarios"]), "scenarios": [str(sc["id"]) for sc in corpus["scenarios"]],
+            "credential_refs": [ENABLED_CRED_ENV], "source_config": {SWITCH_KEY: SWITCH_ENABLED},
+            "receipt_sha256": receipt_digest, "evidence_bundle_sha256": bundle_sha,
+        })
+
+
+def _state_prerequisite_case() -> int:
+    """v29 Owner run 89 (architect diagnosis): a scoped comparison of a read captured after an unselected
+    delete must replay that delete -- proven by its own PASS -- or be INCONCLUSIVE, never an Owner FAIL.
+    Run through the real runner and comparator on a stateful fake, in both security modes."""
+    os.environ[ENABLED_CRED_ENV] = "%s:%s" % (ENABLED_CRED_USER, ENABLED_CRED_PASSWORD)
+    os.environ[NAV_USER_ENV], os.environ[NAV_PASS_ENV] = "nav-user", "nav-secret"
+    stub, stub_base = _serve()
+    visits = HTTPServer(("127.0.0.1", 0), VisitClinic)
+    threading.Thread(target=visits.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % visits.server_address[1]
+    try:
+        with tempfile.TemporaryDirectory(prefix="run-parity-state-") as tmp:
+            td = Path(tmp).resolve()
+            root = _build(td, stub_base)
+            reset = _reset_script(td, base)
+            for mode in ("disabled", ENABLED):
+                _capture_visit_corpus(root, base, mode)
+                moded = "" if mode == "disabled" else mode
+                rdir = root / scenario_parity_dir(mode)
+
+                def verdicts(doc):
+                    return {r["id"]: r["verdict"] for r in (doc.get("scenarios") or {}).get("results") or []}
+
+                VisitClinic.delete_mode, VisitClinic.extra_visit = "ok", False
+                rc, blob, full = _run(root, base, reset, mode=moded)
+                if verdicts(full).get("sc:owners-after-delete") != "PASS":
+                    return _fail("[%s] the full replay reproduces the source's after-delete read: %s %s" % (mode, verdicts(full), blob[-600:]))
+                delete_rec = rdir / (scenario_slug("sc:delete-visit-1") + ".json")
+                kept = delete_rec.read_bytes()
+                VisitClinic.visits = {1, 4}                   # whatever ran before, the data is pristine again (v29)
+                rc, blob, scoped = _run(root, base, reset, scenarios=("sc:owners-after-delete",), mode=moded)
+                setup = (scoped.get("scenarios") or {}).get("setup") or []
+                if verdicts(scoped) != {"sc:owners-after-delete": "PASS"}:
+                    return _fail("[%s] the scoped read, with its proven setup, compares as the full replay does: %s %s"
+                                 % (mode, verdicts(scoped), blob[-600:]))
+                if [(x["id"], x["verdict"]) for x in setup] != [("sc:delete-visit-1", "PASS")]:
+                    return _fail("[%s] only the delete of its own segment is replayed, and proven: %s" % (mode, setup))
+                if delete_rec.read_bytes() != kept:
+                    return _fail("[%s] the setup scenario's own record is preserved byte for byte" % mode)
+                # a prerequisite that does not reproduce the source state: INCONCLUSIVE, never an Owner FAIL
+                VisitClinic.delete_mode = "noop"
+                VisitClinic.visits = {1, 4}                   # whatever ran before, the data is pristine again (v29)
+                rc, blob, scoped = _run(root, base, reset, scenarios=("sc:owners-after-delete",), mode=moded)
+                row = next(r for r in scoped["scenarios"]["results"] if r["id"] == "sc:owners-after-delete")
+                if row["verdict"] != "INCONCLUSIVE" or "sc:delete-visit-1" not in row["reason"]:
+                    return _fail("[%s] a failed prerequisite leaves the dependent read INCONCLUSIVE, naming it: %s" % (mode, row))
+                rc, blob, full = _run(root, base, reset, mode=moded)
+                if (verdicts(full).get("sc:delete-visit-1"), verdicts(full).get("sc:owners-after-delete")) != ("FAIL", "INCONCLUSIVE"):
+                    return _fail("[%s] full replay: the delete FAILs and its dependent is INCONCLUSIVE: %s" % (mode, verdicts(full)))
+                if verdicts(full).get("sc:owners-pristine") != "PASS":
+                    return _fail("[%s] an independent reset boundary is unaffected: %s" % (mode, verdicts(full)))
+                # a genuine difference after a correct setup still FAILs
+                VisitClinic.delete_mode, VisitClinic.extra_visit = "ok", True
+                VisitClinic.visits = {1, 4}                   # whatever ran before, the data is pristine again (v29)
+                rc, blob, scoped = _run(root, base, reset, scenarios=("sc:owners-after-delete",), mode=moded)
+                if verdicts(scoped) != {"sc:owners-after-delete": "FAIL"}:
+                    return _fail("[%s] an extra visit after a proven setup is a real FAIL: %s" % (mode, verdicts(scoped)))
+                VisitClinic.extra_visit = False
+    finally:
+        visits.shutdown()
+        stub.shutdown()
+    return 0
+
+
 def main() -> int:
+    if _state_prerequisite_case():
+        return 1
     if _server_error_case():
         return 1
     Service.owners = {}

@@ -467,6 +467,38 @@ def feedback_mode():
         return "off"
 
 
+# A PLANNED VERIFICATION scope (v29 Owner): the issued unit names what its own checks measure --
+# scenarios per security mode and read oracles, from the admitted plan and the bound corpora. Every
+# required mode is compared, one after the other, against the artifact this verification packaged;
+# each mode keeps its own receipt and records. Never a default mode, never the whole corpus.
+# (No apostrophes: see above.)
+ver = issued.get("verification") if isinstance(issued.get("verification"), dict) else None
+if ver is not None:
+    if not booted:
+        print("skip:the startup gate did not pass in this verification")
+        raise SystemExit(0)
+    if ver.get("unresolved"):
+        print("skip:VERIFICATION_SCOPE_UNRESOLVED the issued scope names targets no corpus resolves: %s"
+              % "; ".join(str(u.get("check")) for u in ver["unresolved"][:3]))
+        raise SystemExit(0)
+    by_mode = ver.get("scenarios_by_mode") if isinstance(ver.get("scenarios_by_mode"), dict) else {}
+    modes = [m for m in ("disabled", "enabled") if by_mode.get(m)]
+    stray = sorted(set(by_mode) - {"disabled", "enabled"})
+    oracles = [str(e) for e in ver.get("read_oracles") or [] if str(e)]
+    if stray or (not modes and not oracles):
+        print("skip:VERIFICATION_SCOPE_EMPTY the issued scope names %s" % (
+            ("unknown security modes %s" % stray) if stray else "nothing to compare"))
+        raise SystemExit(0)
+    print("run:" + ",".join(s for m in modes for s in by_mode[m]))
+    for ep in oracles:
+        print("oracle:" + ep)
+    print("mode:" + (modes[0] if modes else "disabled"))
+    for m in modes:
+        print("run-mode:%s:%s" % (m, ",".join(by_mode[m])))
+    if oracles and "disabled" not in modes:
+        print("run-mode:disabled:")
+    raise SystemExit(0)
+
 if not force and str(issued.get("gate") or "") != "parity":
     # RUNTIME FEEDBACK: no parity obligation on this card, but the destination
     # just started, so the whole scenario phase is comparable on this candidate
@@ -621,6 +653,7 @@ PYEOF
         PARITY_MODE_RUNS+=("${PARITY_MODE}:${SIDS}")
       fi
     fi
+    # >>> parity-execution (run-verify-modes.test.sh runs this region with a fake comparator)
     PARITY_ISSUED="${ROOT}/verification/loop/issued.json"
     PARITY_MS=0
     PARITY_RC=0
@@ -693,15 +726,26 @@ PYEOF
     if [[ "${PARITY_PENDING_SCOPE}" -eq 1 ]]; then
       :
     elif [[ ${#PARITY_MODE_RUNS[@]} -gt 0 && "${PARITY_TRIGGER}" == "issued-card" ]]; then
+      # every required mode, one after the other, on the same packaged artifact; the worst exit
+      # status stands and each mode's own result is kept (a later mode never hides an earlier one)
+      WORST_RC=0
+      PARITY_MODE_RESULTS=""
       for spec in "${PARITY_MODE_RUNS[@]}"; do
         run_one_parity "${spec%%:*}" "${spec#*:}"
+        PARITY_MODE_RESULTS="${PARITY_MODE_RESULTS}${spec%%:*}=${PARITY_RC},"
+        [[ "${PARITY_RC}" -ne 0 && "${WORST_RC}" -eq 0 ]] && WORST_RC="${PARITY_RC}"
       done
+      PARITY_RC="${WORST_RC}"
       SIDS="${ALL_SIDS}"
     else
       run_one_parity "${PARITY_MODE:-disabled}" "${SIDS}"
     fi
     if [[ "${PARITY_PENDING_SCOPE}" -ne 1 ]]; then
-    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE
+    PARITY_MODE_SPECS=""
+    if [[ -n "${PARITY_MODE_RESULTS:-}" ]]; then
+      PARITY_MODE_SPECS="$(IFS=';'; printf '%s' "${PARITY_MODE_RUNS[*]}")"
+    fi
+    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER PARITY_MODE PARITY_MODE_RESULTS="${PARITY_MODE_RESULTS:-}" PARITY_MODE_SPECS
     PARITY_ORACLES=""
     if [[ ${#PLAN_ORACLES[@]} -gt 0 ]]; then
       PARITY_ORACLES="$(IFS=,; printf '%s' "${PLAN_ORACLES[*]}")"
@@ -755,6 +799,23 @@ doc.setdefault("runtime", {})["parity"] = {
     "security_mode": mode if mode in ("disabled", "enabled") else "disabled",
     "ms": ms,
 }
+# each mode a multi-mode comparison ran: its exit status and its own receipt's verdict
+modes = {}
+for part in (os.environ.get("PARITY_MODE_RESULTS") or "").split(","):
+    if "=" not in part:
+        continue
+    m, rc = part.split("=", 1)
+    rp = root / "verification" / "parity" / ("receipt.json" if m == "disabled" else "receipt-%s.json" % m)
+    try:
+        rv = str((json.loads(rp.read_text(encoding="utf-8")) or {}).get("verdict") or "") if rp.is_file() else ""
+    except ValueError:
+        rv = ""
+    # the scenarios THIS mode was asked to compare (the issued assignment; judged only in this mode)
+    asked = [x for spec in (os.environ.get("PARITY_MODE_SPECS") or "").split(";") if spec.startswith(m + ":")
+             for x in spec.split(":", 1)[1].split(",") if x]
+    modes[m] = {"rc": int(rc or 0), "receipt_verdict": rv, "scenarios": asked}
+if modes:
+    doc["runtime"]["parity"]["modes"] = modes
 doc.setdefault("stages_ms", {})["parity"] = ms
 doc["total_ms"] = int(doc.get("total_ms") or 0) + ms
 json.dump(doc, open(run_p, "w"))
@@ -764,6 +825,7 @@ PYEOF
     python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
     VERIFY_RC=$?
     fi
+    # <<< parity-execution
   fi
 fi
 # The verify count for the issued card and the obligations the rebuilt work

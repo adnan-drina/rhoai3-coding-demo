@@ -1004,7 +1004,10 @@ if profile == "implementer" and ((tool in {"terminal", "bash", "shell"} and cmd 
     block("inline python refused on a loop card: the brief (verification/loop/brief-*.json) "
           "already carries the measure, every item with its advice and rule condition, "
           "and previous_attempts. Read it with cat, patch the write set, then run "
-          "run-verify.sh and advance.py.")
+          "run-verify.sh and advance.py. Bounded, allowed selectors: "
+          "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --card (this card), "
+          "--item <id> (one obligation with its scenario evidence and state prerequisites), "
+          "--spill <file> --field <path> (one field of a spilled tool result).")
 
 # H9b (dest v9 t_2da2458b): the terminal call of the worker to advance.py was
 # killed at ~30 s AFTER the acceptance had committed and recorded its step; a

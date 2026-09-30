@@ -4086,7 +4086,6 @@ def _media_type_grammar_case() -> int:
     same = [
         ("application/json;charset=UTF-8", "Application/JSON ; Charset=utf-8", "charset respelled (case, spaces)"),
         ('application/json;charset="UTF-8"', "application/json;charset=utf-8", "a token sent as a quoted-string"),
-        ("text/plain;a=1;b=2", "text/plain; b=2; a=1", "parameter order carries no meaning"),
         ('application/x;note="A; X=Y"', 'application/x; NOTE="A; X=Y"', "a parameter NAME is case-insensitive"),
         ('application/x;q="a\\"b"', 'application/x;q="a\\"b"', "an escaped quote round-trips"),
         ('application/x;q="\\a"', "application/x;q=a", "a quoted-pair is the character it escapes"),
@@ -4102,6 +4101,7 @@ def _media_type_grammar_case() -> int:
         ("application/json;charset=utf-8", "application/json;charset=iso-8859-1", "a charset that really changed"),
         ("application/json;profile=A", "application/json;profile=a", "a non-charset value is case-sensitive"),
         ("application/json", "application/json;charset=utf-8", "an added parameter"),
+        ("text/plain;a=1;b=2", "text/plain; b=2; a=1", "parameter order is kept (architect ruling cf164288: nothing invented)"),
     ]
     for a, b, why in distinct:
         if c(a) == c(b):

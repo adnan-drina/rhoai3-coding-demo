@@ -50,6 +50,16 @@ from planner.outcome_checks import VERDICT, Refusal  # noqa: E402
 
 
 def write_issued_projection(root: Path, issued: dict) -> str:
+    """Publish the projection under the native publication lock, which
+    retire_issuance also takes: a retirement never interleaves with a new
+    issuance's publication (architect review of 0dd677ba)."""
+    if not issued.get("cluster"):
+        return ""
+    with NC.publication_lock(Path(root)):
+        return _write_issued_projection(root, issued)
+
+
+def _write_issued_projection(root: Path, issued: dict) -> str:
     """The loop tools (brief, run-verify, advance, amend-scope) read
     verification/loop/issued.json. Under native control it is written for the
     ONE cluster (or unit) this run was issued, bound to the claimed task: a
@@ -82,6 +92,12 @@ def write_issued_projection(root: Path, issued: dict) -> str:
         from planner.worklist import PLANNED_UNIT_GATE
         card["gate"] = PLANNED_UNIT_GATE          # judged by its requirement checks, not the tuple
     write_issued(root, wl, card, str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
+    ver = (issued.get("planned_unit") or {}).get("verification")
+    if ver:
+        # what the unit's checks measure travels with the card: run-verify compares exactly this scope, per mode
+        doc = load_json(root / LOOP_ISSUED)
+        doc["verification"] = dict(ver)
+        write_canonical(root / LOOP_ISSUED, doc)
     if issued.get("objective"):
         # the admitted descriptor rides with the card: advance.py rebuilds the
         # envelope from it and refuses one that differs

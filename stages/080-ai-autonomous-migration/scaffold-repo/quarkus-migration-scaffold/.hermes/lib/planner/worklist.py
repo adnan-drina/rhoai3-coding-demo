@@ -1206,75 +1206,71 @@ DOC_UI_LINKS = ["https://quarkus.io/version/3.27/guides/openapi-swaggerui"]
 REDIRECT_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#configure-http-access"]
 
 
-def canonical_media_type(value: str) -> str:
-    """A media type in RFC 9110 section 8.3.1 canonical form, parsed by its
-    grammar (not split on every ';'):
+_MT_TOKEN = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
+_MT_TYPE_RE = re.compile(r"[ \t]*(%s)/(%s)[ \t]*" % (_MT_TOKEN, _MT_TOKEN))
+_MT_TOKEN_RE = re.compile(_MT_TOKEN)
 
-        media-type = type "/" subtype parameters
-        parameters = *( OWS ";" OWS [ parameter ] )
-        parameter  = name "=" ( token / quoted-string )
-        quoted-string = DQUOTE *( qdtext / "\\" char ) DQUOTE
 
-    Only what the RFC defines as case-insensitive is folded: the type, the
-    subtype, every parameter NAME and the charset VALUE (section 8.3.2). A
-    quoted value is unquoted and unescaped -- a token sent as a quoted-string
-    is the same value -- so a ';' or '=' inside quotes is part of the value,
-    and every other value keeps its case (v29 0dd677ba review: note="A; X=Y"
-    and note="A; x=Y" were collapsed into one). The parameters are sorted by
-    name (their order carries no meaning); a value that is not a token is
-    re-quoted with its '"' and '\\' escaped. Self-contained on purpose: the
-    architect's reproduction executes this function alone."""
+def _media_type_parts(value: str) -> tuple[str, list[tuple[str, str]]] | None:
+    """(type/subtype, [(name, value)]) by the RFC 9110 grammar (sections 5.6.6
+    and 8.3.1): ``*( OWS ";" OWS [ token "=" ( token / quoted-string ) ] )``,
+    a quoted-string's backslash escaping undone. None when the value does not
+    parse -- an unterminated quote, a parameter with no '=', stray bytes."""
     s = str(value or "")
-    tchar = set("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    n = len(s)
-    semi = s.find(";")
-    head = (s if semi < 0 else s[:semi]).strip().lower()
-    i = n if semi < 0 else semi
-    params = []
+    m = _MT_TYPE_RE.match(s)
+    if not m:
+        return None
+    typ, i, n = ("%s/%s" % (m.group(1), m.group(2))).lower(), m.end(), len(s)
+    params: list[tuple[str, str]] = []
     while i < n:
-        i += 1                                     # past the ';'
+        if s[i] != ";":
+            return None
+        i += 1
         while i < n and s[i] in " \t":
             i += 1
-        start = i
-        while i < n and s[i] not in "=;":
-            i += 1
-        name = s[start:i].strip().lower()
         if i >= n or s[i] == ";":
-            if name:
-                params.append((name, None))        # malformed (no '='): kept, never guessed
-            continue
-        i += 1                                     # past the '='
+            continue                      # an empty parameter is allowed
+        k = _MT_TOKEN_RE.match(s, i)
+        if not k or k.end() >= n or s[k.end()] != "=":
+            return None                   # no whitespace around '=' (RFC 9110 5.6.6)
+        i = k.end() + 1
+        if i < n and s[i] == '"':
+            buf, j = [], i + 1
+            while j < n and s[j] != '"':
+                if s[j] == "\\":
+                    if j + 1 >= n:
+                        return None
+                    j += 1
+                buf.append(s[j])
+                j += 1
+            if j >= n:
+                return None               # unterminated quoted-string
+            val, i = "".join(buf), j + 1
+        else:
+            t = _MT_TOKEN_RE.match(s, i)
+            if not t:
+                return None
+            val, i = t.group(0), t.end()
         while i < n and s[i] in " \t":
             i += 1
-        if i < n and s[i] == '"':
-            i += 1
-            buf = []
-            while i < n and s[i] != '"':
-                if s[i] == "\\" and i + 1 < n:
-                    i += 1
-                buf.append(s[i])
-                i += 1
-            i += 1                                 # past the closing quote (or the end)
-            tail_start = i
-            while i < n and s[i] != ";":
-                i += 1
-            val = "".join(buf) + s[tail_start:i].strip()
-        else:
-            start = i
-            while i < n and s[i] != ";":
-                i += 1
-            val = s[start:i].strip()
-        if name:
-            params.append((name, val.lower() if name == "charset" else val))
-    out = [head]
-    for name, val in sorted(params, key=lambda p: (p[0], "" if p[1] is None else p[1])):
-        if val is None:
-            out.append(name)
-        elif val and all(c in tchar for c in val):
-            out.append("%s=%s" % (name, val))
-        else:
-            out.append('%s="%s"' % (name, val.replace("\\", "\\\\").replace('"', '\\"')))
-    return ";".join(out)
+        params.append((k.group(0).lower(), val))
+    return typ, params
+
+
+def canonical_media_type(value: str) -> str:
+    """A media type in RFC 9110 canonical form: the type, subtype and
+    parameter names are case-insensitive (8.3.1), a quoted and an unquoted
+    parameter value are the same value (5.6.6), and only a charset value is
+    case-insensitive (8.3.2). Every other value is kept byte for byte,
+    parameter order is kept, and a value that does not parse keeps its raw
+    form behind a marker, so it is never equivalent to anything but itself
+    (architect review of ed9d31ac: a split on ';' also split a quoted value
+    and collapsed two distinct ones)."""
+    got = _media_type_parts(value)
+    if got is None:
+        return "malformed:" + str(value or "")
+    typ, params = got
+    return typ + "".join(";%s=%s" % (k, json.dumps(v.lower() if k == "charset" else v)) for k, v in params)
 
 
 def canonical_diff(diff: str) -> str:
@@ -4122,10 +4118,20 @@ def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred:
             "write_set": files,
             "block": "",
         })
+    # ADR-014: one repair card compares one security mode. A file whose parity failures span both modes
+    # forms one cluster per mode (v29 Owner: one cluster held disabled and enabled failures and every
+    # repair was refused LOOP_MIXED_SECURITY_MODE). The default-mode cluster keeps the file's id.
+    def _mode_key(i: dict[str, Any]) -> str:
+        return "enabled" if str(i.get("source") or "") == "parity" and _item_security_mode(i) == "enabled" else ""
+
+    groups: list[tuple[str, str, list[dict[str, Any]]]] = []
     for path in sorted(by_path):
-        its = sorted(by_path[path], key=lambda i: i["id"])
+        its_all = sorted(by_path[path], key=lambda i: i["id"])
+        for mode in sorted({_mode_key(i) for i in its_all}):
+            groups.append((path, mode, [i for i in its_all if _mode_key(i) == mode]))
+    for path, mode, its in groups:
         kind = min((i["kind"] for i in its), key=lambda k: KIND_RANK[k])
-        cid = "c:%s" % sha256_bytes(path.encode("utf-8"))[:12]
+        cid = "c:%s" % sha256_bytes((path + ("#" + mode if mode else "")).encode("utf-8"))[:12]
         if path == GLOBAL:
             write_set = ["pom.xml"]
         elif path_class(path) == "test":
