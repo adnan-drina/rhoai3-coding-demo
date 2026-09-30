@@ -643,6 +643,9 @@ def _state_prerequisite_case() -> int:
                     return _fail("[%s] the full replay reproduces the source's after-delete read: %s %s" % (mode, verdicts(full), blob[-600:]))
                 delete_rec = rdir / (scenario_slug("sc:delete-visit-1") + ".json")
                 kept = delete_rec.read_bytes()
+                # a record outside the selected segment (another reset boundary) is not touched by a scoped run
+                unrelated = rdir / (scenario_slug("sc:owners-pristine") + ".json")
+                unrelated_kept = unrelated.read_bytes()
                 VisitClinic.visits = {1, 4}                   # whatever ran before, the data is pristine again (v29)
                 rc, blob, scoped = _run(root, base, reset, scenarios=("sc:owners-after-delete",), mode=moded)
                 setup = (scoped.get("scenarios") or {}).get("setup") or []
@@ -653,6 +656,8 @@ def _state_prerequisite_case() -> int:
                     return _fail("[%s] only the delete of its own segment is replayed, and proven: %s" % (mode, setup))
                 if delete_rec.read_bytes() != kept:
                     return _fail("[%s] the setup scenario's own record is preserved byte for byte" % mode)
+                if unrelated.read_bytes() != unrelated_kept:
+                    return _fail("[%s] an unrelated scenario's record is preserved byte for byte" % mode)
                 # a prerequisite that does not reproduce the source state: INCONCLUSIVE, never an Owner FAIL
                 VisitClinic.delete_mode = "noop"
                 VisitClinic.visits = {1, 4}                   # whatever ran before, the data is pristine again (v29)

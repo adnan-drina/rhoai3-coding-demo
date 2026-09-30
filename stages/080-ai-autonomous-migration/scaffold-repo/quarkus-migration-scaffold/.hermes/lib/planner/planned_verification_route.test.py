@@ -377,6 +377,7 @@ class MergedPathWithState(VerificationRoute):
         self.assertFalse({i["id"] for i in wl["items"]} & set(self.own))
         self.assertEqual((ver["allowed_paths"], ver["planned_unit"]["verification"]["scenarios_by_mode"]),
                          ([], {"disabled": [DEP_D], "enabled": [DEP_E]}))
+        self.last_cluster = ver["cluster"]
         return tid, run, ver
 
     def test_the_prerequisite_delete_is_replayed_before_its_read_and_the_card_reaches_review(self):
@@ -416,6 +417,9 @@ class MergedPathWithState(VerificationRoute):
         self.assertEqual(rec["verdict"], "INCONCLUSIVE")
         self.assertIn(DEL_D, rec.get("prerequisite_gap") or rec.get("reason") or "")
         self.assertNotEqual(stage["state"], "failed", stage)           # not an Owner FAIL
+        # an unproven prerequisite grants no product write scope: the re-issue is the same empty-write unit
+        again = NC.issue(self.r.root, self.r.board, task_id=_tid, run_id=_run)
+        self.assertEqual((again["allowed_paths"], again["cluster"]), ([], self.last_cluster))
         self.assertTrue(any(DEP_D[3:] in x for x in out["not_accepted_because"]), out)
 
     def test_a_true_difference_after_valid_setup_stays_fail(self):
