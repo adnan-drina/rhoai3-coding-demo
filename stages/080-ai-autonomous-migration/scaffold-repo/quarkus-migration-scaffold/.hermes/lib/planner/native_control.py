@@ -863,6 +863,12 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     committed = commit_product_tree(root, head) if head else ""
     in_progress = None
     if committed and tree != committed and not (pending and pending.get("candidate") == tree):
+        # V29-3: a REJECTED candidate whose revert was interrupted (the worker was stopped between the
+        # native reject record and the restore) is exactly the judged bytes: set aside onto the card that
+        # rejected it and restored, verified below -- never built upon, never read as a baseline
+        if set_aside_rejected(root, board, task_id=task_id, run_id=run_id):
+            tree = _product_tree(root)
+    if committed and tree != committed and not (pending and pending.get("candidate") == tree):
         # V29-3: THIS run was already issued, so the edits are its own work in progress -- never a
         # stopped run's leftovers. The repeat is measured against the run's issued baseline and may
         # only replay that issue; nothing is set aside (the architect's reproduction: a repeated
@@ -1943,6 +1949,89 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
         return None
     return dict(_stash(root, board, task_id=task_id, run_id=last, head=head, changed=sorted(changed), kind=ABANDONED),
                 run=last)
+
+
+def _attached_state(board: Board, task_id: str, rec: dict[str, Any]) -> dict[str, str] | None:
+    got = board.attachment(task_id, str(rec.get("attachment") or ""))
+    if got is None:
+        return None
+    try:
+        return dict(json.loads(got[0]).get("files") or {})
+    except ValueError:
+        return None
+
+
+def set_aside_rejected(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, Any] | None:
+    """V29-3 / I-11: a worker stopped between its native ``reject`` record and
+    the revert (no terminator ran) leaves the REJECTED candidate in the shared
+    tree. Unrecognized, it blocks every other card (ISSUE_BASELINE_DRIFT) or is
+    built upon as if it were the baseline. It is recognized only by identity:
+    the whole product tree is exactly the candidate a reject record names, of
+    a run that has ENDED -- or of this very run, when the rejection is newer
+    than its latest issue. Then those bytes are attached to the card that
+    rejected them (an ``abandoned-candidate`` record naming the rejection) and
+    the paths are restored and verified (_stash). An unrelated edit changes
+    the digest, so it is never matched, and a retained candidate is never
+    touched.
+
+    A set-aside interrupted part-way through its restore is resumed: every
+    still-changed path lies inside one set-aside record at this HEAD and its
+    bytes are still the attached ones; anything else stays the drift refusal."""
+    root = Path(root)
+    head, changed = _changed_vs_head(root)
+    if not changed:
+        return None
+    parsed = board.node_of(task_id)
+    if parsed is None:
+        return None
+    tree = _product_tree(root)
+    rows = board.run_tasks(parsed[1])
+    # once THIS run was issued, the edits may be its own (V29-3): only its own rejection, newer than its
+    # latest issue, may be set aside -- never an older run's, and no other card's
+    issued_now = any(int(r.get("run") or 0) == int(run_id) for r in board.records(task_id, "issue"))
+    cards = [task_id] + ([] if issued_now else sorted({r["id"] for r in rows.values()} - {task_id}))
+    for t in cards:
+        if _open_pending(board, t) is not None:
+            continue
+        recs = board.records(t)
+        for rej in [r for r in recs if r.get("kind") == "reject" and r.get("candidate") == tree]:
+            rrun = int(rej.get("run") or 0)
+            if t == task_id and rrun == int(run_id):
+                last_issue = max([int(r["_id"]) for r in recs if r.get("kind") == "issue" and int(r.get("run") or 0) == rrun]
+                                 or [0])
+                if int(rej["_id"]) < last_issue:
+                    continue      # rejected before this run's latest issue: these bytes are not that candidate now
+            elif issued_now or not run_ended(board, t, rrun):
+                continue
+            got = _stash(root, board, task_id=t, run_id=rrun, head=head, changed=sorted(changed), kind=ABANDONED)
+            board.record(t, "rejected-set-aside", "rejected-set-aside:%s:%s" % (rej["key"], got["record"].rsplit(":", 1)[-1]),
+                         reject=rej["key"], abandoned=got["record"], attachment=got["attachment"], run=rrun,
+                         by_issue_of=task_id, head=head)
+            return dict(got, run=rrun, task=t, reject=rej["key"])
+        for ab in ([] if issued_now else [r for r in recs if r.get("kind") == ABANDONED and r.get("head") == head]):
+            if not set(changed) <= set(ab.get("paths") or []):
+                continue
+            files = _attached_state(board, t, ab)
+            if files is None:
+                continue
+            same = True
+            for rel in changed:
+                p = root / rel
+                want = files.get(rel)
+                have = base64.b64encode(p.read_bytes()).decode("ascii") if p.is_file() and not p.is_symlink() else ""
+                same = same and want is not None and want == have
+            if not same:
+                continue
+            for rel in changed:
+                if _git(root, "cat-file", "-e", "%s:%s" % (head, rel)).returncode == 0:
+                    _git(root, "checkout", head, "--", rel)
+                elif (root / rel).exists():
+                    (root / rel).unlink()
+            left = [c for c in _changed_vs_head(root)[1] if c in set(changed)]
+            if left:
+                raise Refusal("PARK_INCOMPLETE", "the tree still differs from HEAD at %s" % ", ".join(left[:4]))
+            return {"resumed": ab["key"], "task": t, "parked": sorted(changed)}
+    return None
 
 
 def run_ended(board: Board, task_id: str, run_id: int) -> bool:

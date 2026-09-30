@@ -1621,6 +1621,96 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual(sorted(got["lifted"]), sorted([iss["cluster"], sib["cluster"]]))
         self.assertEqual(json.loads(p.read_text())["clusters"], ["c:other"])
 
+    def interrupted_rejection(self, extra=True):
+        """Card A's run is REJECTED on the native board and stopped before its revert ran (I-11 run 75)."""
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        rel = iss["allowed_paths"][0]
+        other = [c for c in r.worklist["clusters"] if rel not in c["write_set"]][0]["write_set"][0]
+        r.edit(rel, "<project>rejected candidate</project>\n")
+        if extra:
+            r.edit(other, "// rejected edit outside the write set\n")                  # why it was rejected
+            r.edit("src/main/java/com/acme/shop/NewAdapter.java", "class NewAdapter {}\n")
+        cand = r.tree()
+        NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="REVERTED", candidate=cand, attempt="1",
+                          reason="changed path(s) outside the write set")
+        return tid, run, iss, cand
+
+    def test_an_interrupted_rejection_is_set_aside_before_another_card_works(self):
+        """V29-3: dirty rejected bytes never become the baseline of a later card; they are preserved on the card
+        that rejected them, and the restore is verified before work continues."""
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection()
+        dirty = {rel: (r.root / rel).read_bytes() for rel in NC._changed_vs_head(r.root)[1]}
+        r.native.end_run(tid, "ready", "gave_up")                                        # no terminator ran
+        committed = NC.commit_product_tree(r.root, NC._head(r.root))
+        btid, brun, b = r.issue("config:rk:cfg")
+        self.assertEqual(b["baseline_tree"], committed)                                   # never the rejected bytes
+        self.assertEqual(r.tree(), committed)
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual((len(ab), ab[0]["run"], ab[0]["paths"]), (1, run, sorted(dirty)))
+        files = json.loads(r.board.attachment(tid, ab[0]["attachment"])[0])["files"]
+        self.assertEqual({k: base64.b64decode(v) for k, v in files.items()}, dirty)     # the rejected patch, byte for byte
+        link = r.board.records(tid, "rejected-set-aside")
+        self.assertEqual((len(link), link[0]["reject"]), (1, "reject:%d:1" % run))
+        self.assertEqual(r.board.records(btid, NC.ABANDONED), [])                        # never attributed to B
+        # restart: repeating B's issue sets nothing aside again
+        again = NC.issue(r.root, r.board, task_id=btid, run_id=brun, replay_unchanged=True)
+        self.assertTrue(again["replayed"])
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
+    def test_unrelated_edits_beside_a_rejected_candidate_are_never_discarded(self):
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection()
+        r.native.end_run(tid, "ready", "gave_up")
+        r.edit("README.user.md", "an operator's note\n")                                # not the rejected tree
+        before = {rel: (r.root / rel).read_bytes() for rel in NC._changed_vs_head(r.root)[1]}
+        btid, brun, lock = r.claim("config:rk:cfg")
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=btid, run_id=brun, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual({rel: (r.root / rel).read_bytes() for rel in before}, before)
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
+
+    def test_an_interrupted_set_aside_resumes_on_restart(self):
+        from unittest import mock
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection()
+        r.native.end_run(tid, "ready", "gave_up")
+        real, n = NC._git, {"checkout": 0}
+
+        def killed(root, *a, **k):
+            if a and a[0] == "checkout":
+                n["checkout"] += 1
+                if n["checkout"] == 2:
+                    raise OSError("killed during the restore")
+            return real(root, *a, **k)
+        btid, brun, lock = r.claim("config:rk:cfg")
+        with mock.patch.object(NC, "_git", killed):
+            with self.assertRaises(OSError):
+                NC.issue(r.root, r.board, task_id=btid, run_id=brun, claim_lock=lock)
+        self.assertTrue(NC._changed_vs_head(r.root)[1])                                  # half restored
+        self.assertNotEqual(r.tree(), cand)
+        b = NC.issue(r.root, r.board, task_id=btid, run_id=brun, claim_lock=lock)       # restart
+        self.assertEqual(b["baseline_tree"], NC.commit_product_tree(r.root, NC._head(r.root)))
+        self.assertEqual(NC._changed_vs_head(r.root)[1], [])
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
+    def test_a_runs_own_interrupted_rejection_is_set_aside_on_its_next_issue(self):
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection(extra=False)
+        nxt = NC.issue(r.root, r.board, task_id=tid, run_id=run)                         # the loop's re-issue
+        self.assertEqual((nxt["issue_id"], nxt["replayed"]), (2, False))
+        self.assertEqual(NC._changed_vs_head(r.root)[1], [])
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual((len(ab), ab[0]["run"]), (1, run))
+        # an older rejection of this run (before its latest issue) never matches a later identical edit
+        r.edit(iss["allowed_paths"][0], "<project>rejected candidate</project>\n")
+        rep = NC.issue(r.root, r.board, task_id=tid, run_id=run, replay_unchanged=True)
+        self.assertTrue(rep["in_progress"])
+        self.assertEqual((r.root / iss["allowed_paths"][0]).read_text(), "<project>rejected candidate</project>\n")
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
