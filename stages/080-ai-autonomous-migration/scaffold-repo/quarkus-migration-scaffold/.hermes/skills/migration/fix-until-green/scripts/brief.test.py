@@ -831,6 +831,35 @@ def _servlet_compile_item_first_action_case() -> int:
     return 0
 
 
+def _exception_advice_case() -> int:
+    """ADR-025 (1): a parity item whose SOURCE capture is the advice's answer to a body-read failure gets the
+    catalog's mapper action as a documented first action; another 400 does not."""
+    b = __import__("brief")
+    with tempfile.TemporaryDirectory(prefix="advice-brief-") as td:
+        root = Path(td)
+        cat = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+        cat.parent.mkdir(parents=True)
+        shutil.copyfile(GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json", cat)
+        base = root / "verification" / "source-oracles" / "scenarios"
+        bodies = {"sc:create-malformed": json.dumps({"className": "org.springframework.http.converter.HttpMessageNotReadableException",
+                                                     "exMessage": "JSON parse error"}),
+                  "sc:create-invalid": json.dumps({"className": "java.lang.IllegalStateException", "exMessage": "x"})}
+        for sid, body in bodies.items():
+            slug = sid.replace(":", "_")
+            (base / "bodies" / slug).mkdir(parents=True)
+            (base / "bodies" / slug / "response.body").write_text(body, encoding="utf-8")
+            (base / (slug + ".json")).write_text(json.dumps({"response": {"status": 400}}), encoding="utf-8")
+        got = b.advice_guidance(root, [{"scenario": sid, "security_mode": "disabled"} for sid in bodies])
+        if not got or got["scenarios"] != ["sc:create-malformed"] or "MismatchedInputException" not in got["action"]:
+            return _fail("the advice row applies to the advice's own deserialization answer only: %s" % got)
+        text = b.brief_digest({"cluster": {"id": "c:1"}, "exception_advice": got}, "brief-c-1")
+        if "source advice (ADR-025) at sc:create-malformed: " not in text:
+            return _fail("the digest lists the advice mapper action among the documented first actions")
+        if b.advice_guidance(root, [{"scenario": "sc:create-invalid"}]) is not None:
+            return _fail("another exception path is not this row")
+    return 0
+
+
 def _objective_family_action_case() -> int:
     """M-4: an objective's family translation (collection sorting, transactions) is a documented first action in
     the digest, from the catalog row, not only a reference hit on a compile item."""
@@ -1311,6 +1340,8 @@ def main() -> int:
     if _absent_result_brief_case():
         return 1
     if _objective_family_action_case():
+        return 1
+    if _exception_advice_case():
         return 1
     if _handler_parameter_brief_case():
         return 1

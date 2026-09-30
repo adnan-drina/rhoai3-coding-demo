@@ -1180,6 +1180,9 @@ def main(argv: list[str] | None = None) -> int:
     parity = parity_brief(items, cluster)
     if parity:
         brief["parity"] = parity
+    advice = advice_guidance(root, items)
+    if advice:
+        brief["exception_advice"] = advice
     # The SEALED SCOPE. The card is not finished while any inventoried member
     # still breaks the rule, so the worker is told the whole roster and the
     # current verdict on each one — including the members that are already
@@ -1565,6 +1568,9 @@ def brief_digest(brief: dict, stem: str) -> str:
     unit_action = (brief.get("unit") or {}).get("first_action")
     if unit_action:
         actions[str(unit_action)] = ["coordinated unit"]
+    adv = brief.get("exception_advice") if isinstance(brief.get("exception_advice"), dict) else {}
+    if adv.get("action"):
+        actions.setdefault(str(adv["action"]), []).append("source advice (%s) at %s" % (adv.get("adr"), ", ".join(adv["scenarios"][:3])))
     obj = brief.get("objective") if isinstance(brief.get("objective"), dict) else {}
     if obj.get("action"):
         actions.setdefault(str(obj["action"]), []).append("objective family %s" % obj.get("family"))
@@ -1790,6 +1796,41 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
 def _size(v) -> str:
     n = len(json.dumps(v))
     return "%d item(s), %d chars" % (len(v), n) if isinstance(v, (list, dict)) else "%d chars" % n
+
+
+def advice_guidance(root: Path, items: list) -> dict | None:
+    """ADR-025 (1): the catalog's exception_advice row for the parity items whose SOURCE capture is the
+    advice's response to a request-body read failure (decided from the frozen oracle, never the destination)."""
+    row = (catalog(root).get("exception_advice") or {}).get("request-body-unreadable")
+    if not isinstance(row, dict):
+        return None
+    try:
+        from response_equivalence import deserialization_advice
+    except ImportError:
+        return None
+    hits = []
+    for it in items or []:
+        sid = str((it or {}).get("scenario") or "")
+        if not sid:
+            continue
+        mode = str(it.get("security_mode") or "disabled")
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", sid)[:120]
+        base = root / "verification" / "source-oracles" / ("scenarios" + ("" if mode == "disabled" else "-%s" % mode))
+        p = base / (slug + ".json")
+        try:
+            resp = load_json(p).get("response") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        ev = resp.get("evidence") if isinstance(resp.get("evidence"), dict) else {}
+        body_p = base / "bodies" / slug / "response.body"
+        cand = [root / str(ev.get("body_file"))] if ev.get("body_file") else []
+        raw = next((c.read_bytes() for c in cand + [body_p] if c.is_file()), None)
+        if raw is not None and deserialization_advice(resp.get("status"), raw):
+            hits.append(sid)
+    if not hits:
+        return None
+    return {"scenarios": sorted(set(hits)), "adr": row.get("adr"), "action": row.get("action"),
+            "source_semantics": row.get("source_semantics"), "checks": row.get("checks")}
 
 
 def absent_result_semantics(root: Path) -> str:

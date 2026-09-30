@@ -354,7 +354,7 @@ record naming the card.
   `--evidence parity:9b6add2ce842582a`. The older
   `parity:parity:9b6add2ce842582a` form remains valid. Do not combine IDs;
   either form still requires a measured relationship to the requested file.
-- `scripts/validation-object-name.test.py`, `scripts/single-result-null-runtime.test.py`, `scripts/generated-required-readonly.test.py`, `scripts/sorting-oracle.test.py`, `scripts/transaction-mapping.test.py` — M-4 checks of catalog guidance against the source framework's own behaviour (Spring jars from the local Maven repository) or the pinned platform; SKIP with the reason when a prerequisite is absent
+- `scripts/validation-object-name.test.py`, `scripts/single-result-null-runtime.test.py`, `scripts/generated-required-readonly.test.py`, `scripts/sorting-oracle.test.py`, `scripts/transaction-mapping.test.py`, `scripts/deserialization-advice-runtime.test.py` (ADR-025) — M-4 checks of catalog guidance against the source framework's own behaviour (Spring jars from the local Maven repository) or the pinned platform; SKIP with the reason when a prerequisite is absent
 - `scripts/run-verify.test.sh`, `scripts/fix-until-green.test.py`, `scripts/amend-scope.test.py`, `scripts/brief.test.py`, `scripts/diagnose.test.py`, `scripts/resume-after-m4.test.py` — selftests
 
 ## Pitfalls
