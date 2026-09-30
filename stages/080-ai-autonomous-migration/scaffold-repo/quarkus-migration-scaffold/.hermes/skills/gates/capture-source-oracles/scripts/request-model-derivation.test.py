@@ -87,6 +87,8 @@ PLAIN = Names(
     secret_col="pass_txt", r_legacy="olden",
     v_one="vonex", v_two="vtwox", v_alpha="valphx", v_rex="rexish", v_max="maxish", v_root="rootish", v_newkey="neo.keyq",
     v_titleA="firstish", v_topic="topicish",
+    Perk="Boon", perks="boons", perk_table="boon_rows", perk_back="patronage", perk_col="patron_key", perk_name="boonname",
+    v_perk="boonval",
 )
 TWIN = Names(
     web="z.gateway", dto="z.wire", model="z.domain", prefix="Wire", suffix="",
@@ -98,6 +100,8 @@ TWIN = Names(
     secret_col="phrase_txt", r_legacy="archive",
     v_one="unoq", v_two="dosq", v_alpha="omegq", v_rex="kipq", v_max="luxq", v_root="bossq", v_newkey="zed.keyz",
     v_titleA="goldq", v_topic="themeq",
+    Perk="Token", perks="tokens", perk_table="token_rows", perk_back="membership", perk_col="member_key", perk_name="tokenname",
+    v_perk="tokval",
 )
 
 
@@ -140,7 +144,10 @@ def _api_docs(n: Names, *, account_key: str = "") -> str:
         "    %s:\n      type: object\n      properties:\n" % n.Account +
         "        %s:\n          type: string\n          minLength: 1\n          example: %s\n" % (n.handle, key) +
         "        %s:\n          type: string\n          minLength: 1\n          example: 1234\n" % n.secret +
-        "      required:\n        - %s\n" % n.handle
+        "        %s:\n          type: array\n          items:\n            $ref: '#/components/schemas/%s'\n" % (n.perks, n.Perk) +
+        "      required:\n        - %s\n" % n.handle +
+        "    %s:\n      type: object\n      properties:\n" % n.Perk +
+        "        %s:\n          type: string\n          example: %s\n" % (n.perk_name, n.v_perk)
     )
 
 
@@ -165,7 +172,9 @@ def _schema_sql(n: Names) -> str:
         "ALTER TABLE %s ADD CONSTRAINT fk_b FOREIGN KEY (%s) REFERENCES %s (id);\n" % (n.items, n.holder_col, n.holders) +
         "CREATE TABLE %s (\n  id INTEGER IDENTITY PRIMARY KEY,\n  %s VARCHAR(80)\n);\n" % (n.tags, n.title) +
         "CREATE TABLE %s (\n  %s VARCHAR(20) NOT NULL,\n  %s VARCHAR(20) NOT NULL,\n  PRIMARY KEY (%s)\n);\n"
-        % (n.accounts, n.handle_col, n.secret_col, n.handle_col)
+        % (n.accounts, n.handle_col, n.secret_col, n.handle_col) +
+        "CREATE TABLE %s (\n  id INTEGER IDENTITY PRIMARY KEY,\n  %s VARCHAR(30),\n  %s VARCHAR(20) NOT NULL\n);\n"
+        % (n.perk_table, n.perk_name, n.perk_col)
     )
 
 
@@ -217,7 +226,8 @@ def _get(n: Names, simple: str, name: str, route: str) -> dict[str, Any]:
     return _ep(n, simple, "%s()" % name, "GET", route)
 
 
-def build(td: Path, n: Names, *, pom: str | None = None, account_key: str = "") -> tuple[Path, dict[str, str]]:
+def build(td: Path, n: Names, *, pom: str | None = None, account_key: str = "",
+          account_id: bool = True) -> tuple[Path, dict[str, str]]:
     root = td / "dest"
     copy = td / "frozen"
     res = copy / "src" / "main" / "resources"
@@ -268,8 +278,13 @@ def build(td: Path, n: Names, *, pom: str | None = None, account_key: str = "") 
         {"fqn": "%s.%s" % (n.model, n.Tag), "annotations": [_ann(_JPA + "Entity"), _ann(_JPA + "Table", name=n.tags)],
          "supertypes": [base], "fields": [_field(n.title, "java.lang.String")]},
         {"fqn": "%s.%s" % (n.model, n.Account), "annotations": [_ann(_JPA + "Entity"), _ann(_JPA + "Table", name=n.accounts)],
-         "fields": [_field(n.handle, "java.lang.String", _ann("Id"), _ann("Column", name=n.handle_col)),
-                    _field(n.secret, "java.lang.String", _ann("Column", name=n.secret_col))]},
+         "fields": [_field(n.handle, "java.lang.String", *([_ann("Id")] if account_id else []), _ann("Column", name=n.handle_col)),
+                    _field(n.secret, "java.lang.String", _ann("Column", name=n.secret_col)),
+                    _field(n.perks, "java.util.Set", _ann("OneToMany", cascade="ALL", mappedBy=n.perk_back))]},
+        {"fqn": "%s.%s" % (n.model, n.Perk), "annotations": [_ann(_JPA + "Entity"), _ann(_JPA + "Table", name=n.perk_table)],
+         "supertypes": [base], "fields": [
+             _field(n.perk_name, "java.lang.String", _ann("Column", name=n.perk_name)),
+             _field(n.perk_back, "%s.%s" % (n.model, n.Account), _ann("ManyToOne"), _ann("JoinColumn", name=n.perk_col))]},
     ]
     write_canonical(root / STRUCTURE, {"types": types})
     write_canonical(root / EVIDENCE_BUNDLE, {"schema": "rhoai3.evidence-bundle/v1", "entry_points": eps})
@@ -284,7 +299,7 @@ def _normalize(text: str, n: Names) -> str:
     # the generated model's name follows the build's naming convention, which
     # the twin changes on purpose (suffix -> prefix): one token per model
     text = re.sub(r"modelNamePrefix='[^']*' modelNameSuffix='[^']*'", "<naming>", text)
-    for key in ("Kind", "Item", "Tag", "Account"):
+    for key in ("Kind", "Item", "Tag", "Account", "Perk"):
         text = text.replace("%s%s%s" % (n.prefix, getattr(n, key), n.suffix), "<model:%s>" % key)
     for _i, (key, value) in sorted(enumerate(n.pairs()), key=lambda kv: -len(kv[1][1])):
         if value and key not in ("prefix", "suffix"):
@@ -382,17 +397,30 @@ def _derivation_case() -> int:
         t = sc["sc:create-%s" % T]
         if "location" in t["qualify"] or t["qualify"].get("creates_without_location") is not True or t["qualify"].get("creates_one_entity") is not True:
             return _fail("a handler that builds no Location is judged by the read-back alone, and the contract says so: %s" % t["qualify"])
-        # Account: a client key; nothing reads the table back
+        # Account: a client key and no route that reads the table back: the
+        # read-back is the COMMITTED state (ADR-026), from the entity mapping
         a = sc["sc:create-%s" % A]
-        if body(a["id"]) != {n.handle: n.v_newkey, n.secret: "1234"} or a["effects"] != [] \
-                or "no GET entry point reads /api/%s" % A not in str(a.get("effects_unobservable")) \
-                or a["qualify"] != {"intent": "positive", "expect_status": [201]}:
-            return _fail("an unobservable create keeps its response contract and SAYS the write is unverified (the example coerced to "
-                         "its declared string type): %s %s" % (body(a["id"]), a))
-        if not any(g.startswith("create-effect %s" % ids["create:Account"]) for g in corpus["gaps"]):
-            return _fail("the unobservable effect is a recorded gap: %s" % corpus["gaps"])
-        if any(sc["sc:create-invalid-%s-%s" % (A, f)].get("effects_unobservable") is None for f in (n.handle, n.secret)):
-            return _fail("the invalid bodies of an unobservable write say so too")
+        rows_id, state_id, kids_id = ("eff:%s-committed-rows-after-create" % A, "eff:%s-committed-state-after-create" % A,
+                                      "eff:%s-committed-%s-after-create" % (A, n.perk_table))
+        key = "'%s'" % n.v_newkey
+        want_steps = [
+            {"id": rows_id, "kind": "sql", "query": "SELECT COUNT(*) FROM %s WHERE %s = %s" % (A, n.handle_col, key)},
+            {"id": state_id, "kind": "sql", "query": "SELECT COALESCE(CAST(%s AS VARCHAR(4000)), '') || '|' || "
+                                                     "COALESCE(CAST(%s AS VARCHAR(4000)), '') FROM %s WHERE %s = %s"
+                                                     % tuple(sorted([n.handle_col, n.secret_col]) + [A, n.handle_col, key])},
+            {"id": kids_id, "kind": "sql", "query": "SELECT COUNT(*) FROM %s WHERE %s = %s" % (n.perk_table, n.perk_col, key)}]
+        if body(a["id"]) != {n.handle: n.v_newkey, n.secret: "1234", n.perks: [{n.perk_name: n.v_perk}]} \
+                or a["effects"] != want_steps or a.get("effects_unobservable") \
+                or a["qualify"] != {"intent": "positive", "expect_status": [201],
+                                    "committed_counts": {rows_id: {"delta": 1}, kids_id: {"delta": 1}}}:
+            return _fail("a create no route reads back is read back from the committed state its mapping names: %s %s"
+                         % (body(a["id"]), json.dumps(a, indent=1)))
+        if any(g.startswith("create-effect %s" % ids["create:Account"]) for g in corpus["gaps"]):
+            return _fail("a committed-state read-back closes the effect gap: %s" % corpus["gaps"])
+        inv_h = sc["sc:create-invalid-%s-%s" % (A, n.handle)]
+        if inv_h["qualify"].get("after_equals_before") is not True \
+                or inv_h["effects"][0]["query"] != "SELECT COUNT(*) FROM %s WHERE %s = ''" % (A, n.handle_col):
+            return _fail("an invalid body's committed state is read at the key THAT body names: %s" % inv_h["effects"])
         # the wildcard read: its variable resolved from the seed, no gap left
         if corpus["path_vars"].get(n.label_var) != n.v_rex or any(ids["wildcard"] in g for g in corpus["gaps"]):
             return _fail("a whole-segment wildcard read is a request: %s %s" % (corpus["path_vars"], corpus["gaps"]))
@@ -400,7 +428,7 @@ def _derivation_case() -> int:
             load_corpus(root)
         except Exception as exc:  # noqa: BLE001
             return _fail("the derived corpus loads: %s" % exc)
-        # the planner: the unobservable write stays UNRESOLVED, with the reason
+        # the planner: a committed-state read-back counts only once QUALIFIED
         facts = {s["id"]: {"method": s["method"], "path": s["path"], "effects": s["effects"],
                            **({"effects_unobservable": s["effects_unobservable"]} if s.get("effects_unobservable") else {})}
                  for s in corpus["scenarios"]}
@@ -412,11 +440,44 @@ def _derivation_case() -> int:
                                          structure_complete=False, scenario_facts=facts)
         bv = {r["subject"]: r for r in doc["requirements"] if str(r["rule"]).startswith("behavior-verification")}
         acc, kind = bv[ids["create:Account"]], bv[ids["create:Kind"]]
-        if acc["status"] != "unresolved" or not any("declare no read-back of what the write persisted" in u and "/api/%s" % A in u
-                                                     for u in acc["unknowns"]):
-            return _fail("a write whose scenarios cannot read back what it persisted stays unresolved and says why: %s" % acc)
+        if acc["status"] != "unresolved" or not any("no qualified source capture yet" in u for u in acc["unknowns"]):
+            return _fail("an unqualified committed-state read-back leaves the write unresolved, saying why: %s" % acc)
+        facts[a["id"]]["qualified"] = True
+        doc = source_requirements.derive(types=[], entry_points=eps, catalog={}, decisions=None, oracles=oracles,
+                                         structure_complete=False, scenario_facts=facts)
+        if [r["status"] for r in doc["requirements"] if r["subject"] == ids["create:Account"]] != ["applicable"]:
+            return _fail("a QUALIFIED committed-state read-back verifies the write")
         if kind["status"] != "applicable" or bv[ids["create:Item"]]["status"] != "applicable":
             return _fail("a write with a read-back is covered: %s" % kind)
+    return 0
+
+
+def _unobservable_case() -> int:
+    """With no key the mapping can address (no @Id on the client key), no
+    committed-state read-back is derivable: the write keeps its response
+    contract, SAYS it is unverified, and the planner keeps it unresolved."""
+    n = PLAIN
+    with tempfile.TemporaryDirectory(prefix="model-unobs-") as td:
+        root, ids = build(Path(td), n, account_id=False)
+        if _derive(root).returncode != 0:
+            return _fail("the keyless fixture derives")
+        corpus = load_json(root / CORPUS_P)
+        a = {s["id"]: s for s in corpus["scenarios"]}["sc:create-%s" % n.accounts]
+        why = str(a.get("effects_unobservable") or "")
+        if a["effects"] != [] or "no committed-state read-back is derivable" not in why or "names the row's key" not in why \
+                or a["qualify"] != {"intent": "positive", "expect_status": [201]}:
+            return _fail("an unaddressable committed state leaves the response contract and names why: %s" % a)
+        facts = {s["id"]: {"method": s["method"], "path": s["path"], "effects": s["effects"],
+                           **({"effects_unobservable": s["effects_unobservable"]} if s.get("effects_unobservable") else {})}
+                 for s in corpus["scenarios"]}
+        oracles: dict[str, list[str]] = {}
+        for s in corpus["scenarios"]:
+            oracles.setdefault(s["entry_point"], []).append(s["id"])
+        doc = source_requirements.derive(types=[], entry_points=load_json(root / EVIDENCE_BUNDLE)["entry_points"], catalog={},
+                                         decisions=None, oracles=oracles, structure_complete=False, scenario_facts=facts)
+        acc = [r for r in doc["requirements"] if r["subject"] == ids["create:Account"]][0]
+        if acc["status"] != "unresolved" or not any("cannot verify what the write persisted" in u for u in acc["unknowns"]):
+            return _fail("the unobservable write stays unresolved with its reason: %s" % acc)
     return 0
 
 
@@ -543,6 +604,12 @@ def _capture(root: Path, sc: dict[str, Any], corpus_sha: str, status: int, heade
     }
     for key, rows in (("before", before), ("effects", after)):
         for eff in sc.get("effects") or []:
+            if eff.get("kind") == "sql":
+                # a committed-state step: one value (None: it was not read)
+                rec[key].append({"id": eff["id"], "kind": "sql", "query": eff["query"], "value": rows[eff["id"]]}
+                                if rows[eff["id"]] is not None else
+                                {"id": eff["id"], "kind": "sql", "query": eff["query"], "value": None, "error": "store down"})
+                continue
             st, payload = rows[eff["id"]]
             ev2, sha2 = _retain(root, sid, "%s-%s" % ("before" if key == "before" else "after", scenario_slug(eff["id"])), payload)
             rec[key].append({"id": eff["id"], "method": "GET", "path": eff["path"], "status": st, "body_kind": "json", "body_sha256": sha2, "evidence": ev2})
@@ -575,12 +642,15 @@ def _qualification_case() -> int:
         _capture(root, update_k, csha, 204, {"Location": None}, "",
                  {one: (200, kinds[0]), all_: (200, kinds)},
                  {one: (200, {"id": 1, n.name: n.v_alpha}), all_: (200, [{"id": 1, n.name: n.v_alpha}, kinds[1]])})
-        # the unobservable create: its response alone -- PASS
-        _capture(root, sc["sc:create-%s" % A], csha, 201, {"Location": None}, {n.handle: n.v_newkey}, {}, {})
+        # the committed-state create: one row at its key, one child row -- PASS
+        acc = sc["sc:create-%s" % A]
+        rows_id, state_id, kids_id = [e["id"] for e in acc["effects"]]
+        _capture(root, acc, csha, 201, {"Location": None}, {n.handle: n.v_newkey},
+                 {rows_id: "0", state_id: "", kids_id: "0"}, {rows_id: "1", state_id: "%s|1234" % n.v_newkey, kids_id: "1"})
         p = subprocess.run([sys.executable, str(QUALIFY), "--root", str(root)], text=True, capture_output=True)
         q = load_json(root / QUALIFICATION)
         caps = {s: r["capability"] for s, r in q["scenarios"].items()}
-        for sid in (create_k["id"], "sc:create-%s" % T, update_k["id"], "sc:create-%s" % A):
+        for sid in (create_k["id"], "sc:create-%s" % T, update_k["id"], acc["id"]):
             if caps.get(sid) != "PASS":
                 return _fail("%s qualifies on what its contract says: %s\n%s" % (sid, q["scenarios"].get(sid), p.stderr))
         tag_checks = {c["check"]: c for c in q["scenarios"]["sc:create-%s" % T]["checks"]}
@@ -601,11 +671,25 @@ def _qualification_case() -> int:
         uk = q["scenarios"][update_k["id"]]
         if uk["capability"] != "FAIL" or not any(f.startswith("before_lacks_body") for f in uk["known_failures"]):
             return _fail("an update over a row that already held the body proves no write: %s" % uk)
+        # the committed rows did not move: a judged FAIL naming the step
+        _capture(root, acc, csha, 201, {"Location": None}, {n.handle: n.v_newkey},
+                 {rows_id: "0", state_id: "", kids_id: "0"}, {rows_id: "0", state_id: "", kids_id: "0"})
+        subprocess.run([sys.executable, str(QUALIFY), "--root", str(root)], text=True, capture_output=True)
+        ra = load_json(root / QUALIFICATION)["scenarios"][acc["id"]]
+        if ra["capability"] != "FAIL" or not any(rows_id in f and "moved 0" in f for f in ra["known_failures"]):
+            return _fail("a create whose committed rows did not move is a judged FAIL: %s" % ra)
+        # a committed state that was never read is unusable evidence, not a value
+        _capture(root, acc, csha, 201, {"Location": None}, {n.handle: n.v_newkey},
+                 {rows_id: None, state_id: None, kids_id: None}, {rows_id: "1", state_id: "x", kids_id: "1"})
+        subprocess.run([sys.executable, str(QUALIFY), "--root", str(root)], text=True, capture_output=True)
+        ra = load_json(root / QUALIFICATION)["scenarios"][acc["id"]]
+        if ra["capability"] != "INCONCLUSIVE" or "committed state was not read" not in ra["reason"]:
+            return _fail("an unread committed state is INCONCLUSIVE: %s" % ra)
     return 0
 
 
 def main() -> int:
-    for case in (_wildcard_helper_case, _derivation_case, _twin_case, _binding_refusal_case, _wildcard_read_oracle_case,
+    for case in (_wildcard_helper_case, _derivation_case, _unobservable_case, _twin_case, _binding_refusal_case, _wildcard_read_oracle_case,
                  _qualification_case):
         if case():
             return 1
@@ -616,7 +700,10 @@ def main() -> int:
           "the example names and client keys checked against the seed; a NOT NULL column the model cannot fill is a refused "
           "create; an optional or required constrained string earns one invalid body; an update addresses the first seeded row "
           "it changes and asserts the row's identity; a handler that builds no Location is judged by its read-back alone; a "
-          "write nothing reads back keeps its response oracle, says the write is unverified and stays UNRESOLVED in the plan; a "
+          "write no route reads back is read back from its COMMITTED state (ADR-026: COUNT at the key its mapping names, the "
+          "row's mapped columns, each owned collection's rows), qualified by committed_counts and verified in the plan only once "
+          "that capture qualified, while a write whose key is not nameable keeps its response oracle, says the write is "
+          "unverified and stays UNRESOLVED; a "
           "whole-segment wildcard is filled with one named value and captured there, a mixed or ambiguous one stays a gap; "
           "qualification judges only the read_back_properties the contract names; every decision is identical for a twin "
           "renamed in every package, type, member, route, schema, property, table, column, seed value and generator naming "

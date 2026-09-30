@@ -70,6 +70,7 @@ DRIVER=""
 PRINT_PLAN="no"
 VARIANT=""
 REVERT=""
+QUERY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
@@ -77,11 +78,18 @@ while [[ $# -gt 0 ]]; do
     --variant) VARIANT="${2:-}"; shift 2 ;;
     --revert-variant) REVERT="${2:-}"; shift 2 ;;
     --print-plan) PRINT_PLAN="yes"; shift ;;
+    --query) QUERY="${2:-}"; shift 2 ;;
     *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--variant <name> | --revert-variant <name>] [--print-plan]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
 [[ -z "${VARIANT}" || -z "${REVERT}" ]] || { echo "FAIL: --variant sets a variant and --revert-variant reverts one; pass one" >&2; exit 2; }
+# --query FILE (ADR-026): read a scenario's committed-state step on the decided
+# instance and print "VALUE:<first column of the first row>". It loads, drops
+# and changes nothing; it is a parity read, bound to this run's database by the
+# same ownership check, the same decided datasource and the same driver.
+[[ -z "${QUERY}" || ( -z "${VARIANT}" && -z "${REVERT}" && "${PRINT_PLAN}" == "no" ) ]] || { echo "FAIL: --query reads; it takes no --variant, --revert-variant or --print-plan" >&2; exit 2; }
+[[ -z "${QUERY}" || -f "${QUERY}" ]] || { echo "FAIL: --query must name a file holding one SELECT" >&2; exit 2; }
 ROOT="$(cd "${ROOT}" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_TOOL="${HERE}/../../../migration/bootstrap-destination/scripts/_baseline_data.py"
@@ -107,6 +115,7 @@ OWNERSHIP_OP="reset"
 [[ -z "${VARIANT}" ]] || OWNERSHIP_OP="fixture"
 [[ -z "${REVERT}" ]] || OWNERSHIP_OP="revert"
 [[ "${PRINT_PLAN}" != "yes" ]] || OWNERSHIP_OP="analysis"
+[[ -z "${QUERY}" ]] || OWNERSHIP_OP="parity"
 PYTHONPATH="${ROOT}/.hermes/lib${PYTHONPATH:+:${PYTHONPATH}}" \
   python3 -m planner.run_identity --root "${ROOT}" --operation "${OWNERSHIP_OP}" \
   || { echo "FAIL: RESET refused before connecting: this destination is not bound to its own parity database (above)" >&2; exit 1; }
@@ -173,7 +182,7 @@ PYEOF
   fi
 fi
 
-if [[ -z "${REVERT}" ]]; then
+if [[ -z "${REVERT}" && -z "${QUERY}" ]]; then
 # The derived baseline, when this tree has one: what to load after the schema,
 # and what must then be true. Exit 3 says the tree predates it.
 BASELINE_FACTS=""
@@ -311,6 +320,11 @@ REGISTERS="$(python3 -c 'import sys, zipfile; print("yes" if "META-INF/services/
 if [[ "${REGISTERS}" != "yes" ]]; then
   echo "FAIL: RESET $(basename "${DRIVER}") registers no JDBC driver; pass --driver <jar>" >&2
   exit 1
+fi
+if [[ -n "${QUERY}" ]]; then
+  java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --query "${QUERY}" \
+    || { echo "FAIL: RESET QUERY the committed-state step could not be read" >&2; exit 1; }
+  exit 0
 fi
 if [[ -n "${REVERT}" ]]; then
   java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --keep-schema "${WORK}/revert.sql" \

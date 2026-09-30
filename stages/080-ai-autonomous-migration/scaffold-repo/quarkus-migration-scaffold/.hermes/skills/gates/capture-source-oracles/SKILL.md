@@ -458,7 +458,7 @@ answer nobody has:
 | the reference is removed by | scenario | contract |
 |---|---|---|
 | the application, or the schema's own `ON DELETE` rule | one positive `sc:delete-cascading-<resource>-<id>` on the lowest referenced row | `expect_status: [200, 204]`, the item reads back `404`, and so does each referencing row a **bound item route** can read (at most three, the cap noted in `derived_from`); with no such route the effect list is the item alone and `derived_from` says the children are unobservable through routes |
-| nothing | one negative `sc:delete-referenced-<resource>-<id>` | any `4xx`, and the item still readable (`200`) afterwards |
+| nothing the structure model records | one `sc:delete-referenced-<resource>-<id>`, intent `observed` | the source's own outcome, consistent with the read-back (`delete_outcome_consistent`) |
 | not derivable — no structure model, an entity or field that maps to no table, a cascade token this derivation does not know | **neither**; a typed gap (`delete-referenced ep:…: whether the application removes pets.owner_id references is not derivable (…)`) | — |
 
 Both carry the FK evidence **and** the application-removal evidence in
@@ -530,7 +530,28 @@ reuses them as its probes. Rules on top of that:
 | otherwise | `sc:create-<resource>` | `201`; `creates_one_entity` over `read_back_properties` (what the model requires, else every non-readOnly property sent); `location` unless the structure model shows the handler calls none of `setLocation`/`location`/`created`, then `creates_without_location: true` |
 | an update | `sc:update-<resource>-<id>` on the first seeded row the body CHANGES | `after_contains_body` over the row identity plus `read_back_properties`, and `before_lacks_body` when a changed row exists |
 | a string the body sends with a `pattern` or `minLength` (required or not: the generated model validates a present value) | `sc:<create|update>-invalid-<resource>-<field>` | `400` naming the field, nothing changed |
-| no GET entry point reads the collection | the scenarios keep their response contract and carry `effects_unobservable` | the comparator refuses them at M4 naming the reason, and `source_requirements` keeps the entry point's behaviour UNRESOLVED |
+| no GET entry point reads the collection, and the body names the row's key (a client-assigned `@Id`) | committed-state steps (ADR-026): `{"id", "kind": "sql", "query"}`, the M-3 step type -- `COUNT(*)` at the key, the row's mapped columns as one value, and `COUNT(*)` of each owned collection's child table at its join column; all names from the entity mapping | `committed_counts` (each count moves by what the body carries); invalid bodies `after_equals_before` at their own key |
+| no GET entry point reads the collection and no key is nameable | the scenarios keep their response contract and carry `effects_unobservable` | the comparator refuses them at M4 naming the reason, and `source_requirements` keeps the entry point's behaviour UNRESOLVED |
+
+**Committed-state steps (ADR-026).** The capture holds the source's database
+outside its process (`_source_store`, the same-engine server the fixture
+variants use), initialised with the schema and the declared dataset, and reads
+each step before and after the request on a new connection (`StoreDb query`);
+a step it could not read is recorded with its error and qualifies as UNUSABLE,
+never as a value. At M4 the comparator reads the same query on the decided
+destination instance through `reset-parity-db.sh --query FILE` (read-only;
+the same ownership check, datasource and driver as the reset) and compares
+value for value. The planner counts such a scenario as the write's oracle only
+once its source capture QUALIFIED against the current corpus.
+
+**A referenced delete the model cannot decide.** Where the schema's foreign
+key has no cascade and no JPA relationship the structure model records removes
+the references, the source may still remove them in code the model does not
+see (a repository override). `sc:delete-referenced-*` is then proposed with
+intent `observed` and `delete_outcome_consistent`: the capture decides the
+outcome, and qualification requires only that the answer and the committed
+read-back agree (2xx and the row reads 404, or 4xx and it reads 200),
+recording `observed_outcome`.
 
 What cannot be derived is a **gap**, recorded in the corpus and the receipt
 and never filled in: a required property without an example, a path variable

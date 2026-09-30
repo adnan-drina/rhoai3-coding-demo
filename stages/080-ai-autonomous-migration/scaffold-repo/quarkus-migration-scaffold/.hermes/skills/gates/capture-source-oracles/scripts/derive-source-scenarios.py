@@ -1450,6 +1450,20 @@ def _generator_spec(copy: Path | None, input_spec: str) -> Path | None:
 _LOCATION_CALLS = ("setLocation", "location", "created")
 
 
+_SQL_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _sql_literal(value: Any) -> str | None:
+    """A body value as a portable SQL literal; None when it has none."""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        return "'%s'" % value.replace("'", "''")
+    return None
+
+
 def builds_location(handler: dict[str, Any]) -> bool | None:
     """Whether the handler's recorded calls build a Location header; None when
     the structure model records no calls for it (unknown, not "no")."""
@@ -2310,6 +2324,89 @@ class Derivation:
         else:
             self._model_update(ep, binding, body, asserted, info, evidence, headers, policy, var, seeded)
 
+    # -- committed-state read-backs (ADR-026) -----------------------------------
+    def _committed_steps(self, info: dict[str, Any], body: dict[str, Any], resource: str,
+                         kind: str) -> tuple[list[dict[str, Any]], dict[str, int], str, list[str]]:
+        """(steps, expected deltas, why-none, evidence) reading what a write
+        committed, when no source route reads it back.
+
+        Each step is the M-3 committed-state kind (``{"id", "kind": "sql",
+        "query"}``: one SELECT, one value, read on a new connection outside the
+        application), derived from the entity's mapping in the structure model
+        -- its table, the column its @Id field maps to, the join column of each
+        owned collection -- and the body's own values; never a name. The row
+        is addressed by its KEY, so the key must be client-assigned (sent in
+        the body): a generated key cannot be named before the request.
+
+          rows      COUNT(*) of the entity's table at that key; delta 1
+          state     the persisted row's mapped columns, one value, compared at
+                    parity (booleans rendered by CASE so engines agree)
+          children  per owned collection the body sends (@OneToMany mappedBy a
+                    field whose join column names the child table's column):
+                    COUNT(*) of the child table at that key; delta = its length
+        """
+        ent = info.get("entity")
+        ident = str(info.get("identity") or "")
+        if ent is None:
+            return [], {}, "no @Entity maps the request model", []
+        if not ident:
+            return [], {}, "neither the request model nor the entity names the row's key", []
+        if ident in (info.get("readonly") or set()) or body.get(ident) is None:
+            return [], {}, "the row's key is generated, so it cannot be named before the request", []
+        idf = _entity_field(ent, ident) or _id_field(ent)
+        if idf is None or _find_ann(idf.get("annotations"), "Id") is None:
+            return [], {}, "the key %s is not the entity's @Id field" % ident, []
+        table, key_col = str(ent["table"]), _field_column(idf)
+        if not (_SQL_NAME.match(table) and _SQL_NAME.match(key_col)):
+            return [], {}, "the mapping names %s.%s, which is not a plain SQL identifier" % (table, key_col), []
+        key = _sql_literal(body[ident])
+        if key is None:
+            return [], {}, "the key %s=%r has no SQL literal form" % (ident, body[ident]), []
+        where = "%s = %s" % (key_col, key)
+        steps = [{"id": "eff:%s-committed-rows-after-%s" % (resource, kind), "kind": "sql",
+                  "query": "SELECT COUNT(*) FROM %s WHERE %s" % (table, where)}]
+        deltas = {steps[0]["id"]: 1}
+        evidence = ["structure:%s @Table(%s), @Id %s → column %s: the committed row is read by its key on a new connection "
+                    "(ADR-026)" % (ent["simple"], table, idf["name"], key_col)]
+        cols = []
+        for f in sorted(ent["fields"], key=lambda f: _field_column(f)):
+            if _is_relationship(f) or not f.get("name"):
+                continue
+            c = _field_column(f)
+            if not _SQL_NAME.match(c) or c in [x for x, _ in cols]:
+                continue
+            boolean = str(f.get("type") or "") in ("java.lang.Boolean", "boolean")
+            # VARCHAR branches: a CHAR common type pads 'true' to 'true ' on
+            # one engine and not on another, a difference no source made
+            cols.append((c, "CASE WHEN %s THEN CAST('true' AS VARCHAR(5)) WHEN NOT %s THEN CAST('false' AS VARCHAR(5)) "
+                            "ELSE CAST('' AS VARCHAR(5)) END" % (c, c) if boolean
+                         else "COALESCE(CAST(%s AS VARCHAR(4000)), '')" % c))
+        if cols:
+            expr = " || '|' || ".join(e for _, e in cols)
+            steps.append({"id": "eff:%s-committed-state-after-%s" % (resource, kind), "kind": "sql",
+                          "query": "SELECT %s FROM %s WHERE %s" % (expr, table, where)})
+            evidence.append("structure:%s maps %s: the committed row's state, compared at parity" % (ent["simple"], ", ".join(c for c, _ in cols)))
+        for f in ent["fields"]:
+            vals = _ann_values(_find_ann(f.get("annotations"), "OneToMany"))
+            mapped = _ann_first(vals, "mappedBy")
+            items = body.get(f["name"])
+            if not mapped or not isinstance(items, list) or not items:
+                continue
+            target, _why = self.persistence.target_entity(ent, f, vals)
+            child = self.persistence.entities.get(target) if target else None
+            back = _entity_field(child, mapped) if child else None
+            if child is None or back is None or not child.get("table"):
+                continue
+            jc = _field_column(back)
+            if not (_SQL_NAME.match(str(child["table"])) and _SQL_NAME.match(jc)):
+                continue
+            sid = "eff:%s-committed-%s-after-%s" % (resource, child["table"], kind)
+            steps.append({"id": sid, "kind": "sql", "query": "SELECT COUNT(*) FROM %s WHERE %s = %s" % (child["table"], jc, key)})
+            deltas[sid] = len(items)
+            evidence.append("structure:%s.%s @OneToMany(mappedBy=%s) → %s.%s joins %s: the body's %d element(s) are counted there"
+                            % (ent["simple"], f["name"], mapped, child["table"], jc, key_col, len(items)))
+        return steps, deltas, "", evidence
+
     def _model_create(self, ep: dict[str, Any], binding: dict[str, Any], body: dict[str, Any], asserted: list[str],
                       info: dict[str, Any], evidence: list[str], headers: dict[str, str], policy: str) -> None:
         eid, route = str(ep["id"]), str(ep.get("http_path") or "")
@@ -2317,12 +2414,22 @@ class Derivation:
         label = str(binding["label"])
         effects: list[dict[str, Any]] = []
         unobservable = ""
+        deltas: dict[str, int] = {}
         if self._get_route(route):
             effects = [{"id": "eff:%s-list-after-create" % resource, "method": "GET", "path": route}]
         else:
-            unobservable = ("no GET entry point reads %s, so what the create persisted is not observable over HTTP: the response "
-                            "is captured, the write itself is unverified" % route)
-            self.gaps.append("create-effect %s: %s" % (eid, unobservable))
+            # ADR-026: no source route reads what the create persists, so the
+            # read-back is the COMMITTED STATE, a database step of the M-3 kind
+            # derived from the entity mapping; with none derivable the write
+            # stays unverified and says why
+            effects, deltas, cwhy, cev = self._committed_steps(info, body, resource, "create")
+            if effects:
+                evidence.extend(cev)
+            else:
+                unobservable = ("no GET entry point reads %s and no committed-state read-back is derivable (%s): the response is "
+                                "captured, the write itself is unverified" % (route, cwhy))
+                self.gaps.append("create-effect %s: %s" % (eid, unobservable))
+        committed = any(e.get("kind") == "sql" for e in effects)
         unsupplied = self._unsupplied(info.get("entity"), body, binding["handler"], route)
         if unsupplied:
             sid = "sc:create-refused-%s" % resource
@@ -2336,7 +2443,11 @@ class Derivation:
         else:
             sid = "sc:create-%s" % resource
             q = {"intent": "positive", "expect_status": [201]}
-            if effects:
+            if committed:
+                # what the create must leave committed: the rows its key (and
+                # its owned collection) name, counted before and after
+                q["committed_counts"] = {k: {"delta": v} for k, v in sorted(deltas.items())}
+            elif effects:
                 q["read_back_properties"] = list(asserted)
             loc = builds_location(binding["handler"])
             if loc is not False:
@@ -2349,14 +2460,18 @@ class Derivation:
             else:
                 evidence.append("structure:%s#%s calls none of org.springframework.http %s: the handler builds no Location"
                                 % (ep.get("type"), ep.get("member"), "/".join(_LOCATION_CALLS)))
-            if effects and info.get("identity"):
+            if committed:
+                pass
+            elif effects and info.get("identity"):
                 q.update({"creates_one_entity": True, "identity_field": info["identity"]})
                 if loc is False:
                     q["creates_without_location"] = True
             elif effects:
                 q["after_contains_body"] = True
             why = ("the request model %s's own examples (references resolved to seeded rows), created on the collection the route "
-                   "names; %s" % (label, "the read-back shows exactly one new entity carrying %s" % ", ".join(asserted)
+                   "names; %s" % (label, "the committed state (read on a new connection, outside the application) holds the "
+                                  "rows it created" if committed else
+                                  "the read-back shows exactly one new entity carrying %s" % ", ".join(asserted)
                                   if effects else "no route reads what it persisted, so the response is the contract"))
             kind = "create"
         sc: dict[str, Any] = {
@@ -2454,8 +2569,13 @@ class Derivation:
             invalid = dict(body)
             invalid[field] = bad
             isid = "sc:%s-invalid-%s-%s" % (kind, resource, field)
-            eff = [{"id": "%s-after-invalid-%s-%s" % (e["id"].rsplit("-after-", 1)[0], kind, field), "method": e["method"],
-                    "path": e["path"]} for e in effects]
+            if any(e.get("kind") == "sql" for e in effects):
+                # the committed state at the key THIS body names: what an
+                # accepted invalid body would have written
+                eff, _d, _w, _e = self._committed_steps(info, invalid, resource, "invalid-%s-%s" % (kind, field))
+            else:
+                eff = [{"id": "%s-after-invalid-%s-%s" % (e["id"].rsplit("-after-", 1)[0], kind, field), "method": e["method"],
+                        "path": e["path"]} for e in effects]
             q: dict[str, Any] = {"intent": "negative", "expect_status": [400], "errors_header_names_field": field}
             if eff:
                 q["after_equals_before"] = True
@@ -2790,7 +2910,7 @@ _AUTH_INVALID = "invalid"       # the reserved --identity name: a credential dec
 # what the capture records, and 201-or-not is not knowable for an identity
 # nobody has run the request as yet)
 _EFFECT_CHECKS = ("after_effect_status", "after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before",
-                  "delete_outcome_consistent")
+                  "delete_outcome_consistent", "committed_counts")
 _READ_METHODS = ("GET", "HEAD", "OPTIONS")
 
 

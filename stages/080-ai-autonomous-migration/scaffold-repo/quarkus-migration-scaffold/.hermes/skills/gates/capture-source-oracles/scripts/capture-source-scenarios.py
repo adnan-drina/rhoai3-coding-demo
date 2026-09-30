@@ -95,7 +95,7 @@ from _oracle_common import ensure_hermes_lib, http_observe, navigate, retain_bod
 import _source_store  # noqa: E402
 from _variant_revert import plan_gap as revert_plan_gap  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
-                        auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts,
+                        auth_headers_for, capture_receipt_path, corpus_digest, corpus_path, credential_conflicts,
                         EFFECTS_REVERT_THEN_READ, EFFECTS_SECOND_IDENTITY, effects_identity_of, effects_strategy_of, load_corpus, normalize_security_mode, normalize_variant,
                         normalized_identity, parse_assignments, request_of, scenario_oracles_dir, scenario_slug,
                         source_exposed_headers, variant_dataset_path)
@@ -495,6 +495,16 @@ def main(argv: list[str] | None = None) -> int:
     # the corpus records the declared dataset's digest, and a frozen source
     # that moved underneath it is refused rather than captured against
     # something else.
+    # the dataset a held database is initialised with for a committed-state
+    # step (ADR-026): the one the corpus was derived against -- the enabled
+    # corpus reuses the disabled one's requests, so it names that one's
+    declared_seed = str(((corpus.get("derived_from") or {}).get("seed") or {}).get("path") or "")
+    if not declared_seed:
+        try:
+            base_doc = load_json(root / corpus_path(DEFAULT_SECURITY_MODE))
+            declared_seed = str(((base_doc.get("derived_from") or {}).get("seed") or {}).get("path") or "")
+        except (OSError, ValueError):
+            declared_seed = ""
     variant_record: dict[str, Any] = {}
     # where the source reads its dataset from, for the two states a
     # revert-then-read scenario visits: the declared baseline and the variant
@@ -657,6 +667,54 @@ def main(argv: list[str] | None = None) -> int:
                 source_effects["init"] = [f.name for f in files]
                 return ""
 
+            committed = [e for e in (sc.get("effects") or []) if str(e.get("kind") or "") == "sql"]
+            committed_why = ""
+
+            def hold_committed() -> str:
+                """ADR-026: the source runs against a same-engine database held
+                outside its process, initialised with the schema and the
+                declared dataset (or the variant's), so a committed-state step
+                can be read on a new connection before and after the request."""
+                nonlocal store, overrides
+                if not declared_seed:
+                    return "the corpus names no declared dataset to initialise the held database with"
+                store, why_ = SOURCE_STORE_OPENER(copy, runtime.jar, log_dir / ("store-" + scenario_slug(sc["id"])), args.java)
+                if store is None:
+                    return why_
+                open_stores.append(store)
+                seed_p = copy / declared_seed
+                files = _source_store.schema_files(seed_p) + (
+                    [root / variant_dataset_path(security_mode, variant)] if variant_location else [seed_p])
+                why_ = store.start(files)
+                if why_:
+                    store = None
+                    return why_
+                overrides = store.source_overrides()
+                runtime.source_config.update(overrides)
+                return ""
+
+            def observe_effect(eff: dict[str, Any], when: str) -> dict[str, Any]:
+                eid = str(eff.get("id") or eff.get("path"))
+                if str(eff.get("kind") or "") == "sql":
+                    # the M-3 committed-state step: one value, a new connection
+                    row = {"id": eid, "kind": "sql", "query": str(eff.get("query") or "")}
+                    if store is None:
+                        row.update({"value": None, "error": committed_why or "no held database to read"})
+                    else:
+                        value, why_ = store.query(row["query"], log_dir / ("query-%s-%s.sql" % (scenario_slug(eid), when)))
+                        row.update({"value": value} if not why_ else {"value": None, "error": why_})
+                    return row
+                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
+                row = {"id": eid, "method": str(eff.get("method") or "GET"),
+                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
+                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
+                       "body_sample": probe.get("body_sample", "")}
+                if eff.get("role"):
+                    row["role"] = str(eff["role"])
+                if probe.get("status"):
+                    row["evidence"] = retain_body(bodies_dir, "%s-%s" % (when, scenario_slug(eid)), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
+                return row
+
             def release() -> None:
                 nonlocal store
                 if store is not None:
@@ -672,6 +730,8 @@ def main(argv: list[str] | None = None) -> int:
                 why = hold()
                 if why:
                     source_effects = {"observed": False, "reason": why}
+            if committed and store is None and not rtr:
+                committed_why = hold_committed()
             if rtr or sc.get("reset_before", True) or store is not None:
                 err = runtime.start()
                 if err:
@@ -696,17 +756,7 @@ def main(argv: list[str] | None = None) -> int:
                 # with, never what it holds
                 rec["effects_identity"] = normalized_identity(effects_identity)
             for eff in sc.get("effects") or []:
-                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
-                eid = str(eff.get("id") or eff.get("path"))
-                row = {"id": eid, "method": str(eff.get("method") or "GET"),
-                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
-                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
-                       "body_sample": probe.get("body_sample", "")}
-                if eff.get("role"):
-                    row["role"] = str(eff["role"])
-                if probe.get("status"):
-                    row["evidence"] = retain_body(bodies_dir, "before-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
-                rec["before"].append(row)
+                rec["before"].append(observe_effect(eff, "before"))
             if rtr:
                 runtime.source_config[dataset_key] = variant_location
                 why = hold()
@@ -795,20 +845,16 @@ def main(argv: list[str] | None = None) -> int:
                         "caching": "not inspected: the database comparison is the state evidence",
                     }
             for eff in (sc.get("effects") or []) if take_after else []:
-                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
-                eid = str(eff.get("id") or eff.get("path"))
-                row = {"id": eid, "method": str(eff.get("method") or "GET"),
-                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
-                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
-                       "body_sample": probe.get("body_sample", "")}
-                if eff.get("role"):
-                    row["role"] = str(eff["role"])
-                if probe.get("status"):
-                    row["evidence"] = retain_body(bodies_dir, "after-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
-                rec["effects"].append(row)
+                rec["effects"].append(observe_effect(eff, "after"))
+            if committed:
+                rec["committed_state"] = {"read": "a new connection to the held same-engine database, before and after the "
+                                                  "request (ADR-026)", "held": store is not None,
+                                          **({"reason": committed_why} if committed_why else {})}
             if refused_write:
                 rec["source_effects"] = dict(source_effects)
                 # the next scenario starts on the in-process variant again
+                release()
+            elif store is not None:
                 release()
             rec["status"] = "CAPTURED"
             write_canonical(out, rec)
