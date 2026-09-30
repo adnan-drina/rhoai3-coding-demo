@@ -1206,20 +1206,71 @@ DOC_UI_LINKS = ["https://quarkus.io/version/3.27/guides/openapi-swaggerui"]
 REDIRECT_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#configure-http-access"]
 
 
+_MT_TOKEN = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
+_MT_TYPE_RE = re.compile(r"[ \t]*(%s)/(%s)[ \t]*" % (_MT_TOKEN, _MT_TOKEN))
+_MT_TOKEN_RE = re.compile(_MT_TOKEN)
+
+
+def _media_type_parts(value: str) -> tuple[str, list[tuple[str, str]]] | None:
+    """(type/subtype, [(name, value)]) by the RFC 9110 grammar (sections 5.6.6
+    and 8.3.1): ``*( OWS ";" OWS [ token "=" ( token / quoted-string ) ] )``,
+    a quoted-string's backslash escaping undone. None when the value does not
+    parse -- an unterminated quote, a parameter with no '=', stray bytes."""
+    s = str(value or "")
+    m = _MT_TYPE_RE.match(s)
+    if not m:
+        return None
+    typ, i, n = ("%s/%s" % (m.group(1), m.group(2))).lower(), m.end(), len(s)
+    params: list[tuple[str, str]] = []
+    while i < n:
+        if s[i] != ";":
+            return None
+        i += 1
+        while i < n and s[i] in " \t":
+            i += 1
+        if i >= n or s[i] == ";":
+            continue                      # an empty parameter is allowed
+        k = _MT_TOKEN_RE.match(s, i)
+        if not k or k.end() >= n or s[k.end()] != "=":
+            return None                   # no whitespace around '=' (RFC 9110 5.6.6)
+        i = k.end() + 1
+        if i < n and s[i] == '"':
+            buf, j = [], i + 1
+            while j < n and s[j] != '"':
+                if s[j] == "\\":
+                    if j + 1 >= n:
+                        return None
+                    j += 1
+                buf.append(s[j])
+                j += 1
+            if j >= n:
+                return None               # unterminated quoted-string
+            val, i = "".join(buf), j + 1
+        else:
+            t = _MT_TOKEN_RE.match(s, i)
+            if not t:
+                return None
+            val, i = t.group(0), t.end()
+        while i < n and s[i] in " \t":
+            i += 1
+        params.append((k.group(0).lower(), val))
+    return typ, params
+
+
 def canonical_media_type(value: str) -> str:
-    """A media type in RFC 9110 section 8.3.1 canonical form: the type,
-    subtype and parameter names are case-insensitive, whitespace around ';'
-    and '=' is optional, and a charset value is case-insensitive (section
-    8.3.2). Parameter order is kept; nothing else is normalized."""
-    parts = [p.strip() for p in str(value or "").split(";")]
-    out = [parts[0].lower()] if parts else [""]
-    for p in parts[1:]:
-        if not p:
-            continue
-        k, _, v = p.partition("=")
-        k, v = k.strip().lower(), v.strip()
-        out.append("%s=%s" % (k, v.lower() if k == "charset" else v))
-    return ";".join(out)
+    """A media type in RFC 9110 canonical form: the type, subtype and
+    parameter names are case-insensitive (8.3.1), a quoted and an unquoted
+    parameter value are the same value (5.6.6), and only a charset value is
+    case-insensitive (8.3.2). Every other value is kept byte for byte,
+    parameter order is kept, and a value that does not parse keeps its raw
+    form behind a marker, so it is never equivalent to anything but itself
+    (architect review of ed9d31ac: a split on ';' also split a quoted value
+    and collapsed two distinct ones)."""
+    got = _media_type_parts(value)
+    if got is None:
+        return "malformed:" + str(value or "")
+    typ, params = got
+    return typ + "".join(";%s=%s" % (k, json.dumps(v.lower() if k == "charset" else v)) for k, v in params)
 
 
 def canonical_diff(diff: str) -> str:

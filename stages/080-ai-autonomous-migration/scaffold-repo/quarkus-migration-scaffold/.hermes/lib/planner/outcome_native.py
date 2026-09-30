@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import os
 import sqlite3
 import subprocess
@@ -362,14 +363,15 @@ class FakeNative:
         lock = "lock-%d" % run_id
         t.update(status="running", current_run_id=run_id, claim_lock=lock, worker_pid=pid)
         self.runs_[run_id] = {"id": run_id, "task_id": task_id, "status": "running", "claim_lock": lock,
-                              "profile": t.get("assignee"), "outcome": None}
+                              "profile": t.get("assignee"), "outcome": None, "started_at": time.time(), "ended_at": None}
         return run_id, lock
 
     def end_run(self, task_id: str, status: str = "ready", outcome: str | None = None) -> None:
         t = self.tasks[task_id]
         if t.get("current_run_id") in self.runs_:
-            self.runs_[t["current_run_id"]]["status"] = "ended"
+            self.runs_[t["current_run_id"]]["status"] = outcome or "ended"   # task_runs.status carries the outcome
             self.runs_[t["current_run_id"]]["outcome"] = outcome
+            self.runs_[t["current_run_id"]]["ended_at"] = time.time()
         t.update(status=status, current_run_id=None, claim_lock=None, worker_pid=None)
 
     def complete(self, task_id: str) -> None:

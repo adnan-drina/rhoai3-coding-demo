@@ -1887,21 +1887,50 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     as a candidate to restore -- when, and only when, every changed product
     path lies inside what the card's most recent ENDED run was issued, and no
     candidate of the card is retained. Anything else stays the drift refusal:
-    an edit no ended run of this card was issued is not this card's to discard."""
+    an edit no ended run of this card was issued is not this card's to discard.
+
+    Ownership is proven, never inferred from path overlap (architect review of
+    0dd677ba: a replacement run that edited an allowed file and asked for its
+    issue again had its own work archived as its predecessor's). So this runs
+    only on the TRANSITION into the current run -- before its first issue --
+    and only when the native run table shows the predecessor ENDED, the
+    current run started after it, and every changed file was last written
+    inside the predecessor's run window. A deletion carries no time, and any
+    missing fact leaves the tree untouched for the drift refusal."""
     root = Path(root)
+    records = board.records(task_id, "issue")
+    if any(int(r.get("run") or 0) == int(run_id) for r in records):
+        return None                       # this run has been issued: the tree's edits are its own
     head, changed = _changed_vs_head(root)
     if not changed or _open_pending(board, task_id) is not None:
         return None
-    runs = sorted({int(r.get("run") or 0) for r in board.records(task_id, "issue")} - {0, int(run_id)})
-    if not runs:
+    runs = sorted({int(r.get("run") or 0) for r in records} - {0})
+    if not runs or runs[-1] >= int(run_id):
         return None
     last = runs[-1]
-    issued = {p for r in board.records(task_id, "issue") if int(r.get("run") or 0) == last
-              for p in (r.get("allowed_paths") or [])}
+    prev, cur = board.native.run(last) or {}, board.native.run(int(run_id)) or {}
+    if (str(prev.get("task_id") or "") != task_id or str(prev.get("status") or "") in ("", "running")
+            or not prev.get("started_at") or not prev.get("ended_at")):
+        return None                       # no native proof the predecessor ended
+    t0, t1 = float(prev["started_at"]), float(prev["ended_at"])
+    if not cur.get("started_at") or float(cur["started_at"]) < t1:
+        return None                       # the current run is not provably its successor
+    issued = {p for r in records if int(r.get("run") or 0) == last for p in (r.get("allowed_paths") or [])}
     if not set(changed) <= issued:
         return None
+    for rel in changed:
+        p = root / rel
+        if not p.is_file() or p.is_symlink():
+            return None                   # a deletion carries no time: ownership unproven
+        if not (t0 <= p.stat().st_mtime <= t1 + ABANDON_WINDOW_SLACK):
+            return None                   # written outside the predecessor's run: not provably its own
     return dict(_stash(root, board, task_id=task_id, run_id=last, head=head, changed=sorted(changed), kind=ABANDONED),
-                run=last)
+                run=last, window=[t0, t1])
+
+
+# seconds past a run's recorded end in which its own last write may still land (the runtime records the
+# end after it stops the worker)
+ABANDON_WINDOW_SLACK = 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -1932,10 +1961,16 @@ def issuance_state(root: Path, board: Board) -> dict[str, Any]:
         doc = load_json(p)
     except (OSError, ValueError):
         return {"state": "unbound", "why": "the projection could not be read"}
+    return _issuance_of(board, doc if isinstance(doc, dict) else {}, sha256(p.read_bytes()))
+
+
+def _issuance_of(board: Board, doc: dict[str, Any], digest: str) -> dict[str, Any]:
+    """The state of ONE projection's identity: its task, its run, the native
+    run row. A missing or malformed run identity is unbound, never expired."""
     task = str(doc.get("task_id") or "")
     m = _ISSUED_KEY_RE.search(str(doc.get("idempotency_key") or ""))
     out = {"task": task, "run": int(m.group(2)) if m else 0, "issue": int(m.group(1)) if m else 0,
-           "cluster": str(doc.get("cluster") or "")}
+           "cluster": str(doc.get("cluster") or ""), "digest": digest}
     t = board.task(task) if task else None
     if t is None:
         return dict(out, state="unbound", why="the projection names no task on this board")
@@ -1945,36 +1980,78 @@ def issuance_state(root: Path, board: Board) -> dict[str, Any]:
         cur = int(t.get("current_run_id") or 0)
         return dict(out, state="live", why=("run %d is running" % cur) if cur == out["run"] else
                     ("a newer claim (run %d) holds the card" % cur))
-    return dict(out, state="expired", status=str(t.get("status") or ""))
+    if not m:
+        return dict(out, state="unbound", why="the projection carries no run identity")
+    row = board.native.run(out["run"]) or {}
+    if str(row.get("task_id") or "") != task:
+        return dict(out, state="unbound", why="run %d is not a run of %s on this board" % (out["run"], task))
+    if str(row.get("status") or "") in ("", "running") or not row.get("ended_at"):
+        return dict(out, state="unbound", why="run %d has not ended natively (%s)" % (out["run"], row.get("status")))
+    return dict(out, state="expired", status=str(t.get("status") or ""), run_status=str(row.get("status") or ""),
+                ended_at=row.get("ended_at"))
 
 
 def retire_issuance(root: Path, board: Board, *, by: str, reason: str) -> dict[str, Any]:
     """Move an EXPIRED projection into verification/loop/issued-history/ and
-    record it on the card: the history is kept, the live slot is freed. Copy,
-    record, then unlink, so an interrupted retirement re-runs to the same
-    record; a projection that is live, retained or unbound is refused."""
+    record it on the card: the history is kept, the live slot is freed. A
+    projection that is live, retained or unbound is refused.
+
+    Bound to ONE projection identity (architect review of 0dd677ba: a claim
+    and a new projection that appeared between the check and the unlink were
+    deleted). Under the publication lock that issue publication also takes,
+    the projection is MOVED atomically to a name carrying the digest that was
+    judged; the moved bytes must be those bytes, and anything else -- a newer
+    projection written without the lock -- is put back and the retirement
+    refused. Only then is it archived, recorded and dropped; an interrupted
+    retirement finds its moved file and finishes it, to the same record."""
     from planner.paths import LOOP_ISSUED
     if by != "operator":
         raise Refusal("RETIRE_NOT_OPERATOR", "only the Operator retires an issuance (profile %r)" % by)
-    st = issuance_state(root, board)
-    if st["state"] == "none":
-        return {"retired": None, "state": "none"}
-    if st["state"] != "expired":
-        raise Refusal("ISSUANCE_NOT_EXPIRED", "the issuance of %s (run %s) is %s%s" % (
-            st.get("task") or "?", st.get("run"), st["state"], (": " + st["why"]) if st.get("why") else ""))
     src = Path(root) / LOOP_ISSUED
-    data = src.read_bytes()
+    with publication_lock(root):
+        done = [_finish_retirement(root, board, f, reason) for f in sorted(src.parent.glob(src.name + RETIRING + "*"))]
+        st = issuance_state(root, board)
+        if st["state"] == "none":
+            return {"retired": done[-1] if done else None, "state": "none"}
+        if st["state"] != "expired":
+            raise Refusal("ISSUANCE_NOT_EXPIRED", "the issuance of %s (run %s) is %s%s" % (
+                st.get("task") or "?", st.get("run"), st["state"], (": " + st["why"]) if st.get("why") else ""))
+        moved = src.with_name(src.name + RETIRING + st["digest"][:16])
+        os.rename(src, moved)
+        if sha256(moved.read_bytes()) != st["digest"]:
+            if not src.exists():
+                os.link(moved, src)
+            moved.unlink()
+            raise Refusal("ISSUANCE_CHANGED", "the projection changed while it was judged expired (a newer issuance "
+                                              "was published); it is left in place")
+        return {"retired": _finish_retirement(root, board, moved, reason), "state": "expired", "task": st["task"],
+                "run": st["run"]}
+
+
+RETIRING = ".retiring."
+
+
+def _finish_retirement(root: Path, board: Board, moved: Path, reason: str) -> str:
+    """Archive a moved projection, record it on its card and drop the moved
+    file; idempotent in every step (history by digest, record by key)."""
+    from planner.canonical import load_json
+    data = moved.read_bytes()
     digest = sha256(data)
+    if not moved.name.endswith(RETIRING + digest[:16]):
+        raise Refusal("RETIRING_CORRUPT", "%s does not hold the bytes its name records" % moved.name)
+    st = _issuance_of(board, load_json(moved), digest)
     rel = ISSUED_HISTORY / ("issued.%s.r%d.i%d.%s.json" % (st["task"], st["run"], st["issue"], digest[:12]))
     dest = Path(root) / rel
     if not dest.is_file():
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
-    rec = board.record(st["task"], "issuance-retired", "issuance-retired:%s" % digest[:16], run=st["run"],
-                       issue=st["issue"], cluster=st["cluster"], history=rel.as_posix(), status=st.get("status"),
-                       reason=reason[:500])
-    src.unlink()
-    return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired"}
+    elif dest.read_bytes() != data:
+        raise Refusal("RETIRING_CORRUPT", "%s exists with other bytes" % rel)
+    board.record(st["task"], "issuance-retired", "issuance-retired:%s" % digest[:16], run=st["run"],
+                 issue=st["issue"], cluster=st["cluster"], history=rel.as_posix(), status=st.get("status"),
+                 run_status=st.get("run_status"), ended_at=st.get("ended_at"), reason=reason[:500])
+    moved.unlink()
+    return rel.as_posix()
 
 
 def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reason: str) -> dict[str, Any]:

@@ -50,6 +50,16 @@ from planner.outcome_checks import VERDICT, Refusal  # noqa: E402
 
 
 def write_issued_projection(root: Path, issued: dict) -> str:
+    """Publish the projection under the native publication lock, which
+    retire_issuance also takes: a retirement never interleaves with a new
+    issuance's publication (architect review of 0dd677ba)."""
+    if not issued.get("cluster"):
+        return ""
+    with NC.publication_lock(Path(root)):
+        return _write_issued_projection(root, issued)
+
+
+def _write_issued_projection(root: Path, issued: dict) -> str:
     """The loop tools (brief, run-verify, advance, amend-scope) read
     verification/loop/issued.json. Under native control it is written for the
     ONE cluster (or unit) this run was issued, bound to the claimed task: a
