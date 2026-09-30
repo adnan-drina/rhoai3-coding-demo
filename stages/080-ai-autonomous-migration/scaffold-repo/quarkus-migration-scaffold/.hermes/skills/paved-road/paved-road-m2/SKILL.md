@@ -64,7 +64,12 @@ nothing here changes it. Steps 1–4 and 7 are the same for both.
      card; `later` still owed by it, with the earliest point it can be
      measured and M4 as the backstop), each check's verification
      prerequisites and the implementation prerequisites that must finish
-     first (check-schedule/v1). Its budget is the summed family of the units
+     first (check-schedule/v1). A `later` check is measured when a card at
+     its earliest point is issued and its prerequisites hold on the measured
+     candidate; a failure there becomes a follow-up of its owner (sharing the
+     owner's budget) that the measuring card waits on (`OWNER_REPAIR_PENDING`,
+     `kanban_block kind=dependency`); an unmet prerequisite keeps it pending,
+     never passed. Its budget is the summed family of the units
      it joined, so the run's total is unchanged. You neither choose nor
      change the grouping. An `OBJECTIVES_*` or `PLAN_SCHEDULE` admission
      block is a decision for a human, like any other BLOCK class.
