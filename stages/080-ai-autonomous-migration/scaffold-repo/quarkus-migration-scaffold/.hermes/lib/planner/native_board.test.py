@@ -1263,6 +1263,30 @@ class LifecycleReconciliation(unittest.TestCase):
         finally:
             pipeline.admit, W.build_worklist = orig
 
+    def test_an_amendment_granted_in_an_earlier_run_keeps_its_authority(self):
+        """v29 run 76: the amendment granted in run 73 was projected without granted_before_sha256, and
+        advance.py rejected a correct candidate as 'amendment(s) without authority'."""
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        rel = "src/main/java/com/acme/shop/web/ItemController.java"
+        if not (r.root / rel).is_file():
+            r.edit(rel, "class ItemController {}\n")
+            git(r.root, "add", "-A")
+            git(r.root, "commit", "-qm", "fixture")
+        NC.amend(r.root, r.board, task_id=tid, run_id=run, cluster=iss["cluster"], rel=rel,
+                 row={"reason": "the stack's product frame is here", "locus": "parity: thrown in this file"})
+        r.native.end_run(tid, "ready", "gave_up")
+        run2, lock2 = r.native.claim(tid)
+        again = NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)
+        self.assertIn(rel, again["allowed_paths"])
+        row = next(a for a in again["amendments"] if a["path"] == rel)
+        # advance.py's authority predicate: granted_before_sha256 present and not dirty at grant
+        self.assertTrue(row["granted_before_sha256"] and not row["dirty_at_grant"], row)
+        # a record written before the digest was kept takes the content at HEAD, which the issue proved clean
+        legacy = {"path": rel, "reason": "r", "locus": "l"}
+        self.assertEqual(NC.amendment_projection(r.root, NC._head(r.root), legacy)["granted_before_sha256"],
+                         row["granted_before_sha256"])
+
     def projection(self, tid, run):
         from planner.paths import LOOP_ISSUED
         p = self.r.root / LOOP_ISSUED

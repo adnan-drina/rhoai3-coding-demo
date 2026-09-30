@@ -102,8 +102,10 @@ def write_issued_projection(root: Path, issued: dict) -> str:
     amends = list(issued.get("amendments") or [])
     if amends:
         doc = load_json(root / LOOP_ISSUED)
-        doc["amendments"] = [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
-                             for a in amends]
+        # the grant facts travel with the amendment: advance.py rejects one without them (v29 run 76)
+        doc["amendments"] = [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {},
+                              "granted_before_sha256": a.get("granted_before_sha256") or "",
+                              "dirty_at_grant": bool(a.get("dirty_at_grant"))} for a in amends]
         write_canonical(root / LOOP_ISSUED, doc)
     return key
 

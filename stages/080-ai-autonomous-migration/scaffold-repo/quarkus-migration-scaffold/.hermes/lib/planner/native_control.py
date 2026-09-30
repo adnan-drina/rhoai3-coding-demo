@@ -960,8 +960,25 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             "parked_candidate": bool(parked_pending(board, task_id)),
             "run": run, "baseline_commit": head, "baseline_tree": tree, "claimed_control": False,
             "control": "native-cooperative", "record": rec["key"],
-            "amendments": [{"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {}}
-                           for a in board.records(task_id, "amend") if a.get("cluster") == cluster] if cluster else []}
+            "amendments": [amendment_projection(root, head, a) for a in board.records(task_id, "amend")
+                           if a.get("cluster") == cluster] if cluster else []}
+
+
+def amendment_projection(root: Path, head: str, a: dict[str, Any]) -> dict[str, Any]:
+    """An amend record as the loop's acceptance reads it, WITH its grant facts.
+
+    v29 run 76: the projection dropped granted_before_sha256 and dirty_at_grant,
+    so on every run after the granting one advance.py read the amendment as
+    "without authority" and rejected a correct candidate. A native amend record
+    is clean at grant by construction (amend() refuses AMEND_ALREADY_EDITED);
+    a record written before it carried the digest takes the content at HEAD,
+    which the issue has just proven unedited."""
+    got = str(a.get("granted_before_sha256") or "")
+    if not got:
+        blob = _git(Path(root), "show", "%s:%s" % (head, a["path"]), binary=True) if head else None
+        got = hashlib.sha256(blob.stdout).hexdigest() if blob is not None and blob.returncode == 0 else ""
+    return {"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {},
+            "granted_before_sha256": got, "dirty_at_grant": False}
 
 
 ORPHAN_WAITERS = ("behavior", "runtime")
@@ -1077,7 +1094,9 @@ def amend(root: Path, board: Board, *, task_id: str, run_id: int, cluster: str, 
     if len(allowed) > AMEND_MAX_FILES:
         raise Refusal("AMEND_OVERSIZE", "%d files exceed the unit bound %d" % (len(allowed), AMEND_MAX_FILES))
     board.record(task_id, "amend", "amend:%s:%s" % (cluster, rel), cluster=cluster, path=rel, run=int(run_id),
-                 reason=str(row.get("reason") or "")[:500], locus=str(row.get("locus") or "")[:500], evidence=row.get("evidence") or {})
+                 reason=str(row.get("reason") or "")[:500], locus=str(row.get("locus") or "")[:500], evidence=row.get("evidence") or {},
+                 granted_before_sha256=(hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest()
+                                        if (Path(root) / rel).is_file() else ""))
     seq = int(iss.get("seq") or 1) + len(prior) + 1
     board.record(task_id, "issue", "issue:%d:%d:amend:%s" % (run_id, seq, sha256(rel.encode())[:12]),
                  **{k: v for k, v in iss.items() if k not in ("kind", "key", "v", "_id", "allowed_paths", "seq")},
