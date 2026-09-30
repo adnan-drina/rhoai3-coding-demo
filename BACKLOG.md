@@ -10,15 +10,13 @@ Branch `feat/migration-reliability-m1-m7` (base `next/after-v28` `26bc9c2b`); st
 [MIGRATION-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
 Local evidence: `tmp/reliability-evidence/` in that worktree. Not validated against a live cluster.
 
-- [x] Final combined validation on `008eb81c`: 111/111 suites (python3, python3.9), repeatability 26/0 fail,
-  M-3 CONTROLS PASS on PostgreSQL, rehearsal 47/47, executor digest reproduced.
-- [x] All 12 v29 missing-oracle entry points derive and qualify; User create via ADR-026 committed-state read-back;
-  referenced deletes take their outcome from the capture.
-- [ ] ADR-026 committed-state query not yet run on PostgreSQL or a real destination (hsqldb source only).
-- [ ] MTA 8.2 fresh repeatability not run locally (host has 7.3); runs in-workspace at M1.
-- [ ] Release: build ws-080 with the typed-repair jar (`build-080-runtime-image.sh 37b147ba… --push`), re-pin the
-  digest in `pins.json`, `run-defaults.json`, both devfiles and `RELEASE.md`; publish the golden; Stage 040
-  MaaS gateway memory fix (I-4/I-5) before a clean validation run.
+- [x] Integrated with `next/after-v28` (`c9ab129d`) and architect commit `ee7bc6d6`; qualification PASS on
+  `5280670b` (118/118 + 14/14 suites under python3.9, repeatability 26/0, M-3 CONTROLS PASS, rehearsal 47 of 47
+  across both modes, ADR-026 qualified on PostgreSQL 16). Evidence: worktree `tmp/reliability-evidence/qualification-5280670b/`.
+- [ ] MTA 8.2 fresh repeatability not run locally (host has 7.3); recorded findings are not a fresh execution.
+- [ ] Release (release agent): build ws-080 with the typed-repair jar, re-pin its digest (pins, run-defaults, both
+  devfiles, RELEASE.md), apply the Stage 040 gateway headroom first and observe it, publish platform and golden,
+  bounded preflight without an isolation campaign.
 
 ## v26 reliability release and the subsequent feature package (scope decided 2026-09-29)
 

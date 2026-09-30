@@ -62,11 +62,11 @@ Its intervention narrative is saved reported evidence; its untimestamped
 |---|---|---|---|
 | M-1 — supported migration and finish line | `lib/completion_map.py` (24b7f864): contract, milestones, every ship-blocking verification gap with owner, prerequisites and exit; ADR-025 scope limitation | Not published | v29 r1 recomputed: 80 requirements, 7 groups, 12 entry points, all owned by source-capture work. Source Git revision is not recorded by M1 (content digest only). |
 | M-2 — executable milestones | check-schedule/v1 (2e8d99d7), executed by the native lifecycle at issue and at acceptance (9ca09fb6, 17d90c22); runtime findings a declared recipe discharges are its objective's (e55407c3) | Not published | Exit fixtures pass through the lifecycle; a scheduled row's own `after` orders issue only; crash between acceptance and schedule measurement is picked up at the next issue or M4. |
-| M-3 — rehearse risky behavior | Reference qualification on PostgreSQL 16 against the frozen source oracle (91109348..a3dfc05c), rehearsal (28f39ec0, 03874abf) | Not published | Controls pass. v28 candidate: 19/47 match. Rehearsal (one patch per catalog repair): 47/47 in both modes. CI/CD and deployed-route checks are live-only. |
+| M-3 — rehearse risky behavior | Reference qualification on PostgreSQL 16 against the frozen source oracle (91109348..a3dfc05c), rehearsal (28f39ec0, 03874abf) | Not published | Controls pass. v28 candidate: 19 of 47 comparisons match. Rehearsal (one patch per catalog repair): 47 of 47 (40 disabled-mode, 7 enabled-mode), 4 of them through ADR-025's declared equivalences. A manually prepared application result, not autonomous completion. CI/CD and deployed-route checks are live-only. |
 | M-4 — reusable capability | Coverage table SAD §7.3; known guidance added (960a767c, c3067478, 962931d9); ADR-025 | Not published | Every known pattern is a qualified recipe, a tested bounded procedure or an ADR-025 ruling; no known gap without guidance. |
 | M-5 — state ownership and evidence | 9fcd639b..2c2973cc | Not published | Architect counterexamples corrected; lifecycle replay passes; not exercised on a live board. |
 | M-6 — end-to-end headline | run-report headline through M5 (ad5d059c) | Not published | False-green and deployed-INCONCLUSIVE fixtures render correctly; token totals stay unknown without a request ledger. |
-| M-7 — frozen program | Combined validation green on `008eb81c` (see Package status) | Owed: runtime image, golden, platform pins | Local only; the clean full run and its confirming repeat are the remaining claims. |
+| M-7 — frozen program | Integrated with the v29 corrections and ee7bc6d6; qualification PASS on `5280670b` (see Package status) | Owed: runtime image, golden, platform pins | Local only; the clean full run and its confirming repeat are the remaining claims. |
 | V26-1 — typed repair execution | Executor on OpenRewrite 8.89.0 (Apache-2.0), both transformations, first action of the issued unit (481b4b0b, af47c117, 8ffdfd9d) | Image recipe step 2b ready (5d282010); no image built | Fixtures and the v28 specimen; no live run has used it. |
 | V26-2 — recipe qualification | 32 rewrite-test cases, loop-path and runtime package tests | Ships with V26-1 | Reproducible jar sha256 `66d1b6f4`. |
 | V26-3 — resolved task context | Targeted brief, actions, ownership, selectors and retry context | As before | Broader evidence-bound context and classpath/API lookup remain open. |
@@ -81,71 +81,100 @@ Its intervention narrative is saved reported evidence; its untimestamped
 
 ## Package status (2026-09-30)
 
-Source: branch `feat/migration-reliability-m1-m7`, based on `next/after-v28`
-`26bc9c2b` (a superset of the `d003445c` review anchor and of main's preload
-commits). Nothing here is published, installed or live-validated. Local evidence:
-`tmp/reliability-evidence/` in the implementation worktree (Git-ignored); the
-release must carry the identities and results below, not the local path.
+Qualified source: branch `feat/migration-reliability-m1-m7`, commit
+`5280670b107304dd8a0f49fba5ac1c03e41612f0`, tree `038da64c2dd7ba0a801ff2e7a5fa109daba8a1c2`.
+It contains the reliability roadmap work (`b0bbf60e`), `next/after-v28` through
+`c9ab129d` (all v29 corrections after `26bc9c2b`), architect commit `ee7bc6d6`
+(cherry-picked: launch checks without isolation campaigns, MaaS gateway memory
+headroom) and remote `main` `de6c7ba6` (a fast-forward). Later commits on the
+branch change documentation only. Nothing here is published, installed or
+live-validated. Local evidence: `tmp/reliability-evidence/qualification-5280670b/`
+in the implementation worktree (Git-ignored); the release record carries these
+identities and results.
+
+### Integration decisions
+
+Both branches' behaviours were kept in the four overlapping files; where both
+implemented the same correction, the architect-reviewed form on `next/after-v28`
+was kept and the package's remaining guards were added to it:
+
+- `native_control.py`: retirement is the lock-bound move of the judged digest
+  (cf164288) plus the package's "a still-running native run of the card is live";
+  parking uses the native successor proof; a re-issue over unjudged edits refuses
+  `ISSUE_BASELINE_DRIFT`, replayed or not; verification-only issuance carries its
+  sealed scope; the M-2 schedule, set-aside of interrupted rejections and
+  effective-budget reconciliation are retained.
+- `requirement_checks.py`: verification scope and producer checks both kept; one
+  Location check measuring the covered scenarios; a repository effect is discharged
+  only by the scenario's own PASS record in its expected mode, bound to the
+  candidate, and header-only differences still do not fail it.
+- `worklist.py`: the architect-reviewed Content-Type parser (parameter order kept,
+  malformed never equal); authoritative FAIL history, recipe runtime ownership,
+  per-mode clusters and planned checks after repair rows disappear all retained.
+- `brief.py`: typed repair as first action, voided rejections and exact identities,
+  bounded evidence selectors and unresolved history in one brief.
+
+`lib/planner/merge_pairs.test.py` proves both behaviours per file on shared input.
+Two defects surfaced by the merge were corrected: scenario ids normalised on one
+side only (every repository effect read unmeasured), and an unreadable
+post-request committed state read as FAIL instead of INCONCLUSIVE.
 
 ### End-to-end state
 
 | Milestone | What is demonstrated | Evidence level |
 |---|---|---|
-| Source understood | M1 structure producer reproduces on two clean copies of the frozen v28 source; all 12 v29 missing-oracle entry points now derive and qualify source captures (41 disabled / 103 enabled scenarios PASS, hsqldb baseline); User create through an ADR-026 committed-state read-back | Fresh local producer run; MTA 8.2 recorded, not re-run (host has 7.3) |
-| Target structurally viable | Typed CDI exposure and URI translation are qualified; servlet-redirect is the only edit the v28 tree needed to package | Recipe tests, package tests on the pinned platform |
-| Persistence and one HTTP path | Reference repository port: fresh-transaction read-back, delete dependencies, recursion/stub/no-op/duplicate negatives rejected, on PostgreSQL 16 | Local containers, component level |
-| Application behavior preserved (Owner path) | v28 candidate 19/47; rehearsal candidate (one patch per catalog repair, written from catalog text only) 47/47 in both modes, 4 through ADR-025 | Local rehearsal, not a migration output |
-| Delivered and usable | Not demonstrated: CI/CD handoff, image, deployment and live checks need a cluster | None |
+| Source understood | M1 structure producer reproduces on two clean copies of the frozen v28 source; all 12 v29 missing-oracle entry points derive and qualify captures (41 disabled / 103 enabled scenarios, hsqldb baseline); User create through the ADR-026 committed-state read-back | Fresh local producer run; MTA findings are recorded evidence, not a fresh MTA 8.2 execution (host has 7.3) |
+| Target structurally viable | Typed CDI exposure and URI translation qualified; servlet-redirect is the only edit the v28 tree needed to package | Recipe tests, package tests on the pinned platform |
+| Persistence and one HTTP path | Reference repository port: fresh-transaction read-back, delete dependencies, recursion/stub/no-op/duplicate negatives rejected, PostgreSQL 16; ADR-026 destination path qualified on PostgreSQL 16 (committed write on a fresh connection PASS; no-op, rollback, wrong value, uncommitted FAIL; unreadable INCONCLUSIVE; both modes) | Local containers, component level |
+| Application behavior preserved (Owner path) | v28 candidate 19 of 47 comparisons; rehearsal candidate (one patch per catalog repair, written from catalog text only) 47 of 47 across both modes (40 disabled, 7 enabled), 4 through ADR-025 equivalences | Manually prepared local rehearsal, not a migration output and not proof that workers reach it autonomously |
+| Verification lifecycle | Repair accepted → live repair row gone → verification-only unit with sealed per-mode scope → run-verify routing → scoped comparisons replaying prerequisite state → acceptance → native review; wrong-mode, broken-setup, changed-corpus and foreign-candidate negatives refused | Fixture through the real run-verify and parity runner (one stated synthetic hop) |
+| Delivered and usable | Not demonstrated: CI/CD, image, deployment and live checks need a cluster | None |
 
-The next full run is therefore not the first integration test of the known
-repairs; it is the first test that they compose under autonomous workers, native
-review and M5 delivery.
+Evidence selectors work through the real K2 tool policy with inline Python still
+refused; that establishes the retrieval path, not that model looping is solved.
 
-### Regression evidence
+### Qualification of `5280670b` (worker interpreter Python 3.9.25)
 
-- Architect counterexamples (`reproduce.py`): at `26bc9c2b` all three reproduced;
-  at the integrated revision current-run edits survive, retirement refuses
-  `ISSUANCE_CHANGED` and keeps the new run's projection, quoted values stay distinct.
-- Final combined validation on `008eb81c` (tree `c3ec4e46`, `tmp/reliability-evidence/combined-008eb81c/`):
-  111/111 non-container suites under python3 and under python3.9 (the worker's
-  interpreter); shell syntax clean; planning repeatability 26 pass, 0 fail,
-  1 NOT-RUN (fresh MTA 8.2: the host has 7.3; MTA findings stay recorded);
-  executor rebuilt to the pinned jar `66d1b6f4`; container suites 4/4; M-3
-  CONTROLS PASS on PostgreSQL 16 (11 suites), v28 candidate NOT EQUIVALENT
-  (28 steps), rehearsal EQUIVALENT on the measured corpus; architect
-  counterexamples corrected.
-- Not measured: the ADR-026 committed-state query on PostgreSQL and against a
-  real destination (hsqldb source only); CI/CD, image, deployment and live checks.
+- 118/118 non-container suites and 14/14 container suites exit 0, including the
+  merged-path regression, the conflict-pair tests and the ADR-026 PostgreSQL suite.
+- Shell syntax clean for Stage 040/080 and shared scripts.
+- Planning repeatability 26 pass, 0 fail, 1 NOT-RUN (fresh MTA 8.2).
+- Typed-repair executor rebuilt to the pinned jar `66d1b6f4…6506ad`.
+- M-3: CONTROLS PASS; v28 candidate NOT EQUIVALENT (28 steps); rehearsal EQUIVALENT
+  on the measured corpus.
+- Architect counterexamples corrected (current-run edit kept and its re-issue refused
+  `ISSUE_BASELINE_DRIFT`; the new claim's projection kept; quoted values distinct).
+- Aggregate `verdict.json`: PASS, 0 failures. The first attempt's container loop and
+  identity check were harness defects in the new runner; after fixing them, the
+  identity and reproduction steps were re-executed on the same snapshot and the
+  verdict re-aggregated over that run's artifacts (both records kept).
 
 ### Release mapping
 
 | Component | Source identity | Required step | Owner |
 |---|---|---|---|
-| Harness (golden `.hermes`) | package head (see final run) | merge to `main`, then `scripts/bootstrap-scaffold-repos.sh` publishes `quarkus-migration-scaffold-v2` | user (force-push) |
+| Harness (golden `.hermes`) | `5280670b` (scaffold content) | fast-forward the platform `main` (never force-pushed); then the distinct golden-export publication `scripts/bootstrap-scaffold-repos.sh`; record the returned golden commit and compare its scaffold content | release agent |
 | Hermes runtime | tree `37b147ba` unchanged (patches 0001–0016) | none | — |
-| ws-080 image | new: adds typed-repair jar `66d1b6f4…` (17,684,782 bytes) | `build-080-runtime-image.sh 37b147baef0c2678507c52e59e3b9231ab6ab64f --push`, then re-pin the digest in `.hermes/pins.json`, `run-defaults.json`, scaffold `devfile.yaml`, Stage 050 `app-migration/skeleton/devfile.yaml`, `hermes-runtime/RELEASE.md` | user (registry push) |
-| Platform (Stage 050) | skeleton devfile digest only | commit the re-pin; Argo CD sync; confirm catalog re-stamp per `docs/OPERATIONS.md` | user (GitOps) |
-| Stage 040 MaaS gateway | unchanged; I-4/I-5 memory exhaustion | raise the gateway `istio-proxy` memory through Gateway infrastructure parameters and validate Stage 040 | user (platform change) |
-| Model profile, Quarkus platform, OpenRewrite | `qwen3-8-27b-int4` as pinned; `3.27.3.SP1-redhat-00002`; rewrite 8.89.0 | none | — |
-| Isolation receipt / preflight | new golden + platform pair | fresh isolation qualification and `run-preflight.sh` | user |
+| ws-080 image | new: adds typed-repair jar `66d1b6f4…` (17,684,782 bytes) | `build-080-runtime-image.sh 37b147baef0c2678507c52e59e3b9231ab6ab64f --push`; re-pin the new digest in `.hermes/pins.json`, `run-defaults.json`, scaffold `devfile.yaml`, Stage 050 `app-migration/skeleton/devfile.yaml` and `hermes-runtime/RELEASE.md`; confirm the `/opt/rhoai3/080.pins` stamp and `java -jar /opt/rhoai3/typed-repair/typed-repair.jar` as the worker | release agent |
+| Stage 040 MaaS gateway | `maas-gateway-resources` (ee7bc6d6): istio-proxy 1 GiB request / 2 GiB limit | apply first through GitOps; read back resources, readiness, restarts and memory under ordinary traffic; headroom is mitigation, not proof that growth is fixed | release agent |
+| Platform (Stage 050) | skeleton devfile digest | Argo CD sync at the intended commit; read back the served template and catalog re-stamp | release agent |
+| Launch preflight | `run-preflight.sh` (ee7bc6d6) | **no isolation receipt or campaign**; live checks against the actual pod, the golden's pinned database/provisioner images and published pins | release agent |
 
 ### Remaining live validation (not claimed)
 
 1. Build/pin/publish above; `release_gaps == []` in a new workspace.
-2. Launch one validation run on the published package with the full-release
-   objective; observe M1 captures for the formerly missing entry points in both
-   modes (PostgreSQL destination).
-3. M5: named candidate → PipelineRun → image digest → deployment → live checks,
-   including a disposable persisted write/read/delete at the deployed route.
+2. One validation run on the published package with the full-release objective;
+   M1 captures for the formerly missing entry points in both modes.
+3. M5: candidate → PipelineRun → image digest → deployment → live checks, including
+   a disposable persisted write/read/delete at the deployed route.
 4. A confirming run without overlays or Operator rescue (repeatability claim).
 
 ### Verdict
 
-Implementation complete for M-1..M-6 and the V29/V26-1/2 items listed above;
-the final-head combined validation (`008eb81c`) is green locally. **Ready for
-publication.** A clean full-release validation run is blocked only by the named
-prerequisites: the ws-080 image build and re-pin, golden publication, the
-Stage 040 gateway fix and a fresh isolation receipt. Nothing here is live-validated.
+**Code qualified; ready for the release agent's image build and publication** from
+commit `5280670b`. Not launch-ready until the image is built and pinned, the golden
+and platform are published and read back, the Stage 040 gateway is observed stable
+and the bounded preflight passes. Nothing here is live-validated.
 
 ## Objective and comparison baseline
 
