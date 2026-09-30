@@ -106,6 +106,11 @@ def planned_case() -> int:
     gen = by_rule(doc, "generator-configuration")[0]
     if gen["status"] != "applicable" or len(gen["consumers"]) != 2:
         return _fail("the generator must be planned with its two consuming handlers: %s" % gen["consumers"])
+    gname = gen["facts"]["generator"]
+    grow = (((json.loads((Path(__file__).resolve().parents[2] / "planning/catalogs/compat-mapping.json").read_text())["build_plugins"]
+              ["org.openapitools:openapi-generator-maven-plugin"]["generators"]).get(gname)) or {})
+    if ("src/main/openapi-templates/beanValidation.mustache" in gen["paths"]) != bool(grow.get("required_read_only")):
+        return _fail("the generator's grant names the required-readOnly template iff its catalog row carries that action: %s" % gen["paths"])
     if not all(gen["id"] in r["dependencies"] for r in val):
         return _fail("generated models come before their consumers")
     repo = by_rule(doc, "repository-architecture")[0]

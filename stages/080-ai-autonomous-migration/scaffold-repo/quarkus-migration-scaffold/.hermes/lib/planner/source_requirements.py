@@ -114,6 +114,11 @@ def recipes_of(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(k): dict(v) for k, v in block.items() if k != "note" and isinstance(v, dict) and v.get("rule")}
 
 
+def _template_file() -> str:
+    from planner.static_triggers import TEMPLATE_FILE
+    return TEMPLATE_FILE
+
+
 def _recipe_for(recipes: dict[str, dict[str, Any]], rule: str, key: str = "") -> dict[str, Any] | None:
     hits = sorted((rid_, r) for rid_, r in recipes.items() if r.get("rule") == rule and (not key or key in (r.get("applies_to") or [key])))
     if not hits:
@@ -497,7 +502,10 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
                         + ([{"artifact": _s(((generator_facts or {}).get("qualification") or {}).get("source", {}).get("build_file")),
                              "selector": "build.plugins[%s].configuration" % ga}]
                            if _s(((generator_facts or {}).get("qualification") or {}).get("source", {}).get("build_file")) else []),
-                        paths=["pom.xml"], recipe=rec, consumers=consumers,
+                        # the required-readOnly action restores @NotNull through a build-owned
+                        # template (static_triggers.TEMPLATE_FILE); an outcome-board grant must name it
+                        paths=["pom.xml"] + ([_template_file()] if ((row.get("generators") or {}).get(gname) or {}).get("required_read_only") else []),
+                        recipe=rec, consumers=consumers,
                         acceptance=acceptance, unknowns=unk, facts=facts))
     else:
         out.append(_req("generator-configuration", "*", NOT_APPLICABLE, evidence=[{"artifact": "pom.xml", "selector": "build.plugins"}],
