@@ -411,6 +411,35 @@ public final class DestModel {
                         List<Map<String, Object>> expansions = m.getBody() == null ? List.of()
                                 : uriExpansions(task, trees, unit, new TreePath(mp, m.getBody()), m);
                         if (!expansions.isEmpty()) { mrow.put("uri_expansions", expansions); }
+                        // ADR-025 follow-up: the exception types the body CATCHES, as the
+                        // compiler resolved them (an absent-row translation may catch
+                        // NoResultException), and whether the member is private (an
+                        // interceptor binding such as @Transactional never applies there).
+                        // Written only when present, so every other row is unchanged.
+                        if (m.getBody() != null) {
+                            final List<String> caught = new ArrayList<>();
+                            final TreePath bodyPath = new TreePath(mp, m.getBody());
+                            new TreePathScanner<Void, Void>() {
+                                @Override public Void visitClass(ClassTree n, Void v) { return null; }
+                                @Override public Void visitCatch(com.sun.source.tree.CatchTree c, Void v) {
+                                    TypeMirror ct = trees.getTypeMirror(new TreePath(getCurrentPath(), c.getParameter()));
+                                    if (ct == null || ct.getKind() == TypeKind.ERROR) {
+                                        caught.add("?");
+                                    } else if (ct.getKind() == TypeKind.UNION) {
+                                        for (TypeMirror alt : ((javax.lang.model.type.UnionType) ct).getAlternatives()) {
+                                            caught.add(alt.getKind() == TypeKind.ERROR ? "?" : alt.toString());
+                                        }
+                                    } else {
+                                        caught.add(ct.toString());
+                                    }
+                                    return super.visitCatch(c, v);
+                                }
+                            }.scan(bodyPath, null);
+                            if (!caught.isEmpty()) { mrow.put("catches", caught); }
+                        }
+                        if (m.getModifiers().getFlags().contains(javax.lang.model.element.Modifier.PRIVATE)) {
+                            mrow.put("private", true);
+                        }
                         declared.add(mrow);
                     }
                     row.put("declared", declared);
