@@ -310,9 +310,12 @@ def main(argv: list[str] | None = None) -> int:
             out = NC.handoff(root, board, task_id=task)
         elif ns.cmd == "void-rejects":
             by = (os.environ.get("HERMES_PROFILE") or "").strip().lower()
+            before = NC.effective_budget(board, ns.task or task)
             out = {"voided": NC.void_rejects(board, task_id=ns.task or task, keys=ns.key, reason=ns.reason, by=by)}
             # a deferral the voided rejections caused goes with them, and only if the budget recovered
             out["deferrals"] = NC.reconcile_deferrals(root, board, task_id=ns.task or task, by=by, reason=ns.reason)
+            # V29-1: the effective spend and the allowance the published limit leaves, before and after
+            out["budget"] = {"before": before, "after": NC.effective_budget(board, ns.task or task)}
         elif ns.cmd == "reconcile-deferrals":
             out = NC.reconcile_deferrals(root, board, task_id=ns.task or task, reason=ns.reason,
                                          by=(os.environ.get("HERMES_PROFILE") or "").strip().lower())

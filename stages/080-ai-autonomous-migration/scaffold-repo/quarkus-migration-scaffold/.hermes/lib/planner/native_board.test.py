@@ -1525,6 +1525,102 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual(p.read_text(), self.new_projection(tid, run))                   # ... after putting it back
         self.assertNotEqual(p.read_bytes(), body)
 
+    def test_void_and_reconcile_conserve_the_account_and_agree_with_admission(self):
+        """V29-1: an authorized void lifts only its now-invalid exhaustion hold; an unrelated blocker that merely
+        names the key stays; repetition and a crash between the void and the reconciliation are idempotent (no
+        double credit, no extra allowance, no mint); the effective spend and allowance are reported; the same card
+        is issued the lifted cluster again."""
+        from planner.paths import LOOP_DEFERRED, LOOP_STEPS
+        r = self.r
+        tid, _run, iss, key, limit, p = self.exhaust()
+        doc = json.loads(p.read_text())
+        doc["clusters"].append("c:held")
+        doc["reasons"]["c:held"] = "Operator hold against %s: the pom waits on a platform decision" % key
+        p.write_text(json.dumps(doc))
+        r.board.record(tid, "issue", "issue:held", run=0, cluster="c:held", allowed_paths=[])   # the card was issued it
+        steps = r.root / LOOP_STEPS
+        steps.parent.mkdir(parents=True, exist_ok=True)
+        steps.write_text(json.dumps({"steps": [], "attempts": {key: limit}}))
+        steps_bytes = steps.read_bytes()
+        creates = len([c for c in r.native.calls if c[0] == "create"])
+        before = NC.effective_budget(r.board, tid)
+        self.assertEqual((before["spent"], before["remaining"], before["exhausted"]), (limit, 0, True))
+        keys = [x["key"] for x in r.board.records(tid, "reject")]
+        # interrupted: the void landed, the reconciliation never ran
+        self.assertEqual(len(NC.void_rejects(r.board, task_id=tid, keys=keys, reason="harness", by="operator")), limit)
+        self.assertIn(iss["cluster"], json.loads(p.read_text())["clusters"])
+        # the repeat of the whole Operator step: nothing is credited twice
+        self.assertEqual(NC.void_rejects(r.board, task_id=tid, keys=keys, reason="harness", by="operator"), [])
+        got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="harness")
+        self.assertEqual(got["lifted"], [iss["cluster"]])
+        self.assertEqual([k["cluster"] for k in got["kept"]], ["c:held"])                 # the unrelated blocker stays
+        eff = got["effective"]
+        self.assertEqual(eff["before"], eff["after"])                                     # reconciling moves no budget
+        self.assertEqual((eff["after"]["spent"], eff["after"]["remaining"], eff["after"]["limit"], eff["after"]["voided"]),
+                         (0, limit, limit, limit))
+        doc = json.loads(p.read_text())
+        self.assertEqual(sorted(doc["clusters"]), ["c:held", "c:other"])
+        again = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="harness")
+        self.assertEqual((again["lifted"], again["effective"]["after"]), ([], eff["after"]))
+        self.assertEqual(len(r.board.records(tid, "deferral-lifted")), 1)
+        self.assertEqual(steps.read_bytes(), steps_bytes)                                 # no legacy allowance
+        self.assertEqual(len([c for c in r.native.calls if c[0] == "create"]), creates)   # nothing minted
+        self.assertEqual(len(r.board.records(tid, "reject")), limit)                      # rejections conserved
+        # the same native card is issued the lifted cluster again, spending from the restored account
+        run2, lock2 = r.native.claim(tid)
+        nxt = NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)
+        self.assertEqual((nxt["cluster"], nxt["budget"]["spent"]), (iss["cluster"], 0))
+
+    def test_a_stale_work_list_naming_a_lifted_cluster_is_resealed(self):
+        from planner import pipeline, worklist as W
+        from planner.paths import ADMISSION_RECEIPT
+        r = self.r
+        tid, _run, iss, _key, _limit, _p = self.exhaust()
+        seal = r.root / ADMISSION_RECEIPT
+        seal.parent.mkdir(parents=True, exist_ok=True)
+        seal.write_text(json.dumps({"status": "ADMITTED", "blocks": []}))
+        r.worklist["deferred"] = [iss["cluster"]]                                        # sealed before the lift
+        r.save_worklist()
+        calls = []
+        orig = (pipeline.admit, W.build_worklist)
+        pipeline.admit, W.build_worklist = (lambda root, **k: calls.append("admit") or {"status": "ADMITTED"}), \
+            (lambda root, **k: calls.append("build"))
+        try:
+            NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="h",
+                            by="operator")
+            NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+        finally:
+            pipeline.admit, W.build_worklist = orig
+        self.assertEqual(calls, ["build", "admit"])
+
+    def test_a_sibling_in_the_same_budget_family_is_reconciled_with_it(self):
+        from planner.paths import LOOP_DEFERRED
+        r = self.r
+        tid, _run, iss, key, limit, p = self.exhaust()
+        sib_tid, sib_run, sib = r.issue("config:rk:cfg")
+        r.native.end_run(sib_tid, "blocked", "needs_input")
+        doc = json.loads(p.read_text())
+        doc["clusters"].append(sib["cluster"])
+        doc["reasons"][sib["cluster"]] = "%d of %d attempt(s) spent against %s; last: red" % (limit, limit, key)
+        p.write_text(json.dumps(doc))
+        plan_of = r.board.plan
+
+        def shared(run_id):
+            plan = copy.deepcopy(plan_of(run_id))
+            for n in plan["nodes"]:
+                if n["outcome_id"] == "config:rk:cfg":
+                    n["budget"] = dict(n["budget"], key=key)                                # one family, one account
+            return plan
+        r.board.plan = shared
+        try:
+            NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="h",
+                            by="operator")
+            got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+        finally:
+            r.board.plan = plan_of
+        self.assertEqual(sorted(got["lifted"]), sorted([iss["cluster"], sib["cluster"]]))
+        self.assertEqual(json.loads(p.read_text())["clusters"], ["c:other"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

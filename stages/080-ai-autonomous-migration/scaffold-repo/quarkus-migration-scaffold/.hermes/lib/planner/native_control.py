@@ -2122,18 +2122,40 @@ def retire_issuance(root: Path, board: Board, *, by: str, reason: str) -> dict[s
                   "expired projection %s); re-check before retiring again" % (changed, rel.as_posix(), rec["key"], digest[:12]))
 
 
+EXHAUSTION_REASON = re.compile(r"^(\d+) of (\d+) attempt\(s\) spent against (\S+); last: ")
+
+
+def effective_budget(board: Board, task_id: str) -> dict[str, Any]:
+    """The family budget of a repair card as the native account holds it:
+    spent excludes voided rejections; remaining is what the published limit
+    still allows. Read-only; the limit is never changed here."""
+    _role, run, _oid, plan, node = node_context(board, task_id)
+    b = budget_state(board, run, plan, node)
+    tasks = board.run_tasks(run)
+    voided = sum(len(board.records(tasks[n["outcome_id"]]["id"], "reject-voided")) for n in plan.get("nodes") or []
+                 if b["key"] and n.get("role") == "repair" and str((n.get("budget") or {}).get("key") or "") == b["key"]
+                 and n["outcome_id"] in tasks)
+    return {"key": b["key"], "limit": int(b["limit"]), "spent": int(b["spent"]), "voided": voided,
+            "remaining": max(0, int(b["limit"]) - int(b["spent"])), "exhausted": bool(b["exhausted"])}
+
+
 def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reason: str) -> dict[str, Any]:
     """Lift a deferral this card's family BUDGET caused once that budget, as
     effectively spent (voided rejections excluded), is no longer exhausted.
 
     v29 I-10: voiding the three rejections a harness defect caused restored the
     allowance but left verification/loop/deferred.json holding the cluster, so
-    the card was issued a cluster that could not pass. Only a deferral whose
-    reason names this card's budget key and whose cluster this card was issued
-    is considered; a budget still exhausted keeps it. The limit, the rejection
-    records, the legacy attempt allowance (steps.json) and every other
-    deferral are untouched, nothing is minted, and a second call finds nothing
-    left to lift (the record key is the cluster and the reason's digest)."""
+    the card was issued a cluster that could not pass. Only an EXHAUSTION
+    deferral is considered -- its reason is exactly the loop's own
+    "N of L attempt(s) spent against <this family's key>; last: ..." (V29-1:
+    any other blocker that merely mentions the key stays) -- for a cluster a
+    card of this budget family was issued; a budget still exhausted keeps it.
+    The limit, the rejection records, the legacy attempt allowance (steps.json)
+    and every other deferral are untouched, nothing is minted, and a second
+    call finds nothing left to lift (the record key is the cluster and the
+    reason's digest; the record precedes the write, so a crash in between
+    re-runs to the same record). The effective spend and allowance are
+    reported: a reconciliation never moves them."""
     from planner.canonical import load_json, write_canonical
     from planner.paths import LOOP_DEFERRED
     if by != "operator":
@@ -2141,17 +2163,25 @@ def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reas
     role, run, oid, plan, node = node_context(board, task_id)
     if role != "repair":
         raise Refusal("RECONCILE_ROLE", "%s is a %s card; only repair cards carry a family budget" % (task_id, role))
+    before = effective_budget(board, task_id)
     b = budget_state(board, run, plan, node)
     p = Path(root) / LOOP_DEFERRED
     doc = load_json(p) if p.is_file() else {"schema": "rhoai3.loop-deferred/v1", "clusters": [], "reasons": {}}
     reasons = dict(doc.get("reasons") or {})
-    issued = {str(r.get("cluster") or "") for r in board.records(task_id, "issue")}
+    tasks = board.run_tasks(run)
+    family = [tasks[n["outcome_id"]]["id"] for n in plan.get("nodes") or []
+              if n.get("role") == "repair" and b["key"] and str((n.get("budget") or {}).get("key") or "") == b["key"]
+              and n["outcome_id"] in tasks]
+    issued = {str(r.get("cluster") or "") for t in (family or [task_id]) for r in board.records(t, "issue")}
     lifted: list[str] = []
     kept: list[dict[str, str]] = []
     for c in list(doc.get("clusters") or []):
         why = str(reasons.get(c) or "")
-        if c not in issued or not b["key"] or ("against %s" % b["key"]) not in why:
-            continue          # not a deferral this card's budget caused
+        m = EXHAUSTION_REASON.match(why)
+        if c not in issued or not b["key"] or not m or m.group(3) != b["key"]:
+            if c in issued and b["key"] and b["key"] in why:
+                kept.append({"cluster": c, "why": "not a budget exhaustion of %s: %s" % (b["key"], why[:160])})
+            continue          # not a deferral this family's budget caused
         if b["exhausted"]:
             kept.append({"cluster": c, "why": "%s is still exhausted (%d of %d)" % (b["key"], b["spent"], b["limit"])})
             continue
@@ -2163,25 +2193,33 @@ def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reas
         doc["clusters"] = [c for c in doc.get("clusters") or [] if c not in lifted]
         doc["reasons"] = {k: v for k, v in reasons.items() if k not in lifted}
         write_canonical(p, doc)
+    after = effective_budget(board, task_id)
     return {"lifted": lifted, "kept": kept, "budget": {k: b[k] for k in ("key", "spent", "limit", "exhausted")},
+            "effective": {"before": before, "after": after},
             "admission": _readmit_if_stale(root, set(doc.get("clusters") or []))}
 
 
 def _readmit_if_stale(root: Path, deferred: set[str]) -> str:
-    """The admission seal still blocking on a cluster that is no longer deferred
-    is stale (v29 I-11: the lifted cluster kept MANUAL_CLUSTER, the parity
-    composer refused a receipt against it, and the sweep wrote INCONCLUSIVE over
-    every FAIL). Rebuild the work list and re-seal, as the loop does after any
-    disposition; nothing is minted. Checked on every call, so an interrupted
-    reconciliation re-seals on the repeat."""
+    """The admission seal (or the sealed work list) still naming a cluster that
+    is no longer deferred is stale (v29 I-11: the lifted cluster kept
+    MANUAL_CLUSTER, the parity composer refused a receipt against it, and the
+    sweep wrote INCONCLUSIVE over every FAIL). Rebuild the work list and
+    re-seal, as the loop does after any disposition; nothing is minted.
+    Checked on every call, so an interrupted reconciliation re-seals on the
+    repeat."""
     from planner.canonical import load_json
-    from planner.paths import ADMISSION_RECEIPT
+    from planner.paths import ADMISSION_RECEIPT, WORKLIST
     p = Path(root) / ADMISSION_RECEIPT
     if not p.is_file():
         return "no admission receipt"
     rec = load_json(p)
     stale = [b for b in rec.get("blocks") or [] if b.get("class") == "MANUAL_CLUSTER" and b.get("subject") not in deferred]
-    if not stale:
+    wl = Path(root) / WORKLIST
+    try:
+        listed = set((load_json(wl).get("deferred") or []) if wl.is_file() else [])
+    except (OSError, ValueError):
+        listed = set()
+    if not stale and not (listed - set(deferred)):
         return str(rec.get("status") or "")
     from planner import pipeline
     from planner.worklist import build_worklist
