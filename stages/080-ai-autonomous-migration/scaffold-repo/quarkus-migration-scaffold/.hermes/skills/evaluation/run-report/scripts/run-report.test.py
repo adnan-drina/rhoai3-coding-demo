@@ -772,6 +772,118 @@ class RunReportTest(unittest.TestCase):
         ast.parse(Path(__file__).read_text(encoding="utf-8"), feature_version=(3, 9))
 
 
+class EndToEnd(unittest.TestCase):
+    """M-6 exit fixtures: the end-to-end state is the headline; task activity follows."""
+
+    TREE = "d" * 64
+
+    def _plan(self, root: Path) -> Path:
+        """Two repository objectives of one family and recipe, one behavior outcome, one unresolved
+        verification group over two entry points: neutral names, the admitted-plan shape."""
+        def repo(n):
+            return {"outcome_id": "objective:selected-repository-implementation:%s" % n, "role": "repair", "class": "source",
+                    "recipes": ["fragment-impl@1"], "objective": {"family": "selected-repository-implementation"},
+                    "plan_paths": ["src/main/java/a/repo/%sStoreImpl.java" % n, "src/main/java/a/repo/Data%sStore.java" % n]}
+        eps = ["ep:a.web.ItemsResource#create(a.Item):http", "ep:a.web.ItemsResource#update(int,a.Item):http"]
+        doc = {"schema": "rhoai3.native-plan/v1", "revision": 1, "plan": {
+            "digest": "p" * 64, "run_id": "run-x", "policy": "compatibility-objectives/v1",
+            "nodes": [repo("A"), repo("B"), {"outcome_id": "behavior:http:a.web.ItemsResource", "role": "repair", "class": "behavior"},
+                      {"outcome_id": "assess:m4:g1", "role": "assess", "class": "assess"}],
+            "requirements": [{"id": "req:behavior-verification:%s" % e, "rule": "behavior-verification/v1", "status": "unresolved", "subject": e} for e in eps],
+            "unresolved": [{"id": "unresolved:verification:http:a.web.ItemsResource", "kind": "verification-responsibility", "blocks": "ship",
+                            "entry_points": eps, "requirements": ["req:behavior-verification:%s" % e for e in eps],
+                            "reason": "no captured oracle for 2 http entry point(s)"}]}}
+        p = root.parent / "plan.r1.json"
+        p.write_text(json.dumps(doc), encoding="utf-8")
+        return p
+
+    def _measured(self, root: Path) -> None:
+        """compile 0, package and boot pass, measure [0,0,0], an EMPTY work list, all bound to one tree."""
+        wl = load_json(root / "evidence/planning/worklist.json")
+        wl.update(items=[], clusters=[], deferred=[], candidate_sha256=self.TREE,
+                  measure={"known": True, "compile_errors": 0, "failing_tests": 0, "mandatory_incidents": 0, "parity_mismatches": 0, "blocked": []})
+        _w(root, "evidence/planning/worklist.json", wl)
+        _w(root, "verification/build/run.json", {"mode": "acceptance", "candidate_sha256": self.TREE, "classpath": {"ran": True, "rc": 0},
+                                                 "diagnostics": {"ran": True}, "tests": {"ran": True, "rc": 0}})
+        _w(root, "verification/loop/state.json", {"schema": "rhoai3.loop-state/v1", "measure": {"known": True, "tuple": [0, 0, 0]},
+                                                  "head": "c:srv", "open_clusters": 0, "deferred": []})
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+
+    def test_v29_false_green_is_runtime_behavior_unresolved_and_measurement_invalid(self):
+        """I-11 continued: the seal still blocks on the lifted cluster, the sweep rewrote every verdict
+        INCONCLUSIVE over its recorded FAIL, the work list came back empty at [0,0,0]."""
+        root = prepared("http", "org.acme.clinic")
+        self._measured(root)
+        adm = load_json(root / "evidence/planning/admission-receipt.json")
+        adm.update(status="INCONCLUSIVE", blocks=[{"class": "MANUAL_CLUSTER", "subject": "c:srv", "detail": "cluster deferred after the attempt threshold"}])
+        _w(root, "evidence/planning/admission-receipt.json", adm)
+        _w(root, "verification/loop/deferred.json", {"schema": "rhoai3.loop-deferred/v1", "clusters": [], "reasons": {}})
+        steps = load_json(root / "verification/loop/steps.json")
+        steps["rejected"] = [{"cluster": "c:srv", "card": "t_x", "reason": "sc:read-a answered 500 (StackOverflowError)", "measure": None, "changed": []}]
+        _w(root, "verification/loop/steps.json", steps)
+        loop = [{"class": "a.repo.AStoreImpl", "method": "find"}, {"class": "a.repo.DataAStore", "method": "find"}] * 3
+        loop_b = [{"class": "a.repo.BStoreImpl", "method": "find"}, {"class": "a.repo.DataBStore", "method": "find"}] * 3
+        for sid, fr in (("sc:read-a", loop), ("sc:read-b", loop_b)):
+            slug = sid.replace(":", "_")
+            _w(root, "verification/parity/scenarios/%s.json" % slug, {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": "INCONCLUSIVE",
+                                                                      "reason": "receipt not authoritative: status INCONCLUSIVE", "binding": {"mode": "sealed"}})
+            _w(root, "verification/loop/accepted/parity/scenarios/%s.json" % slug, {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "verdict": "FAIL",
+                                                                                    "server_error": {"exception": "java.lang.StackOverflowError", "frames": fr}})
+        proc, rep, _ = _run(root, "--plan", str(self._plan(root)))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        e = rep["end_to_end"]
+        self.assertEqual(e["state"], "runtime behavior unresolved; measurement invalid")
+        self.assertEqual(rep["completion_map"]["measurement"]["worklist_empty"], True)
+        self.assertEqual(e["last_demonstrated_milestone"], "target-structurally-viable")
+        self.assertEqual(e["oldest_unresolved_cause"]["cluster"], "c:srv")
+        self.assertEqual(e["release_verdict"]["ship"], False)
+        self.assertEqual(e["missing_oracles"]["open"], 2)
+        self.assertEqual(len(e["causal_groups"]["groups"]), 1)
+        self.assertEqual(len(e["causal_groups"]["groups"][0]["checks"]), 2)
+        self.assertIsNone(e["cost"]["model_requests_and_tokens"]["value"])
+        out = proc.stdout
+        self.assertLess(out.index("## End-to-end state"), out.index("Classification:"))     # the headline first, activity after
+        self.assertIn("**runtime behavior unresolved; measurement invalid**", out)
+        self.assertIn("completed-card percentages are not migration percentages", out)
+
+    def test_assisted_deployment_with_qualifications_shows_its_url_and_ship_false(self):
+        """v10-like: deployed through the pipeline, live checks passed, M5 INCONCLUSIVE."""
+        root = prepared("http", "org.acme.clinic")
+        self._measured(root)
+        url = "https://app.example.test"
+        cand = "c" * 40
+        digest = "sha256:" + "e" * 64
+        _w(root, "verification/delivery/candidate.json", {"schema": "rhoai3.m5-candidate/v1", "ok": True, "candidate_sha": cand})
+        _w(root, "verification/delivery/pipeline.json", {"schema": "rhoai3.m5-pipeline/v1", "ok": True, "candidate_sha": cand, "pipeline_run": "app-build-x1",
+                                                         "image_digest": digest, "succeeded": True})
+        _w(root, "verification/delivery/deployment.json", {"schema": "rhoai3.m5-deployment/v1", "ok": True, "candidate_sha": cand, "route_url": url,
+                                                           "image_digest": digest, "deployed_image": "registry.example.test/app@" + digest})
+        _w(root, "verification/delivery/live.json", {"schema": "rhoai3.m5-live/v1", "ok": True, "issues": []})
+        _w(root, "evidence/verdicts/m5-verdict.json", {"schema": "rhoai3.m5-verdict/v1", "verdict": "INCONCLUSIVE", "ship": False, "routing": "blocked",
+                                                       "reason": "deployed and live-checked; outstanding release qualifications remain",
+                                                       "candidate_sha": cand, "pipeline_run": "app-build-x1", "image_digest": digest,
+                                                       "deployed_image": "registry.example.test/app@" + digest, "route_url": url,
+                                                       "deployment_status": "deployed", "live_ok": True, "stale_evidence": [],
+                                                       "outstanding": [{"kind": "plan-unresolved", "id": "unresolved:verification:http:a.web.ItemsResource", "count": 2}]})
+        proc, rep, _ = _run(root, "--plan", str(self._plan(root)))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        e = rep["end_to_end"]
+        self.assertEqual(e["state"], "deployed at %s; not released (M5 INCONCLUSIVE, ship=false)" % url)
+        self.assertEqual(e["release_verdict"], {"phase": "M5", "verdict": "INCONCLUSIVE", "ship": False, "url": url})
+        self.assertEqual(e["acceptance_levels"]["deployed_application"], {"state": "demonstrated", "url": url})
+        self.assertEqual(e["acceptance_levels"]["full_release"], "not-demonstrated")
+        self.assertEqual((e["delivery_chain"]["pipeline_run"], e["delivery_chain"]["image_digest"]), ("app-build-x1", digest))
+        self.assertEqual(e["missing_oracles"]["open"], 2)                                      # delivery never closes a missing oracle
+        self.assertIn("-> PipelineRun app-build-x1 -> image sha256:eeeeeeeeeeee -> %s -> live ok -> M5 INCONCLUSIVE ship=false" % url, proc.stdout)
+
+    def test_the_default_plan_is_the_frozen_admitted_plan_or_unknown(self):
+        root = prepared("http", "org.acme.clinic")
+        proc, rep, _ = _run(root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        s = rep["completion_map"]["release_blocker_summary"]
+        self.assertTrue(s["known"] or "unknown" in s["reason"])
+
+
 class ParallelPilot(unittest.TestCase):
     """PARALLEL-M3-PILOT.md: the pair, the overlap of its workers and both integrations, from a board copy."""
 

@@ -394,6 +394,9 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(block, indent=2, sort_keys=True))
     print("Hand these keys off verbatim in the review request's metadata (facts, factual_summary%s); explain in "
           "summary, never contradict." % (", unresolved" if args.phase == "m2" else ""), file=sys.stderr)
+    if args.phase == "m2":
+        print("Completion map (read-only view; owner and exit per unresolved entry point): python3 "
+              ".hermes/lib/completion_map.py --root %s --plan <the plan.r<N>.json counted above>" % root, file=sys.stderr)
     return 0
 
 

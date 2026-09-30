@@ -8,13 +8,15 @@ description: >
   interventions, cost, final state, the comparable contract and the
   classification. Use when comparing runs (a repeatability run against an
   earlier run or an isolated experiment), even if the user only asks "how
-  did the run go". Reads only what is recorded; never starts, mints, edits
-  or re-measures anything. Not a gate and not an M4 floor.
+  did the run go". The headline is the end-to-end state (M-6) from the
+  completion map (M-1); task activity follows. Reads only what is recorded;
+  never starts, mints, edits or re-measures anything. Not a gate and not an
+  M4 floor.
 license: Apache-2.0
 compatibility: Python 3.9+ stdlib; git (optional); no Hermes calls
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.0"
+  version: "1.2.0"
   hermes:
     tags:
     - evaluation
@@ -40,10 +42,41 @@ python3 "${HERMES_SKILL_DIR}/scripts/run-report.py" --root /projects/modernized 
   [--budget <file>]                 # budget + stopping conditions declared before launch
   [--git-log <file>]                # git log --format='%H %ct %s', for a replica without history
   [--compare LABEL=<run-report.json>]   # repeatable
+  [--plan plan.r<N>.json]           # repeatable; default the frozen evidence/planning/plan-semantics.json
   [--out <file>]                    # default evidence/reports/run-report.json
 ```
 
 Markdown goes to stdout; the JSON (`rhoai3.run-report/v1`) to `--out`.
+
+## Headline: end-to-end state
+
+`## End-to-end state` comes first; everything after it is supporting task
+activity. It is `lib/completion_map.py` (JSON: `completion_map`,
+`end_to_end`), a derived view that grants, admits and accepts nothing:
+
+- **state**: e.g. `runtime behavior unresolved; measurement invalid`, or
+  `deployed at <url>; not released (M5 INCONCLUSIVE, ship=false)`.
+- **last demonstrated milestone** of source understood → target structurally
+  viable → persistence and one HTTP path → application behavior preserved →
+  delivered and usable, each `demonstrated` / `not-demonstrated` / `unknown`
+  from checks and measurements, never from card completion; plus functional,
+  delivery, full release and repeatability.
+- **current candidate**, **next missing prerequisite**, **oldest unresolved
+  cause**, **release verdict** (M5 through `lib/m5_delivery.py` records:
+  candidate → PipelineRun → image digest → deployment → live → verdict).
+- **release blockers**: one row per unresolved entry point of the admitted
+  plan (and per source qualification FAIL) with owner, prerequisites and
+  exit. Only the M4-bound parity evidence closes one; an empty work list, a
+  zero measure or a finished card never does; no plan read is `unknown`.
+- **measurement**: invalid under a stale or blocked admission seal,
+  comparator-refused verdicts, or INCONCLUSIVE over a recorded FAIL.
+- **causal groups** only where records prove a shared producer (same
+  exception, recursion in the recorded frames, one plan family and recipe);
+  every affected check is kept.
+- cost: model requests/tokens stay unknown unless a ledger reports them.
+  Completed-card percentages are not migration percentages.
+
+Standalone (read-only): `python3 .hermes/lib/completion_map.py --root . [--plan plan.r1.json] [--json]`.
 
 ## What it reads
 
@@ -82,4 +115,4 @@ read. Harness installs never change the class.
   refuses a git history that belongs to an enclosing repository.
 - Specimen-agnostic: no application name, package or path is in the script;
   `run-report.test.py` builds two specimens and compares their shapes.
-- Tests: `python3 scripts/run-report.test.py`.
+- Tests: `python3 scripts/run-report.test.py`; `python3 .hermes/lib/completion_map.test.py`.
