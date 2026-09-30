@@ -6,7 +6,8 @@ then each artifact's POM from the local Maven repository, walking <parent>
 until a <licenses> block is found. Prints JSON rows {gav, scope, licenses,
 pom}; --check refuses (exit 1) when a runtime artifact has no declared license
 or a license outside the permissive allow-list, or when a Moderne
-source-available / proprietary license is named. Harness tooling only.
+source-available / proprietary license is named. Test-scope artifacts (JUnit:
+EPL-2.0) are reported, never shipped, and are not refused. Harness tooling only.
 """
 from __future__ import annotations
 
@@ -44,6 +45,8 @@ def normalize(name: str, url: str) -> str:
         return "CC0-1.0"
     if re.search(r"public domain", s, re.I):
         return "Public-Domain"
+    if re.search(r"Eclipse Public License.*2|EPL-2", s, re.I):
+        return "EPL-2.0"
     if re.search(r"LGPL|Lesser General", s, re.I):
         return "LGPL"
     return "UNKNOWN:" + name

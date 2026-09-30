@@ -1,0 +1,53 @@
+typed-repair 1.0.0 -- Stage 080 harness executor (rhoai3-coding-demo). Harness tooling only; never a
+dependency of a migrated application.
+
+This jar bundles the following third-party components, each under its own license as declared in its
+Maven POM (verified by scripts/license-inventory.py --check at build time). Their original NOTICE files
+are merged into META-INF/NOTICE and their LICENSE files appended into META-INF/LICENSE of this jar.
+No OpenRewrite recipe bundle (rewrite-spring, rewrite-quarkus, rewrite-migrate-java) and no Moderne
+source-available or proprietary artifact is included.
+
+Directly reused (OpenRewrite, https://github.com/openrewrite/rewrite):
+  org.openrewrite:rewrite-core:8.89.0                          Apache-2.0
+  org.openrewrite:rewrite-java-21:8.89.0                       Apache-2.0
+  org.openrewrite:rewrite-java:8.89.0                          Apache-2.0
+  org.openrewrite:rewrite-properties:8.89.0                    Apache-2.0
+  org.openrewrite:rewrite-xml:8.89.0                           Apache-2.0
+  org.openrewrite:rewrite-yaml:8.89.0                          Apache-2.0
+
+Transitive runtime dependencies:
+  com.fasterxml.jackson.core:jackson-annotations:2.21          Apache-2.0
+  com.fasterxml.jackson.core:jackson-core:2.21.5               Apache-2.0
+  com.fasterxml.jackson.core:jackson-databind:2.21.5           Apache-2.0
+  com.fasterxml.jackson.dataformat:jackson-dataformat-smile:2.21.5 Apache-2.0
+  com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.21.5 Apache-2.0
+  com.fasterxml.jackson.module:jackson-module-parameter-names:2.21.5 Apache-2.0
+  com.github.ben-manes.caffeine:caffeine:2.9.3                 Apache-2.0
+  com.google.errorprone:error_prone_annotations:2.10.0         Apache-2.0
+  com.googlecode.javaewah:JavaEWAH:1.1.13                      Apache-2.0
+  com.univocity:univocity-parsers:2.9.1                        Apache-2.0
+  io.github.classgraph:classgraph:4.8.190                      MIT
+  io.micrometer:micrometer-core:1.9.17                         Apache-2.0
+  io.quarkus.gizmo:gizmo:1.0.11.Final                          Apache-2.0
+  org.antlr:antlr4-runtime:4.13.2                              BSD-3-Clause
+  org.apache.commons:commons-lang3:3.20.0                      Apache-2.0
+  org.apache.commons:commons-text:1.15.0                       Apache-2.0
+  org.checkerframework:checker-qual:3.19.0                     MIT
+  org.hdrhistogram:HdrHistogram:2.1.12                         BSD-2-Clause
+  org.jboss:jandex:2.4.2.Final                                 Apache-2.0
+  org.jetbrains:annotations:26.1.0                             Apache-2.0
+  org.jspecify:jspecify:1.0.1                                  Apache-2.0
+  org.latencyutils:LatencyUtils:2.0.3                          CC0-1.0
+  org.objenesis:objenesis:3.6                                  Apache-2.0
+  org.openrewrite.tools:java-object-diff:1.0.1                 Apache-2.0
+  org.openrewrite.tools:jgit:1.5.0                             Apache-2.0
+  org.ow2.asm:asm-analysis:9.10.1                              BSD-3-Clause
+  org.ow2.asm:asm-tree:9.10.1                                  BSD-3-Clause
+  org.ow2.asm:asm-util:9.10.1                                  BSD-3-Clause
+  org.ow2.asm:asm:9.10.1                                       BSD-3-Clause
+  org.slf4j:slf4j-api:1.7.36                                   MIT
+  org.slf4j:slf4j-nop:1.7.36                                   MIT
+  org.yaml:snakeyaml:2.6                                       Apache-2.0
+
+org.openrewrite.tools:jgit is OpenRewrite's repackaging of Eclipse JGit; its POM declares Apache-2.0,
+and Eclipse JGit itself is distributed under the Eclipse Distribution License 1.0 (BSD-3-Clause).
