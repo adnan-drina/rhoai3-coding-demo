@@ -145,7 +145,8 @@ def _mode_record(root: Path, sid: str, mode: str) -> dict[str, Any]:
 
 def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[str, Any], scenarios: list[str],
             model: dict[str, Any] | None = None, tree: str = "", receipts: dict[str, dict[str, Any]] | None = None,
-            diagnostics: dict[str, Any] | None = None, scenario_modes: dict[str, str] | None = None) -> dict[str, dict[str, str]]:
+            diagnostics: dict[str, Any] | None = None, scenario_modes: dict[str, str] | None = None,
+            governed: bool = False) -> dict[str, dict[str, str]]:
     """{check: {"status": pass|fail|unknown, "detail"}} for every check the
     given requirements name, on the tree `worklist` measures. `scenarios` are
     the parity scenarios this measurement ran; `model` the destination model
@@ -161,6 +162,8 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
     from planner.paths import PARITY_DIR
     from planner.worklist import _sid, parity_state, scenario_record
     ran = {_sid(s) for s in scenarios or []}
+    # governed (a planned verification): the ISSUED assignment is the authority and nothing falls back to
+    # either mode's evidence; otherwise the bound corpora say which mode a scenario belongs to
     expected_mode = {_sid(k): v for k, v in (scenario_modes if scenario_modes is not None
                                              else corpus_scenario_modes(root)).items()}
     open_sc = {_sid(s) for s in _open_scenarios(worklist)}
@@ -200,6 +203,8 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
             rec = _mode_record(Path(root), sid, mode) if root is not None else {}
             if rec and str(rec.get("security_mode") or mode) != mode:
                 return UNKNOWN, "scenario %s's record was taken in %s mode, not %s" % (sid, rec.get("security_mode"), mode)
+        elif governed:
+            return UNKNOWN, "scenario %s is not in the issued verification scope" % sid
         else:
             rec = scenario_record(Path(root) / PARITY_DIR, sid) if root is not None else {}
         verdict = str(rec.get("verdict") or "")

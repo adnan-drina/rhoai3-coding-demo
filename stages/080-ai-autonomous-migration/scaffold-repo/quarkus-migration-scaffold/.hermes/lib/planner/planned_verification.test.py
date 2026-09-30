@@ -232,6 +232,57 @@ class PlannedVerification(unittest.TestCase):
         self.assertFalse(out["outcome_accepted"], out)
         self.assertNotEqual(stage["state"], "passed", stage)
 
+    def wrong_mode_with_moved_inputs(self, corpus):
+        """The architect's re-review fixture (68152b24): the enabled scenario's PASS only in disabled evidence,
+        the runner reporting that assignment, and the enabled corpus left, removed or merged into disabled."""
+        r = self.r
+        tid, run, _ver = self.repair_then_verification_issue()
+        self.evidence(r.tree())
+        pd, sid = r.root / "verification" / "parity", ENABLED[0]
+        d = json.loads((pd / "receipt.json").read_text())
+        d["entry_points"][0]["scenarios"].append(sid)
+        (pd / "receipt.json").write_text(json.dumps(d))
+        e = json.loads((pd / "receipt-enabled.json").read_text())
+        e["entry_points"][0]["scenarios"] = []
+        (pd / "receipt-enabled.json").write_text(json.dumps(e))
+        name = sid.replace(":", "_") + ".json"
+        rec = json.loads((pd / "scenarios-enabled" / name).read_text())
+        rec["security_mode"] = "disabled"
+        (pd / "scenarios" / name).write_text(json.dumps(rec))
+        (pd / "scenarios-enabled" / name).unlink()
+        rf = r.root / VERIFY_RUN
+        rd = json.loads(rf.read_text())
+        rd["runtime"]["parity"]["modes"]["disabled"]["scenarios"] = DISABLED + ENABLED
+        rd["runtime"]["parity"]["modes"]["enabled"]["scenarios"] = []
+        rf.write_text(json.dumps(rd))
+        cf = r.root / "verification" / "scenarios-enabled" / "corpus.json"
+        if corpus in ("missing", "moved"):
+            moved = json.loads(cf.read_text())["scenarios"]
+            cf.unlink()
+            if corpus == "moved":
+                df = r.root / "verification" / "scenarios" / "corpus.json"
+                dc = json.loads(df.read_text())
+                dc["scenarios"] += moved
+                df.write_text(json.dumps(dc))
+        role, prun, _oid, plan, node = NC.node_context(r.board, tid)
+        before = NC.budget_state(r.board, prun, plan, node)["spent"]
+        out, _stage = self.judge(tid, run)
+        self.assertFalse(out["outcome_accepted"], (corpus, out))
+        self.assertEqual(NC.budget_state(r.board, prun, plan, node)["spent"], before)     # nothing spent
+        return out
+
+    def test_the_issued_mode_holds_when_the_enabled_corpus_is_removed(self):
+        out = self.wrong_mode_with_moved_inputs("missing")
+        self.assertTrue(any("corpus" in x for x in out["not_accepted_because"]), out)
+
+    def test_the_issued_mode_holds_when_the_scenario_moves_to_the_disabled_corpus(self):
+        out = self.wrong_mode_with_moved_inputs("moved")
+        self.assertTrue(any("corpus changed" in x for x in out["not_accepted_because"]), out)
+
+    def test_a_runner_assignment_that_moved_an_issued_scenario_is_refused(self):
+        out = self.wrong_mode_with_moved_inputs("intact")
+        self.assertTrue(any("did not compare" in x for x in out["not_accepted_because"]), out)
+
     def test_a_wrong_mode_record_in_the_right_directory_does_not_discharge(self):
         r = self.r
         tid, run, _ver = self.repair_then_verification_issue()

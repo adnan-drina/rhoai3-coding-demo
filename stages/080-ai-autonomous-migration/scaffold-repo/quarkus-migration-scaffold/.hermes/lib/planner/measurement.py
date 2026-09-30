@@ -194,7 +194,9 @@ def _multi_mode_stage(root: Any, tree: str, modes: dict[str, Any], requested: li
         if _sid(x) not in assigned:
             gaps.append("%s was requested but assigned to no mode" % x)
     verdicts = [verdict_of.get(_sid(x), "") for x in requested] + [verdict_of.get("ep:" + e, "") for e in oracles]
-    base = dict(base, scenarios=sorted(x for x in requested if verdict_of.get(_sid(x))), modes=sorted(modes))
+    base = dict(base, scenarios=sorted(x for x in requested if verdict_of.get(_sid(x))), modes=sorted(modes),
+                assigned={m: sorted(str(x) for x in ((row or {}).get("scenarios") or []))
+                          for m, row in sorted(modes.items()) if isinstance(row, dict)})
     if any(v == "FAIL" for v in verdicts):
         return _stage(FAILED, "%d FAIL across the %s receipts" % (sum(1 for v in verdicts if v == "FAIL"), "+".join(sorted(modes))), **base)
     if gaps:

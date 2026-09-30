@@ -435,8 +435,16 @@ def commit_product_tree(root: Path, commit: str) -> str:
     return h.hexdigest()
 
 
+def _issued_modes(issued_scope: dict[str, Any] | None) -> dict[str, str] | None:
+    """{scenario: mode} of a native issued verification scope; None when there is none."""
+    if not isinstance(issued_scope, dict):
+        return None
+    return {str(sid): str(m) for m, sids in (issued_scope.get("scenarios_by_mode") or {}).items() for sid in sids or []}
+
+
 def requirement_measurement(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
-                            scenarios: list[str], tree: str = "") -> dict[str, dict[str, str]] | None:
+                            scenarios: list[str], tree: str = "", *, issued_scope: dict[str, Any] | None = None
+                            ) -> dict[str, dict[str, str]] | None:
     """The requirement checks of `node` measured on the tree `worklist`
     describes (plan semantics v1); None for an outcome that owns none. The
     mode receipts and the compiler document are this root's own records;
@@ -452,11 +460,13 @@ def requirement_measurement(root: Path, plan: dict[str, Any], node: dict[str, An
     diags = _read_json(Path(root) / VERIFY_DIAGNOSTICS)
     return measure(root, reqs, worklist=worklist, scenarios=scenarios, tree=tree,
                    receipts={m: r for m, r in receipts.items() if isinstance(r, dict)},
-                   diagnostics=diags if isinstance(diags, dict) else None)
+                   diagnostics=diags if isinstance(diags, dict) else None,
+                   scenario_modes=_issued_modes(issued_scope), governed=issued_scope is not None)
 
 
 def requirement_matrix(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any],
-                       scenarios: list[str], tree: str = "") -> dict[str, dict[str, dict[str, str]]]:
+                       scenarios: list[str], tree: str = "", *, issued_scope: dict[str, Any] | None = None
+                       ) -> dict[str, dict[str, dict[str, str]]]:
     """compatibility-objectives/v1: every IMMEDIATE (requirement, check) of the
     node's check plan measured for THAT requirement alone -- two requirements
     using gate:compile keep their own results, and one passing cannot stand
@@ -480,7 +490,8 @@ def requirement_matrix(root: Path, plan: dict[str, Any], node: dict[str, Any], w
             continue
         one = dict(r, acceptance=[c for c in r.get("acceptance") or [] if c in checks])
         got = measure(root, [one], worklist=worklist, scenarios=scenarios, tree=tree, receipts=receipts,
-                      diagnostics=diags if isinstance(diags, dict) else None)
+                      diagnostics=diags if isinstance(diags, dict) else None,
+                      scenario_modes=_issued_modes(issued_scope), governed=issued_scope is not None)
         out[rq] = {c: dict(got.get(c) or {"status": "unknown", "detail": "not measured"}) for c in sorted(checks)}
     return out
 

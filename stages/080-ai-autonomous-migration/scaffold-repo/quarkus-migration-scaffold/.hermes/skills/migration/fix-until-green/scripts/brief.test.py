@@ -1287,6 +1287,69 @@ def _voided_history_brief_case() -> int:
     return 0
 
 
+def _unresolved_history_digest_case() -> int:
+    """Architect re-review of 68152b24: an identity-less row whose reason matches a voided rejection is kept,
+    but the short brief must say it is unresolved and never turn its old 'legal next' into a prohibition.
+    Two renders: the newest row unresolved beside an older confirmed refusal, and every row unresolved."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    import brief as mod
+    from planner.paths import LOOP_ISSUED, LOOP_STEPS, WORKLIST
+
+    voided_reason = "the parity obligation parity:a is still reported"
+    task = "t_void0002"
+
+    class Board:
+        def records(self, t, kind=None):
+            rows = {"reject": [{"key": "reject:5:aaaa", "run": 5, "candidate": "a" * 64, "cluster": "c:x", "reason": voided_reason}],
+                    "reject-voided": [{"reject": "reject:5:aaaa", "reason": "harness: mixed security modes"}]}
+            return list(rows.get(kind, [])) if t == task else []
+
+    def render(rejected):
+        with tempfile.TemporaryDirectory(prefix="unresolved-brief-") as td:
+            root = Path(td)
+            cluster = {"id": "c:x", "kind": "parity", "path": "src/main/java/A.java", "write_set": ["src/main/java/A.java"],
+                       "items": ["parity:a"], "retry_key": "rk:x"}
+            write_canonical(root / WORKLIST, {"schema": "rhoai3.worklist/v1", "head": "c:x",
+                                              "measure": {"tuple": [0, 0, 1], "known": True, "blocked": []}, "clusters": [cluster],
+                                              "items": [{"id": "parity:a", "source": "parity", "kind": "parity", "category": "mandatory",
+                                                         "path": "src/main/java/A.java", "line": 0, "rule_id": "PARITY", "message": "a"}],
+                                              "not_counted": []})
+            write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:x", "task_id": task,
+                                                 "write_set": ["src/main/java/A.java"]})
+            write_canonical(root / LOOP_STEPS, {"steps": [], "rejected": rejected})
+            prev, env = mod._native_board, os.environ.get("HERMES_KANBAN_TASK")
+            mod._native_board = lambda _root: Board()
+            os.environ["HERMES_KANBAN_TASK"] = task
+            try:
+                out = io.StringIO()
+                with redirect_stdout(out), redirect_stderr(io.StringIO()):
+                    mod.main(["--root", str(root)])
+                return out.getvalue()
+            finally:
+                mod._native_board = prev
+                os.environ.pop("HERMES_KANBAN_TASK") if env is None else os.environ.__setitem__("HERMES_KANBAN_TASK", env)
+
+    base = {"cluster": "c:x", "card": task, "retry_key": "rk:x", "changed": ["src/main/java/A.java"]}
+    stale = dict(base, reason=voided_reason, legal_next="Do not repeat this patch")
+    confirmed = dict(base, reason="a confirmed refusal of the current repair", legal_next="try the confirmed alternative",
+                     native_reject="reject:9:cccc")
+    # newest row unresolved, an older confirmed refusal: the confirmed one leads; the unresolved one is qualified
+    text = render([confirmed, stale])
+    if "last refusal: a confirmed refusal of the current repair" not in text or "legal next: try the confirmed alternative" not in text:
+        return _fail("the confirmed refusal drives the guidance when the newest row is unresolved:\n%s" % text[:1500])
+    if "UNRESOLVED history: 1" not in text or "legal next: Do not repeat this patch" in text:
+        return _fail("the unresolved row is disclosed and issues no prohibition:\n%s" % text[:1500])
+    # every row unresolved: no confirmed refusal, no stale prohibition, the current action leads
+    text = render([stale, dict(stale)])
+    if "no confirmed current refusal" not in text or "UNRESOLVED history: 2" not in text:
+        return _fail("with only unresolved history the brief says no confirmed refusal exists:\n%s" % text[:1500])
+    if "last refusal:" in text or "Do not repeat this patch" in text:
+        return _fail("unresolved history never becomes a last refusal or a prohibition:\n%s" % text[:1500])
+    return 0
+
+
 def _large_brief_digest_case() -> int:
     """v21 t_0bc6319b: a large unit's brief is printed as a readable digest (write set, obligations
     per file on one line each, procedure and rules in full, a section index naming how to read each)."""
@@ -1310,7 +1373,7 @@ def _large_brief_digest_case() -> int:
 
 
 def main() -> int:
-    if _voided_history_brief_case():
+    if _voided_history_brief_case() or _unresolved_history_digest_case():
         return 1
     if _large_brief_digest_case():
         return 1

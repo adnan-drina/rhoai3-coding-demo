@@ -1531,7 +1531,10 @@ def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previo
     "2 of 12". This names the rollback's effect, the write-set files that do
     not exist, one line per distinct refusal, and every budget with its label.
     """
-    last = previous[-1] if previous else {}
+    # the last CONFIRMED rejection drives the guidance; an identity-less row whose reason matches a voided
+    # rejection is history of unresolved standing, never a prohibition (architect re-review of 68152b24)
+    last = next((r for r in reversed(previous) if not r.get("void_status")), {})
+    unresolved = [r for r in previous if r.get("void_status") == "unresolved"]
     reasons: list = []
     for r in previous:
         head = str(r.get("reason") or "").split(":", 1)[0][:80]
@@ -1559,6 +1562,8 @@ def _retry_state(root: Path, steps: dict, cluster: dict, write_set: list, previo
         "rejected_attempts_listed": len(previous),
         "last_rejection": ({"card": last.get("card"), "reason": str(last.get("reason") or "")[:300],
                             "legal_next": last.get("legal_next")} if last else None),
+        "unresolved_history": ({"rows": len(unresolved), "last_reason": str(unresolved[-1].get("reason") or "")[:200]}
+                               if unresolved else None),
         "deleted_by_last_revert": list(last.get("deleted_by_revert") or []),
         # v24 run t_e5f21725: after a revert the worker grepped `mvn compile` for its own file and
         # found nothing (javac prints the first 100 of 231 errors), five identical calls, halted.
@@ -1628,6 +1633,14 @@ def brief_digest(brief: dict, stem: str) -> str:
         if rs.get("last_rejection"):
             out.append("  last refusal: %s" % _clip(rs["last_rejection"].get("reason"), 240))
             out.append("  legal next: %s" % _clip(rs["last_rejection"].get("legal_next"), 240))
+        elif rs.get("unresolved_history"):
+            out.append("  no confirmed current refusal: follow NEXT ACTION and the issued failures")
+        if rs.get("unresolved_history"):
+            uh = rs["unresolved_history"]
+            out.append("  UNRESOLVED history: %d earlier refusal(s), the last '%s', match a rejection the Operator voided "
+                       "as harness-caused, and carry no identity to tell which; they are NOT established product "
+                       "failures, do not prohibit any repair, and their old 'legal next' does not apply"
+                       % (uh["rows"], _clip(uh["last_reason"], 120)))
         if rs.get("introduced_in_write_set"):
             out.append("  the rejected patch introduced (in the write set; the reverted tree no longer has them):")
             out += ["    %s" % r for r in rs["introduced_in_write_set"]]

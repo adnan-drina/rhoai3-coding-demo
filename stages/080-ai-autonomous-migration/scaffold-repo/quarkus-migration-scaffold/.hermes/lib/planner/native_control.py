@@ -936,6 +936,9 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
     fields = dict(outcome_id=oid, role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
                   budget_key=budget["key"], revision=int(plan["revision"]))
+    if unit and isinstance(unit.get("verification"), dict):
+        # the issued verification scope is recorded ON the native issue: acceptance judges against it
+        fields["verification"] = unit["verification"]
     rec = _unchanged_issue(board, task_id, run_id, fields) if replay_unchanged else None
     replayed = rec is not None
     if rec is None:
@@ -1364,8 +1367,43 @@ def record_verdict(root: Path, board: Board, *, task_id: str, run_id: int, verdi
     raise Refusal("VERDICT_UNKNOWN", verdict)
 
 
+def issued_verification(board: Board, task_id: str, run_id: int) -> dict[str, Any] | None:
+    """The verification scope of the planned unit THIS run was last issued, or None."""
+    rows = [r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]
+    ver = (rows[-1].get("verification") or (rows[-1].get("planned_unit") or {}).get("verification")) if rows else None
+    return dict(ver) if isinstance(ver, dict) else None
+
+
+def verification_input_gaps(root: Path, scope: dict[str, Any], ex: dict[str, Any] | None) -> list[str]:
+    """What makes a measurement unfit to judge an issued verification scope (architect re-review of
+    68152b24): a required mode's corpus that is missing or no longer the one issued, and a runner
+    assignment that moved or dropped an issued scenario. Each is a named reason the outcome stays
+    unaccepted; nothing falls back to either mode's evidence."""
+    import hashlib
+    from planner.worklist import SCENARIO_CORPORA, SECURITY_MODES, _sid
+    gaps: list[str] = []
+    issued = {m: {_sid(x) for x in sids or []} for m, sids in (scope.get("scenarios_by_mode") or {}).items() if sids}
+    for m in sorted(issued):
+        rel = dict(zip(SECURITY_MODES, SCENARIO_CORPORA)).get(m)
+        p = Path(root) / rel if rel else None
+        now = hashlib.sha256(p.read_bytes()).hexdigest() if p is not None and p.is_file() else ""
+        want = str((scope.get("corpus_sha256") or {}).get(m) or "")
+        if not now:
+            gaps.append("the %s-mode corpus the scope was issued from is missing" % m)
+        elif want and now != want:
+            gaps.append("the %s-mode corpus changed since issuance (%s, issued %s)" % (m, now[:12], want[:12]))
+    par = ((ex or {}).get("stages") or {}).get("parity") or {}
+    ran = {m: {_sid(x) for x in sids or []} for m, sids in (par.get("assigned") or {}).items()}
+    for m, want in sorted(issued.items()):
+        missing = sorted(want - ran.get(m, set()))
+        if missing:
+            gaps.append("the runner did not compare %d issued %s-mode scenario(s) in that mode (%s)" % (
+                len(missing), m, ", ".join(missing[:3])))
+    return gaps
+
+
 def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any], tree: str,
-             measurement: dict[str, Any]) -> dict[str, Any]:
+             measurement: dict[str, Any], issued_scope: dict[str, Any] | None = None) -> dict[str, Any]:
     from planner.requirement_checks import passed
     scenarios = [str(s) for s in measurement.get("scenarios") or []]
     open_now = open_obligations(worklist)
@@ -1377,12 +1415,13 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
         m["execution"] = {k: {"state": v.get("state"), "detail": v.get("detail")} for k, v in (ex.get("stages") or {}).items()}
         m["execution_tree"] = str(ex.get("tree") or "")
         m["execution_bound"] = bool(ex.get("bound"))
-    checks = requirement_measurement(root, plan, node, worklist, scenarios, tree)
+    scoped = {"issued_scope": issued_scope} if issued_scope is not None else {}
+    checks = requirement_measurement(root, plan, node, worklist, scenarios, tree, **scoped)
     if checks and node.get("check_plan"):
         # compatibility-objectives/v1: judged per (requirement, check); a check
         # name passes only when it passes for every requirement that uses it
         from planner.outcome_checks import requirement_matrix
-        matrix = requirement_matrix(root, plan, node, worklist, scenarios, tree)
+        matrix = requirement_matrix(root, plan, node, worklist, scenarios, tree, **scoped)
         m["check_matrix"] = {rq: {c: v.get("status") for c, v in cs.items()} for rq, cs in matrix.items()}
         names = {c for cs in matrix.values() for c in cs}
         m["checks"] = sorted(c for c in names if all(cs[c].get("status") == "pass" for cs in matrix.values() if c in cs))
@@ -1399,6 +1438,13 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
         deferred = sorted(k for k, v in checks.items() if k not in kept and v.get("status") != "pass")
         if deferred:
             m["deferred_to_m4"] = deferred
+    if issued_scope is not None:
+        gaps = verification_input_gaps(root, issued_scope, ex)
+        if gaps:
+            # a verification input is missing or moved: nothing this measurement says can discharge the scope
+            m["verification_input_gaps"] = gaps
+            m["checks"] = []
+            m.setdefault("unmet_checks", {})["verification-input"] = {"status": "unknown", "detail": "; ".join(gaps)[:300]}
     # the classes the node's DECLARED acceptance still requires (a measure:tests
     # deferred to M4 at publication is not required here; see defer_runtime_checks)
     from planner.measurement import needed_classes
@@ -1500,7 +1546,7 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement)
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
     evidence_gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not evidence_gaps)
     done = not m["open_owned"] and covered and not evidence_gaps
@@ -1577,7 +1623,7 @@ def evaluate_unchanged_rework(root: Path, board: Board, *, task_id: str, run_id:
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement)
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
@@ -1612,7 +1658,7 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement)
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
