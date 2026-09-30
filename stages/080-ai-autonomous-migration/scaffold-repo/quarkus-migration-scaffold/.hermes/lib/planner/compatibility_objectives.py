@@ -40,6 +40,13 @@ for another. What cannot be scheduled -- an immediate check with no producer or
 with a prerequisite no parent provides, a later check due before its owner or
 its causal repair (a cycle deferred to M4), a behaviour whose only route is an
 edit outside every planned scope -- is a typed finding, never a silent deferral.
+
+A runtime (package/startup gate) finding whose locus and cause a planned
+requirement's recipe declares it owns (migration_recipes <id>.runtime_findings)
+is that requirement owner's obligation inside its existing scope, with the
+runtime account joining the owner's budget family
+(absorb_recipe_runtime_findings); as a separate runtime outcome it would both
+wait on and block that owner.
 """
 from __future__ import annotations
 
@@ -484,6 +491,9 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
             lineage[oid] = {oid}
     for rq, target in moved.items():
         account[rq] = target
+    absorb_recipe_runtime_findings(nodes, lineage, account, reqrows, items,
+                                   {_s(c.get("id")): c for c in worklist.get("clusters") or [] if isinstance(c, dict)},
+                                   (catalog or {}).get("migration_recipes") or {})
     for u in ownership_unresolved:
         uid = "unresolved:ownership:%s" % _h(u["requirement"])
         base.setdefault("unresolved", []).append({"id": uid, "kind": "ownership", "blocks": "delivery", "reason": u["reason"],
@@ -676,6 +686,82 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
         raise PlanError("BUDGET_NOT_CONSERVED", "%s" % doc["composition"]["budget"])
     schedule_checks(doc)
     return doc
+
+
+def recipe_runtime_owners(item: dict[str, Any], write_set: list[str], nodes: dict[str, dict[str, Any]],
+                          account: dict[str, str], reqrows: dict[str, dict[str, Any]],
+                          recipes: dict[str, dict[str, Any]]) -> list[tuple[str, str, str]]:
+    """The (outcome, requirement, recipe) rows whose planned recipe owns this
+    runtime (package/startup gate) finding: the recipe declares the finding's
+    gate and closed-vocabulary cause (compat-mapping migration_recipes
+    <id>.runtime_findings), the requirement's own paths hold the finding's
+    locus, and the owning outcome's planned scope already holds the finding's
+    whole write set (no scope is widened). Pure."""
+    gate, cause, path = _s(item.get("gate")), _s(item.get("cause")), _s(item.get("path"))
+    if _s(item.get("source")) != "runtime" or not gate or not cause or not path or item.get("unlocated"):
+        return []
+    out = []
+    for rq, owner in sorted(account.items()):
+        n = nodes.get(owner)
+        r = reqrows.get(rq) or {}
+        if n is None or n.get("class") not in ("build", "config", "source") or rq not in (n.get("requirements") or []):
+            continue
+        rid_ = _s((r.get("recipe") or {}).get("id"))
+        spec = (recipes.get(rid_) or {}).get("runtime_findings")
+        if not isinstance(spec, dict) or gate not in (spec.get("gates") or []) or cause not in (spec.get("causes") or []):
+            continue
+        if path not in (r.get("paths") or []) or not set(write_set) <= set(n.get("plan_paths") or []):
+            continue
+        out.append((owner, rq, rid_))
+    return out
+
+
+def absorb_recipe_runtime_findings(nodes: dict[str, dict[str, Any]], lineage: dict[str, set[str]], account: dict[str, str],
+                                   reqrows: dict[str, dict[str, Any]], items: dict[str, dict[str, Any]],
+                                   clusters: dict[str, dict[str, Any]], recipes: dict[str, dict[str, Any]]) -> None:
+    """Roadmap M-2 (never silently defer a dependency cycle): a runtime
+    finding whose locus and cause a planned requirement's recipe owns is that
+    requirement owner's obligation, never a separate runtime outcome. As a
+    separate outcome it waits on every source outcome (a runtime gate needs
+    the whole application) AND is waited on by the recipe's owner (its
+    compile/model checks read the file where it holds an obligation): a cycle
+    by construction, although one bounded edit discharges both (v28: the
+    Servlet-redirect recipe removes the SpEL field the package gate refuses).
+
+    Moved per whole cluster, only to exactly ONE owner, only inside that
+    owner's planned scope; the runtime outcome's budget account joins the
+    owner's family (lineage), so budgets stay conserved; an emptied runtime
+    outcome is dropped. Anything else stays where the baseline put it, and a
+    remaining mutual prerequisite is still refused as PREREQUISITE_CYCLE. In
+    place; each move is recorded on the owner's objective (runtime_findings)."""
+    for rt in sorted(k for k, n in nodes.items() if n.get("class") == "runtime"):
+        n = nodes[rt]
+        for cid in sorted(n.get("clusters") or []):
+            c = clusters.get(cid) or {}
+            members = sorted(_s(m) for m in c.get("items") or [])
+            if not members or not set(members) <= set(n.get("obligations") or []):
+                continue
+            owners = {m: recipe_runtime_owners(items.get(m) or {}, list(c.get("write_set") or []), nodes, account, reqrows, recipes)
+                      for m in members}
+            targets = {o for rows in owners.values() for o, _q, _r in rows}
+            if len(targets) != 1 or not all(owners.values()):
+                continue
+            target = targets.pop()
+            t = nodes[target]
+            t["obligations"] = list(t.get("obligations") or []) + members
+            t["clusters"] = list(t.get("clusters") or []) + [cid]
+            n["obligations"] = [o for o in n["obligations"] if o not in set(members)]
+            n["clusters"] = [x for x in n["clusters"] if x != cid]
+            lineage.setdefault(target, set()).update(lineage.get(rt) or {rt})
+            t.setdefault("objective", {}).setdefault("runtime_findings", []).append({
+                "cluster": cid, "obligations": members, "from": rt,
+                "gates": sorted({_s((items.get(m) or {}).get("gate")) for m in members}),
+                "causes": sorted({_s((items.get(m) or {}).get("cause")) for m in members}),
+                "requirements": sorted({q for rows in owners.values() for _o, q, _r in rows}),
+                "recipes": sorted({r for rows in owners.values() for _o, _q, r in rows})})
+        if not n.get("obligations") and not n.get("requirements"):
+            del nodes[rt]
+            lineage.pop(rt, None)
 
 
 def _ancestors(parents: dict[str, set[str]], k: str) -> set[str]:

@@ -51,6 +51,14 @@ admitted unit); the objective revision is composed from it.
    owner, prerequisites and an earliest measurement point; unschedulable
    checks, budget regrouping and out-of-scope routes are typed findings; the
    same inputs (reordered, another run id) give the identical schedule.
+10. A destination that compiles and fails to package: a package-gate finding
+   whose locus (a file of the requirement) and closed-vocabulary cause the
+   planned recipe declares (migration_recipes <id>.runtime_findings) is that
+   requirement owner's obligation -- scope not widened, the runtime account
+   joins the owner's budget family -- never a runtime outcome that both
+   waits on and blocks it; a cause the recipe does not own still refuses
+   PREREQUISITE_CYCLE, and a finding outside its locus stays a runtime
+   outcome after every source outcome.
 
 Run: PYTHONDONTWRITEBYTECODE=1 python3 .hermes/lib/planner/compatibility_objectives.test.py
 """
@@ -348,7 +356,7 @@ def main() -> int:
         return _fail("without the policy the revision is unchanged")
     if derive(w)["digest"] != g["digest"]:
         return _fail("two derivations from identical inputs differ")
-    rc = schedule_cases()
+    rc = schedule_cases() or recipe_runtime_cases()
     if rc:
         return rc
     print("OK: compatibility objectives (sorting and main/test configuration compose; repository requirements owned per "
@@ -356,7 +364,71 @@ def main() -> int:
           "invariant; unknown symbols and missing catalogs are explicit; bounds refuse at +1; conservation, later checks at "
           "M4, prerequisite cycles refused; budget families conserved; unchanged without the policy; check schedule: "
           "repository/DAO verification wait with behaviour owed at its earliest point, generated-body/controller coupling, "
-          "server error before header, typed findings, repeatable)")
+          "server error before header, typed findings, repeatable; a package finding a planned recipe owns is its "
+          "owner's obligation, an unowned one still refuses)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# 10. a runtime finding a planned recipe owns (roadmap M-2: no deferred cycle)
+# ---------------------------------------------------------------------------
+
+HOME = P + "web/HomeApi.java"
+
+
+def home_world(cause: str = "unsupported-spel", path: str = HOME) -> World:
+    """A destination that compiles and fails to package: one package-gate
+    finding (a closed-vocabulary cause, located at a file) and a controller
+    whose Servlet-response handler the servlet-redirect recipe translates."""
+    w = World()
+    w.items.append({"id": "rt:package:0001", "kind": "compile", "category": "mandatory", "gate": "package", "source": "runtime",
+                    "cause": cause, "path": path, "rule_id": "RUNTIME_APPLICATION_CONFIGURATION", "line": 0})
+    w.clusters.append({"id": "c:rt-home", "kind": "compile", "gate": "package", "status": "open", "items": ["rt:package:0001"],
+                       "write_set": [path], "path": path, "retry_key": "rk:package:%s:home" % cause, "order_key": [2, 0, path]})
+    w.reqs = [{"id": "req:handler-parameter-binding:home", "rule": "handler-parameter-binding/v1", "status": "applicable",
+               "class": "source", "subject": "com.acme.shop.web.HomeApi#home(javax.servlet.http.HttpServletResponse)|response",
+               "recipe": {"id": "servlet-redirect-response", "version": "1", "phase": "m3", "implementation": "agent-bounded"},
+               "paths": [HOME], "acceptance": ["unit:handler-parameter-sites", "gate:augmentation"],
+               "facts": {}, "consumers": [], "dependencies": []}]
+    return w
+
+
+def recipe_runtime_cases() -> int:
+    base, g = derive(home_world(), objectives=False), derive(home_world())
+    ng = reps(g)
+    owner = g["requirement_ownership"]["req:handler-parameter-binding:home"]
+    if g["ownership"].get("rt:package:0001") != owner:
+        return _fail("a package finding whose locus and cause the planned recipe owns is its owner's obligation: %s" % g["ownership"])
+    if any(n["class"] == "runtime" for n in ng.values()):
+        return _fail("the absorbed runtime outcome must not remain beside its owner: %s" % sorted(ng))
+    moved = (ng[owner].get("objective") or {}).get("runtime_findings") or []
+    if [(m["cluster"], m["causes"], m["recipes"]) for m in moved] != [("c:rt-home", ["unsupported-spel"], ["servlet-redirect-response"])]:
+        return _fail("the move is recorded on the owner's objective: %s" % moved)
+    if ng[owner]["plan_paths"] != [HOME] or not ng[owner]["objective"]["bounds"]["within"]:
+        return _fail("the owner's scope is not widened: %s" % ng[owner]["plan_paths"])
+    rt_base = next(k for k, n in reps(base).items() if n["class"] == "runtime")
+    if rt_base not in ng[owner]["budget"]["accounts"] or \
+            g["composition"]["budget"]["baseline_total"] != g["composition"]["budget"]["objective_total"]:
+        return _fail("the runtime account joins the owner's family, conserved: %s %s" % (ng[owner]["budget"], g["composition"]["budget"]))
+    later = {(r["check"], r["stage"]) for r in ng[owner]["check_plan"]}
+    if ("gate:augmentation", "later") not in later:
+        return _fail("the recipe's package-time check stays a later check of its owner: %s" % sorted(later))
+    if derive(home_world(), run_id="other")["check_schedule"] != g["check_schedule"]:
+        return _fail("the same inputs under another run id give the same schedule")
+    # a cause the recipe does not own is not absorbed: the mutual prerequisite is still refused, loudly
+    try:
+        derive(home_world(cause="unsatisfied-injection"))
+    except OG.PlanError as exc:
+        if exc.code != "PREREQUISITE_CYCLE":
+            return _fail("an unowned package finding in the owner's file must refuse PREREQUISITE_CYCLE, got %s" % exc.code)
+    else:
+        return _fail("a package finding the recipe does not own was planned instead of refused")
+    # a finding outside the requirement's paths stays the runtime outcome's, after every source outcome
+    other = P + "web/OtherApi.java"
+    g3 = derive(home_world(path=other))
+    rt = [n for n in reps(g3).values() if n["class"] == "runtime"]
+    if len(rt) != 1 or rt[0]["obligations"] != ["rt:package:0001"] or owner not in rt[0]["parents"]:
+        return _fail("a finding outside the recipe's locus stays a runtime outcome after its sources: %s" % rt)
     return 0
 
 
