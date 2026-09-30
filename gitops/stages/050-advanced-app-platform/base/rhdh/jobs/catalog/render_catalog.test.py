@@ -67,7 +67,9 @@ def _listed() -> dict[str, str]:
 
 def _coverage_case() -> int:
     listed = _listed()
-    want = {p.relative_to(RHDH).as_posix() for d in ("templates", "catalog") for p in (RHDH / d).rglob("*") if p.is_file()}
+    # A test kept beside its template (app-migration-template.test.py) is not bundle content.
+    want = {p.relative_to(RHDH).as_posix() for d in ("templates", "catalog") for p in (RHDH / d).rglob("*")
+            if p.is_file() and not p.name.endswith(".test.py")}
     want |= {"jobs/catalog/generate.sh", "jobs/catalog/render_catalog.py"}
     missing = sorted(want - set(listed.values()))
     if missing:
