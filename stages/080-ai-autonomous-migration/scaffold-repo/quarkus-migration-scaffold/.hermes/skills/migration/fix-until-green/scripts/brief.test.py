@@ -1350,6 +1350,73 @@ def _unresolved_history_digest_case() -> int:
     return 0
 
 
+def _worker_evidence_access_case() -> int:
+    """Architect diagnosis of Owner run 89: the worker must reach its evidence through allowed, bounded
+    selectors. A one-line 300K spill shaped like the kanban_show response is read field by field with honest
+    truncation metadata; the card view is bounded and names what it omits; an obligation's scenario evidence
+    names the two bodies in its mode, the binding, the differing subtree and the state it was captured after."""
+    import brief as mod
+
+    with tempfile.TemporaryDirectory(prefix="evidence-access-") as td:
+        root = Path(td)
+        # the saved large-show shape: a short body, 86 large machine comments, a large worker context, ONE line
+        show = {"task": {"id": "t_ev0001", "title": "M3 BEHAVIOR -- Owner", "body": "Owner behaviour card." * 20},
+                "comments": [{"id": i, "body": "[native-control] " + json.dumps({"kind": "accept-evaluated", "n": i,
+                                                                                   "pad": "x" * 1800})} for i in range(86)],
+                "worker_context": "y" * 74000}
+        spill = root / "spill.txt"
+        spill.write_text(json.dumps(show), encoding="utf-8")
+        if "\n" in spill.read_text() or len(spill.read_text()) < 200000:
+            return _fail("the fixture is a one-line spill of the saved size")
+        body = mod.select_spill(spill, "task.body")
+        if body.get("truncated") is not False or body.get("value") != show["task"]["body"] or body.get("total_chars") != len(show["task"]["body"]):
+            return _fail("a small field comes back whole, marked not truncated: %s" % {k: body.get(k) for k in ("truncated", "total_chars")})
+        many = mod.select_spill(spill, "comments", limit=3000)
+        if many.get("truncated") is not True or many.get("length") != 86 or many.get("shown_chars") != 3000 or many.get("total_chars", 0) <= 3000:
+            return _fail("a large field is bounded and says so: %s" % {k: many.get(k) for k in ("truncated", "length", "shown_chars", "total_chars")})
+        last = mod.select_spill(spill, "comments[-2:]")
+        if last.get("length") != 2:
+            return _fail("a list slice selects: %s" % last.get("length"))
+        miss = mod.select_spill(spill, "task.nothing")
+        if "error" not in miss or "task" not in (miss.get("keys") or []):
+            return _fail("a missing path is an answer naming what exists: %s" % miss)
+
+        # the bounded card view over a board: every record retained, only the latest verdicts shown
+        class Board:
+            def task(self, t):
+                return {"id": t, "title": "M3 BEHAVIOR -- Owner", "status": "running", "body": "Owner behaviour card."}
+
+            def records(self, t, kind=None):
+                rows = [{"kind": "accept-evaluated", "run": 70 + i, "outcome_accepted": False} for i in range(40)]
+                rows.append({"kind": "issue", "run": 89, "seq": 1, "cluster": "c:215b", "allowed_paths": ["A.java"]})
+                return [r for r in rows if kind is None or r["kind"] == kind]
+
+        text = mod.card_view(root, "t_ev0001", board=Board())
+        if len(text.splitlines()) > 14 or len(text) > 3000 or "41 record(s)" not in text or "5 verdict record(s) shown of 40" not in text:
+            return _fail("the card view is bounded and names what it omits:\n%s" % text)
+
+        # scenario evidence: the two bodies in the obligation's mode, the binding, the diff and the prerequisites
+        corpus = {"scenarios": [{"id": "sc:delete-visits-1", "method": "DELETE", "path": "/api/visits/1", "reset_before": True},
+                                {"id": "sc:read-owners", "method": "GET", "path": "/api/owners", "reset_before": False}]}
+        for rel, payload in (("verification/scenarios-enabled/corpus.json", json.dumps(corpus)),
+                             ("verification/source-oracles/scenarios-enabled/sc_read-owners.json", "{}"),
+                             ("verification/source-oracles/scenarios-enabled/bodies/sc_read-owners/response.body", "[]"),
+                             ("verification/parity/scenarios-enabled/sc_read-owners.json",
+                              json.dumps({"verdict": "FAIL", "binding": {"mode": "candidate", "candidate_sha256": "c" * 64}})),
+                             ("verification/parity/scenarios-enabled/_bodies/sc_read-owners/response.body", "[]")):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(payload, encoding="utf-8")
+        item = {"id": "parity:x", "scenario": "sc:read-owners", "security_mode": "enabled",
+                "advice": {"body_diff": {"differences": [{"path": "$[*].pets[*].visits", "kind": "length", "observed": 2, "expected": 1}]}}}
+        ev = "\n".join(mod.scenario_evidence(root, item))
+        for must in ("(enabled mode)", "verification/source-oracles/scenarios-enabled/bodies/sc_read-owners/response.body",
+                     "verification/parity/scenarios-enabled/_bodies/sc_read-owners/response.body", "bound to candidate cccccccccccc",
+                     "differs at $[*].pets[*].visits: length", "captured AFTER (state prerequisites, corpus order): sc:delete-visits-1 DELETE /api/visits/1"):
+            if must not in ev:
+                return _fail("scenario evidence names %r:\n%s" % (must, ev))
+    return 0
+
+
 def _large_brief_digest_case() -> int:
     """v21 t_0bc6319b: a large unit's brief is printed as a readable digest (write set, obligations
     per file on one line each, procedure and rules in full, a section index naming how to read each)."""
@@ -1373,7 +1440,7 @@ def _large_brief_digest_case() -> int:
 
 
 def main() -> int:
-    if _voided_history_brief_case() or _unresolved_history_digest_case():
+    if _voided_history_brief_case() or _unresolved_history_digest_case() or _worker_evidence_access_case():
         return 1
     if _large_brief_digest_case():
         return 1

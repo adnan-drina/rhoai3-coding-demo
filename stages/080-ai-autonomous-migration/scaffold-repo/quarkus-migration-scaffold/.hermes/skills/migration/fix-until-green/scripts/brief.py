@@ -1090,8 +1090,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--file", default="", metavar="PATH", help="every measured obligation at this path, one line each (bounded)")
     ap.add_argument("--item", default="", metavar="ID", help="one measured obligation in full")
     ap.add_argument("--symbol", default="", metavar="NAME", help="every measured obligation naming this symbol (bounded)")
+    ap.add_argument("--card", action="store_true", help="a bounded view of THIS native card (its body, current issue, "
+                    "budget and latest verdicts); the full history stays on the board")
+    ap.add_argument("--spill", default="", metavar="FILE", help="a one-line JSON tool-result spill file to select from")
+    ap.add_argument("--field", default="", metavar="PATH", help="with --spill: a dotted path (task.body, comments[-3:], "
+                    "worker_context.issue)")
+    ap.add_argument("--limit", type=int, default=4000, help="with --spill: the most characters of the value to print")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if args.spill:
+        print(json.dumps(select_spill(Path(args.spill), args.field, args.limit), indent=2))
+        return 0
+    if args.card:
+        print(card_view(root, os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")))
+        return 0
     doc = load_json(root / WORKLIST)
     owners = diagnostic_owners(root)
     if args.file or args.item or args.symbol:
@@ -1452,6 +1464,82 @@ def main(argv: list[str] | None = None) -> int:
     # on stderr is not proof of what the terminal shows first
     print(brief_digest(brief, stem))
     return 0
+
+
+def select_spill(path: Path, field: str, limit: int = 4000) -> dict:
+    """One field of a JSON tool-result spill, bounded, with honest metadata (v29 Owner run 89: the 308K-character
+    kanban_show spill was previewed with 'truncated: false, total_lines: 0' and a suggestion to use execute_code,
+    which the loop card refuses). The path is dotted keys and [n] / [a:b] list selections."""
+    import re as _re
+    out: dict = {"file": str(path), "field": field or "(whole document)"}
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        doc = json.loads(raw)
+    except (OSError, ValueError) as exc:
+        return dict(out, error="not a readable JSON document: %s" % str(exc)[:200])
+    out["file_chars"] = len(raw)
+    val = doc
+    for part in [p for p in _re.split(r"\.(?![^\[]*\])", field) if p] if field else []:
+        m = _re.fullmatch(r"([^\[\]]*)((?:\[[^\]]*\])*)", part)
+        key, sels = (m.group(1), _re.findall(r"\[([^\]]*)\]", m.group(2))) if m else (part, [])
+        try:
+            if key:
+                val = val[key] if isinstance(val, dict) else None
+            for sel in sels:
+                if ":" in sel:
+                    a, b = sel.split(":", 1)
+                    val = val[int(a) if a else None:int(b) if b else None]
+                else:
+                    val = val[int(sel)]
+        except (KeyError, IndexError, TypeError, ValueError):
+            val = None
+        if val is None:
+            return dict(out, error="no value at %s" % part, keys=sorted(doc)[:40] if isinstance(doc, dict) else [])
+    text = val if isinstance(val, str) else json.dumps(val, indent=1, sort_keys=True)
+    out.update({"type": type(val).__name__, "total_chars": len(text), "shown_chars": min(len(text), max(0, limit)),
+                "truncated": len(text) > max(0, limit), "value": text[:max(0, limit)]})
+    if isinstance(val, (list, dict)):
+        out["length"] = len(val)
+    return out
+
+
+def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:
+    """A bounded view of this native card (architect diagnosis of Owner run 89: the full show response was
+    308K characters, 159K of them machine accept records; the task body was 466). The board keeps every record;
+    this names what it omits and how to read it."""
+    from planner import native_control as NC
+    board = board if board is not None else _native_board(root)
+    if board is None or not task:
+        return "no native card here (task %r)" % task
+    t = board.task(task) or {}
+    recs = board.records(task)
+    kinds: dict = {}
+    for r in recs:
+        kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+    issue = next((r for r in reversed(recs) if r["kind"] == "issue"), {})
+    ver = issue.get("verification") or {}
+    out = ["CARD %s -- %s (%s)" % (task, _clip(t.get("title"), 90), t.get("status")),
+           "body: %s" % _clip(t.get("body"), 600),
+           "current issue: run %s seq %s cluster %s, %d writable path(s)%s" % (
+               issue.get("run"), issue.get("seq"), issue.get("cluster") or "(none)", len(issue.get("allowed_paths") or []),
+               ("; verification %s" % ", ".join("%d %s-mode" % (len(v), m) for m, v in sorted((ver.get("scenarios_by_mode") or {}).items())))
+               if ver else "")]
+    try:
+        role, run, oid, plan, node = NC.node_context(board, task)
+        b = NC.budget_state(board, run, plan, node)
+        out.append("budget: %s of %s spent against %s" % (b["spent"], b["limit"], b["key"]))
+    except Exception:  # noqa: BLE001 - a card without a plan node has no family budget to show
+        pass
+    verdicts = [r for r in recs if r["kind"] in ("reject", "reject-voided", "accept-commit", "accept-evaluated")]
+    for r in verdicts[-recent:]:
+        out.append("  %s run %s %s%s" % (r["kind"], r.get("run"), r.get("cluster") or "",
+                                        (": " + _clip(r.get("reason"), 140)) if r.get("reason") else
+                                        (" outcome_accepted=%s" % r.get("outcome_accepted")) if "outcome_accepted" in r else ""))
+    out.append("history: %d record(s) on the board (%s); %d verdict record(s) shown of %d. Full history: hermes kanban "
+               "show %s (large). Evidence of one obligation: brief.py --root . --item <id>." % (
+                   len(recs), ", ".join("%s %d" % kv for kv in sorted(kinds.items())), min(recent, len(verdicts)),
+                   len(verdicts), task))
+    return "\n".join(out)
 
 
 def _native_board(root: Path):
@@ -1827,6 +1915,74 @@ def diagnostic_ownership(doc: dict, root: Path) -> tuple[dict, str]:
                     "these facts grant no additional write scope." % (task, issued.get("cluster")))
 
 
+def _scenario_files(root: Path, sid: str, mode: str) -> dict:
+    """The source oracle and destination verdict of one scenario, with their response bodies, in ITS mode's
+    directories (ADR-014: the enabled mode keeps its own), as paths relative to the root; only files that exist."""
+    sub = "scenarios" if mode in ("", "disabled") else "scenarios-%s" % mode
+    slug = str(sid).replace(":", "_")
+    cand = {"source_record": "verification/source-oracles/%s/%s.json" % (sub, slug),
+            "source_body": "verification/source-oracles/%s/bodies/%s/response.body" % (sub, slug),
+            "destination_record": "verification/parity/%s/%s.json" % (sub, slug),
+            "destination_body": "verification/parity/%s/_bodies/%s/response.body" % (sub, slug)}
+    return {k: v for k, v in cand.items() if (Path(root) / v).is_file()}
+
+
+def _segment_before(root: Path, sid: str, mode: str) -> list:
+    """The scenarios a scenario's captured state depends on: those before it in its mode's corpus, back to
+    the nearest one that resets before its request (inclusive); [] for a scenario that resets itself."""
+    rel = "verification/scenarios/corpus.json" if mode in ("", "disabled") else "verification/scenarios-%s/corpus.json" % mode
+    try:
+        rows = [sc for sc in json.loads((Path(root) / rel).read_text()).get("scenarios") or [] if isinstance(sc, dict)]
+    except (OSError, ValueError):
+        return []
+    ids = [str(sc.get("id") or "") for sc in rows]
+    if sid not in ids:
+        return []
+    i = ids.index(sid)
+    if rows[i].get("reset_before", True):
+        return []
+    start = i
+    while start > 0 and not rows[start].get("reset_before", True):
+        start -= 1
+    return [{"id": ids[j], "method": rows[j].get("method"), "path": rows[j].get("path"),
+             "reset_before": bool(rows[j].get("reset_before", True))} for j in range(start, i)]
+
+
+def scenario_evidence(root: Path, item: dict) -> list:
+    """The evidence of a parity obligation's scenario, directly (v29 Owner run 89: the worker needed 60 calls
+    to find the two bodies that differed): its security mode, the source and destination records and bodies
+    in that mode, the destination record's candidate binding, the differing subtree, and the scenarios whose
+    state it was captured after. [] for an obligation that names no scenario."""
+    sid = str(item.get("scenario") or "")
+    if not sid:
+        return []
+    mode = str(item.get("security_mode") or "disabled")
+    files = _scenario_files(root, sid, mode)
+    out = ["SCENARIO EVIDENCE %s (%s mode)" % (sid, mode)]
+    for k in ("source_record", "source_body", "destination_record", "destination_body"):
+        out.append("  %s: %s" % (k.replace("_", " "), files.get(k, "(absent)")))
+    rec = {}
+    if files.get("destination_record"):
+        try:
+            rec = json.loads((Path(root) / files["destination_record"]).read_text())
+        except (OSError, ValueError):
+            rec = {}
+    bind = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+    out.append("  destination verdict %s, bound to %s %s" % (rec.get("verdict") or "(none)", bind.get("mode") or "nothing",
+                                                           str(bind.get("candidate_sha256") or "")[:12]))
+    diff = ((item.get("advice") or {}).get("body_diff") or {}) if isinstance(item.get("advice"), dict) else {}
+    for d in (diff.get("differences") or [])[:4]:
+        out.append("  differs at %s: %s (observed %s, expected %s)" % (d.get("path"), d.get("kind"),
+                                                                        str(d.get("observed"))[:80], str(d.get("expected"))[:80]))
+    chain = _segment_before(root, sid, mode)
+    if chain:
+        out.append("  captured AFTER (state prerequisites, corpus order): %s" % ", ".join(
+            "%s %s %s" % (c["id"], c["method"], c["path"]) for c in chain))
+    if rec.get("prerequisite_gap"):
+        out.append("  prerequisite not reproduced: %s" % rec["prerequisite_gap"])
+    return out
+
+
 def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbol: str = "",
                  owners: dict | None = None) -> str:
     """Bounded, read-only selectors over the MEASURED work list (v24 run: workers grepped a 143K items
@@ -1849,7 +2005,8 @@ def select_facts(doc: dict, root: Path, *, file: str = "", item: str = "", symbo
             return "\n".join(head + ["no measured obligation %s: it is not reported on the measured candidate" % item])
         if owners is not None:
             hit = dict(hit, ownership=ownership_of(hit, owners))
-        return "\n".join(head + [ownership.get(item, "ownership unknown"), json.dumps(hit, indent=2, sort_keys=True)[:12000]])
+        return "\n".join(head + [ownership.get(item, "ownership unknown")] + scenario_evidence(root, hit)
+                         + [json.dumps(hit, indent=2, sort_keys=True)[:12000]])
     def sym(i):
         adv = i.get("advice") if isinstance(i.get("advice"), dict) else {}
         return str(((adv.get("symbol") or {}) if isinstance(adv.get("symbol"), dict) else {}).get("name") or "")

@@ -366,6 +366,44 @@ def dest_config_argv(dest_config: dict[str, str]) -> list[str]:
     return ["-D%s=%s" % (k, v) for k, v in sorted((dest_config or {}).items())]
 
 
+def _scenario_plan(declared: list[dict[str, Any]], selected: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str]]:
+    """[(scenario, 'target' | 'setup')] in corpus order: each selected scenario inside its SEGMENT -- from
+    the nearest preceding scenario that resets before its request (or the corpus start) up to it -- the
+    unselected scenarios of that segment as setup. A whole-corpus run is all targets, unchanged."""
+    ids = [str(sc["id"]) for sc in declared]
+    wanted = {str(sc["id"]) for sc in selected}
+    end_of: dict[int, int] = {}
+    for sid in wanted:
+        if sid not in ids:
+            continue
+        i = ids.index(sid)
+        start = i
+        while start > 0 and not declared[start].get("reset_before", True):
+            start -= 1
+        end_of[start] = max(end_of.get(start, i), i)
+    plan: list[tuple[dict[str, Any], str]] = []
+    seen: set[int] = set()
+    for start in sorted(end_of):
+        for i in range(start, end_of[start] + 1):
+            if i not in seen:
+                seen.add(i)
+                plan.append((declared[i], "target" if ids[i] in wanted else "setup"))
+    return plan
+
+
+def _prerequisite_inconclusive(record: Path, why: str) -> tuple[str, str]:
+    """Record a dependent scenario whose prerequisite state was not reproduced as INCONCLUSIVE, keeping what
+    it observed: a comparison on another database state is neither a product FAIL nor a PASS."""
+    doc = load_json(record)
+    was = "%s: %s" % (doc.get("verdict"), str(doc.get("reason") or "")[:160])
+    doc["verdict"] = "INCONCLUSIVE"
+    doc["reason"] = ("the source state this scenario was captured in was not reproduced (%s); the comparison would "
+                     "compare different database states (was %s)" % (why, was))[:600]
+    doc["prerequisite_gap"] = why[:300]
+    write_canonical(record, doc)
+    return "INCONCLUSIVE", doc["reason"]
+
+
 def _verdict_of(path: Path) -> tuple[str, str]:
     """The verdict a comparator recorded, or ("", "") when it recorded none.
 
@@ -1152,19 +1190,47 @@ def main(argv: list[str] | None = None) -> int:
                 "matched by error id" if se.get("matched") == "error_id" else
                 "last ERROR block in the request window" if se.get("matched") == "window" else se.get("note") or "unmatched"))
 
-        # 1. every scenario the corpus declares, in corpus order
-        for sc in scenarios:
+        # 1. every selected scenario, in corpus order, IN THE STATE ITS SOURCE CAPTURE HAD (v29 Owner run 89:
+        #    a scoped run compared an owners read whose source was captured after an unselected visit delete,
+        #    without that delete, and reported the extra visit as an Owner FAIL). A scenario that does not
+        #    reset before its request runs inside its segment -- from the nearest preceding reset boundary, in
+        #    corpus order -- with the unselected scenarios of that segment replayed as SETUP (their records put
+        #    back byte for byte, their results recorded apart). Setup counts only when its own comparison came
+        #    back PASS: its effects read back what the source read. From the first scenario of a segment that
+        #    does not come back PASS, every later dependent of that segment is INCONCLUSIVE naming it -- a
+        #    comparison on another state is neither a FAIL nor a PASS. Full and scoped runs follow one rule.
+        segment_broken = ""
+        for sc, role in _scenario_plan(declared, scenarios):
             sid = str(sc["id"])
             argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
                        "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
+            record = root / parity_dir / (scenario_slug(sid) + ".json")
+            if sc.get("reset_before", True):
+                segment_broken = ""
+            if role == "setup":
+                kept = _snapshot_scenario_files(root / parity_dir, [sid])
+                try:
+                    proc = _run_child(argv_sc, "scenario %s (setup: the state a selected scenario was captured in)" % sid)
+                    verdict, reason = _verdict_of(record)
+                finally:
+                    _restore_scenario_files(kept)
+                doc["scenarios"].setdefault("setup", []).append({"id": sid, "rc": proc.returncode, "verdict": verdict,
+                                                                 "reason": reason[:200]})
+                if verdict != "PASS" and not segment_broken:
+                    segment_broken = "prerequisite %s came back %s%s" % (sid, verdict or "with no verdict",
+                                                                         (": " + reason[:160]) if reason else "")
+                continue
             mark = _log_mark()
             proc = _run_child(argv_sc, "scenario %s" % sid)
-            record = root / parity_dir / (scenario_slug(sid) + ".json")
             verdict, reason = _verdict_of(record)
+            if verdict and segment_broken and not sc.get("reset_before", True):
+                verdict, reason = _prerequisite_inconclusive(record, segment_broken)
             row = {"id": sid, "entry_point": str(sc.get("entry_point") or ""), "rc": proc.returncode,
                    "verdict": verdict, "reason": reason[:300]}
             _server_error(record, mark, row, "scenario %s" % sid)
             doc["scenarios"]["results"].append(row)
+            if verdict != "PASS" and not segment_broken:
+                segment_broken = "scenario %s came back %s" % (sid, verdict or "with no verdict")
             if not verdict:
                 failures.append("scenario %s recorded no verdict (rc %d): %s"
                                 % (sid, proc.returncode, ((proc.stderr or proc.stdout or "").strip()[-200:])))
