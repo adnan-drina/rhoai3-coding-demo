@@ -91,7 +91,7 @@ KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
                 "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable",
                 "cors_browser_access", "db_unchanged")
-CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
+CONTRACT_KEYS = ("intent", "identity_field", "read_back_properties", "creates_without_location")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before", "before_reads_usable")
 # checks that read a read-back ROW without reading its body: they are about
 # the state a request left just as much, so they are judged against the same
@@ -241,6 +241,25 @@ def _matches(obj: dict[str, Any], body: dict[str, Any]) -> bool:
 
 
 def _request_body(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
+    """The body a read-back is judged against: the request body, restricted to
+    the contract's ``read_back_properties`` when it names them (a request
+    model may carry optional properties the source ignores; what it REQUIRES
+    is what the read-back must show). A named property the body does not send
+    is UNUSABLE, never silently dropped, and an empty restriction is refused:
+    a check over no property passes vacuously."""
+    body = _sent_body(root, sc)
+    keys = (sc.get("qualify") or {}).get("read_back_properties")
+    if keys is None:
+        return body
+    if not isinstance(keys, list) or not keys:
+        raise Unusable("read_back_properties must name at least one property the body sends")
+    missing = [str(k) for k in keys if str(k) not in body]
+    if missing:
+        raise Unusable("read_back_properties names %s, which the body does not send" % ", ".join(missing))
+    return {str(k): body[str(k)] for k in keys}
+
+
+def _sent_body(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
     if not sc.get("body_file"):
         raise Unusable("the scenario sends no body, so nothing can be looked for in the read-back")
     p = root / str(sc["body_file"])
@@ -321,6 +340,14 @@ def _creates_one_entity(root: Path, sid: str, sc: dict[str, Any], cap: dict[str,
             kept = after_by_id.get(key) or []
             if len(kept) != 1 or kept[0] != o:
                 problems.append("%s: prior entity %s is %s after the create" % (eid, json.dumps(o[identity]), "duplicated" if len(kept) > 1 else "changed" if kept else "gone"))
+    if (sc.get("qualify") or {}).get("creates_without_location") is True:
+        # the contract says the handler builds no Location: the new entity is
+        # identified by the read-back alone
+        if new_identity is None:
+            problems.append("no newly created entity to identify")
+        if problems:
+            return False, "; ".join(problems)
+        return True, "exactly one new entity %s carrying the body, prior entities kept (the contract asserts no Location)" % json.dumps(new_identity)
     loc = _header((cap.get("response") or {}).get("headers"), "Location")
     last = urllib.parse.urlsplit(loc or "").path.rstrip("/").rsplit("/", 1)[-1]
     if new_identity is not None:

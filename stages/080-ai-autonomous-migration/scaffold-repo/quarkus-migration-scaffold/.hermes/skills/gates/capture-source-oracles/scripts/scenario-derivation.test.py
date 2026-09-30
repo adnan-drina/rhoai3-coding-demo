@@ -486,9 +486,10 @@ def _methodless_mapping_case() -> int:
     scenario observed the redirect -- and a worker then replaced the SpEL
     context path on the destination with "", sending the redirect outside the
     destination's root path, a behavioural withdrawal nothing could see. A
-    handler that consumes a request body answers no such GET, a wildcard route
-    is still not a request, and none of these decisions depends on the
-    specimen's names."""
+    handler that consumes a request body answers no such GET, a wildcard mixed
+    into a segment (``v*``) is still not a request -- a whole-segment one is
+    filled (_wildcard_route_case) -- and none of these decisions depends on
+    the specimen's names."""
     fqn, member, route = "a.RootRestController", "redirectToSwagger(javax.servlet.http.HttpServletResponse)", "/"
     eid = "ep:%s#%s:http" % (fqn, member)
     with tempfile.TemporaryDirectory(prefix="derive-methodless-") as td:
@@ -516,7 +517,7 @@ def _methodless_mapping_case() -> int:
         except CorpusError as exc:
             return _fail("the derived read scenario must load: %s" % exc)
     try:
-        mine = _methodless_decisions(fqn, member, route, "/legacy/*", "a.OwnerDto", "payload")
+        mine = _methodless_decisions(fqn, member, route, "/legacy/v*", "a.OwnerDto", "payload")
     except AssertionError as exc:
         return _fail(str(exc))
     body_gaps = mine["consumes_body"]["gaps"]
@@ -524,12 +525,12 @@ def _methodless_mapping_case() -> int:
         return _fail("a handler that consumes a body derives no GET, and the gap says why: %s" % mine["consumes_body"])
     wild_gaps = mine["wildcard"]["gaps"]
     if mine["wildcard"]["reads"] or len(wild_gaps) != 1 or "carries a wildcard and is not a request" not in wild_gaps[0]:
-        return _fail("a wildcard route keeps the existing gap and derives nothing: %s" % mine["wildcard"])
+        return _fail("a wildcard mixed into a segment constrains the value: it keeps the gap and derives nothing: %s" % mine["wildcard"])
     # the specimen-independence invariance check: different package, type,
     # member, route and parameter names, same decisions
     try:
         renamed = _methodless_decisions("z.gateway.PortalResource", "showPortal(javax.servlet.http.HttpServletResponse)",
-                                        "/portal", "/archive/*", "z.gateway.PortalPayload", "incoming")
+                                        "/portal", "/archive/v*", "z.gateway.PortalPayload", "incoming")
     except AssertionError as exc:
         return _fail(str(exc))
     if renamed != mine:

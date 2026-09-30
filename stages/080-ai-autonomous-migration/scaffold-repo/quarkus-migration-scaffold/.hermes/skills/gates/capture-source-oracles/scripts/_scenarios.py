@@ -522,6 +522,72 @@ def scenario_slug(scenario_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", str(scenario_id))[:120]
 
 
+# --- a route whose pattern carries a wildcard segment -----------------------
+# Spring's path patterns (AntPathMatcher / PathPattern) read a whole ``*``
+# segment as "any one segment" and ``**`` as "any segments": the value in that
+# position is not part of the handler's contract (it binds no variable), so any
+# concrete segment is a request the route answers. A scenario still carries a
+# concrete URL (load_corpus refuses ``*``), so the segment is filled with ONE
+# fixed value, named here so every consumer -- the derivation, the enabled
+# derivation's reads and the read-oracle capture -- sends the same bytes and
+# the destination is asked the same question. A wildcard mixed into literal
+# text (``foo*``) constrains the value and is refused, never guessed at; so is
+# a filled path that another route of the same method would also match.
+WILDCARD_SEGMENT_FILL = "any"
+_WILDCARD_SEGMENTS = ("*", "**")
+
+
+def route_matches(template: str, path: str) -> bool:
+    """Whether a concrete ``path`` is matched by a route ``template`` read
+    segment-wise: ``{var}`` and ``*`` match one segment, ``**`` any number."""
+    t_segs = [s for s in str(template or "").split("/") if s]
+    p_segs = [s for s in str(path or "").split("/") if s]
+
+    def walk(i: int, j: int) -> bool:
+        if i == len(t_segs):
+            return j == len(p_segs)
+        seg = t_segs[i]
+        if seg == "**":
+            return any(walk(i + 1, k) for k in range(j, len(p_segs) + 1))
+        if j == len(p_segs):
+            return False
+        if seg == "*" or (seg.startswith("{") and seg.endswith("}")):
+            return walk(i + 1, j + 1)
+        return seg == p_segs[j] and walk(i + 1, j + 1)
+
+    return walk(0, 0)
+
+
+def fill_route_wildcards(route: str, others: Any = ()) -> tuple[str, list[str], str]:
+    """(the route with each whole-segment wildcard filled, evidence, why-not).
+
+    ``others`` are the templates of the OTHER routes the same method maps; the
+    filled route must be matched by none of them, or the request could reach
+    another handler. Path variables stay templates -- the caller resolves
+    them from the seed as for any other route."""
+    route = str(route or "")
+    if "*" not in route:
+        return route, [], ""
+    out: list[str] = []
+    notes: list[str] = []
+    for seg in route.split("/"):
+        if "*" not in seg:
+            out.append(seg)
+            continue
+        if seg not in _WILDCARD_SEGMENTS:
+            return route, [], ("segment %r mixes a wildcard with literal text; the value it accepts is constrained and no "
+                               "request is derived for it" % seg)
+        out.append(WILDCARD_SEGMENT_FILL)
+        notes.append("route:%s segment %r matches %s and binds no variable; filled with %r"
+                     % (route, seg, "any one segment" if seg == "*" else "any segments", WILDCARD_SEGMENT_FILL))
+    filled = "/".join(out)
+    probe = re.sub(r"\{[^{}]+\}", WILDCARD_SEGMENT_FILL, filled)
+    clash = sorted(str(o) for o in (others or ()) if str(o) != route and route_matches(str(o), probe))
+    if clash:
+        return route, [], "the filled route %s is also matched by %s; the request could reach another handler" % (filled, ", ".join(clash))
+    return filled, notes, ""
+
+
 # --- which parity records a receipt is composed FROM ------------------------
 # The composer composes over the records on DISK, and that is deliberate: it is
 # what lets a scoped run keep the verdicts the last full run left for every
