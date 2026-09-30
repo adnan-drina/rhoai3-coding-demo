@@ -116,6 +116,9 @@ def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, 
     base = {"requested": requested, "scenarios": [], "security_mode": mode, "scoped": bool(par.get("scoped"))}
     if root is None:
         return _stage(UNKNOWN, "no destination root to read the %s-mode receipt from" % mode, **base)
+    modes = par.get("modes") if isinstance(par.get("modes"), dict) and par.get("modes") else None
+    if modes is not None:
+        return _multi_mode_stage(root, tree, sorted(modes), requested, oracles, dict(base, security_mode="+".join(sorted(modes))))
     from planner.worklist import load_parity_receipt, parity_state
     receipt = load_parity_receipt(root, mode)
     if not receipt:
@@ -141,6 +144,52 @@ def parity_stage(run: dict[str, Any], tree: str, root: Any = None) -> dict[str, 
     if any(v == "FAIL" for v in verdicts):
         return _stage(FAILED, "%d FAIL in the bound %s-mode receipt" % (sum(1 for v in verdicts if v == "FAIL"), mode), **base)
     return _stage(UNKNOWN, "inconclusive or unmeasured in the bound %s-mode receipt" % mode, **base)
+
+
+def _multi_mode_stage(root: Any, tree: str, modes: list[str], requested: list[str], oracles: list[str],
+                      base: dict[str, Any]) -> dict[str, Any]:
+    """A planned verification compared several security modes, one after the
+    other (v29 Owner: 18 disabled-mode and 8 enabled-mode scenarios). Every
+    mode's own receipt must be composed, taken in that mode and bound to THIS
+    tree; each requested scenario is judged in the one receipt that measured
+    it; a FAIL in any mode fails the stage, and a scenario no bound receipt
+    measured leaves it unknown. A disabled PASS never stands for an enabled
+    FAIL: the ids differ and each is read in its own mode's receipt."""
+    from planner.worklist import load_parity_receipt, parity_state
+    scen_v: dict[str, str] = {}
+    ep_v: dict[str, str] = {}
+    gaps: list[str] = []
+    for m in modes:
+        receipt = load_parity_receipt(root, m)
+        if not receipt:
+            gaps.append("no %s-mode receipt was composed" % m)
+            continue
+        if str(receipt.get("security_mode") or "disabled") != m:
+            gaps.append("the %s-mode receipt was taken in another mode" % m)
+            continue
+        bind = receipt.get("binding") if isinstance(receipt.get("binding"), dict) else {}
+        if not tree or str(bind.get("candidate_sha256") or "") != tree:
+            gaps.append("the %s-mode receipt is bound to %s, not to this candidate" % (m, str(bind.get("candidate_sha256") or "nothing")[:12]))
+            continue
+        st = parity_state(receipt)
+        if not st["known"]:
+            gaps.append("the %s-mode receipt measured nothing" % m)
+            continue
+        for k, v in (st.get("scenarios") or {}).items():
+            if k in scen_v and scen_v[k] != v:
+                gaps.append("%s is recorded in two modes" % k)
+            scen_v[k] = v
+        if m == "disabled":
+            ep_v.update(st.get("entry_points") or {})
+    verdicts = [scen_v.get(x, "") for x in requested] + [ep_v.get(e, "") for e in oracles]
+    base = dict(base, scenarios=sorted(x for x in requested if scen_v.get(x)), modes=modes)
+    if any(v == "FAIL" for v in verdicts):
+        return _stage(FAILED, "%d FAIL across the %s receipts" % (sum(1 for v in verdicts if v == "FAIL"), "+".join(modes)), **base)
+    if gaps:
+        return _stage(UNKNOWN, "; ".join(gaps)[:300], **base)
+    if verdicts and all(v == "PASS" for v in verdicts):
+        return _stage(PASSED, "%d requested check(s) PASS across the bound %s receipts" % (len(verdicts), "+".join(modes)), **base)
+    return _stage(UNKNOWN, "inconclusive or unmeasured across the bound %s receipts" % "+".join(modes), **base)
 
 
 def classes(ex: dict[str, Any] | None) -> list[str]:

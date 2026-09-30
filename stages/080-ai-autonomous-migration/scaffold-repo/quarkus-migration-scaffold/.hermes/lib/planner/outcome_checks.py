@@ -503,7 +503,8 @@ def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:
     if not needed_classes(node) <= have:
         return False
     if cls == "behavior":
-        return set(node.get("scenarios") or []) <= set(m.get("scenarios") or [])
+        from planner.worklist import _sid       # a scenario id with or without its "sc:" prefix is one scenario
+        return {_sid(x) for x in node.get("scenarios") or []} <= {_sid(x) for x in m.get("scenarios") or []}
     return True
 
 

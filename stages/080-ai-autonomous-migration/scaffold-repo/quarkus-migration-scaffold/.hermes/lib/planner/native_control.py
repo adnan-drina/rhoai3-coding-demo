@@ -912,6 +912,18 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                 if not g.get("refusal"):
                     cluster = planned_cluster_id(oid)
                     allowed = sorted(g.get("paths") or [])
+                    # the unit's checks are MEASURED: its issue carries what they measure (v29 Owner: a
+                    # verification-only unit was issued with no scenarios and no comparison ever ran)
+                    if any(str(r.get("check") or "").startswith(("parity:sc:", "parity:ep:", "location:"))
+                           for r in node.get("check_plan") or [] if isinstance(r, dict)):
+                        from planner.requirement_checks import verification_scope
+                        scope = verification_scope(root, plan, node)
+                        if scope["unresolved"]:
+                            raise Refusal("VERIFICATION_SCOPE_UNRESOLVED", "%s: the planned checks name targets no bound "
+                                          "corpus resolves -- %s. A harness defect: kanban_block kind=needs_input quoting "
+                                          "this line" % (oid, "; ".join("%s (%s)" % (u["check"], u["why"])
+                                                                          for u in scope["unresolved"][:4])))
+                        unit["verification"] = scope
         if not cluster and _changes_requested_since_accept(board, task_id):
             paths = _rework_paths(root, board, task_id)
             if paths:
@@ -1393,7 +1405,9 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
     need = needed_classes(node)
     missing = sorted(need - set(m["classes"]))
     if str(node.get("class") or "") == "behavior":
-        missing += ["scenario %s" % x for x in sorted(set(node.get("scenarios") or []) - set(m["scenarios"]))]
+        from planner.worklist import _sid
+        seen = {_sid(x) for x in m["scenarios"]}
+        missing += ["scenario %s" % x for x in sorted(node.get("scenarios") or []) if _sid(x) not in seen]
     if missing:
         m["missing_classes"] = missing
     return m

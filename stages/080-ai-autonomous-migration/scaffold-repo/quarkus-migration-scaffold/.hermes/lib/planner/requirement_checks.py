@@ -121,8 +121,10 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
     from planner.dest_model import DestModelUnavailable, dest_model
     from planner.worklist import _assess_implementations, _unit_path, _unit_types
     out: dict[str, dict[str, str]] = {}
-    ran = {str(s) for s in scenarios or []}
-    open_sc = _open_scenarios(worklist)
+    from planner.paths import PARITY_DIR
+    from planner.worklist import _sid, scenario_record
+    ran = {_sid(s) for s in scenarios or []}
+    open_sc = {_sid(s) for s in _open_scenarios(worklist)}
     state = {"model": model, "tried": model is not None}
 
     def get_model() -> dict[str, Any] | None:
@@ -135,11 +137,24 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
         return state["model"]
 
     def scen(sid: str) -> tuple[str, str]:
-        if sid not in ran:
+        """PASS only for a verdict this measurement ran, recorded PASS and
+        bound to THIS tree: an empty work list, an INCONCLUSIVE record or a
+        record of another candidate never stands for a measured PASS."""
+        if _sid(sid) not in ran:
             return UNKNOWN, "scenario %s was not measured on this tree" % sid
-        if sid in open_sc:
+        if _sid(sid) in open_sc:
             return FAIL, "scenario %s still has an open obligation" % sid
-        return PASS, "scenario %s measured and discharged" % sid
+        rec = scenario_record(Path(root) / PARITY_DIR, sid) if root is not None else {}
+        verdict = str(rec.get("verdict") or "")
+        if verdict == "FAIL":
+            return FAIL, "scenario %s came back FAIL: %s" % (sid, str(rec.get("reason") or "")[:200])
+        if verdict != "PASS":
+            return UNKNOWN, "scenario %s has %s" % (sid, ("verdict %s" % verdict) if rec else "no single verdict record")
+        bound = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+        if tree and (str(bound.get("mode") or "") != "candidate" or str(bound.get("candidate_sha256") or "") != tree):
+            return UNKNOWN, "scenario %s PASS is bound to %s, not to this tree %s" % (
+                sid, str(bound.get("candidate_sha256") or bound.get("mode") or "nothing")[:12], tree[:12])
+        return PASS, "scenario %s measured PASS on this tree" % sid
 
     for req in requirements or []:
         if not isinstance(req, dict):
@@ -226,10 +241,93 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
                 status, detail = _body_check(root, req, scen)
             elif chk.startswith("parity:"):
                 status, detail = scen(chk[len("parity:"):])
+            elif chk.startswith("location:"):
+                # the comparator requires the source's Location on every exchange that builds one
+                # (compare-scenario-parity.py): the Location is measured by the scenarios that cover it
+                cov = [str(s) for s in (((req.get("facts") or {}).get("location") or {}).get("coverage") or []) if str(s)]
+                res = [scen(s) for s in cov]
+                if not cov:
+                    status, detail = UNKNOWN, "no scenario measures the Location built at %s" % chk.split(":", 1)[1]
+                elif any(r[0] == FAIL for r in res):
+                    status, detail = FAIL, "; ".join(r[1] for r in res if r[0] == FAIL)[:300]
+                elif any(r[0] == UNKNOWN for r in res):
+                    status, detail = UNKNOWN, "; ".join(r[1] for r in res if r[0] == UNKNOWN)[:300]
+                else:
+                    status, detail = PASS, "every scenario covering this Location measured PASS on this tree"
             elif chk == "coverage:unresolved":
                 status, detail = UNKNOWN, "unresolved coverage is never met"
             out[chk] = {"status": status, "detail": detail}
     return out
+
+
+VERIFICATION_SCOPE_SCHEMA = "rhoai3.verification-scope/v1"
+
+
+def verification_scope(root: Path, plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
+    """What a planned unit's own checks must MEASURE, from the admitted plan
+    and the bound scenario corpora -- never from the remaining work list
+    (v29 Owner: the behavior-verification unit was issued with no scenarios,
+    no comparison ran and all 28 checks stayed unknown).
+
+      parity:sc:<id>   that scenario, in the security mode of the corpus that
+                       holds it (ADR-014: one corpus per mode)
+      parity:ep:<ep>   that entry point's read oracle (default mode)
+      location:<ep>    every scenario the requirement's facts.location.coverage
+                       names: the comparator requires the source's Location
+      the outcome's own scenarios (acceptance asks each of them measured)
+
+    {schema, checks, scenarios_by_mode: {mode: [ids]}, read_oracles,
+    corpus_sha256: {mode: digest}, unresolved: [{check, why}]}. A target no
+    corpus holds, or two corpora hold, is unresolved -- never guessed."""
+    import hashlib
+    from planner.worklist import SCENARIO_CORPORA, SECURITY_MODES, _sid
+    reqs = {str(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}
+    corpora: dict[str, set[str]] = {}
+    digests: dict[str, str] = {}
+    for mode, rel in zip(SECURITY_MODES, SCENARIO_CORPORA):
+        p = Path(root) / rel
+        if not p.is_file():
+            continue
+        data = p.read_bytes()
+        digests[mode] = hashlib.sha256(data).hexdigest()
+        try:
+            import json
+            doc = json.loads(data)
+        except ValueError:
+            continue
+        corpora[mode] = {_sid(s.get("id")) for s in doc.get("scenarios") or [] if isinstance(s, dict) and s.get("id")}
+    rows = [r for r in node.get("check_plan") or [] if isinstance(r, dict) and r.get("stage") == "immediate"]
+    by_mode: dict[str, set[str]] = {}
+    oracles: set[str] = set()
+    unresolved: list[dict[str, str]] = []
+
+    def place(sid: str, check: str) -> None:
+        modes = [m for m, ids in corpora.items() if _sid(sid) in ids]
+        if len(modes) != 1:
+            unresolved.append({"check": check, "why": "scenario %s is in %s" % (
+                sid, " and ".join(modes) + " corpora" if modes else "no bound corpus")})
+            return
+        by_mode.setdefault(modes[0], set()).add("sc:" + _sid(sid))
+
+    for row in rows:
+        chk = str(row.get("check") or "")
+        if chk.startswith("parity:sc:"):
+            place(chk[len("parity:"):], chk)
+        elif chk.startswith("parity:ep:"):
+            oracles.add(chk[len("parity:"):])
+        elif chk.startswith("location:"):
+            cov = ((reqs.get(str(row.get("requirement"))) or {}).get("facts") or {}).get("location") or {}
+            sids = [str(s) for s in cov.get("coverage") or [] if str(s)]
+            if not sids:
+                unresolved.append({"check": chk, "why": "the requirement names no scenario that measures this Location"})
+            for s in sids:
+                place(s, chk)
+    # the outcome's own scenarios are acceptance scope too (_covers asks each one measured)
+    for s in node.get("scenarios") or []:
+        place(str(s), "scenario:%s" % s)
+    return {"schema": VERIFICATION_SCOPE_SCHEMA, "checks": sorted({str(r.get("check")) for r in rows}),
+            "scenarios_by_mode": {m: sorted(v) for m, v in sorted(by_mode.items())},
+            "read_oracles": sorted(oracles), "corpus_sha256": digests, "unresolved": unresolved}
 
 
 def passed(measured: dict[str, dict[str, str]]) -> list[str]:

@@ -965,7 +965,36 @@ def _issued_not_open(issued: dict, doc: dict) -> dict:
     if live:
         row["liveness"] = "%d of %d issued constituent(s) still reported" % (len(live), len(issued.get("items") or []))
         return row
+    if str(issued.get("gate") or "") == "planned-unit" and not ws:
+        return dict(row, not_open={"head": str(doc.get("head") or ""), "next": verification_next(issued, cid)})
     return dict(row, not_open={"head": str(doc.get("head") or ""), "next": NOT_OPEN_NEXT % cid})
+
+
+VERIFY_ONLY_NEXT = (
+    "VERIFICATION ONLY: this planned unit's write set is empty -- no product edit is required or allowed. Its checks "
+    "are measured, not edited: run `bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . "
+    "--mode acceptance` ONCE (it compares exactly the issued scope, %s, on the packaged artifact, one mode after the "
+    "other), then `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster %s --card "
+    "$HERMES_KANBAN_TASK` and follow its verdict. A check that FAILs becomes a parity obligation and the next issue "
+    "routes it to repair; do not edit anything for it in this unit. Do not re-read this brief to find another action.")
+
+VERIFY_SCOPE_MISSING_NEXT = (
+    "HARNESS ERROR VERIFICATION_SCOPE_MISSING: planned unit %s has an empty write set and its issue carries no "
+    "verification scope, so no verification can measure its checks. Nothing in this card can fix that: end this run "
+    "with kanban_block kind=needs_input quoting this line.")
+
+
+def verification_next(issued: dict, cid: str) -> str:
+    """The executable next action of a verification-only planned unit (v29 Owner: the worker was told to
+    'run-verify then advance' on a scope no verification could measure, and re-read the brief in a loop)."""
+    ver = issued.get("verification") if isinstance(issued.get("verification"), dict) else None
+    if not ver:
+        return VERIFY_SCOPE_MISSING_NEXT % cid
+    by_mode = ver.get("scenarios_by_mode") if isinstance(ver.get("scenarios_by_mode"), dict) else {}
+    parts = ["%d %s-mode scenario(s)" % (len(v), m) for m, v in sorted(by_mode.items()) if v]
+    if ver.get("read_oracles"):
+        parts.append("%d read oracle(s)" % len(ver["read_oracles"]))
+    return VERIFY_ONLY_NEXT % (", ".join(parts) or "nothing", cid)
 
 
 def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tuple[dict | None, str, str]:

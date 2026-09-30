@@ -92,6 +92,12 @@ def _write_issued_projection(root: Path, issued: dict) -> str:
         from planner.worklist import PLANNED_UNIT_GATE
         card["gate"] = PLANNED_UNIT_GATE          # judged by its requirement checks, not the tuple
     write_issued(root, wl, card, str(receipt.get("receipt_digest") or ""), key, task_id=issued["task_id"])
+    ver = (issued.get("planned_unit") or {}).get("verification")
+    if ver:
+        # what the unit's checks measure travels with the card: run-verify compares exactly this scope, per mode
+        doc = load_json(root / LOOP_ISSUED)
+        doc["verification"] = dict(ver)
+        write_canonical(root / LOOP_ISSUED, doc)
     if issued.get("objective"):
         # the admitted descriptor rides with the card: advance.py rebuilds the
         # envelope from it and refuses one that differs
