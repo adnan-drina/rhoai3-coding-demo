@@ -1,0 +1,222 @@
+{
+ "provenance": {
+  "captured_at": "2026-09-30T07:44:26Z",
+  "corpus_sha256": "1d309829266665509ffc92c99666224cf120512adaff3fbd55a01b76573a63d0",
+  "db": {
+   "engine": "postgresql",
+   "image": "registry.redhat.io/rhel9/postgresql-16",
+   "seed_scripts": [
+    {
+     "path": "src/main/resources/db/postgresql/initDB.sql",
+     "sha256": "e09b38c29e330a2c455490664b1c2f32f88c3c415d26488a998a2cfec9867ccd"
+    },
+    {
+     "path": "src/main/resources/db/postgresql/populateDB.sql",
+     "sha256": "6efcbf6a4f25ce37d601497864b0165239831ebbe98b3720cb8814045872da77"
+    }
+   ]
+  },
+  "java": "openjdk version \"21.0.5\" 2024-10-15 LTS",
+  "note": "captured from the frozen source; the destination never writes this file",
+  "producer": "reference-oracle-capture.py",
+  "security_mode": "enabled",
+  "source_jar": "spring-petclinic-rest-2.6.2.jar",
+  "source_jar_sha256": "b1e2772e78ad14dff58d60af426d06b9de93fbc04e87975c8f43d661b5ebbbba",
+  "source_manifest_digest": "322a6149734fd8ce09b638a57312106dce879ec9ab5aa2263939a22c38ac6fd4",
+  "spring_profiles": "postgresql,spring-data-jpa"
+ },
+ "schema": "rhoai3.reference-oracle/v1",
+ "steps": {
+  "_bound": {
+   "response": {
+    "value": {
+     "owner_auth": "100"
+    }
+   }
+  },
+  "auth-admin-create": {
+   "request": {
+    "body": "{\"firstName\": \"Gus\", \"lastName\": \"Quinby\", \"address\": \"10 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550010\"}",
+    "headers": {
+     "Authorization": "Basic <corpus auth user admin; value not recorded>",
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "{\"firstName\":\"Gus\",\"lastName\":\"Quinby\",\"address\":\"10 Reference Way\",\"city\":\"Madison\",\"telephone\":\"6085550010\",\"id\":100,\"pets\":[]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "location": "http://127.0.0.1:51843/petclinic/api/owners/100",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=E9892935AF6AAE615DDEB0160A78F95F; Path=/petclinic; HttpOnly",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 201
+   }
+  },
+  "auth-admin-read": {
+   "request": {
+    "body": null,
+    "headers": {
+     "Authorization": "Basic <corpus auth user admin; value not recorded>"
+    },
+    "method": "GET",
+    "path": "/petclinic/api/owners/1"
+   },
+   "response": {
+    "body": "{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\",\"id\":1,\"pets\":[{\"name\":\"Leo\",\"birthDate\":\"2000-09-07\",\"typeId\":null,\"id\":1,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=72A4220325BCDB619E21849DD9146984; Path=/petclinic; HttpOnly",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "auth-anonymous-create": {
+   "request": {
+    "body": "{\"firstName\": \"Hal\", \"lastName\": \"Quinby\", \"address\": \"11 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550011\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=6551E08494B4BC459DE61A458DDE8A62; Path=/petclinic; HttpOnly",
+     "www-authenticate": "Basic realm=\"Realm\"",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 401
+   }
+  },
+  "auth-anonymous-read": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/1"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=EAEEDFC1BAABD5F7FA3E6B41DF78812D; Path=/petclinic; HttpOnly",
+     "www-authenticate": "Basic realm=\"Realm\"",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 401
+   }
+  },
+  "auth-anonymous-root": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=4D14F06410196A5B48A6F7177BAFD9AA; Path=/petclinic; HttpOnly",
+     "www-authenticate": "Basic realm=\"Realm\"",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 401
+   }
+  },
+  "auth-wrong-password-read": {
+   "request": {
+    "body": null,
+    "headers": {
+     "Authorization": "Basic <corpus auth user admin; value not recorded>"
+    },
+    "method": "GET",
+    "path": "/petclinic/api/owners/1"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=B4D1B515E57014C09CFAB63A727A93BB; Path=/petclinic; HttpOnly",
+     "www-authenticate": "Basic realm=\"Realm\", Basic realm=\"Realm\"",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 401
+   }
+  },
+  "cors-preflight": {
+   "request": {
+    "body": null,
+    "headers": {
+     "Access-Control-Request-Headers": "content-type",
+     "Access-Control-Request-Method": "POST",
+     "Origin": "http://cors-client.example.test"
+    },
+    "method": "OPTIONS",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "set-cookie": "JSESSIONID=B369B9B29C58E0E073563EE34228E977; Path=/petclinic; HttpOnly",
+     "www-authenticate": "Basic realm=\"Realm\"",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 401
+   }
+  }
+ }
+}

@@ -1,0 +1,947 @@
+{
+ "provenance": {
+  "captured_at": "2026-09-30T07:44:19Z",
+  "corpus_sha256": "1d309829266665509ffc92c99666224cf120512adaff3fbd55a01b76573a63d0",
+  "db": {
+   "engine": "postgresql",
+   "image": "registry.redhat.io/rhel9/postgresql-16",
+   "seed_scripts": [
+    {
+     "path": "src/main/resources/db/postgresql/initDB.sql",
+     "sha256": "e09b38c29e330a2c455490664b1c2f32f88c3c415d26488a998a2cfec9867ccd"
+    },
+    {
+     "path": "src/main/resources/db/postgresql/populateDB.sql",
+     "sha256": "6efcbf6a4f25ce37d601497864b0165239831ebbe98b3720cb8814045872da77"
+    }
+   ]
+  },
+  "java": "openjdk version \"21.0.5\" 2024-10-15 LTS",
+  "note": "captured from the frozen source; the destination never writes this file",
+  "producer": "reference-oracle-capture.py",
+  "security_mode": "disabled",
+  "source_jar": "spring-petclinic-rest-2.6.2.jar",
+  "source_jar_sha256": "b1e2772e78ad14dff58d60af426d06b9de93fbc04e87975c8f43d661b5ebbbba",
+  "source_manifest_digest": "322a6149734fd8ce09b638a57312106dce879ec9ab5aa2263939a22c38ac6fd4",
+  "spring_profiles": "postgresql,spring-data-jpa"
+ },
+ "schema": "rhoai3.reference-oracle/v1",
+ "steps": {
+  "_bound": {
+   "response": {
+    "value": {
+     "owner_a": "100",
+     "owner_c": "101"
+    }
+   }
+  },
+  "auth-disabled-with-credentials": {
+   "request": {
+    "body": null,
+    "headers": {
+     "Authorization": "Basic <corpus auth user admin; value not recorded>"
+    },
+    "method": "GET",
+    "path": "/petclinic/api/owners/1"
+   },
+   "response": {
+    "body": "{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\",\"id\":1,\"pets\":[{\"name\":\"Leo\",\"birthDate\":\"2000-09-07\",\"typeId\":null,\"id\":1,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "cors-actual-invalid-create": {
+   "request": {
+    "body": "{\"firstName\": \"\", \"lastName\": \"Cors\", \"address\": \"8 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550008\"}",
+    "headers": {
+     "Content-Type": "application/json",
+     "Origin": "http://cors-client.example.test"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "access-control-allow-origin": "*",
+     "access-control-expose-headers": "errors, content-type",
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"ownerDto\",\"fieldName\":\"firstName\",\"fieldValue\":\"\",\"errorMessage\":\"size must be between 1 and 30\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "cors-actual-read": {
+   "request": {
+    "body": null,
+    "headers": {
+     "Origin": "http://cors-client.example.test"
+    },
+    "method": "GET",
+    "path": "/petclinic/api/owners/1"
+   },
+   "response": {
+    "body": "{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\",\"id\":1,\"pets\":[{\"name\":\"Leo\",\"birthDate\":\"2000-09-07\",\"typeId\":null,\"id\":1,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]}",
+    "headers": {
+     "access-control-allow-origin": "*",
+     "access-control-expose-headers": "errors, content-type",
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "cors-preflight": {
+   "request": {
+    "body": null,
+    "headers": {
+     "Access-Control-Request-Headers": "content-type",
+     "Access-Control-Request-Method": "POST",
+     "Origin": "http://cors-client.example.test"
+    },
+    "method": "OPTIONS",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "access-control-allow-headers": "content-type",
+     "access-control-allow-methods": "POST",
+     "access-control-allow-origin": "*",
+     "access-control-expose-headers": "errors, content-type",
+     "access-control-max-age": "1800",
+     "allow": "GET, HEAD, POST, PUT, DELETE, TRACE, OPTIONS, PATCH",
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "outside-root": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/owners"
+   },
+   "response": {
+    "body": "<!doctype html><html lang=\"en\"><head><title>HTTP Status 404 \u2013 Not Found</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D76;} h1 {font-size:22px;} h2 {font-size:16px;} h3 {font-size:14px;} p {font-size:12px;} a {color:black;} .line {height:1px;background-color:#525D76;border:none;}</style></head><body><h1>HTTP Status 404 \u2013 Not Found</h1></body></html>",
+    "headers": {
+     "connection": "close",
+     "content-language": "en",
+     "content-length": "431",
+     "content-type": "text/html;charset=utf-8"
+    },
+    "status": 404
+   }
+  },
+  "owner-create-bad-telephone": {
+   "request": {
+    "body": "{\"firstName\": \"Dee\", \"lastName\": \"Quinby\", \"address\": \"5 Reference Way\", \"city\": \"Madison\", \"telephone\": \"phone\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"ownerDto\",\"fieldName\":\"telephone\",\"fieldValue\":\"phone\",\"errorMessage\":\"must match \\\"^[0-9]*$\\\"\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-create-blank-firstname": {
+   "request": {
+    "body": "{\"firstName\": \"\", \"lastName\": \"Quinby\", \"address\": \"4 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550004\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"ownerDto\",\"fieldName\":\"firstName\",\"fieldValue\":\"\",\"errorMessage\":\"size must be between 1 and 30\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-create-empty-pets": {
+   "request": {
+    "body": "{\"firstName\": \"Cy\", \"lastName\": \"Quinby\", \"address\": \"3 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550003\", \"pets\": []}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "{\"firstName\":\"Cy\",\"lastName\":\"Quinby\",\"address\":\"3 Reference Way\",\"city\":\"Madison\",\"telephone\":\"6085550003\",\"id\":101,\"pets\":[]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "location": "http://127.0.0.1:51726/petclinic/api/owners/101",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 201
+   }
+  },
+  "owner-create-malformed": {
+   "request": {
+    "body": "{\"firstName\": ",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "{\"className\":\"org.springframework.http.converter.HttpMessageNotReadableException\",\"exMessage\":\"JSON parse error: Unexpected end-of-input within/between Object entries; nested exception is com.fasterxml.jackson.core.io.JsonEOFException: Unexpected end-of-input within/between Object entries\\n at [Source: (PushbackInputStream); line: 1, column: 15]\"}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "349",
+     "content-type": "text/plain;charset=UTF-8",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-create-null-pets": {
+   "request": {
+    "body": "{\"firstName\": \"Bea\", \"lastName\": \"Quinby\", \"address\": \"2 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550002\", \"pets\": null}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"ownerDto\",\"fieldName\":\"pets\",\"fieldValue\":\"null\",\"errorMessage\":\"must not be null\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-create-omitted-pets": {
+   "request": {
+    "body": "{\"firstName\": \"Ada\", \"lastName\": \"Quinby\", \"address\": \"1 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550001\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "{\"firstName\":\"Ada\",\"lastName\":\"Quinby\",\"address\":\"1 Reference Way\",\"city\":\"Madison\",\"telephone\":\"6085550001\",\"id\":100,\"pets\":[]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "location": "http://127.0.0.1:51726/petclinic/api/owners/100",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 201
+   }
+  },
+  "owner-create-omitted-pets-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "{\"firstName\":\"Ada\",\"lastName\":\"Quinby\",\"address\":\"1 Reference Way\",\"city\":\"Madison\",\"telephone\":\"6085550001\",\"id\":100,\"pets\":[]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "owner-create-omitted-pets-sql": {
+   "request": {
+    "sql": "select count(*) || ':' || coalesce(max(first_name),'') || ':' || coalesce(max(city),'') from owners where id = 100"
+   },
+   "response": {
+    "value": "1:Ada:Madison"
+   }
+  },
+  "owner-create-pets-not-a-list": {
+   "request": {
+    "body": "{\"firstName\": \"Fay\", \"lastName\": \"Quinby\", \"address\": \"7 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550007\", \"pets\": \"none\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "{\"className\":\"org.springframework.http.converter.HttpMessageNotReadableException\",\"exMessage\":\"JSON parse error: Cannot deserialize value of type `java.util.ArrayList<org.springframework.samples.petclinic.dto.PetDto>` from String value (token `JsonToken.VALUE_STRING`); nested exception is com.fasterxml.jackson.databind.exc.MismatchedInputException: Cannot deserialize value of type `java.util.ArrayList<org.springframework.samples.petclinic.dto.PetDto>` from String value (token `JsonToken.VALUE_STRING`)\\n at [Source: (PushbackInputStream); line: 1, column: 128] (through reference chain: org.springframework.samples.petclinic.dto.OwnerDto[\\\"pets\\\"])\"}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "655",
+     "content-type": "text/plain;charset=UTF-8",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-create-with-id": {
+   "request": {
+    "body": "{\"id\": 5, \"firstName\": \"Eve\", \"lastName\": \"Quinby\", \"address\": \"6 Reference Way\", \"city\": \"Madison\", \"telephone\": \"6085550006\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"body\",\"fieldName\":\"id\",\"fieldValue\":\"5\",\"errorMessage\":\"must not be specified\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-delete-created": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "DELETE",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 204
+   }
+  },
+  "owner-delete-created-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-delete-created-sql": {
+   "request": {
+    "sql": "select count(*) from owners where id = 100"
+   },
+   "response": {
+    "value": "0"
+   }
+  },
+  "owner-delete-dependents": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "DELETE",
+    "path": "/petclinic/api/owners/6"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 204
+   }
+  },
+  "owner-delete-dependents-pet-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/pets/7"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-delete-dependents-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/6"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-delete-dependents-sql": {
+   "request": {
+    "sql": "select (select count(*) from owners where id = 6) || ':' || (select count(*) from pets where owner_id = 6) || ':' || (select count(*) from visits where pet_id in (7, 8))"
+   },
+   "response": {
+    "value": "0:0:0"
+   }
+  },
+  "owner-delete-dependents-visit-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/visits/1"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-delete-missing": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "DELETE",
+    "path": "/petclinic/api/owners/9999"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-get-1": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/1"
+   },
+   "response": {
+    "body": "{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\",\"id\":1,\"pets\":[{\"name\":\"Leo\",\"birthDate\":\"2000-09-07\",\"typeId\":null,\"id\":1,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "owner-get-missing": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/9999"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-search-davis": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/x/lastname/Davis"
+   },
+   "response": {
+    "body": "[{\"firstName\":\"Betty\",\"lastName\":\"Davis\",\"address\":\"638 Cardinal Ave.\",\"city\":\"Sun Prairie\",\"telephone\":\"6085551749\",\"id\":2,\"pets\":[{\"name\":\"Basil\",\"birthDate\":\"2002-08-06\",\"typeId\":null,\"id\":2,\"type\":{\"id\":6,\"name\":\"hamster\"},\"visits\":[]}]},{\"firstName\":\"Harold\",\"lastName\":\"Davis\",\"address\":\"563 Friendly St.\",\"city\":\"Windsor\",\"telephone\":\"6085553198\",\"id\":4,\"pets\":[{\"name\":\"Iggy\",\"birthDate\":\"2000-11-30\",\"typeId\":null,\"id\":5,\"type\":{\"id\":3,\"name\":\"lizard\"},\"visits\":[]}]}]",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "owner-search-none": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/x/lastname/Zzzz"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-update": {
+   "request": {
+    "body": "{\"firstName\": \"Ada\", \"lastName\": \"Quinby\", \"address\": \"9 Changed Rd.\", \"city\": \"Monona\", \"telephone\": \"6085550009\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "PUT",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 204
+   }
+  },
+  "owner-update-id-mismatch": {
+   "request": {
+    "body": "{\"id\": 1, \"firstName\": \"Ada\", \"lastName\": \"Quinby\", \"address\": \"9 Changed Rd.\", \"city\": \"Monona\", \"telephone\": \"6085550009\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "PUT",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"body\",\"fieldName\":\"id\",\"fieldValue\":\"1\",\"errorMessage\":\"does not match pathId: 100\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-update-invalid": {
+   "request": {
+    "body": "{\"firstName\": \"Ada\", \"lastName\": \"\", \"address\": \"9 Changed Rd.\", \"city\": \"Monona\", \"telephone\": \"6085550009\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "PUT",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "errors": "[{\"objectName\":\"ownerDto\",\"fieldName\":\"lastName\",\"fieldValue\":\"\",\"errorMessage\":\"size must be between 1 and 30\"}]",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 400
+   }
+  },
+  "owner-update-missing": {
+   "request": {
+    "body": "{\"firstName\": \"Ada\", \"lastName\": \"Quinby\", \"address\": \"9 Changed Rd.\", \"city\": \"Monona\", \"telephone\": \"6085550009\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "PUT",
+    "path": "/petclinic/api/owners/9999"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 404
+   }
+  },
+  "owner-update-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/100"
+   },
+   "response": {
+    "body": "{\"firstName\":\"Ada\",\"lastName\":\"Quinby\",\"address\":\"9 Changed Rd.\",\"city\":\"Monona\",\"telephone\":\"6085550009\",\"id\":100,\"pets\":[]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "owner-update-seeded": {
+   "request": {
+    "body": "{\"firstName\": \"Eduardo\", \"lastName\": \"Rodriquez\", \"address\": \"77 Updated Ave.\", \"city\": \"McFarland\", \"telephone\": \"6085558763\"}",
+    "headers": {
+     "Content-Type": "application/json"
+    },
+    "method": "PUT",
+    "path": "/petclinic/api/owners/3"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 204
+   }
+  },
+  "owner-update-seeded-readback": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners/3"
+   },
+   "response": {
+    "body": "{\"firstName\":\"Eduardo\",\"lastName\":\"Rodriquez\",\"address\":\"77 Updated Ave.\",\"city\":\"McFarland\",\"telephone\":\"6085558763\",\"id\":3,\"pets\":[{\"name\":\"Jewel\",\"birthDate\":\"2000-03-07\",\"typeId\":null,\"id\":4,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]},{\"name\":\"Rosy\",\"birthDate\":\"2001-04-17\",\"typeId\":null,\"id\":3,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]}]}",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "owner-update-seeded-sql": {
+   "request": {
+    "sql": "select address || ':' || city from owners where id = 3"
+   },
+   "response": {
+    "value": "77 Updated Ave.:McFarland"
+   }
+  },
+  "owner-update-sql": {
+   "request": {
+    "sql": "select address || ':' || city || ':' || telephone from owners where id = 100"
+   },
+   "response": {
+    "value": "9 Changed Rd.:Monona:6085550009"
+   }
+  },
+  "owners-list": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "[{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\",\"id\":1,\"pets\":[{\"name\":\"Leo\",\"birthDate\":\"2000-09-07\",\"typeId\":null,\"id\":1,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]},{\"firstName\":\"Betty\",\"lastName\":\"Davis\",\"address\":\"638 Cardinal Ave.\",\"city\":\"Sun Prairie\",\"telephone\":\"6085551749\",\"id\":2,\"pets\":[{\"name\":\"Basil\",\"birthDate\":\"2002-08-06\",\"typeId\":null,\"id\":2,\"type\":{\"id\":6,\"name\":\"hamster\"},\"visits\":[]}]},{\"firstName\":\"Eduardo\",\"lastName\":\"Rodriquez\",\"address\":\"2693 Commerce St.\",\"city\":\"McFarland\",\"telephone\":\"6085558763\",\"id\":3,\"pets\":[{\"name\":\"Jewel\",\"birthDate\":\"2000-03-07\",\"typeId\":null,\"id\":4,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]},{\"name\":\"Rosy\",\"birthDate\":\"2001-04-17\",\"typeId\":null,\"id\":3,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]}]},{\"firstName\":\"Harold\",\"lastName\":\"Davis\",\"address\":\"563 Friendly St.\",\"city\":\"Windsor\",\"telephone\":\"6085553198\",\"id\":4,\"pets\":[{\"name\":\"Iggy\",\"birthDate\":\"2000-11-30\",\"typeId\":null,\"id\":5,\"type\":{\"id\":3,\"name\":\"lizard\"},\"visits\":[]}]},{\"firstName\":\"Peter\",\"lastName\":\"McTavish\",\"address\":\"2387 S. Fair Way\",\"city\":\"Madison\",\"telephone\":\"6085552765\",\"id\":5,\"pets\":[{\"name\":\"George\",\"birthDate\":\"2000-01-20\",\"typeId\":null,\"id\":6,\"type\":{\"id\":4,\"name\":\"snake\"},\"visits\":[]}]},{\"firstName\":\"Jean\",\"lastName\":\"Coleman\",\"address\":\"105 N. Lake St.\",\"city\":\"Monona\",\"telephone\":\"6085552654\",\"id\":6,\"pets\":[{\"name\":\"Max\",\"birthDate\":\"1995-09-04\",\"typeId\":null,\"id\":8,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[{\"date\":\"2011-03-04\",\"description\":\"rabies shot\",\"id\":2},{\"date\":\"2009-06-04\",\"description\":\"neutered\",\"id\":3}]},{\"name\":\"Samantha\",\"birthDate\":\"1995-09-04\",\"typeId\":null,\"id\":7,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[{\"date\":\"2010-03-04\",\"description\":\"rabies shot\",\"id\":1},{\"date\":\"2008-09-04\",\"description\":\"spayed\",\"id\":4}]}]},{\"firstName\":\"Jeff\",\"lastName\":\"Black\",\"address\":\"1450 Oak Blvd.\",\"city\":\"Monona\",\"telephone\":\"6085555387\",\"id\":7,\"pets\":[{\"name\":\"Lucky\",\"birthDate\":\"1999-08-06\",\"typeId\":null,\"id\":9,\"type\":{\"id\":5,\"name\":\"bird\"},\"visits\":[]}]},{\"firstName\":\"Maria\",\"lastName\":\"Escobito\",\"address\":\"345 Maple St.\",\"city\":\"Madison\",\"telephone\":\"6085557683\",\"id\":8,\"pets\":[{\"name\":\"Mulligan\",\"birthDate\":\"1997-02-24\",\"typeId\":null,\"id\":10,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]}]},{\"firstName\":\"David\",\"lastName\":\"Schroeder\",\"address\":\"2749 Blackhawk Trail\",\"city\":\"Madison\",\"telephone\":\"6085559435\",\"id\":9,\"pets\":[{\"name\":\"Freddy\",\"birthDate\":\"2000-03-09\",\"typeId\":null,\"id\":11,\"type\":{\"id\":5,\"name\":\"bird\"},\"visits\":[]}]},{\"firstName\":\"Carlos\",\"lastName\":\"Estaban\",\"address\":\"2335 Independence La.\",\"city\":\"Waunakee\",\"telephone\":\"6085555487\",\"id\":10,\"pets\":[{\"name\":\"Lucky\",\"birthDate\":\"2000-06-24\",\"typeId\":null,\"id\":12,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]},{\"name\":\"Sly\",\"birthDate\":\"2002-06-08\",\"typeId\":null,\"id\":13,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]}]",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "owners-list-after-creates": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/api/owners"
+   },
+   "response": {
+    "body": "[{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\",\"id\":1,\"pets\":[{\"name\":\"Leo\",\"birthDate\":\"2000-09-07\",\"typeId\":null,\"id\":1,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]},{\"firstName\":\"Betty\",\"lastName\":\"Davis\",\"address\":\"638 Cardinal Ave.\",\"city\":\"Sun Prairie\",\"telephone\":\"6085551749\",\"id\":2,\"pets\":[{\"name\":\"Basil\",\"birthDate\":\"2002-08-06\",\"typeId\":null,\"id\":2,\"type\":{\"id\":6,\"name\":\"hamster\"},\"visits\":[]}]},{\"firstName\":\"Eduardo\",\"lastName\":\"Rodriquez\",\"address\":\"2693 Commerce St.\",\"city\":\"McFarland\",\"telephone\":\"6085558763\",\"id\":3,\"pets\":[{\"name\":\"Jewel\",\"birthDate\":\"2000-03-07\",\"typeId\":null,\"id\":4,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]},{\"name\":\"Rosy\",\"birthDate\":\"2001-04-17\",\"typeId\":null,\"id\":3,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]}]},{\"firstName\":\"Harold\",\"lastName\":\"Davis\",\"address\":\"563 Friendly St.\",\"city\":\"Windsor\",\"telephone\":\"6085553198\",\"id\":4,\"pets\":[{\"name\":\"Iggy\",\"birthDate\":\"2000-11-30\",\"typeId\":null,\"id\":5,\"type\":{\"id\":3,\"name\":\"lizard\"},\"visits\":[]}]},{\"firstName\":\"Peter\",\"lastName\":\"McTavish\",\"address\":\"2387 S. Fair Way\",\"city\":\"Madison\",\"telephone\":\"6085552765\",\"id\":5,\"pets\":[{\"name\":\"George\",\"birthDate\":\"2000-01-20\",\"typeId\":null,\"id\":6,\"type\":{\"id\":4,\"name\":\"snake\"},\"visits\":[]}]},{\"firstName\":\"Jean\",\"lastName\":\"Coleman\",\"address\":\"105 N. Lake St.\",\"city\":\"Monona\",\"telephone\":\"6085552654\",\"id\":6,\"pets\":[{\"name\":\"Max\",\"birthDate\":\"1995-09-04\",\"typeId\":null,\"id\":8,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[{\"date\":\"2011-03-04\",\"description\":\"rabies shot\",\"id\":2},{\"date\":\"2009-06-04\",\"description\":\"neutered\",\"id\":3}]},{\"name\":\"Samantha\",\"birthDate\":\"1995-09-04\",\"typeId\":null,\"id\":7,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[{\"date\":\"2010-03-04\",\"description\":\"rabies shot\",\"id\":1},{\"date\":\"2008-09-04\",\"description\":\"spayed\",\"id\":4}]}]},{\"firstName\":\"Jeff\",\"lastName\":\"Black\",\"address\":\"1450 Oak Blvd.\",\"city\":\"Monona\",\"telephone\":\"6085555387\",\"id\":7,\"pets\":[{\"name\":\"Lucky\",\"birthDate\":\"1999-08-06\",\"typeId\":null,\"id\":9,\"type\":{\"id\":5,\"name\":\"bird\"},\"visits\":[]}]},{\"firstName\":\"Maria\",\"lastName\":\"Escobito\",\"address\":\"345 Maple St.\",\"city\":\"Madison\",\"telephone\":\"6085557683\",\"id\":8,\"pets\":[{\"name\":\"Mulligan\",\"birthDate\":\"1997-02-24\",\"typeId\":null,\"id\":10,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]}]},{\"firstName\":\"David\",\"lastName\":\"Schroeder\",\"address\":\"2749 Blackhawk Trail\",\"city\":\"Madison\",\"telephone\":\"6085559435\",\"id\":9,\"pets\":[{\"name\":\"Freddy\",\"birthDate\":\"2000-03-09\",\"typeId\":null,\"id\":11,\"type\":{\"id\":5,\"name\":\"bird\"},\"visits\":[]}]},{\"firstName\":\"Carlos\",\"lastName\":\"Estaban\",\"address\":\"2335 Independence La.\",\"city\":\"Waunakee\",\"telephone\":\"6085555487\",\"id\":10,\"pets\":[{\"name\":\"Lucky\",\"birthDate\":\"2000-06-24\",\"typeId\":null,\"id\":12,\"type\":{\"id\":2,\"name\":\"dog\"},\"visits\":[]},{\"name\":\"Sly\",\"birthDate\":\"2002-06-08\",\"typeId\":null,\"id\":13,\"type\":{\"id\":1,\"name\":\"cat\"},\"visits\":[]}]},{\"firstName\":\"Ada\",\"lastName\":\"Quinby\",\"address\":\"1 Reference Way\",\"city\":\"Madison\",\"telephone\":\"6085550001\",\"id\":100,\"pets\":[]},{\"firstName\":\"Cy\",\"lastName\":\"Quinby\",\"address\":\"3 Reference Way\",\"city\":\"Madison\",\"telephone\":\"6085550003\",\"id\":101,\"pets\":[]}]",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-type": "application/json",
+     "expires": "0",
+     "pragma": "no-cache",
+     "transfer-encoding": "chunked",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 200
+   }
+  },
+  "root-redirect": {
+   "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/petclinic/"
+   },
+   "response": {
+    "body": "",
+    "headers": {
+     "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+     "connection": "close",
+     "content-length": "0",
+     "expires": "0",
+     "location": "http://127.0.0.1:51726/petclinic/swagger-ui/index.html",
+     "pragma": "no-cache",
+     "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "DENY",
+     "x-xss-protection": "1; mode=block"
+    },
+    "status": 302
+   }
+  }
+ }
+}
