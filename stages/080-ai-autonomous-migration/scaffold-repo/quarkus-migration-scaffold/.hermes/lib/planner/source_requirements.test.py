@@ -575,10 +575,54 @@ def servlet_case() -> int:
     return 0
 
 
+def unobservable_write_case() -> int:
+    """M-1: a write whose every captured scenario declares no read-back (the
+    derivation found no route that reads what it persisted and said so in
+    effects_unobservable) keeps its behaviour UNRESOLVED with that reason --
+    an oracle of the response is not one of the write -- while a write with a
+    read-back, a read, and a write with no captured scenario keep their rules.
+    Names are the renamed twin's, so nothing keys on the pilot."""
+    ctl = "z.gateway.MemberResource"
+    eps = [{"id": "ep:%s#enrol(z.wire.MemberPayload):http" % ctl, "kind": "http", "type": ctl, "member": "enrol(z.wire.MemberPayload)",
+            "http_method": "POST", "http_path": "/v2/members"},
+           {"id": "ep:%s#rename(int,z.wire.MemberPayload):http" % ctl, "kind": "http", "type": ctl, "member": "rename(int,z.wire.MemberPayload)",
+            "http_method": "PUT", "http_path": "/v2/roster/{memberRef}"},
+           {"id": "ep:%s#roster():http" % ctl, "kind": "http", "type": ctl, "member": "roster()", "http_method": "GET", "http_path": "/v2/roster"}]
+    why = "no GET entry point reads /v2/members, so what the create persisted is not observable over HTTP"
+    facts = {"sc:create-members": {"method": "POST", "path": "/v2/members", "effects": [], "effects_unobservable": why},
+             "sc:create-invalid-members-login": {"method": "POST", "path": "/v2/members", "effects": [], "effects_unobservable": why},
+             "sc:auth-allowed-create-members": {"method": "POST", "path": "/v2/members", "effects": []},
+             "sc:update-roster-2": {"method": "PUT", "path": "/v2/roster/2", "effects": [{"id": "eff:r", "method": "GET", "path": "/v2/roster"}]},
+             "sc:read-v2-roster": {"method": "GET", "path": "/v2/roster", "effects": []}}
+    oracles = {eps[0]["id"]: ["sc:auth-allowed-create-members", "sc:create-invalid-members-login", "sc:create-members"],
+               eps[1]["id"]: ["sc:update-roster-2"], eps[2]["id"]: ["sc:read-v2-roster"]}
+    doc = SR.derive(types=[], entry_points=eps, catalog={}, decisions=None, oracles=oracles,
+                                     structure_complete=False, scenario_facts=facts)
+    bv = {r["subject"]: r for r in doc["requirements"] if str(r["rule"]).startswith("behavior-verification")}
+    enrol, rename, roster = bv[eps[0]["id"]], bv[eps[1]["id"]], bv[eps[2]["id"]]
+    if enrol["status"] != "unresolved" or not any(why in u and "the write is unverified" in u for u in enrol["unknowns"]):
+        return _fail("a write nothing reads back stays unresolved, naming why: %s" % enrol)
+    if rename["status"] != "applicable" or roster["status"] != "applicable":
+        return _fail("a write with a read-back and a read are covered: %s %s" % (rename["status"], roster["status"]))
+    # one write scenario WITH a read-back is enough to verify the write
+    facts2 = dict(facts, **{"sc:auth-allowed-create-members": {"method": "POST", "path": "/v2/members",
+                                                               "effects": [{"id": "eff:m", "method": "GET", "path": "/v2/roster"}]}})
+    doc2 = SR.derive(types=[], entry_points=eps, catalog={}, decisions=None, oracles=oracles,
+                                      structure_complete=False, scenario_facts=facts2)
+    if [r["status"] for r in doc2["requirements"] if r["subject"] == eps[0]["id"]] != ["applicable"]:
+        return _fail("a write one scenario reads back is verifiable")
+    # without scenario facts nothing is decided from them (the rule as before)
+    doc3 = SR.derive(types=[], entry_points=eps, catalog={}, decisions=None, oracles=oracles,
+                                      structure_complete=False, scenario_facts=None)
+    if [r["status"] for r in doc3["requirements"] if r["subject"] == eps[0]["id"]] != ["applicable"]:
+        return _fail("no facts: an oracle still covers the entry point as before")
+    return 0
+
+
 def main() -> int:
     for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
                  repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case, application_path_case,
-                 servlet_case):
+                 servlet_case, unobservable_write_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "

@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import IDEMPOTENT, ORACLES, entry_points, http_observe, normalize_observation, retain_body, slug  # noqa: E402
+from _scenarios import fill_route_wildcards  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -88,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     path_vars = _pairs(args.path_var)
     obs = _pairs(args.observation)
     eps = entry_points(root)
+    eps_all = list(eps)
     if args.entry_point:
         eps = [e for e in eps if e["id"] in set(args.entry_point)]
     if not eps:
@@ -109,6 +111,16 @@ def main(argv: list[str] | None = None) -> int:
             # is named.
             path, used, missing = substitute_path(template, path_vars)
             extra = {"path_template": template, "path_vars": used} if used else {}
+            if "*" in path:
+                # a whole-segment wildcard binds nothing: filled with the one
+                # value every consumer sends (fill_route_wildcards); a mixed or
+                # ambiguous one stays refused below
+                others = [str(e.get("http_path") or "") for e in eps_all
+                          if e["id"] != ep["id"] and (e.get("http_method") or "GET") == method]
+                filled, notes, _why = fill_route_wildcards(path, others)
+                if not _why:
+                    path = filled
+                    extra = dict(extra, path_template=template, wildcards=notes)
             if not args.base_url:
                 rec["reason"] = "no --base-url"
             elif missing:

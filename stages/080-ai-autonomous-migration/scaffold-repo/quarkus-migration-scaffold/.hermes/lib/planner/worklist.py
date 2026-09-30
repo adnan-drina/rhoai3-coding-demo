@@ -6244,6 +6244,8 @@ def corpus_scenario_facts(root: Path | None) -> tuple[dict[str, list[str]] | Non
             if isinstance(sc, dict) and sc.get("id"):
                 facts[str(sc["id"])] = {"method": str(sc.get("method") or ""), "path": str(sc.get("path") or ""),
                                         "effects": [dict(e) for e in (sc.get("effects") or []) if isinstance(e, dict)]}
+                if str(sc.get("effects_unobservable") or ""):
+                    facts[str(sc["id"])]["effects_unobservable"] = str(sc["effects_unobservable"])
                 if sc.get("entry_point"):
                     oracles.setdefault(str(sc["entry_point"]), []).append(str(sc["id"]))
     return (oracles, facts) if seen else (None, None)

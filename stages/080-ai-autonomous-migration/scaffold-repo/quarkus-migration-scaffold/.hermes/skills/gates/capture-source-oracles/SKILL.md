@@ -489,8 +489,48 @@ then replaced the SpEL `@Value("#{servletContext.contextPath}")` with
 `@Value("")` — a redirect out of the destination's own root path that no
 scenario could see. A method-less mapping whose handler declares a
 `@RequestBody` parameter derives **no** GET (it consumes a body) and a typed
-gap says so, as do a wildcard route and a member M1's structure model does not
-record (a servlet mapping is not a request the corpus can derive).
+gap says so, as does a member M1's structure model does not record (a servlet
+mapping is not a request the corpus can derive).
+
+**A whole-segment wildcard is a request.** `*` (one segment) and `**` (any
+segments) bind no variable, so the route answers any value there:
+`_scenarios.fill_route_wildcards` fills each with the one named value
+`WILDCARD_SEGMENT_FILL` (`any`) — the derivation, the enabled mode's read base
+and the disabled mode's read oracle (`capture-source-oracles.py`, which records
+`path_template` and `wildcards`) all send the same bytes. A wildcard mixed into
+literal text (`v*`) constrains the value, and a filled route another route of
+the same method also matches could reach another handler: both stay gaps.
+
+**A write no operation binds is derived from its request MODEL (M-1).** v29's
+initial plan kept twelve entry points with no oracle; eleven were writes the
+document's `paths` do not name (no `POST /pettypes`, `PUT /vets/{id}`, ...) or
+name under path variables the route cannot supply (`/owner/{ownerId}/pet`).
+The document's COMPONENTS are complete and the build GENERATES the handlers'
+request types from them, so when no operation binds, the handler's
+`@RequestBody` type (M1's structure model) is bound to
+`components.schemas.<name>` through the frozen `pom.xml`'s own generator
+configuration: its `inputSpec` must be the document read, the type must live
+in its `modelPackage`, and `<name>` is the simple name without
+`modelNamePrefix`/`modelNameSuffix`. Anything else is a gap naming the missing
+fact; the operation-binding gap moves into the scenario's `note:` evidence. The
+body: every property the schema declares, once — the identity is the seeded
+row on an update and, on a create, sent only when the model REQUIRES it, then
+the first value above the seeded maximum (no seeded row holds it); a required
+readOnly collection is sent empty and any other readOnly property is left out;
+an object with an identity that maps to an `@Entity` and its table is a
+REFERENCE, read off the seeded row the example's identity names (the example's
+other values are never sent for it); a client-assigned key the seed already
+holds is a gap; scalar examples are read as their declared type. Scenarios are
+same-origin (the CORS oracle owns cross-origin exchanges), so the enabled mode
+reuses them as its probes. Rules on top of that:
+
+| evidence | scenario | contract |
+|---|---|---|
+| a `NOT NULL` column with no default that no body property fills (by the entity field mapping it) and the handler does not set, on a route without path variables | `sc:create-refused-<resource>` | any `4xx`, the collection unchanged |
+| otherwise | `sc:create-<resource>` | `201`; `creates_one_entity` over `read_back_properties` (what the model requires, else every non-readOnly property sent); `location` unless the structure model shows the handler calls none of `setLocation`/`location`/`created`, then `creates_without_location: true` |
+| an update | `sc:update-<resource>-<id>` on the first seeded row the body CHANGES | `after_contains_body` over the row identity plus `read_back_properties`, and `before_lacks_body` when a changed row exists |
+| a string the body sends with a `pattern` or `minLength` (required or not: the generated model validates a present value) | `sc:<create|update>-invalid-<resource>-<field>` | `400` naming the field, nothing changed |
+| no GET entry point reads the collection | the scenarios keep their response contract and carry `effects_unobservable` | the comparator refuses them at M4 naming the reason, and `source_requirements` keeps the entry point's behaviour UNRESOLVED |
 
 What cannot be derived is a **gap**, recorded in the corpus and the receipt
 and never filled in: a required property without an example, a path variable
@@ -1063,5 +1103,7 @@ to.
   security-mode paths, the credential references and the source's declared
   CORS and authorization policies
 - `scripts/capture-source-oracles.test.py`, `scripts/scenario-parity.test.py`,
-  `scripts/scenario-derivation.test.py` — selftests (the last one: derivation,
-  loader binding, qualification and the receipt's use of it)
+  `scripts/scenario-derivation.test.py`, `scripts/request-model-derivation.test.py`
+  — selftests (scenario-derivation: derivation, loader binding, qualification
+  and the receipt's use of it; request-model-derivation: the request-model
+  binding, the wildcard fill and their qualification against a renamed twin)

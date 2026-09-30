@@ -65,7 +65,7 @@ import _variant_revert  # noqa: E402
 from _scenarios import (CHALLENGE_HEADER, CORPUS, DEFAULT_SECURITY_MODE, DERIVATION_SCHEMA, DERIVE_RECEIPT,  # noqa: E402
                         EFFECT_ROLE_UNCHANGED, FROZEN_SOURCE_MODEL, SCENARIO_BROWSER_PREFLIGHT,
                         SCENARIO_CORS_ACTUAL, SCENARIO_DIAGNOSTIC_PROBE, VARIANT_DERIVATION, normalized_identity, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
-                        corpus_digest, corpus_path, derive_receipt_path, load_corpus, merge_role_constants,
+                        corpus_digest, corpus_path, derive_receipt_path, fill_route_wildcards, load_corpus, merge_role_constants,
                         normalize_security_mode, normalize_variant, parse_assignments, request_of,
                         resolve_role_constant,
                         role_constants_from_model, role_matches, role_reference_tokens,
@@ -1342,11 +1342,131 @@ def _write_body(root: Path, scenario_id: str, body: Any) -> str:
     return rel.as_posix()
 
 
+# --------------------------------------------------------------------------
+# the request MODEL a handler consumes: helpers (M-1)
+# --------------------------------------------------------------------------
+def parse_column_defs(text: str) -> dict[str, dict[str, dict[str, bool]]]:
+    """{table: {column: {not_null, default, identity}}} from ``CREATE TABLE``.
+
+    What a create can be refused for without any application rule saying so:
+    a column the database requires (NOT NULL, or part of a table-level
+    PRIMARY KEY) that has no default and is not generated. Read by the same
+    parser the columns come from; a column clause this does not understand
+    simply claims nothing."""
+    out: dict[str, dict[str, dict[str, bool]]] = {}
+    for m in _CREATE_RE.finditer(text):
+        cols: dict[str, dict[str, bool]] = {}
+        pk: list[str] = []
+        for part in _tuple_values(m.group(2) + ")", 0):
+            s = part.strip()
+            tok = s.split()
+            if not tok:
+                continue
+            if tok[0].upper() in _CONSTRAINT_WORDS:
+                hit = re.search(r"PRIMARY\s+KEY\s*\(([^)]*)\)", s, re.IGNORECASE)
+                if hit:
+                    pk.extend(_cols(hit.group(1)))
+                continue
+            up = s.upper()
+            cols[tok[0].strip('`"').lower()] = {
+                "not_null": bool(re.search(r"\bNOT\s+NULL\b", up) or re.search(r"\bPRIMARY\s+KEY\b", up)),
+                "default": bool(re.search(r"\bDEFAULT\b", up)),
+                "identity": bool(re.search(r"\b(IDENTITY|AUTO_INCREMENT|AUTOINCREMENT|SERIAL|BIGSERIAL|SMALLSERIAL|GENERATED)\b", up)),
+            }
+        for c in pk:
+            if c in cols:
+                cols[c]["not_null"] = True
+        out[m.group(1).lower()] = cols
+    return out
+
+
+def _field_column(field: dict[str, Any]) -> str:
+    """The column a JPA field maps to: ``@Column(name)`` / ``@JoinColumn(name)``,
+    else the field name in snake case (the default physical naming)."""
+    for ann in ("Column", "JoinColumn"):
+        named = _ann_first(_ann_values(_find_ann(field.get("annotations"), ann)), "name")
+        if named:
+            return named.lower()
+    return _snake(str(field.get("name") or ""))
+
+
+def _entity_field(ent: dict[str, Any] | None, name: str) -> dict[str, Any] | None:
+    hits = [f for f in ((ent or {}).get("fields") or []) if f.get("name") == name]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _id_field(ent: dict[str, Any] | None) -> dict[str, Any] | None:
+    hits = [f for f in ((ent or {}).get("fields") or []) if _find_ann(f.get("annotations"), "Id") is not None]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _is_relationship(field: dict[str, Any]) -> bool:
+    return any(_find_ann(field.get("annotations"), k) is not None for k in _RELATION_ANNS)
+
+
+def _typed(raw: Any, psch: dict[str, Any]) -> Any:
+    """A seeded SQL value as the JSON type the schema declares."""
+    if raw is None or str(raw).upper() == "NULL":
+        return None
+    s = str(raw)
+    t = psch.get("type")
+    if t == "integer" and re.fullmatch(r"-?\d+", s):
+        return int(s)
+    if t == "number" and re.fullmatch(r"-?\d+(?:\.\d+)?", s):
+        return float(s)
+    if t == "boolean" and s.lower() in ("true", "false", "1", "0"):
+        return s.lower() in ("true", "1")
+    return s
+
+
+def _coerce(example: Any, psch: dict[str, Any]) -> Any:
+    """A document example read as its declared scalar type: YAML reads
+    ``example: 1234`` as a number even where the property is a string, and the
+    request model binds the declared type."""
+    t = psch.get("type")
+    if t == "string" and isinstance(example, (int, float)) and not isinstance(example, bool):
+        return str(example)
+    if t == "string" and isinstance(example, bool):
+        return "true" if example else "false"
+    if t == "integer" and isinstance(example, str) and re.fullmatch(r"-?\d+", example):
+        return int(example)
+    return example
+
+
+def _generator_spec(copy: Path | None, input_spec: str) -> Path | None:
+    """The file a generator's ``inputSpec`` names, resolved against the frozen
+    tree (Maven's basedir properties are the tree's root)."""
+    if copy is None or not input_spec:
+        return None
+    s = str(input_spec).strip()
+    for k in ("${project.basedir}/", "${basedir}/", "${project.basedir}", "${basedir}"):
+        s = s.replace(k, "")
+    p = Path(s) if Path(s).is_absolute() else Path(copy) / s
+    return p if p.is_file() else None
+
+
+# the Spring calls that put a Location on the answer (HttpHeaders.setLocation,
+# ResponseEntity.created, the builders' location)
+_LOCATION_CALLS = ("setLocation", "location", "created")
+
+
+def builds_location(handler: dict[str, Any]) -> bool | None:
+    """Whether the handler's recorded calls build a Location header; None when
+    the structure model records no calls for it (unknown, not "no")."""
+    calls = (handler or {}).get("calls")
+    if not isinstance(calls, list):
+        return None
+    return any(isinstance(c, dict) and str(c.get("owner") or "").startswith("org.springframework.http.")
+               and str(c.get("name") or "") in _LOCATION_CALLS for c in calls)
+
+
 class Derivation:
     def __init__(self, root: Path, bundle: dict[str, Any], openapi: dict[str, Any], seed: dict[str, dict[str, Any]],
                  columns: dict[str, list[str]], policies: dict[str, dict[str, Any]], origin: str,
                  foreign_keys: list[dict[str, Any]] | None = None,
-                 persistence: PersistenceModel | None = None) -> None:
+                 persistence: PersistenceModel | None = None, *,
+                 generator: dict[str, Any] | None = None, copy: Path | None = None, openapi_path: Path | None = None,
+                 column_defs: dict[str, dict[str, dict[str, bool]]] | None = None) -> None:
         self.root = root
         self.openapi = openapi
         self.seed = seed
@@ -1355,8 +1475,18 @@ class Derivation:
         self.foreign_keys = list(foreign_keys or [])
         self.policies = policies
         self.origin = origin
+        # the request-MODEL binding (M-1): the build's generator configuration,
+        # the frozen tree it is read from and the document the derivation read
+        self.generator = dict(generator or {})
+        self.copy = copy
+        self.openapi_path = openapi_path
+        self.column_defs = dict(column_defs or {})
         self.gaps: list[str] = []
         self.unbound: set[str] = set()  # entry points whose binding gap is already recorded
+        # the operation-binding gaps recorded per entry point, so a request
+        # model that binds the handler's body instead can carry them as notes
+        self.lookup_gaps: dict[str, list[str]] = {}
+        self.wildcard_notes: dict[str, list[str]] = {}  # entry point -> how its wildcard segments were filled
         self.scenarios: list[dict[str, Any]] = []
         self.path_vars: dict[str, str] = {}
         self.path_var_evidence: dict[str, str] = {}
@@ -1380,6 +1510,9 @@ class Derivation:
         if any(s["id"] == sc["id"] for s in self.scenarios):
             self.gaps.append("scenario id %s would be derived twice (entry point %s); the second is not emitted" % (sc["id"], sc["entry_point"]))
             return
+        notes = self.wildcard_notes.get(str(sc.get("entry_point") or ""))
+        if notes and isinstance(sc.get("derived_from"), dict):
+            sc["derived_from"]["evidence"] = list(sc["derived_from"].get("evidence") or []) + list(notes)
         self.scenarios.append(sc)
 
     def _policy_of(self, type_fqn: str) -> str:
@@ -1509,14 +1642,26 @@ class Derivation:
             # the binding rules (and their gaps) are for the writes it feeds.
             # A mapping that declares no method binds to no operation either:
             # the document keys its operations by method
+            before = len(self.gaps)
             found = self._lookup(ep, strict=method not in ("GET", "HEAD"), kind=_RULE_OF_METHOD.get(method, "")) if method else None
+            self.lookup_gaps[eid] = list(self.gaps[before:])
             examples = path_param_examples(self.openapi, found[1], found[2]) if found else {}
             got, unresolved = self._resolve_vars(ep, examples)
             for name in unresolved:
                 self.gaps.append("path variable {%s} of %s resolves nowhere (no seed row, no OpenAPI example); scenarios needing it are not emitted" % (name, eid))
             if "*" in route:
-                self.gaps.append("entry point %s route %s carries a wildcard and is not a request" % (eid, route))
-                continue
+                # a whole-segment wildcard binds nothing, so the route answers
+                # any value there (fill_route_wildcards); a constrained or
+                # ambiguous one stays a gap
+                others = [str(e.get("http_path") or "") for e in self.eps
+                          if e is not ep and str(e.get("http_method") or "").upper() == method]
+                filled, notes, why = fill_route_wildcards(route, others)
+                if why:
+                    self.gaps.append("entry point %s route %s carries a wildcard and is not a request (%s)" % (eid, route, why))
+                    continue
+                self.wildcard_notes[eid] = notes
+                ep = dict(ep, http_path=filled)
+                route = filled
             if not method:
                 self._methodless_read(ep, got, unresolved)
                 continue
@@ -1608,8 +1753,9 @@ class Derivation:
             self.gaps.append("create %s: path %s carries variables; the create rule needs a collection path" % (eid, route))
             return
         if found is None:
-            if eid not in self.unbound:  # why it did not bind is already a typed gap
-                self.gaps.append("create %s: no OpenAPI operation for POST %s" % (eid, route))
+            # no operation binds the route: the handler's own request MODEL
+            # (the generated type its @RequestBody names) still states the body
+            self._model_write(ep, "create", got, "no OpenAPI operation for POST %s" % route)
             return
         oa_path, _item, op, binding = found
         schema = body_schema(self.openapi, op)
@@ -1751,8 +1897,7 @@ class Derivation:
             self.gaps.append("update %s: variable {%s} is not the terminal segment of %s; the item and collection reads cannot be named" % (eid, names[0], route))
             return
         if found is None:
-            if eid not in self.unbound:  # why it did not bind is already a typed gap
-                self.gaps.append("update %s: no OpenAPI operation for PUT %s" % (eid, route))
+            self._model_write(ep, "update", got, "no OpenAPI operation for PUT %s" % route)
             return
         oa_path, _item, op, binding = found
         schema = body_schema(self.openapi, op)
@@ -1786,6 +1931,549 @@ class Derivation:
             "qualify": {"intent": "positive", "expect_status": [200, 204], "after_contains_body": True},
             "why": "the document's own example of %s written over the seeded row %s; the read-backs show the row and the list carry it" % (label, seeded),
         })
+
+    # -- the request MODEL a handler consumes (M-1) --------------------------
+    # v29's initial plan kept seven ship-blocking verification groups over
+    # twelve entry points with no oracle; for eleven of them derivation stopped
+    # at the OpenAPI document's PATHS. petclinic's api-docs.yml declares no
+    # write operation at all for five resources (no POST /pettypes, no PUT
+    # /vets/{id}, ...) and names the pet and visit writes under nested
+    # /owner/{ownerId}/pet paths the controllers do not map. Its COMPONENTS are
+    # complete, though, and the build GENERATES the handlers' request types
+    # from them (the generator's modelPackage + modelNamePrefix/Suffix naming).
+    # So the handler's own @RequestBody type -- read from M1's structure model
+    # -- names the schema its body is, whatever the paths say. That binding is
+    # used only where no operation binds; the body it yields is the schema's
+    # own examples, with every reference to another entity resolved to a row
+    # the seed holds, so a read-back can carry what was sent.
+    def _request_model_type(self, ep: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+        """(the handler's @RequestBody type, the handler row, why-not)."""
+        _t, m, why = self._structure_member(ep)
+        if why:
+            return "", {}, why
+        params = [p for p in (m.get("params") or []) if isinstance(p, dict)
+                  and _find_ann(p.get("annotations"), _REQUEST_BODY_ANN) is not None]
+        if len(params) != 1 or not str(params[0].get("type") or ""):
+            return "", m, "the handler declares %d @%s parameters" % (len(params), _REQUEST_BODY_ANN)
+        return str(params[0]["type"]), m, ""
+
+    def _model_binding(self, ep: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+        """(the schema the handler's request model is generated from, why-not).
+
+        Applicability: the frozen build declares the OpenAPI generator, its
+        ``inputSpec`` IS the document this derivation read, the body type
+        lives in its ``modelPackage`` and, without the configured prefix and
+        suffix, names a ``components.schemas`` entry. Anything else is a
+        reason, never a name match."""
+        body_type, handler, why = self._request_model_type(ep)
+        if why:
+            return None, why
+        gen = self.generator
+        if not gen:
+            return None, "the frozen build declares no OpenAPI model generator, so %s is not known to be generated from the document" % body_type
+        cfg = gen.get("configuration") or {}
+        opts = gen.get("configOptions") or {}
+        spec = _generator_spec(self.copy, str(cfg.get("inputSpec") or ""))
+        if spec is None or self.openapi_path is None or spec.resolve() != Path(self.openapi_path).resolve():
+            return None, ("the generator's inputSpec %r is not the OpenAPI document this derivation read (%s)"
+                          % (cfg.get("inputSpec"), _rel(Path(self.openapi_path), Path(self.copy)) if self.openapi_path and self.copy else "none"))
+        pkg = str(cfg.get("modelPackage") or opts.get("modelPackage") or "")
+        if not pkg or body_type.rpartition(".")[0] != pkg:
+            return None, "%s is not in the generator's modelPackage %r" % (body_type, pkg)
+        prefix = str(opts.get("modelNamePrefix") or cfg.get("modelNamePrefix") or "")
+        suffix = str(opts.get("modelNameSuffix") or cfg.get("modelNameSuffix") or "")
+        simple = body_type.rpartition(".")[2]
+        name = simple
+        if prefix:
+            if not name.startswith(prefix):
+                return None, "%s does not carry the generator's modelNamePrefix %r" % (simple, prefix)
+            name = name[len(prefix):]
+        if suffix:
+            if not name.endswith(suffix):
+                return None, "%s does not carry the generator's modelNameSuffix %r" % (simple, suffix)
+            name = name[: -len(suffix)]
+        schemas = (self.openapi.get("components") or {}).get("schemas") or {}
+        if not name or not isinstance(schemas, dict) or name not in schemas:
+            return None, "the document declares no components.schemas.%s (the schema %s would be generated from)" % (name or "(empty)", simple)
+        evidence = [
+            "structure:%s#%s @%s %s" % (ep.get("type"), ep.get("member"), _REQUEST_BODY_ANN, body_type),
+            "build:%s %s generatorName=%s modelPackage=%s modelNamePrefix=%r modelNameSuffix=%r inputSpec=%s: %s is generated from "
+            "#/components/schemas/%s" % (gen.get("path") or "pom.xml", gen.get("artifactId") or "", cfg.get("generatorName") or "",
+                                         pkg, prefix, suffix, cfg.get("inputSpec") or "", simple, name),
+        ]
+        return {"schema": {"$ref": "#/components/schemas/%s" % name}, "label": name, "body_type": body_type,
+                "handler": handler, "evidence": evidence}, ""
+
+    def _entity_of(self, schema_name: str) -> tuple[dict[str, Any] | None, str]:
+        """The one @Entity named as the schema is, with its table."""
+        if not self.persistence.available:
+            return None, "M1's structure model was not read"
+        hits = self.persistence.by_simple.get(schema_name) or []
+        if len(hits) != 1:
+            return None, "%d @Entity types are named %s in the structure model" % (len(hits), schema_name or "(anonymous)")
+        ent = self.persistence.entities[hits[0]]
+        if not ent.get("table"):
+            return None, str(ent.get("table_evidence") or "no table")
+        return ent, ""
+
+    def _schema_identity(self, sch: dict[str, Any], ent: dict[str, Any] | None) -> str:
+        """The property that identifies an instance of ``sch``: ``id``, else the
+        first readOnly integer, else the property the entity's @Id field is."""
+        props = sch.get("properties") or {}
+        if "id" in props:
+            return "id"
+        for pname, pnode in props.items():
+            psch = merged_schema(self.openapi, pnode, pname)
+            if psch.get("readOnly") is True and psch.get("type") == "integer":
+                return str(pname)
+        idf = _id_field(ent)
+        if idf is not None and idf["name"] in props:
+            return str(idf["name"])
+        return ""
+
+    def _reference(self, sch: dict[str, Any], label: str, ent: dict[str, Any], ident: str,
+                   evidence: list[str]) -> tuple[Any, bool, str]:
+        """A reference to another entity, as a row the seed holds.
+
+        The document's example names a row (``PetType.id`` example 1); the
+        request only makes sense for a row that EXISTS, and the read-back only
+        carries what that row holds. So every property is read off the seeded
+        row the example's identity names (the first seeded row when it names
+        none) -- the example's other values are never sent for it."""
+        table = str(ent["table"])
+        fld = _entity_field(ent, ident) or _id_field(ent)
+        if fld is None:
+            return None, False, "%s: the entity %s maps no field for its identity %s" % (label, ent["simple"], ident)
+        col = _field_column(fld)
+        rows = [r for r in self._table_rows(table) if r.get(col) not in (None, "", "NULL")]
+        if not rows:
+            return None, False, "%s refers to %s, and the seed holds no row of %s" % (label, ent["simple"], table)
+        props = sch.get("properties") or {}
+        want = None
+        if ident in props:
+            isch = merged_schema(self.openapi, props[ident], ident)
+            want = isch.get("example")
+        row = next((r for r in rows if want is not None and r.get(col) == str(want)), None)
+        pick = "the example's %s %s" % (ident, want) if row is not None else "the first seeded row (%s)" % (
+            "no example identity" if want is None else "the example's %s %s is not seeded" % (ident, want))
+        if row is None:
+            row = self._by_id_rows(rows, col)[0]
+        required = set(sch.get("required") or [])
+        obj: dict[str, Any] = {}
+        for pname, pnode in props.items():
+            psch = merged_schema(self.openapi, pnode, pname)
+            f = _entity_field(ent, str(pname))
+            c = _field_column(f) if f is not None and not _is_relationship(f) else ""
+            if not c or c not in row or psch.get("type") in ("array", "object"):
+                if pname in required:
+                    return None, False, "%s.%s is required and no column of %s holds it" % (label, pname, table)
+                continue
+            obj[str(pname)] = _typed(row[c], psch)
+        evidence.append("seed:%s#%s → %s (%s)" % (table, row[col], label, pick))
+        return obj, True, ""
+
+    def _by_id_rows(self, rows: list[dict[str, str]], col: str) -> list[dict[str, str]]:
+        numeric = all(re.fullmatch(r"-?\d+", str(r.get(col) or "")) for r in rows)
+        return sorted(rows, key=(lambda r: (int(r[col]), "")) if numeric else (lambda r: (0, str(r.get(col)))))
+
+    def _model_value(self, node: Any, label: str, evidence: list[str], depth: int = 1) -> tuple[Any, bool, str]:
+        """(value, present, why-not) of a property of the request model."""
+        if depth > 12:
+            raise Refusal("OpenAPI schema nesting deeper than 12 at %s" % label)
+        sch = merged_schema(self.openapi, node, label)
+        props = sch.get("properties") or {}
+        if props or sch.get("type") == "object":
+            name = str(sch.get("label") or "")
+            ent, ent_why = self._entity_of(name) if name and name != label else (None, "an anonymous schema names no entity")
+            ident = self._schema_identity(sch, ent)
+            if ident:
+                if ent is None:
+                    return None, False, "%s refers to %s by %s, but no entity and table hold it (%s)" % (label, name or "an object", ident, ent_why)
+                return self._reference(sch, label, ent, ident, evidence)
+            if "example" in sch:
+                return sch["example"], True, ""
+            required = set(sch.get("required") or [])
+            out: dict[str, Any] = {}
+            for pname, pnode in props.items():
+                psch = merged_schema(self.openapi, pnode, pname)
+                if psch.get("readOnly") is True:
+                    if pname not in required:
+                        continue
+                    if psch.get("type") == "array":
+                        out[str(pname)] = []
+                        continue
+                    return None, False, "%s.%s is required and readOnly; no request value is derivable" % (label, pname)
+                val, ok, why = self._model_value(pnode, "%s.%s" % (label, pname), evidence, depth + 1)
+                if ok:
+                    out[str(pname)] = val
+                elif pname in required:
+                    return None, False, why
+            return out, True, ""
+        if "example" in sch:
+            return _coerce(sch["example"], sch), True, ""
+        if sch.get("type") == "array" and sch.get("items") is not None:
+            val, ok, why = self._model_value(sch["items"], label + "[]", evidence, depth + 1)
+            return ([val], True, "") if ok else (None, False, why)
+        return None, False, "no example for %s" % label
+
+    def _next_identity(self, ent: dict[str, Any] | None, pname: str, psch: dict[str, Any]) -> tuple[Any, str, str]:
+        """(an identity no seeded row holds, evidence, why-not): the first above
+        the seeded maximum of the entity's identity column."""
+        if ent is None:
+            return None, "", "no entity maps the request model, so its seeded identities are unknown"
+        if psch.get("type") != "integer":
+            return None, "", "the identity %s is not an integer" % pname
+        fld = _entity_field(ent, pname) or _id_field(ent)
+        col = _field_column(fld) if fld is not None else ""
+        vals = column_values(self.seed, self.columns, str(ent["table"]), col) if col else []
+        if not vals or not all(re.fullmatch(r"-?\d+", v) for v in vals):
+            return None, "", "the seed holds no integer %s.%s to count from" % (ent["table"], col or "?")
+        nxt = max(int(v) for v in vals) + 1
+        return nxt, ("seed:%s.%s max %d → %s %d: an identity no seeded row holds (the request model requires one)"
+                     % (ent["table"], col, nxt - 1, pname, nxt)), ""
+
+    def _model_body(self, binding: dict[str, Any], kind: str, seeded: str,
+                    evidence: list[str]) -> tuple[dict[str, Any] | None, list[str], str, dict[str, Any]]:
+        """(body, read-back properties, why-not, facts) for a create or update.
+
+        Every property the schema declares is considered once: the identity
+        (an update writes over the seeded row the path names; a create sends
+        one only where the model REQUIRES it, and then one no seeded row
+        holds), a required server-owned (readOnly) collection is sent empty,
+        any other readOnly property is left out, and everything else is the
+        document's example with references resolved to seeded rows. The
+        read-back asserts what the model requires the client to state; a
+        model that requires none asserts every non-readOnly property sent."""
+        label = str(binding["label"])
+        sch = merged_schema(self.openapi, binding["schema"], label)
+        ent, ent_why = self._entity_of(label)
+        ident = self._schema_identity(sch, ent)
+        required = set(sch.get("required") or [])
+        body: dict[str, Any] = {}
+        readonly: set[str] = set()
+        for pname, pnode in (sch.get("properties") or {}).items():
+            pname = str(pname)
+            psch = merged_schema(self.openapi, pnode, pname)
+            ro = psch.get("readOnly") is True
+            if ro:
+                readonly.add(pname)
+            if pname == ident and (ro or kind == "update"):
+                if kind == "update":
+                    body[pname] = _typed(seeded, psch)
+                    continue
+                if pname not in required:
+                    continue
+                val, ev, why = self._next_identity(ent, pname, psch)
+                if why:
+                    return None, [], "the request model %s requires its identity %s and %s" % (label, pname, why if ent else ent_why), {}
+                body[pname] = val
+                evidence.append(ev)
+                continue
+            if ro:
+                if pname not in required:
+                    continue
+                if psch.get("type") == "array":
+                    body[pname] = []
+                    evidence.append("openapi:%s.%s readOnly and required: a server-owned collection, sent empty" % (label, pname))
+                    continue
+                return None, [], "%s.%s is required and readOnly and is not the identity; no request value is derivable" % (label, pname), {}
+            val, ok, why = self._model_value(pnode, "%s.%s" % (label, pname), evidence)
+            if not ok:
+                if pname in required:
+                    return None, [], why, {}
+                continue
+            body[pname] = val
+        if kind == "create" and ident and ident not in readonly and ident in body and ent is not None:
+            # a client-assigned key: the document's example must not address a
+            # seeded row, or the "create" is a write over it
+            fld = _entity_field(ent, ident) or _id_field(ent)
+            col = _field_column(fld) if fld is not None else ""
+            if col and str(body[ident]) in column_values(self.seed, self.columns, str(ent["table"]), col):
+                return None, [], ("the example %s %r of %s is a key the seed already holds in %s.%s; a create with it is a write "
+                                  "over a seeded row" % (ident, body[ident], label, ent["table"], col)), {}
+            evidence.append("seed:%s.%s holds no %r (a client-assigned key the create may use)" % (ent["table"], col, body[ident]))
+        asserted = [p for p in body if p in required and p not in readonly] or [p for p in body if p not in readonly]
+        return body, asserted, "", {"identity": ident, "entity": ent, "schema": sch, "readonly": readonly}
+
+    def _differing_row(self, info: dict[str, Any], body: dict[str, Any], asserted: list[str]) -> tuple[str, str]:
+        """(the identity of the first seeded row, by identity order, whose
+        column for some asserted scalar property differs from the body, the
+        evidence); ("", "") when no asserted property maps to a column or no
+        row differs."""
+        ent = info.get("entity")
+        ident = str(info.get("identity") or "")
+        if ent is None or not ident:
+            return "", ""
+        idf = _entity_field(ent, ident) or _id_field(ent)
+        idcol = _field_column(idf) if idf is not None else ""
+        props = (info.get("schema") or {}).get("properties") or {}
+        cols: list[tuple[str, str, dict[str, Any]]] = []
+        for p in asserted:
+            f = _entity_field(ent, p)
+            if f is None or _is_relationship(f) or isinstance(body.get(p), (dict, list)):
+                continue
+            cols.append((p, _field_column(f), merged_schema(self.openapi, props.get(p), p)))
+        rows = [r for r in self._table_rows(str(ent["table"])) if r.get(idcol) not in (None, "", "NULL")] if idcol else []
+        if not cols or not rows:
+            return "", ""
+        for r in self._by_id_rows(rows, idcol):
+            differs = [p for p, c, psch in cols if c in r and _typed(r[c], psch) != body.get(p)]
+            if differs:
+                return str(r[idcol]), ("seed:%s#%s: the first seeded row whose %s differ%s from the body, so the update is observable"
+                                       % (ent["table"], r[idcol], ", ".join(differs), "s" if len(differs) == 1 else ""))
+        return "", ""
+
+    def _get_route(self, route: str) -> bool:
+        return any(str(e.get("http_method") or "").upper() == "GET" and str(e.get("http_path") or "") == route for e in self.eps)
+
+    def _unsupplied(self, ent: dict[str, Any] | None, body: dict[str, Any], handler: dict[str, Any],
+                    route: str) -> list[str]:
+        """Evidence for each column the database requires that the request
+        cannot supply: NOT NULL (or key), no default, not generated, mapped by
+        exactly one entity field the body does not carry and the handler does
+        not set. Empty when that cannot be decided -- a route with path
+        variables may persist them, and an unmapped column claims nothing."""
+        if ent is None or "{" in route:
+            return []
+        defs = self.column_defs.get(str(ent["table"])) or {}
+        calls = {str(c.get("name") or "") for c in (handler.get("calls") or []) if isinstance(c, dict)}
+        out: list[str] = []
+        for col, d in sorted(defs.items()):
+            if not d.get("not_null") or d.get("default") or d.get("identity"):
+                continue
+            fields = [f for f in ent["fields"] if _field_column(f) == col]
+            if len(fields) != 1:
+                continue
+            f = fields[0]
+            if body.get(f["name"]) is not None:
+                continue
+            if "set" + f["name"][:1].upper() + f["name"][1:] in calls:
+                continue
+            out.append("schema:%s.%s NOT NULL with no default; structure:%s.%s maps it, the request carries no %s and the handler "
+                       "does not set it" % (ent["table"], col, ent["simple"], f["name"], f["name"]))
+        return out
+
+    def _model_write(self, ep: dict[str, Any], kind: str, got: dict[str, str], op_gap: str) -> None:
+        eid, route, type_fqn = str(ep["id"]), str(ep.get("http_path") or ""), str(ep.get("type") or "")
+        binding, why = self._model_binding(ep)
+        if binding is None:
+            if eid not in self.unbound:
+                self.gaps.append("%s %s: %s, and the handler's request model binds no schema (%s)" % (kind, eid, op_gap, why))
+            else:
+                self.gaps.append("%s %s: the handler's request model binds no schema either (%s)" % (kind, eid, why))
+            return
+        # the operation binding's own gaps are true, and now notes: the body
+        # comes from the model the handler consumes, not from an operation
+        notes = self.lookup_gaps.get(eid) or []
+        for g in notes:
+            if g in self.gaps:
+                self.gaps.remove(g)
+        evidence = ["bundle:%s" % eid] + list(binding["evidence"]) + (["note:%s" % g for g in notes] or ["note:%s" % op_gap])
+        seeded, var = "", ""
+        base_evidence = list(evidence)
+        if kind == "update":
+            var = re.findall(r"\{([^{}]+)\}", route)[0]
+            seeded = got[var]
+            if self.path_var_evidence.get(var):
+                evidence.append(self.path_var_evidence[var])
+        body, asserted, why, info = self._model_body(binding, kind, seeded, evidence)
+        if body is None:
+            self.gaps.append("%s %s: %s; nothing is derived for it" % (kind, eid, why))
+            return
+        if kind == "update" and asserted:
+            # an update written over a row that already holds the body proves
+            # nothing was written: address the first seeded row the body
+            # CHANGES, so the read-backs can tell before from after
+            alt, alt_ev = self._differing_row(info, body, asserted)
+            if alt and alt != seeded:
+                evidence = base_evidence + [alt_ev]
+                body, asserted, why, info = self._model_body(binding, kind, alt, evidence)
+                if body is None:
+                    self.gaps.append("%s %s: %s; nothing is derived for it" % (kind, eid, why))
+                    return
+                seeded = alt
+            elif alt:
+                evidence.append(alt_ev)
+            info["changes_row"] = bool(alt)
+        if not asserted:
+            self.gaps.append("%s %s: the request model %s sends no property a read-back could show; nothing is derived for it"
+                             % (kind, eid, binding["label"]))
+            return
+        # same-origin: the cross-origin exchange is the CORS oracle's
+        # (sc:cors-*), and a write carrying an Origin could not be reused as
+        # the enabled mode's authorization probe, which must answer ONE
+        # question (EnabledDerivation._base_for)
+        policy = ""
+        headers = {"Content-Type": "application/json"}
+        if kind == "create":
+            self._model_create(ep, binding, body, asserted, info, evidence, headers, policy)
+        else:
+            self._model_update(ep, binding, body, asserted, info, evidence, headers, policy, var, seeded)
+
+    def _model_create(self, ep: dict[str, Any], binding: dict[str, Any], body: dict[str, Any], asserted: list[str],
+                      info: dict[str, Any], evidence: list[str], headers: dict[str, str], policy: str) -> None:
+        eid, route = str(ep["id"]), str(ep.get("http_path") or "")
+        resource = _resource(route)
+        label = str(binding["label"])
+        effects: list[dict[str, Any]] = []
+        unobservable = ""
+        if self._get_route(route):
+            effects = [{"id": "eff:%s-list-after-create" % resource, "method": "GET", "path": route}]
+        else:
+            unobservable = ("no GET entry point reads %s, so what the create persisted is not observable over HTTP: the response "
+                            "is captured, the write itself is unverified" % route)
+            self.gaps.append("create-effect %s: %s" % (eid, unobservable))
+        unsupplied = self._unsupplied(info.get("entity"), body, binding["handler"], route)
+        if unsupplied:
+            sid = "sc:create-refused-%s" % resource
+            q: dict[str, Any] = {"intent": "negative", "expect_status_class": "4xx"}
+            if effects:
+                q["after_equals_before"] = True
+            why = ("the request model %s carries no value for a column the database requires (%s), so the source cannot persist the "
+                   "body it documents: the create is refused (any 4xx) and the collection reads back unchanged"
+                   % (label, "; ".join(unsupplied)))
+            kind = "create-refused"
+        else:
+            sid = "sc:create-%s" % resource
+            q = {"intent": "positive", "expect_status": [201]}
+            if effects:
+                q["read_back_properties"] = list(asserted)
+            loc = builds_location(binding["handler"])
+            if loc is not False:
+                # the create rule's Location contract, unless the structure
+                # model shows the handler builds none
+                q["location"] = "absolute-under-base"
+                if loc:
+                    evidence.append("structure:%s#%s builds a Location (org.springframework.http %s)"
+                                    % (ep.get("type"), ep.get("member"), "/".join(_LOCATION_CALLS)))
+            else:
+                evidence.append("structure:%s#%s calls none of org.springframework.http %s: the handler builds no Location"
+                                % (ep.get("type"), ep.get("member"), "/".join(_LOCATION_CALLS)))
+            if effects and info.get("identity"):
+                q.update({"creates_one_entity": True, "identity_field": info["identity"]})
+                if loc is False:
+                    q["creates_without_location"] = True
+            elif effects:
+                q["after_contains_body"] = True
+            why = ("the request model %s's own examples (references resolved to seeded rows), created on the collection the route "
+                   "names; %s" % (label, "the read-back shows exactly one new entity carrying %s" % ", ".join(asserted)
+                                  if effects else "no route reads what it persisted, so the response is the contract"))
+            kind = "create"
+        sc: dict[str, Any] = {
+            "id": sid, "entry_point": eid, "method": "POST", "path": route, "headers": dict(headers),
+            "identity": {"kind": "none"}, "body_file": _write_body(self.root, sid, body), "body_absent": False,
+            "reset_before": True, "effects": effects, "normalization": [],
+            "derived_from": {"kind": kind, "entry_point": eid, "evidence": [e for e in evidence if e] + unsupplied},
+            "qualify": q, "why": why,
+        }
+        if unobservable:
+            # the comparator names it on the verdict, and the planner keeps the
+            # write unresolved: an oracle of the response is not one of the write
+            sc["effects_unobservable"] = unobservable
+        if policy:
+            sc["cors_policy"] = policy
+        self._add(sc)
+        self._model_invalid(ep, "create", binding, info, body, headers, effects, route, resource, evidence, policy,
+                            unobservable)
+
+    def _model_update(self, ep: dict[str, Any], binding: dict[str, Any], body: dict[str, Any], asserted: list[str],
+                      info: dict[str, Any], evidence: list[str], headers: dict[str, str], policy: str,
+                      var: str, seeded: str) -> None:
+        eid, route = str(ep["id"]), str(ep.get("http_path") or "")
+        item_path = route.replace("{%s}" % var, seeded)
+        collection = route[: route.rfind("/{")] or "/"
+        resource = _resource(collection)
+        effects: list[dict[str, Any]] = []
+        if self._get_route(route):
+            effects.append({"id": "eff:%s-%s-after-update" % (resource, seeded), "method": "GET", "path": item_path})
+        if self._get_route(collection):
+            effects.append({"id": "eff:%s-list-after-update" % resource, "method": "GET", "path": collection})
+        unobservable = ""
+        if not effects:
+            unobservable = ("no GET entry point reads %s or %s, so what the update persisted is not observable over HTTP: the "
+                            "response is captured, the write itself is unverified" % (route, collection))
+            self.gaps.append("update-effect %s: %s" % (eid, unobservable))
+        q: dict[str, Any] = {"intent": "positive", "expect_status": [200, 204]}
+        ident = str(info.get("identity") or "")
+        shown = ([ident] if ident and ident in body and ident not in asserted else []) + list(asserted)
+        if effects:
+            # the row's identity is part of what the read-back must carry: a
+            # list holding ANOTHER row with the same values is not this write
+            q.update({"after_contains_body": True, "read_back_properties": shown})
+            if info.get("changes_row"):
+                q["before_lacks_body"] = True
+        sid = "sc:update-%s-%s" % (resource, seeded)
+        sc: dict[str, Any] = {
+            "id": sid, "entry_point": eid, "method": "PUT", "path": item_path, "headers": dict(headers),
+            "identity": {"kind": "none"}, "body_file": _write_body(self.root, sid, body), "body_absent": False,
+            "reset_before": True, "effects": effects, "normalization": [],
+            "derived_from": {"kind": "update", "entry_point": eid, "evidence": [e for e in evidence if e]},
+            "qualify": q,
+            "why": "the request model %s's own examples (references resolved to seeded rows) written over the seeded row %s; the "
+                   "read-backs show the row and the list carry %s" % (binding["label"], seeded, ", ".join(asserted)),
+        }
+        if unobservable:
+            sc["effects_unobservable"] = unobservable
+        if policy:
+            sc["cors_policy"] = policy
+        self._add(sc)
+        self._model_invalid(ep, "update", binding, info, body, headers, effects, item_path, "%s-%s" % (resource, seeded),
+                            evidence, policy, unobservable)
+
+    def _model_invalid(self, ep: dict[str, Any], kind: str, binding: dict[str, Any], info: dict[str, Any],
+                       body: dict[str, Any], headers: dict[str, str], effects: list[dict[str, Any]], path: str,
+                       resource: str, evidence: list[str], policy: str, unobservable: str = "") -> None:
+        """ONE invalid body per constrained string the body sends: the same
+        body with that value violating the constraint the schema declares --
+        a pattern (a value verified to violate it) or a minimum length (the
+        empty string; the generated model validates a PRESENT value whether or
+        not the property is required). The source must reject it, name the
+        field and change nothing."""
+        eid = str(ep["id"])
+        sch = info["schema"]
+        label = str(binding["label"])
+        constrained: list[tuple[str, Any, str]] = []
+        for pname, pnode in (sch.get("properties") or {}).items():
+            pname = str(pname)
+            psch = merged_schema(self.openapi, pnode, pname)
+            if pname not in body or psch.get("readOnly") is True or psch.get("type") != "string":
+                continue
+            if psch.get("pattern"):
+                bad = _invalid_value(body[pname], str(psch["pattern"]))
+                if bad is not None:
+                    constrained.append((pname, bad, "pattern %s" % psch["pattern"]))
+                    continue
+            if int(psch.get("minLength") or 0) >= 1:
+                constrained.append((pname, "", "minLength %s" % psch["minLength"]))
+        if not constrained:
+            self.gaps.append("%s-invalid %s: %s declares no pattern or minimum length on a string the body sends; no invalid body "
+                             "is derivable" % (kind, eid, label))
+            return
+        method = "POST" if kind == "create" else "PUT"
+        for field, bad, rule in constrained:
+            invalid = dict(body)
+            invalid[field] = bad
+            isid = "sc:%s-invalid-%s-%s" % (kind, resource, field)
+            eff = [{"id": "%s-after-invalid-%s-%s" % (e["id"].rsplit("-after-", 1)[0], kind, field), "method": e["method"],
+                    "path": e["path"]} for e in effects]
+            q: dict[str, Any] = {"intent": "negative", "expect_status": [400], "errors_header_names_field": field}
+            if eff:
+                q["after_equals_before"] = True
+            isc: dict[str, Any] = {
+                "id": isid, "entry_point": eid, "method": method, "path": path, "headers": dict(headers),
+                "identity": {"kind": "none"}, "body_file": _write_body(self.root, isid, invalid), "body_absent": False,
+                "reset_before": True, "effects": eff, "normalization": [],
+                "derived_from": {"kind": "%s-invalid" % kind, "entry_point": eid,
+                                 "evidence": [e for e in evidence if e] + ["openapi:%s.%s %s" % (label, field, rule)]},
+                "qualify": q,
+                "why": "the same body with %s violating the %s the schema declares; the source must reject it, name the field%s"
+                       % (field, rule, " and change nothing" if eff else ""),
+            }
+            if unobservable:
+                isc["effects_unobservable"] = unobservable
+            if policy:
+                isc["cors_policy"] = policy
+            self._add(isc)
 
     # -- the seed rows a delete may address ---------------------------------
     def _seed_table(self, var: str, route: str) -> str:
@@ -2338,10 +3026,20 @@ class EnabledDerivation:
         route = str(ep.get("http_path") or "")
         if method not in ("GET", "HEAD"):
             return None, self._NO_BASE
-        if not route or "*" in route:
-            return None, ("%s and its route %s is not a request (a wildcard names no concrete URL)"
-                          % (self._NO_BASE, route or "(none)"))
-        path, missing = route, []
+        if not route:
+            return None, "%s and it maps no route" % self._NO_BASE
+        wildcard_notes: list[str] = []
+        if "*" in route:
+            # a whole-segment wildcard binds nothing: the same filled request
+            # the disabled mode's read oracle sends (fill_route_wildcards)
+            others = [str(e.get("http_path") or "") for k, e in self.eps.items()
+                      if k != eid and str(e.get("http_method") or "").upper() == method]
+            filled, wildcard_notes, why = fill_route_wildcards(route, others)
+            if why:
+                return None, "%s and its route %s is not a request (%s)" % (self._NO_BASE, route, why)
+        else:
+            filled = route
+        path, missing = filled, []
         for name in re.findall(r"\{([^{}]+)\}", route):
             value = self.path_vars.get(name)
             if value is None:
@@ -2362,7 +3060,7 @@ class EnabledDerivation:
                 "route": route,
                 "evidence": ["bundle:%s %s %s (a guarded read the disabled corpus derives no scenario for)" % (eid, method, route)]
                 + ["corpus:%s path variable {%s} = %s" % (_rel(self.root / CORPUS, self.root), n, self.path_vars[n])
-                   for n in sorted(re.findall(r"\{([^{}]+)\}", route))],
+                   for n in sorted(re.findall(r"\{([^{}]+)\}", route))] + wildcard_notes,
             },
         }, ""
 
@@ -2486,6 +3184,10 @@ class EnabledDerivation:
                 q[name] = json.loads(json.dumps(bq[name]))
         if "creates_one_entity" in q and "identity_field" in bq:
             q["identity_field"] = bq["identity_field"]
+        # the contract's parameters travel with the checks they parameterize
+        for key in ("read_back_properties", "creates_without_location"):
+            if key in bq and any(k in q for k in ("after_contains_body", "before_lacks_body", "creates_one_entity")):
+                q[key] = json.loads(json.dumps(bq[key]))
         return q
 
     @staticmethod
@@ -3617,8 +4319,24 @@ def main(argv: list[str] | None = None) -> int:
     # removal / an owned @ManyToMany join table), read from the same structure
     # model the CORS policies come from
     persistence = load_persistence_model(root, set(columns) | set(seed))
+    # the request MODELS the build generates from the document (M-1): the
+    # binding a handler's body keeps when the document's paths name no
+    # operation for its route
+    generator: dict[str, Any] = {}
     try:
-        d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin, foreign_keys, persistence)
+        from planner.worklist import generator_plugin_config
+        generator = generator_plugin_config(copy) or {}
+    except Exception as exc:  # noqa: BLE001 -- an unreadable build binds no model; the gap names why
+        gaps.append("the frozen build's generator configuration could not be read (%s); request models bind no schema" % str(exc)[:160])
+    if generator:
+        inputs["generator"] = {"path": str(generator.get("path") or "pom.xml"), "artifact": str(generator.get("artifactId") or ""),
+                               "sha256": sha256_file(copy / "pom.xml") if (copy / "pom.xml").is_file() else ""}
+    column_defs: dict[str, dict[str, dict[str, bool]]] = {}
+    for schema_p in (find_schema_sql(seed_p) if seed_p is not None else []):
+        column_defs.update(parse_column_defs(schema_p.read_text(encoding="utf-8", errors="replace")))
+    try:
+        d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin, foreign_keys, persistence,
+                       generator=generator, copy=copy, openapi_path=oa_path, column_defs=column_defs)
         d.run()
     except Refusal as exc:
         return blocked(str(exc))
