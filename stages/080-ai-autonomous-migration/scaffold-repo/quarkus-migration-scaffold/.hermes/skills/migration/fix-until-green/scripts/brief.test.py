@@ -877,6 +877,10 @@ def _handler_parameter_brief_case() -> int:
                                                      "message": "cannot find symbol\n  symbol:   class UriComponentsBuilder"}]})
         write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:hp1", "task_id": "t_hp0001",
                                              "write_set": [rel]})
+        # V26-1: with the golden catalog, the typed-repair row makes the executor the unit's FIRST ACTION
+        cat = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+        cat.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json", cat)
         prev = os.environ.get("HERMES_KANBAN_TASK")
         os.environ["HERMES_KANBAN_TASK"] = "t_hp0001"
         try:
@@ -890,7 +894,16 @@ def _handler_parameter_brief_case() -> int:
                 os.environ["HERMES_KANBAN_TASK"] = prev
         if rc != 0:
             return _fail("brief.py must serve the unit: rc=%s %s" % (rc, err.getvalue()[:400]))
-        unit = load_json(root / LOOP_DIR / "brief-u-hp1.json").get("unit") or {}
+        full = load_json(root / LOOP_DIR / "brief-u-hp1.json")
+        typed = full.get("typed_repair") or {}
+        cmd = "typed-repair.py --root . --cluster u:hp1"
+        if (not str(typed.get("first_action") or "").endswith(cmd) or not str(full.get("procedure") or "").startswith("FIRST: python3")
+                or "FIRST ACTION (typed repair, handler-uri-parameter): python3 .hermes/skills/migration/fix-until-green/scripts/"
+                + cmd not in out.getvalue()):
+            return _fail("the typed repair is the unit's FIRST ACTION in the digest and the procedure: %s" % typed)
+        if out.getvalue().find("FIRST ACTION (typed repair") > out.getvalue().find("DOCUMENTED FIRST ACTIONS"):
+            return _fail("the typed first action precedes the documented actions")
+        unit = full.get("unit") or {}
         first = str(unit.get("first_action") or "")
         if not out.getvalue().startswith("BRIEF (digest:") or first not in out.getvalue():
             return _fail("the default worker output must carry the real catalog action, not just store it in JSON")

@@ -751,7 +751,7 @@
     }
   },
   "migration_recipes": {
-    "note": "Qualified transformation recipes for the responsibilities planner.source_requirements derives from the FROZEN source before any destination failure (plan semantics v1). A recipe fixes WHAT the repair is and HOW it is accepted; it is never a second transformation engine. `implementation.kind` is either `decided-repairs` (a mechanical operation of bootstrap-destination/scripts/_decided_repairs.py, applied only when decisions.yaml decided_repairs names it, with a receipt row) or `agent-bounded` (an M3 worker edits inside the issued write grant; the selected architecture is the cited catalog row and the acceptance checks below are mechanical). `acceptance` names the EXISTING independent checks that refuse the recipe's known broken forms: a check a recipe names must exist (source_requirements.test.py resolves every checker and every package-level test). `applies_to` keys are qualified catalog identities; `refuse` lists the conditions under which the requirement stays unresolved and no edit is made. A recipe never widens a write set and never discharges another requirement (the retirement of an adapter-owned annotation discharges no adapter behaviour).",
+    "note": "Qualified transformation recipes for the responsibilities planner.source_requirements derives from the FROZEN source before any destination failure (plan semantics v1). A recipe fixes WHAT the repair is and HOW it is accepted; it is never a second transformation engine. `implementation.kind` is `decided-repairs` (a mechanical operation of bootstrap-destination/scripts/_decided_repairs.py, applied only when decisions.yaml decided_repairs names it, with a receipt row), `agent-bounded` (an M3 worker edits inside the issued write grant; the selected architecture is the cited catalog row and the acceptance checks below are mechanical) or `typed-repair` (V26-1: `operation` is a recipe of the pinned harness executor fix-until-green/typed-repair (pins.typed_repair, OpenRewrite LST, typed references only); brief.py renders `typed-repair.py --root . --cluster <id>` as the issued unit's FIRST ACTION, the executor stages the complete patch inside the issued write grant and records applied | already-in-required-form | not-applicable | unresolved | failed; `covers` names what it edits and `fallback` is the bounded agent procedure an unresolved result returns to, with its reason; the edit is judged by the same acceptance checks as an agent-authored one and a no-op establishes nothing). `acceptance` names the EXISTING independent checks that refuse the recipe's known broken forms: a check a recipe names must exist (source_requirements.test.py resolves every checker and every package-level test). `applies_to` keys are qualified catalog identities; `refuse` lists the conditions under which the requirement stays unresolved and no edit is made. A recipe never widens a write set and never discharges another requirement (the retirement of an adapter-owned annotation discharges no adapter behaviour).",
     "handler-validation-translation": {
       "version": "1",
       "rule": "request-validation",
@@ -805,8 +805,26 @@
       ],
       "precedence": "a qualified handler-parameter action precedes the bare symbol_renames row for the same type (V16-5)",
       "implementation": {
-        "kind": "agent-bounded",
-        "architecture": "handler_parameters.undocumented[org.springframework.web.util.UriComponentsBuilder].action: @Context jakarta.ws.rs.core.UriInfo, uriInfo.getBaseUriBuilder().path(<source path template>).build(<ids>) for the Location"
+        "kind": "typed-repair",
+        "operation": "handler-uri-parameter",
+        "covers": "each sealed HTTP handler's org.springframework.web.util.UriComponentsBuilder parameter becomes @Context jakarta.ws.rs.core.UriInfo uriInfo, and every use <p>.path(<template>)[.path(...)].buildAndExpand(<args>).toUri() becomes uriInfo.getBaseUriBuilder().path(<template>)....build(<args>) in the same edit: templates and arguments verbatim and in order, each argument that is not a non-null literal as java.util.Objects.toString(<arg>, \"\") (location_translation null_argument); an unused parameter is replaced alone. The retired builder API is attributed from the frozen source's own jar (evidence/build/classpath.txt), never assumed.",
+        "unresolved_when": [
+          "any use of the builder outside that chain (passed on, queryParam, build(), a Map expansion, toUriString)",
+          "the handler, the parameter or the builder chain is not attributed (the source's builder jar is absent from evidence/build/classpath.txt or a call does not resolve)",
+          "the handler already has a parameter or name uriInfo, or the file imports another Context, UriInfo or Objects",
+          "jakarta.ws.rs.core.UriInfo, Context or UriBuilder does not resolve on the candidate's classpath",
+          "any sealed site of the request is unresolved: the request applies to all of its sites or to none"
+        ],
+        "architecture": "handler_parameters.undocumented[org.springframework.web.util.UriComponentsBuilder].action: @Context jakarta.ws.rs.core.UriInfo, uriInfo.getBaseUriBuilder().path(<source path template>).build(<ids>) for the Location",
+        "fallback": {
+          "kind": "agent-bounded",
+          "architecture": "handler_parameters.undocumented[org.springframework.web.util.UriComponentsBuilder].action: @Context jakarta.ws.rs.core.UriInfo, uriInfo.getBaseUriBuilder().path(<source path template>).build(<ids>) for the Location"
+        },
+        "qualification": [
+          "skills/migration/fix-until-green/typed-repair/src/test/java/org/rhoai3demo/typedrepair/HandlerUriParameterTest.java",
+          "skills/migration/fix-until-green/scripts/typed-repair.test.py",
+          "skills/migration/fix-until-green/scripts/typed-repair-package.test.py"
+        ]
       },
       "acceptance": [
         {
@@ -935,15 +953,34 @@
       "phase": "m3",
       "applies_to": [],
       "implementation": {
-        "kind": "agent-bounded",
-        "architecture": "planner.worklist.FRAGMENT_IMPL_CONTRACT: the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed to the fragment (worklist.fragment_cdi_exposure), one intended injectable implementation per contract in the decided build profile; a query the selected source implementation writes is kept as JPQL over entity PROPERTY paths: a source query naming table columns (WHERE type_id=, WHERE pet_id=) ran on Hibernate 5 and is rejected by Hibernate 6+ (SemanticException), so the destination navigates the mapped association (pet.type.id, visit.pet.id) -- the selected implementation's effects, not an inactive profile's and not a text replacement"
+        "kind": "typed-repair",
+        "operation": "fragment-cdi-exposure",
+        "covers": "the CDI exposure only: @jakarta.enterprise.context.ApplicationScoped and @jakarta.enterprise.inject.Typed(<Fragment>Impl.class) applied together on an EXISTING <Fragment>Impl in the fragment's package that implements the fragment; profile annotations, interfaces and member bodies are kept byte for byte. It never writes an owed file or a member body.",
+        "unresolved_when": [
+          "the owed <Fragment>Impl does not exist yet (its member bodies are the bounded agent procedure; run the executor again after writing them)",
+          "a member calls back through the fragment or a type assignable to it on anything but this (v29 routed-back recursion)",
+          "an annotation or call of the implementation is not attributed on the candidate's classpath",
+          "the implementation already carries another scope or a Spring stereotype",
+          "jakarta.enterprise.context.ApplicationScoped or jakarta.enterprise.inject.Typed does not resolve on the candidate's classpath"
+        ],
+        "architecture": "planner.worklist.FRAGMENT_IMPL_CONTRACT: the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed restricted to its own concrete class, @Typed(<Fragment>Impl.class) (worklist.fragment_cdi_exposure; the generated Spring Data repository stays the bean of the fragment interface), one intended injectable implementation per contract in the decided build profile; a query the selected source implementation writes is kept as JPQL over entity PROPERTY paths: a source query naming table columns (WHERE type_id=, WHERE pet_id=) ran on Hibernate 5 and is rejected by Hibernate 6+ (SemanticException), so the destination navigates the mapped association (pet.type.id, visit.pet.id) -- the selected implementation's effects, not an inactive profile's and not a text replacement; each owed member carries that behaviour itself (an injected EntityManager with the source's JPQL), never by calling back through a Spring Data repository that extends the fragment: Quarkus routes every fragment method of that repository to <Fragment>Impl, so the call recurses (v29 StackOverflowError, worklist.fragment_routed_back)",
+        "fallback": {
+          "kind": "agent-bounded",
+          "architecture": "planner.worklist.FRAGMENT_IMPL_CONTRACT: the <Fragment>Impl in the fragment's package, @ApplicationScoped and @Typed restricted to its own concrete class, @Typed(<Fragment>Impl.class) (worklist.fragment_cdi_exposure; the generated Spring Data repository stays the bean of the fragment interface), one intended injectable implementation per contract in the decided build profile; a query the selected source implementation writes is kept as JPQL over entity PROPERTY paths: a source query naming table columns (WHERE type_id=, WHERE pet_id=) ran on Hibernate 5 and is rejected by Hibernate 6+ (SemanticException), so the destination navigates the mapped association (pet.type.id, visit.pet.id) -- the selected implementation's effects, not an inactive profile's and not a text replacement; each owed member carries that behaviour itself (an injected EntityManager with the source's JPQL), never by calling back through a Spring Data repository that extends the fragment: Quarkus routes every fragment method of that repository to <Fragment>Impl, so the call recurses (v29 StackOverflowError, worklist.fragment_routed_back)"
+        },
+        "qualification": [
+          "skills/migration/fix-until-green/typed-repair/src/test/java/org/rhoai3demo/typedrepair/FragmentCdiExposureTest.java",
+          "skills/migration/fix-until-green/scripts/typed-repair.test.py",
+          "skills/migration/fix-until-green/scripts/typed-repair-package.test.py"
+        ]
       },
       "acceptance": [
         {
           "check": "unit:fragment-implementation",
           "checker": "planner.worklist._assess_implementations",
           "refuses": [
-            "a fragment member no implementation declares"
+            "a fragment member no implementation declares",
+            "a member that calls back through a Spring Data repository extending the fragment (v29 routed-back recursion, worklist.fragment_routed_back)"
           ]
         },
         {

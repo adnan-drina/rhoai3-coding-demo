@@ -881,6 +881,9 @@ check "080 dest-model selftest passes (resolved signatures, real inheritance, ex
 check "080 scope-amendment selftest passes (authority before the edit, locus, bounded)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/amend-scope.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 typed repair selftest passes (plan inside the grant, pinned executor, complete-diff inspection, journaled apply)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/typed-repair.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 diagnosis selftest passes (bounded, reads only, discharges nothing)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/diagnose.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

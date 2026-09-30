@@ -27,6 +27,7 @@ from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
 from planner.worklist import OBJECTIVE_RULE  # noqa: E402
 import _outcome_bridge  # noqa: E402  outcome-board/v2: the issued contract this card owns
+import _typed_repair  # noqa: E402  V26-1: typed repair requests and records for the issued unit
 from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, adapter_owned_annotations, assess_unit, handler_parameters, head_cluster, items_of  # noqa: E402
 
 # H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
@@ -1366,6 +1367,13 @@ def main(argv: list[str] | None = None) -> int:
     planned = planned_requirements(root, write_set, own)
     if planned:
         brief["planned_requirements"] = planned
+    typed = typed_repair_section(root, cluster, write_set, own)
+    if typed:
+        # V26-1: the catalog's qualified typed transformation is this unit's FIRST ACTION
+        brief["typed_repair"] = typed
+        if typed.get("first_action") and not pending and not changed_now:
+            brief["procedure"] = "FIRST: %s. Then run-verify.sh --mode acceptance and advance.py; %s" % (
+                typed["first_action"], brief["procedure"])
     if own is not None:
         # what THIS card is judged by now, from its issued contract -- never derived from the paths it
         # shares with other owners (v24 run t_dbde15ae: the Profile card's digest labelled six repository
@@ -1544,6 +1552,7 @@ def brief_digest(brief: dict, stem: str) -> str:
             out.append("  the rejected patch introduced (in the write set; the reverted tree no longer has them):")
             out += ["    %s" % r for r in rs["introduced_in_write_set"]]
         out.append("  refusals so far: %s" % ", ".join("%s x%d" % (r["refusal"], r["times"]) for r in rs.get("refusals") or []))
+    out += _typed_repair.digest_lines(brief.get("typed_repair"))
     # The catalog already supplies these actions. A section-size index is not
     # (placed right after RETRY STATE: workers read a brief's head first, and a long REQUIRED SHAPE or
     # other-diagnostics list must not push the documented action out of it)
@@ -2069,6 +2078,21 @@ def planned_owed_next(cid: str, write_set: list, planned: list, own: dict | None
                (" Write-set files that do not exist yet: %s (a missing path alone does not prove the file is "
                 "required: write one only where the REQUIRED SHAPE names it)." % ", ".join(absent)) if absent else "",
                ", ".join(checks) or "the measured work list", cid))
+
+
+def typed_repair_section(root: Path, cluster: dict, write_set: list, own: dict | None) -> dict | None:
+    """V26-1: the typed repair requests for THIS unit (catalog `typed-repair` rows, from its sealed scope and
+    the requirements it owns), the FIRST ACTION while one has no current record, and the unresolved reason
+    that returns the unit to the bounded agent procedure. Descriptive: the executor itself re-plans."""
+    try:
+        ref = cluster.get("batch_scope") or {}
+        sp = root / str(ref.get("path") or "") if ref.get("path") else None
+        scope = load_json(sp) if sp is not None and sp.is_file() else None
+        cat = catalog(root)
+        requests, skipped = _typed_repair.plan(root, scope, write_set, _typed_repair.owned_requirements(root, write_set, own), cat)
+        return _typed_repair.brief_section(root, str(cluster.get("id") or ""), requests, skipped, cat)
+    except Exception as exc:  # a planning fault is shown, never hidden as "no typed repair"
+        return {"error": "typed repair planning failed: %s" % exc}
 
 
 def planned_requirements(root: Path, write_set: list[str], own: dict | None = None) -> list[dict]:
