@@ -1042,6 +1042,9 @@ check "080 stamp-run-resources selftest passes (verification precedes stamping; 
 check "080 run-report compares emitted pins and preserves missing-evidence distinctions" \
   "python3 '${SCAFFOLD_SKILLS}/evaluation/run-report/scripts/run-report.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 completion map keeps every missing oracle open and flags the v29 false green (M-1/M-6)" \
+  "python3 '${SCAFFOLD_LIB}/completion_map.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 MaaS route changes are guarded and require a stopped workspace" \
   "python3 '${REPO_ROOT}/scripts/patch-workspace-maas-route.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
