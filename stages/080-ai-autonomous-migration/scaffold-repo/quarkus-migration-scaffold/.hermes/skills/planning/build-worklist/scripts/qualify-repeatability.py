@@ -35,6 +35,16 @@ Proof levels:
                     logical graph and compatibility-objective membership
                     compared outcome by outcome
 
+  check schedule    (recorded-evidence, always run) the check-schedule/v1
+                    view (roadmap M-2: each check's kind, owner, verification
+                    prerequisites, earliest measurement point, causal order,
+                    both acceptance states, typed findings) derived twice from
+                    two shuffled specimen checkouts under compatibility
+                    objectives, and from the saved v29 initial plan
+                    (lib/planner/fixtures/v29-plan-r1-schedule.json.gz) twice
+                    and in reversed order: identical logical ownership,
+                    checks, dependencies and budgets, nothing unschedulable
+
 Usage: qualify-repeatability.py [--out FILE] [--keep DIR] [--specimen DIR] [--source DIR] [--fresh A B] [--no-producers]
 Exit 0 when no case FAILED (NOT-RUN cases are listed, with their reason).
 """
@@ -437,6 +447,69 @@ def run_cases(q: Q) -> None:
         return PASS, "serial run with an outcome store and outcome run with a K4 serial record both refuse PROTOCOL_MIXED"
 
     q.case("mixed protocol state", "recorded-evidence", mixed_protocol)
+
+    def check_schedule():
+        from planner import compatibility_objectives as CO
+        dec = decisions()
+        dec["loop"]["compatibility_objectives"] = "v1"
+        s1 = q.dest("schedule-a", dec=dec, run_id="run-a")
+        s2 = q.dest("schedule-b", dec=copy.deepcopy(dec), seed=11, run_id="run-b")
+        ga, gb, ga2 = _graph_of(s1, "run-a")["graph"], _graph_of(s2, "run-b")["graph"], _graph_of(s1, "run-a")["graph"]
+        if not ga.get("check_schedule") or _schedule_view(ga) != _schedule_view(gb) or _schedule_view(ga) != _schedule_view(ga2):
+            return FAIL, "the specimen schedule differs between derivations, checkouts or run ids"
+        src = load_json_gz(V29_SCHEDULE_FIXTURE)["plan"]
+        runs = []
+        for order in (1, 1, -1):
+            d = copy.deepcopy(src)
+            d["nodes"], d["requirements"] = d["nodes"][::order], d["requirements"][::order]
+            CO.schedule_checks(d)
+            runs.append(d)
+        views = [_schedule_view(d) for d in runs]
+        if views[0] != views[1] or views[0] != views[2]:
+            return FAIL, "the v29 r1 inputs gave two schedules"
+        for k in ("ownership", "requirement_ownership", "composition"):
+            if runs[0].get(k) != src.get(k):
+                return FAIL, "the schedule changed the v29 %s" % k
+        found = runs[0]["check_schedule"]["findings"] + ga["check_schedule"]["findings"]
+        nodes = {n["outcome_id"]: n for n in runs[0]["nodes"]}
+        at = {k: sorted({p for r in n.get("check_plan") or [] if r["check"].startswith("behavior:repository-effects:")
+                         for p in r["earliest"]["at"]})
+              for k, n in nodes.items() if k.startswith("objective:selected-repository-implementation:")}
+        q.evidence["check_schedule"] = {"specimen_counts": ga["check_schedule"]["counts"],
+                                        "v29_counts": runs[0]["check_schedule"]["counts"],
+                                        "v29_repository_effects_first_measured_at": at, "findings": found}
+        if found:
+            return FAIL, "unschedulable checks: %s" % json.dumps(found)[:300]
+        return PASS, "specimen schedule identical over two checkouts/run ids; v29 r1 schedule identical twice and reordered " \
+                     "(%d later checks, %d repository contracts first measured before M4); no findings" % (
+                         sum(c["later"] for c in runs[0]["check_schedule"]["counts"].values()),
+                         sum(1 for v in at.values() if v and all(p.startswith("behavior:") for p in v)))
+
+    q.case("check schedule: same inputs, same owners, checks, dependencies and budgets", "recorded-evidence", check_schedule)
+
+
+V29_SCHEDULE_FIXTURE = HERMES / "lib/planner/fixtures/v29-plan-r1-schedule.json.gz"
+
+
+def load_json_gz(path: Path) -> dict:
+    import gzip
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _schedule_view(g: dict) -> dict:
+    """The logical schedule of a revision, without its run binding: each
+    outcome's check plan (kind, owner, prerequisites, earliest point, causal
+    order), acceptance states, dependency kinds, causal scope, parents,
+    ownership and budget limit/accounts; the plan-level schedule summary."""
+    out = {n["outcome_id"]: {k: n.get(k) for k in ("check_plan", "acceptance_states", "dependency_kinds", "causal_scope",
+                                                     "parents", "obligations", "requirements")}
+           for n in g.get("nodes") or []}
+    for n in g.get("nodes") or []:
+        out[n["outcome_id"]]["budget"] = {k: v for k, v in (n.get("budget") or {}).items() if k != "key"}
+    out["_schedule"] = g.get("check_schedule")
+    out["_ownership"] = [g.get("ownership"), g.get("requirement_ownership")]
+    return out
 
 
 def _graph_of(d: Path, run_id: str, scope_note: str = "preserved specimen replay") -> dict:
