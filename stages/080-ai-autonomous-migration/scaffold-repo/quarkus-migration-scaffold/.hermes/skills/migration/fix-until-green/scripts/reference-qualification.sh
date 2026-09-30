@@ -22,6 +22,13 @@
 #
 # Usage: reference-qualification.sh [--out DIR] [--bundle v28-dest.bundle]
 #                                   [--suite-timeout SECONDS] [--require-candidate-match]
+#                                   [--rehearsal]
+# --rehearsal (opt-in; the default run is unchanged) adds one more measurement,
+# reference-owner-path-rehearsal: the REHEARSAL tree of
+# fixtures/reference-qualification/rehearsal/rehearsal.json (the candidate plus
+# one patch per guided repair, applied as the catalog guidance instructs), on
+# the same corpus, oracles and comparator. It is reported under "rehearsal",
+# labelled REHEARSAL: not a migration output and not a run result.
 # Podman must already be reachable (this script never starts or stops a machine);
 # otherwise every container suite is recorded SKIPPED with the reason.
 set -euo pipefail
@@ -31,13 +38,15 @@ OUT=""
 BUNDLE="${REFQUAL_V28_BUNDLE:-}"
 SUITE_TIMEOUT=900
 REQUIRE_MATCH=0
+REHEARSAL=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT="$2"; shift 2 ;;
     --bundle) BUNDLE="$2"; shift 2 ;;
     --suite-timeout) SUITE_TIMEOUT="$2"; shift 2 ;;
     --require-candidate-match) REQUIRE_MATCH=1; shift ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    --rehearsal) REHEARSAL=1; shift ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     *) echo "reference-qualification.sh: unknown argument $1" >&2; exit 64 ;;
   esac
 done
@@ -48,7 +57,8 @@ mkdir -p "$OUT"
 PY="${PYTHON:-python3}"
 
 export REFQUAL_HERE="$HERE" REFQUAL_OUT="$OUT" REFQUAL_V28_BUNDLE="$BUNDLE" \
-       REFQUAL_SUITE_TIMEOUT="$SUITE_TIMEOUT" REFQUAL_REQUIRE_MATCH="$REQUIRE_MATCH"
+       REFQUAL_SUITE_TIMEOUT="$SUITE_TIMEOUT" REFQUAL_REQUIRE_MATCH="$REQUIRE_MATCH" \
+       REFQUAL_REHEARSAL="$REHEARSAL"
 exec "$PY" - <<'PYEOF'
 import datetime as dt
 import json
@@ -62,6 +72,7 @@ here = Path(os.environ["REFQUAL_HERE"])
 out = Path(os.environ["REFQUAL_OUT"])
 timeout = int(os.environ["REFQUAL_SUITE_TIMEOUT"])
 require_match = os.environ["REFQUAL_REQUIRE_MATCH"] == "1"
+rehearsal = os.environ.get("REFQUAL_REHEARSAL") == "1"
 sys.path.insert(0, str(here))
 import reference_qualification as rq  # noqa: E402
 import test_runtime_fixture as rt  # noqa: E402
@@ -92,7 +103,14 @@ SUITES = [
      "postgresql", "disabled+enabled", "Owner CRUD path, validation, collections, Location, root path, CORS, basic auth on the candidate vs the frozen source"),
 ]
 NEEDS_PODMAN = {"repository-effects-runtime", "location-null-runtime", "reference-repository-strategy-runtime",
-                "reference-owner-path-runtime"}
+                "reference-owner-path-runtime", "reference-owner-path-rehearsal"}
+EXTRA_ARGS = {}
+if rehearsal:
+    SUITES.append(("reference-owner-path-rehearsal", "reference-owner-path-runtime.test.py", False, "rehearsal",
+                   "postgresql", "disabled+enabled",
+                   "REHEARSAL (not a migration output, not a run result): the candidate plus one patch per guided repair "
+                   "(fixtures/reference-qualification/rehearsal/rehearsal.json) on the same corpus, oracles and comparator"))
+    EXTRA_ARGS["reference-owner-path-rehearsal"] = ["--rehearsal"]
 
 started = dt.datetime.now(dt.timezone.utc)
 podman_ok, podman_why = rq.podman_ready()
@@ -108,7 +126,7 @@ for tid, script, reused, role, db, mode, what in SUITES:
     argv = [sys.executable, str(here / script)]
     res_path = out / ("%s.results.json" % tid)
     if tid.startswith("reference-"):
-        argv += ["--results", str(res_path), "--keep", str(out / tid)]
+        argv += ["--results", str(res_path), "--keep", str(out / tid)] + EXTRA_ARGS.get(tid, [])
     t0 = time.time()
     try:
         p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=dict(os.environ))
@@ -166,6 +184,25 @@ if owner:
 else:
     candidate = {"verdict": "NOT MEASURED"}
 
+# the rehearsal's measured contract (only with --rehearsal), never mixed with the candidate's
+reh_rows = [c for c in cases if c["test_id"].startswith("reference-owner-path-rehearsal::")
+            and c["case"] not in ("candidate-build", "package", "clean-generation", "source-engine-sensitivity")]
+rehearsal_summary = None
+if rehearsal:
+    rcounts, rby = {}, {}
+    for c in reh_rows:
+        rcounts[c["outcome"]] = rcounts.get(c["outcome"], 0) + 1
+        if c["outcome"] == "MISMATCH":
+            cls = tuple(c["evidence"].get("difference_classes") or [])
+            rby.setdefault(" + ".join(cls), []).append("%s[%s]" % (c["test_id"].split("::")[1], c["mode"]))
+    rart = next((c.get("artifact") or {} for c in cases if c["test_id"] == "reference-owner-path-rehearsal::candidate"), {})
+    rehearsal_summary = {"label": "REHEARSAL (not a migration output, not a run result)",
+                         "tree": rart.get("rehearsal_tree"), "base_tree": rart.get("candidate_tree"),
+                         "steps": rart.get("rehearsal_steps"), "counts": rcounts, "mismatch_by_difference": rby,
+                         "verdict": ("NOT MEASURED" if not reh_rows else
+                                     "EQUIVALENT on the measured corpus" if not rcounts.get("MISMATCH") and rcounts.get("MATCH")
+                                     else "NOT EQUIVALENT (%d mismatching steps)" % rcounts.get("MISMATCH", 0))}
+
 controls = [s for s in suites if s["role"] == "control"]
 failed = [s["test_id"] for s in suites if s["outcome"] in ("FAIL", "TIMEOUT")]
 skipped = [s["test_id"] for s in suites if s["outcome"] == "SKIPPED"]
@@ -186,11 +223,17 @@ result = {
     "status": status, "failed": failed, "skipped": skipped,
     "suites": suites, "candidate": candidate, "cases": cases,
 }
+if rehearsal_summary is not None:
+    result["rehearsal"] = rehearsal_summary
 (out / "results.json").write_text(json.dumps(result, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 print("")
 print("candidate: %s" % candidate["verdict"])
 for k, v in sorted(by_class.items()):
     print("  %-40s %s" % (k, ", ".join(v)[:400]))
+if rehearsal_summary is not None:
+    print("rehearsal (REHEARSAL, not a migration output): %s" % rehearsal_summary["verdict"])
+    for k, v in sorted(rehearsal_summary["mismatch_by_difference"].items()):
+        print("  %-40s %s" % (k, ", ".join(v)[:400]))
 print("status: %s   results: %s" % (status, out / "results.json"))
 if failed:
     sys.exit(1)

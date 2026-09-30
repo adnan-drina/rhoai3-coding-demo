@@ -34,7 +34,14 @@ anything mismatched). A missing input prints SKIP with the reason and exits 0;
 reference-qualification.sh never counts a SKIP as a pass.
 
 Options: --bundle <v28-dest.bundle> (or REFQUAL_V28_BUNDLE), --results <json>,
---keep <dir> (keep the built tree and logs), --require-match.
+--keep <dir> (keep the built tree and logs), --require-match, --rehearsal.
+
+--rehearsal measures the REHEARSAL tree instead (fixtures/reference-
+qualification/rehearsal/rehearsal.json: the candidate plus one patch per
+guided repair, each applied as the catalog guidance instructs a worker),
+under the test id reference-owner-path-rehearsal. It is labelled REHEARSAL:
+not a migration output and not a run result. Oracles, corpus and comparator
+are the same.
 """
 from __future__ import annotations
 
@@ -53,6 +60,7 @@ import reference_qualification as rq  # noqa: E402
 import test_runtime_fixture as rt  # noqa: E402
 
 TEST_ID = "reference-owner-path-runtime"
+REHEARSAL_TEST_ID = "reference-owner-path-rehearsal"
 DTO_REL = "org/springframework/samples/petclinic/dto"
 
 
@@ -152,7 +160,11 @@ def main() -> int:
     ap.add_argument("--results", default="")
     ap.add_argument("--keep", default="")
     ap.add_argument("--require-match", action="store_true")
+    ap.add_argument("--rehearsal", action="store_true")
     a = ap.parse_args()
+    global TEST_ID
+    if a.rehearsal:
+        TEST_ID = REHEARSAL_TEST_ID
     rows = []
     started = time.time()
     try:
@@ -167,9 +179,11 @@ def main() -> int:
         tree = work / "candidate"
         if tree.exists():
             shutil.rmtree(tree)
-        ident = rq.build_candidate(a.bundle or None, tree)
+        ident = (rq.build_rehearsal if a.rehearsal else rq.build_candidate)(a.bundle or None, tree)
         rows.append(_row("candidate-build", "candidate", True, "PASS", "n/a", ident,
-                         {"note": "baseline + recipe patches only; tree ids verified"}, db="n/a"))
+                         {"note": ("%s: candidate + one patch per guided repair; every step's tree id verified"
+                                   % rq.REHEARSAL_LABEL) if a.rehearsal else
+                          "baseline + recipe patches only; tree ids verified"}, db="n/a"))
         ok, out = rq.package_tree(tree)
         art = dict(ident, **(rq.artifact_identity(tree) if ok else {}))
         first_err = next((ln.strip() for ln in out.splitlines() if "[error]" in ln or "ERROR] Failed" in ln), "")
@@ -260,12 +274,17 @@ def main() -> int:
         print("%-26s %-44s %-8s %-12s %s" % (r["case"], r["test_id"].split("::")[1], r["mode"], r["outcome"],
                                               ("; ".join(d)[:220] if d else "")))
     status = "MEASURED"
-    rq.write_results(a.results, {"test": TEST_ID, "status": status, "counts": counts, "rows": rows, "adr025_account": account,
-                                 "seconds": round(time.time() - started, 1)})
+    payload = {"test": TEST_ID, "status": status, "counts": counts, "rows": rows, "adr025_account": account,
+               "seconds": round(time.time() - started, 1)}
+    if a.rehearsal:
+        payload["label"] = rq.REHEARSAL_LABEL
+    rq.write_results(a.results, payload)
     print("ADR-025 account of the mismatches without the ruling: (b) equal under ADR-025 %d, (a) guided %d, (c) candidate "
           "defects %d" % (len(account["equal_under_adr025"]), len(account["guided"]), len(account["candidate_defect"])))
-    print("MEASURED: %s (candidate tree %s, PostgreSQL 16 in podman, pinned platform %s): %s"
-          % (TEST_ID, rows[0]["artifact"].get("candidate_tree", "?")[:12], rt.pin()["version"],
+    art0 = rows[0]["artifact"]
+    print("MEASURED: %s (%s tree %s, PostgreSQL 16 in podman, pinned platform %s): %s"
+          % (TEST_ID, "REHEARSAL" if a.rehearsal else "candidate",
+             (art0.get("measured_tree") or art0.get("candidate_tree") or "?")[:12], rt.pin()["version"],
              ", ".join("%s %d" % kv for kv in sorted(counts.items()))))
     if a.require_match and counts.get("MISMATCH"):
         return 1
