@@ -1,0 +1,22 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java b/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java
+index 13d8b89..7b23323 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java
+@@ -19,7 +19,6 @@ package org.springframework.samples.petclinic.rest;
+ import jakarta.ws.rs.core.Context;
+ import jakarta.ws.rs.core.UriInfo;
+ 
+-import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -34,9 +33,6 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/")
+ public class RootRestController {
+ 
+-    @Value("#{servletContext.contextPath}")
+-    private String servletContextPath;
+-
+ 	@RequestMapping(value = "/")
+ 	public ResponseEntity<Void> redirectToSwagger(@Context UriInfo uriInfo) {
+ 		return ResponseEntity.status(HttpStatus.FOUND)

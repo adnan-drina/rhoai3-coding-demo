@@ -1,0 +1,28 @@
+{
+ "schema": "rhoai3.reference-candidate/v1",
+ "note": "The tree the application-level reference qualification measures: the v28 destination's final loop commit plus ONLY the recipe applications listed here. It is a qualification candidate, not a migration outcome and not an accepted tree. The v28 bundle is local ignored evidence (tmp/loop-qualification-20260929/v28-dest.bundle in the operator checkout); it is not committed. Pass it with REFQUAL_V28_BUNDLE or --bundle.",
+ "bundle_env": "REFQUAL_V28_BUNDLE",
+ "baseline": {
+  "run": "spring-petclinic-rest-legacy-v28",
+  "commit": "2c798e60a0ce6fb01e0dae32f24b402e1084c877",
+  "tree": "34be32c6b377e62f1808668ab4a8da95ccde65c6",
+  "measure_at_commit": "[0, 0, 0]",
+  "packages": false,
+  "first_package_failure": "ArcProcessor#registerBeans: SpEL expressions are not supported when using org.springframework.beans.factory.annotation.Value. Offending value is '@Value(\"#{servletContext.contextPath}\")' (RootRestController)"
+ },
+ "recipe_applications": [
+  {
+   "recipe": "servlet-redirect-response",
+   "catalog": "planning/catalogs/compat-mapping.json migration_recipes.servlet-redirect-response v1",
+   "patch": "0001-servlet-redirect-response.patch",
+   "why": "the recipe's acceptance refuses 'a field that read the Servlet context through SpEL left on the handler's type' (unit:handler-parameter-sites) and gate:augmentation refuses the package; the v28 handler already had the recipe's @Context UriInfo form and kept the field. The patch removes the field and its import; nothing else.",
+   "honesty": "a recipe-stated edit applied by the qualification, not by the loop; the measured tree is reported as baseline + this patch, never as v28's output"
+  }
+ ],
+ "expected_candidate_tree": "70f2c9f3fa7d8524a5ba311046623a577527d60a",
+ "database": {
+  "engine": "postgresql",
+  "destination_seed": ["src/main/resources/db/postgresql/initDB.sql", "src/main/resources/db/postgresql/baseline-data.sql"],
+  "why": "the destination's own decided datasource (quarkus.datasource.db-kind=postgresql, ADR-009) and its generated baseline data; credentials are the environment references the tree declares (PETCLINIC_DB_URL/USER/PASSWORD), filled from the disposable container"
+ }
+}
