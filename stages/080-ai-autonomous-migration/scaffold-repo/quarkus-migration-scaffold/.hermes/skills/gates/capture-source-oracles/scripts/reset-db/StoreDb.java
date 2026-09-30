@@ -23,6 +23,9 @@ import java.util.Properties;
  *   observe URL USER PASSWORD TABLES OUT  every row of each table (one bare name per line in TABLES),
  *                                      all columns, written to OUT as sorted "table, column=value..." lines
  *   ping   URL USER PASSWORD           connect and disconnect
+ *   query  URL USER PASSWORD FILE      the committed-state step (ADR-026): FILE's one SELECT, read on
+ *                                      this new connection, printed as "VALUE:" + the first column of
+ *                                      the first row (SQL NULL and no row print "VALUE:")
  *
  * PLAN is one row per line, tab-separated: table, column, variant value,
  * baseline value, where column, where value, selected rows, table rows. The
@@ -77,10 +80,24 @@ public final class StoreDb {
                 case "revert":
                     System.exit(revert(conn, Files.readAllLines(Path.of(args[4]), StandardCharsets.UTF_8)));
                     break;
+                case "query":
+                    System.out.println("VALUE:" + scalar(conn, Files.readString(Path.of(args[4]), StandardCharsets.UTF_8)));
+                    break;
                 default:
                     System.err.println("unknown command " + args[0]);
                     System.exit(2);
             }
+        }
+    }
+
+    /** One committed value, the way reference_qualification.sql_scalar reads one. */
+    static String scalar(Connection conn, String sql) throws Exception {
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql.trim())) {
+            if (!rs.next()) {
+                return "";
+            }
+            String v = rs.getString(1);
+            return v == null ? "" : v;
         }
     }
 

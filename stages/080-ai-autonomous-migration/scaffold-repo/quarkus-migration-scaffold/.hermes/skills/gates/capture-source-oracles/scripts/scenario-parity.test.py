@@ -488,6 +488,100 @@ def _effectless_reset_case() -> int:
     return 0
 
 
+def _committed_state_case() -> int:
+    """ADR-026: a committed-state step (the M-3 ``kind: sql`` read) is compared
+    on the destination through the reset script's --query on the decided
+    instance, value for value, before and after the request. The stub reset
+    command answers the queries the way a database would: the row is there
+    before the DELETE and gone after it (PASS), or never goes (FAIL naming the
+    step), or cannot be read (a failed read is never a value)."""
+    corpus_doc = {
+        "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+        "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+        "scenarios": [
+            {"id": "sc:delete-owner-committed", "entry_point": "", "method": "DELETE", "path": "/api/owners/7",
+             "body_absent": True, "reset_before": True, "normalization": [],
+             "effects": [{"id": "eff:owners-7-rows", "kind": "sql", "query": "SELECT COUNT(*) FROM owners WHERE id = 7"}]},
+        ],
+    }
+    with tempfile.TemporaryDirectory(prefix="committed-") as td:
+        t = Path(td)
+        root = specimens.build_dest(t / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        if pipeline.admit(root)["status"] != "ADMITTED":
+            return _fail("committed-state fixture not admitted")
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        corpus_doc["scenarios"][0]["entry_point"] = ep
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus_doc)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        sc = corpus_doc["scenarios"][0]
+        from planner.canonical import digest as _digest
+        bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        Service.lie_on_delete = False
+        src, src_url = serve()
+        from _oracle_common import http_observe
+        deleted = http_observe(src_url, "DELETE", "/api/owners/7")
+        src.shutdown()
+        q = sc["effects"][0]["query"]
+        write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sc["id"]) + ".json"), {
+            "schema": "rhoai3.source-scenario/v1", "scenario": sc["id"], "entry_point": ep,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+            "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": True,
+            "request": {"request_sha256": request_of(root, sc)["request_sha256"]},
+            "response": {"status": deleted["status"], "body_kind": deleted["body_kind"], "body_sha256": deleted["body_sha256"]},
+            "before": [{"id": "eff:owners-7-rows", "kind": "sql", "query": q, "value": "1"}],
+            "effects": [{"id": "eff:owners-7-rows", "kind": "sql", "query": q, "value": "0"}],
+        })
+        answers = t / "answers.txt"
+        log = t / "queries.txt"
+        stub = t / "reset-stub.py"
+        stub.write_text(
+            "import sys\n"
+            "a = sys.argv[1:]\n"
+            "if '--query' in a:\n"
+            "    sql = open(a[a.index('--query') + 1]).read()\n"
+            "    open(%r, 'a').write(sql + '\\n')\n"
+            "    lines = open(%r).read().split('\\n')\n"
+            "    n = sum(1 for _ in open(%r)) - 1\n"
+            "    v = lines[min(n, len(lines) - 1)]\n"
+            "    if v == 'FAIL':\n"
+            "        print('FAIL: RESET QUERY no connection'); sys.exit(1)\n"
+            "    print('VALUE:' + v)\n" % (str(log), str(answers), str(log)), encoding="utf-8")
+        reset_cmd = "%s %s" % (shlex.quote(sys.executable), shlex.quote(str(stub)))
+
+        def compare(values: list[str]) -> tuple[int, dict]:
+            answers.write_text("\n".join(values), encoding="utf-8")
+            if log.exists():
+                log.unlink()
+            Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+            dest, dest_url = serve()
+            try:
+                p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sc["id"],
+                                    "--dest-url", dest_url, "--reset-cmd", reset_cmd], text=True, capture_output=True)
+            finally:
+                dest.shutdown()
+            return p.returncode, load_json(root / SCENARIO_PARITY / (scenario_slug(sc["id"]) + ".json"))
+
+        rc, v = compare(["1", "0"])
+        if rc != 0 or v["verdict"] != "PASS" or [r.get("kind") for r in v["before"] + v["effects"]] != ["sql", "sql"] \
+                or log.read_text().count(q) != 2:
+            return _fail("a destination whose committed state moves as the source's did PASSes, read before and after: %s %s"
+                         % (rc, {k: v.get(k) for k in ("verdict", "reason", "before", "effects")}))
+        rc, v = compare(["1", "1"])
+        if rc != 1 or v["verdict"] != "FAIL" or "eff:owners-7-rows: committed state '1' vs '0'" not in v["reason"]:
+            return _fail("a destination whose committed row stays FAILs naming the step: %s %s" % (rc, v.get("reason")))
+        rc, v = compare(["0", "0"])
+        if rc != 1 or v["verdict"] != "INCONCLUSIVE" or "not in the state the source started from" not in v["reason"]:
+            return _fail("a destination not in the source's committed start state is INCONCLUSIVE: %s %s" % (rc, v.get("reason")))
+        rc, v = compare(["FAIL", "FAIL"])
+        if rc != 1 or v["verdict"] != "INCONCLUSIVE":
+            return _fail("a committed state that cannot be read is never a value: %s %s" % (rc, v.get("reason")))
+    return 0
+
+
 def _security_mode_case() -> int:
     """The security mode binds qualification, comparison and the receipt.
 
@@ -2306,6 +2400,8 @@ def main() -> int:
     if _acceptance_binding_case():
         return 1
     if _effects_identity_parity_case():
+        return 1
+    if _committed_state_case():
         return 1
     if _effectless_reset_case():
         return 1

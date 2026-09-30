@@ -616,6 +616,22 @@ def unobservable_write_case() -> int:
                                       structure_complete=False, scenario_facts=None)
     if [r["status"] for r in doc3["requirements"] if r["subject"] == eps[0]["id"]] != ["applicable"]:
         return _fail("no facts: an oracle still covers the entry point as before")
+    # ADR-026: a committed-state read-back (kind sql) verifies the write only
+    # once its source capture QUALIFIED against the current corpus
+    step = [{"id": "eff:c", "kind": "sql", "query": "SELECT COUNT(*) FROM members WHERE login = 'k'"}]
+    facts4 = {k: dict(v, effects=list(step), qualified=False) if v["method"] == "POST" else v for k, v in facts.items()}
+    for f in facts4.values():
+        f.pop("effects_unobservable", None)
+    doc4 = SR.derive(types=[], entry_points=eps, catalog={}, decisions=None, oracles=oracles,
+                     structure_complete=False, scenario_facts=facts4)
+    r4 = [r for r in doc4["requirements"] if r["subject"] == eps[0]["id"]][0]
+    if r4["status"] != "unresolved" or not any("no qualified source capture yet" in u for u in r4["unknowns"]):
+        return _fail("an unqualified committed-state read-back leaves the write unresolved: %s" % r4)
+    facts4["sc:create-members"]["qualified"] = True
+    doc5 = SR.derive(types=[], entry_points=eps, catalog={}, decisions=None, oracles=oracles,
+                     structure_complete=False, scenario_facts=facts4)
+    if [r["status"] for r in doc5["requirements"] if r["subject"] == eps[0]["id"]] != ["applicable"]:
+        return _fail("a qualified committed-state read-back verifies the write")
     return 0
 
 

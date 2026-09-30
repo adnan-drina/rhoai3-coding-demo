@@ -83,6 +83,22 @@ def _reset_argvs(reset_cmd: str, root: Path, variant: str) -> tuple[list[str], l
     return base, base + ["--variant", variant], base + ["--revert-variant", variant]
 
 
+def _committed(reset_cmd: str, root: Path, query: str, work: Path) -> dict:
+    """The destination's committed state for one ADR-026 step: the reset
+    script's --query on the decided instance (the same ownership check, the
+    same datasource and driver the reset uses), read on a new connection. A
+    read that fails is recorded, never a value."""
+    base, _v, _r = _reset_argvs(reset_cmd, root, "x")
+    work.mkdir(parents=True, exist_ok=True)
+    qf = work / ("query-%s.sql" % hashlib.sha256(query.encode("utf-8")).hexdigest()[:16])
+    qf.write_text(query, encoding="utf-8")
+    proc = subprocess.run(base + ["--query", str(qf)], text=True, capture_output=True)
+    lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("VALUE:")]
+    if proc.returncode != 0 or len(lines) != 1:
+        return {"value": None, "error": ((proc.stdout + proc.stderr).strip() or "no VALUE line")[-300:]}
+    return {"value": lines[0][len("VALUE:"):]}
+
+
 def _run(argv: list[str]) -> dict:
     proc = subprocess.run(argv, text=True, capture_output=True)
     return {"ran": True, "rc": proc.returncode, "argv": argv, "output": (proc.stdout + proc.stderr).strip()[-400:]}
@@ -368,7 +384,14 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         verdict["before_state"] = ("none declared: the scenario declares no effect, so the source recorded no initial state; "
                                    "the comparison is the response itself")
+    query_work = root / "verification" / "parity" / ".committed-queries"
     for exp_before in before_expected:
+        if str(exp_before.get("kind") or "") == "sql":
+            got_c = _committed(args.reset_cmd, root, str(exp_before.get("query") or ""), query_work)
+            verdict["before"].append({"id": exp_before.get("id"), "kind": "sql", "query": exp_before.get("query"),
+                                      "expected": {"value": exp_before.get("value")}, "observed": got_c,
+                                      "match": got_c.get("value") is not None and got_c.get("value") == exp_before.get("value")})
+            continue
         probe = http_observe(args.dest_url, str(exp_before.get("method") or "GET"), str(exp_before.get("path") or "/"), headers=eff_headers)
         row = {"id": exp_before.get("id"), "path": exp_before.get("path"),
                "expected": {"status": exp_before.get("status"), "body_sha256": exp_before.get("body_sha256")},
@@ -378,7 +401,10 @@ def main(argv: list[str] | None = None) -> int:
     unmatched = [r for r in verdict["before"] if not r["match"]]
     if unmatched:
         verdict["reason"] = ("the destination is not in the state the source started from: %s"
-                             % "; ".join("%s status %s vs %s" % (r["id"], r["observed"]["status"], r["expected"]["status"]) for r in unmatched)[:300])
+                             % "; ".join("%s value %r vs %r" % (r["id"], r["observed"].get("value"), r["expected"].get("value"))
+                                         if r.get("kind") == "sql" else
+                                         "%s status %s vs %s" % (r["id"], r["observed"]["status"], r["expected"]["status"])
+                                         for r in unmatched)[:300])
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
@@ -510,6 +536,16 @@ def main(argv: list[str] | None = None) -> int:
                                                               if source_effects.get("observed") else
                                                               "the capture records no source observation"))}
     for eff in expected_after:
+        if str(eff.get("kind") or "") == "sql":
+            # ADR-026: the committed state, compared value for value
+            got_c = _committed(args.reset_cmd, root, str(eff.get("query") or ""), query_work)
+            row = {"id": eff.get("id"), "kind": "sql", "query": eff.get("query"), "expected": {"value": eff.get("value")},
+                   "observed": got_c, "match": got_c.get("value") is not None and got_c.get("value") == eff.get("value")}
+            verdict["effects"].append(row)
+            if not row["match"]:
+                diffs.append("effect %s: committed state %r vs %r%s" % (row["id"], got_c.get("value"), eff.get("value"),
+                                                                     " (%s)" % got_c["error"] if got_c.get("error") else ""))
+            continue
         probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers)
         row = {"id": eff.get("id"), "method": eff.get("method"), "path": eff.get("path"),
                "expected": {"status": eff.get("status"), "body_sha256": eff.get("body_sha256")},

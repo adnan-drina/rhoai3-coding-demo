@@ -233,6 +233,17 @@ class SourceStore:
         return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "rows": sum(1 for ln in path.read_text(encoding="utf-8").splitlines() if not ln.endswith("\t#table"))}, ""
 
+    def query(self, sql: str, path: Path) -> tuple[str | None, str]:
+        """(the committed value, why-not): the corpus's committed-state step
+        (ADR-026) read on a new connection -- one SELECT, one value."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(sql, encoding="utf-8")
+        rc, out = self._runner("query", str(path))
+        lines = [ln for ln in out.splitlines() if ln.startswith("VALUE:")]
+        if rc != 0 or len(lines) != 1:
+            return None, "SOURCE_STORE_QUERY the committed state was not read: %s" % out[-200:]
+        return lines[0][len("VALUE:"):], ""
+
     def revert(self, plan: dict[str, Any]) -> tuple[int, str]:
         rows = []
         for r in plan.get("rows") or []:

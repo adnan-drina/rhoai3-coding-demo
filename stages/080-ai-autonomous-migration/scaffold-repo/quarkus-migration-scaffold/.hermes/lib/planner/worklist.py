@@ -6238,12 +6238,32 @@ def corpus_scenario_facts(root: Path | None) -> tuple[dict[str, list[str]] | Non
     oracles: dict[str, list[str]] = {}
     facts: dict[str, dict[str, Any]] = {}
     seen = False
-    for doc in _iter_corpus_docs(Path(root)):
+    for rel, sub in zip(SCENARIO_CORPORA, PARITY_SCENARIO_SUBDIRS):
+        p = Path(root) / rel
+        if not p.is_file():
+            continue
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
         seen = True
+        # which scenarios the source capture QUALIFIED against this very corpus
+        # (ADR-026: a committed-state read-back counts only once it has)
+        passed: set[str] = set()
+        try:
+            qual = load_json(Path(root) / "verification" / "source-oracles" / sub / "_qualification.json")
+        except (OSError, ValueError):
+            qual = None
+        if isinstance(qual, dict) and str(qual.get("corpus_sha256") or "") == sha256_bytes(canonical_bytes(doc)):
+            passed = {str(k) for k, v in (qual.get("scenarios") or {}).items()
+                      if isinstance(v, dict) and str(v.get("capability") or "") == "PASS"}
         for sc in doc.get("scenarios") or []:
             if isinstance(sc, dict) and sc.get("id"):
                 facts[str(sc["id"])] = {"method": str(sc.get("method") or ""), "path": str(sc.get("path") or ""),
-                                        "effects": [dict(e) for e in (sc.get("effects") or []) if isinstance(e, dict)]}
+                                        "effects": [dict(e) for e in (sc.get("effects") or []) if isinstance(e, dict)],
+                                        "qualified": str(sc["id"]) in passed}
                 if str(sc.get("effects_unobservable") or ""):
                     facts[str(sc["id"])]["effects_unobservable"] = str(sc["effects_unobservable"])
                 if sc.get("entry_point"):

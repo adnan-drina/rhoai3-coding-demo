@@ -90,13 +90,13 @@ _ORACLES_DIR = SCENARIO_ORACLES
 KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
                 "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable",
-                "cors_browser_access", "db_unchanged")
+                "cors_browser_access", "db_unchanged", "delete_outcome_consistent", "committed_counts")
 CONTRACT_KEYS = ("intent", "identity_field", "read_back_properties", "creates_without_location")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before", "before_reads_usable")
 # checks that read a read-back ROW without reading its body: they are about
 # the state a request left just as much, so they are judged against the same
 # identity question (whose probes these are)
-READ_BACK_CHECKS = ("after_effect_status",)
+READ_BACK_CHECKS = ("after_effect_status", "delete_outcome_consistent")
 HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers",
                  "cors_browser_access")
 _STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
@@ -196,6 +196,14 @@ def retained_body(root: Path, scenario_id: str, row: dict[str, Any], what: str) 
     if want and normalize_body(raw, "")[1] != want:
         raise Unusable("%s retained body does not normalize to the recorded body_sha256 %s" % (what, want[:12]))
     return raw
+
+
+def _committed_value(row: dict[str, Any], what: str) -> str:
+    """A committed-state step's value (ADR-026); a step the capture could not
+    read is UNUSABLE, never an empty value."""
+    if row.get("value") is None:
+        raise Unusable("%s committed state was not read: %s" % (what, row.get("error") or "no value recorded"))
+    return str(row["value"])
 
 
 def _read_back_body(root: Path, sid: str, row: dict[str, Any], what: str) -> Any:
@@ -524,9 +532,16 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                 if not before or not after or set(before) != set(after):
                     raise Unusable("before and after read-backs do not pair up")
                 for eid in sorted(before):
+                    if str(before[eid].get("kind") or "") == "sql":
+                        _committed_value(before[eid], "before %s" % eid)
+                        _committed_value(after[eid], "after %s" % eid)
+                        continue
                     _read_back_body(root, sid, before[eid], "before %s" % eid)
                     _read_back_body(root, sid, after[eid], "after %s" % eid)
-                diff = [eid for eid in sorted(before) if before[eid].get("body_sha256") != after[eid].get("body_sha256") or before[eid].get("status") != after[eid].get("status")]
+                diff = [eid for eid in sorted(before)
+                        if ((before[eid].get("value") != after[eid].get("value")) if str(before[eid].get("kind") or "") == "sql"
+                            else (before[eid].get("body_sha256") != after[eid].get("body_sha256")
+                                  or before[eid].get("status") != after[eid].get("status")))]
                 record(name, not diff, "read-backs %s" % ("changed: " + ", ".join(diff) if diff else "unchanged: " + ", ".join(sorted(before))))
             elif name == "cors_browser_access":
                 # RECORDED, not expected: whether the source's answer lets a
@@ -631,6 +646,49 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                     if int(row.get("status") or 0) != int(status):
                         bad.append("%s answered %s, expected %s" % (eid, row.get("status"), status))
                 record(name, not bad, "; ".join(bad) or "effects answered as the contract names")
+            elif name == "committed_counts":
+                # ADR-026: what the write left COMMITTED, read on a new
+                # connection before and after it; the count at the key the
+                # body names moves by exactly what the body carries
+                if not isinstance(want, dict) or not want:
+                    raise Unjudgeable("committed_counts must map a committed-state step to its expected delta")
+                bad = []
+                for eid, rule in sorted(want.items()):
+                    b_row, a_row = before.get(str(eid)), after.get(str(eid))
+                    if b_row is None or a_row is None:
+                        raise Unusable("committed-state step %s was not read before and after" % eid)
+                    b_v = _committed_value(b_row, "before %s" % eid)
+                    a_v = _committed_value(a_row, "after %s" % eid)
+                    if not (re.fullmatch(r"-?\d+", b_v) and re.fullmatch(r"-?\d+", a_v)):
+                        raise Unusable("committed-state step %s is not a count (%r, %r)" % (eid, b_v, a_v))
+                    delta = int(a_v) - int(b_v)
+                    if delta != int((rule or {}).get("delta")):
+                        bad.append("%s moved %d (%s -> %s), expected %s" % (eid, delta, b_v, a_v, (rule or {}).get("delta")))
+                record(name, not bad, "; ".join(bad) or "the committed rows moved as the body names (%s)" % ", ".join(sorted(want)))
+            elif name == "delete_outcome_consistent":
+                # the outcome is the SOURCE's (the derivation could not
+                # establish it); what is judged is that the answer and the
+                # committed state agree, and the observed outcome is recorded
+                eff_id = str((want or {}).get("item_effect") or "") if isinstance(want, dict) else ""
+                if not eff_id:
+                    raise Unjudgeable("delete_outcome_consistent must name its item_effect")
+                row = after.get(eff_id)
+                if row is None:
+                    raise Unusable("effect %s was not captured" % eff_id)
+                got = int(resp.get("status") or 0)
+                read = int(row.get("status") or 0)
+                if 200 <= got < 300:
+                    outcome, ok = "removed", read == 404
+                elif 400 <= got < 500:
+                    outcome, ok = "refused", read == 200
+                else:
+                    outcome, ok = "status %s" % got, False
+                base["observed_outcome"] = outcome
+                checks.append({"check": name, "ok": ok, "observed_outcome": outcome,
+                               "detail": "the source answered %s (%s) and %s reads back %s%s"
+                                         % (got, outcome, eff_id, read, "" if ok else ": the answer and the committed state disagree")})
+                if not ok:
+                    known_failures.append("%s: the source answered %s and %s reads back %s" % (name, got, eff_id, read))
             elif name == "cors_allow_origin":
                 if not isinstance(headers, dict):
                     raise Unusable("the capture recorded no header map")

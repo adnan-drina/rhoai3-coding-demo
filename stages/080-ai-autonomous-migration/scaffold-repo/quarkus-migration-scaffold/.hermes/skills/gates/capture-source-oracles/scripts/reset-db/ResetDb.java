@@ -20,6 +20,12 @@ import java.util.Properties;
  *   java -cp <driver.jar>:. ResetDb <url-env> <user-env> <password-env> <sql-file>...
  *   java -cp <driver.jar>:. ResetDb <url-env> <user-env> <password-env> --keep-schema <sql-file>...
  *
+ *   java -cp <driver.jar>:. ResetDb <url-env> <user-env> <password-env> --query <sql-file>
+ *
+ * --query reads the committed-state step of a scenario (ADR-026): the file's
+ * one SELECT on a new connection, printed as "VALUE:" + the first column of the
+ * first row (SQL NULL and no row print "VALUE:"). It changes nothing.
+ *
  * --keep-schema applies the files to the database as it is: a fixture
  * variant's revert changes only the rows it proves it found, and a dropped
  * schema would erase the very state the revert is there to leave readable.
@@ -44,6 +50,15 @@ public final class ResetDb {
         props.setProperty("user", requiredEnv(args[1]));
         props.setProperty("password", requiredEnv(args[2]));
         boolean keep = args.length > 3 && "--keep-schema".equals(args[3]);
+        if (args.length > 4 && "--query".equals(args[3])) {
+            try (Connection conn = DriverManager.getConnection(url, props);
+                 Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery(Files.readString(Path.of(args[4]), StandardCharsets.UTF_8).trim())) {
+                String v = rs.next() ? rs.getString(1) : null;
+                System.out.println("VALUE:" + (v == null ? "" : v));
+            }
+            return;
+        }
         try (Connection conn = DriverManager.getConnection(url, props)) {
             if (!keep) {
                 try (Statement st = conn.createStatement()) {

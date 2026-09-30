@@ -536,7 +536,7 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
                         acceptance=(["parity:%s" % s for s in scen] or ["coverage:unresolved"])
                         + (["location:%s" % e["id"]] if loc and scen else []),
                         unknowns=([] if scen else ["no captured oracle for %s (%s): behaviour is unverified, never PASS" % (e["id"], _s(e.get("kind")))])
-                        + (["the captured scenarios of %s declare no read-back of what the write persisted (%s): the response is "
+                        + (["the captured scenarios of %s cannot verify what the write persisted (%s): the response is "
                             "captured, the write is unverified, never PASS" % (e["id"], blind)] if blind else [])
                         + (["no capture of the source's create/Location behaviour for %s: the Location it builds, a null "
                             "expansion argument included, is unverified, never PASS" % e["id"]] if loc and not scen else []),
@@ -909,8 +909,19 @@ def _unobservable_write(ep: dict[str, Any], scen: list[str], facts: dict[str, di
     if not scen or facts is None or _s(ep.get("http_method")).upper() in _READ_METHODS + ("",):
         return ""
     writes = [facts.get(s) for s in scen if _s((facts.get(s) or {}).get("method")).upper() not in _READ_METHODS]
-    if not writes or any(w is None or w.get("effects") for w in writes):
+    if not writes or any(w is None for w in writes):
         return ""
+    # an HTTP read-back is a route the destination is compared through
+    if any(any(_s(e.get("kind")) != "sql" for e in (w.get("effects") or [])) for w in writes):
+        return ""
+    committed = [w for w in writes if w.get("effects")]
+    if committed:
+        # ADR-026: a committed-state read-back verifies the write only once its
+        # source capture QUALIFIED against the current corpus
+        if any(w.get("qualified") for w in committed):
+            return ""
+        return ("its committed-state read-back (ADR-026) has no qualified source capture yet; capture and qualify the "
+                "corpus on the frozen source")
     reasons = sorted({_s(w.get("effects_unobservable")) for w in writes if _s(w.get("effects_unobservable"))})
     return "; ".join(reasons) or "no scenario declares an effect"
 

@@ -713,9 +713,9 @@ def _foreign_key_delete_case() -> int:
         if want not in corpus["gaps"]:
             return _fail("an all-referenced table is a typed gap naming the constraint: %s" % corpus["gaps"])
         neg = sc["sc:delete-referenced-specialties-1"]
-        if neg["qualify"] != {"intent": "negative", "expect_status_class": "4xx",
-                              "after_effect_status": {"eff:specialties-1-after-refused-delete": 200}}:
-            return _fail("the negative delete states exactly what is checked: %s" % neg["qualify"])
+        if neg["qualify"] != {"intent": "observed",
+                              "delete_outcome_consistent": {"item_effect": "eff:specialties-1-after-refused-delete"}}:
+            return _fail("a referenced delete the structure model cannot decide is proposed, its outcome the capture's: %s" % neg["qualify"])
         if not neg.get("body_absent") or neg["path"] != "/api/specialties/1" or neg["method"] != "DELETE":
             return _fail("the refused delete is the same request against a referenced row: %s" % neg)
         if "FK_VET_SPECIALTIES_SPECIALTIES/vet_specialties.specialty_id" not in " ".join(neg["derived_from"]["evidence"]):
@@ -772,6 +772,48 @@ _REMOVAL_EPS = [
     _ep("VetRestController", "deleteVet(int)", "DELETE", "/api/vets/{vetId}"),
     _ep("SpecialtyRestController", "deleteSpecialty(int)", "DELETE", "/api/specialties/{specialtyId}"),
 ]
+
+
+def _referenced_delete_outcome_case() -> int:
+    """The outcome of a referenced delete the structure model cannot decide is
+    the capture's (2026-09-30 regression).
+
+    v28's ``sc:delete-referenced-pettypes-1`` expected a refusal because the
+    schema's foreign key has no cascade and PetType declares no relationship;
+    the frozen source answered 204 and the row read back 404, because a
+    repository override the model does not record deletes the pets first. The
+    derivation now proposes the request without asserting an outcome, and
+    qualification accepts whichever outcome the source gave -- as long as the
+    answer and the committed read-back agree."""
+    seed = ("INSERT INTO specialties VALUES (1, 'radiology');\n"
+            "INSERT INTO vet_specialties VALUES (2, 1);\n")
+    schema = ("CREATE TABLE specialties (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(80)\n);\n"
+              "CREATE TABLE vet_specialties (\n  vet_id INT NOT NULL,\n  specialty_id INT NOT NULL,\n"
+              "  CONSTRAINT FK_VS FOREIGN KEY (specialty_id) REFERENCES specialties (id)\n);\n")
+    eps = [{"id": "ep:a.SpecialtyRestController#deleteSpecialty(int):http", "kind": "http", "type": "a.SpecialtyRestController",
+            "member": "deleteSpecialty(int)", "path": "src/main/java/a/SpecialtyRestController.java",
+            "http_method": "DELETE", "http_path": "/api/specialties/{specialtyId}"}]
+    with tempfile.TemporaryDirectory(prefix="derive-refdel-") as td:
+        root = build_root(Path(td), extra_eps=eps, seed_sql=seed, schema_sql=schema, schema_name="initDB.sql",
+                          entities=[entity("Specialty", "specialties"), entity("Vet", "vets")])
+        if _derive(root).returncode != 0:
+            return _fail("the referenced-delete fixture derives")
+        corpus = load_corpus(root)
+        csha = corpus_digest(corpus)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}["sc:delete-referenced-specialties-1"]
+        eff = "eff:specialties-1-after-refused-delete"
+        if sc["qualify"] != {"intent": "observed", "delete_outcome_consistent": {"item_effect": eff}}:
+            return _fail("no outcome is asserted that the structure model cannot establish: %s" % sc["qualify"])
+        row = {"id": 1, "name": "radiology"}
+        for status, read, want, outcome in ((400, 200, "PASS", "refused"), (204, 404, "PASS", "removed"),
+                                            (204, 200, "FAIL", "removed"), (400, 404, "FAIL", "refused")):
+            _capture(root, sc, csha, status, {"Location": None}, "" if status == 204 else {"error": "refused"},
+                     {eff: (200, row)}, {eff: (read, row if read == 200 else {"error": "not found"})})
+            _p, q = _qualify(root)
+            rec = q["scenarios"][sc["id"]]
+            if rec["capability"] != want or rec.get("observed_outcome") != outcome:
+                return _fail("a %s answer with the row reading %s is %s (%s): %s" % (status, read, want, outcome, rec))
+    return 0
 
 
 def _application_removal_case() -> int:
@@ -834,9 +876,9 @@ def _application_removal_case() -> int:
         if not any(e.startswith("note:") and "not observable through routes" in e for e in vets["derived_from"]["evidence"]):
             return _fail("a child nothing can read is said to be unobservable, not silently dropped: %s" % vets["derived_from"])
         neg = sc["sc:delete-referenced-specialties-1"]
-        if neg["qualify"] != {"intent": "negative", "expect_status_class": "4xx",
-                              "after_effect_status": {"eff:specialties-1-after-refused-delete": 200}}:
-            return _fail("the inverse @ManyToMany side keeps the refusal contract: %s" % neg["qualify"])
+        if neg["qualify"] != {"intent": "observed",
+                              "delete_outcome_consistent": {"item_effect": "eff:specialties-1-after-refused-delete"}}:
+            return _fail("the inverse @ManyToMany side asserts no outcome the model cannot establish: %s" % neg["qualify"])
         if not any("none declared" in e for e in neg["derived_from"]["evidence"]):
             return _fail("the negative records that the application declares no removal: %s" % neg["derived_from"])
         if "structure:Specialty @Table(name=specialties)" not in neg["derived_from"]["evidence"]:
@@ -3017,7 +3059,7 @@ def main() -> int:
                 or _enabled_variant_revert_case() or _revert_qualification_case()
                 or _enabled_cors_case() or _cors_access_qualification_case()
                 or _enabled_identity_case() or _enabled_regression_case()
-                or _application_removal_case() or _qualification_case(root)
+                or _application_removal_case() or _referenced_delete_outcome_case() or _qualification_case(root)
                 or _effects_identity_qualification_case() or _receipt_case()):
             return 1
     finally:
