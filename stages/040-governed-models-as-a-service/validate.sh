@@ -1326,14 +1326,24 @@ if command -v python3 >/dev/null 2>&1; then
       fi
       check "ai-developer can create a MaaS API key for the demo subscription" "$R"
 
+      # Every local model that is scaled up must answer a tool call. A model the
+      # Operator deliberately scaled to 0 replicas (one GPU; Argo ignores
+      # spec.replicas) is reported as a warning, not a failure.
+      for LOCAL_PAIR in "Qwen3.8:${QWEN38_MODEL_RESOURCE}" "Qwen27B:${QWEN27B_MODEL_RESOURCE}"; do
+      LOCAL_LABEL="${LOCAL_PAIR%%:*}"; LOCAL_MODEL="${LOCAL_PAIR#*:}"
+      LOCAL_REPLICAS=$(jsonpath "llminferenceservice/${LOCAL_MODEL}" "$MAAS_NS" '{.spec.replicas}')
+      if [[ "$LOCAL_REPLICAS" == "0" ]]; then
+        warn "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "scaled to 0 replicas by the Operator"
+        continue
+      fi
       if [[ "$API_KEY_VALUE" == sk-oai-* ]]; then
         INFERENCE_STATUS=$(curl -sk --max-time 120 -o "$INFERENCE_BODY" -w '%{http_code}' \
           -H "Authorization: Bearer ${API_KEY_VALUE}" \
           -H "Content-Type: application/json" \
-          "https://${GATEWAY_HOST}/models-as-a-service/${QWEN27B_MODEL_RESOURCE}/v1/chat/completions" \
+          "https://${GATEWAY_HOST}/models-as-a-service/${LOCAL_MODEL}/v1/chat/completions" \
           --data-binary @- <<JSON 2>/dev/null || true
 {
-  "model": "${QWEN27B_MODEL_RESOURCE}",
+  "model": "${LOCAL_MODEL}",
   "messages": [
     {
       "role": "user",
@@ -1375,7 +1385,7 @@ JSON
           R="pass"
         elif [[ "$INFERENCE_STATUS" == "429" ]] &&
           grep -qi "Too Many Requests" "$INFERENCE_BODY"; then
-          R="warn: MaaS policy throttled local Qwen27B validation request: status=${INFERENCE_STATUS},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
+          R="warn: MaaS policy throttled local ${LOCAL_LABEL} validation request: status=${INFERENCE_STATUS},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
         else
           R="status=${INFERENCE_STATUS:-missing},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
         fi
@@ -1383,10 +1393,11 @@ JSON
         R="MaaS API key was not created"
       fi
       if [[ "$R" == warn:* ]]; then
-        warn "ai-developer can call Qwen27B through MaaS with tool calling and token usage" "${R#warn: }"
+        warn "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "${R#warn: }"
       else
-        check "ai-developer can call Qwen27B through MaaS with tool calling and token usage" "$R"
+        check "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "$R"
       fi
+      done
 
       if [[ "$API_KEY_VALUE" == sk-oai-* ]]; then
         EXTERNAL_INFERENCE_BODY=$(mktemp "${TMPDIR:-/tmp}/rhoai-stage220-openai-inference.XXXXXX")
