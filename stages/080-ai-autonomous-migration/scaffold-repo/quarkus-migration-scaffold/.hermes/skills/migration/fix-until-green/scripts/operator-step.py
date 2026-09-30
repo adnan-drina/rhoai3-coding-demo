@@ -75,6 +75,21 @@ def _refuse(msg: str) -> int:
     return 1
 
 
+_OPERATOR = [""]
+
+
+def _native_board(root: Path):
+    """The native board when this root runs outcome-board/v2; None otherwise."""
+    try:
+        from planner.outcome_protocol import select_protocol
+        if not select_protocol(Path(root)).native:
+            return None
+        from planner import native_control as NC
+        return NC.board_for(Path(root))
+    except Exception:  # noqa: BLE001 - no native board is the serial loop
+        return None
+
+
 def _beside_pending(root: Path, steps: dict) -> tuple[dict | None, int | None]:
     """(the pending row this step would stand beside, refusal) for the issued card.
 
@@ -91,6 +106,21 @@ def _beside_pending(root: Path, steps: dict) -> tuple[dict | None, int | None]:
         return None, None
     cluster = str(issued.get("cluster") or "")
     row = pending_for(steps, cluster) if cluster else None
+    board = _native_board(root)
+    if row is None and board is not None:
+        # outcome-board/v2: the native task decides whether the issuance is live, never the
+        # file's existence (v29 I-11: a run the loop guard stopped left it behind)
+        from planner import native_control as NC
+        st = NC.issuance_state(root, board)
+        if st["state"] == "expired":
+            got = NC.retire_issuance(root, board, by="operator", reason="operator-step by %s" % _OPERATOR[0])
+            print("   the issuance of %s (run %s) had expired (card %s); kept as %s" % (
+                st["task"], st["run"], st.get("status"), got["retired"]))
+            return None, None
+        if st["state"] != "retained":
+            return None, _refuse("the issuance of %s (run %s, cluster %s) is %s%s; let it finish or revert it" % (
+                st.get("task") or "no card", st.get("run"), cluster or "unknown", st["state"],
+                (": " + st["why"]) if st.get("why") else ""))
     if row is None:
         return None, _refuse("an issued card is live (%s, cluster %s); let it finish or revert it (rewind.py --close-card)"
                              % (str(issued.get("task_id") or "no card"), cluster or "unknown"))
@@ -249,6 +279,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.clear_deferred and args.takeover_deferred:
         return _refuse("choose retry clearance or Operator takeover, not both")
     root = Path(args.root).resolve()
+    _OPERATOR[0] = args.operator
+    if args.clear_deferred and _native_board(root) is not None:
+        # the native family budget governs a v2 card; this clearance raises the LEGACY allowance and
+        # mints, which would grant attempts the native account never recorded
+        return _refuse("--clear-deferred raises the legacy attempt allowance and mints; under native control a deferral "
+                       "the family budget caused is lifted by HERMES_PROFILE=operator python3 .hermes/kernel/native_gate.py "
+                       "--root . reconcile-deferrals --task <card> --reason <why> (after void-rejects for rejections a "
+                       "harness defect caused), which lifts it only when the budget is no longer exhausted and mints nothing")
     steps = load_steps(root)
     if not steps.get("steps"):
         return _refuse("no baseline step recorded")

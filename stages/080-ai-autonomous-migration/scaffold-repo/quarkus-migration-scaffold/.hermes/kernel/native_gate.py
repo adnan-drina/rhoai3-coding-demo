@@ -209,6 +209,11 @@ def main(argv: list[str] | None = None) -> int:
     vr.add_argument("--task", default="")
     vr.add_argument("--key", action="append", default=[], required=True)
     vr.add_argument("--reason", required=True)
+    rd = sub.add_parser("reconcile-deferrals", help="Operator: lift a deferral this card's budget caused once it is no longer exhausted (idempotent; never mints)")
+    rd.add_argument("--task", default="")
+    rd.add_argument("--reason", required=True)
+    ri = sub.add_parser("retire-issuance", help="Operator: move an EXPIRED verification/loop/issued.json into issued-history (refuses a live or retained one)")
+    ri.add_argument("--reason", required=True)
     sub.add_parser("park")
     sub.add_parser("restore-parked")
     sub.add_parser("integrate")
@@ -283,8 +288,16 @@ def main(argv: list[str] | None = None) -> int:
         elif ns.cmd == "handoff":
             out = NC.handoff(root, board, task_id=task)
         elif ns.cmd == "void-rejects":
-            out = {"voided": NC.void_rejects(board, task_id=ns.task or task, keys=ns.key, reason=ns.reason,
-                                             by=(os.environ.get("HERMES_PROFILE") or "").strip().lower())}
+            by = (os.environ.get("HERMES_PROFILE") or "").strip().lower()
+            out = {"voided": NC.void_rejects(board, task_id=ns.task or task, keys=ns.key, reason=ns.reason, by=by)}
+            # a deferral the voided rejections caused goes with them, and only if the budget recovered
+            out["deferrals"] = NC.reconcile_deferrals(root, board, task_id=ns.task or task, by=by, reason=ns.reason)
+        elif ns.cmd == "reconcile-deferrals":
+            out = NC.reconcile_deferrals(root, board, task_id=ns.task or task, reason=ns.reason,
+                                         by=(os.environ.get("HERMES_PROFILE") or "").strip().lower())
+        elif ns.cmd == "retire-issuance":
+            out = NC.retire_issuance(root, board, reason=ns.reason,
+                                     by=(os.environ.get("HERMES_PROFILE") or "").strip().lower())
         elif ns.cmd == "park":
             out = NC.park(root, board, task_id=task, run_id=run_id)
         elif ns.cmd == "restore-parked":

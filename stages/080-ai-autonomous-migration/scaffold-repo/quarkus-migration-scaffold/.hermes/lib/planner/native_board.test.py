@@ -1153,5 +1153,139 @@ class AdvanceBridge(unittest.TestCase):
             r.close()
 
 
+# ===========================================================================
+class LifecycleReconciliation(unittest.TestCase):
+    """v29 I-11: a run the loop guard stopped left verification/loop/issued.json and its unjudged edits
+    behind, and voiding the rejections a harness defect caused restored the budget but not the cluster
+    its exhaustion had deferred. The native board decides whether an issuance is live; an expired one
+    is kept as history; a budget-derived deferral is lifted only when the effective spend is below the
+    limit, once, without minting; a stopped run's edits inside its own issue are set aside at the next issue."""
+
+    def setUp(self):
+        self.r = Run()
+        self.r.release()
+
+    def tearDown(self):
+        self.r.close()
+
+    def exhaust(self):
+        from planner.paths import LOOP_DEFERRED
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        node = NC._node(r.plan(), "build:rk:pom")
+        key, limit = node["budget"]["key"], node["budget"]["limit"]
+        for i in range(limit):
+            NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="REVERTED", candidate="%064x" % i,
+                              attempt=str(i), reason="red")
+        p = r.root / LOOP_DEFERRED
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"schema": "rhoai3.loop-deferred/v1", "clusters": [iss["cluster"], "c:other"], "reasons": {
+            iss["cluster"]: "%d of %d attempt(s) spent against %s; last: red" % (limit, limit, key),
+            "c:other": "3 of 3 attempt(s) spent against rk:family:someone-else; last: red"}}))
+        r.native.end_run(tid, "blocked", "needs_input")
+        return tid, run, iss, key, limit, p
+
+    def test_voiding_the_rejections_lifts_only_their_deferral_once(self):
+        r = self.r
+        tid, _run, iss, key, limit, p = self.exhaust()
+        # still exhausted: the deferral stands
+        got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="x")
+        self.assertEqual((got["lifted"], len(got["kept"])), ([], 1))
+        self.assertIn(iss["cluster"], json.loads(p.read_text())["clusters"])
+        with self.assertRaises(Refusal):
+            NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="implementer", reason="x")
+        NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="harness",
+                        by="operator")
+        got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="harness")
+        self.assertEqual(got["lifted"], [iss["cluster"]])
+        doc = json.loads(p.read_text())
+        self.assertEqual(doc["clusters"], ["c:other"])                     # another family's deferral stands
+        self.assertIn("c:other", doc["reasons"])
+        self.assertEqual(len(r.board.records(tid, "reject")), limit)        # the rejections stay on the record
+        self.assertEqual(NC._node(r.plan(), "build:rk:pom")["budget"]["limit"], limit)   # the limit is unchanged
+        # idempotent: a repeat lifts nothing and records nothing
+        again = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="harness")
+        self.assertEqual(again["lifted"], [])
+        self.assertEqual(len(r.board.records(tid, "deferral-lifted")), 1)
+
+    def test_an_interrupted_reconciliation_resumes_to_one_record(self):
+        from planner import canonical
+        r = self.r
+        tid, _run, iss, _key, _limit, p = self.exhaust()
+        NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="h",
+                        by="operator")
+        orig = canonical.write_canonical
+
+        def boom(*a, **k):
+            raise OSError("interrupted")
+        canonical.write_canonical = boom
+        try:
+            with self.assertRaises(OSError):
+                NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+        finally:
+            canonical.write_canonical = orig
+        self.assertIn(iss["cluster"], json.loads(p.read_text())["clusters"])   # nothing half-written
+        got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+        self.assertEqual(got["lifted"], [iss["cluster"]])
+        self.assertEqual(len(r.board.records(tid, "deferral-lifted")), 1)     # the record was not duplicated
+
+    def projection(self, tid, run):
+        from planner.paths import LOOP_ISSUED
+        p = self.r.root / LOOP_ISSUED
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"task_id": tid, "cluster": "c:x", "idempotency_key": "outcome:v2:n1:o:c:x:issue1:r%d" % run}))
+        return p
+
+    def test_an_issuance_is_live_while_its_card_runs_and_is_kept_as_history_once_expired(self):
+        r = self.r
+        tid, run, _iss = r.issue("build:rk:pom")
+        p = self.projection(tid, run)
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "live")
+        with self.assertRaises(Refusal) as cm:
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertEqual(cm.exception.code, "ISSUANCE_NOT_EXPIRED")
+        # a newer claim on the same card is live too: a surviving or new worker owns it
+        r.native.end_run(tid, "ready", "gave_up")
+        r.native.claim(tid)
+        st = NC.issuance_state(r.root, r.board)
+        self.assertEqual(st["state"], "live")
+        self.assertIn("newer claim", st["why"])
+        # a retained candidate is not expired either
+        r.native.end_run(tid, "blocked", "needs_input")
+        r.board.record(tid, "pending", "pending:test", candidate="c" * 64)
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "retained")
+        with self.assertRaises(Refusal):
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        r.board.record(tid, "reject", "reject:test", candidate="c" * 64)     # the pending row is closed
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "expired")
+        body = p.read_bytes()
+        got = NC.retire_issuance(r.root, r.board, by="operator", reason="stopped run")
+        self.assertFalse(p.exists())
+        self.assertEqual((r.root / got["retired"]).read_bytes(), body)       # history, byte for byte
+        self.assertEqual(NC.retire_issuance(r.root, r.board, by="operator", reason="again")["retired"], None)
+        self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
+
+    def test_a_stopped_runs_edits_inside_its_issue_are_set_aside_at_the_next_issue(self):
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        r.edit(iss["allowed_paths"][0], "<project>left by a stopped worker</project>\n")
+        r.native.end_run(tid, "ready", "gave_up")                          # no terminator ran
+        run2, lock2 = r.native.claim(tid)
+        again = NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)   # v29 run 76: no drift refusal
+        self.assertEqual(again["outcome_id"], "build:rk:pom")
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual((len(ab), ab[0]["run"], ab[0]["paths"]), (1, run, [iss["allowed_paths"][0]]))
+        self.assertIsNotNone(r.board.attachment(tid, ab[0]["attachment"]))
+        self.assertEqual(git(r.root, "status", "--porcelain", "--", iss["allowed_paths"][0]), "")
+        self.assertIsNone(NC.parked_pending(r.board, tid))                 # evidence, never a candidate to restore
+        # control: an edit outside what the stopped run was issued is still the drift refusal
+        r.native.end_run(tid, "ready", "gave_up")
+        run3, lock3 = r.native.claim(tid)
+        r.edit("src/main/java/com/acme/shop/Unrelated.java", "class Unrelated {}\n")
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run3, claim_lock=lock3)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

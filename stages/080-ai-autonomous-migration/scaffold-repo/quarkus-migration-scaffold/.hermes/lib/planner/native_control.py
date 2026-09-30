@@ -862,6 +862,10 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     pending = _open_pending(board, task_id)
     committed = commit_product_tree(root, head) if head else ""
     if committed and tree != committed and not (pending and pending.get("candidate") == tree):
+        # a run the runtime stopped left its unjudged edits: set them aside as evidence (v29 run 75)
+        if park_abandoned(root, board, task_id=task_id, run_id=run_id):
+            tree = _product_tree(root)
+    if committed and tree != committed and not (pending and pending.get("candidate") == tree):
         raise Refusal("ISSUE_BASELINE_DRIFT", "the product tree differs from HEAD %s and is not the retained candidate of %s; "
                       "unexplained edits are not blessed" % (head[:12], oid))
     worklist, why = load_worklist(root)
@@ -1817,6 +1821,14 @@ def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, An
     changed = [c for c in _all if c in set(_issued_changes(root, board, task_id, run_id, head) or [])]
     if not changed:
         return {"parked": [], "note": "no edit of a path this run was issued differs from HEAD %s" % head[:12]}
+    return _stash(root, board, task_id=task_id, run_id=run_id, head=head, changed=changed, kind="park")
+
+
+def _stash(root: Path, board: Board, *, task_id: str, run_id: int, head: str, changed: list[str],
+           kind: str) -> dict[str, Any]:
+    """Attach `changed` (bytes, or deleted) to the card under a digest-named
+    attachment, record it, and restore those paths to HEAD. The attachment and
+    the record come first, so an interrupted stash re-runs to the same key."""
     files: dict[str, str] = {}
     for rel in changed:
         p = root / rel
@@ -1824,13 +1836,13 @@ def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, An
     data = canonical_bytes({"schema": "rhoai3.native-parked/v1", "task": task_id, "run": int(run_id), "head": head,
                             "candidate": _product_tree(root), "files": files})
     digest = sha256(data)
-    name = "parked.%d.%s.json" % (int(run_id), digest[:12])
+    name = "%s.%d.%s.json" % ("parked" if kind == "park" else kind, int(run_id), digest[:12])
     if board.attachment(task_id, name) is None:
         with tempfile.TemporaryDirectory(prefix="native-park-") as td:
             f = Path(td) / name
             f.write_bytes(data)
             board.native.attach(task_id, str(f), name)
-    rec = board.record(task_id, "park", "park:%d:%s" % (int(run_id), digest[:16]), run=int(run_id), head=head,
+    rec = board.record(task_id, kind, "%s:%d:%s" % (kind, int(run_id), digest[:16]), run=int(run_id), head=head,
                        attachment=name, sha256=digest, paths=sorted(files))
     for rel in changed:
         tracked = _git(root, "cat-file", "-e", "%s:%s" % (head, rel)).returncode == 0
@@ -1842,6 +1854,152 @@ def park(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, An
     if left:
         raise Refusal("PARK_INCOMPLETE", "the tree still differs from HEAD at %s" % ", ".join(left[:4]))
     return {"parked": sorted(files), "attachment": name, "record": rec["key"], "head": head}
+
+
+ABANDONED = "abandoned-candidate"
+
+
+def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, Any] | None:
+    """v29 run 75: a worker the runtime STOPPED (a loop guard's gave_up, a
+    crash, a timeout) runs no terminator, so its unjudged edits stay in the
+    shared tree and the next issue refuses ISSUE_BASELINE_DRIFT until someone
+    cleans up by hand. The next issue of the same card sets them aside instead
+    -- as evidence (an attachment and an ``abandoned-candidate`` record), never
+    as a candidate to restore -- when, and only when, every changed product
+    path lies inside what the card's most recent ENDED run was issued, and no
+    candidate of the card is retained. Anything else stays the drift refusal:
+    an edit no ended run of this card was issued is not this card's to discard."""
+    root = Path(root)
+    head, changed = _changed_vs_head(root)
+    if not changed or _open_pending(board, task_id) is not None:
+        return None
+    runs = sorted({int(r.get("run") or 0) for r in board.records(task_id, "issue")} - {0, int(run_id)})
+    if not runs:
+        return None
+    last = runs[-1]
+    issued = {p for r in board.records(task_id, "issue") if int(r.get("run") or 0) == last
+              for p in (r.get("allowed_paths") or [])}
+    if not set(changed) <= issued:
+        return None
+    return dict(_stash(root, board, task_id=task_id, run_id=last, head=head, changed=sorted(changed), kind=ABANDONED),
+                run=last)
+
+
+# ---------------------------------------------------------------------------
+# lifecycle reconciliation: expired issuance and budget-derived deferrals
+# ---------------------------------------------------------------------------
+
+_ISSUED_KEY_RE = re.compile(r":issue(\d+):r(\d+)$")
+ISSUED_HISTORY = Path("verification") / "loop" / "issued-history"
+
+
+def issuance_state(root: Path, board: Board) -> dict[str, Any]:
+    """Is verification/loop/issued.json still an ACTIVE issuance? Asked of the
+    native board, never of the file's existence (v29 I-11: a run the loop guard
+    stopped left it behind, and the Operator step read it as a live card).
+
+      none       no projection
+      retained   the card holds a retained candidate (VERIFICATION_PENDING)
+      live       the card is running: its issued run, or a newer claim
+      expired    the card is not running and retains nothing
+      unbound    the projection names no card on this board: nothing can be
+                 said, so a caller refuses as it would for a live card"""
+    from planner.canonical import load_json
+    from planner.paths import LOOP_ISSUED
+    p = Path(root) / LOOP_ISSUED
+    if not p.is_file():
+        return {"state": "none"}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {"state": "unbound", "why": "the projection could not be read"}
+    task = str(doc.get("task_id") or "")
+    m = _ISSUED_KEY_RE.search(str(doc.get("idempotency_key") or ""))
+    out = {"task": task, "run": int(m.group(2)) if m else 0, "issue": int(m.group(1)) if m else 0,
+           "cluster": str(doc.get("cluster") or "")}
+    t = board.task(task) if task else None
+    if t is None:
+        return dict(out, state="unbound", why="the projection names no task on this board")
+    if _open_pending(board, task) is not None:
+        return dict(out, state="retained")
+    if t.get("status") == "running":
+        cur = int(t.get("current_run_id") or 0)
+        return dict(out, state="live", why=("run %d is running" % cur) if cur == out["run"] else
+                    ("a newer claim (run %d) holds the card" % cur))
+    return dict(out, state="expired", status=str(t.get("status") or ""))
+
+
+def retire_issuance(root: Path, board: Board, *, by: str, reason: str) -> dict[str, Any]:
+    """Move an EXPIRED projection into verification/loop/issued-history/ and
+    record it on the card: the history is kept, the live slot is freed. Copy,
+    record, then unlink, so an interrupted retirement re-runs to the same
+    record; a projection that is live, retained or unbound is refused."""
+    from planner.paths import LOOP_ISSUED
+    if by != "operator":
+        raise Refusal("RETIRE_NOT_OPERATOR", "only the Operator retires an issuance (profile %r)" % by)
+    st = issuance_state(root, board)
+    if st["state"] == "none":
+        return {"retired": None, "state": "none"}
+    if st["state"] != "expired":
+        raise Refusal("ISSUANCE_NOT_EXPIRED", "the issuance of %s (run %s) is %s%s" % (
+            st.get("task") or "?", st.get("run"), st["state"], (": " + st["why"]) if st.get("why") else ""))
+    src = Path(root) / LOOP_ISSUED
+    data = src.read_bytes()
+    digest = sha256(data)
+    rel = ISSUED_HISTORY / ("issued.%s.r%d.i%d.%s.json" % (st["task"], st["run"], st["issue"], digest[:12]))
+    dest = Path(root) / rel
+    if not dest.is_file():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+    rec = board.record(st["task"], "issuance-retired", "issuance-retired:%s" % digest[:16], run=st["run"],
+                       issue=st["issue"], cluster=st["cluster"], history=rel.as_posix(), status=st.get("status"),
+                       reason=reason[:500])
+    src.unlink()
+    return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired"}
+
+
+def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reason: str) -> dict[str, Any]:
+    """Lift a deferral this card's family BUDGET caused once that budget, as
+    effectively spent (voided rejections excluded), is no longer exhausted.
+
+    v29 I-10: voiding the three rejections a harness defect caused restored the
+    allowance but left verification/loop/deferred.json holding the cluster, so
+    the card was issued a cluster that could not pass. Only a deferral whose
+    reason names this card's budget key and whose cluster this card was issued
+    is considered; a budget still exhausted keeps it. The limit, the rejection
+    records, the legacy attempt allowance (steps.json) and every other
+    deferral are untouched, nothing is minted, and a second call finds nothing
+    left to lift (the record key is the cluster and the reason's digest)."""
+    from planner.canonical import load_json, write_canonical
+    from planner.paths import LOOP_DEFERRED
+    if by != "operator":
+        raise Refusal("RECONCILE_NOT_OPERATOR", "only the Operator reconciles a deferral (profile %r)" % by)
+    role, run, oid, plan, node = node_context(board, task_id)
+    if role != "repair":
+        raise Refusal("RECONCILE_ROLE", "%s is a %s card; only repair cards carry a family budget" % (task_id, role))
+    b = budget_state(board, run, plan, node)
+    p = Path(root) / LOOP_DEFERRED
+    doc = load_json(p) if p.is_file() else {"schema": "rhoai3.loop-deferred/v1", "clusters": [], "reasons": {}}
+    reasons = dict(doc.get("reasons") or {})
+    issued = {str(r.get("cluster") or "") for r in board.records(task_id, "issue")}
+    lifted: list[str] = []
+    kept: list[dict[str, str]] = []
+    for c in list(doc.get("clusters") or []):
+        why = str(reasons.get(c) or "")
+        if c not in issued or not b["key"] or ("against %s" % b["key"]) not in why:
+            continue          # not a deferral this card's budget caused
+        if b["exhausted"]:
+            kept.append({"cluster": c, "why": "%s is still exhausted (%d of %d)" % (b["key"], b["spent"], b["limit"])})
+            continue
+        board.record(task_id, "deferral-lifted", "deferral-lifted:%s:%s" % (c, sha256(why.encode("utf-8"))[:12]),
+                     cluster=c, budget_key=b["key"], spent=int(b["spent"]), limit=int(b["limit"]),
+                     was_deferred_because=why[:500], reason=reason[:500])
+        lifted.append(c)
+    if lifted:
+        doc["clusters"] = [c for c in doc.get("clusters") or [] if c not in lifted]
+        doc["reasons"] = {k: v for k, v in reasons.items() if k not in lifted}
+        write_canonical(p, doc)
+    return {"lifted": lifted, "kept": kept, "budget": {k: b[k] for k in ("key", "spent", "limit", "exhausted")}}
 
 
 def parked_pending(board: Board, task_id: str) -> dict[str, Any] | None:
