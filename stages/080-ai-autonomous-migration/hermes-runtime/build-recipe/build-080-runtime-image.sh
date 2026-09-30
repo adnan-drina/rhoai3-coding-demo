@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the ws-080 workspace image with Hermes runtime patches 0001..N (N = the
 # number of patches in stages/080-ai-autonomous-migration/hermes-runtime/patches),
-# the outcome-board authority unchanged (commit bb66b50e, identity C), and the
+# the outcome-board authority unchanged (commit bb66b50e, identity C), the typed
+# repair executor built from the golden's pinned sources (step 2b), and the
 # patched tree stamped in /opt/rhoai3/080.pins; optionally push to quay.
 #
 #   bash stages/080-ai-autonomous-migration/hermes-runtime/build-recipe/build-080-runtime-image.sh <expected-patched-tree>
@@ -54,10 +55,24 @@ got="$(PYTHONDONTWRITEBYTECODE=1 python3 stages/080-ai-autonomous-migration/herm
         --repo . --commit "$COMMIT" --prefix "$PREFIX_HERMES" --out "$W/out/outcome-authority" | tail -1)"
 [ "$got" = "$C" ] || { echo "STOP: staged authority identity $got != C $C"; exit 1; }
 
+echo "== 2b. build the typed repair executor from the pinned sources (V26-1; pins.json typed_repair)"
+TR="$PREFIX_HERMES/skills/migration/fix-until-green/typed-repair"
+TR_SHA="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pins"]["typed_repair"]["executor"]["jar_sha256"])' "$PREFIX_HERMES/pins.json")"
+rm -rf "$W/out/typed-repair"; mkdir -p "$W/out/typed-repair"
+# the build directory is outside .hermes (a build inside it is release drift); its recipe tests run here
+mvn -B -q -f "$TR/pom.xml" -Dtyped-repair.build.dir="$R/$W/out/typed-repair/build" package
+mvn -B -q -f "$TR/pom.xml" dependency:list -DincludeScope=runtime -Dsort=true -DoutputFile="$R/$W/out/typed-repair/deps.txt"
+python3 "$TR/scripts/license-inventory.py" "$W/out/typed-repair/deps.txt" --check > "$W/out/typed-repair/licenses.json"
+cp "$W/out/typed-repair/build/typed-repair-1.0.0.jar" "$W/out/typed-repair/typed-repair.jar"
+got="$(sha256sum "$W/out/typed-repair/typed-repair.jar" | cut -d' ' -f1)"
+[ "$got" = "$TR_SHA" ] || { echo "STOP: typed repair jar $got != pinned $TR_SHA (a different JDK or input: re-pin deliberately)"; exit 1; }
+echo "   typed repair executor ${got:0:12} staged ($(wc -c < "$W/out/typed-repair/typed-repair.jar") bytes, licenses checked)"
+
 echo "== 3. the versioned recipe must already name this tree and patch count (no in-place rewrite)"
 grep -q "^ARG HERMES_PATCHED_TREE=$TREE$" "$W/Dockerfile" || { echo "STOP: recipe Dockerfile does not pin tree $TREE"; exit 1; }
 grep -q "hermes-runtime-patches/\*.patch | wc -l)\" -eq $N " "$W/Dockerfile" || { echo "STOP: recipe Dockerfile does not require $N patches"; exit 1; }
-echo "   recipe pins tree $TREE and $N patches"
+grep -q "^ARG TYPED_REPAIR_JAR_SHA256=$TR_SHA$" "$W/Dockerfile" || { echo "STOP: recipe Dockerfile does not pin typed repair jar $TR_SHA"; exit 1; }
+echo "   recipe pins tree $TREE, $N patches and typed repair jar ${TR_SHA:0:12}"
 
 echo "== 4. build (amd64 under emulation; cached layers help)"
 podman machine start >/dev/null 2>&1 || true   # already running is not an error
@@ -70,7 +85,9 @@ echo "== 5. read back in the built image"
 podman run --rm --platform linux/amd64 --entrypoint /bin/bash --user 1001040000:0 "$IMG" -c '
   grep "^hermes.patched_tree=" /opt/rhoai3/080.pins
   grep "^outcome_authority.code_sha256=" /opt/rhoai3/080.pins
+  grep "^typed_repair.jar_sha256=" /opt/rhoai3/080.pins
   wc -l < /opt/rhoai3/hermes-runtime-patches.sha256' | tee "$W/out/runtime-readback.txt"
+grep -q "^typed_repair.jar_sha256=$TR_SHA$" "$W/out/runtime-readback.txt" || { echo "STOP: typed repair stamp != $TR_SHA"; exit 1; }
 grep -q "^hermes.patched_tree=$TREE$" "$W/out/runtime-readback.txt" || { echo "STOP: stamp != $TREE"; exit 1; }
 grep -q "^outcome_authority.code_sha256=$C$" "$W/out/runtime-readback.txt" || { echo "STOP: authority stamp changed"; exit 1; }
 [ "$(tail -1 "$W/out/runtime-readback.txt" | tr -d ' ')" = "$N" ] || { echo "STOP: baked patch count != $N"; exit 1; }
@@ -79,7 +96,7 @@ echo "   READ-BACK OK (Hermes $TREE, $N patches, authority C)"
 echo "== 6. build context identity (record this in the release)"
 ( cd "$W" && { sha256sum Dockerfile .dockerignore scripts/*.py scripts/*.sh devfile-fragments/*; \
   find out/hermes-runtime-patches out/outcome-authority out/web_dist -type f -print0 | sort -z | xargs -0 sha256sum; \
-  sha256sum out/mta-*-cli-linux-amd64.zip; } ) > "$W/out/build-context.sha256"
+  sha256sum out/mta-*-cli-linux-amd64.zip out/typed-repair/typed-repair.jar; } ) > "$W/out/build-context.sha256"
 echo "   context identity $(sha256sum < "$W/out/build-context.sha256" | cut -c1-64) ($(wc -l < "$W/out/build-context.sha256") files)"
 
 if [ "$PUSH" = 1 ]; then

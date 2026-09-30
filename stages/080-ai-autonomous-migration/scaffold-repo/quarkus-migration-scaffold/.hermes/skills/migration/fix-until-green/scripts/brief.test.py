@@ -831,6 +831,39 @@ def _servlet_compile_item_first_action_case() -> int:
     return 0
 
 
+def _objective_family_action_case() -> int:
+    """M-4: an objective's family translation (collection sorting, transactions) is a documented first action in
+    the digest, from the catalog row, not only a reference hit on a compile item."""
+    b = __import__("brief")
+    fams = b.catalog(GOLDEN)["objective_families"]["families"]
+    for fid in ("collection-sorting", "transaction-annotations"):
+        act = fams[fid].get("action")
+        if not act or not fams[fid].get("checks"):
+            return _fail("the %s family carries an action and its checks" % fid)
+        text = b.brief_digest({"cluster": {"id": "objective:x"}, "objective": {"family": fid, "action": act}}, "brief-x")
+        if "objective family %s: %s" % (fid, act) not in text:
+            return _fail("the digest lists the %s family action among the documented first actions" % fid)
+    return 0
+
+
+def _absent_result_brief_case() -> int:
+    """M-3 2026-09-30: every READ member of an owed fragment carries what it answers for no row (Spring Data's null
+    for a single entity, never a bare getSingleResult); a write member does not."""
+    b = __import__("brief")
+    absent = b.absent_result_semantics(GOLDEN)
+    if "getResultStream().findFirst().orElse(null)" not in absent or "NoResultException" not in absent:
+        return _fail("the catalog's absent-result semantics name the translation and the failure: %r" % absent[:300])
+    got = b.behaviour_brief({"behaviour": {"members": [
+        {"signature": "findById(int)", "kind": "query", "query": ["select o from O o where o.id = :id"], "effect": "read"},
+        {"signature": "findAll()", "kind": "crud-default", "effect": "read", "source": "findAll/0", "semantics": "all"},
+        {"signature": "save(p.O)", "kind": "crud-default", "effect": "write", "source": "save/1", "semantics": "persist"}]}}, absent)
+    rows = {m["member"]: m for m in got["behaviour"]["members"]}
+    if rows["findById(int)"].get("absent_result") != absent or rows["findAll()"].get("absent_result") != absent \
+            or "absent_result" in rows["save(p.O)"]:
+        return _fail("absent-result semantics on the read members only: %s" % rows)
+    return 0
+
+
 def _handler_parameter_brief_case() -> int:
     """V16-5: the brief's first action for a UriComponentsBuilder unit is the
     handler_parameters action at the handlers it names, THEN the rename for
@@ -877,6 +910,10 @@ def _handler_parameter_brief_case() -> int:
                                                      "message": "cannot find symbol\n  symbol:   class UriComponentsBuilder"}]})
         write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:hp1", "task_id": "t_hp0001",
                                              "write_set": [rel]})
+        # V26-1: with the golden catalog, the typed-repair row makes the executor the unit's FIRST ACTION
+        cat = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+        cat.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json", cat)
         prev = os.environ.get("HERMES_KANBAN_TASK")
         os.environ["HERMES_KANBAN_TASK"] = "t_hp0001"
         try:
@@ -890,7 +927,16 @@ def _handler_parameter_brief_case() -> int:
                 os.environ["HERMES_KANBAN_TASK"] = prev
         if rc != 0:
             return _fail("brief.py must serve the unit: rc=%s %s" % (rc, err.getvalue()[:400]))
-        unit = load_json(root / LOOP_DIR / "brief-u-hp1.json").get("unit") or {}
+        full = load_json(root / LOOP_DIR / "brief-u-hp1.json")
+        typed = full.get("typed_repair") or {}
+        cmd = "typed-repair.py --root . --cluster u:hp1"
+        if (not str(typed.get("first_action") or "").endswith(cmd) or not str(full.get("procedure") or "").startswith("FIRST: python3")
+                or "FIRST ACTION (typed repair, handler-uri-parameter): python3 .hermes/skills/migration/fix-until-green/scripts/"
+                + cmd not in out.getvalue()):
+            return _fail("the typed repair is the unit's FIRST ACTION in the digest and the procedure: %s" % typed)
+        if out.getvalue().find("FIRST ACTION (typed repair") > out.getvalue().find("DOCUMENTED FIRST ACTIONS"):
+            return _fail("the typed first action precedes the documented actions")
+        unit = full.get("unit") or {}
         first = str(unit.get("first_action") or "")
         if not out.getvalue().startswith("BRIEF (digest:") or first not in out.getvalue():
             return _fail("the default worker output must carry the real catalog action, not just store it in JSON")
@@ -1261,6 +1307,10 @@ def main() -> int:
     if _adapter_owned_brief_case():
         return 1
     if _fragment_brief_case():
+        return 1
+    if _absent_result_brief_case():
+        return 1
+    if _objective_family_action_case():
         return 1
     if _handler_parameter_brief_case():
         return 1

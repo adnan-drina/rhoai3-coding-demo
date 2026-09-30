@@ -326,7 +326,7 @@ def duplicate_observation():
             % (DUPLICATE_LIMIT, final[0], ", ".join(final[2][-2:]), answer))
 
 
-PILOT_LOOP_TOOLS = ("brief.py", "run-verify.sh", "advance.py", "native_gate.py", "restore-pending.py", "amend-scope.py",
+PILOT_LOOP_TOOLS = ("brief.py", "run-verify.sh", "advance.py", "native_gate.py", "restore-pending.py", "amend-scope.py", "typed-repair.py",
                     "assert-paved-road-audit.py")
 
 def pilot_rooted_elsewhere():
