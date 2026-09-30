@@ -1072,6 +1072,15 @@
         "note": "qualified only when the handler calls the response and every call on it is one of names; any other response member leaves the requirement unresolved with this capability gap (source_requirements.derive)"
       },
       "precedence": "a qualified handler-parameter action precedes any package rename; the catalog carries no javax.servlet rename",
+      "runtime_findings": {
+        "gates": [
+          "package"
+        ],
+        "causes": [
+          "unsupported-spel"
+        ],
+        "why": "the recipe removes the field that injected the Servlet context through SpEL (response_translation.forbidden_field_injection), which is exactly what the package gate refuses with 'SpEL expressions are not supported' at the handler's file: a package-gate finding of this cause inside the requirement's own paths is this requirement owner's obligation, never a separate runtime outcome that both waits on and blocks it (planner.compatibility_objectives.absorb_recipe_runtime_findings; v28 preserved evidence)"
+      },
       "implementation": {
         "kind": "agent-bounded",
         "architecture": "handler_parameters.undocumented[jakarta.servlet.http.HttpServletResponse].action: ResponseEntity<Void> 302 Found with Location uriInfo.getBaseUriBuilder().path(<target after the context path>).build() from a @Context jakarta.ws.rs.core.UriInfo handler parameter"
