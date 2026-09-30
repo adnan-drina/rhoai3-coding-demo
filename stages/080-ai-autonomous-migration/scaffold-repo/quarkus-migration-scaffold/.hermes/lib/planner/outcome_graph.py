@@ -794,10 +794,13 @@ def brief_document(plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]
     """The attachment a worker reads: membership, checks, lineage. Data only;
     it grants nothing (the authority recomputes every check)."""
     extra: dict[str, Any] = {}
-    for key in ("requirements", "recipes", "planned_units"):
+    for key in ("requirements", "recipes", "planned_units", "acceptance_states", "causal_scope", "dependency_kinds"):
         if node.get(key):
             # plan semantics v1 only: the source requirements this outcome owns,
-            # their qualified recipes and the planned (never granted) units
+            # their qualified recipes and the planned (never granted) units;
+            # check-schedule/v1: what is judged at this card and what it still
+            # owes (and where), the paths its shared repair affects, and its
+            # implementation vs verification prerequisites
             extra[key] = copy.deepcopy(node[key])
     if node.get("requirements"):
         rows = {_s(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}

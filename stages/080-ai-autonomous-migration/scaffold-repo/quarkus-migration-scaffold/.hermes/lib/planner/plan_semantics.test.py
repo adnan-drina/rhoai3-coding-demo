@@ -20,9 +20,20 @@ M1 -> M2 specimen chain (planner.specimens.prepare_loop).
 5. a genuine change (a decision, a new compiler error) is NOT equal, and the
    comparison names the first divergent producer and the class.
 6. legacy runs are unchanged: no v1 field appears without the decision.
+7. check schedule (check-schedule/v1): under compatibility objectives the
+   schedule enters the semantic plan (and a changed schedule is an acceptance
+   difference); two shuffled checkouts under two run ids give one schedule; a
+   schedule finding is a typed PLAN_SCHEDULE admission block.
+8. the saved v29 initial plan (lib/planner/fixtures/v29-plan-r1-schedule.json.gz,
+   the published revision 1 reduced to what the schedule reads): scheduled
+   twice, and again from reversed node and requirement order, it gives the
+   identical logical schedule; ownership, requirement accounts, parents,
+   prerequisites, obligations, budgets and every existing check-plan field are
+   conserved; nothing is unschedulable.
 """
 from __future__ import annotations
 
+import copy
 import json
 import shutil
 import subprocess
@@ -258,10 +269,99 @@ def plan_view_case(tmp: Path) -> int:
     return 0
 
 
+def schedule_case(tmp: Path) -> int:
+    from unittest.mock import patch
+    dec = v1_decisions()
+    dec["loop"]["compatibility_objectives"] = "v1"
+    a = dest(tmp, "sched-a", decisions=dec, spec="migration", run_id="run-a")
+    b = dest(tmp, "sched-b", decisions=copy.deepcopy(dec), spec="migration", seed=7, run_id="run-b")
+    da, db = PS.from_root(a), PS.from_root(b)
+    g = da["plan"]["graph"] or {}
+    if (g.get("check_schedule") or {}).get("version") != "check-schedule/v1" or not any(n.get("acceptance_states") for n in g.get("nodes") or []):
+        return _fail("under compatibility objectives the semantic plan carries the check schedule")
+    c = PS.compare(da, db)
+    if not c["equal"]:
+        return _fail("two shuffled checkouts under two run ids must give one scheduled plan: %s" % json.dumps(c["differences"])[:400])
+    t = copy.deepcopy(da)
+    t["plan"]["graph"]["check_schedule"]["counts"]["target-structurally-viable"]["later"] += 1
+    if not any(d["where"] == "graph.check_schedule" and d["class"] == "acceptance" for d in PS.compare(da, t)["differences"]):
+        return _fail("a changed check schedule is an acceptance difference")
+    bad = copy.deepcopy(da)
+    bad["plan"]["graph"]["check_schedule"]["findings"] = [{"code": "LATER_DEFERRED_CYCLE", "outcome": "o", "check": "c",
+                                                          "requirement": "r", "detail": "d"}]
+    with patch.object(PS, "from_root", return_value=bad):
+        _doc, blocks = PS.contract(a)
+    if not any(x["class"] == "PLAN_SCHEDULE" and "LATER_DEFERRED_CYCLE" in x["subject"] for x in blocks):
+        return _fail("a schedule finding must block admission as PLAN_SCHEDULE: %s" % blocks)
+    return 0
+
+
+V29_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "v29-plan-r1-schedule.json.gz"
+ROW_FIELDS = ("requirement", "check", "stage", "prerequisites", "due")
+SCHEDULE_FIELDS = ("check_plan", "acceptance_states", "dependency_kinds", "causal_scope")
+
+
+def v29_schedule_case() -> tuple[int, dict]:
+    import gzip
+    from planner import compatibility_objectives as CO
+    src = json.load(gzip.open(V29_FIXTURE, "rt", encoding="utf-8"))["plan"]
+    if any(n.get("acceptance_states") or any("earliest" in r for r in n.get("check_plan") or []) for n in src["nodes"]):
+        return _fail("the fixture is the published r1 plan, before any schedule"), {}
+
+    def run(doc):
+        d = copy.deepcopy(doc)
+        CO.schedule_checks(d)
+        return d
+
+    def view(d):
+        return ({n["outcome_id"]: {k: n.get(k) for k in SCHEDULE_FIELDS} for n in d["nodes"]}, d["check_schedule"])
+    one, two = run(src), run(src)
+    rev = copy.deepcopy(src)
+    rev["nodes"].reverse()
+    rev["requirements"].reverse()
+    three = run(rev)
+    if view(one) != view(two) or view(one) != view(three):
+        return _fail("the v29 inputs must give one schedule, twice and in reversed order"), {}
+    if digest(view(one)) != digest(view(run(one))):
+        return _fail("scheduling a scheduled plan again changes nothing"), {}
+    for k in ("ownership", "requirement_ownership", "composition", "unresolved", "requirements"):
+        if one.get(k) != src.get(k):
+            return _fail("the schedule changed %s" % k), {}
+    before = {n["outcome_id"]: n for n in src["nodes"]}
+    for n in one["nodes"]:
+        b = before[n["outcome_id"]]
+        for k in ("parents", "prerequisites", "obligations", "budget", "requirements", "scenarios", "entry_points", "class", "role"):
+            if n.get(k) != b.get(k):
+                return _fail("the schedule changed %s of %s" % (k, n["outcome_id"])), {}
+        if [{f: r.get(f) for f in ROW_FIELDS} for r in n.get("check_plan") or []] != \
+                [{f: r.get(f) for f in ROW_FIELDS} for r in b.get("check_plan") or []]:
+            return _fail("the schedule changed an existing check-plan field of %s" % n["outcome_id"]), {}
+    sched = one["check_schedule"]
+    if sched["findings"]:
+        return _fail("the v29 plan must schedule without findings: %s" % sched["findings"][:3]), {}
+    nodes = {n["outcome_id"]: n for n in one["nodes"]}
+    repo = sorted(k for k in nodes if k.startswith("objective:selected-repository-implementation:"))
+    at = {k: sorted({p for r in nodes[k]["check_plan"] if r["check"].startswith("behavior:repository-effects:")
+                     for p in r["earliest"]["at"]}) for k in repo}
+    if len(repo) != 7 or sum(1 for v in at.values() if v and all(p.startswith("behavior:") for p in v)) != 6:
+        return _fail("six of the seven v29 repository contracts are first measured at behaviour outcomes: %s" % at), {}
+    owner = next(k for k in nodes if k.startswith("behavior:") and k.endswith(".OwnerRestController"))
+    rows = {r["check"]: r for r in nodes[owner]["check_plan"]}
+    actual = next(r for c, r in rows.items() if c.startswith("parity:sc:cors-actual-"))
+    pre = next(r for c, r in rows.items() if c.startswith("parity:sc:cors-preflight-"))
+    if not actual.get("after") or pre.get("after") or "database:working" in pre["requires"]:
+        return _fail("v29 Owner: the CORS actual comparison comes after its repository producer; the preflight does not"), {}
+    return 0, {"counts": sched["counts"], "measured_at": at}
+
+
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="plan-semantics-"))
     try:
-        for case in (elapsed_time_case, locale_case, same_locus_case, semantic_change_case, legacy_case, plan_view_case):
+        rc, v29 = v29_schedule_case()
+        if rc:
+            return 1
+        for case in (elapsed_time_case, locale_case, same_locus_case, semantic_change_case, legacy_case, plan_view_case,
+                     schedule_case):
             if case(tmp):
                 return 1
         rc, evidence = run_identity_case(tmp)
@@ -272,7 +372,8 @@ def main() -> int:
     print("OK: plan semantics (elapsed time moves only the exact digest; the locale moves only message_jvm_locale; "
           "two diagnostics at one site stay two; shuffled equivalent evidence in two checkouts under two run ids "
           "gives one semantic plan %s with distinct run bindings; a decision or a new error is a named difference; "
-          "legacy lists are unchanged)" % evidence["a"]["plan_fingerprint"][:16])
+          "legacy lists are unchanged; the check schedule is part of the semantic plan and the v29 r1 inputs give one "
+          "schedule twice and reordered, conserving ownership, dependencies and budgets)" % evidence["a"]["plan_fingerprint"][:16])
     return 0
 
 
