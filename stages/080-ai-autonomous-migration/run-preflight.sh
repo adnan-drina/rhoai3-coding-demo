@@ -5,7 +5,11 @@
 # scripts remain available in Git history.
 # Required: WORKSPACE (the run: the full project name, never a suffix), POD,
 # GOLDEN_CHECKOUT (verified published checkout), GOLDEN_SHA, PLATFORM_SHA (the
-# merged platform revision), ISOLATION_RECEIPT (local JSON).
+# merged platform revision), ISOLATION_RECEIPT (local JSON). Optional
+# ISOLATION_CARRY_FORWARD: a rhoai3.isolation-carry-forward/v1 record that
+# carries the last qualified receipt to these revisions without a new isolation
+# campaign; isolation_carry_forward.py accepts it only when nothing
+# isolation-relevant changed since that receipt's qualification.
 # The expected model and wall budget are read from the golden's
 # run-defaults.json, so a pin change is made once, in the golden.
 set -euo pipefail
@@ -19,6 +23,7 @@ export GOLDEN_SHA="${GOLDEN_SHA:?set the full published golden commit}"
 export PLATFORM_SHA="${PLATFORM_SHA:?set the qualified platform commit}"
 export ISOLATION_RECEIPT="${ISOLATION_RECEIPT:?set the retained live demonstration receipt}"
 export WORKSPACE="${WORKSPACE:?set the run: the full project name the factory was given}"
+export SCRIPT_DIR REPO_ROOT ISOLATION_CARRY_FORWARD="${ISOLATION_CARRY_FORWARD:-}"
 export NS="${NS:-wksp-ai-developer}" CONTAINER="${CONTAINER:-development-tooling}"
 python3 - <<'PY'
 import hashlib,json,os,re,subprocess,sys
@@ -104,8 +109,16 @@ need(defaults.get('schema') == 'rhoai3.run-defaults/v1', 'golden predates run-de
 os.environ['EXPECTED_MODEL'] = os.environ.get('EXPECTED_MODEL') or defaults['configuration']['model']['id']
 expected_hours = defaults['budget']['max_wall_hours']
 proof = json.loads(Path(os.environ['ISOLATION_RECEIPT']).read_text())
-need(proof.get('schema') == 'rhoai3.run-isolation/v1' and proof.get('platform_commit') == platform
-     and proof.get('golden_commit') == sha, 'isolation receipt does not bind the selected revisions')
+carry = os.environ.get('ISOLATION_CARRY_FORWARD', '')
+if carry:
+    got = subprocess.run([sys.executable, os.path.join(os.environ['SCRIPT_DIR'], 'isolation_carry_forward.py'), carry,
+                          os.environ['ISOLATION_RECEIPT'], os.environ['REPO_ROOT'], str(golden), sha, platform],
+                         text=True, capture_output=True, timeout=120)
+    print(got.stdout.strip())
+    need(got.returncode == 0, 'isolation carry-forward refused (see above)')
+else:
+    need(proof.get('schema') == 'rhoai3.run-isolation/v1' and proof.get('platform_commit') == platform
+         and proof.get('golden_commit') == sha, 'isolation receipt does not bind the selected revisions')
 check_isolation(proof, workspace)
 files = proof.get('evidence',[])
 need(bool(files), 'isolation receipt has no retained evidence')
