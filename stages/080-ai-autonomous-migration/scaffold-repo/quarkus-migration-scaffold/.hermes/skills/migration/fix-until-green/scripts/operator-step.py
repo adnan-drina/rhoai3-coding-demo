@@ -113,7 +113,11 @@ def _beside_pending(root: Path, steps: dict) -> tuple[dict | None, int | None]:
         from planner import native_control as NC
         st = NC.issuance_state(root, board)
         if st["state"] == "expired":
-            got = NC.retire_issuance(root, board, by="operator", reason="operator-step by %s" % _OPERATOR[0])
+            try:
+                got = NC.retire_issuance(root, board, by="operator", reason="operator-step by %s" % _OPERATOR[0])
+            except NC.Refusal as exc:
+                # V29-2: a claim that moved while the projection was retired keeps its own issuance
+                return None, _refuse("the issuance could not be retired: %s %s" % (exc.code, exc.detail))
             print("   the issuance of %s (run %s) had expired (card %s); kept as %s" % (
                 st["task"], st["run"], st.get("status"), got["retired"]))
             return None, None

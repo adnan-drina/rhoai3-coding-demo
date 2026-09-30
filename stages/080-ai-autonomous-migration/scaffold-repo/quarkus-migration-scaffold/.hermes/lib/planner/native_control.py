@@ -1964,26 +1964,36 @@ _ISSUED_KEY_RE = re.compile(r":issue(\d+):r(\d+)$")
 ISSUED_HISTORY = Path("verification") / "loop" / "issued-history"
 
 
-def issuance_state(root: Path, board: Board) -> dict[str, Any]:
+def issuance_state(root: Path, board: Board, data: bytes | None = None) -> dict[str, Any]:
     """Is verification/loop/issued.json still an ACTIVE issuance? Asked of the
     native board, never of the file's existence (v29 I-11: a run the loop guard
     stopped left it behind, and the Operator step read it as a live card).
+    ``data`` judges those exact bytes instead of re-reading the file.
 
       none       no projection
       retained   the card holds a retained candidate (VERIFICATION_PENDING)
-      live       the card is running: its issued run, or a newer claim
-      expired    the card is not running and retains nothing
-      unbound    the projection names no card on this board: nothing can be
-                 said, so a caller refuses as it would for a live card"""
-    from planner.canonical import load_json
+      live       the card is running (its issued run, or a newer claim), or a
+                 native run of the card has not ended (a surviving worker)
+      expired    the card is not running, no run of it is running natively,
+                 and it retains nothing
+      unbound    the projection names no card on this board, or a run the
+                 board does not know: nothing can be said, so a caller refuses
+                 as it would for a live card"""
     from planner.paths import LOOP_ISSUED
-    p = Path(root) / LOOP_ISSUED
-    if not p.is_file():
-        return {"state": "none"}
+    if data is None:
+        p = Path(root) / LOOP_ISSUED
+        if not p.is_file():
+            return {"state": "none"}
+        try:
+            data = p.read_bytes()
+        except OSError:
+            return {"state": "unbound", "why": "the projection could not be read"}
     try:
-        doc = load_json(p)
-    except (OSError, ValueError):
+        doc = json.loads(data.decode("utf-8"))
+    except ValueError:
         return {"state": "unbound", "why": "the projection could not be read"}
+    if not isinstance(doc, dict):
+        return {"state": "unbound", "why": "the projection is not a document"}
     task = str(doc.get("task_id") or "")
     m = _ISSUED_KEY_RE.search(str(doc.get("idempotency_key") or ""))
     out = {"task": task, "run": int(m.group(2)) if m else 0, "issue": int(m.group(1)) if m else 0,
@@ -1997,25 +2007,84 @@ def issuance_state(root: Path, board: Board) -> dict[str, Any]:
         cur = int(t.get("current_run_id") or 0)
         return dict(out, state="live", why=("run %d is running" % cur) if cur == out["run"] else
                     ("a newer claim (run %d) holds the card" % cur))
+    alive = [int(r.get("id") or 0) for r in board.native.runs(task) if str(r.get("status") or "") == "running"]
+    if alive:
+        return dict(out, state="live", why="native run %s of the card has not ended" % ", ".join(map(str, alive)))
+    if out["run"] and board.native.run(out["run"]) is None:
+        return dict(out, state="unbound", why="the board knows no run %d" % out["run"])
     return dict(out, state="expired", status=str(t.get("status") or ""))
+
+
+def _claim_snapshot(board: Board, task_id: str) -> tuple[Any, ...]:
+    """What must still hold when a retirement commits: the card's status, its
+    current run and claim, and the newest native run it has."""
+    t = board.task(task_id) or {}
+    runs = [int(r.get("id") or 0) for r in board.native.runs(task_id)]
+    return (t.get("status"), t.get("current_run_id"), t.get("claim_lock"), max(runs) if runs else 0)
+
+
+RETIRING_PREFIX = ".issued.retiring."
+
+
+def _recover_retiring(root: Path, board: Board) -> list[str]:
+    """A retirement interrupted between moving the projection aside and
+    removing it: a leftover whose retirement is recorded and whose card is
+    not live is removed (its history copy is kept); anything else goes back
+    to the empty slot, or -- when a newer projection holds the slot -- into
+    issued-history as displaced. Nothing is ever just deleted."""
+    from planner.paths import LOOP_ISSUED
+    slot = Path(root) / LOOP_ISSUED
+    done: list[str] = []
+    for f in sorted(slot.parent.glob(RETIRING_PREFIX + "*")) if slot.parent.is_dir() else []:
+        data = f.read_bytes()
+        digest = sha256(data)
+        st = issuance_state(root, board, data)
+        recorded = bool(st.get("task")) and any(r["key"] == "issuance-retired:%s" % digest[:16]
+                                                for r in board.records(st["task"], "issuance-retired"))
+        hist = Path(root) / ISSUED_HISTORY
+        if recorded and st["state"] == "expired" and any(hist.glob("issued.*.%s.json" % digest[:12])):
+            f.unlink()
+            done.append("removed %s (retired)" % f.name)
+            continue
+        try:
+            os.link(f, slot)
+            f.unlink()
+            done.append("restored %s" % f.name)
+        except FileExistsError:
+            hist.mkdir(parents=True, exist_ok=True)
+            os.replace(f, hist / ("issued.displaced.%s.json" % digest[:12]))
+            done.append("kept %s as displaced history" % f.name)
+    return done
 
 
 def retire_issuance(root: Path, board: Board, *, by: str, reason: str) -> dict[str, Any]:
     """Move an EXPIRED projection into verification/loop/issued-history/ and
     record it on the card: the history is kept, the live slot is freed. Copy,
-    record, then unlink, so an interrupted retirement re-runs to the same
-    record; a projection that is live, retained or unbound is refused."""
+    record, then remove, so an interrupted retirement re-runs to the same
+    record; a projection that is live, retained or unbound is refused.
+
+    V29-2: the removal is CONDITIONAL AT COMMIT on the exact issuance and the
+    native claim: the claim snapshot taken with the liveness check must still
+    hold, and the projection is moved aside atomically (rename) and removed
+    only if the moved bytes are the ones judged expired and the claim still
+    has not moved. Otherwise it is put back (or, if a newer projection holds
+    the slot, kept as displaced history) and ISSUANCE_CHANGED refuses: a new
+    claim that wrote its own issued.json between the check and the removal
+    keeps it (the architect's reproduction retired run 32's projection)."""
     from planner.paths import LOOP_ISSUED
     if by != "operator":
         raise Refusal("RETIRE_NOT_OPERATOR", "only the Operator retires an issuance (profile %r)" % by)
-    st = issuance_state(root, board)
-    if st["state"] == "none":
-        return {"retired": None, "state": "none"}
+    recovered = _recover_retiring(root, board)
+    src = Path(root) / LOOP_ISSUED
+    try:
+        data = src.read_bytes()
+    except FileNotFoundError:
+        return {"retired": None, "state": "none", "recovered": recovered}
+    st = issuance_state(root, board, data)
     if st["state"] != "expired":
         raise Refusal("ISSUANCE_NOT_EXPIRED", "the issuance of %s (run %s) is %s%s" % (
             st.get("task") or "?", st.get("run"), st["state"], (": " + st["why"]) if st.get("why") else ""))
-    src = Path(root) / LOOP_ISSUED
-    data = src.read_bytes()
+    snap = _claim_snapshot(board, st["task"])
     digest = sha256(data)
     rel = ISSUED_HISTORY / ("issued.%s.r%d.i%d.%s.json" % (st["task"], st["run"], st["issue"], digest[:12]))
     dest = Path(root) / rel
@@ -2025,8 +2094,32 @@ def retire_issuance(root: Path, board: Board, *, by: str, reason: str) -> dict[s
     rec = board.record(st["task"], "issuance-retired", "issuance-retired:%s" % digest[:16], run=st["run"],
                        issue=st["issue"], cluster=st["cluster"], history=rel.as_posix(), status=st.get("status"),
                        reason=reason[:500])
-    src.unlink()
-    return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired"}
+
+    def still() -> bool:
+        return _claim_snapshot(board, st["task"]) == snap
+
+    changed = "the native claim of %s moved (%s -> %s)" % (st["task"], snap, _claim_snapshot(board, st["task"]))
+    if still():
+        aside = src.with_name("%s%s.%d.json" % (RETIRING_PREFIX, digest[:12], os.getpid()))
+        try:
+            os.rename(src, aside)
+        except FileNotFoundError:
+            return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired", "recovered": recovered}
+        moved = aside.read_bytes()
+        if moved == data and still():
+            aside.unlink()
+            return {"retired": rel.as_posix(), "record": rec["key"], "state": "expired", "recovered": recovered}
+        changed = ("another projection took the slot (%s)" % sha256(moved)[:12] if moved != data else
+                   "the native claim of %s moved while it was retired" % st["task"])
+        try:
+            os.link(aside, src)
+            aside.unlink()
+        except FileExistsError:
+            hist = Path(root) / ISSUED_HISTORY
+            hist.mkdir(parents=True, exist_ok=True)
+            os.replace(aside, hist / ("issued.displaced.%s.json" % sha256(moved)[:12]))
+    raise Refusal("ISSUANCE_CHANGED", "%s: the live slot was left to it (history %s and record %s stand for the "
+                  "expired projection %s); re-check before retiring again" % (changed, rel.as_posix(), rec["key"], digest[:12]))
 
 
 def reconcile_deferrals(root: Path, board: Board, *, task_id: str, by: str, reason: str) -> dict[str, Any]:

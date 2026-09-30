@@ -1397,6 +1397,134 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
         self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
 
+    def expired_projection(self):
+        r = self.r
+        tid, run, _iss = r.issue("build:rk:pom")
+        r.native.end_run(tid, "ready", "gave_up")
+        p = self.projection(tid, run)
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "expired")
+        return tid, run, p
+
+    def new_projection(self, tid, run):
+        return json.dumps({"task_id": tid, "cluster": "c:x", "idempotency_key": "outcome:v2:n1:o:c:x:issue1:r%d" % run})
+
+    def test_a_claim_made_while_the_record_is_written_keeps_its_projection(self):
+        """V29-2 (architect reproduction): a new claim wrote its issued.json between the liveness check and the
+        unlink, and the retirement deleted it."""
+        r = self.r
+        tid, old, p = self.expired_projection()
+        old_bytes = p.read_bytes()
+        record, seen = r.board.record, {}
+
+        def claim_before_unlink(task, kind, key, **fields):
+            got = record(task, kind, key, **fields)
+            if kind == "issuance-retired":
+                run, _lock = r.native.claim(tid)
+                p.write_text(self.new_projection(tid, run))
+                seen["run"] = run
+            return got
+        r.board.record = claim_before_unlink
+        try:
+            with self.assertRaises(Refusal) as cm:
+                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        finally:
+            r.board.record = record
+        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual(p.read_text(), self.new_projection(tid, seen["run"]))           # the new run keeps its own
+        hist = list((r.root / NC.ISSUED_HISTORY).glob("issued.%s.r%d.*.json" % (tid, old)))
+        self.assertEqual([h.read_bytes() for h in hist], [old_bytes])                    # the old one is history
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "live")
+        with self.assertRaises(Refusal):                                                  # a delayed retirement
+            NC.retire_issuance(r.root, r.board, by="operator", reason="late event")
+        self.assertTrue(p.is_file())
+
+    def test_a_projection_written_just_before_the_move_is_put_back(self):
+        from unittest import mock
+        r = self.r
+        tid, old, p = self.expired_projection()
+        real = os.rename
+        newer = json.dumps({"task_id": tid, "cluster": "c:y", "idempotency_key": "outcome:v2:n1:o:c:y:issue2:r%d" % old})
+
+        def swap_then_move(src, dst):
+            if str(src) == str(p):
+                p.write_text(newer)                    # the writer won the slot an instant before the move
+            return real(src, dst)
+        with mock.patch.object(NC.os, "rename", swap_then_move):
+            with self.assertRaises(Refusal) as cm:
+                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual(p.read_text(), newer)
+        self.assertEqual(list(p.parent.glob(NC.RETIRING_PREFIX + "*")), [])
+
+    def test_a_claim_made_after_the_move_puts_the_projection_back(self):
+        from unittest import mock
+        r = self.r
+        tid, old, p = self.expired_projection()
+        body = p.read_bytes()
+        real, seen = os.rename, {}
+
+        def move_then_claim(src, dst):
+            out = real(src, dst)
+            if str(src) == str(p):
+                seen["run"] = r.native.claim(tid)[0]
+            return out
+        with mock.patch.object(NC.os, "rename", move_then_claim):
+            with self.assertRaises(Refusal) as cm:
+                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual(p.read_bytes(), body)                                            # back in its slot
+        # once the new run has ended too, the same projection retires to the same record, once
+        r.native.end_run(tid, "ready", "gave_up")
+        got = NC.retire_issuance(r.root, r.board, by="operator", reason="after")
+        self.assertFalse(p.exists())
+        self.assertEqual((r.root / got["retired"]).read_bytes(), body)
+        self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
+
+    def test_a_live_or_unknown_run_refuses_retirement(self):
+        r = self.r
+        tid, old, p = self.expired_projection()
+        r.native.runs_[old]["status"] = "running"                                        # a surviving worker
+        st = NC.issuance_state(r.root, r.board)
+        self.assertEqual(st["state"], "live", st)
+        with self.assertRaises(Refusal):
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        r.native.runs_[old]["status"] = "ended"
+        p.write_text(self.new_projection(tid, 9999))                                     # a run the board never had
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "unbound")
+        with self.assertRaises(Refusal):
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertTrue(p.is_file())
+
+    def test_an_interrupted_retirement_is_safe_on_restart(self):
+        r = self.r
+        tid, old, p = self.expired_projection()
+        body = p.read_bytes()
+        from unittest import mock
+        real_unlink = Path.unlink
+
+        def crash(self_, *a, **k):
+            if self_.name.startswith(NC.RETIRING_PREFIX):
+                raise OSError("killed between the move and the removal")
+            return real_unlink(self_, *a, **k)
+        with mock.patch.object(Path, "unlink", crash):
+            with self.assertRaises(OSError):
+                NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertFalse(p.exists())
+        self.assertEqual(len(list(p.parent.glob(NC.RETIRING_PREFIX + "*"))), 1)
+        got = NC.retire_issuance(r.root, r.board, by="operator", reason="x")            # restart
+        self.assertEqual((got["retired"], len(got["recovered"])), (None, 1))
+        self.assertEqual(list(p.parent.glob(NC.RETIRING_PREFIX + "*")), [])
+        self.assertEqual(len(list((r.root / NC.ISSUED_HISTORY).glob("*.json"))), 1)
+        self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
+        # a leftover that is NOT a recorded retirement (a new run's projection moved aside) goes back to the slot
+        run, _lock = r.native.claim(tid)
+        leftover = p.parent / (NC.RETIRING_PREFIX + "x.1.json")
+        leftover.write_text(self.new_projection(tid, run))
+        with self.assertRaises(Refusal):                                                  # live: refused ...
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertEqual(p.read_text(), self.new_projection(tid, run))                   # ... after putting it back
+        self.assertNotEqual(p.read_bytes(), body)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
