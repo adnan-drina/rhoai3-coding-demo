@@ -15,6 +15,8 @@
 # In openshift-mta it maintains the IdP client Secret (key `clientSecret`,
 # Ch 9.1) and the `platform-sso` IdentityProvider CR (Ch 9.2), restarting
 # the hub when the wiring changes (required to load the CR).
+# It also patches the MTA ConsoleLink from the live route (Git keeps a
+# placeholder; Argo ignoreDifferences preserves the hook's href).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -67,6 +69,9 @@ rules:
 - apiGroups: ["route.openshift.io"]
   resources: ["routes"]
   verbs: ["get", "list"]
+- apiGroups: ["console.openshift.io"]
+  resources: ["consolelinks"]
+  verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -163,9 +168,16 @@ spec:
             echo "Waiting for MTA route... ($i/30)"; sleep 10
           done
           [ -n "$MTA_HOST" ] || { echo "ERROR: MTA route not found"; exit 1; }
+          MTA_URL="https://${MTA_HOST}"
           ISSUER="https://${RHBK_HOST}/realms/${REALM}"
           echo "Issuer: ${ISSUER}"
           echo "MTA host: ${MTA_HOST}"
+
+          # --- 1b. Patch ConsoleLink (placeholder in Git; live route from operator) ---
+          echo "Patching MTA ConsoleLink..."
+          oc patch consolelink mta --type=merge \
+            -p "{\"spec\":{\"href\":\"${MTA_URL}\",\"applicationMenu\":{\"imageURL\":\"${MTA_URL}/favicon.ico\"}}}"
+          echo "ConsoleLink patched: ${MTA_URL}"
 
           # --- 2. RHBK admin token ---
           ADMIN_USER=$(oc get secret platform-rhbk-initial-admin -n rhbk -o jsonpath='{.data.username}' | base64 -d)
