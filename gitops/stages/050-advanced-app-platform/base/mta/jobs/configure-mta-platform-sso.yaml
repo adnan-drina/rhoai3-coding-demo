@@ -15,6 +15,8 @@
 # In openshift-mta it maintains the IdP client Secret (key `clientSecret`,
 # Ch 9.1) and the `platform-sso` IdentityProvider CR (Ch 9.2), restarting
 # the hub when the wiring changes (required to load the CR).
+# It also points the `mta` ConsoleLink (launcher menu) at the live MTA route;
+# the committed href is a placeholder that Argo CD ignores.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -67,6 +69,10 @@ rules:
 - apiGroups: ["route.openshift.io"]
   resources: ["routes"]
   verbs: ["get", "list"]
+- apiGroups: ["console.openshift.io"]
+  resources: ["consolelinks"]
+  resourceNames: ["mta"]
+  verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -342,6 +348,12 @@ spec:
           else
             echo "No changes; hub restart not needed"
           fi
+
+          # --- 10. Launcher menu entry at the live MTA route ---
+          MTA_URL="https://${MTA_HOST}"
+          oc patch consolelink mta --type=merge \
+            -p "{\"spec\":{\"href\":\"${MTA_URL}\",\"applicationMenu\":{\"imageURL\":\"${MTA_URL}/favicon.ico\"}}}"
+          echo "ConsoleLink patched: ${MTA_URL}"
 
           echo ""
           echo "=== MTA platform SSO configured ==="
