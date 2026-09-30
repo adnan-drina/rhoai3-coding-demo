@@ -10,12 +10,12 @@ Branch `feat/migration-reliability-m1-m7` (base `next/after-v28` `26bc9c2b`); st
 [MIGRATION-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
 Local evidence: `tmp/reliability-evidence/` in that worktree. Not validated against a live cluster.
 
-- [ ] Re-run the combined validation on the final head with Podman up (the `7cbccc9d` run skipped the
-  PostgreSQL M-3 suites and the rehearsal: Podman was down; `149dbdfe` and the rehearsal agent ran them green).
-- [ ] User create (`POST /api/users`) has no read route: needs a database-level read-back capture or a scope ADR.
-- [ ] `sc:delete-referenced-pettypes-1` fails source qualification (pre-existing): derivation predicts a refusal
-  the source's repository override does not make; expectations must come from the capture.
-- [ ] Source captures ran on the hsqldb baseline only; MTA 8.2 fresh repeatability not run (host has 7.3).
+- [x] Final combined validation on `008eb81c`: 111/111 suites (python3, python3.9), repeatability 26/0 fail,
+  M-3 CONTROLS PASS on PostgreSQL, rehearsal 47/47, executor digest reproduced.
+- [x] All 12 v29 missing-oracle entry points derive and qualify; User create via ADR-026 committed-state read-back;
+  referenced deletes take their outcome from the capture.
+- [ ] ADR-026 committed-state query not yet run on PostgreSQL or a real destination (hsqldb source only).
+- [ ] MTA 8.2 fresh repeatability not run locally (host has 7.3); runs in-workspace at M1.
 - [ ] Release: build ws-080 with the typed-repair jar (`build-080-runtime-image.sh 37b147ba… --push`), re-pin the
   digest in `pins.json`, `run-defaults.json`, both devfiles and `RELEASE.md`; publish the golden; Stage 040
   MaaS gateway memory fix (I-4/I-5) before a clean validation run.

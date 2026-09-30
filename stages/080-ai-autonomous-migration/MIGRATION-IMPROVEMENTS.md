@@ -66,7 +66,7 @@ Its intervention narrative is saved reported evidence; its untimestamped
 | M-4 — reusable capability | Coverage table SAD §7.3; known guidance added (960a767c, c3067478, 962931d9); ADR-025 | Not published | Every known pattern is a qualified recipe, a tested bounded procedure or an ADR-025 ruling; no known gap without guidance. |
 | M-5 — state ownership and evidence | 9fcd639b..2c2973cc | Not published | Architect counterexamples corrected; lifecycle replay passes; not exercised on a live board. |
 | M-6 — end-to-end headline | run-report headline through M5 (ad5d059c) | Not published | False-green and deployed-INCONCLUSIVE fixtures render correctly; token totals stay unknown without a request ledger. |
-| M-7 — frozen program | Combined validation on the integrated revision (see Package status) | Owed: runtime image, golden, platform pins | Local only; the clean full run and its confirming repeat are the remaining claims. |
+| M-7 — frozen program | Combined validation green on `008eb81c` (see Package status) | Owed: runtime image, golden, platform pins | Local only; the clean full run and its confirming repeat are the remaining claims. |
 | V26-1 — typed repair execution | Executor on OpenRewrite 8.89.0 (Apache-2.0), both transformations, first action of the issued unit (481b4b0b, af47c117, 8ffdfd9d) | Image recipe step 2b ready (5d282010); no image built | Fixtures and the v28 specimen; no live run has used it. |
 | V26-2 — recipe qualification | 32 rewrite-test cases, loop-path and runtime package tests | Ships with V26-1 | Reproducible jar sha256 `66d1b6f4`. |
 | V26-3 — resolved task context | Targeted brief, actions, ownership, selectors and retry context | As before | Broader evidence-bound context and classpath/API lookup remain open. |
@@ -78,6 +78,74 @@ Its intervention narrative is saved reported evidence; its untimestamped
 | V29-3 — rejected candidate cleanup | 8aa81b64, 919c01ae | Not published | Current-run edits survive repeated issue; interrupted rejection set aside by identity and restored. |
 | V29-4 — media-type values | 9fcd639b | Not published | Distinct quoted values stay distinct; charset respelling still equal. |
 | P-1 — one independent M3 pair | Unchanged scope | As before | Broader parallel execution is not authorized. |
+
+## Package status (2026-09-30)
+
+Source: branch `feat/migration-reliability-m1-m7`, based on `next/after-v28`
+`26bc9c2b` (a superset of the `d003445c` review anchor and of main's preload
+commits). Nothing here is published, installed or live-validated. Local evidence:
+`tmp/reliability-evidence/` in the implementation worktree (Git-ignored); the
+release must carry the identities and results below, not the local path.
+
+### End-to-end state
+
+| Milestone | What is demonstrated | Evidence level |
+|---|---|---|
+| Source understood | M1 structure producer reproduces on two clean copies of the frozen v28 source; all 12 v29 missing-oracle entry points now derive and qualify source captures (41 disabled / 103 enabled scenarios PASS, hsqldb baseline); User create through an ADR-026 committed-state read-back | Fresh local producer run; MTA 8.2 recorded, not re-run (host has 7.3) |
+| Target structurally viable | Typed CDI exposure and URI translation are qualified; servlet-redirect is the only edit the v28 tree needed to package | Recipe tests, package tests on the pinned platform |
+| Persistence and one HTTP path | Reference repository port: fresh-transaction read-back, delete dependencies, recursion/stub/no-op/duplicate negatives rejected, on PostgreSQL 16 | Local containers, component level |
+| Application behavior preserved (Owner path) | v28 candidate 19/47; rehearsal candidate (one patch per catalog repair, written from catalog text only) 47/47 in both modes, 4 through ADR-025 | Local rehearsal, not a migration output |
+| Delivered and usable | Not demonstrated: CI/CD handoff, image, deployment and live checks need a cluster | None |
+
+The next full run is therefore not the first integration test of the known
+repairs; it is the first test that they compose under autonomous workers, native
+review and M5 delivery.
+
+### Regression evidence
+
+- Architect counterexamples (`reproduce.py`): at `26bc9c2b` all three reproduced;
+  at the integrated revision current-run edits survive, retirement refuses
+  `ISSUANCE_CHANGED` and keeps the new run's projection, quoted values stay distinct.
+- Final combined validation on `008eb81c` (tree `c3ec4e46`, `tmp/reliability-evidence/combined-008eb81c/`):
+  111/111 non-container suites under python3 and under python3.9 (the worker's
+  interpreter); shell syntax clean; planning repeatability 26 pass, 0 fail,
+  1 NOT-RUN (fresh MTA 8.2: the host has 7.3; MTA findings stay recorded);
+  executor rebuilt to the pinned jar `66d1b6f4`; container suites 4/4; M-3
+  CONTROLS PASS on PostgreSQL 16 (11 suites), v28 candidate NOT EQUIVALENT
+  (28 steps), rehearsal EQUIVALENT on the measured corpus; architect
+  counterexamples corrected.
+- Not measured: the ADR-026 committed-state query on PostgreSQL and against a
+  real destination (hsqldb source only); CI/CD, image, deployment and live checks.
+
+### Release mapping
+
+| Component | Source identity | Required step | Owner |
+|---|---|---|---|
+| Harness (golden `.hermes`) | package head (see final run) | merge to `main`, then `scripts/bootstrap-scaffold-repos.sh` publishes `quarkus-migration-scaffold-v2` | user (force-push) |
+| Hermes runtime | tree `37b147ba` unchanged (patches 0001–0016) | none | — |
+| ws-080 image | new: adds typed-repair jar `66d1b6f4…` (17,684,782 bytes) | `build-080-runtime-image.sh 37b147baef0c2678507c52e59e3b9231ab6ab64f --push`, then re-pin the digest in `.hermes/pins.json`, `run-defaults.json`, scaffold `devfile.yaml`, Stage 050 `app-migration/skeleton/devfile.yaml`, `hermes-runtime/RELEASE.md` | user (registry push) |
+| Platform (Stage 050) | skeleton devfile digest only | commit the re-pin; Argo CD sync; confirm catalog re-stamp per `docs/OPERATIONS.md` | user (GitOps) |
+| Stage 040 MaaS gateway | unchanged; I-4/I-5 memory exhaustion | raise the gateway `istio-proxy` memory through Gateway infrastructure parameters and validate Stage 040 | user (platform change) |
+| Model profile, Quarkus platform, OpenRewrite | `qwen3-8-27b-int4` as pinned; `3.27.3.SP1-redhat-00002`; rewrite 8.89.0 | none | — |
+| Isolation receipt / preflight | new golden + platform pair | fresh isolation qualification and `run-preflight.sh` | user |
+
+### Remaining live validation (not claimed)
+
+1. Build/pin/publish above; `release_gaps == []` in a new workspace.
+2. Launch one validation run on the published package with the full-release
+   objective; observe M1 captures for the formerly missing entry points in both
+   modes (PostgreSQL destination).
+3. M5: named candidate → PipelineRun → image digest → deployment → live checks,
+   including a disposable persisted write/read/delete at the deployed route.
+4. A confirming run without overlays or Operator rescue (repeatability claim).
+
+### Verdict
+
+Implementation complete for M-1..M-6 and the V29/V26-1/2 items listed above;
+the final-head combined validation (`008eb81c`) is green locally. **Ready for
+publication.** A clean full-release validation run is blocked only by the named
+prerequisites: the ws-080 image build and re-pin, golden publication, the
+Stage 040 gateway fix and a fresh isolation receipt. Nothing here is live-validated.
 
 ## Objective and comparison baseline
 
