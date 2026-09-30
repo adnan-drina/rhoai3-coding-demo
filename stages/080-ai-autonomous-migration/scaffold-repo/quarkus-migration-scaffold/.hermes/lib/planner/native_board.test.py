@@ -1344,6 +1344,373 @@ class LifecycleReconciliation(unittest.TestCase):
             NC.issue(r.root, r.board, task_id=tid, run_id=run3, claim_lock=lock3)
         self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
 
+    def test_a_repeated_issue_keeps_the_current_runs_edits(self):
+        """V29-3 (architect reproduction of 0dd677ba): old stopped run -> new issue -> new legitimate edit ->
+        repeated issue parked the CURRENT worker's repair under the older run and reset it."""
+        r = self.r
+        tid, old, iss = r.issue("build:rk:pom")
+        rel = iss["allowed_paths"][0]
+        r.edit(rel, "<project>left by the stopped run</project>\n")
+        r.native.end_run(tid, "ready", "gave_up")                          # no terminator ran
+        run, lock = r.native.claim(tid)
+        first = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
+        self.assertEqual([a["run"] for a in r.board.records(tid, NC.ABANDONED)], [old])   # the old run's leftovers
+        import native_gate as NG
+        from planner.paths import LOOP_ISSUED
+        mirror_layout(r.root)
+        key = NG.write_issued_projection(r.root, first)
+        proj = json.loads((r.root / LOOP_ISSUED).read_text())
+        proj["continuations"] = [{"n": 1, "reported": ["x"]}]                # the loop wrote onto its projection
+        (r.root / LOOP_ISSUED).write_text(json.dumps(proj))
+        live = "<project>legitimate current-run repair</project>\n"
+        r.edit(rel, live)
+        again = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
+        self.assertEqual((r.root / rel).read_text(), live)                   # byte-identical
+        self.assertTrue(again["replayed"] and again["in_progress"], again)
+        self.assertEqual(NG._keep_or_write_projection(r.root, again), key)  # the projection is kept as it stands
+        self.assertEqual(json.loads((r.root / LOOP_ISSUED).read_text())["continuations"], proj["continuations"])
+        self.assertEqual((again["record"], again["baseline_tree"]), (first["record"], first["baseline_tree"]))
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual([a["run"] for a in ab], [old])                       # nothing new attributed to any run
+        self.assertEqual(len([x for x in r.board.records(tid, "issue") if x["run"] == run]), 1)
+        # the loop's re-issue (a new attempt) would re-baseline over unjudged edits: refused, edits kept
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_IN_PROGRESS")
+        # an edit outside what this run was issued: the drift refusal, and still nothing is set aside
+        r.edit("src/main/java/com/acme/shop/Unrelated.java", "class Unrelated {}\n")
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual((r.root / rel).read_text(), live)
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
+    def test_leftovers_of_a_run_not_proven_ended_are_not_abandoned(self):
+        r = self.r
+        tid, old, iss = r.issue("build:rk:pom")
+        r.edit(iss["allowed_paths"][0], "<project>still being written</project>\n")
+        r.native.end_run(tid, "ready", "gave_up")
+        r.native.runs_[old]["status"] = "running"                            # the native row says the worker lives
+        run, lock = r.native.claim(tid)
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
+
+    def expired_projection(self):
+        r = self.r
+        tid, run, _iss = r.issue("build:rk:pom")
+        r.native.end_run(tid, "ready", "gave_up")
+        p = self.projection(tid, run)
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "expired")
+        return tid, run, p
+
+    def new_projection(self, tid, run):
+        return json.dumps({"task_id": tid, "cluster": "c:x", "idempotency_key": "outcome:v2:n1:o:c:x:issue1:r%d" % run})
+
+    def test_a_claim_made_while_the_record_is_written_keeps_its_projection(self):
+        """V29-2 (architect reproduction): a new claim wrote its issued.json between the liveness check and the
+        unlink, and the retirement deleted it."""
+        r = self.r
+        tid, old, p = self.expired_projection()
+        old_bytes = p.read_bytes()
+        record, seen = r.board.record, {}
+
+        def claim_before_unlink(task, kind, key, **fields):
+            got = record(task, kind, key, **fields)
+            if kind == "issuance-retired":
+                run, _lock = r.native.claim(tid)
+                p.write_text(self.new_projection(tid, run))
+                seen["run"] = run
+            return got
+        r.board.record = claim_before_unlink
+        try:
+            with self.assertRaises(Refusal) as cm:
+                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        finally:
+            r.board.record = record
+        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual(p.read_text(), self.new_projection(tid, seen["run"]))           # the new run keeps its own
+        hist = list((r.root / NC.ISSUED_HISTORY).glob("issued.%s.r%d.*.json" % (tid, old)))
+        self.assertEqual([h.read_bytes() for h in hist], [old_bytes])                    # the old one is history
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "live")
+        with self.assertRaises(Refusal):                                                  # a delayed retirement
+            NC.retire_issuance(r.root, r.board, by="operator", reason="late event")
+        self.assertTrue(p.is_file())
+
+    def test_a_projection_written_just_before_the_move_is_put_back(self):
+        from unittest import mock
+        r = self.r
+        tid, old, p = self.expired_projection()
+        real = os.rename
+        newer = json.dumps({"task_id": tid, "cluster": "c:y", "idempotency_key": "outcome:v2:n1:o:c:y:issue2:r%d" % old})
+
+        def swap_then_move(src, dst):
+            if str(src) == str(p):
+                p.write_text(newer)                    # the writer won the slot an instant before the move
+            return real(src, dst)
+        with mock.patch.object(NC.os, "rename", swap_then_move):
+            with self.assertRaises(Refusal) as cm:
+                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual(p.read_text(), newer)
+        self.assertEqual(list(p.parent.glob(NC.RETIRING_PREFIX + "*")), [])
+
+    def test_a_claim_made_after_the_move_puts_the_projection_back(self):
+        from unittest import mock
+        r = self.r
+        tid, old, p = self.expired_projection()
+        body = p.read_bytes()
+        real, seen = os.rename, {}
+
+        def move_then_claim(src, dst):
+            out = real(src, dst)
+            if str(src) == str(p):
+                seen["run"] = r.native.claim(tid)[0]
+            return out
+        with mock.patch.object(NC.os, "rename", move_then_claim):
+            with self.assertRaises(Refusal) as cm:
+                NC.retire_issuance(r.root, r.board, by="operator", reason="race")
+        self.assertEqual(cm.exception.code, "ISSUANCE_CHANGED")
+        self.assertEqual(p.read_bytes(), body)                                            # back in its slot
+        # once the new run has ended too, the same projection retires to the same record, once
+        r.native.end_run(tid, "ready", "gave_up")
+        got = NC.retire_issuance(r.root, r.board, by="operator", reason="after")
+        self.assertFalse(p.exists())
+        self.assertEqual((r.root / got["retired"]).read_bytes(), body)
+        self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
+
+    def test_a_live_or_unknown_run_refuses_retirement(self):
+        r = self.r
+        tid, old, p = self.expired_projection()
+        r.native.runs_[old]["status"] = "running"                                        # a surviving worker
+        st = NC.issuance_state(r.root, r.board)
+        self.assertEqual(st["state"], "live", st)
+        with self.assertRaises(Refusal):
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        r.native.runs_[old]["status"] = "ended"
+        p.write_text(self.new_projection(tid, 9999))                                     # a run the board never had
+        self.assertEqual(NC.issuance_state(r.root, r.board)["state"], "unbound")
+        with self.assertRaises(Refusal):
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertTrue(p.is_file())
+
+    def test_an_interrupted_retirement_is_safe_on_restart(self):
+        r = self.r
+        tid, old, p = self.expired_projection()
+        body = p.read_bytes()
+        from unittest import mock
+        real_unlink = Path.unlink
+
+        def crash(self_, *a, **k):
+            if self_.name.startswith(NC.RETIRING_PREFIX):
+                raise OSError("killed between the move and the removal")
+            return real_unlink(self_, *a, **k)
+        with mock.patch.object(Path, "unlink", crash):
+            with self.assertRaises(OSError):
+                NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertFalse(p.exists())
+        self.assertEqual(len(list(p.parent.glob(NC.RETIRING_PREFIX + "*"))), 1)
+        got = NC.retire_issuance(r.root, r.board, by="operator", reason="x")            # restart
+        self.assertEqual((got["retired"], len(got["recovered"])), (None, 1))
+        self.assertEqual(list(p.parent.glob(NC.RETIRING_PREFIX + "*")), [])
+        self.assertEqual(len(list((r.root / NC.ISSUED_HISTORY).glob("*.json"))), 1)
+        self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
+        # a leftover that is NOT a recorded retirement (a new run's projection moved aside) goes back to the slot
+        run, _lock = r.native.claim(tid)
+        leftover = p.parent / (NC.RETIRING_PREFIX + "x.1.json")
+        leftover.write_text(self.new_projection(tid, run))
+        with self.assertRaises(Refusal):                                                  # live: refused ...
+            NC.retire_issuance(r.root, r.board, by="operator", reason="x")
+        self.assertEqual(p.read_text(), self.new_projection(tid, run))                   # ... after putting it back
+        self.assertNotEqual(p.read_bytes(), body)
+
+    def test_void_and_reconcile_conserve_the_account_and_agree_with_admission(self):
+        """V29-1: an authorized void lifts only its now-invalid exhaustion hold; an unrelated blocker that merely
+        names the key stays; repetition and a crash between the void and the reconciliation are idempotent (no
+        double credit, no extra allowance, no mint); the effective spend and allowance are reported; the same card
+        is issued the lifted cluster again."""
+        from planner.paths import LOOP_DEFERRED, LOOP_STEPS
+        r = self.r
+        tid, _run, iss, key, limit, p = self.exhaust()
+        doc = json.loads(p.read_text())
+        doc["clusters"].append("c:held")
+        doc["reasons"]["c:held"] = "Operator hold against %s: the pom waits on a platform decision" % key
+        p.write_text(json.dumps(doc))
+        r.board.record(tid, "issue", "issue:held", run=0, cluster="c:held", allowed_paths=[])   # the card was issued it
+        steps = r.root / LOOP_STEPS
+        steps.parent.mkdir(parents=True, exist_ok=True)
+        steps.write_text(json.dumps({"steps": [], "attempts": {key: limit}}))
+        steps_bytes = steps.read_bytes()
+        creates = len([c for c in r.native.calls if c[0] == "create"])
+        before = NC.effective_budget(r.board, tid)
+        self.assertEqual((before["spent"], before["remaining"], before["exhausted"]), (limit, 0, True))
+        keys = [x["key"] for x in r.board.records(tid, "reject")]
+        # interrupted: the void landed, the reconciliation never ran
+        self.assertEqual(len(NC.void_rejects(r.board, task_id=tid, keys=keys, reason="harness", by="operator")), limit)
+        self.assertIn(iss["cluster"], json.loads(p.read_text())["clusters"])
+        # the repeat of the whole Operator step: nothing is credited twice
+        self.assertEqual(NC.void_rejects(r.board, task_id=tid, keys=keys, reason="harness", by="operator"), [])
+        got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="harness")
+        self.assertEqual(got["lifted"], [iss["cluster"]])
+        self.assertEqual([k["cluster"] for k in got["kept"]], ["c:held"])                 # the unrelated blocker stays
+        eff = got["effective"]
+        self.assertEqual(eff["before"], eff["after"])                                     # reconciling moves no budget
+        self.assertEqual((eff["after"]["spent"], eff["after"]["remaining"], eff["after"]["limit"], eff["after"]["voided"]),
+                         (0, limit, limit, limit))
+        doc = json.loads(p.read_text())
+        self.assertEqual(sorted(doc["clusters"]), ["c:held", "c:other"])
+        again = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="harness")
+        self.assertEqual((again["lifted"], again["effective"]["after"]), ([], eff["after"]))
+        self.assertEqual(len(r.board.records(tid, "deferral-lifted")), 1)
+        self.assertEqual(steps.read_bytes(), steps_bytes)                                 # no legacy allowance
+        self.assertEqual(len([c for c in r.native.calls if c[0] == "create"]), creates)   # nothing minted
+        self.assertEqual(len(r.board.records(tid, "reject")), limit)                      # rejections conserved
+        # the same native card is issued the lifted cluster again, spending from the restored account
+        run2, lock2 = r.native.claim(tid)
+        nxt = NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)
+        self.assertEqual((nxt["cluster"], nxt["budget"]["spent"]), (iss["cluster"], 0))
+
+    def test_a_stale_work_list_naming_a_lifted_cluster_is_resealed(self):
+        from planner import pipeline, worklist as W
+        from planner.paths import ADMISSION_RECEIPT
+        r = self.r
+        tid, _run, iss, _key, _limit, _p = self.exhaust()
+        seal = r.root / ADMISSION_RECEIPT
+        seal.parent.mkdir(parents=True, exist_ok=True)
+        seal.write_text(json.dumps({"status": "ADMITTED", "blocks": []}))
+        r.worklist["deferred"] = [iss["cluster"]]                                        # sealed before the lift
+        r.save_worklist()
+        calls = []
+        orig = (pipeline.admit, W.build_worklist)
+        pipeline.admit, W.build_worklist = (lambda root, **k: calls.append("admit") or {"status": "ADMITTED"}), \
+            (lambda root, **k: calls.append("build"))
+        try:
+            NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="h",
+                            by="operator")
+            NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+        finally:
+            pipeline.admit, W.build_worklist = orig
+        self.assertEqual(calls, ["build", "admit"])
+
+    def test_a_sibling_in_the_same_budget_family_is_reconciled_with_it(self):
+        from planner.paths import LOOP_DEFERRED
+        r = self.r
+        tid, _run, iss, key, limit, p = self.exhaust()
+        sib_tid, sib_run, sib = r.issue("config:rk:cfg")
+        r.native.end_run(sib_tid, "blocked", "needs_input")
+        doc = json.loads(p.read_text())
+        doc["clusters"].append(sib["cluster"])
+        doc["reasons"][sib["cluster"]] = "%d of %d attempt(s) spent against %s; last: red" % (limit, limit, key)
+        p.write_text(json.dumps(doc))
+        plan_of = r.board.plan
+
+        def shared(run_id):
+            plan = copy.deepcopy(plan_of(run_id))
+            for n in plan["nodes"]:
+                if n["outcome_id"] == "config:rk:cfg":
+                    n["budget"] = dict(n["budget"], key=key)                                # one family, one account
+            return plan
+        r.board.plan = shared
+        try:
+            NC.void_rejects(r.board, task_id=tid, keys=[x["key"] for x in r.board.records(tid, "reject")], reason="h",
+                            by="operator")
+            got = NC.reconcile_deferrals(r.root, r.board, task_id=tid, by="operator", reason="h")
+        finally:
+            r.board.plan = plan_of
+        self.assertEqual(sorted(got["lifted"]), sorted([iss["cluster"], sib["cluster"]]))
+        self.assertEqual(json.loads(p.read_text())["clusters"], ["c:other"])
+
+    def interrupted_rejection(self, extra=True):
+        """Card A's run is REJECTED on the native board and stopped before its revert ran (I-11 run 75)."""
+        r = self.r
+        tid, run, iss = r.issue("build:rk:pom")
+        rel = iss["allowed_paths"][0]
+        other = [c for c in r.worklist["clusters"] if rel not in c["write_set"]][0]["write_set"][0]
+        r.edit(rel, "<project>rejected candidate</project>\n")
+        if extra:
+            r.edit(other, "// rejected edit outside the write set\n")                  # why it was rejected
+            r.edit("src/main/java/com/acme/shop/NewAdapter.java", "class NewAdapter {}\n")
+        cand = r.tree()
+        NC.record_verdict(r.root, r.board, task_id=tid, run_id=run, verdict="REVERTED", candidate=cand, attempt="1",
+                          reason="changed path(s) outside the write set")
+        return tid, run, iss, cand
+
+    def test_an_interrupted_rejection_is_set_aside_before_another_card_works(self):
+        """V29-3: dirty rejected bytes never become the baseline of a later card; they are preserved on the card
+        that rejected them, and the restore is verified before work continues."""
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection()
+        dirty = {rel: (r.root / rel).read_bytes() for rel in NC._changed_vs_head(r.root)[1]}
+        r.native.end_run(tid, "ready", "gave_up")                                        # no terminator ran
+        committed = NC.commit_product_tree(r.root, NC._head(r.root))
+        btid, brun, b = r.issue("config:rk:cfg")
+        self.assertEqual(b["baseline_tree"], committed)                                   # never the rejected bytes
+        self.assertEqual(r.tree(), committed)
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual((len(ab), ab[0]["run"], ab[0]["paths"]), (1, run, sorted(dirty)))
+        files = json.loads(r.board.attachment(tid, ab[0]["attachment"])[0])["files"]
+        self.assertEqual({k: base64.b64decode(v) for k, v in files.items()}, dirty)     # the rejected patch, byte for byte
+        link = r.board.records(tid, "rejected-set-aside")
+        self.assertEqual((len(link), link[0]["reject"]), (1, "reject:%d:1" % run))
+        self.assertEqual(r.board.records(btid, NC.ABANDONED), [])                        # never attributed to B
+        # restart: repeating B's issue sets nothing aside again
+        again = NC.issue(r.root, r.board, task_id=btid, run_id=brun, replay_unchanged=True)
+        self.assertTrue(again["replayed"])
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
+    def test_unrelated_edits_beside_a_rejected_candidate_are_never_discarded(self):
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection()
+        r.native.end_run(tid, "ready", "gave_up")
+        r.edit("README.user.md", "an operator's note\n")                                # not the rejected tree
+        before = {rel: (r.root / rel).read_bytes() for rel in NC._changed_vs_head(r.root)[1]}
+        btid, brun, lock = r.claim("config:rk:cfg")
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=btid, run_id=brun, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual({rel: (r.root / rel).read_bytes() for rel in before}, before)
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
+
+    def test_an_interrupted_set_aside_resumes_on_restart(self):
+        from unittest import mock
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection()
+        r.native.end_run(tid, "ready", "gave_up")
+        real, n = NC._git, {"checkout": 0}
+
+        def killed(root, *a, **k):
+            if a and a[0] == "checkout":
+                n["checkout"] += 1
+                if n["checkout"] == 2:
+                    raise OSError("killed during the restore")
+            return real(root, *a, **k)
+        btid, brun, lock = r.claim("config:rk:cfg")
+        with mock.patch.object(NC, "_git", killed):
+            with self.assertRaises(OSError):
+                NC.issue(r.root, r.board, task_id=btid, run_id=brun, claim_lock=lock)
+        self.assertTrue(NC._changed_vs_head(r.root)[1])                                  # half restored
+        self.assertNotEqual(r.tree(), cand)
+        b = NC.issue(r.root, r.board, task_id=btid, run_id=brun, claim_lock=lock)       # restart
+        self.assertEqual(b["baseline_tree"], NC.commit_product_tree(r.root, NC._head(r.root)))
+        self.assertEqual(NC._changed_vs_head(r.root)[1], [])
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
+    def test_a_runs_own_interrupted_rejection_is_set_aside_on_its_next_issue(self):
+        r = self.r
+        tid, run, iss, cand = self.interrupted_rejection(extra=False)
+        nxt = NC.issue(r.root, r.board, task_id=tid, run_id=run)                         # the loop's re-issue
+        self.assertEqual((nxt["issue_id"], nxt["replayed"]), (2, False))
+        self.assertEqual(NC._changed_vs_head(r.root)[1], [])
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual((len(ab), ab[0]["run"]), (1, run))
+        # an older rejection of this run (before its latest issue) never matches a later identical edit
+        r.edit(iss["allowed_paths"][0], "<project>rejected candidate</project>\n")
+        rep = NC.issue(r.root, r.board, task_id=tid, run_id=run, replay_unchanged=True)
+        self.assertTrue(rep["in_progress"])
+        self.assertEqual((r.root / iss["allowed_paths"][0]).read_text(), "<project>rejected candidate</project>\n")
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

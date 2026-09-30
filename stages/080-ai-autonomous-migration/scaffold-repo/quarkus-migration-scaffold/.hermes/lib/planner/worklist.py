@@ -1207,18 +1207,73 @@ REDIRECT_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#configu
 
 
 def canonical_media_type(value: str) -> str:
-    """A media type in RFC 9110 section 8.3.1 canonical form: the type,
-    subtype and parameter names are case-insensitive, whitespace around ';'
-    and '=' is optional, and a charset value is case-insensitive (section
-    8.3.2). Parameter order is kept; nothing else is normalized."""
-    parts = [p.strip() for p in str(value or "").split(";")]
-    out = [parts[0].lower()] if parts else [""]
-    for p in parts[1:]:
-        if not p:
+    """A media type in RFC 9110 section 8.3.1 canonical form, parsed by its
+    grammar (not split on every ';'):
+
+        media-type = type "/" subtype parameters
+        parameters = *( OWS ";" OWS [ parameter ] )
+        parameter  = name "=" ( token / quoted-string )
+        quoted-string = DQUOTE *( qdtext / "\\" char ) DQUOTE
+
+    Only what the RFC defines as case-insensitive is folded: the type, the
+    subtype, every parameter NAME and the charset VALUE (section 8.3.2). A
+    quoted value is unquoted and unescaped -- a token sent as a quoted-string
+    is the same value -- so a ';' or '=' inside quotes is part of the value,
+    and every other value keeps its case (v29 0dd677ba review: note="A; X=Y"
+    and note="A; x=Y" were collapsed into one). The parameters are sorted by
+    name (their order carries no meaning); a value that is not a token is
+    re-quoted with its '"' and '\\' escaped. Self-contained on purpose: the
+    architect's reproduction executes this function alone."""
+    s = str(value or "")
+    tchar = set("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    n = len(s)
+    semi = s.find(";")
+    head = (s if semi < 0 else s[:semi]).strip().lower()
+    i = n if semi < 0 else semi
+    params = []
+    while i < n:
+        i += 1                                     # past the ';'
+        while i < n and s[i] in " \t":
+            i += 1
+        start = i
+        while i < n and s[i] not in "=;":
+            i += 1
+        name = s[start:i].strip().lower()
+        if i >= n or s[i] == ";":
+            if name:
+                params.append((name, None))        # malformed (no '='): kept, never guessed
             continue
-        k, _, v = p.partition("=")
-        k, v = k.strip().lower(), v.strip()
-        out.append("%s=%s" % (k, v.lower() if k == "charset" else v))
+        i += 1                                     # past the '='
+        while i < n and s[i] in " \t":
+            i += 1
+        if i < n and s[i] == '"':
+            i += 1
+            buf = []
+            while i < n and s[i] != '"':
+                if s[i] == "\\" and i + 1 < n:
+                    i += 1
+                buf.append(s[i])
+                i += 1
+            i += 1                                 # past the closing quote (or the end)
+            tail_start = i
+            while i < n and s[i] != ";":
+                i += 1
+            val = "".join(buf) + s[tail_start:i].strip()
+        else:
+            start = i
+            while i < n and s[i] != ";":
+                i += 1
+            val = s[start:i].strip()
+        if name:
+            params.append((name, val.lower() if name == "charset" else val))
+    out = [head]
+    for name, val in sorted(params, key=lambda p: (p[0], "" if p[1] is None else p[1])):
+        if val is None:
+            out.append(name)
+        elif val and all(c in tchar for c in val):
+            out.append("%s=%s" % (name, val))
+        else:
+            out.append('%s="%s"' % (name, val.replace("\\", "\\\\").replace('"', '\\"')))
     return ";".join(out)
 
 
@@ -3749,10 +3804,23 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     splitter = ParitySplitter(root, receipt, [d for _p, d in docs])
     ep_rows = {str(e.get("id") or ""): e for e in (bundle.get("entry_points") or []) if isinstance(e, dict)}
     for p, doc in docs:
-        if not isinstance(doc, dict) or str(doc.get("verdict")) != "FAIL":
+        if not isinstance(doc, dict):
             continue
+        history = None
+        if str(doc.get("verdict")) != "FAIL":
+            # M-5 / v29 I-11: a comparison that could not be AUTHORITATIVE measured nothing. The last
+            # authoritative FAIL it replaced stays OUTSTANDING -- as history, never as a fresh measurement --
+            # and the check is reported unknown until an authoritative comparison measures it again
+            last = doc.get("last_authoritative") if doc.get("unauthoritative") else None
+            if not isinstance(last, dict) or str(last.get("verdict")) != "FAIL":
+                continue
+            history = {"verdict": "FAIL", "status": "unknown", "why_not_remeasured": str(doc.get("reason") or "")[:300],
+                       "receipt_sha256": str(last.get("receipt_sha256") or ""),
+                       "binding": last.get("binding") if isinstance(last.get("binding"), dict) else {}}
+            doc = last
         if str(doc.get("schema") or "") not in ("rhoai3.parity/v1", "rhoai3.scenario-parity/v1") or not doc.get("entry_point"):
             continue  # the receipt, or a document that names no operation
+        first_of_doc = len(out)
         ep = str(doc.get("entry_point") or "")
         scenario = str(doc.get("scenario") or "")
         reason = str(doc.get("reason") or "")
@@ -3864,6 +3932,13 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                                      "response or serializer configuration, otherwise the media-type adapter removes only "
                                      "the decided parameter (%s)." % (ep, scenario or "read oracle", raws, owed["install"]))[:1200],
                             advice=representation_advice(representation)))
+        if history is not None:
+            for it in out[first_of_doc:]:
+                it["pending_remeasure"] = True
+                it["last_authoritative"] = history
+                it["message"] = ("NOT RE-MEASURED: the latest comparison was not authoritative (%s); the last "
+                                 "authoritative FAIL below stays outstanding until a comparison measures it again. %s"
+                                 % (history["why_not_remeasured"][:160], it.get("message") or ""))[:1400]
     # obligations whose body differences point at the SAME producing file are
     # likely one root cause: each names the others (they stay separate cards)
     by_locus: dict[str, list[str]] = defaultdict(list)
@@ -7714,6 +7789,9 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             "surefire": {"path": str(VERIFY_SUREFIRE), "sha256": sha256_file(sure_path), "rc": tests_run.get("rc"), "reports": sure.get("reports")} if isinstance(sure, dict) else None,
             "parity": dict({"path": str(PARITY_DIR), "count": len(par), "known": parity_known, "notes": parity_notes,
                             "carried": parity_carried},
+                           # M-5: obligations kept from the last authoritative FAIL; their current check is unknown
+                           **({"not_remeasured": sorted({str(i.get("verdict_file") or "") for i in par if i.get("pending_remeasure")})}
+                              if any(i.get("pending_remeasure") for i in par) else {}),
                            **({"unmeasured": unmeasured_parity, "refresh": REFRESH_PARITY} if unmeasured_parity else {})),
             "package": {"path": str(VERIFY_PACKAGE), "sha256": sha256_file(root / VERIFY_PACKAGE)} if package_doc is not None else None,
             "boot": {"path": str(VERIFY_BOOT), "sha256": sha256_file(root / VERIFY_BOOT)} if boot_doc is not None else None,

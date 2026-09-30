@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import (DESTINATION_BODIES, ORACLES, PARITY, body_diff, http_observe,  # noqa: E402
-                            normalize_observation, retain_body, retained_bytes, slug)
+                            normalize_observation, retain_body, retained_bytes, slug, write_unauthoritative)
 from _scenarios import BINDING_CANDIDATE, candidate_binding, sealed_binding  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     out = root / PARITY / (slug(args.entry_point) + ".json")
     if binding_gaps:
         verdict["reason"] = "the issued binding could not be made: " + "; ".join(binding_gaps)
-        write_canonical(out, verdict)
+        write_unauthoritative(out, verdict)       # measured nothing: the last authoritative verdict is kept (I-11)
         print("REFUSE: PARITY %s INCONCLUSIVE (%s)" % (args.entry_point, verdict["reason"]), file=sys.stderr)
         return 1
     # On the acceptance path the live seal is stale BY CONSTRUCTION: run-verify.sh
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     # what this verdict is bound to instead; the seal is not asked.
     if not candidate_mode and (gaps or receipt is None):
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
-        write_canonical(out, verdict)
+        write_unauthoritative(out, verdict)       # measured nothing: the last authoritative verdict is kept (I-11)
         print("REFUSE: PARITY %s INCONCLUSIVE (%s)" % (args.entry_point, verdict["reason"]), file=sys.stderr)
         return 1
     op = root / ORACLES / (slug(args.entry_point) + ".json")

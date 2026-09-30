@@ -600,17 +600,31 @@ def _candidate_binding_case(root: Path, entry_point: str, dest_url: str) -> int:
         on_tree = product_tree_digest(root)
         write_canonical(root / VERIFY_RUN, {"schema": "rhoai3.verify-run/v1", "mode": "acceptance",
                                             "candidate_sha256": on_tree})
+        # M-5 / v29 I-11: the last AUTHORITATIVE verdict on disk is a FAIL
+        known = {"schema": "rhoai3.parity/v1", "entry_point": entry_point, "receipt_sha256": receipt_digest,
+                 "binding": {"mode": "sealed"}, "verdict": "FAIL", "reason": "status 500 vs 200", "expected": {}, "observed": {}}
+        write_canonical(out, known)
         # the control: the M4 road still asks the seal, and the seal is stale
         p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point, "--dest-url", dest_url])
         if p.returncode != 1 or "not authoritative" not in p.stderr or load_json(out)["verdict"] != "INCONCLUSIVE":
             return _fail("without the binding the stale seal must refuse, or this control proves nothing: rc=%s %s"
                          % (p.returncode, p.stderr[-300:]))
+        # ...and a refusal that measured nothing keeps the known FAIL as history instead of erasing it, twice over
+        for n in (1, 2):
+            if n == 2:
+                _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point, "--dest-url", dest_url])
+            v = load_json(out)
+            if not v.get("unauthoritative") or v.get("last_authoritative") != known:
+                return _fail("an unauthoritative comparison (%d) keeps the last authoritative FAIL whole: %s" % (
+                    n, {k: v.get(k) for k in ("verdict", "unauthoritative", "last_authoritative")}))
         # ...and the same comparison, told which card it is for, measures the
         # candidate instead and says what it measured
         p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point,
                   "--dest-url", dest_url, "--issued", str(root / LOOP_ISSUED)])
         want = {"mode": "candidate", "candidate_sha256": on_tree, "issued_receipt_sha256": receipt_digest, "card": card}
         v = load_json(out)
+        if "last_authoritative" in v or v.get("unauthoritative"):
+            return _fail("an authoritative comparison replaces the history: %s" % sorted(v))
         if p.returncode != 0 or v["verdict"] != "PASS" or v.get("binding") != want or v["receipt_sha256"] != receipt_digest:
             return _fail("a candidate-bound read comparison must compose a verdict over the stale seal and record what "
                          "it is OF: rc=%s %s %s" % (p.returncode, {k: v.get(k) for k in ("verdict", "binding", "receipt_sha256", "reason")}, p.stderr[-300:]))

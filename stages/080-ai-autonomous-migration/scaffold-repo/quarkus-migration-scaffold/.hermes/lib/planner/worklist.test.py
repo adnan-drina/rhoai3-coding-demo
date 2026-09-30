@@ -4077,6 +4077,90 @@ def _navigation_mode_independence_case() -> int:
     return 0
 
 
+def _media_type_grammar_case() -> int:
+    """V29-4 (architect review of 0dd677ba): canonical_media_type parses the
+    RFC 9110 media-type grammar. Splitting on every ';' collapsed the distinct
+    quoted values note="A; X=Y" and note="A; x=Y" into one difference."""
+    from planner.worklist import canonical_diff, canonical_media_type as c
+
+    same = [
+        ("application/json;charset=UTF-8", "Application/JSON ; Charset=utf-8", "charset respelled (case, spaces)"),
+        ('application/json;charset="UTF-8"', "application/json;charset=utf-8", "a token sent as a quoted-string"),
+        ("text/plain;a=1;b=2", "text/plain; b=2; a=1", "parameter order carries no meaning"),
+        ('application/x;note="A; X=Y"', 'application/x; NOTE="A; X=Y"', "a parameter NAME is case-insensitive"),
+        ('application/x;q="a\\"b"', 'application/x;q="a\\"b"', "an escaped quote round-trips"),
+        ('application/x;q="\\a"', "application/x;q=a", "a quoted-pair is the character it escapes"),
+    ]
+    for a, b, why in same:
+        if c(a) != c(b):
+            return _fail("V29-4 %s: %r and %r must be one media type (%r vs %r)" % (why, a, b, c(a), c(b)))
+    distinct = [
+        ('application/example; note="A; X=Y"', 'application/example; note="A; x=Y"', "a quoted value keeps its case (the review counterexample)"),
+        ('application/x;note="a;b"', "application/x;note=a;b", "a ';' inside quotes belongs to the value"),
+        ('application/x;note="a=b"', "application/x;note=a", "an '=' inside quotes belongs to the value"),
+        ('application/x;q="a\\"b"', 'application/x;q="a\\\\b"', "an escaped quote is not an escaped backslash"),
+        ("application/json;charset=utf-8", "application/json;charset=iso-8859-1", "a charset that really changed"),
+        ("application/json;profile=A", "application/json;profile=a", "a non-charset value is case-sensitive"),
+        ("application/json", "application/json;charset=utf-8", "an added parameter"),
+    ]
+    for a, b, why in distinct:
+        if c(a) == c(b):
+            return _fail("V29-4 %s: %r and %r must stay distinct (both %r)" % (why, a, b, c(a)))
+    if c('application/x;note="A; X=Y"') != 'application/x;note="A; X=Y"':
+        return _fail("V29-4 a non-token value is re-quoted verbatim: %r" % c('application/x;note="A; X=Y"'))
+    if canonical_diff("header content-type application/json; charset=utf-8 vs application/json") != \
+            canonical_diff("header content-type application/json;charset=UTF-8 vs application/json"):
+        return _fail("V29-4 the ed9d31ac respelling is still one difference")
+    return 0
+
+
+def _unauthoritative_history_case() -> int:
+    """M-5 / v29 I-11: a comparison that could not be authoritative (a stale seal, a binding it could not make)
+    rewrote every recorded FAIL INCONCLUSIVE and the rebuilt work list came back EMPTY at a known [0,0,0] while
+    the repository reads still threw. The last authoritative FAIL stays outstanding -- as history, its current
+    check unknown -- and is never presented as a fresh measurement; nothing else changes."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    ep = "ep:com.acme.ledger.AccountResource#list():http"
+    bundle = {"entry_points": [{"id": ep, "path": "src/main/java/com/acme/ledger/AccountResource.java"}]}
+    fail = {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:list", "verdict": "FAIL",
+            "reason": "status 500 vs 200", "receipt_sha256": "r1", "binding": {"mode": "sealed"}}
+    refused = {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:list", "verdict": "INCONCLUSIVE",
+               "reason": "receipt not authoritative: worklist digest ed65 != sealed efcb", "unauthoritative": True}
+    with tempfile.TemporaryDirectory(prefix="unauthoritative-") as td:
+        root = Path(td)
+        d = root / PARITY_DIR / "scenarios"
+        d.mkdir(parents=True)
+        (d / "sc_list.json").write_text(json.dumps(fail))
+        fresh = parity_items(root, bundle, receipt={})
+        (d / "sc_list.json").write_text(json.dumps(dict(refused, last_authoritative=fail)))
+        kept = parity_items(root, bundle, receipt={})
+        if [i["id"] for i in kept] != [i["id"] for i in fresh] or not kept:
+            return _fail("an unauthoritative comparison keeps the known FAIL's obligation outstanding: %s vs %s"
+                         % ([i["id"] for i in kept], [i["id"] for i in fresh]))
+        if any(i.get("pending_remeasure") for i in fresh):
+            return _fail("a fresh FAIL is not marked as history")
+        for i in kept:
+            if not i.get("pending_remeasure") or i["last_authoritative"]["status"] != "unknown" \
+                    or "not authoritative" not in i["last_authoritative"]["why_not_remeasured"] \
+                    or not i["message"].startswith("NOT RE-MEASURED"):
+                return _fail("the kept obligation says it was not re-measured and why: %s" % i)
+        # an unauthoritative refusal with no known FAIL behind it, or a PASS behind it, owes nothing
+        for last in (None, dict(fail, verdict="PASS", reason="")):
+            doc = dict(refused, **({"last_authoritative": last} if last else {}))
+            (d / "sc_list.json").write_text(json.dumps(doc))
+            if parity_items(root, bundle, receipt={}):
+                return _fail("no known FAIL, no obligation: %s" % last)
+        # a genuine (authoritative) INCONCLUSIVE carrying a stray history is not read as one
+        (d / "sc_list.json").write_text(json.dumps(dict(refused, unauthoritative=False, last_authoritative=fail)))
+        if parity_items(root, bundle, receipt={}):
+            return _fail("only an unauthoritative refusal keeps history")
+    return 0
+
+
 def _split_discharge_case() -> int:
     """G1 (v9 t_55220d84) and G2: a scenario whose diffs F3 split across
     obligations discharges each obligation by its OWN diffs; a mid-card
@@ -5471,7 +5555,7 @@ def main() -> int:
         return 1
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _navigation_added_handler_case() or _scoped_carry_case() or _receipt_v2_case() or _enabled_mode_handoff_case() or _enabled_navigation_issuance_baseline_case() or _navigation_mode_independence_case() or _media_type_grammar_case() or _unauthoritative_history_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case() or _issued_parity_plan_case() or _adapter_owned_retirement_case()

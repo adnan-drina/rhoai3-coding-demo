@@ -939,11 +939,19 @@ def _acceptance_binding_case() -> int:
                     "--dest-url", dest_url, "--no-reset"]
             issued_p = str(root / LOOP_ISSUED)
 
+            # M-5 / v29 I-11: the last AUTHORITATIVE verdict of this scenario is a FAIL
+            known = {"schema": "rhoai3.scenario-parity/v1", "scenario": "sc:list-owners", "entry_point": "ep:x",
+                     "verdict": "FAIL", "reason": "status 500 vs 200", "binding": {"mode": "sealed"}}
+            write_canonical(root / SCENARIO_PARITY / slugged, known)
             # 1. the M4 road, unchanged: a stale seal refuses
             p = subprocess.run(base, text=True, capture_output=True)
             v = load_json(root / SCENARIO_PARITY / slugged)
             if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "worklist digest" not in v["reason"]:
                 return _fail("without --issued a stale seal still refuses: rc=%s %s" % (p.returncode, v.get("reason")))
+            # ... and, having measured nothing, keeps the known FAIL as history instead of overwriting it
+            if not v.get("unauthoritative") or v.get("last_authoritative") != known:
+                return _fail("a refusal that measured nothing keeps the last authoritative FAIL: %s"
+                             % {k: v.get(k) for k in ("unauthoritative", "last_authoritative")})
             if (v.get("binding") or {}).get("mode") != "sealed":
                 return _fail("a verdict of the accepted tree is sealed-bound: %s" % v.get("binding"))
 
@@ -954,6 +962,8 @@ def _acceptance_binding_case() -> int:
             if p.returncode != 0 or v["verdict"] != "PASS":
                 return _fail("with --issued the rebuilt work list is not a refusal: rc=%s %s %s"
                              % (p.returncode, v.get("verdict"), (p.stdout + p.stderr)[-400:]))
+            if "last_authoritative" in v or v.get("unauthoritative"):
+                return _fail("an authoritative measurement replaces the history: %s" % sorted(v))
             want = {"mode": BINDING_CANDIDATE, "candidate_sha256": on_tree,
                     "issued_receipt_sha256": receipt_digest, "card": card}
             if v.get("binding") != want or v.get("receipt_sha256") != receipt_digest:

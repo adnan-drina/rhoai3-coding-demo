@@ -155,6 +155,37 @@ TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?
 IDEMPOTENT = frozenset({"GET", "HEAD"})
 
 
+def write_unauthoritative(out: Path, verdict: dict[str, Any]) -> None:
+    """Write a verdict whose comparison could not be AUTHORITATIVE (no binding,
+    a stale or unsealed receipt): it measured nothing, so it must not erase
+    what the last authoritative comparison measured (v29 I-11: every recorded
+    FAIL was overwritten INCONCLUSIVE and the rebuilt work list came back empty
+    at a known [0,0,0] while every repository read still threw).
+
+    The verdict stays INCONCLUSIVE -- the current check is unknown -- and is
+    marked ``unauthoritative``; the record it replaces, when that was a PASS or
+    FAIL, is kept whole under ``last_authoritative`` (carried forward across
+    repeated unauthoritative runs), so the work list keeps a known FAIL's
+    obligation outstanding as history (planner.worklist.parity_items), never
+    as a fresh measurement."""
+    from planner.canonical import write_canonical
+    last = None
+    if out.is_file():
+        try:
+            prior = load_json(out)
+        except (OSError, ValueError):
+            prior = None
+        if isinstance(prior, dict):
+            if str(prior.get("verdict") or "") in ("PASS", "FAIL") and not prior.get("unauthoritative"):
+                last = {k: v for k, v in prior.items() if k != "last_authoritative"}
+            elif isinstance(prior.get("last_authoritative"), dict):
+                last = prior["last_authoritative"]
+    doc = dict(verdict, unauthoritative=True)
+    if last is not None:
+        doc["last_authoritative"] = last
+    write_canonical(out, doc)
+
+
 def slug(entry_point_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", entry_point_id)[:120]
 

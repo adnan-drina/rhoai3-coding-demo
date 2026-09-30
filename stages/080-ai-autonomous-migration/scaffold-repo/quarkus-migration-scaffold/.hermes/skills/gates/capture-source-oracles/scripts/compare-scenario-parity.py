@@ -34,7 +34,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import (DESTINATION_BODIES, body_diff, ensure_hermes_lib, header_diffs, http_observe,  # noqa: E402
-                            is_preflight, origin_of, required_headers, retain_body, retained_bytes)
+                            is_preflight, origin_of, required_headers, retain_body, retained_bytes,
+                            write_unauthoritative)
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, EFFECTS_REVERT_THEN_READ,  # noqa: E402
                         EFFECTS_SECOND_IDENTITY, SCENARIO_DIAGNOSTIC_PROBE,
                         QUALIFICATION, classification_conflict, effects_strategy_of, record_classification, SCENARIO_ORACLES,  # noqa: E402,F401
@@ -143,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
     out = root / scenario_parity_dir(security_mode, variant) / (scenario_slug(args.scenario) + ".json")
     if binding_gaps:
         verdict["reason"] = "the issued binding could not be made: " + "; ".join(binding_gaps)
-        write_canonical(out, verdict)
+        write_unauthoritative(out, verdict)       # measured nothing: the last authoritative verdict is kept (I-11)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
     # On the acceptance path the live seal is stale BY CONSTRUCTION: run-verify.sh
@@ -152,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     # what this verdict is bound to instead; the seal is not asked.
     if not candidate_mode and (gaps or receipt is None):
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
-        write_canonical(out, verdict)
+        write_unauthoritative(out, verdict)       # measured nothing: the last authoritative verdict is kept (I-11)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
     try:
