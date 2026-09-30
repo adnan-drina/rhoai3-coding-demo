@@ -777,6 +777,28 @@ class OrphanedObligations(unittest.TestCase):
         next(n for n in twin["nodes"] if n["outcome_id"] == "source:rk:order")["clusters"].append("c:item")
         self.assertIsNone(OG.owner_of_finding(twin, {"id": "x", "cluster": "c:item", "path": self.ITEM_FILE})["owner"])
 
+    def test_a_finding_at_the_cards_own_entry_point_is_issued_to_it(self):
+        """v29 t_65445e69: its own endpoints' parity failures (a StackOverflowError in a repository the endpoint
+        calls) had no plan owner by id; by entry point they were ambiguous between the card and an accepted
+        controller objective, so issue refused ISSUE_ORPHANED_OBLIGATION and the card was stranded. The card that
+        measures an entry point owns what fails there; the producing file is reached by amend-scope."""
+        r = self.build()
+        try:
+            wl = r.worklist
+            wl["items"].append({"id": "parity:item-list-500", "category": "mandatory", "kind": "parity", "source": "parity",
+                                "scenario": "items-list", "entry_point": "com.acme.shop.web.ItemController#list():http", "path": ""})
+            wl["clusters"].append({"id": "c:item-parity", "items": ["parity:item-list-500"], "kind": "parity", "path": self.ITEM_FILE,
+                                   "status": "open", "write_set": [self.ITEM_FILE]})
+            wl["candidate_sha256"] = r.tree()
+            r.save_worklist()
+            tid, run, iss = r.issue(self.ITEM_BEH)
+            self.assertEqual((iss["cluster"], iss["allowed_paths"]), ("c:item-parity", [self.ITEM_FILE]))
+            plan = r.plan()
+            self.assertEqual(plan["ownership"]["parity:item-list-500"], self.ITEM_BEH)
+            self.assertFalse([n for n in plan["nodes"] if n["outcome_id"].startswith("followup:")])
+        finally:
+            r.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

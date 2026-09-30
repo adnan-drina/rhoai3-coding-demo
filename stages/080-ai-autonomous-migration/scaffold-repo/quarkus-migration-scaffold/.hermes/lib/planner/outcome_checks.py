@@ -753,7 +753,8 @@ def orphaned_obligations(plan: dict[str, Any], worklist: dict[str, Any], status_
             continue
         c = cluster_of.get(iid) or {}
         out.append({"id": iid, "path": str(i.get("path") or ""), "kind": str(i.get("kind") or ""),
-                    "entry_point": str(i.get("entry_point") or ""), "cluster": str(c.get("id") or ""),
+                    "entry_point": str(i.get("entry_point") or ""), "scenario": str(i.get("scenario") or ""),
+                    "cluster": str(c.get("id") or ""),
                     "write_set": [str(w) for w in c.get("write_set") or []],
                     "status": "blocked" if c.get("status") == "blocked" else "open",
                     "reopened_from": owner, "detail": str(i.get("message") or i.get("detail") or "")[:300]})
@@ -780,7 +781,23 @@ def orphan_revision(plan: dict[str, Any], orphans: list[dict[str, Any]], *, hold
     added: list[str] = []
     mine: list[str] = []
     unresolved: list[tuple[str, str]] = []
+    hnode = by_id.get(holder) or {}
+
+    def _bare(v: str, prefix: str) -> str:
+        return v[len(prefix):] if v.startswith(prefix) else v
+
+    own_eps = {_bare(str(e), "ep:") for e in hnode.get("entry_points") or []}
+    own_scs = {_bare(str(s), "sc:") for s in hnode.get("scenarios") or []}
     for ob in orphans:
+        # a finding at one of the holder's OWN entry points or scenarios is the holder's: it is the card that
+        # measures that behavior and can repair it (amend-scope reaches the producing file). v29 t_65445e69: its
+        # own endpoints' parity failures were ambiguous between it and an accepted controller objective, and the
+        # card was refused instead of issued
+        if (ob.get("entry_point") and _bare(str(ob["entry_point"]), "ep:") in own_eps) \
+                or (ob.get("scenario") and _bare(str(ob["scenario"]), "sc:") in own_scs):
+            ownership[ob["id"]] = holder
+            mine.append(ob["id"])
+            continue
         if ob.get("status") == "blocked" or not ob.get("write_set"):
             unresolved.append((ob["id"], "its work-list cluster has no write set a card could be granted"))
             continue
