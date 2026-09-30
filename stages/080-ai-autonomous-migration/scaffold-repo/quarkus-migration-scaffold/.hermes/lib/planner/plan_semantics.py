@@ -288,7 +288,10 @@ def graph_projection(plan: dict[str, Any] | None) -> dict[str, Any] | None:
             "ownership": dict(sorted((plan.get("ownership") or {}).items())),
             "dispositions": plan.get("dispositions") or [], "unresolved": plan.get("unresolved") or [],
             "counts": plan.get("counts") or {}, "requirements": plan.get("requirements") or [],
-            **({"policy": plan["policy"], "composition": plan.get("composition") or {}} if plan.get("policy") else {})}
+            **({"policy": plan["policy"], "composition": plan.get("composition") or {}} if plan.get("policy") else {}),
+            # check-schedule/v1 (compatibility_objectives.schedule_checks): present only when the
+            # composition derived it, so a document without it projects exactly as before
+            **({"check_schedule": plan["check_schedule"]} if plan.get("check_schedule") else {})}
 
 
 def graph_audit(plan: dict[str, Any] | None) -> dict[str, Any]:
@@ -400,6 +403,13 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
                                   (source_requirements.RECIPE_RULES) has no
                                   qualified recipe; verification and decided
                                   configuration are judged by their checks
+      PLAN_SCHEDULE               the check schedule (check-schedule/v1)
+                                  found a check that cannot be scheduled: no
+                                  producer, an immediate check its parents do
+                                  not make executable, a later check due before
+                                  its owner or causal repair (a cycle that
+                                  would only surface at M4), or a behaviour
+                                  whose only route is an out-of-scope edit
     Unresolved requirements are not blocks here: like a missing oracle they
     are named responsibilities that block delivery, never an empty plan."""
     from planner.source_requirements import RECIPE_RULES
@@ -412,6 +422,9 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
         if u.startswith("graph: "):
             code = u[len("graph: "):].split(":", 1)[0]
             blocks.append({"class": "PLAN_CONTRACT", "subject": code, "detail": u[len("graph: "):][:300]})
+    for f in ((doc["plan"].get("graph") or {}).get("check_schedule") or {}).get("findings") or []:
+        blocks.append({"class": "PLAN_SCHEDULE", "subject": "%s %s" % (f.get("code"), f.get("outcome")),
+                       "detail": ("%s: %s" % (f.get("check"), f.get("detail")))[:300]})
     for r in doc["plan"]["requirements"]:
         if r.get("status") != "applicable":
             continue
@@ -490,6 +503,8 @@ def plan_view(doc: dict[str, Any], *, protocol: str, revisions: list[dict[str, A
             "units": ([{"cluster": c} for c in n.get("clusters") or []] + list(n.get("planned_units") or [])),
             "completion_checks": list((n.get("acceptance") or {}).get("checks") or []) + list((n.get("acceptance") or {}).get("requirement_checks") or []),
             "budget_limit": (n.get("budget") or {}).get("limit"),
+            # check-schedule/v1: what is judged at the card and what it still owes, and where
+            **({"acceptance_states": n["acceptance_states"]} if n.get("acceptance_states") else {}),
         })
     counts = g.get("counts") or {}
     return {
@@ -575,7 +590,10 @@ REQ_FIELDS = {"status": "disposition", "recipe": "recipe", "dependencies": "depe
               "paths": "scope", "evidence": "evidence-quality", "unknowns": "evidence-quality", "phase": "recipe"}
 NODE_FIELDS = {"obligations": "membership", "clusters": "membership", "plan_paths": "scope", "parents": "dependencies",
                "acceptance": "acceptance", "requirements": "recipe", "recipes": "recipe", "budget": "budget",
-               "entry_points": "membership", "scenarios": "acceptance"}
+               "entry_points": "membership", "scenarios": "acceptance",
+               # compatibility-objectives/v1 + check-schedule/v1
+               "check_plan": "acceptance", "acceptance_states": "acceptance", "prerequisites": "dependencies",
+               "dependency_kinds": "dependencies", "causal_scope": "dependencies", "execution_unit": "scope"}
 
 
 def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -628,6 +646,8 @@ def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     for k in ("ownership", "dispositions", "unresolved"):
         if ga.get(k) != gb.get(k):
             gr.append({"class": "membership" if k == "ownership" else "disposition", "where": "graph.%s" % k})
+    if ga.get("check_schedule") != gb.get("check_schedule"):
+        gr.append({"class": "acceptance", "where": "graph.check_schedule"})
     if gr:
         first = first or "graph"
     diffs += gr

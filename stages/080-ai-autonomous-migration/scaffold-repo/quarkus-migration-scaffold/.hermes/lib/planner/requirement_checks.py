@@ -23,6 +23,11 @@ never from a worker's claim -- and records the ones that PASS.
   parity:<scenario>
       the scenario was measured on this tree (the measurement's scenarios)
       and the rebuilt work list holds no open item for it
+  location:<entry point>
+      the Location the handler builds: every captured scenario the
+      requirement names for that entry point measured and discharged (the
+      parity comparator asserts Location on every 201 and redirect,
+      _oracle_common.ASSERTED_RESPONSE_HEADERS); none captured: unknown
   behavior:repository-effects:<fragment>
       every planned repository verification row of the requirement is
       covered (none unresolved) and each of its scenarios passes as above
@@ -224,12 +229,46 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
                 status, detail = _generation_check(worklist, diagnostics)
             elif chk == "parity:request-body-positive-negative":
                 status, detail = _body_check(root, req, scen)
+            elif chk.startswith("location:"):
+                status, detail = _location_check(req, scen)
             elif chk.startswith("parity:"):
                 status, detail = scen(chk[len("parity:"):])
             elif chk == "coverage:unresolved":
                 status, detail = UNKNOWN, "unresolved coverage is never met"
             out[chk] = {"status": status, "detail": detail}
     return out
+
+
+# the check names measure() implements (exact names, then prefixes); a name
+# outside both has no producer and is UNKNOWN forever. The plan schedule
+# (compatibility_objectives.schedule_checks) refuses to issue such a check.
+PRODUCED_CHECKS = frozenset({"gate:compile", "gate:package", "gate:augmentation", "gate:startup",
+                             "unit:fragment-implementation", "unit:fragment-behaviour-bodies",
+                             "structure:single-injectable-implementation", "unit:handler-validation-guards",
+                             "unit:handler-parameter-sites", "unit:location-null-arguments", "config:decided-keys",
+                             "config:application-path", "build:clean-generation", "parity:request-body-positive-negative"})
+PRODUCED_PREFIXES = ("structure:annotation-absent:", "behavior:repository-effects:", "adapter:", "location:", "parity:")
+
+
+def has_producer(check: str) -> bool:
+    """measure() can return PASS for this check name (coverage:unresolved and
+    unknown names never can)."""
+    c = str(check)
+    return c in PRODUCED_CHECKS or (c.startswith(PRODUCED_PREFIXES) and c not in ("parity:", "location:", "adapter:"))
+
+
+def _location_check(req: dict[str, Any], scen: Any) -> tuple[str, str]:
+    scenarios = sorted({str(a)[len("parity:"):] for a in req.get("acceptance") or []
+                        if str(a).startswith("parity:") and "-mode:" not in str(a)
+                        and str(a) != "parity:request-body-positive-negative"})
+    if not scenarios:
+        return UNKNOWN, "no captured scenario covers the Location this handler builds (never PASS)"
+    res = [scen(s) for s in scenarios]
+    if any(r[0] == FAIL for r in res):
+        return FAIL, "; ".join(r[1] for r in res if r[0] == FAIL)[:300]
+    if any(r[0] == UNKNOWN for r in res):
+        return UNKNOWN, "; ".join(r[1] for r in res if r[0] == UNKNOWN)[:300]
+    return PASS, "the Location-asserting scenarios %s measured and discharged" % ", ".join(scenarios)[:240]
 
 
 def passed(measured: dict[str, dict[str, str]]) -> list[str]:

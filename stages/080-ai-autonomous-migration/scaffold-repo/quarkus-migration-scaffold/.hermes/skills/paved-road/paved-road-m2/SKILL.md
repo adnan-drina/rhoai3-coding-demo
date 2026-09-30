@@ -60,10 +60,13 @@ nothing here changes it. Steps 1–4 and 7 are the same for both.
      run's initial commit pins it), a card can be a **compatibility
      objective**: several work-list units that share one concrete repair,
      each selected repository contract, or one request boundary. Its contract
-     lists the constituents, each check's stage (`immediate` now, `later` at
-     M4) and the prerequisites that must finish first. Its budget is the
-     summed family of the units it joined, so the run's total is unchanged.
-     You neither choose nor change the grouping. An `OBJECTIVES_*` admission
+     lists the constituents, each check's stage (`immediate` judged at the
+     card; `later` still owed by it, with the earliest point it can be
+     measured and M4 as the backstop), each check's verification
+     prerequisites and the implementation prerequisites that must finish
+     first (check-schedule/v1). Its budget is the summed family of the units
+     it joined, so the run's total is unchanged. You neither choose nor
+     change the grouping. An `OBJECTIVES_*` or `PLAN_SCHEDULE` admission
      block is a decision for a human, like any other BLOCK class.
    - **serial-loop/v1:** mints exactly one card, the head cluster (or M4
      VERIFY when the list is empty). From then on each accepted M3 step

@@ -19,6 +19,27 @@ parents; LATER ones (package/boot/parity) are linked to where they are due and
 never count as passed at a structural checkpoint. Budgets are conserved: each
 connected set of baseline accounts and new objectives is one family whose limit
 is the sum of its baseline accounts, counted once.
+
+Check schedule (``check-schedule/v1``, schedule_checks; migration roadmap M-2)
+is a derived view over the composed graph, never a second graph: it adds no
+parent, moves no owner, splits nothing and changes no budget. Each check-plan
+row states its kind (``stage``: immediate = judged at this card; later =
+functional debt this outcome owns), its owner, its verification prerequisites
+(``requires``: the files it reads compile, a packaged/started application, a
+working database, a mode receipt, and the named causal repairs), the earliest
+useful measurement point (``earliest``: a roadmap milestone and the outcomes,
+first package or M4 where it can first be measured), for a repository contract
+the focused M-3 qualification that covers it before any package exists, and,
+for a comparison that depends on a known server-error producer, the producer's
+check it comes ``after``. Implementation dependencies (``dependency_kinds``)
+are reported apart from verification prerequisites. A repository objective
+records both states (``acceptance_states``): structurally accepted at its card,
+behaviour owed at its measurement points. A shared producer lists every path it
+affects (``causal_scope``): each is remeasured; one path's pass is not evidence
+for another. What cannot be scheduled -- an immediate check with no producer or
+with a prerequisite no parent provides, a later check due before its owner or
+its causal repair (a cycle deferred to M4), a behaviour whose only route is an
+edit outside every planned scope -- is a typed finding, never a silent deferral.
 """
 from __future__ import annotations
 
@@ -43,6 +64,40 @@ CHECK_READS = {
     "unit:location-null-arguments": "files",
     "structure:annotation-absent": "none",
 }
+# check-schedule/v1: the roadmap M-2 milestones, in order (a derived view of the
+# graph's own owners and checks, never five mega-cards)
+CHECK_SCHEDULE = "check-schedule/v1"
+MILESTONES = ("source-understood", "target-structurally-viable", "persistence-and-one-http-path",
+              "application-behavior-preserved", "delivered-and-usable")
+MILESTONE_TITLES = {
+    "source-understood": "Source understood (builds on its toolchain; profiles, generated types and captures qualified)",
+    "target-structurally-viable": "Target structurally viable (transitions applied; compilation and augmentation succeed)",
+    "persistence-and-one-http-path": "Persistence and one HTTP path work (repository reads/writes through the real database)",
+    "application-behavior-preserved": "Application behavior preserved (remaining paths, validation, Location, CORS, security modes)",
+    "delivered-and-usable": "Delivered and usable (M4 results, M5 pipeline, deployment and live tests)",
+}
+# verification prerequisites (``requires``); "compiled:<o>" and "repair:<o>" name an outcome
+APP_PACKAGED, APP_STARTED, DB_WORKING = "application:packaged", "application:started", "database:working"
+RUNTIME_REQUIRES = (APP_PACKAGED, APP_STARTED, DB_WORKING)
+# measurement points (``earliest.at``) besides outcome ids
+FIRST_PACKAGE = "first-package"
+POINTS = {
+    FIRST_PACKAGE: "the first candidate measured after every build, configuration and source outcome is accepted: "
+                   "the whole application must build first, so this is the first behavior issue",
+    "<outcome id>": "that outcome's issue and acceptance measurement",
+    "<assess id>": "the M4 assessment (the backstop every later check is also deferred to)",
+}
+# the focused M-3 component qualification of a repository contract (read/write
+# effects through a fresh transaction, recursion and no-op negatives): usable
+# while unrelated sources still prevent a whole-application build
+QUALIFY_REPOSITORY = "qualify:repository-contract:%s"
+# derive-source-scenarios names its cross-origin and security scenarios with
+# these prefixes (sc:cors-actual-*, sc:cors-preflight-*, sc:auth-<kind>-*): the
+# harness's own scenario contract, not a specimen spelling
+MODE_SCENARIO_PREFIXES = ("sc:cors-", "sc:auth-")
+REQUEST_BODY_CHECK = "parity:request-body-positive-negative"
+REMEASURE_RULE = ("every affected path is remeasured after the shared repair; a passing path is evidence for "
+                  "itself only, never for another endpoint the same producer serves")
 
 
 class ObjectiveError(ValueError):
@@ -544,6 +599,10 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
     for oid in ids:
         if not nodes[oid].get("budget") or not nodes[oid]["budget"]["limit"]:
             raise PlanError("BUDGET_LINEAGE", "%s has no baseline budget account" % oid)
+    regrouped = budget_regrouping({oid: nodes[oid]["budget"] for oid in ids}, budget_of,
+                                  {oid: set(lineage.get(oid) or set()) & set(budget_of) for oid in ids})
+    if regrouped:
+        raise PlanError("BUDGET_REGROUPED", "; ".join(regrouped[:3]))
 
     # 8. finish nodes and the milestones exactly as the baseline builds them
     out_nodes = []
@@ -615,6 +674,7 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
     }
     if doc["composition"]["budget"]["baseline_total"] != doc["composition"]["budget"]["objective_total"]:
         raise PlanError("BUDGET_NOT_CONSERVED", "%s" % doc["composition"]["budget"])
+    schedule_checks(doc)
     return doc
 
 
@@ -627,3 +687,270 @@ def _ancestors(parents: dict[str, set[str]], k: str) -> set[str]:
             seen.add(x)
             stack.extend(parents.get(x, ()))
     return seen
+
+
+def budget_regrouping(budgets: dict[str, dict[str, Any]], baseline: dict[str, dict[str, Any]],
+                      lineage: dict[str, set[str]]) -> list[str]:
+    """Roadmap M-2: regrouping never increases a family budget. ``budgets``
+    outcome -> its composed {"key", "limit", "accounts"}; ``baseline`` baseline
+    account -> its budget; ``lineage`` outcome -> the baseline accounts it came
+    from. Empty when every baseline account is counted in exactly one family,
+    each family's limit is exactly the sum of its own accounts' baseline limits,
+    one family is recorded one way, and every outcome's lineage lies inside its
+    family; otherwise each violation, named."""
+    out: list[str] = []
+    fam: dict[str, tuple[tuple[str, ...], int]] = {}
+    for oid in sorted(budgets):
+        b = budgets[oid] or {}
+        key = _s(b.get("key"))
+        accs = tuple(sorted(str(a) for a in b.get("accounts") or []))
+        limit = int(b.get("limit") or 0)
+        if key in fam and fam[key] != (accs, limit):
+            out.append("family %s is recorded with two account sets or limits (at %s)" % (key, oid))
+        fam.setdefault(key, (accs, limit))
+        extra = sorted(set(lineage.get(oid) or ()) - set(accs))
+        if extra:
+            out.append("%s draws on baseline account(s) %s outside its family %s" % (oid, extra, key))
+    seen: dict[str, str] = {}
+    for key, (accs, limit) in sorted(fam.items()):
+        for a in accs:
+            if a in seen and seen[a] != key:
+                out.append("baseline account %s is counted in families %s and %s" % (a, seen[a], key))
+            seen.setdefault(a, key)
+        want = sum(int((baseline.get(a) or {}).get("limit") or 0) for a in accs)
+        if limit != want:
+            out.append("family %s limit %d != %d, the sum of its baseline accounts %s" % (key, limit, want, list(accs)))
+    for a in sorted(set(baseline) - set(seen)):
+        out.append("baseline account %s is counted in no family" % a)
+    return out
+
+
+def _milestone(chk: str, scenarios: list[str], reaches_db: bool, validating: bool = False) -> str:
+    """The earliest roadmap milestone at which a check says something useful:
+    a repository read/write path is persistence; validation (a scenario a
+    request-validation requirement names), CORS and security-mode scenarios,
+    Location and adapters' modes are the remaining application behavior."""
+    if chk == "coverage:unresolved":
+        return "source-understood"
+    if chk.startswith(("gate:", "unit:", "structure:", "config:", "build:", "adapter:")):
+        return "target-structurally-viable"
+    if chk.startswith("behavior:repository-effects:"):
+        return "persistence-and-one-http-path"
+    if chk.startswith("parity:") and "-mode:" not in chk and chk != REQUEST_BODY_CHECK and reaches_db and not validating \
+            and not any(s.startswith(MODE_SCENARIO_PREFIXES) for s in scenarios):
+        return "persistence-and-one-http-path"
+    return "application-behavior-preserved"
+
+
+def _row_scenarios(chk: str, req: dict[str, Any]) -> list[str]:
+    """The captured scenarios a check's verdict is made of."""
+    if chk.startswith("behavior:repository-effects:"):
+        return sorted({str(s) for v in (req.get("facts") or {}).get("verification") or [] if isinstance(v, dict)
+                       for s in v.get("scenarios") or []})
+    if chk.startswith("location:") or chk == REQUEST_BODY_CHECK:
+        return sorted({str(a)[len("parity:"):] for a in req.get("acceptance") or []
+                       if str(a).startswith("parity:") and "-mode:" not in str(a) and str(a) != REQUEST_BODY_CHECK})
+    if chk.startswith("parity:") and "-mode:" not in chk:
+        return [chk[len("parity:"):]]
+    return []
+
+
+def schedule_checks(doc: dict[str, Any]) -> dict[str, Any]:
+    """check-schedule/v1 over a composed revision, in place; returns the
+    plan-level summary it records as ``doc["check_schedule"]``. Pure over the
+    document: it reads nodes, parents, prerequisites, check plans and
+    requirements, and writes only schedule metadata (no parent, owner, scope,
+    obligation or budget changes). Deterministic: node and requirement order do
+    not matter."""
+    from planner.requirement_checks import has_producer
+
+    nodes = {n["outcome_id"]: n for n in doc.get("nodes") or []}
+    repair = {k: n for k, n in nodes.items() if n.get("role") == "repair"}
+    reqs = {_s(r.get("id")): r for r in doc.get("requirements") or [] if isinstance(r, dict)}
+    acct = doc.get("requirement_ownership") or {}
+    parents = {k: {p for p in n.get("parents") or [] if p in nodes} for k, n in nodes.items()}
+    anc: dict[str, set[str]] = {}
+
+    def ancestors(k: str) -> set[str]:
+        if k not in anc:
+            anc[k] = _ancestors(parents, k)
+        return anc[k]
+
+    structural = {k for k, n in repair.items() if n.get("class") != "behavior"}
+    # a packaged / started application: every build, configuration and source outcome accepted
+    whole_app = {k for k, n in repair.items() if n.get("class") in ("build", "config", "source")}
+    assess = sorted(k for k, n in nodes.items() if n.get("role") == "assess")
+    m4 = assess[0] if assess else "M4"
+    beh_by_scen: dict[str, set[str]] = {}
+    beh_by_ep: dict[str, set[str]] = {}
+    for k, n in repair.items():
+        if n.get("class") == "behavior":
+            for s in n.get("scenarios") or []:
+                beh_by_scen.setdefault(str(s), set()).add(k)
+            for e in n.get("entry_points") or []:
+                beh_by_ep.setdefault(str(e), set()).add(k)
+    # scenario -> the outcomes accountable for its verdict (their requirements name it)
+    scen_owner: dict[str, set[str]] = {}
+    # scenario -> the repository contracts it reaches: (owner or None, producer check)
+    reach: dict[str, set[tuple[str, str]]] = {}
+    validation: set[str] = set()
+    for rid, r in reqs.items():
+        own = _s(acct.get(rid))
+        for a in r.get("acceptance") or []:
+            if str(a).startswith("parity:") and own in repair:
+                scen_owner.setdefault(str(a)[len("parity:"):], set()).add(own)
+            if str(a).startswith("parity:") and _s(r.get("rule")).split("/", 1)[0] == "request-validation":
+                validation.add(str(a)[len("parity:"):])
+        if _s(r.get("rule")).split("/", 1)[0] == "repository-architecture" and _s(r.get("status")) == "applicable":
+            producer = sorted(str(a) for a in r.get("acceptance") or [] if str(a).startswith("behavior:repository-effects:"))
+            for v in (r.get("facts") or {}).get("verification") or []:
+                for s in (v.get("scenarios") or []) if isinstance(v, dict) else []:
+                    for p in producer or ["behavior:repository-effects:%s" % _s((r.get("facts") or {}).get("fragment"))]:
+                        reach.setdefault(str(s), set()).add((own if own in repair else "", p))
+    # implementation coupling: requirements linked by `dependencies` that serve a common consumer
+    coupled: dict[str, set[str]] = {}
+    for rid, r in reqs.items():
+        for dep in r.get("dependencies") or []:
+            d = reqs.get(str(dep))
+            if d is None or not (set(r.get("consumers") or []) & set(d.get("consumers") or [])):
+                continue
+            a, b = _s(acct.get(rid)), _s(acct.get(str(dep)))
+            if a in repair and b in repair and a != b:
+                coupled.setdefault(rid, set()).add(b)
+                coupled.setdefault(str(dep), set()).add(a)
+
+    findings: list[dict[str, str]] = []
+    affects: dict[str, dict[str, set[str]]] = {}
+    counts = {m: {"immediate": 0, "later": 0} for m in MILESTONES}
+    qualifications: set[str] = set()
+
+    def finding(code: str, k: str, row: dict[str, Any], detail: str) -> None:
+        findings.append({"code": code, "outcome": k, "check": _s(row.get("check")), "requirement": _s(row.get("requirement")),
+                         "detail": detail})
+
+    for k in sorted(repair):
+        n = repair[k]
+        if n.get("check_plan") is None:
+            continue
+        states: dict[str, dict[str, Any]] = {}
+        for row in n["check_plan"]:
+            chk, rid = _s(row.get("check")), _s(row.get("requirement"))
+            r = reqs.get(rid) or {}
+            scen = _row_scenarios(chk, r)
+            requires: set[str] = {"compiled:%s" % o for o in row.get("prerequisites") or []}
+            behavioural = chk.startswith(("parity:", "behavior:", "location:"))
+            if chk in ("gate:package", "gate:augmentation"):
+                requires.add(APP_PACKAGED)
+            elif chk == "gate:startup" or behavioural:
+                requires |= {APP_PACKAGED, APP_STARTED}
+            if chk.startswith("parity:") and "-mode:" in chk:
+                requires.add("mode-receipt:%s" % chk.rsplit(":", 1)[1])
+            producers = {x for s in scen for x in reach.get(s, set())}
+            reaches_db = bool(producers) or chk.startswith("behavior:repository-effects:")
+            if reaches_db:
+                requires.add(DB_WORKING)
+            repairs: set[str] = set()
+            if behavioural:
+                repairs = {o for s in scen for o in scen_owner.get(s, set())} | set(coupled.get(rid, set()))
+                repairs |= {o for o, _p in producers if o}
+                repairs = (repairs & structural) - {k}
+            requires |= {"repair:%s" % o for o in repairs}
+            after = sorted({"%s#%s" % (o, p) for o, p in producers if o and o != k})
+            unowned = sorted({p for o, p in producers if not o})
+            ms = _milestone(chk, scen, reaches_db, validating=bool(set(scen) & validation))
+            if row.get("stage") == "later":
+                pts: set[str] = set()
+                if chk.startswith("gate:"):
+                    pts = {FIRST_PACKAGE}
+                else:
+                    for s in scen:
+                        pts |= beh_by_scen.get(s, set())
+                    for e in list(r.get("consumers") or []) + ([chk[len("location:"):]] if chk.startswith("location:") else []):
+                        pts |= beh_by_ep.get(str(e), set())
+                at = sorted(pts) or [m4]
+            else:
+                at = [k]
+            row["owner"] = k
+            row["requires"] = sorted(requires)
+            row["earliest"] = {"milestone": ms, "at": at}
+            if after:
+                row["after"] = after
+            else:
+                row.pop("after", None)
+            if chk.startswith("behavior:repository-effects:"):
+                row["qualification"] = QUALIFY_REPOSITORY % chk[len("behavior:repository-effects:"):]
+                qualifications.add(row["qualification"])
+            else:
+                row.pop("qualification", None)
+            stage = "later" if row.get("stage") == "later" else "immediate"
+            counts[ms][stage] += 1
+            st = states.setdefault(stage, {"checks": 0, "milestones": set(), "at": set(), "qualification": set()})
+            st["checks"] += 1
+            st["milestones"].add(ms)
+            st["at"] |= set(at)
+            if row.get("qualification"):
+                st["qualification"].add(row["qualification"])
+            for o, _p in producers:
+                if o and o != k:
+                    affects.setdefault(o, {}).setdefault(k, set()).add(chk)
+            # -- what cannot be scheduled is named, never deferred ---------------------
+            if not has_producer(chk):
+                finding("CHECK_NO_PRODUCER", k, row, "no measurement producer implements %s: it could never pass" % chk)
+            for p in unowned:
+                finding("SCOPE_ONLY_ROUTE", k, row, "%s depends on %s, whose repository contract no planned outcome owns: "
+                        "the only route to acceptance would be an edit outside every planned scope" % (chk, p))
+            if stage == "immediate":
+                need = {x.split(":", 1)[1] for x in requires if x.startswith(("compiled:", "repair:"))}
+                if requires & set(RUNTIME_REQUIRES) or any(x.startswith("mode-receipt:") for x in requires):
+                    need |= whole_app - {k}
+                missing = sorted(need - ancestors(k))
+                if missing:
+                    finding("IMMEDIATE_NOT_EXECUTABLE", k, row, "judged at issue, but %d prerequisite outcome(s) are not its "
+                            "ancestors: %s" % (len(missing), ", ".join(missing[:4])))
+            else:
+                for pt in at:
+                    if pt not in nodes or pt == m4:
+                        continue
+                    if pt in ancestors(k) or pt == k:
+                        finding("LATER_DEFERRED_CYCLE", k, row, "measured at %s, which precedes its owner %s: the check "
+                                "could only pass at M4" % (pt, k))
+                    elif k not in ancestors(pt):
+                        finding("LATER_BEFORE_OWNER", k, row, "measured at %s, which does not follow its owner" % pt)
+                    late = sorted(o for o in repairs if o not in ancestors(pt))
+                    if late:
+                        finding("LATER_BEFORE_PREREQUISITE", k, row, "measured at %s before its causal repair(s) %s"
+                                % (pt, ", ".join(late[:4])))
+        if not states:
+            n.pop("acceptance_states", None)
+        else:
+            n["acceptance_states"] = {
+                stage: {"checks": st["checks"], "milestones": [m for m in MILESTONES if m in st["milestones"]],
+                        "at": sorted(st["at"]), **({"qualification": sorted(st["qualification"])} if st["qualification"] else {}),
+                        "meaning": ("judged at this outcome's acceptance" if stage == "immediate" else
+                                    "owned by this outcome and measured at the points named; structural acceptance never "
+                                    "discharges it")}
+                for stage, st in sorted(states.items())}
+        kinds: dict[str, set[str]] = {}
+        for p, why in (n.get("prerequisites") or {}).items():
+            for w in why or []:
+                kinds.setdefault(str(w).split(":", 1)[0].strip(), set()).add(p)
+        n["dependency_kinds"] = {kk: sorted(v) for kk, v in sorted(kinds.items())}
+        if isinstance(n.get("execution_unit"), dict):
+            n["execution_unit"]["check_plan"] = [dict(r) for r in n["check_plan"]]
+    for o in sorted(repair):
+        if o in affects:
+            repair[o]["causal_scope"] = {
+                "affects": [{"outcome": b, "checks": sorted(c)} for b, c in sorted(affects[o].items())],
+                "remeasure": REMEASURE_RULE}
+        else:
+            repair[o].pop("causal_scope", None)
+    summary = {
+        "version": CHECK_SCHEDULE,
+        "milestones": [{"id": m, "title": MILESTONE_TITLES[m]} for m in MILESTONES],
+        "points": dict(POINTS),
+        "counts": counts,
+        "qualifications": sorted(qualifications),
+        "findings": sorted(findings, key=lambda f: (f["code"], f["outcome"], f["requirement"], f["check"])),
+    }
+    doc["check_schedule"] = summary
+    return summary
