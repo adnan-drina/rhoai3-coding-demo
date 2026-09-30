@@ -1344,6 +1344,59 @@ class LifecycleReconciliation(unittest.TestCase):
             NC.issue(r.root, r.board, task_id=tid, run_id=run3, claim_lock=lock3)
         self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
 
+    def test_a_repeated_issue_keeps_the_current_runs_edits(self):
+        """V29-3 (architect reproduction of 0dd677ba): old stopped run -> new issue -> new legitimate edit ->
+        repeated issue parked the CURRENT worker's repair under the older run and reset it."""
+        r = self.r
+        tid, old, iss = r.issue("build:rk:pom")
+        rel = iss["allowed_paths"][0]
+        r.edit(rel, "<project>left by the stopped run</project>\n")
+        r.native.end_run(tid, "ready", "gave_up")                          # no terminator ran
+        run, lock = r.native.claim(tid)
+        first = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
+        self.assertEqual([a["run"] for a in r.board.records(tid, NC.ABANDONED)], [old])   # the old run's leftovers
+        import native_gate as NG
+        from planner.paths import LOOP_ISSUED
+        mirror_layout(r.root)
+        key = NG.write_issued_projection(r.root, first)
+        proj = json.loads((r.root / LOOP_ISSUED).read_text())
+        proj["continuations"] = [{"n": 1, "reported": ["x"]}]                # the loop wrote onto its projection
+        (r.root / LOOP_ISSUED).write_text(json.dumps(proj))
+        live = "<project>legitimate current-run repair</project>\n"
+        r.edit(rel, live)
+        again = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
+        self.assertEqual((r.root / rel).read_text(), live)                   # byte-identical
+        self.assertTrue(again["replayed"] and again["in_progress"], again)
+        self.assertEqual(NG._keep_or_write_projection(r.root, again), key)  # the projection is kept as it stands
+        self.assertEqual(json.loads((r.root / LOOP_ISSUED).read_text())["continuations"], proj["continuations"])
+        self.assertEqual((again["record"], again["baseline_tree"]), (first["record"], first["baseline_tree"]))
+        ab = r.board.records(tid, NC.ABANDONED)
+        self.assertEqual([a["run"] for a in ab], [old])                       # nothing new attributed to any run
+        self.assertEqual(len([x for x in r.board.records(tid, "issue") if x["run"] == run]), 1)
+        # the loop's re-issue (a new attempt) would re-baseline over unjudged edits: refused, edits kept
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_IN_PROGRESS")
+        # an edit outside what this run was issued: the drift refusal, and still nothing is set aside
+        r.edit("src/main/java/com/acme/shop/Unrelated.java", "class Unrelated {}\n")
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual((r.root / rel).read_text(), live)
+        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+
+    def test_leftovers_of_a_run_not_proven_ended_are_not_abandoned(self):
+        r = self.r
+        tid, old, iss = r.issue("build:rk:pom")
+        r.edit(iss["allowed_paths"][0], "<project>still being written</project>\n")
+        r.native.end_run(tid, "ready", "gave_up")
+        r.native.runs_[old]["status"] = "running"                            # the native row says the worker lives
+        run, lock = r.native.claim(tid)
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

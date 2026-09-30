@@ -861,17 +861,25 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         recover_accept(root, board, task_id=task_id, skip_run=run_id)
     pending = _open_pending(board, task_id)
     committed = commit_product_tree(root, head) if head else ""
+    in_progress = None
     if committed and tree != committed and not (pending and pending.get("candidate") == tree):
+        # V29-3: THIS run was already issued, so the edits are its own work in progress -- never a
+        # stopped run's leftovers. The repeat is measured against the run's issued baseline and may
+        # only replay that issue; nothing is set aside (the architect's reproduction: a repeated
+        # issue parked the current worker's repair under the older run 29 and reset it).
+        in_progress = _in_progress_issue(root, board, task_id=task_id, run_id=run_id, head=head)
+        if in_progress is not None:
+            tree = committed
         # a run the runtime stopped left its unjudged edits: set them aside as evidence (v29 run 75)
-        if park_abandoned(root, board, task_id=task_id, run_id=run_id):
+        elif park_abandoned(root, board, task_id=task_id, run_id=run_id):
             tree = _product_tree(root)
-    if committed and tree != committed and not (pending and pending.get("candidate") == tree):
+    if in_progress is None and committed and tree != committed and not (pending and pending.get("candidate") == tree):
         raise Refusal("ISSUE_BASELINE_DRIFT", "the product tree differs from HEAD %s and is not the retained candidate of %s; "
                       "unexplained edits are not blessed" % (head[:12], oid))
     worklist, why = load_worklist(root)
     if role == "repair" and worklist is None:
         raise Refusal("ISSUE_" + why, "an outcome is issued against the measured work list")
-    if role == "repair" and str(node.get("class") or "") in ORPHAN_WAITERS:
+    if role == "repair" and str(node.get("class") or "") in ORPHAN_WAITERS and in_progress is None:
         routed = route_orphans(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, worklist=worklist, tree=tree)
         if routed is not None and routed.get("self"):
             plan = board.plan(run)
@@ -925,6 +933,11 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     fields = dict(outcome_id=oid, role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
                   budget_key=budget["key"], revision=int(plan["revision"]))
     rec = _unchanged_issue(board, task_id, run_id, fields) if replay_unchanged else None
+    if in_progress is not None and rec is None:
+        # a NEW issue would re-scope or re-baseline over edits nobody has judged yet
+        raise Refusal("ISSUE_IN_PROGRESS", "run %d of %s holds unjudged edits of its issue %s (%s); judge them first "
+                      "(run-verify.sh --mode acceptance, then advance.py). Nothing was set aside and nothing was recorded"
+                      % (int(run_id), oid, in_progress["key"], in_progress.get("cluster") or "no cluster"))
     replayed = rec is not None
     if rec is None:
         seq = len([r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]) + 1
@@ -950,8 +963,9 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     if replayed:
         nxt = ("ALREADY ISSUED: issue %d of this run is unchanged (same scope, baseline, budget and plan revision; nothing "
                "recorded since), so nothing new was recorded. To inspect it, read verification/loop/issued.json or run "
-               "brief.py; issuing again changes nothing. %s" % (seq, nxt)).strip()
-    return {"issue_id": seq, "replayed": replayed, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
+               "brief.py; issuing again changes nothing.%s %s" % (
+                   seq, " Your edits in progress are kept as they are." if in_progress is not None else "", nxt)).strip()
+    return {"issue_id": seq, "replayed": replayed, "in_progress": in_progress is not None, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
             "cluster": cluster, "allowed_paths": allowed, "budget": budget, "retained_candidate": bool(pending),
             "objective": objective,
             "planned_unit": (dict(unit, owed=unit.get("owed") or [], bounds=unit.get("bounds") or {},
@@ -979,6 +993,28 @@ def amendment_projection(root: Path, head: str, a: dict[str, Any]) -> dict[str, 
         got = hashlib.sha256(blob.stdout).hexdigest() if blob is not None and blob.returncode == 0 else ""
     return {"path": a["path"], "reason": a["reason"], "locus": a["locus"], "evidence": a.get("evidence") or {},
             "granted_before_sha256": got, "dirty_at_grant": False}
+
+
+def _in_progress_issue(root: Path, board: Board, *, task_id: str, run_id: int, head: str) -> dict[str, Any] | None:
+    """The latest issue of THIS native run when the run has been issued and the
+    tree carries edits (its work in progress); None when this run was never
+    issued, so the edits cannot be its own. An edit outside everything the run
+    was issued, or a HEAD that moved under the run's baseline, is the drift
+    refusal -- and still nothing is set aside."""
+    mine = [r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == int(run_id)]
+    if not mine:
+        return None
+    last = mine[-1]
+    if str(last.get("baseline_commit") or "") != head:
+        raise Refusal("ISSUE_BASELINE_DRIFT", "run %d was issued at %s and HEAD is now %s with uncommitted edits; nothing "
+                      "was set aside" % (int(run_id), str(last.get("baseline_commit") or "none")[:12], head[:12]))
+    issued = {p for r in mine for p in (r.get("allowed_paths") or [])}
+    _head_now, changed = _changed_vs_head(root)
+    outside = sorted(set(changed) - issued)
+    if outside:
+        raise Refusal("ISSUE_BASELINE_DRIFT", "%s changed outside what run %d was issued (%s); nothing was set aside"
+                      % (", ".join(outside[:4]), int(run_id), ", ".join(sorted(issued)[:4]) or "no product paths"))
+    return last
 
 
 ORPHAN_WAITERS = ("behavior", "runtime")
@@ -1892,16 +1928,32 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     head, changed = _changed_vs_head(root)
     if not changed or _open_pending(board, task_id) is not None:
         return None
-    runs = sorted({int(r.get("run") or 0) for r in board.records(task_id, "issue")} - {0, int(run_id)})
+    issues = board.records(task_id, "issue")
+    if any(int(r.get("run") or 0) == int(run_id) for r in issues):
+        return None           # V29-3: the current run was issued, so the edits may be its own: never parked
+    runs = sorted({int(r.get("run") or 0) for r in issues} - {0, int(run_id)})
     if not runs:
         return None
     last = runs[-1]
+    if not run_ended(board, task_id, last):
+        return None           # a run not proven ended may still be writing: its edits are not "abandoned"
     issued = {p for r in board.records(task_id, "issue") if int(r.get("run") or 0) == last
               for p in (r.get("allowed_paths") or [])}
     if not set(changed) <= issued:
         return None
     return dict(_stash(root, board, task_id=task_id, run_id=last, head=head, changed=sorted(changed), kind=ABANDONED),
                 run=last)
+
+
+def run_ended(board: Board, task_id: str, run_id: int) -> bool:
+    """Has native run ``run_id`` of ``task_id`` ENDED? Only when the task is not
+    running it, and the native run row exists and is no longer running. A run
+    the board does not know is not proven ended."""
+    t = board.task(task_id) or {}
+    if t.get("status") == "running" and int(t.get("current_run_id") or 0) == int(run_id):
+        return False
+    row = board.native.run(int(run_id)) if hasattr(board.native, "run") else None
+    return bool(row) and str(row.get("task_id") or task_id) == task_id and str(row.get("status") or "") != "running"
 
 
 # ---------------------------------------------------------------------------

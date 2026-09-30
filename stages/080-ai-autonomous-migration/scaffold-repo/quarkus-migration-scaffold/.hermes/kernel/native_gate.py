@@ -110,6 +110,25 @@ def write_issued_projection(root: Path, issued: dict) -> str:
     return key
 
 
+def _keep_or_write_projection(root: Path, issued: dict) -> str:
+    """A replay while the run's edits are in progress (V29-3) keeps the run's own
+    projection as it stands: the loop has written onto it since (a family's
+    continuations), and rewriting it from the record would erase that bound.
+    Anything else is (re)written from the issue record."""
+    from planner.paths import LOOP_ISSUED
+    p = root / LOOP_ISSUED
+    if issued.get("in_progress") and issued.get("replayed") and issued.get("cluster") and p.is_file():
+        try:
+            have = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            have = {}
+        key = str(have.get("idempotency_key") or "")
+        if str(have.get("task_id") or "") == issued["task_id"] and key.endswith(
+                ":%s:issue%d:r%d" % (issued["cluster"], int(issued["issue_id"]), int(issued["run_id"]))):
+            return key
+    return write_issued_projection(root, issued)
+
+
 def _objective_row(root: Path, issued: dict, wl: dict | None) -> dict:
     """The card row of an objective issued whole: every still-reported
     obligation it admitted (by line-free identity, or id for an incident), the
@@ -258,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
                     return _refused(root, task, run_id, code, detail)
             out = NC.issue(root, board, task_id=task, run_id=run_id,
                            claim_lock=(os.environ.get("HERMES_KANBAN_CLAIM_LOCK") or "").strip(), replay_unchanged=True)
-            out["issued_record"] = write_issued_projection(root, out)
+            out["issued_record"] = _keep_or_write_projection(root, out)
         elif ns.cmd == "verdict":
             from planner.canonical import product_tree_sha256
             out = NC.record_verdict(root, board, task_id=task, run_id=run_id, verdict=ns.verdict,
