@@ -1,0 +1,216 @@
+diff --git a/evidence/response-adapters/media-type.json b/evidence/response-adapters/media-type.json
+new file mode 100644
+index 0000000..887075d
+--- /dev/null
++++ b/evidence/response-adapters/media-type.json
+@@ -0,0 +1,67 @@
++{
++  "adapter": {
++    "config": "src/main/resources/application.properties",
++    "contract": "source-media-type-parameter-adapter/v1",
++    "families": [
++      "rhoai3.source-media-type."
++    ],
++    "install": "python3 .hermes/skills/migration/restore-source-response-shape/scripts/install-response-adapter.py --root . --adapter media-type",
++    "kind": "media-type",
++    "path": "src/main/java/io/rhoai3/migration/response/SourceMediaTypeParameterAdapter.java",
++    "source": "https://quarkus.io/version/3.27/guides/http-reference#filters",
++    "template": "skills/migration/restore-source-response-shape/templates/SourceMediaTypeParameterAdapter.java.template",
++    "template_sha256": "95ba774c07980cf706ab6c919cc94657f0598fd3c0ca82821aa203a03b8a092c",
++    "type": "io.rhoai3.migration.response.SourceMediaTypeParameterAdapter"
++  },
++  "adapter_sha256": "95ba774c07980cf706ab6c919cc94657f0598fd3c0ca82821aa203a03b8a092c",
++  "authority": {
++    "card": "",
++    "items": [
++      "rehearsal:representation:auth-admin-create[enabled]",
++      "rehearsal:representation:auth-admin-read[enabled]",
++      "rehearsal:representation:auth-disabled-with-credentials[disabled]",
++      "rehearsal:representation:cors-actual-read[disabled]",
++      "rehearsal:representation:owner-create-empty-pets[disabled]",
++      "rehearsal:representation:owner-create-omitted-pets-readback[disabled]",
++      "rehearsal:representation:owner-create-omitted-pets[disabled]",
++      "rehearsal:representation:owner-get-1[disabled]",
++      "rehearsal:representation:owner-search-davis[disabled]",
++      "rehearsal:representation:owner-update-readback[disabled]",
++      "rehearsal:representation:owner-update-seeded-readback[disabled]",
++      "rehearsal:representation:owner-update-seeded[disabled]",
++      "rehearsal:representation:owner-update[disabled]",
++      "rehearsal:representation:owners-list-after-creates[disabled]",
++      "rehearsal:representation:owners-list[disabled]"
++    ],
++    "kind": "obligation"
++  },
++  "basis": {
++    "media_types": [
++      "application/json"
++    ],
++    "parameter": "charset",
++    "value": "utf-8"
++  },
++  "changed": [
++    "src/main/java/io/rhoai3/migration/response/SourceMediaTypeParameterAdapter.java",
++    "src/main/resources/application.properties"
++  ],
++  "config_sha256_after": "8fcb608c620b6e8aa020b0742d3219c17702ae1c78b19697962871e8c6951f80",
++  "config_sha256_before": "58e1ef94c1a18330e7d1594785789acefcea1547ff0a762fee1e4da0c1c01463",
++  "properties": [
++    {
++      "key": "rhoai3.source-media-type.parameter",
++      "value": "charset"
++    },
++    {
++      "key": "rhoai3.source-media-type.parameter-value",
++      "value": "utf-8"
++    },
++    {
++      "key": "rhoai3.source-media-type.media-types",
++      "value": "application/json"
++    }
++  ],
++  "replaced": [],
++  "schema": "rhoai3.response-adapter-receipt/v1"
++}
+diff --git a/src/main/java/io/rhoai3/migration/response/SourceMediaTypeParameterAdapter.java b/src/main/java/io/rhoai3/migration/response/SourceMediaTypeParameterAdapter.java
+new file mode 100644
+index 0000000..9cc7a90
+--- /dev/null
++++ b/src/main/java/io/rhoai3/migration/response/SourceMediaTypeParameterAdapter.java
+@@ -0,0 +1,122 @@
++package io.rhoai3.migration.response;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++
++import jakarta.enterprise.context.ApplicationScoped;
++import jakarta.enterprise.event.Observes;
++
++import org.eclipse.microprofile.config.Config;
++import org.eclipse.microprofile.config.ConfigProvider;
++
++import io.quarkus.vertx.http.runtime.filters.Filters;
++import io.quarkus.vertx.http.runtime.security.SecurityHandlerPriorities;
++import io.vertx.core.http.HttpServerResponse;
++import io.vertx.ext.web.RoutingContext;
++
++/**
++ * One decided media-type parameter, removed where the source never sent it.
++ *
++ * <p>Harness capability {@code source-media-type-parameter-adapter/v1} (ADR-019). This file
++ * is installed byte-for-byte by the harness and is authorized by its OWN obligation
++ * (a Content-Type representation difference), never by a CORS obligation. It carries
++ * no application value: the parameter name, the parameter value and the media types
++ * come from configuration the harness renders from the recorded difference
++ * ({@code rhoai3.source-media-type.*}).
++ *
++ * <p>It removes exactly that parameter, with exactly that value, from a response of
++ * exactly those media types under the application root. Every other parameter, every
++ * other media type, the body and its encoding are left as they are. Without complete
++ * configuration it registers nothing.
++ */
++@ApplicationScoped
++public class SourceMediaTypeParameterAdapter {
++
++    static final String PREFIX = "rhoai3.source-media-type.";
++    static final int PRIORITY = SecurityHandlerPriorities.CORS + 100;
++    static final String CONTENT_TYPE = "Content-Type";
++
++    void register(@Observes Filters filters) {
++        Config config = ConfigProvider.getConfig();
++        String parameter = config.getOptionalValue(PREFIX + "parameter", String.class).orElse("").trim();
++        String value = config.getOptionalValue(PREFIX + "parameter-value", String.class).orElse("").trim();
++        List<String> types = new ArrayList<>();
++        for (String t : config.getOptionalValue(PREFIX + "media-types", String.class).orElse("").split(",")) {
++            if (!t.isBlank()) {
++                types.add(t.trim().toLowerCase(Locale.ROOT));
++            }
++        }
++        if (parameter.isEmpty() || value.isEmpty() || types.isEmpty()) {
++            return;
++        }
++        String root = config.getOptionalValue("quarkus.http.root-path", String.class).orElse("/");
++        String prefix = root.startsWith("/") ? root : "/" + root;
++        String base = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
++        filters.register(ctx -> {
++            String path = ctx.request().path();
++            if (base.isEmpty() || (path != null && (path.equals(base) || path.startsWith(base + "/")))) {
++                HttpServerResponse response = ctx.response();
++                ctx.addHeadersEndHandler(ignored -> rewrite(response, parameter, value, types));
++            }
++            ctx.next();
++        }, PRIORITY);
++    }
++
++    static void rewrite(HttpServerResponse response, String parameter, String value, List<String> types) {
++        String header = response.headers().get(CONTENT_TYPE);
++        if (header == null) {
++            return;
++        }
++        String result = without(header, parameter, value, types);
++        if (!result.equals(header)) {
++            response.headers().set(CONTENT_TYPE, result);
++        }
++    }
++
++    /** The header with the decided parameter removed, or the header unchanged. */
++    static String without(String header, String parameter, String value, List<String> types) {
++        List<String> parts = split(header);
++        if (parts.isEmpty() || !types.contains(parts.get(0).trim().toLowerCase(Locale.ROOT))) {
++            return header;
++        }
++        StringBuilder out = new StringBuilder(parts.get(0).trim());
++        boolean removed = false;
++        for (int i = 1; i < parts.size(); i++) {
++            String p = parts.get(i);
++            int eq = p.indexOf('=');
++            String name = (eq < 0 ? p : p.substring(0, eq)).trim();
++            String v = eq < 0 ? "" : p.substring(eq + 1).trim();
++            if (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
++                v = v.substring(1, v.length() - 1);
++            }
++            if (name.equalsIgnoreCase(parameter) && v.equalsIgnoreCase(value)) {
++                removed = true;
++                continue;
++            }
++            out.append(';').append(p);
++        }
++        return removed ? out.toString() : header;
++    }
++
++    /** Split on ';' outside quoted strings. */
++    static List<String> split(String header) {
++        List<String> out = new ArrayList<>();
++        StringBuilder cur = new StringBuilder();
++        boolean quoted = false;
++        for (int i = 0; i < header.length(); i++) {
++            char c = header.charAt(i);
++            if (c == '"') {
++                quoted = !quoted;
++            }
++            if (c == ';' && !quoted) {
++                out.add(cur.toString());
++                cur.setLength(0);
++            } else {
++                cur.append(c);
++            }
++        }
++        out.add(cur.toString());
++        return out;
++    }
++}
+diff --git a/src/main/resources/application.properties b/src/main/resources/application.properties
+index 3915ea3..0220c52 100644
+--- a/src/main/resources/application.properties
++++ b/src/main/resources/application.properties
+@@ -123,3 +123,10 @@ rhoai3.source-cors.rule.0.mapping.31=DELETE /api/visits/{visitId}
+ rhoai3.source-cors.rule.0.mapping.32=GET /api/visits/{visitId}
+ rhoai3.source-cors.rule.0.mapping.33=PUT /api/visits/{visitId}
+ # rhoai3:source-cors:end
++
++# rhoai3:source-media-type:begin -- harness capability source-media-type-parameter-adapter/v1 (ADR-019), installed by restore-source-response-shape.
++# Every value below is rendered from the evidence; do not edit by hand, re-run the installer.
++rhoai3.source-media-type.parameter=charset
++rhoai3.source-media-type.parameter-value=utf-8
++rhoai3.source-media-type.media-types=application/json
++# rhoai3:source-media-type:end

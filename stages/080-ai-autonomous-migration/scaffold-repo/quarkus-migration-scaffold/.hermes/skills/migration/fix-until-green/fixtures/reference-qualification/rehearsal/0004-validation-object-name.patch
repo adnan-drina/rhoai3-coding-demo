@@ -1,0 +1,21 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java b/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java
+index e8c8927..4d2870e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest;
+ 
++import java.beans.Introspector;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Set;
+@@ -71,7 +72,7 @@ public class BindingErrorsResponse {
+ 	public void addAllErrors(Set<? extends ConstraintViolation<?>> violations) {
+ 		for (ConstraintViolation<?> violation : violations) {
+ 			BindingError error = new BindingError();
+-			error.setObjectName(violation.getRootBeanClass().getSimpleName());
++			error.setObjectName(Introspector.decapitalize(violation.getRootBeanClass().getSimpleName()));
+ 			error.setFieldName(violation.getPropertyPath().toString());
+ 			error.setFieldValue(String.valueOf(violation.getInvalidValue()));
+ 			error.setErrorMessage(violation.getMessage());

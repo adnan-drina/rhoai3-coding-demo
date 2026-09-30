@@ -1,0 +1,20 @@
+diff --git a/pom.xml b/pom.xml
+index 8eeed33..0c77926 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -206,6 +206,7 @@
+             </goals>
+             <configuration>
+               <inputSpec>${project.basedir}/src/main/resources/api-docs.yml</inputSpec>
++              <templateDirectory>${project.basedir}/src/main/openapi-templates</templateDirectory>
+               <modelPackage>org.springframework.samples.petclinic.dto</modelPackage>
+               <generatorName>jaxrs-spec</generatorName>
+               <library>quarkus</library>
+diff --git a/src/main/openapi-templates/beanValidation.mustache b/src/main/openapi-templates/beanValidation.mustache
+new file mode 100644
+index 0000000..efd11d2
+--- /dev/null
++++ b/src/main/openapi-templates/beanValidation.mustache
+@@ -0,0 +1 @@
++{{#required}}@NotNull {{/required}}{{#isContainer}}{{^items.isPrimitiveType}}{{^items.isDate}}{{^items.isDateTime}}{{^items.isString}}{{^items.isFile}}{{^items.isEnumOrRef}}@Valid {{/items.isEnumOrRef}}{{/items.isFile}}{{/items.isString}}{{/items.isDateTime}}{{/items.isDate}}{{/items.isPrimitiveType}}{{/isContainer}}{{^isContainer}}{{^isPrimitiveType}}{{^isDate}}{{^isDateTime}}{{^isString}}{{^isFile}}{{^isEnumOrRef}}@Valid {{/isEnumOrRef}}{{/isFile}}{{/isString}}{{/isDateTime}}{{/isDate}}{{/isPrimitiveType}}{{/isContainer}}{{>beanValidationCore}}
+\ No newline at end of file
