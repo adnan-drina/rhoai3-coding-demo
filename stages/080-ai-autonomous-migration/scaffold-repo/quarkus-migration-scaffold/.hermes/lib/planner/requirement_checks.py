@@ -395,24 +395,42 @@ VERIFICATION_SCOPE_SCHEMA = "rhoai3.verification-scope/v1"
 
 def measured_check_rows(plan: dict[str, Any], node: dict[str, Any]) -> list[dict[str, Any]]:
     """The checks a unit's verification must MEASURE: the node's immediate check
-    plan; for a node that has none, the parity and Location checks of the
-    requirements it owns (v30 t_557b0bed: an M3 follow-up created from a
-    scheduled check owns the requirement and judges its
-    behavior:repository-effects, but carries no check plan -- it was issued with
-    no verification scope, no comparison ran and the check stayed UNKNOWN on
-    every run while the whole board waited on it)."""
+    plan; for a node that has none, the comparisons its OWN requirement checks
+    are judged on (v30 t_557b0bed: an M3 follow-up created from a scheduled check
+    owns behavior:repository-effects but carries no check plan -- it was issued
+    with no verification scope, no comparison ran and the check stayed UNKNOWN
+    on every run while the whole board waited on it).
+
+    A ``parity:``/``location:`` requirement check measures itself; a
+    ``behavior:repository-effects:<X>`` check measures exactly the scenarios
+    its owned requirements' facts.verification name (the same rows
+    measure_checks judges it on) -- never the requirement's whole acceptance
+    list, which other outcomes own."""
     rows = [r for r in node.get("check_plan") or [] if isinstance(r, dict) and r.get("stage") == "immediate"]
     if rows:
         return rows
     reqs = {str(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}
+    owned = [reqs[str(q)] for q in node.get("requirements") or [] if str(q) in reqs]
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for q in node.get("requirements") or []:
-        for chk in (reqs.get(str(q)) or {}).get("acceptance") or []:
-            chk = str(chk)
-            if chk.startswith(("parity:sc:", "parity:ep:", "location:")) and chk not in seen:
-                seen.add(chk)
-                out.append({"check": chk, "stage": "immediate", "requirement": str(q), "derived": "owned requirement acceptance"})
+
+    def add(chk: str, req: str, why: str) -> None:
+        if chk not in seen:
+            seen.add(chk)
+            out.append({"check": chk, "stage": "immediate", "requirement": req, "derived": why})
+    for chk in (node.get("acceptance") or {}).get("requirement_checks") or []:
+        chk = str(chk)
+        if chk.startswith(("parity:sc:", "parity:ep:", "location:")):
+            req = next((str(r.get("id")) for r in owned if chk in (r.get("acceptance") or [])), "")
+            add(chk, req, "owned requirement check")
+        elif chk.startswith("behavior:repository-effects:"):
+            for r in owned:
+                if chk not in (r.get("acceptance") or []):
+                    continue
+                for v in (r.get("facts") or {}).get("verification") or []:
+                    for s in (v or {}).get("scenarios") or [] if isinstance(v, dict) else []:
+                        add("parity:" + str(s) if str(s).startswith("sc:") else "parity:sc:" + str(s), str(r.get("id")),
+                            "scenario %s judges" % chk)
     return out
 
 

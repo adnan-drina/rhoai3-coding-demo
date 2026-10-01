@@ -242,8 +242,13 @@ class EarliestMeasurement(unittest.TestCase):
             # the repaired candidate is compared again: nothing open, every repository scenario PASS on it
             d.measured()
             fiss = NC.issue(r.root, r.board, task_id=ftid, run_id=frun)
-            acc = r.accept_on_run(ftid, frun, fiss, classes=("build", "compile", "tests"), scenarios=REPO_SCENARIOS,
-                                  attempt="2", edit=False, drop=False)
+            # v30 H-10: the follow-up is ISSUED the scenarios its owed effects check judges, and its acceptance is
+            # run-verify's comparison of exactly that scope (an empty scope once let it pass on a worker's list)
+            fscope = (fiss.get("planned_unit") or {}).get("verification") or {}
+            self.assertEqual(sorted(s for v in fscope["scenarios_by_mode"].values() for s in v),
+                             sorted(s for q in plan["requirements"] if q["id"] == CO_T.REPO_O
+                                    for v in q["facts"]["verification"] for s in v["scenarios"]))
+            acc = d.accept_verified(ftid, frun, fscope["scenarios_by_mode"], attempt="2")
             self.assertTrue(acc["outcome_accepted"], acc)
             # 3. the shared producer's repair marks every affected path: Order, Item, the Item contract, the URI source
             self.assertEqual(sorted(acc["remeasure"]), sorted(a["outcome"] for a in NC._node(plan, d.owner)["causal_scope"]["affects"]))

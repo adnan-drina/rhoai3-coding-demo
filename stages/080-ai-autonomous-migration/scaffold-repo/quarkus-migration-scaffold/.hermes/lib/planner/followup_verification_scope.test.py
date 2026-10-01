@@ -37,11 +37,14 @@ def main() -> int:
         print(("ok " if cond else "FAIL ") + what + ("" if cond else ": %r" % (detail,)))
         ok = ok and cond
 
-    plan = {"requirements": [{"id": REQ, "acceptance": [
-        "behavior:repository-effects:OwnerRepository", "unit:fragment-implementation",
-        "parity:sc:delete-cascading-owners-1", "parity:sc:auth-allowed-delete-cascading-owners-1",
-        "parity:sc:auth-anonymous-delete-cascading-owners-1"]}]}
-    followup = {"outcome_id": "followup:objective:o:m3g1", "requirements": [REQ], "check_plan": []}
+    EFF = "behavior:repository-effects:OwnerRepository"
+    plan = {"requirements": [{"id": REQ, "acceptance": [EFF, "unit:fragment-implementation", "parity:sc:cors-actual-1",
+                                                        "parity:sc:create-owners"],
+                              "facts": {"verification": [{"member": "OwnerRepository#delete", "status": "applicable", "scenarios": [
+                                  "sc:delete-cascading-owners-1", "sc:auth-allowed-delete-cascading-owners-1",
+                                  "sc:auth-anonymous-delete-cascading-owners-1"]}]}}]}
+    followup = {"outcome_id": "followup:objective:o:m3g1", "requirements": [REQ], "check_plan": [],
+                "acceptance": {"requirement_checks": [EFF]}}
     owner = {"outcome_id": "objective:o", "requirements": [REQ],
              "check_plan": [{"check": "gate:package", "stage": "immediate"},
                             {"check": "parity:sc:delete-cascading-owners-1", "stage": "later"}]}
@@ -52,7 +55,8 @@ def main() -> int:
         rows = measured_check_rows(plan, followup)
         check([r["check"] for r in rows] == ["parity:sc:delete-cascading-owners-1", "parity:sc:auth-allowed-delete-cascading-owners-1",
                                              "parity:sc:auth-anonymous-delete-cascading-owners-1"],
-              "a follow-up with no check plan measures its owned requirements' parity checks (not the unit or behavior names)", rows)
+              "a follow-up with no check plan measures exactly the scenarios its owned effects check judges -- not the "
+              "requirement's other parity entries (CORS, create), which other outcomes own", rows)
         s = verification_scope(root, plan, followup)
         check(s["scenarios_by_mode"] == {"disabled": ["sc:delete-cascading-owners-1"],
                                          "enabled": ["sc:auth-allowed-delete-cascading-owners-1", "sc:auth-anonymous-delete-cascading-owners-1"]}
@@ -61,7 +65,11 @@ def main() -> int:
               "a node WITH an immediate check plan keeps exactly that plan (no requirement rows added)")
         check(measured_check_rows({"requirements": []}, {"requirements": [], "check_plan": []}) == [],
               "no check plan and no requirement: nothing to measure")
-        corpora(root, ["delete-cascading-owners-1"], ["delete-cascading-owners-1", "auth-allowed-delete-cascading-owners-1"])
+        check(measured_check_rows(plan, dict(followup, acceptance={"requirement_checks": ["parity:sc:create-owners"]}))
+              == [{"check": "parity:sc:create-owners", "stage": "immediate", "requirement": REQ, "derived": "owned requirement check"}],
+              "an owned parity check measures itself")
+        corpora(root, ["delete-cascading-owners-1"], ["delete-cascading-owners-1", "auth-allowed-delete-cascading-owners-1",
+                                                       "auth-anonymous-delete-cascading-owners-1"])
         s = verification_scope(root, plan, followup)
         check(any("delete-cascading-owners-1" in u["why"] for u in s["unresolved"]),
               "a scenario two corpora hold is unresolved, never guessed", s["unresolved"])
