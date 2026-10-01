@@ -393,6 +393,29 @@ def _location_check(req: dict[str, Any], scen: Any) -> tuple[str, str]:
 VERIFICATION_SCOPE_SCHEMA = "rhoai3.verification-scope/v1"
 
 
+def measured_check_rows(plan: dict[str, Any], node: dict[str, Any]) -> list[dict[str, Any]]:
+    """The checks a unit's verification must MEASURE: the node's immediate check
+    plan; for a node that has none, the parity and Location checks of the
+    requirements it owns (v30 t_557b0bed: an M3 follow-up created from a
+    scheduled check owns the requirement and judges its
+    behavior:repository-effects, but carries no check plan -- it was issued with
+    no verification scope, no comparison ran and the check stayed UNKNOWN on
+    every run while the whole board waited on it)."""
+    rows = [r for r in node.get("check_plan") or [] if isinstance(r, dict) and r.get("stage") == "immediate"]
+    if rows:
+        return rows
+    reqs = {str(r.get("id")): r for r in plan.get("requirements") or [] if isinstance(r, dict)}
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for q in node.get("requirements") or []:
+        for chk in (reqs.get(str(q)) or {}).get("acceptance") or []:
+            chk = str(chk)
+            if chk.startswith(("parity:sc:", "parity:ep:", "location:")) and chk not in seen:
+                seen.add(chk)
+                out.append({"check": chk, "stage": "immediate", "requirement": str(q), "derived": "owned requirement acceptance"})
+    return out
+
+
 def verification_scope(root: Path, plan: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
     """What a planned unit's own checks must MEASURE, from the admitted plan
     and the bound scenario corpora -- never from the remaining work list
@@ -426,7 +449,7 @@ def verification_scope(root: Path, plan: dict[str, Any], node: dict[str, Any]) -
         except ValueError:
             continue
         corpora[mode] = {_sid(s.get("id")) for s in doc.get("scenarios") or [] if isinstance(s, dict) and s.get("id")}
-    rows = [r for r in node.get("check_plan") or [] if isinstance(r, dict) and r.get("stage") == "immediate"]
+    rows = measured_check_rows(plan, node)
     by_mode: dict[str, set[str]] = {}
     oracles: set[str] = set()
     unresolved: list[dict[str, str]] = []

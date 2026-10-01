@@ -969,8 +969,9 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                     allowed = sorted(g.get("paths") or [])
                     # the unit's checks are MEASURED: its issue carries what they measure (v29 Owner: a
                     # verification-only unit was issued with no scenarios and no comparison ever ran)
+                    from planner.requirement_checks import measured_check_rows
                     if any(str(r.get("check") or "").startswith(("parity:sc:", "parity:ep:", "location:"))
-                           for r in node.get("check_plan") or [] if isinstance(r, dict)):
+                           for r in measured_check_rows(plan, node)):
                         from planner.requirement_checks import verification_scope
                         scope = verification_scope(root, plan, node)
                         if scope["unresolved"]:
