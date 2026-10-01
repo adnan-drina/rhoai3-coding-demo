@@ -143,17 +143,29 @@ M3 cards and recovery (after v20, 2026-09-27):
   measured at an earlier card (`schedule_at_issue`) carries structured
   witnesses (`requirement_checks.effect_witnesses`: status/body/server-error
   findings on its scenarios, comparison FAILs no finding explains, unknown
-  scenarios). Each finding is resolved by `outcome_graph.owner_of_finding`.
-  Every failing finding owned by an open outcome (the holder included): the
-  row stays FAIL and owed with its `repair_owners`, no follow-up is minted,
-  and the holder is issued its own cluster (v30: the Owner card waited on a
-  follow-up whose acceptance needed the Owner card's own finding). Unowned or
-  record-only evidence: the owner's follow-up (its budget) is minted; in a
-  mixed failure it waits on the contributing owners and none of them waits on
-  it. A revision whose acceptance dependencies close a cycle refuses
-  `ACCEPTANCE_CYCLE` before publication; two claimants of one finding are
-  reported, never resolved by picking one. Raw verdicts never change: the
-  check is FAIL until measured PASS, and M4 measures it again.
+  scenarios). An owner must be EXECUTABLE: a native task that exists and is
+  not done or archived. A finding resolves by `outcome_graph.owner_of_finding`;
+  a record-only FAIL resolves to the executable outcome whose immediate checks
+  judge that scenario now (`judged_now`: parity, Location coverage, effects
+  verification) -- that outcome's own repair, never a follow-up behind it.
+  Every failing witness owned: the row stays FAIL and owed with its
+  `repair_owners`, no follow-up is minted (v30: the Owner card waited on a
+  follow-up whose acceptance needed the Owner card's own finding). Unowned
+  evidence (e.g. a regression of an accepted card's scenario): the owner's
+  follow-up (its budget); it waits on the contributing owners, every open
+  outcome judging its scenarios waits on it, and a revision whose acceptance
+  dependencies close a cycle refuses `ACCEPTANCE_CYCLE` before publication.
+  Ambiguous ownership is a typed unresolved result: nothing is published.
+  An unmeasured scenario is verification debt (`verification_owed`), never a
+  repair and never PASS. Raw verdicts never change; M4 measures it again.
+- **Scheduled results settle before handoff** (architect decision 2,
+  2026-10-01). Every acceptance exit (accept-commit, unchanged rework,
+  recovered) measures and routes the rows scheduled at the card; the
+  `schedule-measure` key carries the phase and the result, so a fresh
+  same-tree measurement is its own record and a replay is idempotent; a
+  `schedule-settled` record follows the routing. The review/complete gate
+  refuses a positive acceptance whose schedule is not settled, and
+  `evaluate_recovered` settles one interrupted between the two.
 - **Repeated refusal.** The third identical `native_gate.py` refusal in one
   run parks that run's candidate and answers `REPEATED_REFUSAL`. K2 then
   refuses every tool except `kanban_block` for that run.
