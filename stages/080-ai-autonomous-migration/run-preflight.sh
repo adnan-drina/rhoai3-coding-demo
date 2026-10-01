@@ -328,7 +328,13 @@ def leaves(x):
     elif isinstance(x, list):
         for v in x:
             yield from leaves(v)
-windows = list(leaves(c))
+# the SELECTED model's limits against the selected model's served window (E-1 v31, 2026-10-01: with
+# qwen3-6-27b selected, the still-configured qwen38 provider's 220000 -- below ITS 262144 window --
+# was compared with qwen3-6-27b's 131072 and refused a correct config)
+_m = c.get('model') or {}
+_sel = ((c.get('providers') or {}).get(_m.get('provider')) or {}).get('models', {}).get(_m.get('default'))
+windows = list(leaves({'model': _m, 'selected': _sel or {}}))
+require(_sel is not None, 'the selected model has no provider entry')
 require(windows and all((0 < v < WINDOW for v in windows)), 'context limit must be below served window')
 require(c.get('terminal', {}).get('timeout', 0) >= 600, 'terminal timeout')
 require(c.get('compression', {}).get('threshold', 0) >= 0.8, 'compression threshold')

@@ -2207,7 +2207,7 @@ data:
       HERMES_HOME="${hermes_home}" HERMES_MANAGED_DIR="${managed_dir}" \
         HERMES_ACCEPT_HOOKS=1 "${hermes_bin}" hooks doctor >/dev/null 2>&1 \
         || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
-      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-8-27b-int4; PVC overlays absent."
+      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=$(sed -n 's/^default=//p' "${managed_dir}/.rhoai3-model-pin" 2>/dev/null || echo unknown); PVC overlays absent."
 
       # Dashboard UI: dest-init does not npm-build. Overlay bake owns
       # HERMES_WEB_DIST (/usr/local/share/hermes/web_dist). Launcher is
