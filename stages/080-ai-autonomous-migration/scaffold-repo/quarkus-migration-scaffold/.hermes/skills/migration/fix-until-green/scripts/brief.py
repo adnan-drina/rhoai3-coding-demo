@@ -1443,6 +1443,9 @@ def main(argv: list[str] | None = None) -> int:
         elsewhere = sorted(r["id"] for r in others if r["id"] not in own["requirements"])
         if elsewhere:
             brief["issued_checks"]["other_owners_on_these_paths"] = elsewhere
+    unmet = outcome_unmet(root)
+    if unmet:
+        brief["outcome_unmet"] = unmet
     if cluster.get("not_open") and planned and not pending and not changed_now:
         owed = planned_owed_next(cluster["id"], write_set, planned, own, root)
         cluster["not_open"]["next"] = owed
@@ -1555,6 +1558,31 @@ def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:
                    len(recs), ", ".join("%s %d" % kv for kv in sorted(kinds.items())), min(recent, len(verdicts)),
                    len(verdicts), task))
     return "\n".join(out)
+
+
+def outcome_unmet(root: Path, board=None) -> dict | None:
+    """Why this card's outcome is NOT accepted, in the checks' own words: the unmet checks of the card's latest
+    acceptance record (v30: the deciding detail -- "SpringDataPetRepositoryImpl does not carry @ApplicationScoped
+    ... annotate it ...", "scenario ... was not measured on this tree" -- existed only inside a JSON comment; workers
+    re-verified unchanged trees and the Operator misdiagnosed one card from the executor's wording). None when the
+    latest record accepted the outcome, or there is no record or board."""
+    try:
+        task = os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")
+        board = board if board is not None else (_native_board(root) if task else None)
+        if board is None or not task:
+            return None
+        recs = [r for r in board.records(task) if r.get("kind") in ("accept-commit", "accept-evaluated")]
+    except Exception:  # noqa: BLE001 - an unreadable board leaves the brief as it was
+        return None
+    if not recs or recs[-1].get("outcome_accepted"):
+        return None
+    last = recs[-1]
+    unmet = (last.get("measurement") or {}).get("unmet_checks") or {}
+    if not isinstance(unmet, dict) or not unmet:
+        return None
+    return {"record": last.get("kind"), "run": last.get("run"), "commit": str(last.get("commit") or "")[:12],
+            "checks": {str(k): {"status": str((v or {}).get("status") or ""), "detail": str((v or {}).get("detail") or "")}
+                       for k, v in sorted(unmet.items())}}
 
 
 def _native_board(root: Path):
@@ -1712,6 +1740,20 @@ def _subject_label(subject) -> str:
     return s.rsplit(".", 1)[-1]
 
 
+def outcome_unmet_lines(unmet: dict | None, limit: int = 6) -> list[str]:
+    """The digest lines of outcome_unmet: each deciding check, its state and its own detail, verbatim."""
+    if not isinstance(unmet, dict) or not unmet.get("checks"):
+        return []
+    checks = unmet["checks"]
+    out = ["WHY THE OUTCOME IS NOT ACCEPTED (%s, run %s, commit %s) -- these checks decide it; act on their detail, "
+           "and re-verifying an unchanged tree cannot change them:" % (unmet.get("record"), unmet.get("run"), unmet.get("commit") or "-")]
+    for name, row in list(checks.items())[:limit]:
+        out.append("  - %s [%s]: %s" % (name, row.get("status") or "?", _clip(row.get("detail"), 400)))
+    if len(checks) > limit:
+        out.append("  (%d more: brief.py --section outcome_unmet)" % (len(checks) - limit))
+    return out
+
+
 def brief_digest(brief: dict, stem: str) -> str:
     """A readable digest of a large brief: what to edit, what is owed per file,
     how the card is judged, and how to read every section in full. Nothing is
@@ -1722,6 +1764,7 @@ def brief_digest(brief: dict, stem: str) -> str:
     if isinstance(brief.get("issued_not_open"), dict) and brief.get("procedure"):
         # the one next action of a card whose compile items are gone (the same text as PROCEDURE below)
         out += ["NEXT ACTION (this card):", textwrap.indent(textwrap.fill(str(brief["procedure"]), 110), "  ")]
+    out += outcome_unmet_lines(brief.get("outcome_unmet"))
     if rs.get("last_rejection") or rs.get("write_set_files_absent"):
         out += ["RETRY STATE (read first):"]
         if rs.get("deleted_by_last_revert"):
