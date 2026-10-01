@@ -274,15 +274,20 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
             rec = _mode_record(Path(root), sid, mode) if root is not None else {}
             if rec and str(rec.get("security_mode") or mode) != mode:
                 return UNKNOWN, "scenario %s's record was taken in %s mode, not %s" % (sid, rec.get("security_mode"), mode)
+            # the scenario must be IN this comparison: the mode's receipt, bound to this tree, declares it
+            # (architect review of 4dfdd8d6: a leftover own record of a scenario absent from the receipt -- or a
+            # receipt without entry-point rows -- must never read as PASS)
+            rows = {_sid(k): v for k, v in (parity_state(rc).get("scenarios") or {}).items()}
+            if _sid(sid) not in rows:
+                return UNKNOWN, "scenario %s is not recorded in the %s-mode receipt" % (sid, mode)
+            rv = rows[_sid(sid)]
             rb = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
             own = bool(rec) and str(rec.get("verdict") or "") in ("PASS", "FAIL") and (
                 not tree or (str(rb.get("mode") or "") == "candidate" and str(rb.get("candidate_sha256") or "") == tree))
             if not own:
-                # v30 H-12: the receipt's per-scenario verdict is its ENTRY POINT row's aggregate (PASS only when
-                # every scenario of that entry point passed), so a sibling's failure reads as this scenario's.
-                # The scenario's own mode record bound to this tree is the verdict; the row only stands in
-                # when no such record exists.
-                rv = {_sid(k): v for k, v in (parity_state(rc).get("scenarios") or {}).items()}.get(_sid(sid), "")
+                # v30 H-12: the row verdict is its ENTRY POINT's aggregate (PASS only when every scenario of that
+                # entry point passed), so a sibling's failure reads as this scenario's. The scenario's own mode
+                # record bound to this tree is the verdict; the row stands in only when no such record exists.
                 if rv == "FAIL":
                     return FAIL, "scenario %s is FAIL in the %s-mode receipt" % (sid, mode)
                 if rv != "PASS":
