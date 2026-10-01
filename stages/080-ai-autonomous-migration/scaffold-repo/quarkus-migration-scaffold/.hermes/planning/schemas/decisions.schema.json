@@ -576,6 +576,18 @@
           ],
           "description": "v1 composes the initial M3 plan by compatibility objective (lib/planner/compatibility_objectives.py, catalogs/compat-mapping.json objective_families): admitted units of one declared family that share a site become ONE bounded scope issued whole, requirements are owned by their rule's family and semantic subject (never the first file a card holds), every (requirement, check) is planned immediate or later with its prerequisite owners as hard parents, and budgets are conserved as families over the current policy's accounts. Requires plan_semantics v1. off (or absent) keeps the per-unit plan. Pinned like plan_semantics: a run keeps its initial commit's value and admission refuses a later flip (OBJECTIVES_REPINNED)."
         },
+        "card_presentation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "v1",
+            "v2",
+            null
+          ],
+          "description": "v2 renders the board's card titles, bodies and review handoffs from the plan's semantic facts (lib/planner/card_text.py: goal, scope, the checks judged now and later, why a follow-up exists, each check's result) and writes the control records as attachments behind a one-line reference under a plain comment. v1 (or absent) keeps the earlier text and inline JSON records. Pinned like plan_semantics: a run keeps its initial commit's value and admission refuses a later flip (CARD_PRESENTATION_REPINNED); published cards are never re-rendered."
+        },
         "adr": {
           "type": [
             "string",

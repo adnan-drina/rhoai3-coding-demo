@@ -72,6 +72,10 @@ ROLE_PREFIX = {"repair": "outcome", "assess": "assess", "deliver": "deliver"}
 PREFIX_ROLE = {v: k for k, v in ROLE_PREFIX.items()}
 M2_KEY = "m2-plan"
 RECORD = "[native-control]"
+# H-11 slice 2 (card/v2): the full record is a native attachment; the comment is a plain sentence and this
+# one reference line. Readers accept both forms in any mix; the REFERENCING comment's id orders the record.
+RECORD_REF = re.compile(r"^\[native-control\] ref=v2 attachment=(rec-[0-9a-f]{12}-[0-9a-f]{12}[.]json) "
+                        r"sha256=([0-9a-f]{64})$", re.M)
 CONTRACT = "contract.json"
 CONTRACT_SCHEMA = "rhoai3.native-contract/v1"
 PLAN_SCHEMA = "rhoai3.native-plan/v1"
@@ -409,9 +413,11 @@ class Board:
     """Read side over one native board (KanbanNative or FakeNative), plus the
     keyed record writer. Everything here is derived from native state."""
 
-    def __init__(self, native: Any, *, author: str | None = None):
+    def __init__(self, native: Any, *, author: str | None = None, record_format: str = "v1"):
         self.native = native
         self.author = author if author is not None else (os.environ.get("HERMES_PROFILE") or "").strip()
+        self.record_format = record_format          # "v2": attachment-backed records (card/v2 runs)
+        self._ref_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     # -- tasks -----------------------------------------------------------------
     def task(self, task_id: str) -> dict[str, Any] | None:
@@ -523,12 +529,16 @@ class Board:
         out: list[dict[str, Any]] = []
         for c in self.native.comment_rows(task_id):
             body = str(c.get("body") or "")
-            if not body.startswith(RECORD + " "):
+            ref = RECORD_REF.search(body)
+            if ref is not None:
+                doc = self._referenced(task_id, ref.group(1), ref.group(2))
+            elif not body.startswith(RECORD + " "):
                 continue
-            try:
-                doc = json.loads(body[len(RECORD) + 1:])
-            except ValueError:
-                continue
+            else:
+                try:
+                    doc = json.loads(body[len(RECORD) + 1:])
+                except ValueError:
+                    continue
             if not isinstance(doc, dict) or not doc.get("key") or doc["key"] in seen:
                 continue
             seen.add(doc["key"])
@@ -537,14 +547,55 @@ class Board:
                 out.append(doc)
         return out
 
+    def _referenced(self, task_id: str, name: str, digest: str) -> dict[str, Any]:
+        """The record a v2 reference names: the attachment on THIS task, its bytes matching the digest, a
+        record document. Missing or mismatched evidence refuses -- a record never silently disappears."""
+        hit = self._ref_cache.get((task_id, name, digest))
+        if hit is not None:
+            return dict(hit)
+        rows = [a for a in self.native.attachments(task_id) if a["filename"] == name]
+        if not rows:
+            raise Refusal("RECORD_EVIDENCE_MISSING", "%s references %s, which is not attached to it" % (task_id, name))
+        try:
+            data = Path(rows[0]["stored_path"]).read_bytes()
+        except OSError as exc:
+            raise Refusal("RECORD_EVIDENCE_MISSING", "%s %s: %s" % (task_id, name, exc)) from exc
+        if sha256(data) != digest:
+            raise Refusal("RECORD_EVIDENCE_MISMATCH", "%s %s does not match its reference digest" % (task_id, name))
+        try:
+            doc = json.loads(data)
+        except ValueError as exc:
+            raise Refusal("RECORD_EVIDENCE_MISMATCH", "%s %s is not a record: %s" % (task_id, name, exc)) from exc
+        if not isinstance(doc, dict) or not doc.get("key") or not name.startswith("rec-%s-" % sha256(doc["key"].encode("utf-8"))[:12]):
+            raise Refusal("RECORD_EVIDENCE_MISMATCH", "%s %s does not hold the record its name binds" % (task_id, name))
+        self._ref_cache[(task_id, name, digest)] = doc
+        return dict(doc)
+
     def record(self, task_id: str, kind: str, key: str, **doc: Any) -> dict[str, Any]:
         """Write one keyed record; an existing key is returned unchanged."""
         for r in self.records(task_id):
             if r["key"] == key:
                 return r
         body = dict(doc, kind=kind, key=key, v=1)
-        self.native.comment(task_id, "%s %s" % (RECORD, json.dumps(body, sort_keys=True, separators=(",", ":"))),
-                            self.author)
+        if self.record_format == "v2":
+            # attachment first (no control effect alone), then the referencing comment commits the record;
+            # a retry after an interruption reuses an identical attachment instead of attaching it twice
+            data = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            digest = sha256(data)
+            name = "rec-%s-%s.json" % (sha256(key.encode("utf-8"))[:12], digest[:12])
+            have = [a for a in self.native.attachments(task_id) if a["filename"] == name]
+            if not have:
+                import tempfile
+                with tempfile.TemporaryDirectory(prefix="native-record-") as td:
+                    f = Path(td) / name
+                    f.write_bytes(data)
+                    self.native.attach(task_id, str(f), name)
+            from planner.card_text import record_summary
+            self.native.comment(task_id, "%s\n\n%s ref=v2 attachment=%s sha256=%s"
+                                % (record_summary(kind, body), RECORD, name, digest), self.author)
+        else:
+            self.native.comment(task_id, "%s %s" % (RECORD, json.dumps(body, sort_keys=True, separators=(",", ":"))),
+                                self.author)
         got = next((r for r in self.records(task_id) if r["key"] == key), None)
         if got is None:
             raise Refusal("RECORD_LOST", "the record %s on %s did not read back" % (key, task_id))
@@ -557,7 +608,9 @@ def board_for(root: Path, native: Any = None) -> Board:
         db = default_db_path()
         native = KanbanNative(db, hermes=(os.environ.get("HERMES_BIN") or "hermes").split(),
                               env=dict(os.environ, HERMES_KANBAN_DB=db) if db else None)
-    return Board(native)
+    # H-11 slice 2: a card/v2 run writes attachment-backed records (the run's pinned card presentation);
+    # every run reads both forms
+    return Board(native, record_format="v2" if card_presentation_of(root) == "v2" else "v1")
 
 
 # ---------------------------------------------------------------------------

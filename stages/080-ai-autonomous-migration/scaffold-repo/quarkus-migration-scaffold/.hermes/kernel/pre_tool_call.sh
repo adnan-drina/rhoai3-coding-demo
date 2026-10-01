@@ -468,7 +468,8 @@ if profile in {"implementer", "reviewer", "orchestrator"}:
     # outcome-board/v2: the domain records on the board ([native-control] comments,
     # plan/contract/held attachments) are written by native_gate.py and advance.py
     # only. Cooperative guardrail, not a boundary (the worker user can reach kanban.db).
-    _nc_reserved = re.compile(r"(contract|plan[.]r[0-9]+|held[.][0-9a-f]+|assessment[.][0-9]+[.][0-9a-f]+)[.]json")
+    _nc_reserved = re.compile(r"(contract|plan[.]r[0-9]+|held[.][0-9a-f]+|assessment[.][0-9]+[.][0-9a-f]+"
+                              r"|rec-[0-9a-f]{12}-[0-9a-f]{12})[.]json")
     if (tool in {"kanban_comment", "comment_task"} and "[native-control]" in json.dumps(inp)) or \
             (re.search(r"\bhermes\s+kanban\s+comment\b", cmd or "") and "[native-control]" in (cmd or "")):
         block("[native-control] records are written by .hermes/kernel/native_gate.py and advance.py only")
@@ -476,7 +477,7 @@ if profile in {"implementer", "reviewer", "orchestrator"}:
             (re.search(r"\bhermes\s+kanban\s+attach\b", cmd or "") and _nc_reserved.search(cmd or "")) or \
             (tool in {"kanban_attach", "kanban_attach_url"} and _nc_reserved.search(json.dumps(inp))):
         block("attaching or removing native-control artifacts (contract, plan revisions, held candidates, "
-              "assessments) is refused: native_gate.py owns them")
+              "assessments, records) is refused: native_gate.py owns them")
 
 def is_complete():
     if tool in {"kanban_complete", "complete_task"}:

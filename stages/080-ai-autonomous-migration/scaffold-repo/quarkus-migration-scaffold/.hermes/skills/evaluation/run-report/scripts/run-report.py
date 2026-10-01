@@ -2125,14 +2125,31 @@ def parallel_pilot(kanban_db: Optional[Path]) -> Dict[str, Any]:
         con = sqlite3.connect("file:%s?mode=ro" % kanban_db, uri=True)
         con.row_factory = sqlite3.Row
         comments = [dict(r) for r in con.execute("SELECT task_id, body FROM task_comments ORDER BY id")]
+        try:   # H-11 slice 2: attachment-backed records ([native-control] ref=v2 ...)
+            stored = {(r["task_id"], r["filename"]): r["stored_path"]
+                      for r in con.execute("SELECT task_id, filename, stored_path FROM task_attachments")}
+        except Exception:  # noqa: BLE001 - a board without attachments has no v2 records
+            stored = {}
         runs = [dict(r) for r in con.execute("SELECT id, task_id, profile, outcome, started_at, ended_at FROM task_runs ORDER BY id")]
         titles = {r["id"]: r["title"] for r in con.execute("SELECT id, title FROM tasks")}
         con.close()
     except Exception as exc:  # noqa: BLE001 - an unreadable copy is an unknown, not a zero
         return {"pair": U("the board copy could not be read: %s" % exc, src)}
     recs: Dict[str, List[Dict[str, Any]]] = {}
+    import hashlib
+    import re as _re
     for c in comments:
         body = str(c.get("body") or "")
+        ref = _re.search(r"^\[native-control\] ref=v2 attachment=(\S+) sha256=([0-9a-f]{64})$", body, _re.M)
+        if ref is not None:
+            path = stored.get((c.get("task_id"), ref.group(1)))
+            try:
+                data = Path(path).read_bytes() if path else b""
+            except OSError:
+                data = b""
+            if not data or hashlib.sha256(data).hexdigest() != ref.group(2):
+                continue   # evidence absent from this copy: not counted (the pilot facts stay unknown, never zero)
+            body = PILOT_RECORD_PREFIX + data.decode("utf-8", "replace")
         if not body.startswith(PILOT_RECORD_PREFIX):
             continue
         try:

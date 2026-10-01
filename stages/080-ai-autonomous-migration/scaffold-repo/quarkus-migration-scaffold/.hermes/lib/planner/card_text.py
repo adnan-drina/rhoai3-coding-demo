@@ -392,3 +392,65 @@ def handoff_summary(title_: str, node: dict[str, Any], last: dict[str, Any], *, 
     parts.append("Open findings owned here: %d. Rejected attempts on this card: %d; budget %s of %s."
                  % (len(open_owned), rejects, budget.get("spent"), budget.get("limit")))
     return " ".join(parts)
+
+
+# ------------------------------------------------------------------ record comments (H-11 slice 2)
+
+def _short(sha: Any) -> str:
+    return _s(sha)[:12]
+
+
+def _route_counts(rows: list[dict[str, Any]]) -> str:
+    st: dict[str, int] = {}
+    for r in rows or []:
+        if isinstance(r, dict):
+            k = _s(r.get("state")) or "unknown"
+            st[k] = st.get(k, 0) + 1
+    order = ("pass", "fail", "unknown")
+    parts = ["%d %s" % (st[k], "passing" if k == "pass" else "failing" if k == "fail" else "not yet measurable")
+             for k in order if st.get(k)]
+    parts += ["%d %s" % (v, k) for k, v in sorted(st.items()) if k not in order]
+    return ", ".join(parts) or "no checks"
+
+
+def record_summary(kind: str, doc: dict[str, Any]) -> str:
+    """One or two plain sentences for the comment thread: what happened and what follows. The full record is
+    the attached file; nothing reads this text back."""
+    run = doc.get("run")
+    on = (" (run %s)" % run) if run not in (None, "") else ""
+    m = doc.get("measurement") if isinstance(doc.get("measurement"), dict) else {}
+    if kind == "issue":
+        what = ("cluster %s" % doc["cluster"]) if doc.get("cluster") else "the card's planned work"
+        return "Issued %s%s on baseline %s; %s." % (what, on, _short(doc.get("baseline_commit")),
+                                                    _n(len(doc.get("allowed_paths") or []), "file") + " may be edited")
+    if kind == "accept-begin":
+        return "Acceptance started%s for candidate %s." % (on, _short(doc.get("candidate")))
+    if kind in ("accept-commit", "accept-evaluated"):
+        unmet = m.get("unmet_checks") or {}
+        if doc.get("outcome_accepted"):
+            via = " (already satisfied by another card's commit)" if doc.get("satisfied_by") else ""
+            return "Outcome accepted%s on commit %s%s; ready for review." % (on, _short(doc.get("commit")), via)
+        bad = sorted(unmet)
+        return ("Candidate %s checked%s; the outcome is NOT accepted yet: %s%s." % (
+            _short(doc.get("commit")), on, _n(len(bad), "check") + " not passing" if bad else "open findings remain",
+            (" (%s)" % summarize_checks([b.split("|")[-1] for b in bad])) if bad else ""))
+    if kind == "reject":
+        return "Attempt rejected%s: %s. The card stays open for another attempt." % (on, _s(doc.get("reason"))[:200] or "see the record")
+    if kind == "schedule-measure":
+        return ("Later checks measured on this card's candidate%s: %s. Failures go to the cards that own them; the "
+                "full table is attached." % (on, _route_counts(doc.get("rows") or [])))
+    if kind in ("schedule-route", "orphan-route", "m4-repair"):
+        added = doc.get("added") or []
+        return ("Plan revision %s%s: %s added to repair what was measured failing%s." % (
+            doc.get("revision"), on, _n(len(added), "card"),
+            ("; unresolved: %d" % len(doc.get("unresolved") or [])) if doc.get("unresolved") else ""))
+    if kind == "remeasure":
+        return "Earlier acceptance %s is re-measured on tree %s after a change it depends on." % (
+            _s(doc.get("accept"))[:60], _short(doc.get("tree")))
+    if kind == "integrated":
+        return "Integrated%s into the main tree as commit %s and verified there." % (on, _short(doc.get("integrated_commit")))
+    if kind == "integrate-begin":
+        return "Integration started%s: %s from the worktree." % (on, _n(len(doc.get("paths") or []), "file"))
+    if kind == "assessment":
+        return "M4 assessment recorded%s: verdict %s on candidate %s." % (on, doc.get("verdict"), _short(doc.get("candidate")))
+    return "Recorded %s%s." % (kind.replace("-", " "), on)
