@@ -361,6 +361,91 @@ class EarliestMeasurement(unittest.TestCase):
         finally:
             d.close()
 
+    def test_the_holder_owned_route_does_not_depend_on_names(self):
+        """H-13 acceptance 1, renamed equivalent: other finding/cluster ids and another covered scenario of the
+        same effects check take the same route (nothing keys on the v30 identifiers)."""
+        for fid, cid, sc in (("parity:zz-renamed-0001", "c:renamed-body", "sc:read-orders"),
+                             ("parity:aa-other-body", "u:other-unit", "sc:auth-anonymous-read-orders-1")):
+            d = Desk()
+            r = d.r
+            try:
+                ep = CO_T.EP_LIST if sc == "sc:read-orders" else CO_T.EP_GET
+                finding = dict(parity_item(fid, "", ep), scenarios=[sc])
+                d.measured(items=[finding], clusters=[cluster(cid, fid)])
+                tid, run, iss = r.issue(B_ORDER)
+                self.assertEqual(iss["cluster"], cid)
+                self.assertFalse([n for n in r.plan()["nodes"] if n["outcome_id"].startswith("followup:")], fid)
+                row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
+                self.assertEqual((row["state"], row["repair_owners"]), ("fail", [B_ORDER]), row)
+            finally:
+                d.close()
+
+    def test_two_open_owners_keep_their_findings_and_no_follow_up_is_minted(self):
+        """H-13 acceptance 4: one failing finding is the holder's, the other belongs (by the deterministic
+        finding resolver: its file's planned requirement) to another OPEN card not yet issued. Both stay with
+        their owners, the check is FAIL with both as repair owners, nothing is minted, nothing is lost."""
+        d = Desk()
+        r = d.r
+        try:
+            item_file = CO_T.P + "web/ItemApi.java"
+            f1 = dict(parity_item("parity:own-body", "", CO_T.EP_LIST), scenarios=["sc:cors-actual-0a"])
+            f2 = dict(parity_item("parity:item-body", "", CO_T.EP_ITEM), scenarios=["sc:read-items-1"], path=item_file)
+            d.measured(items=[f1, f2], clusters=[cluster("c:own", f1["id"]),
+                                                 dict(cluster("c:item", f2["id"]), path=item_file, write_set=[item_file])])
+            tid, run, iss = r.issue(B_ORDER)
+            self.assertEqual(iss["cluster"], "c:own")
+            plan = r.plan()
+            self.assertFalse([n for n in plan["nodes"] if n["outcome_id"].startswith("followup:")])
+            row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
+            self.assertEqual((row["state"], row["repair_owners"]), ("fail", sorted([B_ORDER, B_ITEM])), row)
+            self.assertEqual(sorted(f["finding"] for f in row["witnesses"]["findings"]), ["parity:item-body", "parity:own-body"])
+            self.assertIn(B_ITEM, row["route"])
+        finally:
+            d.close()
+
+    def test_unknown_evidence_never_takes_the_owned_shortcut(self):
+        """H-13 acceptance 6: the effects check FAILS through a holder-owned finding, but another of its
+        scenarios was not compared on this candidate. The evidence set is incomplete: the 'owned by open
+        outcomes' route (no follow-up) is not taken on it."""
+        d = Desk()
+        r = d.r
+        try:
+            finding = dict(parity_item("parity:h13-covered-body", "", CO_T.EP_LIST), scenarios=["sc:cors-actual-0a"])
+            d.measured(items=[finding], clusters=[cluster("c:h13-body", finding["id"])],
+                       scenarios=[s for s in REPO_SCENARIOS if s != "sc:read-items-1"])
+            try:
+                tid, run, _iss = r.issue(B_ORDER)
+            except Refusal as exc:      # the holder may wait on the follow-up: what matters is the route
+                self.assertEqual(exc.code, "OWNER_REPAIR_PENDING", exc.detail)
+                tid = r.tid(B_ORDER)
+            row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
+            self.assertNotEqual(row["state"], "pass", row)
+            self.assertFalse(str(row.get("route") or "").startswith("evidence owned by open outcomes"), row)
+            if row["state"] == "fail":
+                self.assertFalse(row["witnesses"]["complete"], row["witnesses"])
+        finally:
+            d.close()
+
+    def test_routing_is_idempotent_on_replay(self):
+        """H-13 acceptance 7: the same failure measured again (a repeated issue of the same run, as after a
+        restart) takes the same route, mints nothing and changes no plan revision."""
+        d = Desk()
+        r = d.r
+        try:
+            finding = dict(parity_item("parity:h13-covered-body", "", CO_T.EP_LIST), scenarios=["sc:cors-actual-0a"])
+            d.measured(items=[finding], clusters=[cluster("c:h13-body", finding["id"])])
+            tid, run, iss = r.issue(B_ORDER)
+            rev = r.plan()["revision"]
+            again = NC.issue(r.root, r.board, task_id=tid, run_id=run)
+            self.assertEqual(again["cluster"], iss["cluster"])
+            self.assertEqual(r.plan()["revision"], rev)
+            self.assertFalse([n for n in r.plan()["nodes"] if n["outcome_id"].startswith("followup:")])
+            routes = [next(m for m in rec["rows"] if m["check"] == EFFECTS)["route"]
+                      for rec in r.board.records(tid, "schedule-measure")]
+            self.assertTrue(routes and len(set(routes)) == 1, routes)
+        finally:
+            d.close()
+
     def test_an_acceptance_cycle_is_named_before_publication(self):
         """H-13: the native parent graph can be acyclic while an acceptance dependency closes a cycle; both a
         direct and a transitive one are named (the router refuses such a revision before publication)."""

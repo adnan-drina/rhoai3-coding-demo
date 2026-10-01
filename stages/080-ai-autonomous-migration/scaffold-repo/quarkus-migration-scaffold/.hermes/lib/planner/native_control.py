@@ -1380,17 +1380,25 @@ def _effect_route(root: Path, plan: dict[str, Any], m: dict[str, Any], worklist:
     from planner.requirement_checks import effect_witnesses
     reqs = [q for q in plan.get("requirements") or [] if isinstance(q, dict) and q.get("id") in set(m.get("requirements") or [])]
     w = effect_witnesses(root, reqs, m["check"], worklist=worklist or {}, scenarios=scen, tree=tree, receipts=_receipts(root))
-    ownership = plan.get("ownership") or {}
+    # the existing deterministic resolver (outcome_graph.owner_of_finding): the plan's obligation ownership, then
+    # the finding's cluster, then the planned requirement whose scope holds its locus -- so a finding of an open
+    # card that has not been issued yet is that card's, not "unowned"; two claimants stay unresolved, named
+    from planner.outcome_graph import owner_of_finding
+    items = {str(i.get("id")): i for i in (worklist or {}).get("items") or [] if isinstance(i, dict)}
     owners: dict[str, str] = {}
     unowned: list[str] = []
+    ambiguous: dict[str, list[str]] = {}
     for f in w["findings"]:
-        o = str(ownership.get(f["finding"]) or "")
+        got = owner_of_finding(plan, items.get(f["finding"]) or {"id": f["finding"], "entry_point": f.get("entry_point")})
+        o = str(got.get("owner") or "")
         node = _node(plan, o) if o else None
         if node and node.get("role") == "repair" and status_of(o) != "done":
             owners[f["finding"]] = o
         else:
             unowned.append(f["finding"])
-    return {"witnesses": w, "owners": owners, "unowned": sorted(unowned),
+            if got.get("class") == "ambiguous-ownership":
+                ambiguous[f["finding"]] = list(got.get("candidates") or [])
+    return {"witnesses": w, "owners": owners, "unowned": sorted(unowned), "ambiguous": ambiguous,
             "complete": bool(w["complete"]) and not unowned}
 
 
@@ -1493,6 +1501,8 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
             else:
                 m["route"] = "owner"
                 m["contributors"] = sorted(set(er["owners"].values())) if er is not None else []
+                if er is not None and er.get("ambiguous"):
+                    m["ambiguous_ownership"] = er["ambiguous"]      # reported, never resolved by picking one
                 fails.append(m)
     rec = board.record(task_id, "schedule-measure", "schedule-measure:%d:r%d:%s" % (int(run_id), int(plan["revision"]), tree[:16]),
                        run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=measured,
