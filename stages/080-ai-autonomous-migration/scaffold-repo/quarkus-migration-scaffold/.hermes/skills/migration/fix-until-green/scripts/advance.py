@@ -658,6 +658,15 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
         _phase("re-sealing admission")
         rec = pipeline.admit(root)
         publish_loop_state(root, rebuild)
+        if _outcome_bridge.active(root) and rec["status"] == "ADMITTED":
+            # v30 t_e1242a11: the first advance committed, then admission refused, so the outcome was never judged and
+            # the next issue RECOVERED the commit. On an outcome board that acceptance finishes on the outcome record
+            # (the board already holds every successor); the serial-loop mint has nothing to mint (LOOP_NO_SUCCESSOR)
+            ob = _outcome_bridge.resume_recovered(root, rebuild if isinstance(rebuild, dict) else {},
+                                                  load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
+            if ob is not None:
+                return ob
+            return 0
         return _finish_continuation(root, rec, card, commit, mint=mint, hermes=hermes)
     # a rejection is "already answered" only while the tree carries no new
     # candidate: a rejected card is restored to the accepted tree, so a repeat
