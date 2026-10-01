@@ -1560,12 +1560,12 @@ def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:
     return "\n".join(out)
 
 
-def outcome_unmet(root: Path, board=None) -> dict | None:
+def outcome_unmet(root: Path, board=None, current_tree: str | None = None) -> dict | None:
     """Why this card's outcome is NOT accepted, in the checks' own words: the unmet checks of the card's latest
-    acceptance record (v30: the deciding detail -- "SpringDataPetRepositoryImpl does not carry @ApplicationScoped
-    ... annotate it ...", "scenario ... was not measured on this tree" -- existed only inside a JSON comment; workers
-    re-verified unchanged trees and the Operator misdiagnosed one card from the executor's wording). None when the
-    latest record accepted the outcome, or there is no record or board."""
+    acceptance record (v30: the deciding detail lived only in a JSON comment). Carries the tree that record
+    measured and whether it is THIS tree (architect review of 49b1c13d: an old record is history, not an
+    instruction about the current tree). None when the latest record accepted the outcome, or there is no
+    record or board."""
     try:
         task = os.environ.get("HERMES_KANBAN_TASK") or str((load_issued(root) or {}).get("task_id") or "")
         board = board if board is not None else (_native_board(root) if task else None)
@@ -1577,10 +1577,18 @@ def outcome_unmet(root: Path, board=None) -> dict | None:
     if not recs or recs[-1].get("outcome_accepted"):
         return None
     last = recs[-1]
-    unmet = (last.get("measurement") or {}).get("unmet_checks") or {}
+    meas = last.get("measurement") or {}
+    unmet = meas.get("unmet_checks") or {}
     if not isinstance(unmet, dict) or not unmet:
         return None
+    measured = str(last.get("tree") or meas.get("tree") or "")
+    if current_tree is None:
+        try:
+            current_tree = candidate_sha256(root)
+        except Exception:  # noqa: BLE001
+            current_tree = ""
     return {"record": last.get("kind"), "run": last.get("run"), "commit": str(last.get("commit") or "")[:12],
+            "measured_tree": measured[:16], "current": bool(measured) and measured == str(current_tree or ""),
             "checks": {str(k): {"status": str((v or {}).get("status") or ""), "detail": str((v or {}).get("detail") or "")}
                        for k, v in sorted(unmet.items())}}
 
@@ -1740,15 +1748,31 @@ def _subject_label(subject) -> str:
     return s.rsplit(".", 1)[-1]
 
 
+_UNMET_ACTION = {
+    "fail": "REPAIR: the product does not satisfy it on the measured tree",
+    "unknown": ("VERIFY: its evidence is missing or stale -- run-verify.sh --mode acceptance on the current tree, then "
+                "advance.py; this needs no product edit"),
+}
+
+
 def outcome_unmet_lines(unmet: dict | None, limit: int = 6) -> list[str]:
-    """The digest lines of outcome_unmet: each deciding check, its state and its own detail, verbatim."""
+    """The digest lines of outcome_unmet: each deciding check, its state, the action that state calls for
+    (a measured FAIL is product work, missing/stale evidence is verification work, anything else blocks),
+    and its own detail verbatim. A record of another tree is labelled history (architect review of 49b1c13d:
+    "re-verifying an unchanged tree cannot change them" was false for missing measurements)."""
     if not isinstance(unmet, dict) or not unmet.get("checks"):
         return []
     checks = unmet["checks"]
-    out = ["WHY THE OUTCOME IS NOT ACCEPTED (%s, run %s, commit %s) -- these checks decide it; act on their detail, "
-           "and re-verifying an unchanged tree cannot change them:" % (unmet.get("record"), unmet.get("run"), unmet.get("commit") or "-")]
+    when = ("measured on THIS tree %s" % unmet.get("measured_tree")) if unmet.get("current") else (
+        "HISTORY: measured on tree %s, not the current tree -- verify the current tree before acting on it"
+        % (unmet.get("measured_tree") or "unrecorded"))
+    out = ["WHY THE OUTCOME IS NOT ACCEPTED (%s, run %s, commit %s; %s):"
+           % (unmet.get("record"), unmet.get("run"), unmet.get("commit") or "-", when)]
     for name, row in list(checks.items())[:limit]:
-        out.append("  - %s [%s]: %s" % (name, row.get("status") or "?", _clip(row.get("detail"), 400)))
+        st = str(row.get("status") or "?")
+        action = _UNMET_ACTION.get(st, "BLOCKED: neither a product failure nor missing evidence -- "
+                                       "kanban_block kind=needs_input quoting this line")
+        out.append("  - %s [%s] %s: %s" % (name, st, action, _clip(row.get("detail"), 400)))
     if len(checks) > limit:
         out.append("  (%d more: brief.py --section outcome_unmet)" % (len(checks) - limit))
     return out
