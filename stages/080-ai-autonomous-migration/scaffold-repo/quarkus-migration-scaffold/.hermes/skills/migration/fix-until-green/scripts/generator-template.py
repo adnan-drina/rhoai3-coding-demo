@@ -113,7 +113,17 @@ def answer(root: Path, *, template: str = "", listing: str = "", lines: str = ""
     a, b = 1, min(len(text), LIMIT_LINES)
     if lines:
         x, _, y = lines.partition(":")
-        a, b = max(1, int(x or 1)), min(len(text), int(y or len(text)))
+        try:
+            a = max(1, int(x or 1))
+            b = min(len(text), int(y) if y else len(text))
+        except ValueError:
+            return 1, ("--lines takes a:b with whole numbers (got %r); %s has %d lines: e.g. --lines 1:%d"
+                       % (lines, name, len(text), min(len(text), LIMIT_LINES)))
+        if a > len(text) or b < a:
+            return 1, ("--lines %s is outside %s (lines 1-%d): e.g. --lines 1:%d"
+                       % (lines, name, len(text), min(len(text), LIMIT_LINES)))
+        # architect review (H-2): one page at most, whatever range is asked for
+        b = min(b, a + LIMIT_LINES - 1)
     body = ["%5d  %s" % (n, text[n - 1]) for n in range(a, b + 1)]
     more = "" if b >= len(text) else "  (%d more line(s): --lines %d:%d)" % (len(text) - b, b + 1, len(text))
     return 0, "\n".join(["%s %s, lines %d-%d of %d%s" % (head, name, a, b, len(text), more)] + body)

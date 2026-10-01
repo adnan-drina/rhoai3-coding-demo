@@ -735,6 +735,50 @@ class EarliestMeasurement(unittest.TestCase):
         finally:
             d.close()
 
+    def test_routed_debt_survives_to_m4_fail_and_unknown_refuse_all_pass_clears(self):
+        """Condition 8 (architect, 2026-10-01): a regression routed through H-13 keeps its debt to M4. The
+        holder repairs its own finding and passes the REAL acceptance and review gates (its own contract),
+        while the routed witness (sc:read-items-1, the accepted Item card's read) still fails: M4's deferred
+        gate refuses on the current candidate with the witness FAIL, and separately with it UNKNOWN (not
+        compared); a fresh all-PASS measurement clears that gate."""
+        d = Desk()
+        r = d.r
+        try:
+            d.complete(B_ITEM)
+            body = dict(parity_item("parity:m4-body", "", CO_T.EP_LIST), scenarios=["sc:cors-actual-0a"])
+            d.measured(items=[body], clusters=[cluster("c:m4-body", body["id"])], record_fail=("sc:read-items-1",))
+            tid, run, iss = r.issue(B_ORDER)                                   # the holder repairs its share first
+            fid = "followup:%s:m3g1" % d.owner
+            plan = r.plan()
+            self.assertIn(B_ORDER, NC._node(plan, fid)["parents"])
+            node = NC._node(plan, B_ORDER)
+            every = sorted(set(REPO_SCENARIOS) | {c[len("parity:"):] for c in node["acceptance"]["requirement_checks"]
+                                                  if c.startswith("parity:sc:")})
+            acc = self._accept_order(d, tid, run, iss, record_fail=("sc:read-items-1",), scenarios=every)
+            self.assertTrue(acc["outcome_accepted"], acc)                      # its own contract holds
+            got = {m["check"]: m for m in acc["schedule"]}[EFFECTS]
+            self.assertEqual(got["state"], "fail")                             # the debt is not called PASS
+            r.review_and_complete(tid, run)                                    # the real handoff + review gates
+            self.assertEqual(r.native.task(tid)["status"], "done")
+            m4 = NC._node(r.plan(), "assess:m4:g1")
+            k = "%s|%s" % (d.owner, EFFECTS)
+            self.assertIn(k, {"%s|%s" % (x["outcome"], x["check"]) for x in m4["acceptance"]["deferred_requirement_checks"]})
+
+            def m4_effects(scen):
+                return NC.deferred_checks_status(r.root, r.plan(), m4, scen, r.tree()).get(k, {}).get("status")
+            # FAIL: the witness still fails on the current candidate
+            d.measured(record_fail=("sc:read-items-1",), scenarios=every)
+            self.assertEqual(m4_effects(every), "fail")
+            # UNKNOWN: the witness was not compared on the current candidate
+            partial = [s for s in every if s != "sc:read-items-1"]
+            d.measured(scenarios=partial)
+            self.assertEqual(m4_effects(partial), "unknown")
+            # all PASS: the follow-up's repair holds, a fresh comparison of every scenario clears the row
+            d.measured(scenarios=every)
+            self.assertEqual(m4_effects(every), "pass")
+        finally:
+            d.close()
+
     def test_a_restart_during_a_pending_earliest_measurement_keeps_the_row_pending(self):
         d = Desk()
         r = d.r

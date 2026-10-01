@@ -1850,9 +1850,14 @@ def _subject_label(subject) -> str:
 
 _UNMET_ACTION = {
     "fail": "REPAIR: the product does not satisfy it on the measured tree",
-    "unknown": ("VERIFY: its evidence is missing or stale -- run-verify.sh --mode acceptance on the current tree, then "
-                "advance.py; this needs no product edit"),
+    # architect review (A6): an UNKNOWN is not always rerunnable -- a missing producer, an unresolved scope or
+    # ownership, or an unsupported input cannot be supplied by verifying again
+    "unknown": ("VERIFY if its evidence is missing or stale: run-verify.sh --mode acceptance on the current tree, then "
+                "advance.py (no product edit). If the detail names a missing producer, an unresolved scope or "
+                "ownership, or an unsupported input, verifying cannot supply it: kanban_block kind=needs_input naming "
+                "that prerequisite"),
 }
+_HISTORY_ACTION = "HISTORICAL (another tree): an observation, not a current instruction -- verify the current tree first"
 
 
 def outcome_unmet_lines(unmet: dict | None, limit: int = 6) -> list[str]:
@@ -1870,8 +1875,8 @@ def outcome_unmet_lines(unmet: dict | None, limit: int = 6) -> list[str]:
            % (unmet.get("record"), unmet.get("run"), unmet.get("commit") or "-", when)]
     for name, row in list(checks.items())[:limit]:
         st = str(row.get("status") or "?")
-        action = _UNMET_ACTION.get(st, "BLOCKED: neither a product failure nor missing evidence -- "
-                                       "kanban_block kind=needs_input quoting this line")
+        action = _HISTORY_ACTION if not unmet.get("current") else _UNMET_ACTION.get(
+            st, "BLOCKED: neither a product failure nor missing evidence -- kanban_block kind=needs_input quoting this line")
         out.append("  - %s [%s] %s: %s" % (name, st, action, _clip(row.get("detail"), 400)))
     if len(checks) > limit:
         out.append("  (%d more: brief.py --section outcome_unmet)" % (len(checks) - limit))

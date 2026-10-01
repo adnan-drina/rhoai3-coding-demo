@@ -63,8 +63,21 @@ def main() -> int:
     u = B.outcome_unmet(root, board=FakeBoard([rec("accept-evaluated", False, unknown, 70, tree=OTHER)]), current_tree=TREE)
     lines = B.outcome_unmet_lines(u)
     text = "\n".join(lines)
-    check("VERIFY" in lines[1] and "no product edit" in lines[1], "UNKNOWN calls for verification, not a repair", lines)
+    check("HISTORICAL" in lines[1] and "REPAIR" not in lines[1] and "VERIFY" not in lines[1],
+          "a check of another tree carries no current instruction", lines)
     check("HISTORY" in lines[0] and u["current"] is False, "a record of another tree is labelled history", lines[0])
+    u = B.outcome_unmet(root, board=FakeBoard([rec("accept-evaluated", False, unknown, 70)]), current_tree=TREE)
+    lines = B.outcome_unmet_lines(u)
+    check("VERIFY if its evidence is missing or stale" in lines[1] and "no product edit" in lines[1],
+          "a current UNKNOWN calls for verification, not a repair", lines)
+    producer = {"qualify:unsupported": {"status": "unknown", "detail": "no measurement producer for this check yet (fail closed)"}}
+    lines = B.outcome_unmet_lines(B.outcome_unmet(root, board=FakeBoard([rec("accept-evaluated", False, producer)]), current_tree=TREE))
+    check("missing producer" in lines[1] and "kanban_block" in lines[1] and "no measurement producer" in lines[1],
+          "the architect's probe: an UNKNOWN from a missing producer states the blocker beside its detail", lines)
+    old_fail = B.outcome_unmet_lines(B.outcome_unmet(root, board=FakeBoard([rec("accept-evaluated", False, fail, tree=OTHER)]),
+                                                     current_tree=TREE))
+    check("REPAIR" not in "\n".join(old_fail) and "HISTORICAL" in old_fail[1],
+          "a FAIL of another tree is history, never a current REPAIR", old_fail)
     check("cannot change" not in text, "the false 'cannot change' advice is gone (architect A6 probe)", text)
 
     # UNKNOWN -> fresh measured PASS on the same product tree: the section disappears

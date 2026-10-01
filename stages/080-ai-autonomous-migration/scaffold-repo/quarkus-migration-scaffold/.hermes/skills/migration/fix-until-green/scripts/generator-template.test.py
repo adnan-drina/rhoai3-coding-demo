@@ -59,6 +59,13 @@ def main() -> int:
           "the template text is bounded and names the version and the rest", text.splitlines()[0])
     rc, text = GT.answer(root, template="JavaJaxRS/spec/beanValidation.mustache", lines="240:250", repo=repo)
     check(rc == 0 and "line 250" in text and "line 239" not in text, "a line range answers exactly that range")
+    rc, text = GT.answer(root, template="JavaJaxRS/spec/beanValidation.mustache", lines="1:1000", repo=repo)
+    body = [x for x in text.splitlines()[1:]]
+    check(rc == 0 and len(body) == GT.LIMIT_LINES and "--lines 201:250" in text,
+          "an explicit range is still one page at most, with the continuation named", (len(body), text.splitlines()[0]))
+    for bad in ("x:y", "300:400", "50:10"):
+        rc, text = GT.answer(root, template="JavaJaxRS/spec/beanValidation.mustache", lines=bad, repo=repo)
+        check(rc == 1 and "--lines 1:" in text, "a malformed or empty range is answered with a usable range (%s)" % bad, text)
     rc, text = GT.answer(root, listing="JavaJaxRS/spec/", repo=repo)
     check(rc == 0 and "2 entr" in text and "pojo.mustache" in text, "a prefix lists the templates", text)
     rc, text = GT.answer(root, listing="Nope/", repo=repo)

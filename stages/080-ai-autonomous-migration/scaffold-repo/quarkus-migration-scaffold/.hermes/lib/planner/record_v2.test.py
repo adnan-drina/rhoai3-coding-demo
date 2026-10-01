@@ -107,6 +107,72 @@ class Records(unittest.TestCase):
         self.assertIn('"[native-control]" in json.dumps(inp)', hook)        # a ref line carries the marker too
 
 
+class FailClosed(unittest.TestCase):
+    """Architect review of ab085218: a malformed reference and unreadable report evidence never disappear."""
+
+    def test_every_malformed_reference_refuses(self):
+        for name, mangle in (
+                ("bad digest", lambda b: b.split("sha256=", 1)[0] + "sha256=not-a-digest"),
+                ("bad name", lambda b: b.replace("attachment=rec-", "attachment=foo-")),
+                ("other version", lambda b: b.replace("ref=v2", "ref=v3")),
+                ("no digest", lambda b: b.split(" sha256=", 1)[0]),
+                ("marker only", lambda b: b.split("\n\n", 1)[0] + "\n\n[native-control] ref")):
+            b, n = board("v2")
+            b.record(T, "reject", "reject:1:probe", run=1, reason="real rejected candidate")
+            self.assertEqual(len(NC.Board(n).records(T, "reject")), 1)
+            n.comment_meta[T][0]["body"] = mangle(n.comment_meta[T][0]["body"])
+            with self.assertRaises(NC.Refusal, msg=name) as cm:
+                NC.Board(n).records(T, "reject")
+            self.assertIn(cm.exception.code, ("RECORD_EVIDENCE_MISMATCH", "RECORD_EVIDENCE_MISSING"), name)
+
+    def test_the_run_report_never_turns_unreadable_evidence_into_zero(self):
+        import sqlite3
+        spec = importlib.util.spec_from_file_location(
+            "run_report_v2", HERE.parents[1] / "skills" / "evaluation" / "run-report" / "scripts" / "run-report.py")
+        report = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(report)
+        b, n = board("v2")
+        n.tasks[T]["status"] = "done"
+        b.record(T, "integrated", "integrated:1:probe", run=1, integrated_commit="a" * 40, wt_commit="b" * 40,
+                 verification={"state": "pass"})
+        b.record(T, "integration-conflict", "integration-conflict:2:probe", run=2, paths=["src/A.java"])
+        db = Path(tempfile.mkdtemp(prefix="report-v2-")) / "board.db"
+        con = sqlite3.connect(db)
+        con.executescript("CREATE TABLE task_comments (id INTEGER, task_id TEXT, body TEXT);"
+                          "CREATE TABLE task_attachments (task_id TEXT, filename TEXT, stored_path TEXT);"
+                          "CREATE TABLE task_runs (id INTEGER, task_id TEXT, profile TEXT, outcome TEXT, started_at REAL, ended_at REAL);"
+                          "CREATE TABLE tasks (id TEXT, title TEXT);")
+        con.execute("INSERT INTO tasks VALUES (?,?)", (T, "Pilot"))
+        for c in n.comment_rows(T):
+            con.execute("INSERT INTO task_comments VALUES (?,?,?)", (c["id"], T, c["body"]))
+        for a in n.attachments(T):
+            con.execute("INSERT INTO task_attachments VALUES (?,?,?)", (T, a["filename"], a["stored_path"]))
+        con.execute("INSERT INTO task_runs VALUES (1, ?, 'implementer', 'completed', 100, 110)", (T,))
+        con.commit()
+
+        def unknown(out):
+            return all(isinstance(v, dict) and v.get("value") is None and "unknown" in json.dumps(v) for v in out.values())
+        full = report.parallel_pilot(db)
+        self.assertEqual(full["conflicts"]["value"], {T: 1})                       # complete copy: real values
+        conflict = n.attachments(T)[1]["filename"]
+        con.execute("UPDATE task_attachments SET stored_path=? WHERE filename=?", (str(db.parent / "absent.json"), conflict))
+        con.commit()
+        mixed = report.parallel_pilot(db)                                          # valid + missing
+        self.assertTrue(unknown(mixed), mixed)
+        self.assertNotIn("value\": {", json.dumps(mixed["conflicts"]))
+        bad = db.parent / "tampered.json"
+        bad.write_text('{"kind":"integration-conflict","key":"x"}')
+        con.execute("UPDATE task_attachments SET stored_path=? WHERE filename=?", (str(bad), conflict))
+        con.commit()
+        self.assertTrue(unknown(report.parallel_pilot(db)))                        # wrong bytes
+        con.execute("UPDATE task_attachments SET stored_path=?", (str(db.parent / "absent.json"),))
+        con.commit()
+        gone = report.parallel_pilot(db)                                           # all missing
+        self.assertTrue(unknown(gone), gone)
+        self.assertNotIn("no task recorded an integration", json.dumps(gone))
+        con.close()
+
+
 class LifecycleUnderV2(unittest.TestCase):
     def test_the_native_board_suite_passes_with_v2_records(self):
         """Same lifecycle, budgets, ordering and acceptance decisions with attachment-backed records."""

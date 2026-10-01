@@ -2138,17 +2138,26 @@ def parallel_pilot(kanban_db: Optional[Path]) -> Dict[str, Any]:
     recs: Dict[str, List[Dict[str, Any]]] = {}
     import hashlib
     import re as _re
+    unreadable: List[str] = []
     for c in comments:
         body = str(c.get("body") or "")
-        ref = _re.search(r"^\[native-control\] ref=v2 attachment=(\S+) sha256=([0-9a-f]{64})$", body, _re.M)
+        ref = _re.search(r"^\[native-control\] ref=v2 attachment=(rec-[0-9a-f]{12}-[0-9a-f]{12}[.]json) "
+                         r"sha256=([0-9a-f]{64})$", body, _re.M)
+        if ref is None and _re.search(r"^\[native-control\]\s*ref\b", body, _re.M):
+            unreadable.append("%s: malformed record reference" % c.get("task_id"))
+            continue
         if ref is not None:
             path = stored.get((c.get("task_id"), ref.group(1)))
             try:
                 data = Path(path).read_bytes() if path else b""
             except OSError:
                 data = b""
-            if not data or hashlib.sha256(data).hexdigest() != ref.group(2):
-                continue   # evidence absent from this copy: not counted (the pilot facts stay unknown, never zero)
+            if not data:
+                unreadable.append("%s: %s is missing from this copy" % (c.get("task_id"), ref.group(1)))
+                continue
+            if hashlib.sha256(data).hexdigest() != ref.group(2):
+                unreadable.append("%s: %s does not match its digest" % (c.get("task_id"), ref.group(1)))
+                continue
             body = PILOT_RECORD_PREFIX + data.decode("utf-8", "replace")
         if not body.startswith(PILOT_RECORD_PREFIX):
             continue
@@ -2158,6 +2167,12 @@ def parallel_pilot(kanban_db: Optional[Path]) -> Dict[str, Any]:
             continue
         if isinstance(doc, dict) and doc.get("kind") in PILOT_KINDS:
             recs.setdefault(str(c["task_id"]), []).append(doc)
+    if unreadable:
+        # architect review of ab085218: unreadable evidence is never an empty, success-shaped result
+        why = ("%d referenced native-control record(s) cannot be read from this board copy (%s): the pilot facts "
+               "are unknown, not zero" % (len(unreadable), "; ".join(unreadable[:3])))
+        return {k: U(why, src) for k in ("pair", "overlap_seconds", "integrated", "conflicts", "rejections",
+                                         "runs_per_card", "elapsed_seconds", "tokens_and_requests")}
     pair = sorted(recs)
     if not pair:
         return {"pair": V([], src, "no task recorded an integration: this run had no pilot pair (or it never integrated)")}

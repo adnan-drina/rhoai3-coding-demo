@@ -74,6 +74,7 @@ M2_KEY = "m2-plan"
 RECORD = "[native-control]"
 # H-11 slice 2 (card/v2): the full record is a native attachment; the comment is a plain sentence and this
 # one reference line. Readers accept both forms in any mix; the REFERENCING comment's id orders the record.
+RECORD_REF_MARK = re.compile(r"^\[native-control\]\s*ref\b", re.M)
 RECORD_REF = re.compile(r"^\[native-control\] ref=v2 attachment=(rec-[0-9a-f]{12}-[0-9a-f]{12}[.]json) "
                         r"sha256=([0-9a-f]{64})$", re.M)
 CONTRACT = "contract.json"
@@ -530,6 +531,11 @@ class Board:
         for c in self.native.comment_rows(task_id):
             body = str(c.get("body") or "")
             ref = RECORD_REF.search(body)
+            if ref is None and RECORD_REF_MARK.search(body):
+                # architect review of ab085218: a reference that does not parse (bad name, digest or marker)
+                # fails closed -- it never falls through to the inline parser and disappears
+                raise Refusal("RECORD_EVIDENCE_MISMATCH", "comment %s on %s carries a malformed record reference"
+                              % (c.get("id"), task_id))
             if ref is not None:
                 doc = self._referenced(task_id, ref.group(1), ref.group(2))
             elif not body.startswith(RECORD + " "):
