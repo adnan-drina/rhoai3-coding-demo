@@ -731,6 +731,9 @@ def refuse_revision(plan: dict[str, Any], obligations: list[dict[str, Any]], *, 
         "unresolved": sorted(unresolved, key=lambda u: u["id"]), "counts": counts,
         "additions": sorted(additions), "claimed_control": False,
     }
+    if plan.get("presentation"):
+        # H-11: a run's pinned card presentation is inherited by every revision (card_text renders new nodes)
+        doc["presentation"] = plan["presentation"]
     if not successor:
         for k in ("requirements", "requirement_ownership"):
             if k in plan:
@@ -887,6 +890,9 @@ def orphan_revision(plan: dict[str, Any], orphans: list[dict[str, Any]], *, hold
            "ownership": ownership, "dispositions": list(plan.get("dispositions") or []),
            "unresolved": list(plan.get("unresolved") or []), "counts": counts,
            "additions": sorted(set(plan.get("additions") or []) | set(added)), "claimed_control": False}
+    if plan.get("presentation"):
+        # H-11: a run's pinned card presentation is inherited by every revision (card_text renders new nodes)
+        doc["presentation"] = plan["presentation"]
     for k in ("requirements", "requirement_ownership", "execution"):
         if k in plan:
             doc[k] = plan[k]
@@ -938,6 +944,9 @@ def owner_repair_revision(plan: dict[str, Any], doc: dict[str, Any], *, open_ass
         "dispositions": list(plan.get("dispositions") or []), "unresolved": list(plan.get("unresolved") or []),
         "counts": counts, "additions": sorted(set(plan.get("additions") or []) | {fid}), "claimed_control": False,
     }
+    if plan.get("presentation"):
+        # H-11: a run's pinned card presentation is inherited by every revision (card_text renders new nodes)
+        new["presentation"] = plan["presentation"]
     for k in ("requirements", "requirement_ownership"):
         if k in plan:
             new[k] = plan[k]

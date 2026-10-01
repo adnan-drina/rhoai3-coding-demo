@@ -454,3 +454,36 @@ def record_summary(kind: str, doc: dict[str, Any]) -> str:
     if kind == "assessment":
         return "M4 assessment recorded%s: verdict %s on candidate %s." % (on, doc.get("verdict"), _short(doc.get("candidate")))
     return "Recorded %s%s." % (kind.replace("-", " "), on)
+
+
+# ------------------------------------------------------------------ board progress (H-11 slice 3)
+
+def progress_comment(plan: dict[str, Any], acc: dict[str, Any], *, added: list[str], trigger: str) -> str:
+    """The plan card's update after a revision: what was added and why, then the board's state from the
+    progress projection (baseline vs added, accepted split into still-valid vs awaiting revalidation,
+    unfinished, milestones). Counts are native-board facts, never a correctness percentage."""
+    nodes = {n["outcome_id"]: n for n in plan.get("nodes") or []}
+    rev = int(plan.get("revision") or 0)
+    lines = []
+    if rev <= 1:
+        lines.append("Plan revision 1 published: %s." % _n(int(acc.get("baseline") or 0), "repair outcome"))
+    else:
+        names = [subject_of(plan, nodes[o]) for o in added if o in nodes]
+        lines.append("Plan revision %d: %s added%s%s." % (
+            rev, _n(len(added), "card"), (" (%s)" % "; ".join(names[:4]) + ("; +%d more" % (len(names) - 4) if len(names) > 4 else ""))
+            if names else "", (" because %s" % trigger) if trigger else ""))
+    awaiting = int(acc.get("awaiting_revalidation") or 0)
+    lines.append("Board now: %s (%d planned + %d added); %d accepted%s; %d unfinished."
+                 % (_n(int(acc.get("active") or 0), "repair outcome"), int(acc.get("baseline") or 0),
+                    int(acc.get("additions") or 0), int(acc.get("accepted_historically") or 0),
+                    (" (%d still valid on the current tree, %d awaiting revalidation)"
+                     % (int(acc.get("proof_applicable") or 0), awaiting)) if acc.get("accepted_historically") else "",
+                    int(acc.get("unfinished") or 0)))
+    ms = acc.get("milestones") or {}
+    if ms:
+        label = {n["outcome_id"]: ("M4" if n.get("role") == "assess" else "M5 %s" % _s(n.get("stage")).upper())
+                 for n in plan.get("nodes") or [] if n["outcome_id"] in ms}
+        lines.append("Milestones: %s." % ", ".join("%s %s" % (label.get(k, k), v) for k, v in sorted(ms.items(), key=lambda kv: label.get(kv[0], kv[0]))))
+    if acc.get("unresolved"):
+        lines.append("Unresolved responsibilities: %d (named in the attached plan)." % len(acc["unresolved"]))
+    return "\n".join(lines)

@@ -292,6 +292,8 @@ def publish_initial(root: Path, board: Board, *, m2: str, plan_file: str = "") -
         _attach_plan(board, m2, plan, added)
         created = _publish_nodes(board, plan, added, workspace=workspace)
         gaps = readback(board, board.plan(plan["run_id"]))
+    if not gaps:
+        progress_update(root, board, plan, added, m2)
     return {"nodes": len(plan["nodes"]), "revision": int(plan["revision"]), "run_id": plan["run_id"],
             "created": created, "gaps": gaps}
 
@@ -311,4 +313,31 @@ def publish_revision(root: Path, board: Board, plan: dict[str, Any], *, added: l
         gaps = readback(board, board.plan(plan["run_id"]))
     if gaps:
         raise Refusal("PUBLICATION_READBACK", "; ".join(gaps[:4]))
+    progress_update(root, board, plan, added, holder)
     return {"revision": int(plan["revision"]), "created": created}
+
+
+def progress_update(root: Path, board: Board, plan: dict[str, Any], added: list[str], holder: str) -> None:
+    """H-11 slice 3 (card/v2): one plain comment on the plan (M2) card per revision -- what was added, why,
+    and the board's state. Presentation only (not a record; nothing reads it back); keyed by its first line,
+    so a replayed publication posts nothing twice. A failure here never fails the publication."""
+    from planner.card_text import PRESENTATION_V2, progress_comment, subject_of
+    if plan.get("presentation") != PRESENTATION_V2:
+        return
+    try:
+        m2 = board.m2_task()
+        if not m2:
+            return
+        from planner.native_control import progress_account
+        hn = board.node_of(holder) if holder else None
+        trig = ""
+        if hn and hn[2] != "m2":
+            hnode = next((n for n in plan["nodes"] if n["outcome_id"] == hn[2]), None)
+            trig = "the \"%s\" card measured failures no open card owns" % subject_of(plan, hnode) if hnode else ""
+        text = progress_comment(plan, progress_account(root, board, plan["run_id"]), added=added, trigger=trig)
+        head = text.split("\n", 1)[0].split(":", 1)[0]
+        if any(str(c.get("body") or "").startswith(head + ":") for c in board.native.comment_rows(m2)):
+            return
+        board.native.comment(m2, text, board.author)
+    except Exception:  # noqa: BLE001 - a progress note is presentation; the published revision stands
+        return

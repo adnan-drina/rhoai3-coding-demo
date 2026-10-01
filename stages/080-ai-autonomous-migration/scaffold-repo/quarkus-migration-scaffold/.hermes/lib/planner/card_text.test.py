@@ -149,5 +149,42 @@ class Pinning(unittest.TestCase):
         self.assertEqual(card_presentation({"loop": {"card_presentation": "v9"}}), "v1")
 
 
+class LiveRevision(unittest.TestCase):
+    """Through the real publication path (schedule_lifecycle's desk, golden decisions: card_presentation v2)."""
+
+    def test_a_revision_inherits_v2_and_the_plan_card_reports_each_revision_once(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("sl_for_cards", HERE / "schedule_lifecycle.test.py")
+        SL = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(SL)
+        d = SL.Desk()
+        r = d.r
+        try:
+            self.assertEqual(r.plan().get("presentation"), CT.PRESENTATION_V2)
+            m2 = r.board.m2_task()
+            d.measured(record_fail=("sc:create-orders",))
+            tid, run, lock = r.claim(SL.B_ORDER)
+            with self.assertRaises(SL.Refusal):
+                NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+            plan = r.plan()
+            self.assertEqual(plan.get("presentation"), CT.PRESENTATION_V2)          # inherited by the revision
+            f = next(n for n in plan["nodes"] if n["outcome_id"].startswith("followup:"))
+            self.assertIn("repository effects of", f["title"])
+            self.assertIn("Why this card exists", f["card_body"])
+            notes = [c["body"] for c in r.native.comment_rows(m2)]
+            self.assertEqual(sum(1 for b in notes if b.startswith("Plan revision 1 published:")), 1, notes)
+            rev2 = [b for b in notes if b.startswith("Plan revision 2:")]
+            self.assertEqual(len(rev2), 1, notes)
+            self.assertIn("1 card added", rev2[0])
+            self.assertIn("(10 planned + 1 added)", rev2[0])
+            self.assertNotIn("{", "".join(notes))
+            # a replayed publication posts nothing twice
+            from planner.native_publish import progress_update
+            progress_update(r.root, r.board, plan, [f["outcome_id"]], tid)
+            self.assertEqual(sum(1 for c in r.native.comment_rows(m2) if c["body"].startswith("Plan revision 2:")), 1)
+        finally:
+            d.close()
+
+
 if __name__ == "__main__":
     unittest.main()
