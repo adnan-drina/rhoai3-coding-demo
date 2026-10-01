@@ -22,6 +22,14 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_OWNER="${GITHUB_OWNER:-adnan-drina}"
 MIGRATION_GOLDEN_REPO="${MIGRATION_GOLDEN_REPO:-quarkus-migration-scaffold-v2}"
 MIGRATION_SRC="$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+# Which goldens to push: all (default; the demo reset), agentic (Stage 070 only)
+# or migration (Stage 080 only). A Stage 080 release publishes only its own
+# golden, so an unrelated Stage 070 change is never published as a side effect.
+SCAFFOLD_REPOS="${SCAFFOLD_REPOS:-all}"
+case "$SCAFFOLD_REPOS" in
+  all|agentic|migration) ;;
+  *) echo "REFUSE: SCAFFOLD_REPOS must be all, agentic or migration (got '${SCAFFOLD_REPOS}')" >&2; exit 1 ;;
+esac
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
@@ -75,11 +83,14 @@ omit_park_from_staged() {
 }
 
 # --- 1. agentic-quarkus-scaffold (authored in this repo) ---
+if [[ "$SCAFFOLD_REPOS" != "migration" ]]; then
 log "Staging agentic-quarkus-scaffold"
 cp -R "$REPO_ROOT/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold" "$WORKDIR/agentic-quarkus-scaffold"
 ensure_repo "agentic-quarkus-scaffold" "Corporate Quarkus scaffold golden repo (agentic golden path: AGENTS.md + skills + specs)"
 push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
   "Golden state from rhoai3-coding-demo/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold"
+fi
+[[ "$SCAFFOLD_REPOS" == "agentic" ]] && { log "Done (agentic only)."; exit 0; }
 
 # --- 2. live Stage 080 golden ---
 test -f "$MIGRATION_SRC/migration.yaml" || { echo "REFUSE: missing authoring tree at $MIGRATION_SRC"; exit 1; }

@@ -1328,12 +1328,23 @@ if command -v python3 >/dev/null 2>&1; then
 
       # Every local model that is scaled up must answer a tool call. A model the
       # Operator deliberately scaled to 0 replicas (one GPU; Argo ignores
-      # spec.replicas) is reported as a warning, not a failure.
+      # spec.replicas) is reported as a warning -- unless it is the model new
+      # migration runs are provisioned with (migration-model-profiles
+      # default_model): that one must be served and must pass the call here; a
+      # scaled-down or quota-held selected model is a failure, never a pass.
+      SELECTED_MODEL=$(oc get configmap migration-model-profiles -n wksp-ai-developer \
+        -o go-template='{{index .data "model-profiles.json"}}' 2>/dev/null \
+        | jq -r '.default_model // empty' 2>/dev/null || true)
       for LOCAL_PAIR in "Qwen3.8:${QWEN38_MODEL_RESOURCE}" "Qwen27B:${QWEN27B_MODEL_RESOURCE}"; do
       LOCAL_LABEL="${LOCAL_PAIR%%:*}"; LOCAL_MODEL="${LOCAL_PAIR#*:}"
       LOCAL_REPLICAS=$(jsonpath "llminferenceservice/${LOCAL_MODEL}" "$MAAS_NS" '{.spec.replicas}')
       if [[ "$LOCAL_REPLICAS" == "0" ]]; then
-        warn "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "scaled to 0 replicas by the Operator"
+        if [[ -n "$SELECTED_MODEL" && "$LOCAL_MODEL" == "$SELECTED_MODEL" ]]; then
+          check "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" \
+            "scaled to 0 replicas, but it is the selected migration model (migration-model-profiles default_model)"
+        else
+          warn "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "scaled to 0 replicas by the Operator (not the selected migration model)"
+        fi
         continue
       fi
       if [[ "$API_KEY_VALUE" == sk-oai-* ]]; then
@@ -1392,7 +1403,10 @@ JSON
       else
         R="MaaS API key was not created"
       fi
-      if [[ "$R" == warn:* ]]; then
+      if [[ "$R" == warn:* && -n "$SELECTED_MODEL" && "$LOCAL_MODEL" == "$SELECTED_MODEL" ]]; then
+        check "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" \
+          "the selected migration model was not verified: ${R#warn: }"
+      elif [[ "$R" == warn:* ]]; then
         warn "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "${R#warn: }"
       else
         check "ai-developer can call ${LOCAL_LABEL} through MaaS with tool calling and token usage" "$R"

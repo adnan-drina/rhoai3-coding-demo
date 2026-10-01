@@ -144,9 +144,13 @@ check "DevWorkspace AI tools init ConfigMap exists" \
 check "Init script defaults Kilo to qwen3-8-27b-int4" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'qwen38/qwen3-8-27b-int4' && echo present || echo missing" \
     "present"
-check "Init script keeps qwen3-6-27b selectable in Kilo" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains '/models-as-a-service/qwen3-6-27b/v1' && echo present || echo missing" \
-    "present"
+# the generated provider's SHAPE (enabled, OpenAI-compatible, MaaS route, key, model), not a string anywhere
+check "Init script configures Kilo provider qwen38 (qwen3-8-27b-int4)" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | python3 \"$REPO_ROOT/scripts/check-kilo-provider.py\" qwen38 qwen3-8-27b-int4 qwen3-8-27b-int4" \
+    "provider-ok"
+check "Init script keeps Kilo provider qwen27b (qwen3-6-27b) selectable" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | python3 \"$REPO_ROOT/scripts/check-kilo-provider.py\" qwen27b qwen3-6-27b qwen3-6-27b" \
+    "provider-ok"
 check "Init script allow-lists the MaaS Qwen providers for Kilo" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'enabled_providers.: \\[\"qwen38\", \"qwen27b\"\\]' && echo present || echo missing" \
     "present"
