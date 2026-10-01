@@ -76,7 +76,7 @@ def main() -> int:
     check(before == after, "the product root is unchanged by every query", (before, after))
     (root / "pom.xml").write_text(POM.replace("openapi-generator-maven-plugin", "something-else"))
     rc, text = GT.answer(root, template="x", repo=repo)
-    check(rc == 1 and "0 generator" in text, "no generator declared: stated, nothing guessed", text)
+    check(rc == 1 and "0 catalogued generator" in text, "no generator declared: stated, nothing guessed", text)
     sys.path.insert(0, str(HERE))
     import brief as B
     lines = B.scratch_lines({"write_set": ["src/main/resources/openapi-templates/beanValidation.mustache"]})
@@ -86,6 +86,27 @@ def main() -> int:
     from _loop_common import is_product_path
     check(not is_product_path(GT.scratch_dir() + "/openapi-generator-7.25.0.jar") and is_product_path(".tmp-og/x.jar"),
           "the sanctioned scratch is not a product path (no drift, no park); the v30 location was")
+    # specimen/generator-agnostic: the plugin -> codegen mapping is the catalog's; a renamed, invented generator
+    # described by its own catalog row is served the same way, and an uncatalogued one is not guessed
+    cat = {"build_plugins": {"com.acme.build:contract-codegen-plugin": {"template_source": {"artifact": "com.acme.build:contract-codegen"}}}}
+    other = Path(tempfile.mkdtemp())
+    (other / "pom.xml").write_text(POM.replace("org.openapitools", "com.acme.build")
+                                   .replace("openapi-generator-maven-plugin", "contract-codegen-plugin")
+                                   .replace("openapi-generator.version", "codegen.version"))
+    g2 = GT.generators(other / "pom.xml", cat)
+    check([(g["codegen_group"], g["codegen_artifact"], g["version"]) for g in g2] == [("com.acme.build", "contract-codegen", "7.25.0")],
+          "a renamed generator is resolved from its catalog row", g2)
+    jar2 = GT.codegen_jar(g2[0], repo)
+    jar2.parent.mkdir(parents=True)
+    with zipfile.ZipFile(str(jar2), "w") as z:
+        z.writestr("Server/model.mustache", "line 1\nline 2")
+    rc, text = GT.answer(other, template="Server/model.mustache", repo=repo, catalog=cat)
+    check(rc == 0 and "com.acme.build:contract-codegen:7.25.0" in text and "line 2" in text,
+          "its template is served from its own codegen artifact", text)
+    rc, text = GT.answer(other, template="Server/model.mustache", repo=repo, catalog={"build_plugins": {}})
+    check(rc == 1 and "not guessed" in text, "an uncatalogued generator plugin is refused, never guessed", text)
+    check(GT.codegen_map().get(("org.openapitools", "openapi-generator-maven-plugin")) == ("org.openapitools", "openapi-generator"),
+          "the golden catalog describes the OpenAPI generator's template source")
     print("OK: generator-template" if ok else "FAIL")
     return 0 if ok else 1
 

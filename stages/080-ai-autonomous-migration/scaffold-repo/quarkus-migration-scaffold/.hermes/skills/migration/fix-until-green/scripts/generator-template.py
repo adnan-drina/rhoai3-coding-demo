@@ -17,14 +17,17 @@ parked, never drift). Every answer names the generator version; an absent templa
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-# generator plugin -> the artifact that carries its templates (the plugin itself only depends on it)
-CODEGEN = {("org.openapitools", "openapi-generator-maven-plugin"): ("org.openapitools", "openapi-generator")}
+# Which plugin is a code generator, and which artifact carries its templates, is migration KNOWLEDGE: it lives in
+# the run's catalog (compat-mapping.json build_plugins[<group:artifact>].template_source), never in this code, so
+# another application's generator is supported by a catalog row, not a harness change.
+CATALOG = Path(__file__).resolve().parents[4] / "planning" / "catalogs" / "compat-mapping.json"
 SCRATCH = ".derived/scratch"
 LIMIT_LINES = 200
 
@@ -48,9 +51,25 @@ def _text(node, name: str) -> str:
     return (c.text or "").strip() if c is not None and c.text else ""
 
 
-def generators(pom: Path) -> list[dict[str, str]]:
-    """[{group, artifact, version, codegen_group, codegen_artifact}] for every known generator plugin the pom
+def codegen_map(catalog: dict | None = None) -> dict[tuple[str, str], tuple[str, str]]:
+    """(plugin group, artifact) -> (codegen group, artifact), from the catalog's build_plugins template_source rows."""
+    if catalog is None:
+        try:
+            catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            catalog = {}
+    out = {}
+    for key, row in ((catalog or {}).get("build_plugins") or {}).items():
+        src = (row or {}).get("template_source") if isinstance(row, dict) else None
+        if ":" in key and isinstance(src, dict) and ":" in str(src.get("artifact") or ""):
+            out[tuple(key.split(":", 1))] = tuple(str(src["artifact"]).split(":", 1))
+    return out
+
+
+def generators(pom: Path, catalog: dict | None = None) -> list[dict[str, str]]:
+    """[{group, artifact, version, codegen_group, codegen_artifact}] for every catalogued generator plugin the pom
     declares, the version's ${property} resolved from the pom's own <properties>."""
+    codegen = codegen_map(catalog)
     root = ET.parse(str(pom)).getroot()
     props = {}
     pnode = _child(root, "properties")
@@ -61,12 +80,12 @@ def generators(pom: Path) -> list[dict[str, str]]:
         if _local(plugin.tag) != "plugin":
             continue
         key = (_text(plugin, "groupId"), _text(plugin, "artifactId"))
-        if key not in CODEGEN:
+        if key not in codegen:
             continue
         version = _text(plugin, "version")
         if version.startswith("${") and version.endswith("}"):
             version = props.get(version[2:-1], "")
-        cg, ca = CODEGEN[key]
+        cg, ca = codegen[key]
         out.append({"group": key[0], "artifact": key[1], "version": version, "codegen_group": cg, "codegen_artifact": ca})
     return out
 
@@ -81,14 +100,17 @@ def codegen_jar(gen: dict[str, str], repo: Path) -> Path:
             / ("%s-%s.jar" % (gen["codegen_artifact"], gen["version"])))
 
 
-def answer(root: Path, *, template: str = "", listing: str = "", lines: str = "", repo: Path | None = None) -> tuple[int, str]:
+def answer(root: Path, *, template: str = "", listing: str = "", lines: str = "", repo: Path | None = None,
+           catalog: dict | None = None) -> tuple[int, str]:
     pom = Path(root) / "pom.xml"
     if not pom.is_file():
         return 1, "no pom.xml at %s: no generator is declared" % root
-    gens = [g for g in generators(pom) if g["version"]]
+    gens = [g for g in generators(pom, catalog) if g["version"]]
     if len(gens) != 1:
-        return 1, ("the pom declares %d generator plugin(s) with a resolved version (%s); this lookup answers exactly one"
-                   % (len(gens), ", ".join("%s:%s" % (g["artifact"], g["version"] or "?") for g in generators(pom)) or "none"))
+        return 1, ("the pom declares %d catalogued generator plugin(s) with a resolved version (%s); this lookup answers "
+                   "exactly one. A generator the catalog does not describe (build_plugins[<group:artifact>]."
+                   "template_source) is not guessed."
+                   % (len(gens), ", ".join("%s:%s" % (g["artifact"], g["version"] or "?") for g in generators(pom, catalog)) or "none"))
     gen = gens[0]
     jar = codegen_jar(gen, repo or local_repository())
     head = "%s:%s:%s (the version this build pins)" % (gen["codegen_group"], gen["codegen_artifact"], gen["version"])

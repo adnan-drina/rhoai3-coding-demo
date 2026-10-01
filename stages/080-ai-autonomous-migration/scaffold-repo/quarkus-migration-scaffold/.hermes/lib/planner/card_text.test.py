@@ -149,6 +149,53 @@ class Pinning(unittest.TestCase):
         self.assertEqual(card_presentation({"loop": {"card_presentation": "v9"}}), "v1")
 
 
+class SpecimenAgnostic(unittest.TestCase):
+    """The renderer is specimen-agnostic: every identifier of the frozen v30 plan is renamed (package, types,
+    members, scenario ids, artifacts, files) and the rendered titles and bodies are the same text up to the same
+    renaming -- nothing in card_text keys on a PetClinic name -- and no original name survives."""
+
+    RENAMES = [("org.springframework.samples.petclinic", "io.acme.depot.app"), ("springframework/samples/petclinic", "acme/depot/app"),
+               ("OwnerRestController", "CustomerApiResource"), ("PetRestController", "ParcelApiResource"),
+               ("PetTypeRestController", "ParcelKindApiResource"), ("SpecialtyRestController", "SkillApiResource"),
+               ("VetRestController", "CourierApiResource"), ("VisitRestController", "DeliveryApiResource"),
+               ("RootRestController", "IndexApiResource"), ("UserRestController", "AccountApiResource"),
+               ("ClinicService", "DepotService"), ("Owner", "Customer"), ("owner", "customer"), ("PetType", "ParcelKind"),
+               ("Specialt", "Skil"), ("specialt", "skil"), ("Visit", "Delivery"), ("visit", "delivery"),
+               ("Vet", "Courier"), ("vet", "courier"), ("Pet", "Parcel"), ("pet", "parcel"), ("petclinic", "depot"),
+               ("openapi-generator-maven-plugin", "contract-codegen-plugin"), ("openapitools", "acmetools")]
+
+    @staticmethod
+    def mask(text: str) -> str:
+        import re
+        prev = None
+        while prev != text:
+            prev, text = text, re.sub(r"\([^()]*\)", "<list>", text)
+        return re.sub(r"the behavior cards? for [^;.]*", "the behavior cards for <names>", text)
+
+    def rename(self, text: str) -> str:
+        for a, b in self.RENAMES:
+            text = text.replace(a, b)
+        return text
+
+    def test_titles_and_bodies_are_invariant_under_renaming(self):
+        twin = json.loads(self.rename(json.dumps(PLAN)))
+        compared = 0
+        for a, b in zip(PLAN["nodes"], twin["nodes"]):
+            if a.get("role") != "repair":
+                continue
+            # the subject is rename-invariant; the title caps its length, so the cut point may move with name length
+            self.assertEqual(self.rename(CT.subject_of(PLAN, a)), CT.subject_of(twin, b), a["outcome_id"])
+            self.assertLessEqual(len(CT.title(twin, b)), 130)
+            # same sentences, groups and counts; the name lists inside parentheses are sorted by name, so a renaming
+            # may legitimately reorder which names are shown before "+n more"
+            self.assertEqual(self.mask(self.rename(CT.description(PLAN, a))), self.mask(CT.description(twin, b)), a["outcome_id"])
+            text = CT.title(twin, b) + CT.description(twin, b)
+            for original in ("petclinic", "Owner", "Clinic", "openapi-generator"):
+                self.assertNotIn(original, text, (b["outcome_id"], original))
+            compared += 1
+        self.assertGreater(compared, 30)
+
+
 class LiveRevision(unittest.TestCase):
     """Through the real publication path (schedule_lifecycle's desk, golden decisions: card_presentation v2)."""
 

@@ -776,6 +776,12 @@
             "source": "https://openapi-generator.tech/docs/generators/spring"
           }
         }
+      },
+      "template_source": {
+        "artifact": "org.openapitools:openapi-generator",
+        "version": "the plugin's own version (the codegen artifact is released with it)",
+        "docs": "https://openapi-generator.tech/docs/templating/",
+        "note": "the plugin depends on this artifact; each generator's default templates are entries of its jar (e.g. JavaJaxRS/spec/pojo.mustache). generator-template.py reads them from the local Maven repository, bounded; nothing is downloaded by the lookup."
       }
     }
   },
