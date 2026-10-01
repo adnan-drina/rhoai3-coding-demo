@@ -1083,7 +1083,10 @@ def main(argv: list[str] | None = None) -> int:
     # passed. The card cannot complete on a member nobody could resolve;
     # that is a prerequisite to repair, not an attempt to spend.
     unknown = [r for r in scope_rows if r.get("verdict") == "inconclusive"]
-    if unknown and unit:
+    # H-14: a unit with members that PROVE remaining work (violates) is decided at its checkpoint (continue
+    # or reject, naming them); an unassessable member is a prerequisite only when nothing proves work remains
+    proven = [r for r in scope_rows if r.get("verdict") == "violates"]
+    if unknown and unit and not proven:
         return _pending(root, steps, args.cluster, args.card, cur,
                         "%s sealed member(s) of %s could not be assessed against %s: %s" % (
                             len(unknown), scope_doc.get("unit_id") or args.cluster, scope_doc.get("rule"),

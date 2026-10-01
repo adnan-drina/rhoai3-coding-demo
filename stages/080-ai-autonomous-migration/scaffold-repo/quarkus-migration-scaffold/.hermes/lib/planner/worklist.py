@@ -6606,6 +6606,20 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         parsed_absence = (rule in (RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF) and bool(retired)
                           and typ.get("syntax_complete") is True and isinstance(syntax, list)
                           and all(parsed_retirement(fqn, kind) for fqn, kind in retired))
+        # H-14 (v31 t_a295b8ce, 2026-10-01): the converse of the absence proof. A complete parse that still
+        # carries a retired symbol's QUALIFIED name (its import, or a fully qualified use) proves the file
+        # still references it, whatever else the compiler could not resolve: the retirement is unfinished
+        # here. Reported as "could not fully resolve", 28 members of a Profile unit whose worker had edited 1
+        # of 15 files became a terminal VERIFICATION_PENDING. An unqualified same-spelled simple name still
+        # cannot use this (it may be another type).
+        if (rule in (RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF) and retired and typ.get("syntax_complete") is True
+                and isinstance(qualified, list)):
+            named = sorted(s for s, kind in retired if _names_retired(set(qualified), s, kind))
+            if named:
+                out.append(dict(base, verdict="violates", proof="parsed-qualified-reference",
+                                detail="%s still names %s (its parsed syntax carries the qualified reference): the "
+                                       "retirement is unfinished in this file" % (path, ", ".join(named))))
+                continue
         if str(typ.get("resolution") or "") != "full" and not parsed_absence:
             out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
             continue

@@ -2457,12 +2457,18 @@ def _real_generic_retirement_case() -> int:
         ("array-left", cls("UsesA", "    com.legacy.Retired[][] r;\n"), "violates", ""),
         ("wildcard-left", cls("UsesA", "    java.util.List<? super com.legacy.Retired> r;\n"), "violates", ""),
         ("bound-left", cls("UsesA", "    public <T extends com.legacy.Retired> void m() { }\n"), "violates", ""),
-        # a full compiler row whose walk was truncated: no absence proof from it
-        ("truncated-left", cls("UsesA", "    %s r;\n" % (deep % retired)), "inconclusive", ""),
+        # a full compiler row whose walk was truncated: no absence proof from it -- but the parse still spells
+        # the retired name QUALIFIED, which proves it is still referenced (H-14, v31)
+        ("truncated-left", cls("UsesA", "    %s r;\n" % (deep % retired)), "violates", ""),
         # the parse no longer names it: the independent proof still answers
         ("truncated-absent", cls("UsesA", "    %s r;\n" % (deep % "String")), "ok", "parsed-symbol-absence"),
         ("partial-absent", cls("UsesA", "    Missing m;\n"), "ok", "parsed-symbol-absence"),
-        ("partial-generic-left", cls("UsesA", "    Missing m;\n    java.util.List<com.legacy.Retired> r;\n"), "inconclusive", ""),
+        # partially resolved, the retired name spelled qualified in the parse: proven still referenced (H-14)
+        ("partial-generic-left", cls("UsesA", "    Missing m;\n    java.util.List<com.legacy.Retired> r;\n"), "violates", ""),
+        # the v31 shape: partially resolved (other cards' errors), the retired type still IMPORTED and used
+        ("partial-import-left", cls("UsesA", "    Missing m;\n    @Retired int r;\n", "import com.legacy.Retired;\n"), "violates", ""),
+        # only an unqualified same-spelled name, the import gone: still undecidable, never a violation
+        ("partial-simple-only", cls("UsesA", "    Missing m;\n    Retired r;\n"), "inconclusive", ""),
     )
     for label, text, verdict, proof in cases:
         with tempfile.TemporaryDirectory(prefix="wl-gen-ret-") as d:
