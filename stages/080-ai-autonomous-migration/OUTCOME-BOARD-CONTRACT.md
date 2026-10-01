@@ -125,6 +125,22 @@ M3 cards and recovery (after v20, 2026-09-27):
   and restores HEAD, so the next card starts clean. When the card resumes,
   `issue` reports `parked_candidate` and `restore-parked` puts it back to be
   re-verified.
+- **A failing scheduled check goes to the owners of its evidence** (H-13,
+  architect decision 2026-10-01). A `behavior:repository-effects:` check
+  measured at an earlier card (`schedule_at_issue`) carries structured
+  witnesses (`requirement_checks.effect_witnesses`: status/body/server-error
+  findings on its scenarios, comparison FAILs no finding explains, unknown
+  scenarios). Each finding is resolved by `outcome_graph.owner_of_finding`.
+  Every failing finding owned by an open outcome (the holder included): the
+  row stays FAIL and owed with its `repair_owners`, no follow-up is minted,
+  and the holder is issued its own cluster (v30: the Owner card waited on a
+  follow-up whose acceptance needed the Owner card's own finding). Unowned or
+  record-only evidence: the owner's follow-up (its budget) is minted; in a
+  mixed failure it waits on the contributing owners and none of them waits on
+  it. A revision whose acceptance dependencies close a cycle refuses
+  `ACCEPTANCE_CYCLE` before publication; two claimants of one finding are
+  reported, never resolved by picking one. Raw verdicts never change: the
+  check is FAIL until measured PASS, and M4 measures it again.
 - **Repeated refusal.** The third identical `native_gate.py` refusal in one
   run parks that run's candidate and answers `REPEATED_REFUSAL`. K2 then
   refuses every tool except `kanban_block` for that run.
