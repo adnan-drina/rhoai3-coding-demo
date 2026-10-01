@@ -214,9 +214,15 @@ public final class Main {
                 report.decide(Report.Outcome.UNRESOLVED);
                 return;
             }
+            String resolution = target.path("resolution").asText("owed");
+            if (!"owed".equals(resolution) && !"selected".equals(resolution)) {
+                report.reason("the target resolution '" + resolution + "' is neither owed nor selected");
+                report.decide(Report.Outcome.UNRESOLVED);
+                return;
+            }
             required = List.of(scope, typed);
             recipe = new FragmentCdiExposure(target.path("parent").asText(""), impl, target.path("path").asText(""),
-                    scope, typed, report);
+                    scope, typed, report, "selected".equals(resolution));
         } else if (HandlerUriParameter.ID.equals(recipeId)) {
             List<HandlerUriParameter.Site> sites = new ArrayList<>();
             for (JsonNode s : target.path("sites")) {

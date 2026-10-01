@@ -177,7 +177,8 @@ def plan(root: Path, scope: dict[str, Any] | None, write_set: list[str], require
                 "recipe": "spring-data-fragment-impl", "recipe_version": str(frag.get("version") or ""),
                 "operation": str((frag.get("implementation") or {}).get("operation") or ""),
                 "source": r["_from"], "candidate_paths": [path],
-                "target": {"parent": r.get("parent"), "type": r.get("type"), "path": path, "scope": cdi.get("scope"),
+                "target": {"parent": r.get("parent"), "type": r.get("type"), "path": path,
+                           "resolution": str(r.get("resolution") or "owed"), "scope": cdi.get("scope"),
                            "typed": cdi.get("typed"), "types": list(cdi.get("types") or [])},
             })
 

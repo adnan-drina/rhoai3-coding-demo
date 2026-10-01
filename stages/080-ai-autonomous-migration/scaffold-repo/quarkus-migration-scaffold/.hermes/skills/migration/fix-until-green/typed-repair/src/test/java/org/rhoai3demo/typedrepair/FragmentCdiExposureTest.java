@@ -240,4 +240,88 @@ class FragmentCdiExposureTest implements RewriteTest {
         rewriteRun(spec -> spec.recipe(off), support(pkg));
         assertThat(r.outcome()).isEqualTo(Report.Outcome.UNRESOLVED);
     }
+
+    /** v30 H-6: the source's selected implementation (owed_implementation empty) keeps its own name. */
+    static String selectedBody() {
+        return "public class SpringDataOwnerRepositoryImpl implements OwnerRepository {\n\n"
+                + "    private EntityManager em;\n\n"
+                + "    @Override\n"
+                + "    public Owner findById(int id) {\n"
+                + "        return this.em.find(Owner.class, id);\n"
+                + "    }\n\n"
+                + "    @Override\n"
+                + "    public Collection<Owner> findAll() {\n"
+                + "        return java.util.List.of();\n"
+                + "    }\n\n"
+                + "    @Override\n"
+                + "    public void save(Owner o) {\n"
+                + "        this.em.persist(o);\n"
+                + "    }\n"
+                + "}\n";
+    }
+
+    static String selectedHeader(String pkg, String imports) {
+        return "package " + pkg + ".repository.springdatajpa;\n\n" + imports + "import java.util.Collection;\n\n"
+                + "import io.quarkus.arc.profile.IfBuildProfile;\n"
+                + "import jakarta.persistence.EntityManager;\n"
+                + "import " + pkg + ".model.Owner;\n"
+                + "import " + pkg + ".repository.OwnerRepository;\n\n";
+    }
+
+    static FragmentCdiExposure selectedRecipe(String pkg, Report r) {
+        return new FragmentCdiExposure(pkg + ".repository.OwnerRepository",
+                pkg + ".repository.springdatajpa.SpringDataOwnerRepositoryImpl",
+                p(pkg, "repository/springdatajpa/SpringDataOwnerRepositoryImpl.java"), SCOPE, TYPED, r, true);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"org.springframework.samples.petclinic", "io.acme.depot.app"})
+    void exposesTheSelectedSourceImplementationUnderItsOwnName(String pkg) {
+        Report r = new Report();
+        rewriteRun(spec -> spec.recipe(selectedRecipe(pkg, r)),
+                with(pkg,
+                java(selectedHeader(pkg, "") + "@IfBuildProfile(\"spring-data-jpa\")\n" + selectedBody(),
+                        selectedHeader(pkg, "").replace("import jakarta.persistence.EntityManager;\n",
+                                "import jakarta.enterprise.context.ApplicationScoped;\nimport jakarta.enterprise.inject.Typed;\n"
+                                        + "import jakarta.persistence.EntityManager;\n")
+                                + "@ApplicationScoped\n@Typed(SpringDataOwnerRepositoryImpl.class)\n@IfBuildProfile(\"spring-data-jpa\")\n"
+                                + selectedBody(),
+                        s -> s.path(p(pkg, "repository/springdatajpa/SpringDataOwnerRepositoryImpl.java")))));
+        assertThat(r.outcome()).isEqualTo(Report.Outcome.APPLIED);
+    }
+
+    @Test
+    void aSelectedImplementationAlreadyInFormIsKeptWithoutAnEdit() {
+        String pkg = "org.acme.inventory";
+        Report r = new Report();
+        String done = selectedHeader(pkg, "import jakarta.enterprise.context.ApplicationScoped;\nimport jakarta.enterprise.inject.Typed;\n")
+                + "@ApplicationScoped\n@Typed(SpringDataOwnerRepositoryImpl.class)\n@IfBuildProfile(\"spring-data-jpa\")\n" + selectedBody();
+        rewriteRun(spec -> spec.recipe(selectedRecipe(pkg, r)),
+                with(pkg, java(done, s -> s.path(p(pkg, "repository/springdatajpa/SpringDataOwnerRepositoryImpl.java")))));
+        assertThat(r.outcome()).isEqualTo(Report.Outcome.ALREADY);
+    }
+
+    @Test
+    void aSelectedTargetWhosePathDeclaresAnotherClassIsRefused() {
+        String pkg = "org.acme.inventory";
+        Report r = new Report();
+        FragmentCdiExposure off = new FragmentCdiExposure(pkg + ".repository.OwnerRepository",
+                pkg + ".repository.springdatajpa.SpringDataOwnerRepositoryImpl", p(pkg, "repository/OwnerDao.java"),
+                SCOPE, TYPED, r, true);
+        rewriteRun(spec -> spec.recipe(off), support(pkg));
+        assertThat(r.outcome()).isEqualTo(Report.Outcome.UNRESOLVED);
+        assertThat(String.join(" ", r.reasons())).contains("issued path");
+    }
+
+    @Test
+    void aSelectedClassThatDoesNotImplementTheFragmentIsRefused() {
+        String pkg = "org.acme.inventory";
+        Report r = new Report();
+        String unrelated = "package " + pkg + ".repository.springdatajpa;\n\npublic class SpringDataOwnerRepositoryImpl {\n"
+                + "    public void run() { }\n}\n";
+        rewriteRun(spec -> spec.recipe(selectedRecipe(pkg, r)),
+                with(pkg, java(unrelated, s -> s.path(p(pkg, "repository/springdatajpa/SpringDataOwnerRepositoryImpl.java")))));
+        assertThat(r.outcome()).isEqualTo(Report.Outcome.UNRESOLVED);
+        assertThat(String.join(" ", r.reasons())).contains("does not implement");
+    }
 }

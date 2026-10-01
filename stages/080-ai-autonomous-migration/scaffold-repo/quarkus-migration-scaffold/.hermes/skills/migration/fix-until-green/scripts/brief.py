@@ -1560,6 +1560,27 @@ def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:
     return "\n".join(out)
 
 
+def fragment_target_lines(requirement: dict) -> list[str]:
+    """The ONE class a spring-data-fragment-impl requirement is judged on, from the checks' own resolver
+    (requirement_checks._fragment_rows) -- v30 H-6: the recipe prose names the <Fragment>Impl naming contract,
+    while a requirement whose source already implements the fragment is judged on that selected class."""
+    if str((requirement.get("recipe") or {}).get("id") or "") != "spring-data-fragment-impl":
+        return []
+    try:
+        from planner.requirement_checks import _fragment_rows
+        rows = _fragment_rows(requirement)
+    except Exception:  # noqa: BLE001 - no resolution, no line
+        return []
+    if len(rows) != 1:
+        return ["TARGET UNRESOLVED: no single implementation is owed or selected for %s; block the card naming this line"
+                % ((requirement.get("facts") or {}).get("fragment") or requirement.get("id"))]
+    r = rows[0]
+    if r.get("resolution") == "selected":
+        return ["TARGET: the source's selected implementation %s (%s) -- the <Fragment>Impl naming contract does NOT "
+                "apply; annotate THIS class, create no new one" % (r["type"], r["path"])]
+    return ["TARGET: the owed implementation %s (%s), named by the fragment naming contract" % (r["type"], r["path"])]
+
+
 def outcome_unmet(root: Path, board=None, current_tree: str | None = None) -> dict | None:
     """Why this card's outcome is NOT accepted, in the checks' own words: the unmet checks of the card's latest
     acceptance record (v30: the deciding detail lived only in a JSON comment). Carries the tree that record
@@ -1880,6 +1901,7 @@ def brief_digest(brief: dict, stem: str) -> str:
             arch = " ".join(str(r["recipe"]["architecture"]).split())
             out.append("    %s: %s" % ((r.get("recipe") or {}).get("id"), arch if len(arch) <= 4000 else arch[:4000]
                        + " … (the rest: brief.py --root . --section planned_requirements)"))
+            out += ["    " + x for x in fragment_target_lines(r)]
     # an owned requirement no qualified recipe translates: say so before the first edit, by name
     # (v26 t_4fd2dcec cycled catalog greps for a Servlet rule that did not exist, then guessed a rename)
     gaps = [(r, u) for r in brief.get("planned_requirements") or [] if isinstance(r, dict) and r.get("status") == "unresolved"

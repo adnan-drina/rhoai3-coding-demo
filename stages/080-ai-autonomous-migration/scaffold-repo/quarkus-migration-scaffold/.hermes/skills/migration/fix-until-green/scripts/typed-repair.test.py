@@ -122,6 +122,43 @@ class Planning(unittest.TestCase):
         cdi = next(r for r in got if r["recipe"] == "spring-data-fragment-impl")
         self.assertEqual(cdi["target"]["path"], IMPL)
 
+    def test_a_selected_source_implementation_is_the_target_under_its_own_name(self):
+        """v30 H-6: owed_implementation empty and ONE selected class -> the request targets that class with
+        resolution 'selected' (what the checks judge); the sealed naming-contract row stays 'owed'."""
+        sel = "src/main/java/org/acme/inv/repository/jpa/JpaItemRepositoryImpl.java"
+        root = tree({sel: "class A {}\n"})
+        reqs = [{"id": "req:repository-architecture:y", "status": "applicable", "paths": [sel],
+                 "recipe": {"id": "spring-data-fragment-impl"},
+                 "facts": {"fragment": "org.acme.inv.repository.ItemRepositoryOverride", "owed_implementation": "",
+                           "selected": ["org.acme.inv.repository.jpa.JpaItemRepositoryImpl"], "members": ["findAll()"]}}]
+        got, skipped = TR.plan(root, {}, [sel], reqs, CATALOG)
+        cdi = next(r for r in got if r["recipe"] == "spring-data-fragment-impl")
+        self.assertEqual((cdi["target"]["type"], cdi["target"]["path"], cdi["target"]["resolution"]),
+                         ("org.acme.inv.repository.jpa.JpaItemRepositoryImpl", sel, "selected"))
+        self.assertEqual(cdi["target"]["types"], ["org.acme.inv.repository.jpa.JpaItemRepositoryImpl"])
+        sealed, _s = TR.plan(tree({IMPL: "class A {}\n"}), scope_with(handler=False), [IMPL], [], CATALOG)
+        self.assertEqual(sealed[0]["target"]["resolution"], "owed")
+        # zero or several selected implementations: no target is invented
+        for picks in ([], ["a.A", "b.B"]):
+            amb = [dict(reqs[0], facts=dict(reqs[0]["facts"], selected=picks))]
+            got, _s = TR.plan(root, {}, [sel], amb, CATALOG)
+            self.assertEqual([r for r in got if r["recipe"] == "spring-data-fragment-impl"], [], picks)
+
+    def test_creating_the_owed_file_makes_the_typed_operation_the_next_action_again(self):
+        """Architect review (H-6): an 'owed file does not exist' result is invalidated when the file is written;
+        the brief's FIRST ACTION is the typed operation again (same request, normal executor)."""
+        root = tree({CTRL: "class B {}\n"})
+        reqs, _s = TR.plan(root, scope_with(handler=False), [IMPL], [], CATALOG)
+        TR.execute(root, "c:frag", reqs, [IMPL], invoke=fake("unresolved", reasons=["the owed implementation does not exist"]), exe=EXE)
+        sec = TR.brief_section(root, "c:frag", reqs, [], CATALOG)
+        self.assertNotIn("first_action", sec)
+        self.assertTrue(sec["requests"][0].get("unresolved"))
+        (root / IMPL).parent.mkdir(parents=True, exist_ok=True)
+        (root / IMPL).write_text("class ItemRepositoryImpl {}\n", encoding="utf-8")
+        sec = TR.brief_section(root, "c:frag", reqs, [], CATALOG)
+        self.assertIn("first_action", sec)
+        self.assertFalse(sec["requests"][0].get("unresolved"))
+
     def test_an_agent_bounded_row_is_never_a_typed_request(self):
         cat = json.loads(json.dumps(CATALOG))
         cat["migration_recipes"]["handler-uri-parameter"]["implementation"]["kind"] = "agent-bounded"

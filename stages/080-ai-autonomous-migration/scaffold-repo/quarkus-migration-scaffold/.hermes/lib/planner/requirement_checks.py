@@ -176,7 +176,10 @@ def _fragment_rows(requirement: dict[str, Any]) -> list[dict[str, Any]]:
             return []
         impl = selected[0]
         path = "src/main/java/%s.java" % impl.replace(".", "/")
-    return [{"parent": parent, "type": impl, "path": path, "members": list(facts.get("members") or []),
+    # v30 H-6: the resolution travels with the target, so the typed executor, the brief and these checks name the
+    # same class -- "owed" applies the <Fragment>Impl naming contract, "selected" the source's own implementation
+    return [{"parent": parent, "type": impl, "path": path, "resolution": "owed" if owed else "selected",
+             "members": list(facts.get("members") or []),
              "contract": FRAGMENT_IMPL_CONTRACT, "behaviour": facts.get("behaviour") or {},
              "cdi": {"scope": FRAGMENT_IMPL_SCOPE, "typed": FRAGMENT_IMPL_TYPED, "types": [impl],
                      "source": FRAGMENT_IMPL_CDI_SOURCE}}]

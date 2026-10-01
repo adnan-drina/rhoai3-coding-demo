@@ -61,9 +61,17 @@ public class FragmentCdiExposure extends ScanningRecipe<FragmentCdiExposure.Fact
     private final String scope;
     private final String typed;
     private final Report report;
+    /** v30 H-6: the source already implements the fragment and the plan selected that ONE class (nothing owed). */
+    private final boolean selected;
 
     public FragmentCdiExposure(String parent, String implementation, String path, String scope, String typed,
                                Report report) {
+        this(parent, implementation, path, scope, typed, report, false);
+    }
+
+    public FragmentCdiExposure(String parent, String implementation, String path, String scope, String typed,
+                               Report report, boolean selected) {
+        this.selected = selected;
         this.parent = parent;
         this.implementation = implementation;
         this.path = path;
@@ -228,7 +236,18 @@ public class FragmentCdiExposure extends ScanningRecipe<FragmentCdiExposure.Fact
         acc.decided = true;
         acc.r.matched("fragment " + parent);
         String simpleParent = parent.substring(parent.lastIndexOf('.') + 1);
-        if (!implementation.equals(parent + "Impl")) {
+        if (selected) {
+            // v30 H-6: the plan's resolution names the ONE source implementation selected in the decided build
+            // profile (owed_implementation empty); the checks judge exactly that class, so the exposure targets it
+            // whatever its name -- provided it is the class its issued path declares
+            if (!path.equals("src/main/java/" + implementation.replace('.', '/') + ".java")) {
+                acc.r.reason("the selected implementation " + implementation + " is not the class its issued path "
+                        + path + " declares");
+                acc.r.decide(Report.Outcome.UNRESOLVED);
+                report.adopt(acc.r);
+                return acc.r.outcome();
+            }
+        } else if (!implementation.equals(parent + "Impl")) {
             acc.r.reason("the implementation " + implementation + " is not the naming contract's " + simpleParent
                     + "Impl in the fragment's package (spring-data-fragment-impl/v1)");
             acc.r.decide(Report.Outcome.UNRESOLVED);
@@ -236,7 +255,9 @@ public class FragmentCdiExposure extends ScanningRecipe<FragmentCdiExposure.Fact
             return acc.r.outcome();
         }
         if (!acc.fileSeen) {
-            acc.r.reason("the owed implementation " + path + " does not exist on this candidate: its member bodies are "
+            acc.r.reason(selected
+                    ? "the selected implementation " + path + " does not exist on this candidate"
+                    : "the owed implementation " + path + " does not exist on this candidate: its member bodies are "
                     + "agent work (never synthesized); the CDI exposure applies after it is written");
             acc.r.decide(Report.Outcome.UNRESOLVED);
             report.adopt(acc.r);
