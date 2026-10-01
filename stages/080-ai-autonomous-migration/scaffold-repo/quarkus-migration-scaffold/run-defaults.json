@@ -25,12 +25,12 @@
   },
   "configuration": {
     "model": {
-      "id": "qwen3-8-27b-int4",
-      "provider": "qwen38",
+      "id": "qwen3-6-27b",
+      "provider": "qwen27b",
       "namespace": "models-as-a-service",
-      "maas_api_path": "/models-as-a-service/qwen3-8-27b-int4/v1",
-      "served_max_model_len": 262144,
-      "declared_context_length": 220000
+      "maas_api_path": "/models-as-a-service/qwen3-6-27b/v1",
+      "served_max_model_len": 131072,
+      "declared_context_length": 110000
     },
     "hermes": {
       "version": "v0.20.5",
@@ -44,7 +44,7 @@
       "provisionerImage": "registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9"
     },
     "concurrency": "serial",
-    "parallel_m3": "m3-pair-pilot/v1",
+    "parallel_m3": "serial",
     "activation": "not-activated"
   }
 }

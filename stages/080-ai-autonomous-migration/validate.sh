@@ -127,9 +127,12 @@ check "live init ConfigMap does not curl-install Hermes" \
 # from the one declared profile table (migration-model-profiles), not written
 # as literals in the init script; check the declaration and the one provider
 # name the script still carries.
-check "declared model profile makes qwen3-8-27b-int4 the default on provider qwen38" \
-  "oc get cm migration-model-profiles -n wksp-ai-developer -o go-template='{{index .data \"model-profiles.json\"}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d[\"profiles\"][d[\"default_model\"]]; print(int(d[\"default_model\"]==\"qwen3-8-27b-int4\" and p[\"provider\"]==\"qwen38\"))' 2>/dev/null || echo 0" \
-  "1"
+# The run model is a pinned input chosen once, in the golden's run-defaults.json (v30 E-1: Qwen 3.6 vs 3.8);
+# the platform's declared default and its provider must equal it, or the preflight refuses "worker model mismatch".
+RUN_MODEL="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1]))["configuration"]["model"]; print(m["id"], m["provider"])' "${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/run-defaults.json" 2>/dev/null || echo "missing missing")"
+check "declared model profile default equals the golden run model (${RUN_MODEL})" \
+  "oc get cm migration-model-profiles -n wksp-ai-developer -o go-template='{{index .data \"model-profiles.json\"}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d[\"profiles\"][d[\"default_model\"]]; print(d[\"default_model\"]+\" \"+p[\"provider\"])' 2>/dev/null || echo none" \
+  "${RUN_MODEL}"
 check "init script names the Hermes Qwen provider qwen38" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen38\"' || echo 0" \
   "1"
