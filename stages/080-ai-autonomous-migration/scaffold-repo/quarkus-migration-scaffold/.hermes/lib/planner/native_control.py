@@ -1465,37 +1465,96 @@ def _producer_difference(m: dict[str, Any], reqs: dict[str, dict[str, Any]], wor
     return False
 
 
+EXECUTABLE_STATUSES = ("todo", "ready", "running", "review", "blocked", "triage")
+
+
+def _native_status_fn(board: Board, run: str) -> Callable[[str], str]:
+    """outcome id -> its native task status, or "missing" (H13-R2: _status_fn collapses archived and
+    missing into "open"; a repair owner must be a task that can actually run)."""
+    tasks = board.run_tasks(run)
+
+    def status_of(o: str) -> str:
+        row = tasks.get(o)
+        return str((board.task(row["id"]) or {}).get("status") or "missing") if row else "missing"
+    return status_of
+
+
+def judged_now(plan: dict[str, Any], node: dict[str, Any]) -> set[str]:
+    """The scenarios (bare ids, 'sc:' prefixed) an outcome's IMMEDIATE requirement checks judge on its own
+    acceptance: a parity:sc check its scenario, a location check the coverage its requirement names, a
+    repository-effects check its requirement's facts.verification scenarios."""
+    reqs = [q for q in plan.get("requirements") or [] if isinstance(q, dict) and q.get("id") in set(node.get("requirements") or [])]
+    out: set[str] = set()
+    for c in ((node.get("acceptance") or {}).get("requirement_checks")) or []:
+        c = str(c)
+        if c.startswith("parity:sc:"):
+            out.add(c[len("parity:"):])
+        elif c.startswith("location:"):
+            for q in reqs:
+                if c in (q.get("acceptance") or []):
+                    loc = (q.get("facts") or {}).get("location") or {}
+                    out |= {_bare_scenario(s) for s in loc.get("coverage") or []}
+        elif c.startswith("behavior:repository-effects:"):
+            for q in reqs:
+                if c in (q.get("acceptance") or []):
+                    for v in (q.get("facts") or {}).get("verification") or []:
+                        out |= {_bare_scenario(s) for s in (v.get("scenarios") or [] if isinstance(v, dict) else [])}
+    return {s if s.startswith("sc:") else "sc:" + s for s in out}
+
+
 def _effect_route(root: Path, plan: dict[str, Any], m: dict[str, Any], worklist: dict[str, Any] | None, tree: str,
-                  scen: list[str], status_of: Callable[[str], str]) -> dict[str, Any] | None:
-    """H-13 (architect decision 2026-10-01): who repairs a FAILING repository-effects row. The row's
-    structured witnesses (requirement_checks.effect_witnesses) resolved through the plan's ownership:
-    {witnesses, owners: {finding: open owner}, unowned: [finding], complete}. None for any other check
-    (its routing is unchanged). An owner counts only as an open repair outcome of this plan."""
+                  scen: list[str], native_status: Callable[[str], str]) -> dict[str, Any] | None:
+    """H-13 (architect decisions 2026-10-01): who repairs a FAILING repository-effects row. Every failing
+    witness is resolved to an EXECUTABLE owner (a native task that exists and is not done or archived):
+    a work-list finding through outcome_graph.owner_of_finding; a comparison FAIL no finding explains
+    (record-only) through the open outcome whose immediate checks judge that scenario now (H13-R1: such a
+    FAIL is that outcome's own repair, never a follow-up behind it). Two claimants stay unresolved
+    (``ambiguous``; H13-R2: no repair destination is chosen). A scenario not measured on this candidate
+    is verification debt (``unknown``), never an unowned product repair. None for any other check."""
     if not str(m.get("check") or "").startswith("behavior:repository-effects:"):
         return None
     from planner.requirement_checks import effect_witnesses
     reqs = [q for q in plan.get("requirements") or [] if isinstance(q, dict) and q.get("id") in set(m.get("requirements") or [])]
     w = effect_witnesses(root, reqs, m["check"], worklist=worklist or {}, scenarios=scen, tree=tree, receipts=_receipts(root))
-    # the existing deterministic resolver (outcome_graph.owner_of_finding): the plan's obligation ownership, then
-    # the finding's cluster, then the planned requirement whose scope holds its locus -- so a finding of an open
-    # card that has not been issued yet is that card's, not "unowned"; two claimants stay unresolved, named
     from planner.outcome_graph import owner_of_finding
     items = {str(i.get("id")): i for i in (worklist or {}).get("items") or [] if isinstance(i, dict)}
+
+    def executable(o: str) -> bool:
+        node = _node(plan, o) if o else None
+        return bool(node and node.get("role") == "repair" and native_status(o) in EXECUTABLE_STATUSES)
+
+    judges: dict[str, list[str]] = {}
+    for n in plan.get("nodes") or []:
+        if n.get("role") == "repair" and executable(n["outcome_id"]):
+            for s in judged_now(plan, n):
+                judges.setdefault(s, []).append(n["outcome_id"])
     owners: dict[str, str] = {}
     unowned: list[str] = []
     ambiguous: dict[str, list[str]] = {}
+    scen_of: dict[str, list[str]] = {}
     for f in w["findings"]:
+        scen_of[f["finding"]] = list(f.get("scenarios") or ([f["scenario"]] if f.get("scenario") else []))
         got = owner_of_finding(plan, items.get(f["finding"]) or {"id": f["finding"], "entry_point": f.get("entry_point")})
         o = str(got.get("owner") or "")
-        node = _node(plan, o) if o else None
-        if node and node.get("role") == "repair" and status_of(o) != "done":
+        if got.get("class") == "ambiguous-ownership":
+            ambiguous[f["finding"]] = list(got.get("candidates") or [])
+        elif executable(o):
             owners[f["finding"]] = o
         else:
             unowned.append(f["finding"])
-            if got.get("class") == "ambiguous-ownership":
-                ambiguous[f["finding"]] = list(got.get("candidates") or [])
+    for s in w["record_only"]:
+        wid = "scenario:%s" % s
+        scen_of[wid] = [s]
+        claim = sorted(set(judges.get(s if s.startswith("sc:") else "sc:" + s, [])))
+        if len(claim) == 1:
+            owners[wid] = claim[0]
+        elif len(claim) > 1:
+            ambiguous[wid] = claim
+        else:
+            unowned.append(wid)
     return {"witnesses": w, "owners": owners, "unowned": sorted(unowned), "ambiguous": ambiguous,
-            "complete": bool(w["complete"]) and not unowned}
+            "unknown": list(w.get("unknown") or []), "scenarios_of": scen_of, "judges": judges,
+            "complete": not unowned and not ambiguous}
 
 
 def _waits_on(plan: dict[str, Any], node_id: str) -> set[str]:
@@ -1549,6 +1608,7 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
     if not rows:
         return None
     status_of = _status_fn(board, run)
+    native_status = _native_status_fn(board, run)
     scen = measured_scenarios(root, tree)
     measured = [measure_scheduled(root, plan, r, worklist, tree, status_of, scen) for r in rows]
     hnode = _node(plan, holder) or {}
@@ -1557,6 +1617,7 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
     reqs = {str(q.get("id")): q for q in plan.get("requirements") or [] if isinstance(q, dict)}
     ownership = plan.get("ownership") or {}
     fails = []
+    unrouted: list[Any] = []
     for m in measured:
         if m["state"] != "fail":
             continue
@@ -1571,7 +1632,7 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
             m["route"] = "its owner %s is still open: judged there and at M4" % m["owner"]
         elif not ((lambda er: (bool(er["witnesses"]["findings"]) or bool(er["witnesses"]["record_only"]))
                    if er is not None else _producer_difference(m, reqs, worklist))(
-                      m.setdefault("_er", _effect_route(root, plan, m, worklist, tree, scen, status_of)))):
+                      m.setdefault("_er", _effect_route(root, plan, m, worklist, tree, scen, native_status)))):
             er0 = m.pop("_er", None)
             if er0 is not None and (er0["witnesses"]["unknown"]):
                 m["witnesses"] = er0["witnesses"]
@@ -1588,22 +1649,52 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
             if er is not None:
                 m["witnesses"] = er["witnesses"]
                 m["repair_owners"] = sorted(set(er["owners"].values()))
-            if er is not None and er["complete"]:
-                # H-13: every failing finding is already owned by an open outcome (the holder included):
-                # the check stays FAIL and owed, its findings stay with their owners, and no follow-up
-                # (which those owners would wait on) is minted for the check's original owner
-                m["route"] = ("evidence owned by open outcomes: %s; the check stays FAIL and owed until measured PASS"
-                              % ", ".join("%s -> %s" % (f, o) for f, o in sorted(er["owners"].items())))
+                if er["unknown"]:
+                    m["verification_owed"] = list(er["unknown"])   # verification debt, not a product repair
+            if er is not None and er["ambiguous"]:
+                # H13-R2: two outcomes claim a failing witness: a typed unresolved planning result, no repair
+                # destination is chosen and nothing is published; the check stays FAIL and owed (M4 measures it)
+                m["ambiguous_ownership"] = er["ambiguous"]
+                m["route"] = ("unresolved: ambiguous ownership of %s; no repair is routed until one owner is decided"
+                              % ", ".join("%s (%s)" % (f, " | ".join(c)) for f, c in sorted(er["ambiguous"].items())))
+                unrouted.append((SCHEDULED_OBLIGATION % (m["owner"], m["check"]), "ambiguous-ownership",
+                                 sorted({c for cs in er["ambiguous"].values() for c in cs})))
+            elif er is not None and er["complete"]:
+                # H-13: every failing witness is owned by an executable open outcome (the holder included): the
+                # check stays FAIL and owed, its witnesses stay with their owners, and no follow-up (which those
+                # owners would wait on) is minted for the check's original owner
+                m["route"] = ("evidence owned by open outcomes: %s; the check stays FAIL and owed until measured PASS%s"
+                              % (", ".join("%s -> %s" % (f, o) for f, o in sorted(er["owners"].items())),
+                                 ("; %d scenario(s) not measured on this candidate: verification owed" % len(er["unknown"]))
+                                 if er["unknown"] else ""))
             else:
                 m["route"] = "owner"
                 m["contributors"] = sorted(set(er["owners"].values())) if er is not None else []
-                if er is not None and er.get("ambiguous"):
-                    m["ambiguous_ownership"] = er["ambiguous"]      # reported, never resolved by picking one
+                if er is not None:
+                    m["_unowned_scenarios"] = sorted({s for wid in er["unowned"] for s in er["scenarios_of"].get(wid, [])})
+                    m["_judges"] = er["judges"]
                 fails.append(m)
-    rec = board.record(task_id, "schedule-measure", "schedule-measure:%d:r%d:%s" % (int(run_id), int(plan["revision"]), tree[:16]),
-                       run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=measured,
+    unrouted_rows = list(unrouted)
+    rows_out = [{k: v for k, v in m.items() if not k.startswith("_")} for m in measured]
+    # H13-R3: one record per (phase, result) -- the issue or the acceptance that measured it, and the row
+    # states it found: a fresh measurement on the same tree (pending -> pass) is its own record; an exact
+    # replay of the same phase and result is the same key (recorded once)
+    phase = sha256(("accept:" + accepted if accepted else "issue").encode("utf-8"))[:10]
+    states = sha256(json.dumps(sorted((str(m.get("owner")), str(m.get("check")), str(m.get("state"))) for m in measured))
+                    .encode("utf-8"))[:10]
+    rec = board.record(task_id, "schedule-measure", "schedule-measure:%d:r%d:%s:%s:%s" % (
+                           int(run_id), int(plan["revision"]), tree[:16], phase, states),
+                       run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=rows_out,
                        **({"at": "accept", "accept": accepted} if accepted else {}))
-    orphans, unrouted = [], []
+
+    def settle(result: dict[str, Any]) -> dict[str, Any]:
+        # Decision 2: the scheduled results are measured AND routed; only then is an acceptance usable for handoff
+        board.record(task_id, "schedule-settled", "schedule-settled:%s" % rec["key"], run=int(run_id),
+                     measure=rec["key"], accept=accepted, routed=list(result.get("routed") or []),
+                     unrouted=[u[0] if isinstance(u, (list, tuple)) else u for u in result.get("unrouted") or []][:20])
+        return result
+    orphans = []
+    unrouted = unrouted_rows
     for m in fails:
         ob = SCHEDULED_OBLIGATION % (m["owner"], m["check"])
         onode = _node(plan, m["owner"]) or {}
@@ -1612,15 +1703,15 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
                                                            | {str(p) for q in plan.get("requirements") or [] if isinstance(q, dict)
                                                               and q.get("id") in m["requirements"] for p in q.get("paths") or []}),
                         "status": "open", "reopened_from": m["owner"], "detail": m["detail"][:300]})
-    out = {"record": rec["key"], "rows": measured, "routed": [], "unrouted": unrouted}
+    out = {"record": rec["key"], "rows": rows_out, "routed": [], "unrouted": unrouted}
     if not orphans:
-        return out
+        return settle(out)
     from planner.outcome_checks import orphan_revision
     routed = orphan_revision(plan, orphans, holder=holder, status_of=status_of,
                              budget_of=lambda o: dict((_node(plan, o) or {}).get("budget") or {}))
     if routed["plan"] is None:
         out["unrouted"] += routed["unresolved"]
-        return out
+        return settle(out)
     nxt = routed["plan"]
     by_ob = {SCHEDULED_OBLIGATION % (m["owner"], m["check"]): m for m in fails}
     for n in nxt["nodes"]:
@@ -1647,10 +1738,15 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
         mine = [by_ob[o] for o in n.get("obligations") or [] if o in by_ob]
         if not mine or not n["outcome_id"].startswith("followup:"):
             continue
+        fid = n["outcome_id"]
+        # H13-R1: every open outcome whose IMMEDIATE checks judge a scenario this follow-up repairs needs its
+        # repair (it waits on the follow-up); a validation input, never filtered away
+        needers = sorted({o for m in mine for s in m.get("_unowned_scenarios") or []
+                          for o in (m.get("_judges") or {}).get(s, [])} - {fid})
+        deps += [(o, fid) for o in needers]
         contributors = sorted({c for m in mine for c in m.get("contributors") or []} - {n["outcome_id"]})
         if not contributors:
             continue
-        fid = n["outcome_id"]
         for c in contributors:
             for x in nxt["nodes"]:
                 if x["outcome_id"] == c or x["outcome_id"] in _waits_on(nxt, c):
@@ -1671,6 +1767,7 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
     from planner.native_publish import publish_revision
     publish_revision(root, board, nxt, added=routed["added"], holder=task_id)
     out["routed"] = routed["added"]
+    settle(out)
     if accepted:
         return out
     hparents = set((_node(nxt, holder) or {}).get("parents") or [])
@@ -1891,6 +1988,9 @@ def outcome_acceptance(root: Path, board: Board, task_id: str, plan: dict[str, A
     still = sorted(open_obligations(wl) & owned(plan, node))
     if still:
         return False, "%s still owns open %s" % (node["outcome_id"], ", ".join(still[:5]))
+    unsettled = schedule_unsettled(board, plan, node, dict(recs[-1], _task=task_id))
+    if unsettled:
+        return False, unsettled
     return True, "accepted on %s" % tree[:12]
 
 
@@ -2277,17 +2377,42 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
                  **(extra or {}))
     # check-schedule/v1: an accepted repair of a shared producer marks every affected path for remeasurement
     marked = mark_remeasure(board, run, plan, node, task_id=task_id, accept_key="accept-commit:%s" % key, tree=tree) if done else []
-    schedule = None
-    if role == "repair" and str(node.get("class") or "") in ORPHAN_WAITERS:
-        # check-schedule/v1: the rows scheduled at this card measured on the candidate just judged
-        schedule = schedule_at_issue(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, holder=oid,
-                                     worklist=wl, tree=tree, accepted="accept-commit:%s" % key)
+    schedule = _schedule_after_acceptance(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, node=node,
+                                          role=role, worklist=wl, tree=tree, accept_key="accept-commit:%s" % key)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "remeasure": marked,
             "schedule": [{k: x.get(k) for k in ("owner", "check", "state", "missing", "route")}
                          for x in (schedule or {}).get("rows") or []],
             "schedule_routed": list((schedule or {}).get("routed") or []),
             "covered": covered, "repair_evidence_gaps": evidence_gaps,
             "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": evidence_gaps})}
+
+
+def _schedule_after_acceptance(root: Path, board: Board, *, task_id: str, run_id: int, run: str, plan: dict[str, Any],
+                               node: dict[str, Any], role: str, worklist: dict[str, Any], tree: str,
+                               accept_key: str) -> dict[str, Any] | None:
+    """check-schedule/v1 + Decision 2 (architect 2026-10-01): the rows scheduled at this card measured on the
+    candidate an acceptance just judged, recorded and routed (``schedule-settled``) -- on every acceptance
+    exit: accept_commit, evaluate_unchanged_rework and evaluate_recovered. A FAIL or UNKNOWN keeps its debt
+    and route; the holder's own acceptance is still decided by its own contract."""
+    if role != "repair" or str(node.get("class") or "") not in ORPHAN_WAITERS:
+        return None
+    return schedule_at_issue(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, holder=node["outcome_id"],
+                             worklist=worklist, tree=tree, accepted=accept_key)
+
+
+def schedule_unsettled(board: Board, plan: dict[str, Any], node: dict[str, Any], rec: dict[str, Any]) -> str:
+    """Why the positive acceptance ``rec`` is not yet usable for handoff: its card measures scheduled rows and
+    no ``schedule-settled`` record of THAT acceptance exists (a crash between the acceptance record and the
+    scheduled measurement or its routing). '' when settled or nothing is scheduled here."""
+    if str(node.get("class") or "") not in ORPHAN_WAITERS or not scheduled_rows(plan, node["outcome_id"]) or rec.get("pilot"):
+        return ""
+    task = str(rec.get("_task") or "")
+    settled = {str(r.get("accept") or "") for r in board.records(task, "schedule-settled")} if task else set()
+    if str(rec.get("key") or "") in settled:
+        return ""
+    return ("the scheduled checks measured at %s's acceptance %s are not recorded and routed yet: run advance.py "
+            "again (it finishes the acceptance's scheduled measurement), then request review"
+            % (node["outcome_id"], rec.get("key")))
 
 
 def recover_accept(root: Path, board: Board, *, task_id: str, skip_run: int | None = None,
@@ -2359,9 +2484,12 @@ def evaluate_unchanged_rework(root: Path, board: Board, *, task_id: str, run_id:
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
-    board.record(task_id, "accept-evaluated", "accept-evaluated:rework:%d:%d" % (int(run_id), len(rows)),
+    ek = "accept-evaluated:rework:%d:%d" % (int(run_id), len(rows))
+    board.record(task_id, "accept-evaluated", ek,
                  run=int(run_id), commit=base, tree=tree, outcome_accepted=done, measurement=m,
                  basis="rework-unchanged", accepted_commit=base, repair_evidence_gaps=gaps)
+    _schedule_after_acceptance(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, node=node, role=role,
+                               worklist=wl, tree=tree, accept_key=ek)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "covered": covered,
             "commit": base,
             "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": gaps})}
@@ -2375,7 +2503,19 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     active_issue(board, task_id, run_id)
     role, run, oid, plan, node = node_context(board, task_id)
     rows = _accept_records(board, task_id)
-    if not rows or rows[-1].get("outcome_accepted"):
+    if rows and rows[-1].get("outcome_accepted"):
+        # Decision 2 recovery: an accepted outcome whose scheduled measurement was interrupted is finished here
+        last = dict(rows[-1], _task=task_id)
+        if not schedule_unsettled(board, plan, node, last) or last.get("tree") != _product_tree(root):
+            return None
+        wl, why = load_worklist(root)
+        if wl is None:
+            raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
+        _schedule_after_acceptance(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, node=node, role=role,
+                                   worklist=wl, tree=last["tree"], accept_key=last["key"])
+        return {"outcome_id": oid, "outcome_accepted": True, "open_owned": [], "covered": True,
+                "commit": last.get("commit"), "not_accepted_because": [], "schedule_recovered": True}
+    if not rows:
         return None
     last = rows[-1]
     tree = _product_tree(root)
@@ -2395,9 +2535,11 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
     # one record per evaluation: a later evaluation under corrected rules is a new verdict, not a replay
-    board.record(task_id, "accept-evaluated", "accept-evaluated:%s:%d" % (last["key"].split(":", 1)[1], len(rows)),
-                 run=int(run_id),
+    ek = "accept-evaluated:%s:%d" % (last["key"].split(":", 1)[1], len(rows))
+    board.record(task_id, "accept-evaluated", ek, run=int(run_id),
                  commit=last.get("commit"), tree=tree, outcome_accepted=done, measurement=m)
+    _schedule_after_acceptance(root, board, task_id=task_id, run_id=run_id, run=run, plan=plan, node=node, role=role,
+                               worklist=wl, tree=tree, accept_key=ek)
     return {"outcome_id": oid, "outcome_accepted": done, "open_owned": m["open_owned"], "covered": covered,
             "commit": last.get("commit"),
             "not_accepted_because": [] if done else not_accepted_reasons({"measurement": m, "repair_evidence_gaps": gaps})}
