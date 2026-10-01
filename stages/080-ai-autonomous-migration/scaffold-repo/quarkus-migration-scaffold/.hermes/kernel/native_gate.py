@@ -264,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
             from planner.outcome_checks import initial_plan_from_root
             from planner.outcome_protocol import execution_gate, select_protocol
             from planner.native_publish import pilot_plan
-            plan = pilot_plan(root, NC.native_plan(initial_plan_from_root(root)), select_protocol(root).execution)
+            plan = pilot_plan(root, NC.native_plan(initial_plan_from_root(root), presentation=NC.card_presentation_of(root)), select_protocol(root).execution)
             out = {"preview": True, "gate": [list(g) for g in execution_gate(root)],
                    "execution": plan.get("execution") or {"policy": "serial"},
                    "nodes": [{k: n.get(k) for k in ("outcome_id", "title", "parents", "assignee")} for n in plan["nodes"]],

@@ -93,6 +93,10 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
         opin = _loop_pin_gap(root, decisions, "compatibility_objectives")
         if opin:
             block("OBJECTIVES_REPINNED", "decisions.loop.compatibility_objectives", opin)
+        cpin = _loop_pin_gap(root, decisions, "card_presentation")
+        if cpin:
+            # H-11: published titles and bodies are compared exactly on read-back; a run keeps its card text
+            block("CARD_PRESENTATION_REPINNED", "decisions.loop.card_presentation", cpin)
         if _objectives_mode(decisions) == "v1" and plan_semantics_mode(decisions) != "v1":
             block("OBJECTIVES_WITHOUT_PLAN_SEMANTICS", "decisions.loop.compatibility_objectives",
                   "compatibility-objectives/v1 composes the plan-semantics v1 revision; select loop.plan_semantics: v1")

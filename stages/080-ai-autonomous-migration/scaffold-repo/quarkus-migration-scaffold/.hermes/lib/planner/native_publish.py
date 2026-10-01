@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.native_control import (CONTRACT, IMPL, MAX_RETRIES, REVIEWER, WORKSPACE, Board, Refusal, canonical_bytes,
-                                    contract_doc, native_body, native_key, native_plan, plan_attachment, publication_lock,
+                                    contract_doc, card_presentation_of, native_body, native_key, native_plan, plan_attachment, publication_lock,
                                     sha256)
 from planner.outcome_graph import CONTROL_M2, plan_digest, topo_order
 
@@ -285,7 +285,7 @@ def publish_initial(root: Path, board: Board, *, m2: str, plan_file: str = "") -
     else:
         from planner.outcome_checks import initial_plan_from_root
         plan = initial_plan_from_root(root)
-    plan = pilot_plan(root, native_plan(plan), sel.execution)
+    plan = pilot_plan(root, native_plan(plan, presentation=card_presentation_of(root)), sel.execution)
     workspace = workspace_for(root, sel.execution)
     added = [n["outcome_id"] for n in plan["nodes"]]
     with publication_lock(root):

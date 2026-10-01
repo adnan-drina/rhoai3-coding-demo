@@ -92,6 +92,19 @@ M3 cards and recovery (after v20, 2026-09-27):
   (BUILD, CONFIGURE, COMPILE, RUNTIME, BEHAVIOR; REPAIR for an owner repair,
   FOLLOW-UP for an M4 follow-up). No two cards share a title: equal subjects
   become `(part i of n)`. A published title is never rewritten.
+- **Card text (card/v2, H-11).** With `decisions.loop.card_presentation: v2`
+  (pinned at run creation, `CARD_PRESENTATION_REPINNED`) titles, bodies and
+  review handoffs are rendered by `planner.card_text` from the plan's facts:
+  the goal; scope (files, endpoints); done when (findings by kind -- compiler
+  errors, MTA findings, planned changes -- and each check judged here); the
+  checks judged LATER and where, which approving the card does not
+  discharge; and, for a follow-up, which card found what failing after which
+  accepted card. A node's body is stored on it (`card_body`) when it is first
+  published and never re-rendered; a plan without the key publishes the v1
+  text unchanged. The handoff reports the decision, each execution stage's
+  state and each check's result (pass / fail / unknown / blocked); a check is
+  never reported passing from its class or from `done`. Text is presentation:
+  no decision reads it.
 - **Runtime checks gate M4.** A requirement check that needs the running
   application (`parity:`, `behavior:`, `gate:package|augmentation|startup`) on
   an outcome whose class cannot measure it is moved to the M4 node's

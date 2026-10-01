@@ -125,11 +125,18 @@ thresholds:
 # check's stage and prerequisites before M3, and joins budgets by lineage so
 # the run's total retry allowance is unchanged. Needs plan_semantics v1; pinned
 # at run creation like it (OBJECTIVES_REPINNED), so earlier runs stay per-unit.
+# Card presentation (v2, H-11): card titles, bodies and review handoffs are
+# rendered from the plan's semantic facts (planner.card_text): what the card is
+# for, which checks decide it now, which are checked later and where, why a
+# follow-up exists. Pinned at run creation (CARD_PRESENTATION_REPINNED): a
+# published card is compared exactly on read-back, so earlier runs -- created
+# without the key -- keep the v1 text.
 loop:
   unit_formation: v1
   runtime_feedback: v1
   plan_semantics: v1
   compatibility_objectives: v1
+  card_presentation: v2
 
 # Repairs accepted ADRs already made, carried into a FRESH run as bootstrap
 # transformations (ADR-019 sections 2 and 3) instead of mid-run Operator steps.

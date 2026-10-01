@@ -58,6 +58,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from planner import card_text as CT
 from planner.outcome_checks import (AMEND_LIMIT, AMEND_MAX_FILES, CAUSE_CLASSES, DELIVERY_OK_VERDICTS, HOLD_MAX_BYTES,
                                     MAX_ASSESSMENT_GENERATIONS, OWNER_DEFECT, VERDICT, Refusal, _covers, _git,
                                     _is_product, _read_json, _unit_kind, changed_product_paths, commit_product_tree,
@@ -208,8 +209,10 @@ PILOT_TEXT = ("\n\nParallel pilot (PARALLEL-M3-PILOT.md): this card runs beside 
 
 
 def native_body(node: dict[str, Any]) -> str:
-    """The task body as published (deterministic; the read-back compares exactly this)."""
-    body = native_description(node)
+    """The task body as published (deterministic; the read-back compares exactly this). A card/v2 plan
+    stores each node's body when the node is first published (``card_body``, planner.card_text), so a
+    later revision or renderer never rewrites it; an earlier plan renders the v1 text as it always did."""
+    body = node["card_body"] if isinstance(node.get("card_body"), str) else native_description(node)
     if node.get("pilot_pair"):
         body += PILOT_TEXT % ", ".join(node["pilot_pair"])
     return body
@@ -266,8 +269,9 @@ def native_titles(plan: dict[str, Any]) -> dict[str, Any]:
     fresh = [n for n in nodes if n.get("role") == "repair" and not str(n.get("title") or "").startswith("M3 ")]
     taken = [str(n.get("title")) for n in nodes if n not in fresh]
     groups: dict[str, list[dict[str, Any]]] = {}
+    v2 = plan.get("presentation") == CT.PRESENTATION_V2
     for n in sorted(fresh, key=lambda n: n["outcome_id"]):
-        groups.setdefault(_m3_title(n), []).append(n)
+        groups.setdefault(CT.title(plan, n) if v2 else _m3_title(n), []).append(n)
     for base, members in groups.items():
         clash = sum(1 for t in taken if t == base or t.startswith(base + " (part "))
         total = len(members) + clash
@@ -332,22 +336,61 @@ def defer_runtime_checks(plan: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def native_plan(plan: dict[str, Any]) -> dict[str, Any]:
+def native_plan(plan: dict[str, Any], *, presentation: str = "v1") -> dict[str, Any]:
     """The initial revision as native control publishes it: the M5 stages are
     ASSIGNED at creation (their native parent, the accepted M4, holds them;
     there are no stage grants), runtime checks of early outcomes gate M4,
     and every repair outcome carries a unique ``M3 <ACTION>`` title.
+    ``presentation`` is the run's decisions.loop.card_presentation: "v2"
+    pins planner.card_text on the plan (every later revision inherits it).
     Deterministic; the digest is recomputed."""
     out = dict(plan)
     out["nodes"] = [dict(n, assignee=IMPL) if n.get("role") == "deliver" else dict(n) for n in plan["nodes"]]
     out["control"] = "native-cooperative"
-    return native_titles(defer_runtime_checks(out))
+    if presentation == "v2":
+        out["presentation"] = CT.PRESENTATION_V2
+    return card_bodies(native_titles(defer_runtime_checks(out)))
 
 
 def native_revision(plan: dict[str, Any]) -> dict[str, Any]:
     """A later revision (owner repair, REFUSE repairs) as native control
     publishes it: the same titling and check placement for its new nodes."""
-    return native_titles(defer_runtime_checks(plan))
+    return card_bodies(native_titles(defer_runtime_checks(plan)))
+
+
+def card_bodies(plan: dict[str, Any]) -> dict[str, Any]:
+    """card/v2: render the body of every node that has none yet (a node is rendered once, when first
+    published, from the facts of that revision); a v1 plan is returned unchanged."""
+    if plan.get("presentation") != CT.PRESENTATION_V2:
+        return plan
+    nodes = []
+    changed = False
+    for n in plan["nodes"]:
+        n = dict(n)
+        if not isinstance(n.get("card_body"), str):
+            if n.get("role") == "repair":
+                n["card_body"] = CT.description(plan, n)
+            elif n.get("role") == "assess":
+                n["card_body"] = CT.assess_description(plan, n)
+            else:
+                n["card_body"] = native_description(n)
+            changed = True
+        nodes.append(n)
+    if not changed:
+        return plan
+    out = dict(plan, nodes=nodes)
+    out.pop("digest", None)
+    out["digest"] = plan_digest(out)
+    return out
+
+
+def card_presentation_of(root: Path) -> str:
+    """The run's decided card presentation (decisions.loop.card_presentation; "v1" when undecided)."""
+    from planner.decisions import card_presentation, load_decisions
+    try:
+        return card_presentation(load_decisions(Path(root)))
+    except Exception:  # noqa: BLE001 - an unreadable decisions file is admission's refusal, not a presentation
+        return "v1"
 
 
 def plan_attachment(plan: dict[str, Any], added: list[str]) -> dict[str, Any]:
@@ -3350,10 +3393,8 @@ def handoff(root: Path, board: Board, *, task_id: str) -> dict[str, Any]:
         rejects = len(board.records(task_id, "reject"))
         b = budget_state(board, run, plan, node)
         ok = bool(last.get("outcome_accepted")) and last.get("tree") == tree
-        summary = ("%s: %s on commit %s; %d owned obligation(s) open; checks %s. %d rejected attempt(s) on this card; "
-                   "budget %d of %d." % (node.get("title") or oid, "accepted" if ok else "NOT accepted on the current tree",
-                                         str(last.get("commit") or "none")[:12], len(m.get("open_owned") or []),
-                                         ", ".join(m.get("classes") or []) or "none", rejects, b["spent"], b["limit"]))
+        # H-11: the decision, each execution stage's state and each check's result -- not the check classes
+        summary = CT.handoff_summary(str(node.get("title") or oid), node, last, accepted_now=ok, rejects=rejects, budget=b)
         limits = ["classes are asserted by worker receipts (cooperative-receipts)"]
         if last.get("repair_evidence_gaps"):
             limits.append("repair evidence gaps: %s" % "; ".join(last["repair_evidence_gaps"][:3]))

@@ -484,7 +484,9 @@ def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
     return {"unit_formation": UNIT_FORMATION_V1 if formation == UNIT_FORMATION_V1 else UNIT_FORMATION_OFF,
             "runtime_feedback": RUNTIME_FEEDBACK_V1 if feedback == RUNTIME_FEEDBACK_V1 else RUNTIME_FEEDBACK_OFF,
             "plan_semantics": PLAN_SEMANTICS_V1 if semantics == PLAN_SEMANTICS_V1 else PLAN_SEMANTICS_OFF,
-            "compatibility_objectives": "v1" if str(section.get("compatibility_objectives") or "").strip() == "v1" else "off"}
+            "compatibility_objectives": "v1" if str(section.get("compatibility_objectives") or "").strip() == "v1" else "off",
+            # H-11: the card text renderer (planner.card_text); absent = the v1 text every earlier run published
+            "card_presentation": "v2" if str(section.get("card_presentation") or "").strip() == "v2" else "v1"}
 
 
 def plan_semantics(doc: dict[str, Any] | None) -> str:
@@ -495,6 +497,11 @@ def plan_semantics(doc: dict[str, Any] | None) -> str:
 def compatibility_objectives(doc: dict[str, Any] | None) -> str:
     """decisions.loop.compatibility_objectives: "v1" or "off" (absent, unknown)."""
     return loop_modes(doc or {})["compatibility_objectives"]
+
+
+def card_presentation(doc: dict[str, Any] | None) -> str:
+    """decisions.loop.card_presentation: "v2" or "v1" (absent, unknown)."""
+    return loop_modes(doc or {})["card_presentation"]
 
 
 def loop_pin_gap(root: Path, doc: dict[str, Any] | None, key: str) -> str:
