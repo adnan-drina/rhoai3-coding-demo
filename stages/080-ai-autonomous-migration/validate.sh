@@ -133,6 +133,14 @@ RUN_MODEL="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1]))["config
 check "declared model profile default equals the golden run model (${RUN_MODEL})" \
   "oc get cm migration-model-profiles -n wksp-ai-developer -o go-template='{{index .data \"model-profiles.json\"}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d[\"profiles\"][d[\"default_model\"]]; print(d[\"default_model\"]+\" \"+p[\"provider\"])' 2>/dev/null || echo none" \
   "${RUN_MODEL}"
+# E-1 (2026-10-01): the enforce-on-start model gate compared against the literal qwen3-8-27b-int4 and
+# fail-closed every start of the first run provisioned with qwen3-6-27b; it must check the declared profile
+check "dest-init model gate checks the declared profile default, not a literal model id" \
+  "grep -c 'if m.get(\"default\") != DEFAULT_MODEL:' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "1"
+check "dest-init model gate names no literal default model" \
+  "grep -cE 'm.get\(\"(default|provider)\"\) != \"' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || true" \
+  "0"
 check "init script names the Hermes Qwen provider qwen38" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen38\"' || echo 0" \
   "1"

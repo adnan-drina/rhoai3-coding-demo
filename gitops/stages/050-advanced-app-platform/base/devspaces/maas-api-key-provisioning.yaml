@@ -1873,16 +1873,21 @@ data:
         shutil.rmtree(mvn_root, ignore_errors=True)
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
     # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
+    # The expected binding is the declared profile's default (B4: the ONE
+    # model profile the config was generated from), never a literal: E-1
+    # (2026-10-01) selected qwen3-6-27b and a hard-coded qwen3-8-27b-int4
+    # check fail-closed every start of the first run provisioned with it.
     pin = yaml.safe_load(open(cfg_path))
     m = pin.get("model") or {}
-    if m.get("default") != "qwen3-8-27b-int4":
+    _want_provider = MODEL_PROFILES[DEFAULT_MODEL]["provider"]
+    if m.get("default") != DEFAULT_MODEL:
         raise SystemExit(
             f"ERROR: model pin failed after Managed Scope write "
-            f"(default={m.get('default')!r})"
+            f"(default={m.get('default')!r}, declared {DEFAULT_MODEL!r})"
         )
-    if m.get("provider") != "qwen38":
+    if m.get("provider") != _want_provider:
         raise SystemExit(
-            f"ERROR: model.provider pin failed (provider={m.get('provider')!r})"
+            f"ERROR: model.provider pin failed (provider={m.get('provider')!r}, declared {_want_provider!r})"
         )
     if m.get("api_mode") != "chat_completions":
         raise SystemExit(
@@ -1974,9 +1979,9 @@ data:
         _json.dump(dict(_prof, schema="rhoai3.model-profile/v1", digest=_prof_digest),
                    fh, indent=2, sort_keys=True)
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
-        fh.write("default=qwen3-8-27b-int4\n")
-        fh.write("provider=qwen38\n")
-        fh.write("alternate=qwen3-6-27b\n")
+        fh.write("default=%s\n" % DEFAULT_MODEL)
+        fh.write("provider=%s\n" % MODEL_PROFILES[DEFAULT_MODEL]["provider"])
+        fh.write("alternate=%s\n" % ",".join(sorted(k for k in MODEL_PROFILES if k != DEFAULT_MODEL)))
         fh.write("api_mode=chat_completions\n")
         fh.write("base=maas-gateway-qwen38\n")
         fh.write("ad=AD-008\n")
