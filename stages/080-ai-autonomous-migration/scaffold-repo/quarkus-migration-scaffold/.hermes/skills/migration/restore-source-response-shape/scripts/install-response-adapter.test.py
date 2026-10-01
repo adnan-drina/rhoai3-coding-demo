@@ -283,6 +283,13 @@ def main() -> int:
     dec = ra.media_type_decision([diff, ra.media_type_difference("application/problem+json; charset=UTF-8", "application/problem+json")])
     check(dec == {"parameter": "charset", "value": "UTF-8", "media_types": ["application/json", "application/problem+json"]},
           "one common parameter decides; its media types are the recorded ones", dec)
+    # v30: Quarkus answered `;charset=UTF-8` and `; charset=utf-8` on different endpoints; a charset name is
+    # case-insensitive (RFC 9110 8.3.2) and the adapter compares it with equalsIgnoreCase -- one parameter
+    mixed = [diff, ra.media_type_difference("application/json; charset=utf-8", "application/json")]
+    dec = ra.media_type_decision(mixed)
+    check(dec["parameter"] == "charset" and dec["value"].lower() == "utf-8" and dec["media_types"] == ["application/json"],
+          "charset spellings that differ only in case are one parameter", dec)
+    check(ra.media_type_decision(list(reversed(mixed))) == dec, "the decision does not depend on the order recorded")
     for bad, why in (([], "nothing recorded"),
                      ([ra.media_type_difference("application/json;charset=UTF-8;v=1", "application/json")], "two parameters"),
                      ([diff, ra.media_type_difference("application/json;charset=ISO-8859-1", "application/json")], "two values"),

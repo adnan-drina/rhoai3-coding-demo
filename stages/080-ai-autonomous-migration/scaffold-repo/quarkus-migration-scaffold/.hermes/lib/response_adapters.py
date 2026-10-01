@@ -748,7 +748,12 @@ def media_type_decision(differences: list[dict[str, Any]]) -> dict[str, Any]:
     Anything else is not decidable here and is refused by name."""
     if not differences:
         raise Refuse("MEDIA_TYPE_UNDECIDED", "no recorded Content-Type difference")
-    params = {tuple(p) for d in differences for p in d.get("extra") or []}
+    # a charset name is case-insensitive (RFC 9110 section 8.3.2), and the adapter removes it with
+    # equalsIgnoreCase: `charset=UTF-8` and `charset=utf-8` are ONE parameter (v30: Quarkus wrote both)
+    def _key(p: Any) -> tuple[str, str]:
+        name, value = p
+        return (name, value.lower() if name == "charset" else value)
+    params = {_key(p) for d in differences for p in d.get("extra") or []}
     missing = [d for d in differences if d.get("missing")]
     if missing:
         raise Refuse("MEDIA_TYPE_UNDECIDED", "the source sent a parameter the destination does not (%s); removing a "
@@ -756,7 +761,8 @@ def media_type_decision(differences: list[dict[str, Any]]) -> dict[str, Any]:
     if len(params) != 1 or any(len(d.get("extra") or []) != 1 for d in differences):
         raise Refuse("MEDIA_TYPE_UNDECIDED", "the differences do not add exactly one common parameter: %s"
                      % sorted(params))
-    name, value = next(iter(params))
+    name = next(iter(params))[0]
+    value = sorted({str(p[1]) for d in differences for p in d.get("extra") or []})[0]
     if not value:
         raise Refuse("MEDIA_TYPE_UNDECIDED", "the added parameter %r carries no value to match" % name)
     return {"parameter": name, "value": value, "media_types": sorted({d["media_type"] for d in differences})}
