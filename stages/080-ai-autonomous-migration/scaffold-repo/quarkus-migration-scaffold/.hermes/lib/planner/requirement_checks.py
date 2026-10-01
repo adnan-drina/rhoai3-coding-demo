@@ -220,14 +220,22 @@ def measure(root: Path, requirements: list[dict[str, Any]], *, worklist: dict[st
             rbind = rc.get("binding") if isinstance(rc.get("binding"), dict) else {}
             if str(rc.get("security_mode") or "disabled") != mode or (tree and str(rbind.get("candidate_sha256") or "") != tree):
                 return UNKNOWN, "scenario %s has no %s-mode receipt bound to this tree" % (sid, mode)
-            rv = {_sid(k): v for k, v in (parity_state(rc).get("scenarios") or {}).items()}.get(_sid(sid), "")
-            if rv == "FAIL":
-                return FAIL, "scenario %s is FAIL in the %s-mode receipt" % (sid, mode)
-            if rv != "PASS":
-                return UNKNOWN, "scenario %s is %s in the %s-mode receipt" % (sid, rv or "not recorded", mode)
             rec = _mode_record(Path(root), sid, mode) if root is not None else {}
             if rec and str(rec.get("security_mode") or mode) != mode:
                 return UNKNOWN, "scenario %s's record was taken in %s mode, not %s" % (sid, rec.get("security_mode"), mode)
+            rb = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+            own = bool(rec) and str(rec.get("verdict") or "") in ("PASS", "FAIL") and (
+                not tree or (str(rb.get("mode") or "") == "candidate" and str(rb.get("candidate_sha256") or "") == tree))
+            if not own:
+                # v30 H-12: the receipt's per-scenario verdict is its ENTRY POINT row's aggregate (PASS only when
+                # every scenario of that entry point passed), so a sibling's failure reads as this scenario's.
+                # The scenario's own mode record bound to this tree is the verdict; the row only stands in
+                # when no such record exists.
+                rv = {_sid(k): v for k, v in (parity_state(rc).get("scenarios") or {}).items()}.get(_sid(sid), "")
+                if rv == "FAIL":
+                    return FAIL, "scenario %s is FAIL in the %s-mode receipt" % (sid, mode)
+                if rv != "PASS":
+                    return UNKNOWN, "scenario %s is %s in the %s-mode receipt" % (sid, rv or "not recorded", mode)
         elif governed:
             return UNKNOWN, "scenario %s is not in the issued verification scope" % sid
         else:
