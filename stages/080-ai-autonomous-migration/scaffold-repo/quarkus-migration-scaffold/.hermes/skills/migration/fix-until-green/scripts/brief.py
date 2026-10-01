@@ -1291,6 +1291,7 @@ def main(argv: list[str] | None = None) -> int:
             # compatibility-objectives/v1: ONE objective issued whole. Its
             # constituents are the ordered actions (each judged by its own
             # rule); the checks say what must pass NOW and what is due later.
+            open_ids = {str(i.get("id")) for i in items if isinstance(i, dict)}
             by_c = {}
             for v in verdicts.values():
                 by_c.setdefault(str(v.get("constituent") or ""), []).append(v)
@@ -1302,8 +1303,13 @@ def main(argv: list[str] | None = None) -> int:
                 **{k: fam[k] for k in ("source_semantics", "action", "unsupported") if fam.get(k)},
                 "actions": [{"constituent": u["cluster"], "rule": (u.get("seal") or {}).get("rule") or "cluster",
                              "files": list(u.get("write_set") or []), "obligations": len(u.get("items") or []),
+                             # v30 H-3: the OPEN compiler obligations of this constituent on the measured tree, beside
+                             # the structural-rule counter (a zero there read as "nothing to do" while 23 were open)
+                             "open_obligations": len(set(map(str, u.get("items") or [])) & open_ids),
+                             "structural_rule_violations": sum(1 for v in by_c.get(u["cluster"], []) if v.get("verdict") == "violates"),
                              "members_still_violating": sum(1 for v in by_c.get(u["cluster"], []) if v.get("verdict") == "violates")}
                             for u in desc.get("units") or []],
+                "by_file": obligations_by_file(items),
                 "checks_now": sorted({"%s (%s)" % (r["check"], r["requirement"].split(":", 2)[-1][:80])
                                       for r in desc.get("check_plan") or [] if r.get("stage") == "immediate"}),
                 "checks_later": sorted({"%s -> %s" % (r["check"], ", ".join(r.get("due") or ["M4"]))
@@ -1558,6 +1564,79 @@ def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:
                    len(recs), ", ".join("%s %d" % kv for kv in sorted(kinds.items())), min(recent, len(verdicts)),
                    len(verdicts), task))
     return "\n".join(out)
+
+
+def scratch_lines(brief: dict) -> list[str]:
+    """v30 H-1/H-2 (t_6fa85bc5): a generator jar downloaded into the product root made the next issue refuse
+    ISSUE_BASELINE_DRIFT, and template text was re-read with ~20 unzip|sed calls. Name the sanctioned scratch
+    (outside the product: never judged, parked or drift) and, for a card that edits generator templates, the
+    bounded lookup of the pinned generator's own template text."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("generator_template", Path(__file__).resolve().parent / "generator-template.py")
+    gt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gt)  # type: ignore[union-attr]
+    out = ["SCRATCH: put downloads, extracted jars and tool output ONLY under %s/ (outside the product; anything "
+           "else you leave in the destination root is a product change)" % gt.scratch_dir()]
+    if any(str(p).endswith(".mustache") for p in brief.get("write_set") or []):
+        out.append("GENERATOR TEMPLATES: the pinned generator's own template text, bounded -- "
+                   "generator-template.py --root . --template <path in the jar> [--lines a:b] | --list <prefix>; "
+                   "do not download or unzip the generator yourself")
+    return out
+
+
+MECHANICAL_SITES = ("import", "throws")
+
+
+def obligations_by_file(items: list) -> dict:
+    """{path: {"mechanical": {site: [lines]}, "decision": {site: [lines]}, "ids": [...], "unclassified": [lines]}}
+    for the measured obligations of an objective (v30 H-3: 97 obligations were a flat list; workers rebuilt the
+    file -> line map with 60+ greps). The site is the compiler's own tree position (JdkDiagnostics ``site``):
+    an import or a throws clause is a mechanical removal; a catch or any other use is a decision site, where the
+    family's rule chooses the platform behaviour. Items without a site (an older producer) are listed, unclassified."""
+    out: dict = {}
+    for i in items or []:
+        if not isinstance(i, dict) or not i.get("path"):
+            continue
+        row = out.setdefault(str(i["path"]), {"mechanical": {}, "decision": {}, "unclassified": [], "ids": []})
+        line = int(i.get("line") or 0)
+        site = str(i.get("site") or "")
+        if site in MECHANICAL_SITES:
+            row["mechanical"].setdefault(site, []).append(line)
+        elif site:
+            row["decision"].setdefault(site, []).append(line)
+        else:
+            row["unclassified"].append(line)
+        row["ids"].append(str(i.get("id")))
+    for row in out.values():
+        for group in (row["mechanical"], row["decision"]):
+            for k in group:
+                group[k] = sorted(group[k])
+        row["unclassified"].sort()
+        row["ids"].sort()
+    return dict(sorted(out.items()))
+
+
+def obligations_by_file_lines(by_file: dict, limit: int = 30) -> list[str]:
+    """The digest table of obligations_by_file: one line per file with every line number (no grepping needed)."""
+    if not by_file:
+        return []
+    out = ["OBLIGATIONS BY FILE (%d file(s), %d obligation(s); mechanical = remove/replace as the rule says; decision = "
+           "choose the behaviour by the family rule; ids: brief.py --root . --file <path>):"
+           % (len(by_file), sum(len(r["ids"]) for r in by_file.values()))]
+    def fmt(group):
+        return "; ".join("%s L%s" % (k, ",".join(map(str, v))) for k, v in sorted(group.items()))
+    for path, r in list(by_file.items())[:limit]:
+        parts = []
+        if r["mechanical"]:
+            parts.append("mechanical: " + fmt(r["mechanical"]))
+        if r["decision"]:
+            parts.append("DECISION: " + fmt(r["decision"]))
+        if r["unclassified"]:
+            parts.append("unclassified L" + ",".join(map(str, r["unclassified"])))
+        out.append("  %s -- %s" % (path, " | ".join(parts)))
+    if len(by_file) > limit:
+        out.append("  (%d more file(s): brief.py --root . --section objective)" % (len(by_file) - limit))
+    return out
 
 
 def fragment_target_lines(requirement: dict) -> list[str]:
@@ -1843,6 +1922,7 @@ def brief_digest(brief: dict, stem: str) -> str:
         out.append("  %d earlier rejection(s) of this family were VOIDED by the Operator as harness-caused; they are not "
                    "attempts to avoid repeating and are not in previous_attempts" % len(brief["voided_attempts"]))
     out += _typed_repair.digest_lines(brief.get("typed_repair"))
+    out += scratch_lines(brief)
     # The catalog already supplies these actions. A section-size index is not
     # (placed right after RETRY STATE: workers read a brief's head first, and a long REQUIRED SHAPE or
     # other-diagnostics list must not push the documented action out of it)
@@ -1867,6 +1947,7 @@ def brief_digest(brief: dict, stem: str) -> str:
         out.append("DOCUMENTED FIRST ACTIONS (from this card's item/unit advice):")
         for action, sites in actions.items():
             out.append("  %s: %s" % (", ".join(sites), action))
+    out += obligations_by_file_lines(obj.get("by_file") or {})
     # the required shape of each planned requirement, before the first edit (v23: the
     # PetType/Specialty/Visit briefs named @ApplicationScoped and @Typed-to-the-fragment only
     # inside planned_requirements, which a 64K brief's digest never showed; each card then

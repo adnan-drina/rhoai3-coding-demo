@@ -73,7 +73,7 @@ _NOT_PLANNER = ("specimens.py",)
 
 # Work-list fields that are exact audit evidence, not planning content.
 WORKLIST_AUDIT = ("sources", "evidence_bundle_sha256", "candidate_sha256", "runtime")
-ITEM_AUDIT = ("detail", "message", "message_sha256", "generated_path", "observed")
+ITEM_AUDIT = ("detail", "message", "message_sha256", "generated_path", "observed", "site")
 CLUSTER_AUDIT = ("batch_scope",)
 NODE_AUDIT = ("description",)
 

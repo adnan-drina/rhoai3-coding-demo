@@ -17,6 +17,19 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 
+import com.sun.source.tree.CatchTree;
+import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.util.JavacTask;
+import com.sun.source.util.SourcePositions;
+import com.sun.source.util.TaskEvent;
+import com.sun.source.util.TaskListener;
+import com.sun.source.util.TreePath;
+import com.sun.source.util.TreePathScanner;
+import com.sun.source.util.Trees;
+
 /**
  * Compile the destination sources with the JDK compiler API and emit every
  * diagnostic as JSON (rhoai3.diagnostics/v1). The work list turns ERROR
@@ -40,6 +53,12 @@ import javax.tools.ToolProvider;
  * --exclude-output-classes leaves it off: an orphan class from an earlier
  * build resolves a reference whose source is gone and hides a real error, so
  * the controlled initial analysis never reads it.
+ *
+ * Site (v30 H-3): ``site`` names the syntactic position of an error as the
+ * compiler's own tree states it -- ``import``, ``throws`` (a method's throws
+ * clause), ``catch`` (a catch parameter's type) or ``other`` -- so a brief can
+ * separate mechanical removals from decision sites without reading message
+ * text. Presentation evidence only: it is not part of an obligation's identity.
  */
 public final class JdkDiagnostics {
     public static void main(String[] args) throws IOException {
@@ -108,8 +127,21 @@ public final class JdkDiagnostics {
         if (outputClasses) cpEntries.add(classes.toString());
         if (!cpEntries.isEmpty()) { options.add("-classpath"); options.add(String.join(java.io.File.pathSeparator, cpEntries)); }
         boolean ok = true;
+        java.util.Map<java.net.URI, CompilationUnitTree> units = new java.util.HashMap<>();
+        SourcePositions positions = null;
         if (!files.isEmpty()) {
             JavaCompiler.CompilationTask task = compiler.getTask(null, fm, collector, options, null, fm.getJavaFileObjectsFromPaths(files));
+            if (task instanceof JavacTask) {
+                // observe the parsed units only; the compilation itself is exactly task.call()
+                ((JavacTask) task).addTaskListener(new TaskListener() {
+                    @Override public void finished(TaskEvent e) {
+                        if (e.getKind() == TaskEvent.Kind.PARSE && e.getCompilationUnit() != null) {
+                            units.put(e.getSourceFile().toUri(), e.getCompilationUnit());
+                        }
+                    }
+                });
+                positions = Trees.instance(task).getSourcePositions();
+            }
             ok = Boolean.TRUE.equals(task.call());
         }
         StringBuilder sb = new StringBuilder();
@@ -150,6 +182,9 @@ public final class JdkDiagnostics {
             String local = d.getMessage(null);
             sb.append(",\"message\":").append(json(pinned));
             if (!pinned.equals(local)) sb.append(",\"message_jvm_locale\":").append(json(local));
+            if (d.getSource() != null && positions != null && units.containsKey(d.getSource().toUri())) {
+                sb.append(",\"site\":").append(json(site(units.get(d.getSource().toUri()), positions, d.getPosition())));
+            }
             List<String> dargs = argsAvailable ? structuredArgs(d) : null;
             if (dargs != null) {
                 sb.append(",\"args\":[");
@@ -161,6 +196,30 @@ public final class JdkDiagnostics {
         sb.append("],\"errors\":").append(errors).append("}\n");
         try (Writer w = Files.newBufferedWriter(Paths.get(out), StandardCharsets.UTF_8)) { w.write(sb.toString()); }
         System.err.println("OK: jdk-diagnostics files=" + files.size() + " errors=" + errors);
+    }
+
+    /** import | throws | catch | other: the innermost tree at {@code pos}, read upward. */
+    static String site(CompilationUnitTree cu, SourcePositions sp, long pos) {
+        if (pos < 0) return "other";
+        final TreePath[] best = {null};
+        new TreePathScanner<Void, Void>() {
+            @Override public Void scan(Tree t, Void v) {
+                if (t == null) return null;
+                long s = sp.getStartPosition(cu, t), e = sp.getEndPosition(cu, t);
+                if (s >= 0 && e >= 0 && (pos < s || pos >= e)) return null;
+                if (s >= 0 && e >= 0) best[0] = new TreePath(getCurrentPath() == null ? new TreePath(cu) : getCurrentPath(), t);
+                return super.scan(t, v);
+            }
+        }.scan(cu, null);
+        for (TreePath p = best[0]; p != null && p.getParentPath() != null; p = p.getParentPath()) {
+            Tree leaf = p.getLeaf(), up = p.getParentPath().getLeaf();
+            if (leaf instanceof ImportTree) return "import";
+            if (up instanceof MethodTree && ((MethodTree) up).getThrows().contains(leaf)) return "throws";
+            if (up instanceof CatchTree && ((CatchTree) up).getParameter() == leaf) return "catch";
+            if (leaf instanceof ImportTree || leaf instanceof MethodTree) break;
+        }
+        if (best[0] != null && best[0].getLeaf() instanceof ImportTree) return "import";
+        return "other";
     }
 
     /** A generated root: its file count and a digest over (relative path, bytes). */

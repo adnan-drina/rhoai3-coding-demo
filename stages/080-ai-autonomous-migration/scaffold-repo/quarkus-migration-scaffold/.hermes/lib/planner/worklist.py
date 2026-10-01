@@ -354,6 +354,8 @@ def compile_items(diags: dict[str, Any], *, identity: str = IDENTITY_LEGACY) -> 
                 out[-1].update({"column": int(d.get("column") or 0), "identity_confidence": confidence})
             continue
         out.append({"id": "err:%s" % ident, "source": "javac", "kind": "build" if path == GLOBAL or path_class(path) == "build" else "compile", "category": "mandatory", "path": path, "line": line, "rule_id": str(d.get("code") or ""), "message_sha256": sha256_bytes(message.encode("utf-8")), "detail": message[:200], "message": message[:600]})
+        if d.get("site") in ("import", "throws", "catch", "other"):
+            out[-1]["site"] = str(d["site"])          # v30 H-3: presentation evidence (plan_semantics.ITEM_AUDIT)
         if confidence:
             out[-1].update({"column": int(d.get("column") or 0), "identity_confidence": confidence})
     if diags.get("build_unresolvable"):
