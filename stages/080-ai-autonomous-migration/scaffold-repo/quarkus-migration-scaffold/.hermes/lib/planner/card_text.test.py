@@ -162,7 +162,8 @@ class LiveRevision(unittest.TestCase):
         try:
             self.assertEqual(r.plan().get("presentation"), CT.PRESENTATION_V2)
             m2 = r.board.m2_task()
-            d.measured(record_fail=("sc:create-orders",))
+            d.complete(SL.B_ITEM)                       # an accepted card's read regresses: unowned evidence (H13-R1)
+            d.measured(record_fail=("sc:read-items-1",))
             tid, run, lock = r.claim(SL.B_ORDER)
             with self.assertRaises(SL.Refusal):
                 NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
