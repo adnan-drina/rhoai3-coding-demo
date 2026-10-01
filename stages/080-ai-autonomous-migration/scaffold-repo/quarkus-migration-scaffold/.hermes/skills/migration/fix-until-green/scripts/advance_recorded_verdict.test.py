@@ -27,7 +27,10 @@ spec.loader.exec_module(adv)  # type: ignore[union-attr]
 
 
 def run_case(*, board: bool, admitted: bool, recovered: int | None) -> tuple[int | None, list[str]]:
+    import contextlib
+    import io
     calls: list[str] = []
+    out = io.StringIO()
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / adv.WORKLIST).parent.mkdir(parents=True, exist_ok=True)
@@ -43,12 +46,13 @@ def run_case(*, board: bool, admitted: bool, recovered: int | None) -> tuple[int
             adv._finish_continuation = lambda *a, **k: calls.append("serial-mint") or 1
             adv.load_issued = lambda r: {}
             steps = {"steps": [{"card": "t_x", "verdict": "accepted", "commit": "2db1bb06de56", "candidate_sha256": "tree"}]}
-            rc = adv._recorded_verdict(root, steps, "t_x", "tree", mint=True, hermes="hermes")
+            with contextlib.redirect_stdout(out):
+                rc = adv._recorded_verdict(root, steps, "t_x", "tree", mint=True, hermes="hermes")
         finally:
             for k, v in saved.items():
                 setattr(adv, k, v)
             adv.pipeline.admit, adv._outcome_bridge.active, adv._outcome_bridge.resume_recovered = saved_admit, saved_active, saved_resume
-    return rc, calls
+    return rc, calls + ["stdout:" + out.getvalue()]
 
 
 def main() -> int:
@@ -65,6 +69,12 @@ def main() -> int:
     rc, calls = run_case(board=True, admitted=True, recovered=None)
     check(rc == 0 and "serial-mint" not in calls,
           "outcome board, nothing recovered: no serial mint (the board holds every successor)", (rc, calls))
+    text = calls[-1]
+    check("does not accept the outcome" in text and "do not kanban_complete" in text and "ACCEPTED" not in text.replace("ALREADY RECORDED", ""),
+          "nothing recovered: idempotent, and says plainly that no acceptance was made", text)
+    rc, calls = run_case(board=True, admitted=True, recovered=3)
+    check(rc == 3 and "serial-mint" not in calls,
+          "outcome board, recovered but the outcome is NOT accepted: the reissue answer passes through, no completion", (rc, calls))
     rc, calls = run_case(board=True, admitted=False, recovered=0)
     check(rc == 1 and "serial-mint" in calls and "resume_recovered" not in calls,
           "outcome board, admission refused: the continuation still refuses with the admission reason", (rc, calls))

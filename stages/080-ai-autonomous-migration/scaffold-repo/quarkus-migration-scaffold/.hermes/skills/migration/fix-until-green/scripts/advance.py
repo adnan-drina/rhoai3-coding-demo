@@ -666,6 +666,10 @@ def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint:
                                                   load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
             if ob is not None:
                 return ob
+            # nothing recovered to finish: idempotent, and NOT an acceptance (architect review of H-9) -- only the
+            # outcome record accepts an outcome and permits native completion
+            print("CHECKPOINT ALREADY RECORDED; nothing recovered to finish. This does not accept the outcome: run "
+                  "native_gate.py issue and follow its first line; do not kanban_complete on this answer.")
             return 0
         return _finish_continuation(root, rec, card, commit, mint=mint, hermes=hermes)
     # a rejection is "already answered" only while the tree carries no new
