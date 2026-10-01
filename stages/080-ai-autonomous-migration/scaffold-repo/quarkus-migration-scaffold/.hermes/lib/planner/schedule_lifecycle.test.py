@@ -111,7 +111,7 @@ class Desk:
         self.measured(started=True)
 
     # -- the measured candidate ------------------------------------------------
-    def measured(self, *, started=True, items=(), clusters=(), scenarios=REPO_SCENARIOS):
+    def measured(self, *, started=True, items=(), clusters=(), scenarios=REPO_SCENARIOS, record_fail=()):
         r = self.r
         tree = r.tree()
         r.worklist.update(candidate_sha256=tree, items=list(items), clusters=list(clusters),
@@ -123,6 +123,7 @@ class Desk:
         # mode's receipt bound to this candidate): a verdict record per compared scenario, FAIL where an open
         # finding names it, and the receipt row that declares it
         failing = {str(x) for i in items for x in [i.get("scenario")] + list(i.get("scenarios") or []) if x}
+        failing |= {str(s) for s in record_fail}   # a comparison FAIL no work-list finding explains (H-13: unowned evidence)
         verdict = {s: ("FAIL" if s in failing else "PASS") for s in scenarios}
         receipt = {"schema": PARITY_RECEIPT_SCHEMA, "security_mode": "disabled",
                    "verdict": "FAIL" if "FAIL" in verdict.values() else "PASS",
@@ -195,9 +196,11 @@ class EarliestMeasurement(unittest.TestCase):
             self.assertEqual((row["owner"], row["milestone"]), (d.owner, "persistence-and-one-http-path"))
             self.assertIn(EFFECTS, {x["check"] for x in NC.scheduled_rows(plan, B_ITEM)})
             self.assertNotIn(EFFECTS, {x["check"] for x in NC.scheduled_rows(plan, B_STATUS)})
-            # the committed write of sc:create-orders fails on the measured candidate
-            d.measured(items=[parity_item("parity:create", "sc:create-orders", CO_T.EP_ADD)],
-                       clusters=[cluster("c:create", "parity:create")])
+            # the committed write of sc:create-orders fails on the measured candidate, and NO open card's finding
+            # explains it (the comparator's record only): unowned evidence, so the repository owner's follow-up is
+            # the repair route (H-13 keeps this path; a failure owned by an open card is routed to that card --
+            # test_a_failure_owned_by_the_holder_is_routed_to_the_holder_not_to_a_follow_up)
+            d.measured(record_fail=("sc:create-orders",))
             owner_budget = dict(NC._node(plan, d.owner)["budget"])
             tid, run, lock = r.claim(B_ORDER)
             with self.assertRaises(Refusal) as cm:
@@ -238,7 +241,9 @@ class EarliestMeasurement(unittest.TestCase):
                 p for q in plan["requirements"] if q["id"] == CO_T.REPO_O for p in q["paths"]), fiss["allowed_paths"])
             acc = r.accept_on_run(ftid, frun, fiss, classes=("build", "compile", "tests"), scenarios=REPO_SCENARIOS, drop=False)
             self.assertFalse(acc["outcome_accepted"])                           # still failing: a budgeted rejection
-            self.assertTrue(any(EFFECTS in x and "fail" in x for x in acc["not_accepted_because"]), acc)
+            # the failing evidence is the comparator's record of the PREVIOUS tree (no work-list finding keeps it
+            # open): on this edited, not re-compared candidate the effect is unknown or failed -- never discharged
+            self.assertTrue(any(EFFECTS in x and ("fail" in x or "unknown" in x) for x in acc["not_accepted_because"]), acc)
             # the repaired candidate is compared again: nothing open, every repository scenario PASS on it
             d.measured()
             fiss = NC.issue(r.root, r.board, task_id=ftid, run_id=frun)
@@ -298,6 +303,73 @@ class EarliestMeasurement(unittest.TestCase):
             self.assertTrue(any("remeasure owed" in x and "read-items-1" in x for x in why), why)
         finally:
             d.close()
+
+    def test_a_failure_owned_by_the_holder_is_routed_to_the_holder_not_to_a_follow_up(self):
+        """H-13 (v30 t_557b0bed / t_b996bea6, architect decision 2026-10-01): the scheduled repository effect FAILS
+        only through a scenario-less read-oracle body finding that covers one of its scenarios and is owned by the
+        holder. No follow-up is minted (the holder would wait on it while the follow-up's acceptance waits on the
+        holder's finding); the holder is issued its own cluster; the check stays FAIL and owed, and is measured
+        PASS once the holder's repair is compared."""
+        d = Desk()
+        r = d.r
+        try:
+            finding = dict(parity_item("parity:h13-covered-body", "", CO_T.EP_LIST), scenarios=["sc:cors-actual-0a"])
+            d.measured(items=[finding], clusters=[cluster("c:h13-body", finding["id"])])
+            tid, run, iss = r.issue(B_ORDER)                                   # no OWNER_REPAIR_PENDING
+            self.assertEqual(iss["cluster"], "c:h13-body")
+            plan = r.plan()
+            self.assertEqual(plan["ownership"][finding["id"]], B_ORDER)
+            self.assertFalse([n for n in plan["nodes"] if n["outcome_id"].startswith("followup:")])
+            self.assertNotIn(NC.SCHEDULED_OBLIGATION % (d.owner, EFFECTS), plan["ownership"])
+            row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
+            self.assertEqual((row["state"], row["repair_owners"]), ("fail", [B_ORDER]), row)   # measured truth unchanged
+            self.assertTrue(row["route"].startswith("evidence owned by open outcomes"), row["route"])
+            self.assertEqual([f["finding"] for f in row["witnesses"]["findings"]], [finding["id"]])
+            self.assertEqual(row["witnesses"]["findings"][0]["via"], "coverage")
+            # the holder repairs its own finding; the repaired candidate is compared: the owed check passes there
+            d.measured()
+            tid2, run2, iss2 = r.issue(B_ORDER)
+            row = next(m for m in r.board.records(tid2, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
+            self.assertEqual(row["state"], "pass", row)
+        finally:
+            d.close()
+
+    def test_a_mixed_failure_mints_a_follow_up_that_waits_on_the_open_owner_not_the_reverse(self):
+        """H-13 mixed ownership: one failing finding is the holder's, another failure no finding explains
+        (record-only, unowned). A follow-up is minted for the unowned remainder; it WAITS ON the holder (whose
+        finding its acceptance needs), the holder does not wait on it, the holder is not refused, and no
+        acceptance cycle is published."""
+        d = Desk()
+        r = d.r
+        try:
+            finding = dict(parity_item("parity:h13-covered-body", "", CO_T.EP_LIST), scenarios=["sc:cors-actual-0a"])
+            d.measured(items=[finding], clusters=[cluster("c:h13-body", finding["id"])], record_fail=("sc:create-orders",))
+            tid, run, iss = r.issue(B_ORDER)                                   # the holder repairs its share first
+            self.assertEqual(iss["cluster"], "c:h13-body")
+            plan = r.plan()
+            fid = "followup:%s:m3g1" % d.owner
+            fnode, hnode = NC._node(plan, fid), NC._node(plan, B_ORDER)
+            self.assertIsNotNone(fnode)
+            self.assertIn(B_ORDER, fnode["parents"])
+            self.assertNotIn(fid, hnode["parents"])
+            self.assertNotIn(fid, NC._waits_on(plan, B_ORDER))
+            self.assertEqual(NC.acceptance_cycles(plan, [(fid, B_ORDER)]), [])
+            self.assertEqual(len(OG.topo_order(plan["nodes"])), len(plan["nodes"]))
+            row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"] if m["check"] == EFFECTS)
+            self.assertEqual((row["state"], row["route"], row["contributors"]), ("fail", "owner", [B_ORDER]), row)
+            self.assertEqual(row["witnesses"]["record_only"], ["sc:create-orders"])
+        finally:
+            d.close()
+
+    def test_an_acceptance_cycle_is_named_before_publication(self):
+        """H-13: the native parent graph can be acyclic while an acceptance dependency closes a cycle; both a
+        direct and a transitive one are named (the router refuses such a revision before publication)."""
+        plan = {"nodes": [{"outcome_id": "F", "parents": []}, {"outcome_id": "A", "parents": ["F"]},
+                          {"outcome_id": "B", "parents": ["A"]}, {"outcome_id": "C", "parents": []}]}
+        self.assertEqual(len(NC.acceptance_cycles(plan, [("F", "A")])), 1)          # A waits on F; F needs A's repair
+        self.assertEqual(len(NC.acceptance_cycles(plan, [("F", "B")])), 1)          # B waits on F through A
+        self.assertEqual(NC.acceptance_cycles(plan, [("F", "C")]), [])              # C does not wait on F
+        self.assertEqual(NC.acceptance_cycles(plan, [("A", "F")]), [])              # the follow-up waiting on its owner is fine
 
     def test_a_header_only_difference_is_the_cards_own_cluster_not_a_producer_repair(self):
         """The repository effect is judged on status/body/committed-state findings: a CORS header difference on

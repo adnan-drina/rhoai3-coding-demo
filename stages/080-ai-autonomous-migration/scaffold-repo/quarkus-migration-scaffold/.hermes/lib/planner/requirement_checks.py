@@ -64,6 +64,57 @@ MEASURED_KINDS = ("gate:", "structure:annotation-absent:", "unit:fragment-implem
                   "structure:single-injectable-implementation", "parity:", "behavior:repository-effects:")
 
 
+def effect_witnesses(root: Path | None, requirements: list[dict[str, Any]], check: str, *, worklist: dict[str, Any],
+                     scenarios: list[str], tree: str = "", receipts: dict[str, dict[str, Any]] | None = None,
+                     scenario_modes: dict[str, str] | None = None, governed: bool = False) -> dict[str, Any]:
+    """WHY a ``behavior:repository-effects:<X>`` check fails, structured (H-13, architect decision 2026-10-01).
+    measure() is unchanged; this only names its evidence so routing can find the repair owners. Over the
+    scenarios the owned requirements' facts.verification name:
+
+      findings     every open status/body/committed-state/server-error finding touching one of them, once:
+                   {finding, scenario (its own; '' for a read oracle), entry_point, via: own|coverage,
+                    scenarios: [the check's scenarios it touches], cause, mode}
+      record_only  scenarios measured FAIL with no such finding (a failure no finding explains)
+      unknown      scenarios not measured / not bound to this tree / inconclusive
+      complete     True only when findings explain every failure and nothing is unknown -- an empty or
+                   partial set never stands for "fully explained"."""
+    from planner.worklist import _sid
+    sids: list[str] = []
+    for r in requirements or []:
+        if not isinstance(r, dict) or check not in (r.get("acceptance") or []):
+            continue
+        for v in ((r.get("facts") or {}).get("verification") or []):
+            for s in (v.get("scenarios") or []) if isinstance(v, dict) else []:
+                if _sid(s) not in {_sid(x) for x in sids}:
+                    sids.append(str(s))
+    want = {_sid(s) for s in sids}
+    findings: dict[str, dict[str, Any]] = {}
+    for i in (worklist or {}).get("items") or []:
+        if not isinstance(i, dict):
+            continue
+        if str(i.get("cause") or "") in HEADER_CAUSES and not (i.get("advice") or {}).get("server_error"):
+            continue
+        own = _sid(i.get("scenario")) if i.get("scenario") else ""
+        touched = sorted(({own} if own else set()) | {_sid(s) for s in i.get("scenarios") or [] if s})
+        hit = [s for s in touched if s in want]
+        if not hit:
+            continue
+        fid = str(i.get("id") or "")
+        findings[fid] = {"finding": fid, "scenario": str(i.get("scenario") or ""), "entry_point": str(i.get("entry_point") or ""),
+                         "via": "own" if own in want else "coverage", "scenarios": ["sc:" + s for s in hit],
+                         "cause": str(i.get("cause") or ""), "mode": str(i.get("security_mode") or "")}
+    explained = {_sid(x) for f in findings.values() for x in f["scenarios"]}
+    probe = {"id": "witness", "acceptance": ["parity:sc:" + _sid(s) for s in sids if _sid(s) not in explained]}
+    per = measure(root, [probe], worklist={"items": [], "measure": (worklist or {}).get("measure") or {"known": True}},
+                  scenarios=scenarios, tree=tree, receipts=receipts, scenario_modes=scenario_modes,
+                  governed=governed) if probe["acceptance"] else {}
+    record_only = sorted("sc:" + _sid(c[len("parity:"):]) for c, v in per.items() if v.get("status") == FAIL)
+    unknown = sorted("sc:" + _sid(c[len("parity:"):]) for c, v in per.items() if v.get("status") == UNKNOWN)
+    return {"check": check, "scenarios": ["sc:" + _sid(s) for s in sids],
+            "findings": sorted(findings.values(), key=lambda f: f["finding"]),
+            "record_only": record_only, "unknown": unknown, "complete": bool(findings) and not record_only and not unknown}
+
+
 def _open_scenarios(worklist: dict[str, Any]) -> set[str]:
     out: set[str] = set()
     for i in worklist.get("items") or []:

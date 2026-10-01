@@ -1369,6 +1369,57 @@ def _producer_difference(m: dict[str, Any], reqs: dict[str, dict[str, Any]], wor
     return False
 
 
+def _effect_route(root: Path, plan: dict[str, Any], m: dict[str, Any], worklist: dict[str, Any] | None, tree: str,
+                  scen: list[str], status_of: Callable[[str], str]) -> dict[str, Any] | None:
+    """H-13 (architect decision 2026-10-01): who repairs a FAILING repository-effects row. The row's
+    structured witnesses (requirement_checks.effect_witnesses) resolved through the plan's ownership:
+    {witnesses, owners: {finding: open owner}, unowned: [finding], complete}. None for any other check
+    (its routing is unchanged). An owner counts only as an open repair outcome of this plan."""
+    if not str(m.get("check") or "").startswith("behavior:repository-effects:"):
+        return None
+    from planner.requirement_checks import effect_witnesses
+    reqs = [q for q in plan.get("requirements") or [] if isinstance(q, dict) and q.get("id") in set(m.get("requirements") or [])]
+    w = effect_witnesses(root, reqs, m["check"], worklist=worklist or {}, scenarios=scen, tree=tree, receipts=_receipts(root))
+    ownership = plan.get("ownership") or {}
+    owners: dict[str, str] = {}
+    unowned: list[str] = []
+    for f in w["findings"]:
+        o = str(ownership.get(f["finding"]) or "")
+        node = _node(plan, o) if o else None
+        if node and node.get("role") == "repair" and status_of(o) != "done":
+            owners[f["finding"]] = o
+        else:
+            unowned.append(f["finding"])
+    return {"witnesses": w, "owners": owners, "unowned": sorted(unowned),
+            "complete": bool(w["complete"]) and not unowned}
+
+
+def _waits_on(plan: dict[str, Any], node_id: str) -> set[str]:
+    """Every outcome ``node_id`` waits on, transitively, through plan parents."""
+    parents = {n["outcome_id"]: set(n.get("parents") or []) for n in plan.get("nodes") or []}
+    seen: set[str] = set()
+    stack = list(parents.get(node_id, ()))
+    while stack:
+        p = stack.pop()
+        if p in seen:
+            continue
+        seen.add(p)
+        stack.extend(parents.get(p, ()))
+    return seen
+
+
+def acceptance_cycles(plan: dict[str, Any], deps: list[tuple[str, str]]) -> list[str]:
+    """H-13: an outcome whose acceptance needs a repair OWNED by another outcome must not be waited on by
+    that owner, directly or transitively -- the native parent graph stays acyclic while the acceptance
+    dependency closes the cycle (v30 t_557b0bed / t_b996bea6). ``deps``: (judged outcome, evidence
+    owner). Returns each cycle, named; [] when none."""
+    out = []
+    for judged, owner in deps:
+        if judged != owner and judged in _waits_on(plan, owner):
+            out.append("%s's acceptance needs a repair owned by %s, which waits on it" % (judged, owner))
+    return out
+
+
 def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, run: str, plan: dict[str, Any],
                       holder: str, worklist: dict[str, Any] | None, tree: str, accepted: str = "") -> dict[str, Any] | None:
     """Measure every later row scheduled at this card (scheduled_rows) on the
@@ -1414,12 +1465,35 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
             m["route"] = "already routed to %s" % cur
         elif status_of(m["owner"]) != "done":
             m["route"] = "its owner %s is still open: judged there and at M4" % m["owner"]
-        elif not _producer_difference(m, reqs, worklist):
-            m["route"] = ("only header-only differences are open on its scenarios: this card's own clusters, "
-                          "not a producer repair")
+        elif not ((lambda er: (bool(er["witnesses"]["findings"]) or bool(er["witnesses"]["record_only"]))
+                   if er is not None else _producer_difference(m, reqs, worklist))(
+                      m.setdefault("_er", _effect_route(root, plan, m, worklist, tree, scen, status_of)))):
+            er0 = m.pop("_er", None)
+            if er0 is not None and (er0["witnesses"]["unknown"]):
+                m["witnesses"] = er0["witnesses"]
+                m["route"] = ("not attributable: no finding or comparison FAIL explains it and %d scenario(s) are unknown "
+                              "on this candidate; the check stays owed (never PASS) and M4 measures it again"
+                              % len(er0["witnesses"]["unknown"]))
+            else:
+                m["route"] = ("only header-only differences are open on its scenarios: this card's own clusters, "
+                              "not a producer repair")
         else:
-            m["route"] = "owner"
-            fails.append(m)
+            # H-13: for a repository-effects row the witnesses decide: a status/body/server-error finding or a
+            # comparison FAIL no finding explains (record-only) is a producer difference -- never an empty set
+            er = m.pop("_er", None)
+            if er is not None:
+                m["witnesses"] = er["witnesses"]
+                m["repair_owners"] = sorted(set(er["owners"].values()))
+            if er is not None and er["complete"]:
+                # H-13: every failing finding is already owned by an open outcome (the holder included):
+                # the check stays FAIL and owed, its findings stay with their owners, and no follow-up
+                # (which those owners would wait on) is minted for the check's original owner
+                m["route"] = ("evidence owned by open outcomes: %s; the check stays FAIL and owed until measured PASS"
+                              % ", ".join("%s -> %s" % (f, o) for f, o in sorted(er["owners"].items())))
+            else:
+                m["route"] = "owner"
+                m["contributors"] = sorted(set(er["owners"].values())) if er is not None else []
+                fails.append(m)
     rec = board.record(task_id, "schedule-measure", "schedule-measure:%d:r%d:%s" % (int(run_id), int(plan["revision"]), tree[:16]),
                        run=int(run_id), revision=int(plan["revision"]), tree=tree, holder=holder, rows=measured,
                        **({"at": "accept", "accept": accepted} if accepted else {}))
@@ -1459,6 +1533,28 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
         for n in nxt["nodes"]:
             if n["outcome_id"] == holder:
                 n["parents"] = sorted(set(n.get("parents") or []) - set(routed["added"]))
+    # H-13 mixed failures: a follow-up judged on a check whose other failing findings are owned by open
+    # outcomes must not be waited on by those owners (directly or through anything they wait on); it waits
+    # on them instead, so each contributor can repair its own finding first
+    deps: list[tuple[str, str]] = []
+    for n in nxt["nodes"]:
+        mine = [by_ob[o] for o in n.get("obligations") or [] if o in by_ob]
+        if not mine or not n["outcome_id"].startswith("followup:"):
+            continue
+        contributors = sorted({c for m in mine for c in m.get("contributors") or []} - {n["outcome_id"]})
+        if not contributors:
+            continue
+        fid = n["outcome_id"]
+        for c in contributors:
+            for x in nxt["nodes"]:
+                if x["outcome_id"] == c or x["outcome_id"] in _waits_on(nxt, c):
+                    x["parents"] = sorted(set(x.get("parents") or []) - {fid})
+        n["parents"] = sorted(set(n.get("parents") or []) | set(contributors))
+        deps += [(fid, c) for c in contributors]
+    cycles = acceptance_cycles(nxt, deps)
+    if cycles:
+        raise Refusal("ACCEPTANCE_CYCLE", "the revision for %s is refused before publication: %s. A harness planning defect: "
+                      "kanban_block kind=needs_input quoting this line" % (holder, "; ".join(cycles[:3])))
     nxt["trigger"] = {"intent": "m3-schedule:%s" % holder}
     nxt.pop("digest", None)
     nxt["digest"] = plan_digest(nxt)
@@ -1471,6 +1567,9 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
     out["routed"] = routed["added"]
     if accepted:
         return out
+    hparents = set((_node(nxt, holder) or {}).get("parents") or [])
+    if not (hparents & set(routed["added"])):
+        return out       # H-13: the holder repairs its own share first; the follow-up waits on it, not the reverse
     named = "; ".join("%s of %s (%s)" % (m["check"], m["owner"], m["detail"][:120]) for m in fails[:3])
     raise Refusal("OWNER_REPAIR_PENDING", "%s is the earliest measurement point of %s, which FAILS on this candidate; the "
                   "check is owed by its owner, so %s (the owner's follow-up, sharing the owner's budget) is now a prerequisite "
