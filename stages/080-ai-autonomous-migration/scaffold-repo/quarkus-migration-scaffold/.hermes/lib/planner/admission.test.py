@@ -72,6 +72,15 @@ def _unit_oversize_case() -> int:
         return _fail("and it must carry the former's own refusal, not a paraphrase: %s" % rows["UNIT_OVERSIZE"])
     if "SCOPE_UNDERIVED" not in rows or "no production write scope" not in rows["SCOPE_UNDERIVED"]:
         return _fail("a cluster with no derivable scope keeps the class and the wording it had: %s" % sorted(rows))
+    # v30 H-8b: an unrenderable response adapter keeps its own class and the renderer's words
+    adapter = {"id": "u:67f74444f251", "status": "blocked",
+               "block": "ADAPTER_UNRENDERABLE: MEDIA_TYPE_UNDECIDED: the differences do not add exactly one common "
+                        "parameter: [('charset', 'UTF-8'), ('charset', 'utf-16')]"}
+    rows = _classes(_worklist([adapter, tests_only], []))
+    if "ADAPTER_UNRENDERABLE" not in rows or "MEDIA_TYPE_UNDECIDED" not in rows["ADAPTER_UNRENDERABLE"]:
+        return _fail("an unrenderable adapter must surface under its own class, with its reason: %s" % sorted(rows))
+    if "SCOPE_UNDERIVED" not in rows:
+        return _fail("the scopeless cluster beside it keeps SCOPE_UNDERIVED: %s" % sorted(rows))
     return 0
 
 

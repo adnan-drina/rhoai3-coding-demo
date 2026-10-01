@@ -48,7 +48,10 @@ ARTIFACT_SCHEMAS = {"evidence-bundle": "evidence-bundle.schema.json", "worklist"
 # changes every cluster id and would discard a live candidate. It arrives in
 # the measure's blocked list (worklist.unit_formation_for), which otherwise
 # reads only as MEASURE_UNKNOWN.
-CLUSTER_BLOCK_CLASSES = ("UNIT_OVERSIZE",)
+# v30 H-8b: a response adapter whose obligation exists but whose rendering the recorded differences do
+# not decide (worklist: "ADAPTER_UNRENDERABLE: MEDIA_TYPE_UNDECIDED: ...") HAS a write scope; reporting it
+# as SCOPE_UNDERIVED sent the worker -- and the Operator -- to the wrong cluster
+CLUSTER_BLOCK_CLASSES = ("UNIT_OVERSIZE", "ADAPTER_UNRENDERABLE")
 MEASURE_BLOCK_CLASSES = ("UNIT_MODE_SWITCH",)
 
 
