@@ -69,8 +69,8 @@
         "artifact": "org.rhoai3demo.harness:typed-repair:1.0.0",
         "source": ".hermes/skills/migration/fix-until-green/typed-repair (our own recipes; no third-party recipe)",
         "jar": "/opt/rhoai3/typed-repair/typed-repair.jar",
-        "jar_sha256": "66d1b6f4c507dbf50e38dcf44bd2673267f5fef0d598618bc2c0fb8a9d6506ad",
-        "size_bytes": 17684782,
+        "jar_sha256": "768ba69f22b77de314b62cadaeee8620862f0616f2bf8f4ce284d58a9368a765",
+        "size_bytes": 17685168,
         "build": "mvn -B -o -f .hermes/skills/migration/fix-until-green/typed-repair/pom.xml -Dtyped-repair.build.dir=<a directory OUTSIDE .hermes> package with JDK 21 (built and measured with 21.0.5); project.build.outputTimestamp fixes entry times and the output directory does not enter the jar, so the same sources, dependency jars and JDK give this sha256; a different digest is a new executor and is re-pinned deliberately",
         "runtime": "java -jar <jar> --request <request.json> --out <dir> on the workspace JDK 21, offline; no network, no Maven",
         "recipes": {
