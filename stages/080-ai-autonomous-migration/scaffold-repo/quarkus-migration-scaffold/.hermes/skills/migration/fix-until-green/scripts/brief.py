@@ -1760,7 +1760,10 @@ def brief_digest(brief: dict, stem: str) -> str:
     decided here; the full brief is unchanged on disk."""
     cl = brief.get("cluster") or {}
     rs = brief.get("_retry_state") or {}
-    out = ["BRIEF (digest: the full brief is %d characters, on disk and with --json; nothing below replaces it)" % len(json.dumps(brief))]
+    # v30 H-7: "nothing below replaces it" sent workers to read the full brief section by section (30+ --section
+    # calls, ~35 min, never reaching the FIRST ACTION); the digest IS the reading order to act on
+    out = ["BRIEF (digest: act on it from the top -- NEXT ACTION, then any FIRST ACTION; the full %d-character brief is on "
+           "disk and with --json for ONE specific question, not to be read section by section)" % len(json.dumps(brief))]
     if isinstance(brief.get("issued_not_open"), dict) and brief.get("procedure"):
         # the one next action of a card whose compile items are gone (the same text as PROCEDURE below)
         out += ["NEXT ACTION (this card):", textwrap.indent(textwrap.fill(str(brief["procedure"]), 110), "  ")]
