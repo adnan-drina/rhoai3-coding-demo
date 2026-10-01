@@ -5,7 +5,26 @@ the ordered patch series in [patches/](patches/). This record names what was
 published, how it was qualified, and which image each run uses. A pin edit
 alone does not prove an image was built or deployed.
 
-## Current release (2026-09-30, consolidated migration package)
+## Current release (2026-10-01, after-v30 package: typed repair executor H-6)
+
+| Item | Identity |
+|---|---|
+| Source | main `8a332f91` (after-v30 package landed at `065949a7`, 143/143 non-container suites; executor re-pin `8a332f91`) |
+| Base | `NousResearch/hermes-agent` `fcbd1076a93841fa88855acce810e342a5b78101` (tag `v2026.8.19`, 0.20.5) |
+| Series | 0001–0016, unchanged |
+| Patched tree | `37b147baef0c2678507c52e59e3b9231ab6ab64f` (re-verified from a fresh base by the recipe) |
+| Typed repair executor | `/opt/rhoai3/typed-repair/typed-repair.jar`, sha256 `768ba69f22b77de314b62cadaeee8620862f0616f2bf8f4ce284d58a9368a765`, 17,685,168 bytes: the selected/owed fragment target (H-5/H-6); built twice with JDK 21.0.5, identical; equal to `pins.json` `typed_repair.executor.jar_sha256` |
+| Image | `quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:792fff3d6663bcc65c62d0efd10640c54837f54a14aebd03653986419604e4a8` (tag `080-runtime-37b147ba`, moved from `8b1fe34a`; digest from `podman push --digestfile`, read back by digest from the registry) |
+| Image stamp | `/opt/rhoai3/080.pins`: `hermes.patched_tree=37b147ba…`, 16 patch checksums, `outcome_authority.code_sha256=c974f26d…` (unchanged), `typed_repair.jar_sha256=768ba69f…` |
+| Build context | identity `ed4c2ccbe8e632dff57ce5c095bacdc28a88e76ccea34768cfc8809cd99fcb03` over 766 files |
+| Pins | golden `.hermes/pins.json` `workspace_overlay.ws_080.digest`, `run-defaults.json`, scaffold `devfile.yaml`, app-migration skeleton devfile (both ws-080 components) |
+
+Verification (evidence `tmp/next-migration-release/build/build-h6.log`, `registry-readback-h6.txt`,
+`in-image-executor-h6.log`): recipe steps 0–6 rc=0 and pushed; pulled by registry digest, the same stamps, 16 patches
+and jar bytes `768ba69f…`; the executor runs in the image on the worker PATH (JDK 21.0.12, network off, worker UID) and
+a second run changes nothing. Not established here: a live model-driven run on this image.
+
+## Previous release (2026-09-30, consolidated migration package)
 
 | Item | Identity |
 |---|---|
