@@ -117,6 +117,14 @@ need(listener.get('status',{}).get('readyReplicas',0) >= 1
 p = json.loads(oc('get','pod',pod,'-n',ns,'-o','json'))
 need(source_mount_ok(p, os.environ['CONTAINER']), 'source mount is writable or has a writable runtime alias')
 need(p['metadata'].get('labels',{}).get('controller.devfile.io/devworkspace_name') == workspace, 'actual workspace name mismatch')
+# v32 (2026-10-02): the factory wrote a devfile with the PREVIOUS image while the golden pinned the new one, and nothing
+# compared them -- a run could start on another runtime. Every ws-080 container runs exactly the golden's pinned image.
+_pins = json.loads((golden / '.hermes' / 'pins.json').read_text())['pins']
+_want_img = _pins['workspace_overlay']['ws_080']['digest']
+_imgs = [cs.get('imageID') or cs.get('image') or '' for cs in (p.get('status') or {}).get('containerStatuses') or []
+         if 'rhoai3-ws-080' in (cs.get('image') or '') + (cs.get('imageID') or '')]
+need(_imgs and all(i.endswith(_want_img) for i in _imgs),
+     'the workspace runs %s, the golden pins %s' % (', '.join(sorted({i.rsplit('@', 1)[-1][:19] for i in _imgs})) or 'no ws-080 image', _want_img[:19]))
 receipt = json.loads(oc('get','configmap','migration-run-'+workspace,'-n',ns,'-o','json'))['data']
 need(receipt.get('phase') == 'provisioned' and receipt.get('workspace') == workspace
      and receipt.get('namespace') == ns, 'provisioning receipt is not ready for this workspace')
@@ -163,8 +171,18 @@ def is_migration_run(w):
     comps = (w.get('spec',{}).get('template',{}) or {}).get('components') or []
     return any(e.get('name') == 'MIGRATION_RUN_NAME' for c in comps for e in ((c.get('container') or {}).get('env') or []))
 dws = json.loads(oc('get','devworkspace','-n',ns,'-o','json')).get('items',[])
+# v32 (2026-10-02): the subscription limits are PER MODEL, so another run draws on this allowance only when the
+# profile pinned for IT selects the same model (its <run>-run-control profile.json default_model); a run whose pin
+# cannot be read still counts (conservative). Before the two-model A/B every run shared one model.
+def pinned_model(name):
+    try:
+        cm = json.loads(oc('get','configmap',name+'-run-control','-n',ns,'-o','json'))
+        return json.loads(cm['data']['profile.json']).get('default_model') or ''
+    except Exception:
+        return ''
 quota_others = sum(1 for w in dws if w['metadata']['name'] != workspace and is_migration_run(w)
-                   and w.get('status',{}).get('phase') in ('Running','Starting'))
+                   and w.get('status',{}).get('phase') in ('Running','Starting')
+                   and pinned_model(w['metadata']['name']) in ('', os.environ['EXPECTED_MODEL']))
 model = json.loads(oc('get','llminferenceservice',os.environ['EXPECTED_MODEL'],'-n','models-as-a-service','-o','json'))
 need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in model.get('status',{}).get('conditions',[])), 'Qwen model is not Ready')
 def args_in(obj):
