@@ -5,7 +5,27 @@ the ordered patch series in [patches/](patches/). This record names what was
 published, how it was qualified, and which image each run uses. A pin edit
 alone does not prove an image was built or deployed.
 
-## Current release (2026-10-01, after-v30 package: typed repair executor H-6)
+## Current release (2026-10-02, patch 0017: Qwen 3.8 loop escalation; v32 A/B package)
+
+| Item | Identity |
+|---|---|
+| Source | release branch after `84534194` (patch 0017 `2f298e01`, configuration `08b92df9`, qwen3-8 compression kept at v30 `84534194`) |
+| Base | `NousResearch/hermes-agent` `fcbd1076a93841fa88855acce810e342a5b78101` (tag `v2026.8.19`, 0.20.5) |
+| Series | 0001–0017 (0017 = loop escalation to a thinking profile after the third identical-call note; configured only for `qwen3-8-27b-int4`) |
+| Patched tree | `eaa713b9017a86ee217ed9d623f339da82603acc` (series re-verified from a fresh base by the recipe) |
+| Typed repair executor | unchanged, sha256 `768ba69f…` |
+| Image | `quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:adda0aa36091b7cd15ce72eb735e875a3f630329843caf830ecc254d801acd5b` (tag `080-runtime-eaa713b9`; digest from `podman push --digestfile`) |
+| Image stamp | `/opt/rhoai3/080.pins`: `hermes.patched_tree=eaa713b9…`, 17 patch checksums, `outcome_authority.code_sha256=c974f26d…` (unchanged), `typed_repair.jar_sha256=768ba69f…` |
+| Pins | golden `.hermes/pins.json` (`hermes_agent.patched_tree`, `workspace_overlay.ws_080.digest`), `run-defaults.json`, scaffold `devfile.yaml`, app-migration skeleton devfile (both ws-080 components) |
+
+Verification (evidence `tmp/next-migration-release/build/build-0017.log`): recipe steps 0–6 rc=0 and pushed; pulled by
+registry digest: tree `eaa713b9`, 17 checksums including 0017, `agent/loop_escalation.py` present, authority and
+executor stamps unchanged. Patch 0017: 24 new Hermes tests pass (escalated body only after the third-call note,
+reasoning_effort xhigh inside chat_template_kwargs, edit / verification / turn-cap end conditions, guard still halts on
+the fifth identical call, reasoning echoed to the next turn with model.reasoning_echo); existing guardrail and stop
+modules pass. Not established here: a live model-driven escalation (the v32 A/B trial measures it).
+
+## Previous release (2026-10-01, after-v30 package: typed repair executor H-6)
 
 | Item | Identity |
 |---|---|

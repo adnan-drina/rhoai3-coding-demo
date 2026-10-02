@@ -35,7 +35,7 @@ components:
       # Digest-pinned overlay (ws-080). Repos are private: cluster pull
       # needs the Quay pull secret on the workspace ServiceAccount before
       # any dest cut. Fat postStart (VSIX curls) is expected this round.
-      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:792fff3d6663bcc65c62d0efd10640c54837f54a14aebd03653986419604e4a8
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:adda0aa36091b7cd15ce72eb735e875a3f630329843caf830ecc254d801acd5b
       mountSources: true
       memoryRequest: 2Gi
       memoryLimit: 12Gi

@@ -4,7 +4,7 @@
     "hermes_agent": {
       "version": "v0.20.5",
       "build": "2026.8.19",
-      "patched_tree": "37b147baef0c2678507c52e59e3b9231ab6ab64f",
+      "patched_tree": "eaa713b9017a86ee217ed9d623f339da82603acc",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
       "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
@@ -20,20 +20,20 @@
       "artifact_id": "maven-compiler-plugin",
       "version": "3.11.0",
       "pom_property": "compiler-plugin.version",
-      "note": "RHBQ 3.27 Developing and compiling your Red Hat build of Quarkus applications with Apache Maven — properties example compiler-plugin.version 3.11.0. Not dest-8 recall 3.13.0. https://docs.redhat.com/en/documentation/red_hat_build_of_quarkus/3.27/html-single/developing_and_compiling_your_red_hat_build_of_quarkus_applications_with_apache_maven/index"
+      "note": "RHBQ 3.27 Developing and compiling your Red Hat build of Quarkus applications with Apache Maven \u2014 properties example compiler-plugin.version 3.11.0. Not dest-8 recall 3.13.0. https://docs.redhat.com/en/documentation/red_hat_build_of_quarkus/3.27/html-single/developing_and_compiling_your_red_hat_build_of_quarkus_applications_with_apache_maven/index"
     },
     "surefire_plugin": {
       "group_id": "org.apache.maven.plugins",
       "artifact_id": "maven-surefire-plugin",
       "version": "3.1.2",
       "pom_property": "surefire-plugin.version",
-      "note": "Same RHBQ 3.27 Maven chapter — properties example surefire-plugin.version 3.1.2. Not dest-8 recall 3.5.2."
+      "note": "Same RHBQ 3.27 Maven chapter \u2014 properties example surefire-plugin.version 3.1.2. Not dest-8 recall 3.5.2."
     },
     "assertj_core": {
       "group_id": "org.assertj",
       "artifact_id": "assertj-core",
       "version": "3.27.7",
-      "note": "Architect 125110ZA option B. RH quarkus-bom 3.27.3.SP1-redhat-00002 (maven.repository.redhat.com/ga, 417447 B) contains 0 assertj hits — BOM does not manage it. Version from Quarkus 3.27.3 build-parent assertj.version (https://github.com/quarkusio/quarkus/blob/3.27.3/build-parent/pom.xml). Not 3.27.3 (platform echo)."
+      "note": "Architect 125110ZA option B. RH quarkus-bom 3.27.3.SP1-redhat-00002 (maven.repository.redhat.com/ga, 417447 B) contains 0 assertj hits \u2014 BOM does not manage it. Version from Quarkus 3.27.3 build-parent assertj.version (https://github.com/quarkusio/quarkus/blob/3.27.3/build-parent/pom.xml). Not 3.27.3 (platform echo)."
     },
     "mapstruct": {
       "status": "unpinned",
@@ -42,27 +42,27 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:792fff3d6663bcc65c62d0efd10640c54837f54a14aebd03653986419604e4a8",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-10-01 (tag 080-runtime-37b147ba): Hermes runtime series 0001-0016 (/opt/rhoai3/080.pins hermes.patched_tree=37b147baef0c2678507c52e59e3b9231ab6ab64f), the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc) and the typed repair executor with the selected/owed fragment target (H-6; typed_repair.jar_sha256=768ba69f22b77de314b62cadaeee8620862f0616f2bf8f4ce284d58a9368a765, built from the pinned sources by the recipe). Built from main 8a332f91 (after-v30 package, landed 065949a7); see hermes-runtime/RELEASE.md. Superseded: sha256:8b1fe34a9e8467010ac78a4dc36fa851a145c534142e2ebfdabe6ebc87be4ffd (executor 66d1b6f4). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
+        "digest": "sha256:adda0aa36091b7cd15ce72eb735e875a3f630329843caf830ecc254d801acd5b",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-10-02 (tag 080-runtime-eaa713b9): Hermes runtime series 0001-0017 (/opt/rhoai3/080.pins hermes.patched_tree=eaa713b9017a86ee217ed9d623f339da82603acc; 0017 = loop escalation to a thinking profile, configured for qwen3-8-27b-int4 only), the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc, unchanged) and the typed repair executor unchanged (typed_repair.jar_sha256=768ba69f22b77de314b62cadaeee8620862f0616f2bf8f4ce284d58a9368a765). See hermes-runtime/RELEASE.md. Superseded: sha256:792fff3d6663bcc65c62d0efd10640c54837f54a14aebd03653986419604e4a8 (series 0001-0016, tree 37b147ba). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {
       "version": "8.2",
       "product_version": "8.2",
       "artifact_sha256": "5e3b2171e3a30d87ca576f8be14de01e7e6422108abc58f7c0ce23f40d959612",
-      "note": "Pinned 2026-09-08 (user decision) to the MTA CLI 8.2 product line; artifact_sha256 frozen 2026-09-09 by the stage owner from the binary measured in the ws-080 image build (/opt/rhoai3/080.pins; `mta-cli version` → 8.2.1, SHA cbcc9778). Admissible iff the executed binary identifies as mta-cli 8.2.x (measured `version`), is not a kantra alias, and its sha256 equals artifact_sha256. A new overlay with a different binary must re-freeze this key together with workspace_overlay.ws_080. kantra remains provisional and non-admissible.",
-      "artifact": "mta-8.2.1.1-cli-linux-amd64.zip (Red Hat MTA download page, zip sha256 988db13d51a2fb34dbc9f50ac37d43c7e65fb7f0ed502f14ad140dbf681e6ecc) → /opt/mta-cli/mta-cli in ws-080@sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f"
+      "note": "Pinned 2026-09-08 (user decision) to the MTA CLI 8.2 product line; artifact_sha256 frozen 2026-09-09 by the stage owner from the binary measured in the ws-080 image build (/opt/rhoai3/080.pins; `mta-cli version` \u2192 8.2.1, SHA cbcc9778). Admissible iff the executed binary identifies as mta-cli 8.2.x (measured `version`), is not a kantra alias, and its sha256 equals artifact_sha256. A new overlay with a different binary must re-freeze this key together with workspace_overlay.ws_080. kantra remains provisional and non-admissible.",
+      "artifact": "mta-8.2.1.1-cli-linux-amd64.zip (Red Hat MTA download page, zip sha256 988db13d51a2fb34dbc9f50ac37d43c7e65fb7f0ed502f14ad140dbf681e6ecc) \u2192 /opt/mta-cli/mta-cli in ws-080@sha256:0d3e19e298f541e2b1c5e61e86e4219fa32bee37b39987fd701ecca68457572f"
     },
     "planner": {
       "activation": "not-activated",
       "pilot": null,
-      "note": "SOLUTION-ARCHITECTURE §12. activation ∈ {not-activated, pilot, activated}. not-activated: dest-init mints M1 only, admission never ADMITS, K4 emits nothing. pilot: one Operator-authorized run — set pilot to {run_id, authorized_by, evidence_bundle_sha256} naming the exact evidence bundle the seal covers; admission ADMITS only that bundle and K4 re-derives the check from this file, never from the receipt text or step order. activated: named Operator GO after the gate (residue scan clean; mandatory producers pinned; deterministic selftests green; live K3 board equality; one capability through M3 review and M4 parity). A worker never edits this block."
+      "note": "SOLUTION-ARCHITECTURE \u00a712. activation \u2208 {not-activated, pilot, activated}. not-activated: dest-init mints M1 only, admission never ADMITS, K4 emits nothing. pilot: one Operator-authorized run \u2014 set pilot to {run_id, authorized_by, evidence_bundle_sha256} naming the exact evidence bundle the seal covers; admission ADMITS only that bundle and K4 re-derives the check from this file, never from the receipt text or step order. activated: named Operator GO after the gate (residue scan clean; mandatory producers pinned; deterministic selftests green; live K3 board equality; one capability through M3 review and M4 parity). A worker never edits this block."
     },
     "structure_extractor": {
       "version": "jdk-21",
       "source_release": 17,
       "implementation": "javax.lang.model + com.sun.source through JavacTask (JdkModelExtract.java, compiled at run time by the toolchain javac)",
-      "note": "The pinned toolchain JDK (java_release 21) is the M1 structural extractor; no third-party library. run-jdk-model-extract.sh refuses when the running JDK feature release differs from this pin. The receipt records the extractor source sha256 and the exact runtime string. source_release is the --release level javac attributes the legacy source at (Boot 2.x legacy is Java 8–17 source)."
+      "note": "The pinned toolchain JDK (java_release 21) is the M1 structural extractor; no third-party library. run-jdk-model-extract.sh refuses when the running JDK feature release differs from this pin. The receipt records the extractor source sha256 and the exact runtime string. source_release is the --release level javac attributes the legacy source at (Boot 2.x legacy is Java 8\u201317 source)."
     },
     "typed_repair": {
       "executor": {
