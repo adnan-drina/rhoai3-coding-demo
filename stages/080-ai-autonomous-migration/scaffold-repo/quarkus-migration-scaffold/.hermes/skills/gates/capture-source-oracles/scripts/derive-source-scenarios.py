@@ -3998,8 +3998,12 @@ def _variant_revert_plan(fixture: dict[str, Any], seed_p: Path | None, dataset: 
         return None, "REVERT_NOT_COMPUTABLE: %s" % exc
 
 
+_SQL_TABLE_RE = re.compile(r"\b(?:FROM|JOIN|UPDATE|INTO)\s+\"?([A-Za-z_][A-Za-z0-9_]*)\"?", re.IGNORECASE)
+
+
 def effect_db_scope(base: dict[str, Any], reads: list[dict[str, Any]], columns: dict[str, list[str]],
-                    foreign_keys: list[dict[str, Any]], eps: dict[str, dict[str, Any]]) -> dict[str, Any]:
+                    foreign_keys: list[dict[str, Any]], eps: dict[str, dict[str, Any]],
+                    entity_tables: dict[str, str] | None = None) -> dict[str, Any]:
     """The database state a refused write's no-effect claim covers (ADR-021),
     derived from what the scenario already reads: the tables its entry
     point's route and its effect reads name (the same singular/plural
@@ -4011,18 +4015,39 @@ def effect_db_scope(base: dict[str, Any], reads: list[dict[str, Any]], columns: 
     found: dict[str, str] = {}
     ep = eps.get(str(base.get("entry_point") or "")) or {}
     route = str(ep.get("http_path") or "")
+    # entity simple name (lower) -> its mapped table, from M1's structure model (v31 lab: /api/pettypes names the
+    # entity PetType, whose @Table is "types" -- no spelling of the segment is a table)
+    ent = {str(k).lower(): str(v) for k, v in (entity_tables or {}).items() if v in tables}
+
+    def seg_tables(seg: str) -> list[str]:
+        names = list(dict.fromkeys([seg.lower(), _snake(seg), _plural(seg.lower()), _singular(seg.lower())]))
+        direct = [c for c in names if c in tables]
+        return direct[:1] or [ent[c] for c in names if c in ent][:1]
+
     for var in re.findall(r"\{([^{}]+)\}", route):
         for cand in table_candidates(var, route):
             if cand in tables:
                 found.setdefault(cand, "route %s {%s}" % (route, var))
                 break
+    if not found:
+        # a collection route (POST /api/things) has no variable: its own segments name the resource
+        for seg in reversed([x for x in route.split("/") if x and "{" not in x and "*" not in x]):
+            hit = seg_tables(seg)
+            if hit:
+                found.setdefault(hit[0], "route %s segment %s" % (route, seg))
+                break
     for e in reads:
+        if str(e.get("kind") or "") == "sql":
+            for t in _SQL_TABLE_RE.findall(str(e.get("query") or "")):
+                if t.lower() in tables:
+                    found.setdefault(t.lower(), "committed-state read %s" % e.get("id"))
+            continue
         path = str(e.get("path") or "")
         for seg in [x for x in path.split("/") if x and not x.isdigit()]:
-            for cand in dict.fromkeys([seg.lower(), _snake(seg), _plural(seg.lower()), _singular(seg.lower())]):
-                if cand in tables:
-                    found.setdefault(cand, "read %s %s" % (e.get("id"), path))
-                    break
+            hit = seg_tables(seg)
+            if hit:
+                found.setdefault(hit[0], "read %s %s" % (e.get("id"), path))
+                break
     if not found:
         return {"tables": [], "why": ("no table of the source schema is named by %s's route or its read-backs; the "
                                       "database state its refusal leaves is not scoped" % base.get("id"))}
@@ -4141,8 +4166,12 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
             qualify["db_unchanged"] = True
             # the read REQUESTS only -- id, method, path -- with the role they
             # play here; what they answer is the source capture's to record
-            effects = [{"id": str(e.get("id") or e.get("path")), "method": str(e.get("method") or "GET").upper(),
-                        "path": str(e.get("path") or "/"), "role": EFFECT_ROLE_UNCHANGED} for e in reads]
+            # a committed-state step (M-3 / ADR-026, kind sql) stays one: its SELECT is the read-back, never an
+            # HTTP GET of "/" (v31 lab: the identity-disabled variant of create-users read "/" three times -> 302)
+            effects = [({"id": str(e.get("id")), "kind": "sql", "query": str(e.get("query") or ""), "role": EFFECT_ROLE_UNCHANGED}
+                        if str(e.get("kind") or "") == "sql" else
+                        {"id": str(e.get("id") or e.get("path")), "method": str(e.get("method") or "GET").upper(),
+                         "path": str(e.get("path") or "/"), "role": EFFECT_ROLE_UNCHANGED}) for e in reads]
         else:
             evidence.append("effects-unobservable:%s" % unobservable)
             if gaps is not None:
@@ -4232,6 +4261,8 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
     # recorded with its digest so the capture builds the variant from exactly
     # the bytes this derivation saw
     _src, _dest, _engine, seed_p, _seed, _cols, _fks = _sql_evidence(root, copy, inputs, gaps)
+    _pm = load_persistence_model(root, set(_cols))
+    _entity_tables = {str(e["simple"]): str(e["table"]) for e in _pm.entities.values() if e.get("table")}
     bundle_eps = {str(e.get("id")): e for e in (load_json(root / EVIDENCE_BUNDLE).get("entry_points") or [])
                   if isinstance(e, dict)}
     if seed_p is None:
@@ -4244,7 +4275,7 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
     scenarios = [_variant_scenario(root, variant, fixture, sc, base_sha, base_corpus_rel, dataset, base_identities,
                                    str(base.get("invalid_credential_ref") or ""), gaps, revert, revert_why,
                                    effect_db_scope(sc, [e for e in (sc.get("effects") or []) if isinstance(e, dict)],
-                                                   _cols, _fks, bundle_eps))
+                                                   _cols, _fks, bundle_eps, _entity_tables))
                  for sc in selected]
     scenarios.sort(key=lambda s: str(s["id"]))
     fixture_row = {

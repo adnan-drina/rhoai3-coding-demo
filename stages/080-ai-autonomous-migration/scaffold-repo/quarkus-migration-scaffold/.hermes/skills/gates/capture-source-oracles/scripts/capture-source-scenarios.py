@@ -786,7 +786,9 @@ def main(argv: list[str] | None = None) -> int:
                 why = hold()
                 if why:
                     source_effects = {"observed": False, "reason": why}
-            if committed and store is None and not rtr:
+            # on a server capture the capture schema IS the held database, so a revert-then-read scenario's
+            # committed-state steps are read there too (v31 lab: identity-disabled create-users)
+            if committed and store is None and (not rtr or server):
                 committed_why = hold_committed()
             if rtr or sc.get("reset_before", True) or store is not None:
                 err = runtime.start()

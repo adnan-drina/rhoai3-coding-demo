@@ -3044,6 +3044,40 @@ def _cors_access_qualification_case() -> int:
     return 0
 
 
+def _variant_scope_and_sql_case() -> int:
+    """v31 lab: a refused write's database scope is found for a collection route through the ENTITY mapping (a route
+    segment that no spelling of a table names), through a committed-state read's own SQL, and a variant keeps a
+    committed-state read-back as SQL -- never an HTTP GET of "/". Renamed twin: another entity, table and route."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("derive_mod_scope", DERIVE)
+    dm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(dm)  # type: ignore[union-attr]
+    ok = True
+    for ent, table, route, sqltable in (("PetType", "types", "/api/pettypes", "users"),
+                                        ("LedgerKind", "kinds", "/api/ledgerkinds", "accounts")):
+        cols = {table: ["id", "name"], "items": ["id", "kind_id"], sqltable: ["username"]}
+        fks = [{"table": "items", "ref_table": table}]
+        eps = {"ep:create": {"http_path": route}}
+        base = {"id": "sc:create", "entry_point": "ep:create"}
+        got = dm.effect_db_scope(base, [{"id": "eff:list", "method": "GET", "path": route}], cols, fks, eps, {ent: table})
+        if got.get("tables") != sorted({table, "items"}):
+            print("FAIL: entity-mapped collection route %s did not scope %s: %s" % (route, table, got)); ok = False
+        none = dm.effect_db_scope(base, [{"id": "eff:list", "method": "GET", "path": route}], cols, fks, eps, {})
+        if none.get("tables"):
+            print("FAIL: without the entity mapping no spelling of %s is a table, yet it scoped %s" % (route, none)); ok = False
+        sql = dm.effect_db_scope({"id": "sc:x", "entry_point": "ep:none"},
+                                 [{"id": "eff:rows", "kind": "sql", "query": "SELECT COUNT(*) FROM %s WHERE username = 'x'" % sqltable}],
+                                 cols, [], {}, {})
+        if sql.get("tables") != [sqltable]:
+            print("FAIL: a committed-state read's own table %s was not scoped: %s" % (sqltable, sql)); ok = False
+    src = DERIVE.read_text(encoding="utf-8")
+    if '"kind": "sql", "query": str(e.get("query") or ""), "role": EFFECT_ROLE_UNCHANGED' not in src:
+        print("FAIL: a variant's committed-state read-back is no longer carried as SQL"); ok = False
+    if ok:
+        print("ok variant scope via entity mapping and committed-state SQL; SQL read-backs stay SQL (renamed twin)")
+    return 0 if ok else 1
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -3060,7 +3094,7 @@ def main() -> int:
                 or _enabled_cors_case() or _cors_access_qualification_case()
                 or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _referenced_delete_outcome_case() or _qualification_case(root)
-                or _effects_identity_qualification_case() or _receipt_case()):
+                or _effects_identity_qualification_case() or _receipt_case() or _variant_scope_and_sql_case()):
             return 1
     finally:
         if td is not None:

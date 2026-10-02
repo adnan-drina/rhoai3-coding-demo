@@ -623,7 +623,11 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                 if not declared or sorted(before) != declared:
                     raise Unusable("the baseline read-backs %s are not the declared %s" % (sorted(before), declared))
                 for eid in declared:
-                    _read_back_body(root, sid, before[eid], "baseline %s" % eid)
+                    if str(before[eid].get("kind") or "") == "sql":
+                        # a committed-state step is usable by its value (ADR-026), not by an HTTP status
+                        _committed_value(before[eid], "baseline %s" % eid)
+                    else:
+                        _read_back_body(root, sid, before[eid], "baseline %s" % eid)
                 record(name, True, "baseline read-backs recorded: %s" % ", ".join(declared))
             elif name == "errors_header_names_field":
                 if not isinstance(headers, dict):
