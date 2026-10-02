@@ -1202,6 +1202,7 @@
         ],
         "checks": [
           "skills/migration/fix-until-green/scripts/sorting-oracle.test.py (Spring's own PropertyComparator against this action over nulls, case and ties in both directions)",
+          "skills/migration/fix-until-green/scripts/collection-sorting-runtime.test.py (the action on a destination package on the pinned platform serves Spring's PropertyComparator order; no-reversed and nullsFirst controls differ)",
           "M4 parity order (worklist body_diff order_explained)"
         ],
         "source": "https://github.com/spring-projects/spring-framework/blob/v5.3.14/spring-beans/src/main/java/org/springframework/beans/support/PropertyComparator.java; .../MutableSortDefinition.java"
@@ -1296,6 +1297,7 @@
         ],
         "checks": [
           "skills/migration/fix-until-green/scripts/transaction-mapping.test.py (spring-tx's own @Transactional attributes and Propagation constants against this table and jakarta.transaction's TxType)",
+          "skills/migration/fix-until-green/scripts/transaction-runtime.test.py (the translated boundaries on the pinned platform and PostgreSQL 16: default rollback rules, rollbackOn/dontRollbackOn, REQUIRES_NEW vs REQUIRED, committed state read back by a later request; a private boundary fails the build)",
           "behavior:repository-effects (committed effects read back across a request boundary)"
         ],
         "source": "https://jakarta.ee/specifications/transactions/2.0/apidocs/jakarta/transaction/transactional; https://docs.spring.io/spring-framework/docs/5.3.x/javadoc-api/org/springframework/transaction/annotation/Transactional.html; skills/migration/spring-to-quarkus-patterns/references/cdi-service-facade.md"
