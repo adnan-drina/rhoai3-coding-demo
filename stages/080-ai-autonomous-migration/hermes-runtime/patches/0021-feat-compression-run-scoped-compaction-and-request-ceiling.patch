@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Sat, 3 Oct 2026 00:28:16 +0200
-Subject: [PATCH] feat(compression): run-scoped compaction, request ceiling and
- pruned-stub refusal
+Subject: [PATCH 21/21] feat(compression): run-scoped compaction, request
+ ceiling and pruned-stub refusal
 
 RHOAI3 v32-qwen36, card t_2a95f8c1 run 44 (one Kanban turn, 97 API calls;
 72K trigger, 48K prune, protect_last_n 12, context_length 110000): three
@@ -22,7 +22,20 @@ so the window holds only the previous handoff summary; compress() returns its
 Phase-1 prune alone (empty_post_handoff_window). Live: 24->21, then 41->41,
 67->67, 76->76.
 
-With compression.run_scoped: true (agent/run_compaction.py), for the whole run:
+For every model with compression enabled (agent/run_compaction.py), a
+request ceiling: the projected
+prompt is the provider's last reported prompt count plus the rough size of
+what was added since, with a 25% margin on that addition only (a removal is
+credited at 75%); the rough whole-request estimate is used only before the
+first provider figure of the run. If the projection plus max_tokens exceeds
+context_length, a forced pass runs regardless of budget, runway, cooldown or
+anti-thrash state, with the opening task turn kept in the head (half tail,
+then the minimum tail); if the request still does not fit, the run ends at
+once with context_ceiling_unreachable (Kanban: STOP WORKER_CONTEXT_CEILING)
+and the request is never sent. Below the ceiling the stock gates are
+untouched.
+
+With compression.run_scoped: true, in addition, for the whole run:
 
 - one pre-API guard replaces the per-turn-budgeted pre-API and post-tool gates
   (the turn-prologue preflight, the proactive prune and the provider-error
@@ -33,16 +46,7 @@ With compression.run_scoped: true (agent/run_compaction.py), for the whole run:
   _anchor_task_in_head), so a pass has a middle to summarise;
 - a pass that summarised nothing while the request is still at or above the
   trigger is followed, before any request is sent, by a forced summarising
-  pass with half the tail budget;
-- ceiling: the projected prompt is the provider's last reported prompt count
-  plus the rough size of what was added since, with a 25% margin on that
-  addition only (a removal is credited at 75%); the rough whole-request
-  estimate is used only before the first provider figure of the run. If the
-  projection plus the output cap exceeds context_length, a forced pass runs
-  regardless of runway, cooldown or anti-thrash state (half tail, then the
-  minimum tail); if the request still does not fit, the run ends at once with
-  context_ceiling_unreachable (Kanban: STOP WORKER_CONTEXT_CEILING) and the
-  request is never sent.
+  pass with half the tail budget.
 
 Unconditionally: a pruned tool-call argument keeps its head and says what it
 is ("[hermes pruned argument: N chars, first 200 shown; this is a context
@@ -51,31 +55,32 @@ changes nothing), and write_file / patch refuse content that carries that
 marker or the legacy 200-character "...[truncated]" stub, naming the reason;
 nothing is written.
 
-Without run_scoped every compaction path is unchanged. Local extension.
+Without run_scoped every compaction path below the ceiling is unchanged.
+Local extension.
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  agent/agent_init.py                |  12 +
- agent/context_compressor.py        |  88 +++++-
- agent/conversation_loop.py         |  61 ++++
- agent/run_compaction.py            | 228 ++++++++++++++
+ agent/context_compressor.py        |  88 ++++-
+ agent/conversation_loop.py         |  63 ++++
+ agent/run_compaction.py            | 238 +++++++++++++
  agent/turn_finalizer.py            |  19 ++
- tests/agent/test_run_compaction.py | 472 +++++++++++++++++++++++++++++
+ tests/agent/test_run_compaction.py | 518 +++++++++++++++++++++++++++++
  tools/file_tools.py                |  37 +++
- 7 files changed, 914 insertions(+), 3 deletions(-)
+ 7 files changed, 972 insertions(+), 3 deletions(-)
  create mode 100644 agent/run_compaction.py
  create mode 100644 tests/agent/test_run_compaction.py
 
 diff --git a/agent/agent_init.py b/agent/agent_init.py
-index 84afead..fed4170 100644
+index 92e9f7f..b8c95bd 100644
 --- a/agent/agent_init.py
 +++ b/agent/agent_init.py
-@@ -2762,6 +2762,18 @@ def init_agent(
+@@ -2770,6 +2770,18 @@ def init_agent(
          except Exception:
              pass
      agent.compression_enabled = compression_enabled
-+    # Run-scoped compaction and request ceiling (agent/run_compaction.py,
-+    # RHOAI3 patch 0021): inert unless compression.run_scoped is true.
++    # Request ceiling (every model) and run-scoped compaction (only with
++    # compression.run_scoped) — agent/run_compaction.py, RHOAI3 patch 0021.
 +    try:
 +        from agent.run_compaction import RunCompactionGuard
 +
@@ -264,23 +269,25 @@ index 4c48794..83b3c5d 100644
          # A successful compaction just freed the largest allocation a long
          # session ever drops (the compressed-away message dicts), which makes
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index bcf02da..e95760c 100644
+index bcf02da..6afd671 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
-@@ -2562,6 +2562,60 @@ def run_conversation(
+@@ -2562,6 +2562,62 @@ def run_conversation(
                  pass
              break
  
-+        # Run-scoped compaction and request ceiling (agent/run_compaction.py,
-+        # RHOAI3 patch 0021). When compression.run_scoped is set this replaces
-+        # the per-turn-budgeted pre-API and post-tool gates below for the
-+        # whole run: compaction never switches off, a prune-only pass is
-+        # followed by a summarising pass, and a request whose projected size
-+        # plus the output cap exceeds the window is compacted (or the run
-+        # ends) before it is sent.
++        # Request ceiling and run-scoped compaction (agent/run_compaction.py,
++        # RHOAI3 patch 0021). For every model, a request whose projected size
++        # plus the output cap exceeds the window is compacted (or the run ends)
++        # before it is sent. When compression.run_scoped is set this also
++        # replaces the per-turn-budgeted pre-API and post-tool gates below for
++        # the whole run: compaction never switches off and a prune-only pass is
++        # followed by a summarising pass.
++        # The ceiling part runs for every model with compression enabled,
++        # with or without run_scoped.
 +        _run_compaction = getattr(agent, "_run_compaction", None)
 +        _run_scoped = bool(getattr(_run_compaction, "enabled", False)) and agent.compression_enabled
-+        if _run_scoped and len(messages) > 1:
++        if _run_compaction is not None and agent.compression_enabled and len(messages) > 1:
 +            _rc_decision, _rc_messages, _rc_system_prompt = _run_compaction.preflight(
 +                agent, messages, system_message, request_pressure_tokens,
 +                task_id=effective_task_id,
@@ -328,7 +335,7 @@ index bcf02da..e95760c 100644
          # Pre-API pressure check. The turn-prologue preflight only saw the
          # incoming user message; a single turn can then grow by many large
          # tool results and leave no output budget before the NEXT call (the
-@@ -2619,6 +2673,7 @@ def run_conversation(
+@@ -2619,6 +2675,7 @@ def run_conversation(
          )()
          if (
              agent.compression_enabled
@@ -336,7 +343,7 @@ index bcf02da..e95760c 100644
              and len(messages) > 1
              and compression_attempts < max_compression_attempts
              and not _preflight_compression_blocked
-@@ -7489,8 +7544,14 @@ def run_conversation(
+@@ -7489,8 +7546,14 @@ def run_conversation(
                          messages, tools=agent.tools or None
                      )
  
@@ -353,10 +360,10 @@ index bcf02da..e95760c 100644
                  ):
 diff --git a/agent/run_compaction.py b/agent/run_compaction.py
 new file mode 100644
-index 0000000..83923e8
+index 0000000..15c413a
 --- /dev/null
 +++ b/agent/run_compaction.py
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,238 @@
 +"""Run-scoped context compaction and the request ceiling (RHOAI3 patch 0021).
 +
 +A Kanban card run is one turn. The stock pre-API and post-tool compaction gates
@@ -368,9 +375,11 @@ index 0000000..83923e8
 +tokens against a 110K configured window, and the next request got no stream
 +chunk for 900 s.
 +
-+With ``compression.run_scoped: true`` this guard replaces both gates for the
-+whole run (the turn-prologue preflight and the provider-error handlers are
-+unchanged):
++The **ceiling** below is active for every model with compression enabled (a
++request whose prompt plus output cap exceeds the window must never be sent). The rest applies only with
++``compression.run_scoped: true``, where this guard replaces both stock gates
++for the whole run (the turn-prologue preflight and the provider-error handlers
++are unchanged):
 +
 +* **Projection.** Every decision uses the projected real prompt of the request
 +  about to be sent: the provider's last reported prompt count plus the rough
@@ -385,12 +394,13 @@ index 0000000..83923e8
 +  compressor returned only its Phase-1 prune) while the projection is still at
 +  or above the threshold is followed, before any request is sent, by a forced
 +  summarising pass with half the tail budget.
-+* **Ceiling.** If the projection plus the output cap exceeds the configured
-+  window (``model.context_length``), a forced pass runs regardless of runway,
-+  cooldown or anti-thrash state: first with half the tail budget, then with
-+  the minimum tail. If the request still does not fit, the run ends at once
-+  with ``context_ceiling_unreachable``; it is never sent to wait out the
-+  stream stale timeout.
++* **Ceiling (every model).** If the projection plus the output cap
++  (``max_tokens``) exceeds the configured window (``context_length``), a
++  forced pass runs regardless of runway, budget, cooldown or anti-thrash
++  state, with the opening task turn kept in the head: first with half the
++  tail budget, then with the minimum tail. If the request still does not
++  fit, the run ends at once with ``context_ceiling_unreachable``; it is never
++  sent to wait out the stream stale timeout.
 +"""
 +
 +from __future__ import annotations
@@ -490,7 +500,7 @@ index 0000000..83923e8
 +    # ── decisions ───────────────────────────────────────────────────
 +    def plan(self, projected: int, threshold: int, window: int, cap: int) -> PassPlan | None | str:
 +        """Decide before a request is sent: a ``PassPlan``, ``None`` (send), or
-+        ``DECISION_UNREACHABLE``."""
++        ``DECISION_UNREACHABLE``. Without run_scoped only the ceiling applies."""
 +        if window > 0 and projected + cap > window:
 +            if self._ceiling_level >= len(_CEILING_TAILS):
 +                return DECISION_UNREACHABLE
@@ -498,6 +508,8 @@ index 0000000..83923e8
 +            self._ceiling_level += 1
 +            return PassPlan("ceiling", fraction, True)
 +        self._ceiling_level = 0
++        if not self.enabled:
++            return None
 +        if threshold <= 0 or projected < threshold:
 +            self._summary_followup_due = False
 +            return None
@@ -559,14 +571,19 @@ index 0000000..83923e8
 +        before_rough = _messages_rough(messages)
 +        summarized_before = int(getattr(compressor, "summarized_passes", 0) or 0)
 +        previous_forced = getattr(compressor, "_forced_tail_token_budget", None)
++        previous_anchor = getattr(compressor, "_anchor_task_in_head", False)
 +        try:
 +            compressor._forced_tail_token_budget = tail
++            if plan.force:
++                # A forced pass must be able to summarise in a single-turn run.
++                compressor._anchor_task_in_head = True
 +            compressed, system_prompt = agent._compress_context(
 +                messages, system_message, approx_tokens=projected,
 +                task_id=task_id, force=plan.force,
 +            )
 +        finally:
 +            compressor._forced_tail_token_budget = previous_forced
++            compressor._anchor_task_in_head = previous_anchor
 +        made_progress = int(getattr(compressor, "summarized_passes", 0) or 0) > summarized_before
 +        after_rough = request_pressure_tokens - before_rough + _messages_rough(compressed)
 +        projected_after = self.project(compressor, after_rough)
@@ -617,10 +634,10 @@ index 5eb3bf0..8856e61 100644
      completed = (
 diff --git a/tests/agent/test_run_compaction.py b/tests/agent/test_run_compaction.py
 new file mode 100644
-index 0000000..f708064
+index 0000000..3a75e32
 --- /dev/null
 +++ b/tests/agent/test_run_compaction.py
-@@ -0,0 +1,472 @@
+@@ -0,0 +1,518 @@
 +"""Run-scoped compaction, the request ceiling and pruned-stub refusal (RHOAI3 patch 0021).
 +
 +v32-qwen36 card t_2a95f8c1 run 44 (one Kanban turn, ~100 calls): three
@@ -667,6 +684,9 @@ index 0000000..f708064
 +CAP = 8_192
 +THRESHOLD = 72_000
 +OVERHEAD = 22_000  # request minus messages, measured on the v32 session
++
++Q38_WINDOW = 220_000  # qwen3-8-27b-int4 context_length (served 262144); max_tokens 8192
++Q38_COMPRESSION = {"enabled": True, "threshold": 0.8, "target_ratio": 0.2}  # base block only
 +
 +Q36_COMPRESSION = {  # gitops model-profiles.json qwen3-6-27b + the base block
 +    "enabled": True,
@@ -780,12 +800,15 @@ index 0000000..f708064
 +    assert guard.plan(120_000, THRESHOLD, WINDOW, CAP) == DECISION_UNREACHABLE
 +
 +
-+def test_disabled_unless_configured():
++def test_run_scoped_only_when_configured_ceiling_always():
 +    assert RunCompactionGuard.from_config({}).enabled is False
 +    # The Qwen 3.8 profile carries no compression block: base config only.
-+    assert RunCompactionGuard.from_config({"enabled": True, "threshold": 0.8, "target_ratio": 0.2,
-+                                           "protect_last_n": 20}).enabled is False
++    q38 = RunCompactionGuard.from_config(Q38_COMPRESSION)
++    assert q38.enabled is False
 +    assert RunCompactionGuard.from_config(Q36_COMPRESSION).enabled is True
++    # Without run_scoped nothing but the ceiling: the stock gates own the threshold.
++    assert q38.plan(Q38_WINDOW - 20_000, 176_000, Q38_WINDOW, CAP) is None
++    assert q38.plan(Q38_WINDOW - CAP + 1, 176_000, Q38_WINDOW, CAP).reason == "ceiling"
 +
 +
 +# ── guard + real compressor (FakeAgent forwards to compress()) ────────────
@@ -899,12 +922,13 @@ index 0000000..f708064
 +        return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="stop")], usage=usage)
 +
 +
-+def _agent(monkeypatch, tmp_path, script, compression=None, ratio=1.12):
++def _agent(monkeypatch, tmp_path, script, compression=None, ratio=1.12, window=WINDOW, model="qwen3-6-27b"):
 +    from hermes_cli import config as config_mod
 +    from hermes_state import SessionDB
 +    from run_agent import AIAgent
 +
 +    cfg = _config()
++    cfg["model"]["context_length"] = window
 +    if compression is not None:
 +        cfg["compression"] = compression
 +    monkeypatch.setattr(config_mod, "load_config", lambda: cfg)
@@ -928,12 +952,12 @@ index 0000000..f708064
 +        lambda self, turns, **kw: summary_calls.append(len(turns)) or f"Summary of {len(turns)} turns.",
 +    )
 +    with contextlib.redirect_stdout(io.StringIO()):
-+        agent = AIAgent(model="qwen3-6-27b", provider="custom", api_key="k", base_url="http://localhost:8080/v1",
++        agent = AIAgent(model=model, provider="custom", api_key="k", base_url="http://localhost:8080/v1",
 +                        platform="cli", max_iterations=400, quiet_mode=True, skip_memory=True,
 +                        skip_context_files=True, max_tokens=CAP,
 +                        session_db=SessionDB(db_path=tmp_path / "state.db"), session_id="v32-shape")
 +    agent._disable_streaming = True
-+    agent.context_compressor.update_model(model="qwen3-6-27b", context_length=WINDOW, max_tokens=CAP)
++    agent.context_compressor.update_model(model=model, context_length=window, max_tokens=CAP)
 +    return agent, provider, summary_calls
 +
 +
@@ -1093,6 +1117,45 @@ index 0000000..f708064
 +          f"max projected request {max_projected} + cap {CAP} vs window {WINDOW}")
 +    assert max_projected + CAP <= WINDOW
 +    assert len(c.summary_calls) >= 1
++
++
++# ── the ceiling on the Qwen 3.8 profile (no run_scoped) ───────────────────
++
++
++def test_q38_ceiling_forced_pass_summarises_a_single_turn_run():
++    """Post-first-compaction shape of a single-turn run: the task message,
++    the previous handoff summary, then many calls. A forced ceiling pass keeps
++    the task turn in the head, so it summarises instead of returning a
++    prune-only no-op."""
++    c = _compressor(config_context_length=Q38_WINDOW, threshold_tokens_cap=None, proactive_prune_tokens=0,
++                    protect_last_n=20)
++    c.compression_count = 1
++    agent = _FakeAgent(c)
++    msgs = [{"role": "user", "content": "work kanban task t_q38"},
++            {"role": "user", "content": c._with_summary_prefix("previous summary")}]
++    for i in range(130):
++        msgs += _write_call(i, 6000)
++    guard = RunCompactionGuard.from_config(Q38_COMPRESSION)
++    projected = c.project_request_tokens(_request_rough(msgs))
++    assert projected + CAP > Q38_WINDOW
++    decision, final = _drive(guard, agent, msgs)
++    assert decision == DECISION_SEND
++    assert c.project_request_tokens(_request_rough(final)) + CAP <= Q38_WINDOW
++    assert c.summary_calls and len(final) < len(msgs)
++    assert final[0]["content"] == "work kanban task t_q38"  # the task turn stayed verbatim
++
++
++def test_q38_profile_requests_never_exceed_the_window(monkeypatch, tmp_path):
++    """qwen3-8-27b-int4: base compression block, no run_scoped. Whatever the
++    stock gates do, no request the provider receives exceeds the window."""
++    cfg_compression = dict(Q38_COMPRESSION)
++    agent, provider, summary_calls = _agent(monkeypatch, tmp_path, _v32_script(n=150, chars=9000),
++                                            compression=cfg_compression, window=Q38_WINDOW, model="qwen3-8-27b-int4")
++    assert agent._run_compaction.enabled is False
++    with contextlib.redirect_stdout(io.StringIO()):
++        result = agent.run_conversation("work kanban task t_q38")
++    assert result["completed"] is True
++    assert max(provider.prompts) + CAP <= Q38_WINDOW, max(provider.prompts)
 diff --git a/tools/file_tools.py b/tools/file_tools.py
 index 2270fb5..5ae1cf4 100644
 --- a/tools/file_tools.py

@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Fri, 2 Oct 2026 22:03:48 +0200
-Subject: [PATCH 18/19] feat(guardrails): loop escalation starts on
- same-result, same-call and repeat-read
+Subject: [PATCH 18/21] feat(guardrails): loop escalation on same-result,
+ same-call, repeat-read and retry
 
 RHOAI3 v32 (spring-petclinic-rest-legacy-v32-qwen38): two Qwen 3.8 loops
 never produced the identical-call note, so patch 0017 never escalated them.
@@ -27,10 +27,20 @@ repeat_read_window counted calls): that many calls each EXACTLY repeat an
 earlier call since the last restart (same tool and arguments, byte-identical
 result in 0015's reading). v32 t_56432803 run 43 cycled five brief sections
 with identical results over three laps; consecutive calls differed, so no
-consecutive trigger fired. Its restart-bound signature is the tool plus the
-hash of the set of repeated (arguments, result) pairs in the window; a later
-repeat-read set sharing a pair with an earlier one of the same tool counts as
-that signature (a cycle re-detected at another phase is the same stall).
+consecutive trigger fired. Its restart-bound signature is one per no-edit
+stretch: every repeat-read start with no tree-changing call (an edit or a
+typed-repair run) between them shares it, whatever the tool or the slice of
+the cycle (a cycle longer than the window is re-detected on non-overlapping
+slices: v30 t_557b0bed run 72 started 8 times under a per-slice signature).
+A verification alone does not start a new stretch.
+
+Retry start: when the worker environment sets HERMES_START_ESCALATED_TURNS=n
+(n > 0) and the selected model's loop escalation is enabled, the run starts in
+the escalation for its first n model requests (start trigger=retry
+turns=0/n); it ends like any escalation (edit / verification / typed-repair or
+the cap of n) and does not count toward max_starts_per_signature. Unset,
+empty, 0 or a model without loop escalation changes nothing. The harness sets
+the variable for a retry after a loop halt.
 
 Pollers exempt under is_stall_guard_repeatable neither count nor break a
 run; an edit, verification or typed-repair call (classify_end_call), a
@@ -43,7 +53,7 @@ exact repeats of earlier calls with identical results). The start
 log line gains trigger=identical|same-result|same-call|repeat-read.
 
 max_starts_per_signature bounds restarts: one stall signature (tool plus
-argument hash, tool plus result hash for same-result, the repeated-pair set
+argument hash, tool plus result hash for same-result, the no-edit stretch
 for repeat-read) may start that many
 escalations in a run; the next start on it is a guardrail halt through the
 existing halt path with the code loop_escalation_restart_halt.
@@ -62,7 +72,9 @@ verification end conditions, turn cap and request body are unchanged.
 Tests replay the runs' kanban exec journal rows (tests/fixtures/
 loop_escalation): same-call fires on the fifth unchanged poll (16:34:57Z),
 same-result on the third `tail -c` call with an identical result;
-repeat-read at terminal call 31 of t_56432803 run 43; same-result on run 42
+repeat-read at terminal call 31 of t_56432803 run 43; the restart bound halts
+fixture A at row 228 and fixture B at row 124; a long cycle beyond the window
+halts at its third start; same-result on run 42
 nine calls before its near_duplicate_loop_halt; the restart
 bound halts the third start; the Qwen 3.6 M1 capture sequence, process
 polls, near-duplicates with differing results, patch 0015's paging cases
@@ -70,25 +82,45 @@ and re-reads after an edit do not fire. Local extension.
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
- agent/loop_escalation.py                      | 408 ++++++++++++-
+ agent/agent_init.py                           |   8 +
+ agent/loop_escalation.py                      | 452 ++++++++++-
  run_agent.py                                  |  47 +-
- tests/agent/test_loop_escalation_triggers.py  | 570 ++++++++++++++++++
+ tests/agent/test_loop_escalation_triggers.py  | 705 ++++++++++++++++++
  .../v32-q36-t_9dc305ef-run1-capture.jsonl     |  10 +
- .../v32-q38-t_2f2509aa-run30-tail-c.jsonl     |  36 ++
+ .../v32-q38-t_2f2509aa-run30-tail-c.jsonl     |  56 ++
  .../v32-q38-t_449a35e4-run1-poll.jsonl        |  52 ++
- ...-t_56432803-runs42-43-brief-sections.jsonl | 104 ++++
- 7 files changed, 1198 insertions(+), 29 deletions(-)
+ ...-t_56432803-runs42-43-brief-sections.jsonl | 104 +++
+ 8 files changed, 1402 insertions(+), 32 deletions(-)
  create mode 100644 tests/agent/test_loop_escalation_triggers.py
  create mode 100644 tests/fixtures/loop_escalation/v32-q36-t_9dc305ef-run1-capture.jsonl
  create mode 100644 tests/fixtures/loop_escalation/v32-q38-t_2f2509aa-run30-tail-c.jsonl
  create mode 100644 tests/fixtures/loop_escalation/v32-q38-t_449a35e4-run1-poll.jsonl
  create mode 100644 tests/fixtures/loop_escalation/v32-q38-t_56432803-runs42-43-brief-sections.jsonl
 
+diff --git a/agent/agent_init.py b/agent/agent_init.py
+index 84afead..92e9f7f 100644
+--- a/agent/agent_init.py
++++ b/agent/agent_init.py
+@@ -1811,6 +1811,14 @@ def init_agent(
+             _agent_cfg.get("providers"),
+             (_le_model_cfg.get("provider") if isinstance(_le_model_cfg, dict) else "") or "",
+         )
++        # Retry start (HERMES_START_ESCALATED_TURNS, set by the harness for a
++        # retry after a loop halt): no-op when unset or escalation is off.
++        from agent.loop_escalation import current_task_id
++
++        agent._loop_escalation.arm_retry_start(
++            os.environ, getattr(agent, "provider", "") or "", getattr(agent, "model", "") or "",
++            task_id=current_task_id(agent),
++        )
+     except Exception as _le_err:
+         _ra().logger.warning("Loop escalation config ignored: %s", _le_err)
+     # Cache only the derived auxiliary compression context override that is
 diff --git a/agent/loop_escalation.py b/agent/loop_escalation.py
-index bac71e0..816bae6 100644
+index bac71e0..5ee43fa 100644
 --- a/agent/loop_escalation.py
 +++ b/agent/loop_escalation.py
-@@ -1,15 +1,53 @@
+@@ -1,15 +1,62 @@
  """Per-worker loop escalation to a thinking request profile.
  
 -When the identical-call stall guard emits its notice for the THIRD
@@ -128,11 +160,20 @@ index bac71e0..816bae6 100644
 +stall signature may start in a run; the next start on that signature is a
 +guardrail halt (``loop_escalation_restart_halt``) instead. Signatures: tool
 +plus argument hash (``identical``, ``same-call``), tool plus result hash
-+(``same-result``), and for ``repeat-read`` tool plus the hash of the set of
-+repeated (arguments, result) pairs in the window. A later repeat-read whose
-+set shares a pair with an earlier repeat-read set of the same tool counts as
-+that earlier signature: a cycle re-detected at another phase is the same
-+stall.
++(``same-result``), and for ``repeat-read`` one signature per no-edit stretch:
++every repeat-read start with no edit or typed-repair call between them shares
++it (a cycle longer than the window is re-detected on non-overlapping slices,
++so a per-slice signature would never repeat). Only a tree-changing call (an
++edit or a typed-repair run) starts a new stretch; a verification alone does
++not.
++
++Retry start: when the worker's environment sets
++``HERMES_START_ESCALATED_TURNS=<n>`` (n > 0) and the selected model's
++loop escalation is enabled, the run starts in the escalation for its first n
++model requests, before any trigger (``start trigger=retry turns=0/<n>``). It
++ends like any escalation (edit / verification / typed-repair, or the cap of n)
++and does not count toward ``max_starts_per_signature``. Unset, empty, 0 or a
++model without loop escalation changes nothing.
 +
 +Once started, the worker's following model requests use an escalation
 +request body taken from the active provider's config instead of the normal
@@ -147,7 +188,7 @@ index bac71e0..816bae6 100644
  * ``max_turns`` escalated model requests (the cap).
  
  After any of these the normal body is sent again. The guardrails are not
-@@ -27,9 +65,14 @@ behaviour change)::
+@@ -27,9 +74,14 @@ behaviour change)::
                enabled: true
                max_turns: 8
                request_body: {...}       # replaces extra_body; max_tokens is the output cap
@@ -163,7 +204,7 @@ index bac71e0..816bae6 100644
  """
  
  from __future__ import annotations
-@@ -53,6 +96,31 @@ _TERMINAL_EDIT_RE = re.compile(
+@@ -53,6 +105,37 @@ _TERMINAL_EDIT_RE = re.compile(
      r"\bsed\s+(?:-[^\s]*\s+)*-i|>\s*src/|\btee\s+(?:-[^\s]+\s+)*src/"
  )
  _TERMINAL_VERIFY_RE = re.compile(r"run-verify\.sh|advance\.py")
@@ -175,6 +216,12 @@ index bac71e0..816bae6 100644
 +TRIGGER_SAME_RESULT = "same-result"
 +TRIGGER_SAME_CALL = "same-call"
 +TRIGGER_REPEAT_READ = "repeat-read"
++TRIGGER_RETRY = "retry"
++# End calls that change the working tree; they start a new repeat-read
++# stretch. A verification alone does not (read, verify, read again is one
++# stretch).
++TREE_CHANGING_END_REASONS = frozenset({"edit", "typed-repair"})
++RETRY_START_ENV = "HERMES_START_ESCALATED_TURNS"
 +DEFAULT_REPEAT_READ_WINDOW = 8
 +RESTART_HALT_CODE = "loop_escalation_restart_halt"
 +# Members of a same-result run compared with each new call (the run is
@@ -195,7 +242,7 @@ index bac71e0..816bae6 100644
  
  
  @dataclass(frozen=True)
-@@ -60,6 +128,12 @@ class LoopEscalationConfig:
+@@ -60,6 +143,12 @@ class LoopEscalationConfig:
      enabled: bool = False
      max_turns: int = DEFAULT_MAX_TURNS
      request_body: dict = field(default_factory=dict)
@@ -208,7 +255,7 @@ index bac71e0..816bae6 100644
  
      @classmethod
      def from_mapping(cls, data: Any) -> "LoopEscalationConfig | None":
-@@ -82,7 +156,23 @@ class LoopEscalationConfig:
+@@ -82,7 +171,23 @@ class LoopEscalationConfig:
              max_turns = DEFAULT_MAX_TURNS
          if max_turns < 1:
              max_turns = DEFAULT_MAX_TURNS
@@ -233,7 +280,7 @@ index bac71e0..816bae6 100644
  
  
  def _norm(name: Any) -> str:
-@@ -134,7 +224,8 @@ def resolve_config(
+@@ -134,7 +239,8 @@ def resolve_config(
  
  
  def classify_end_call(tool_name: str, args: Any) -> str | None:
@@ -243,7 +290,7 @@ index bac71e0..816bae6 100644
      if tool_name in EDIT_TOOLS:
          return "edit"
      if tool_name != "terminal" or not isinstance(args, Mapping):
-@@ -144,17 +235,96 @@ def classify_end_call(tool_name: str, args: Any) -> str | None:
+@@ -144,17 +250,100 @@ def classify_end_call(tool_name: str, args: Any) -> str | None:
          return None
      if _TERMINAL_VERIFY_RE.search(command):
          return "verification"
@@ -335,16 +382,52 @@ index bac71e0..816bae6 100644
 +        # Starts per stall signature: kept for the agent's life (one worker
 +        # run), not reset per turn.
 +        self.starts_by_signature: dict = {}
-+        # repeat-read signature -> the (tool, args, result) pairs it covered
-+        self._repeat_read_sets: dict = {}
++        # No-edit stretch for the repeat-read signature: advanced by every
++        # edit / typed-repair call (not by a verification), kept for the run.
++        self.stretch = 0
++        # Retry start (HERMES_START_ESCALATED_TURNS): armed once, applied at the
++        # start of the next turn (reset()), then consumed.
++        self._retry_pending: tuple | None = None
          self.reset()
  
      # ── state ────────────────────────────────────────────────────────
-@@ -168,6 +338,19 @@ class LoopEscalation:
+@@ -168,6 +357,51 @@ class LoopEscalation:
          self.request_escalated = False
          self.trigger: dict = {}
          self.events: list = []
 +        self._reset_runs()
++        self._apply_retry_start()
++
++    # ── retry start ──────────────────────────────────────────────────
++    def arm_retry_start(self, environ: Any, provider: str, model: str, task_id: str = "") -> bool:
++        """Arm a retry start from ``HERMES_START_ESCALATED_TURNS``; applied at
++        the next turn start. Returns whether it was armed."""
++        raw = (environ or {}).get(RETRY_START_ENV, "") if hasattr(environ, "get") else ""
++        try:
++            turns = int(str(raw).strip()) if str(raw).strip() else 0
++        except (TypeError, ValueError):
++            turns = 0
++        if turns <= 0:
++            return False
++        cfg = self.config_for(provider, model)
++        if cfg is None:
++            return False
++        self._retry_pending = (turns, cfg, task_id)
++        return True
++
++    def _apply_retry_start(self) -> None:
++        pending = getattr(self, "_retry_pending", None)
++        if not pending:
++            return
++        self._retry_pending = None
++        turns, cfg, task_id = pending
++        self.active = True
++        self.turns = 0
++        self.max_turns = turns
++        self.config = cfg
++        self.started += 1
++        self.trigger = {"task": task_id, "tool": "", "args_digest": "", "kind": TRIGGER_RETRY, "signature": ""}
++        self._log("start", f"start trigger={TRIGGER_RETRY} turns=0/{turns} task={task_id or '-'}")
 +
 +    def _reset_runs(self) -> None:
 +        self._same_result_run: list = []
@@ -360,7 +443,7 @@ index bac71e0..816bae6 100644
  
      def snapshot(self) -> dict:
          return {
-@@ -179,6 +362,10 @@ class LoopEscalation:
+@@ -179,6 +413,10 @@ class LoopEscalation:
              "request_escalated": self.request_escalated,
              "trigger": dict(self.trigger),
              "events": list(self.events),
@@ -371,7 +454,7 @@ index bac71e0..816bae6 100644
          }
  
      def config_for(self, provider: str, model: str) -> LoopEscalationConfig | None:
-@@ -192,6 +379,72 @@ class LoopEscalation:
+@@ -192,6 +430,58 @@ class LoopEscalation:
          self.events.append(event)
          logger.info("%s %s", LOG_PREFIX, line)
  
@@ -427,24 +510,10 @@ index bac71e0..816bae6 100644
 +            del self._repeat_window[:-window]
 +        return call
 +
-+    def _repeat_read_signature(self, tool_name: str, keys: frozenset) -> str:
-+        """``tool:repeat:<hash of the repeated pairs>``; a set that shares a
-+        pair with an earlier repeat-read set of this tool is that signature."""
-+        from agent.tool_guardrails import _sha256
-+
-+        for signature, earlier in self._repeat_read_sets.items():
-+            if signature.startswith(f"{tool_name}:repeat:") and earlier & keys:
-+                self._repeat_read_sets[signature] = earlier | keys
-+                return signature
-+        digest = _sha256(repr(sorted((a, r or "") for _t, a, r in keys)))[:16]
-+        signature = f"{tool_name}:repeat:{digest}"
-+        self._repeat_read_sets[signature] = keys
-+        return signature
-+
      # ── transitions ──────────────────────────────────────────────────
      def on_tool_result(
          self,
-@@ -203,27 +456,134 @@ class LoopEscalation:
+@@ -203,27 +493,135 @@ class LoopEscalation:
          provider: str = "",
          model: str = "",
          task_id: str = "",
@@ -458,20 +527,11 @@ index bac71e0..816bae6 100644
 +        ``result`` is the call's raw result, before any runtime notice was
 +        appended. Returns the note or halt to add to that result."""
 +        outcome = LoopEscalationOutcome()
-         if self.active:
-             reason = classify_end_call(tool_name, args)
-             if reason:
-                 self.end(reason)
--        if third_note and not self.active:
--            cfg = self.config_for(provider, model)
--            if cfg is None:
--                return
--            self.active = True
--            self.turns = 0
--            self.max_turns = cfg.max_turns
--            self.config = cfg
--            self.started += 1
--            self.trigger = {"task": task_id, "tool": tool_name, "args_digest": args_digest}
++        end_reason = classify_end_call(tool_name, args)
++        if end_reason in TREE_CHANGING_END_REASONS:
++            self.stretch += 1  # a tree-changing call starts a new repeat-read stretch
++        if self.active and end_reason:
++            self.end(end_reason)
 +        cfg = self.config_for(provider, model)
 +        if cfg is None:
 +            return outcome
@@ -482,7 +542,20 @@ index bac71e0..816bae6 100644
 +
 +                similarity = NearDuplicateConfig().similarity
 +            call = self._count_call(tool_name, args, result, similarity, cfg.repeat_read_window)
-+        if self.active:
+         if self.active:
+-            reason = classify_end_call(tool_name, args)
+-            if reason:
+-                self.end(reason)
+-        if third_note and not self.active:
+-            cfg = self.config_for(provider, model)
+-            if cfg is None:
+-                return
+-            self.active = True
+-            self.turns = 0
+-            self.max_turns = cfg.max_turns
+-            self.config = cfg
+-            self.started += 1
+-            self.trigger = {"task": task_id, "tool": tool_name, "args_digest": args_digest}
 +            return outcome
 +
 +        from agent.tool_guardrails import ToolCallSignature, _coerce_args
@@ -517,10 +590,10 @@ index bac71e0..816bae6 100644
 +            and sum(1 for _key, repeated in self._repeat_window if repeated) >= cfg.repeat_read_count
 +        ):
 +            kind = TRIGGER_REPEAT_READ
-+            repeated_keys = frozenset(key for key, repeated in self._repeat_window if repeated)
 +            count = len([1 for _key, repeated in self._repeat_window if repeated])
 +            args_hash = call.args_hash
-+            signature = self._repeat_read_signature(tool_name, repeated_keys)
++            # One signature per no-edit stretch, whatever the tool or slice.
++            signature = f"repeat-read:stretch-{self.stretch}"
 +        else:
 +            return outcome
 +        digest = args_digest or args_hash[:16]
@@ -594,7 +667,7 @@ index bac71e0..816bae6 100644
  
      def end(self, reason: str) -> None:
          if not self.active:
-@@ -233,6 +593,8 @@ class LoopEscalation:
+@@ -233,6 +631,8 @@ class LoopEscalation:
          self._log(f"end:{reason}", f"end reason={reason} turns={self.turns}/{self.max_turns}")
          self.turns = 0
          self.config = None
@@ -700,10 +773,10 @@ index 15b6d23..d00aa26 100644
          """End the turn when a tool created this worker run's stop request.
 diff --git a/tests/agent/test_loop_escalation_triggers.py b/tests/agent/test_loop_escalation_triggers.py
 new file mode 100644
-index 0000000..d2a07d6
+index 0000000..a237a18
 --- /dev/null
 +++ b/tests/agent/test_loop_escalation_triggers.py
-@@ -0,0 +1,570 @@
+@@ -0,0 +1,705 @@
 +"""Loop escalation start triggers beyond the identical-call note (RHOAI3 v32).
 +
 +Two loops on Qwen 3.8 never produced the identical-call note, so they never
@@ -1274,6 +1347,141 @@ index 0000000..d2a07d6
 +        _Replay(_providers()).journal(CASE_C, run="43")
 +    starts = [r.getMessage() for r in caplog.records if r.getMessage().startswith(f"{LOG_PREFIX} start ")]
 +    assert starts and " trigger=repeat-read " in starts[0]
++
++
++def test_case_b_restart_bound_halts_at_row_124():
++    replay = _Replay(_providers(), hard_stop=True).journal(CASE_B)
++    assert [(r, k) for _i, r, k in replay.starts] == [(80, "same-result"), (102, "same-result")]
++    assert replay.halts and replay.halts[0][1] == 124 and replay.halts[0][2].code == RESTART_HALT_CODE
++
++
++# ── repeat-read: one signature per no-edit stretch ───────────────────────
++
++
++def _cycle(replay, sections, laps):
++    for _ in range(laps):
++        for k, name in enumerate(sections):
++            replay.call(*_section(name, k))
++            if replay.halts:
++                return
++
++
++def test_long_cycle_beyond_the_window_halts_at_its_third_start():
++    """v30 t_557b0bed run 72 shape: a cycle of more distinct sections than
++    the 8-call window, so successive detections see non-overlapping slices."""
++    sections = [f"s{k}" for k in range(11)]
++    replay = _Replay(_providers())
++    _cycle(replay, sections, laps=12)
++    assert [k for _i, _l, k in replay.starts] == ["repeat-read", "repeat-read"]
++    assert replay.halts and replay.halts[0][2].code == RESTART_HALT_CODE
++    assert replay.escalation.snapshot()["starts_by_signature"] == {"repeat-read:stretch-0": 2}
++
++
++def test_an_edit_between_starts_starts_a_new_stretch():
++    sections = [f"s{k}" for k in range(5)]
++    replay = _Replay(_providers())
++    _cycle(replay, sections, laps=6)
++    assert len(replay.starts) == 2 and not replay.halts
++    replay.call("patch", {"path": "src/A.java", "old_string": "a", "new_string": "b"}, json.dumps({"success": True}))
++    _cycle(replay, sections, laps=4)
++    assert len(replay.starts) == 3 and not replay.halts  # a new stretch: its first start
++    sigs = replay.escalation.snapshot()["starts_by_signature"]
++    assert sigs == {"repeat-read:stretch-0": 2, "repeat-read:stretch-1": 1}
++
++
++def test_read_verify_read_again_stays_in_the_same_stretch():
++    sections = [f"s{k}" for k in range(5)]
++    replay = _Replay(_providers())
++    _cycle(replay, sections, laps=6)
++    assert len(replay.starts) == 2
++    replay.call("terminal", {"command": "bash .hermes/bin/run-verify.sh T-1"}, json.dumps({"output": "FAIL", "exit_code": 1}))
++    _cycle(replay, sections, laps=4)
++    assert len(replay.starts) == 2  # the third start in the same stretch is the halt
++    assert replay.halts and replay.halts[0][2].code == RESTART_HALT_CODE
++    assert replay.escalation.stretch == 0
++
++
++# ── retry start (HERMES_START_ESCALATED_TURNS) ───────────────────────────
++
++
++def test_retry_start_escalates_the_first_n_requests_then_ends_on_an_edit(monkeypatch, caplog):
++    script = [_tool_response("terminal", {"command": f"cat f{i}"}, f"r{i}") for i in range(3)]
++    script += [_tool_response("write_file", {"path": "src/A.java", "content": "x"}, "edit_1"), _text_response()]
++    providers = {"qwen27b": {"models": {"qwen3-6-27b": {"loop_escalation": _block(max_turns=8)}}}}
++    agent, fake = _agent(monkeypatch, script, providers=providers)
++    assert agent._loop_escalation.arm_retry_start({"HERMES_START_ESCALATED_TURNS": "8"}, "custom:qwen27b", "qwen3-6-27b")
++    with caplog.at_level(logging.INFO, logger="agent.loop_escalation"):
++        agent.run_conversation("retry the card")
++    reqs = fake.requests
++    assert all(_is_escalated(r) for r in reqs[:4])
++    assert _is_normal(reqs[4])  # the write_file ended it
++    snap = agent._loop_escalation.snapshot()
++    assert snap["trigger"]["kind"] == "retry" and snap["last_end_reason"] == "edit"
++    assert snap["starts_by_signature"] == {}  # not counted toward the restart bound
++    assert any(r.getMessage().startswith(f"{LOG_PREFIX} start trigger=retry turns=0/8") for r in caplog.records)
++
++
++def test_retry_start_ends_at_its_cap():
++    le = LoopEscalation(_providers(), PROVIDER)
++    assert le.arm_retry_start({"HERMES_START_ESCALATED_TURNS": "2"}, f"custom:{PROVIDER}", MODEL)
++    le.reset()  # the turn start applies it
++    assert le.active and le.max_turns == 2 and le.trigger["kind"] == "retry"
++    assert le.begin_request() and le.begin_request()
++    assert not le.begin_request() and le.last_end_reason == "cap"
++    le.reset()  # consumed: a later turn does not start escalated
++    assert not le.active
++
++
++@pytest.mark.parametrize("value", [None, "", "0", "-3", "x"])
++def test_retry_start_off_values_change_nothing(value):
++    le = LoopEscalation(_providers(), PROVIDER)
++    env = {} if value is None else {"HERMES_START_ESCALATED_TURNS": value}
++    assert not le.arm_retry_start(env, f"custom:{PROVIDER}", MODEL)
++    le.reset()
++    assert not le.active and le.snapshot()["events"] == []
++
++
++def test_retry_start_with_escalation_disabled_changes_nothing():
++    le = LoopEscalation({PROVIDER: {"models": {MODEL: {"loop_escalation": _block(enabled=False)}}}}, PROVIDER)
++    assert not le.arm_retry_start({"HERMES_START_ESCALATED_TURNS": "8"}, f"custom:{PROVIDER}", MODEL)
++    le.reset()
++    assert not le.active
++
++
++def test_retry_start_from_the_worker_environment(monkeypatch):
++    """agent_init arms it from os.environ for the configured model."""
++    from hermes_cli import config as config_mod
++    from run_agent import AIAgent
++
++    cfg = {"model": {"provider": "qwen38", "default": MODEL},
++           "providers": {"qwen38": {"models": {MODEL: {"loop_escalation": _block()}}}}}
++    monkeypatch.setattr(config_mod, "load_config", lambda: cfg)
++    monkeypatch.setattr(config_mod, "load_config_readonly", lambda: cfg)
++    monkeypatch.setattr("run_agent.OpenAI", lambda **kw: SimpleNamespace())
++    monkeypatch.setenv("HERMES_START_ESCALATED_TURNS", "8")
++    agent = AIAgent(model=MODEL, provider="custom", api_key="k", base_url="http://localhost:8080/v1",
++                    platform="cli", quiet_mode=True, skip_memory=True)
++    assert agent._loop_escalation._retry_pending is not None
++    monkeypatch.delenv("HERMES_START_ESCALATED_TURNS")
++    agent2 = AIAgent(model=MODEL, provider="custom", api_key="k", base_url="http://localhost:8080/v1",
++                     platform="cli", quiet_mode=True, skip_memory=True)
++    assert agent2._loop_escalation._retry_pending is None
++
++
++def test_a_trigger_still_fires_after_the_retry_escalation_ends():
++    le = LoopEscalation(_providers(), PROVIDER)
++    le.arm_retry_start({"HERMES_START_ESCALATED_TURNS": "1"}, f"custom:{PROVIDER}", MODEL)
++    replay = _Replay(_providers())
++    replay.agent._loop_escalation = le
++    le.reset()
++    assert le.active
++    call = ("terminal", {"command": "ls build"})
++    for k in range(7):  # turn 1 ends the retry at its cap; then 5 unchanged calls
++        replay.call(*call, json.dumps({"output": f"{k}", "exit_code": 0}))
++    kinds = [k for _i, _l, k in replay.starts]
++    assert kinds == ["same-call"], kinds
++    sigs = le.snapshot()["starts_by_signature"]
++    assert list(sigs.values()) == [1] and next(iter(sigs)).startswith("terminal:args:")
 diff --git a/tests/fixtures/loop_escalation/v32-q36-t_9dc305ef-run1-capture.jsonl b/tests/fixtures/loop_escalation/v32-q36-t_9dc305ef-run1-capture.jsonl
 new file mode 100644
 index 0000000..aef0908
@@ -1292,10 +1500,10 @@ index 0000000..aef0908
 +{"command": "cat /projects/modernized/verification/source-oracles/scenarios-enabled/logs/source-run-1.log 2>/dev/null | tail -40", "exit_code": 0, "output_chars": 0, "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "output_tail": "", "phase": "end", "row": 71, "run": "1", "task": "t_9dc305ef"}
 diff --git a/tests/fixtures/loop_escalation/v32-q38-t_2f2509aa-run30-tail-c.jsonl b/tests/fixtures/loop_escalation/v32-q38-t_2f2509aa-run30-tail-c.jsonl
 new file mode 100644
-index 0000000..b320fd6
+index 0000000..7351f00
 --- /dev/null
 +++ b/tests/fixtures/loop_escalation/v32-q38-t_2f2509aa-run30-tail-c.jsonl
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,56 @@
 +{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; wc -c .derived/scratch/t_2f2509aa/source-facts-full.txt", "exit_code": 0, "output_chars": 54, "output_sha256": "db60a5c93d8a5ec1500b826677d200f2ebf38bf88fb532699d9702897ed5dadd", "output_tail": "4549 .derived/scratch/t_2f2509aa/source-facts-full.txt", "phase": "end", "row": 28, "run": "30", "task": "t_2f2509aa"}
 +{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 8000", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 30, "run": "30", "task": "t_2f2509aa"}
 +{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 4000", "exit_code": 0, "output_chars": 3999, "output_sha256": "51d64f7be96dae4566ca285af94470f328de136d34a7c3319e0ada6c623c7ebe", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 32, "run": "30", "task": "t_2f2509aa"}
@@ -1332,6 +1540,26 @@ index 0000000..b320fd6
 +{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 3276800", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 94, "run": "30", "task": "t_2f2509aa"}
 +{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 6553600", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 96, "run": "30", "task": "t_2f2509aa"}
 +{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 13107200", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 98, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 26214400", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 100, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 52428800", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 102, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 104857600", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 104, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 209715200", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 106, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 419430400", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 108, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 838860800", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 110, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 1677721600", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 112, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 3355443200", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 114, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 6710886400", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 116, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 13421772800", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 118, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 26843545600", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 120, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 53687091200", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 122, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 107374182400", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 124, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 214748364800", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 126, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 429496729600", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 128, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 858993459200", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 130, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 1717986918400", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 132, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 3435973836800", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 134, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 6871947673600", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 136, "run": "30", "task": "t_2f2509aa"}
++{"command": "cd /projects/modernized && python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster planned:objective:selected-repository-implementation:22b3f98bb7c6:1 --spill verification/loop/context-planned-objective-selected-repository-implementation-22b3f98bb7c6-1.json --field source 2>&1 > .derived/scratch/t_2f2509aa/source-facts-full.txt; cat .derived/scratch/t_2f2509aa/source-facts-full.txt | grep -o '\"value\":.*' | sed 's/\\\\n/\\n/g' | tail -c 13743895347200", "exit_code": 0, "output_chars": 4201, "output_sha256": "45e521f15b30410188392dc9b352a0e191e236de0c6b6732cf29d655e6769ec3", "output_tail": ".springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.repository\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"repository\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spring-petclinic-rest-legacy-v32-qwen38/r1#requirements[req:repository-architecture:org.springframework.samples.petclinic.repository.springdatajpa.SpringDataPetRepository<-org.springframework.samples.petclinic.repository.PetRepository].facts.fragment\\\",\n   \\\"value\\\": {\n    \\\"role\\\": \\\"fragment\\\",\n    \\\"type\\\": \\\"org.springframework.samples.petclinic.repository.PetRepository\\\"\n   }\n  },\n  {\n   \\\"kind\\\": \\\"fact\\\",\n   \\\"provenance\\\": \\\"kanban:plan/spri\",", "phase": "end", "row": 138, "run": "30", "task": "t_2f2509aa"}
 diff --git a/tests/fixtures/loop_escalation/v32-q38-t_449a35e4-run1-poll.jsonl b/tests/fixtures/loop_escalation/v32-q38-t_449a35e4-run1-poll.jsonl
 new file mode 100644
 index 0000000..913e590

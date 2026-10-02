@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "adnan.drina" <adnan.drina@gmail.com>
 Date: Fri, 2 Oct 2026 23:33:01 +0200
-Subject: [PATCH] fix(tools): read_file says when it cut a line at the per-line
- cap
+Subject: [PATCH 20/21] fix(tools): read_file says when it cut a line at the
+ per-line cap
 
 RHOAI3 v32: every read_file of a one-line resolved-context JSON
 (14.7-35.7K characters) returned ~2.2-2.4K characters with
