@@ -952,10 +952,15 @@ def apply_baseline_data(root: Path, decisions_doc: dict, changes: list[dict], bl
         "declared_dataset": {"path": dataset_rel, "sha256": sha256_file(dataset_p), "named_by": named_by},
         "schema_asset": {"path": schema_rel, "sha256": sha256_file(schema_p)},
     }
+    # D-1: a source captured on THIS engine ran on the schema asset's own sequence positions; the alignment to the
+    # seeded maximum reproduces a source that ran on another engine, and is recorded only when it is left out
+    align = baseline_data._capture_engine(ds, copy) != engine
+    if not align:
+        contract["sequences"] = "as the schema asset sets them (the source captured on %s, D-1)" % engine
     try:
         built = baseline_data.build_baseline(
             dataset_p.read_text(encoding="utf-8", errors="replace"),
-            schema_p.read_text(encoding="utf-8", errors="replace"), engine)
+            schema_p.read_text(encoding="utf-8", errors="replace"), engine, align=align)
         text = baseline_data.render_asset(built, contract)
     except baseline_data.BaselineRefusal as exc:
         blocks.append({"class": "BASELINE_UNTRANSLATABLE", "subject": dataset_rel,

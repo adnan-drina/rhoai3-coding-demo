@@ -16,7 +16,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.ext.web.RoutingContext;
 
 /**
- * One decided media-type parameter, removed where the source never sent it.
+ * One decided media-type parameter, removed where the source never sent it and restored where it did.
  *
  * <p>Harness capability {@code source-media-type-parameter-adapter/v1} (ADR-019). This file
  * is installed byte-for-byte by the harness and is authorized by its OWN obligation
@@ -26,9 +26,11 @@ import io.vertx.ext.web.RoutingContext;
  * ({@code rhoai3.source-media-type.*}).
  *
  * <p>It removes exactly that parameter, with exactly that value, from a response of
- * exactly those media types under the application root. Every other parameter, every
- * other media type, the body and its encoding are left as they are. Without complete
- * configuration it registers nothing.
+ * exactly those media types ({@code media-types}) under the application root, and
+ * appends it to a response of the media types the source sent it on
+ * ({@code restore-media-types}) when the response carries no parameter of that name.
+ * Every other parameter, every other media type, the body and its encoding are left as
+ * they are. Without complete configuration it registers nothing.
  */
 @ApplicationScoped
 public class SourceMediaTypeParameterAdapter {
@@ -41,13 +43,9 @@ public class SourceMediaTypeParameterAdapter {
         Config config = ConfigProvider.getConfig();
         String parameter = config.getOptionalValue(PREFIX + "parameter", String.class).orElse("").trim();
         String value = config.getOptionalValue(PREFIX + "parameter-value", String.class).orElse("").trim();
-        List<String> types = new ArrayList<>();
-        for (String t : config.getOptionalValue(PREFIX + "media-types", String.class).orElse("").split(",")) {
-            if (!t.isBlank()) {
-                types.add(t.trim().toLowerCase(Locale.ROOT));
-            }
-        }
-        if (parameter.isEmpty() || value.isEmpty() || types.isEmpty()) {
+        List<String> types = list(config, "media-types");
+        List<String> restore = list(config, "restore-media-types");
+        if (parameter.isEmpty() || value.isEmpty() || (types.isEmpty() && restore.isEmpty())) {
             return;
         }
         String root = config.getOptionalValue("quarkus.http.root-path", String.class).orElse("/");
@@ -57,18 +55,29 @@ public class SourceMediaTypeParameterAdapter {
             String path = ctx.request().path();
             if (base.isEmpty() || (path != null && (path.equals(base) || path.startsWith(base + "/")))) {
                 HttpServerResponse response = ctx.response();
-                ctx.addHeadersEndHandler(ignored -> rewrite(response, parameter, value, types));
+                ctx.addHeadersEndHandler(ignored -> rewrite(response, parameter, value, types, restore));
             }
             ctx.next();
         }, PRIORITY);
     }
 
-    static void rewrite(HttpServerResponse response, String parameter, String value, List<String> types) {
+    static List<String> list(Config config, String key) {
+        List<String> out = new ArrayList<>();
+        for (String t : config.getOptionalValue(PREFIX + key, String.class).orElse("").split(",")) {
+            if (!t.isBlank()) {
+                out.add(t.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
+    static void rewrite(HttpServerResponse response, String parameter, String value, List<String> types,
+            List<String> restore) {
         String header = response.headers().get(CONTENT_TYPE);
         if (header == null) {
             return;
         }
-        String result = without(header, parameter, value, types);
+        String result = with(without(header, parameter, value, types), parameter, value, restore);
         if (!result.equals(header)) {
             response.headers().set(CONTENT_TYPE, result);
         }
@@ -97,6 +106,22 @@ public class SourceMediaTypeParameterAdapter {
             out.append(';').append(p);
         }
         return removed ? out.toString() : header;
+    }
+
+    /** The header with the decided parameter appended when its media type is a restored one and it has none. */
+    static String with(String header, String parameter, String value, List<String> types) {
+        List<String> parts = split(header);
+        if (parts.isEmpty() || !types.contains(parts.get(0).trim().toLowerCase(Locale.ROOT))) {
+            return header;
+        }
+        for (int i = 1; i < parts.size(); i++) {
+            String p = parts.get(i);
+            int eq = p.indexOf('=');
+            if ((eq < 0 ? p : p.substring(0, eq)).trim().equalsIgnoreCase(parameter)) {
+                return header;
+            }
+        }
+        return header + ";" + parameter + "=" + value;
     }
 
     /** Split on ';' outside quoted strings. */

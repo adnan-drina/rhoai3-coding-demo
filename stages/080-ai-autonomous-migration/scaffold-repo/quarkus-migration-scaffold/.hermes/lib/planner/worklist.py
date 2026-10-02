@@ -1384,9 +1384,11 @@ def representation_advice(differences: list[dict[str, Any]]) -> dict[str, Any]:
         ("prefer the platform's own answer: a response or serializer setting that makes the destination send the "
          "source's Content-Type (%s) for these responses, if one exists for the decided media type." % quoted),
         (("otherwise install the capability: `%s`. It writes %s (type %s, contract %s) and removes ONLY the parameter "
-          "%s=%s from %s — every other parameter, media type and the body encoding are left as they are."
+          "%s=%s from %s%s — every other parameter, media type and the body encoding are left as they are."
           % (owed["install"], owed["path"], owed["type"], owed["contract"], decided.get("parameter"), decided.get("value"),
-             ", ".join(decided.get("media_types") or [])))
+             ", ".join(decided.get("media_types") or []) or "no media type",
+             (" and restores it on %s, where the source sent it" % ", ".join(decided["restore_media_types"]))
+             if decided.get("restore_media_types") else ""))
          if decided else "no adapter is authorized: %s" % why),
         "`%s --check` exits 0 on the candidate when the adapter is the repair." % owed["install"],
         "this scenario's own parity verdict comes back PASS, and no scenario that was PASS regresses.",

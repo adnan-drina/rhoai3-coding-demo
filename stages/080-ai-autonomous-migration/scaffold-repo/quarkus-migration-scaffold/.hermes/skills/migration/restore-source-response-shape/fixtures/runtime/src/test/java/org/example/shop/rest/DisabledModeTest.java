@@ -158,6 +158,8 @@ class DisabledModeTest {
         assertEquals("application/json;charset=ISO-8859-1", req().get("/api/content/json-latin").getHeader("Content-Type"));
         assertEquals("application/json;profile=x", req().get("/api/content/json-extra").getHeader("Content-Type"));
         assertEquals("text/plain;charset=UTF-8", req().get("/api/content/text-utf8").getHeader("Content-Type"));
+        assertEquals("text/csv;charset=UTF-8", req().get("/api/content/csv-plain").getHeader("Content-Type"));
+        assertEquals("text/csv;charset=ISO-8859-1", req().get("/api/content/csv-latin").getHeader("Content-Type"));
         assertEquals("{\"k\":\"v\"}", req().get("/api/content/json-utf8").asString());
     }
 }

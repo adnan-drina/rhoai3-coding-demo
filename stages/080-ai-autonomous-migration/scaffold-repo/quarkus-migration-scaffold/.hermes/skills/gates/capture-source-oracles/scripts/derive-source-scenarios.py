@@ -1478,8 +1478,11 @@ class Derivation:
                  foreign_keys: list[dict[str, Any]] | None = None,
                  persistence: PersistenceModel | None = None, *,
                  generator: dict[str, Any] | None = None, copy: Path | None = None, openapi_path: Path | None = None,
-                 column_defs: dict[str, dict[str, dict[str, bool]]] | None = None) -> None:
+                 column_defs: dict[str, dict[str, dict[str, bool]]] | None = None,
+                 sequence_starts: dict[str, int] | None = None) -> None:
         self.root = root
+        # D-1: where the capture engine's schema (re)starts each identity sequence -- the identity it generates next
+        self.sequence_starts = dict(sequence_starts or {})
         self.openapi = openapi
         self.seed = seed
         self.persistence = persistence if persistence is not None else PersistenceModel([], set())
@@ -2141,6 +2144,15 @@ class Derivation:
         if not vals or not all(re.fullmatch(r"-?\d+", v) for v in vals):
             return None, "", "the seed holds no integer %s.%s to count from" % (ent["table"], col or "?")
         nxt = max(int(v) for v in vals) + 1
+        # the identity the capture engine GENERATES next: a schema that restarts the column's sequence above the seeded
+        # maximum (D-1, v31 lab: the source's PostgreSQL schema RESTARTs at 100) generates that, not max + 1 -- and a
+        # create whose request names another identity than the generated one is a different exchange on each engine
+        from planner.source_engine import serial_sequence
+        start = self.sequence_starts.get(serial_sequence(str(ent["table"]), col))
+        if start is not None and start > nxt - 1:
+            return start, ("seed:%s.%s max %d; schema: sequence %s restarts at %d → %s %d: the identity the capture engine "
+                           "generates next, which no seeded row holds (the request model requires one)"
+                           % (ent["table"], col, nxt - 1, serial_sequence(str(ent["table"]), col), start, pname, start)), ""
         return nxt, ("seed:%s.%s max %d → %s %d: an identity no seeded row holds (the request model requires one)"
                      % (ent["table"], col, nxt - 1, pname, nxt)), ""
 
@@ -4459,11 +4471,16 @@ def main(argv: list[str] | None = None) -> int:
         inputs["generator"] = {"path": str(generator.get("path") or "pom.xml"), "artifact": str(generator.get("artifactId") or ""),
                                "sha256": sha256_file(copy / "pom.xml") if (copy / "pom.xml").is_file() else ""}
     column_defs: dict[str, dict[str, dict[str, bool]]] = {}
+    seq_starts: dict[str, int] = {}
+    from planner.source_engine import sequence_starts as _sequence_starts
     for schema_p in (find_schema_sql(seed_p) if seed_p is not None else []):
-        column_defs.update(parse_column_defs(schema_p.read_text(encoding="utf-8", errors="replace")))
+        schema_text = schema_p.read_text(encoding="utf-8", errors="replace")
+        column_defs.update(parse_column_defs(schema_text))
+        seq_starts.update(_sequence_starts(schema_text))
     try:
         d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin, foreign_keys, persistence,
-                       generator=generator, copy=copy, openapi_path=oa_path, column_defs=column_defs)
+                       generator=generator, copy=copy, openapi_path=oa_path, column_defs=column_defs,
+                       sequence_starts=seq_starts)
         d.run()
     except Refusal as exc:
         return blocked(str(exc))

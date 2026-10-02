@@ -104,7 +104,8 @@ ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.canonical import digest  # noqa: E402
-from planner.decisions import DecisionsError, load_decisions, security, security_gaps  # noqa: E402
+from planner.decisions import DecisionsError, datasource, load_decisions, security, security_gaps  # noqa: E402
+from planner.source_engine import capture_engine, server_capture  # noqa: E402
 from planner.paths import DECISIONS, EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
 
 
@@ -232,7 +233,8 @@ class SourceRuntime:
     source actually saw."""
 
     def __init__(self, copy: Path, port: int, base_path: str, timeout: int, java: str, mvn: str, log_dir: Path,
-                 source_config: dict[str, str] | None = None) -> None:
+                 source_config: dict[str, str] | None = None, env_extra: dict[str, str] | None = None,
+                 pre_start: Any = None) -> None:
         self.copy = copy
         self.port = port
         self.base_path = base_path
@@ -245,6 +247,11 @@ class SourceRuntime:
         # the source's security on is a property of the specimen, so it
         # arrives as an argument and is recorded, not named in code.
         self.source_config = dict(source_config or {})
+        # D-1: on the destination's server engine the source's datasource and profiles arrive by ENVIRONMENT (never
+        # argv, never evidence), and its database is reloaded by ``pre_start`` before every start -- a restart no
+        # longer resets a database that lives outside the process
+        self.env_extra = dict(env_extra or {})
+        self.pre_start = pre_start
         self.jar: Path | None = None
         self.proc: subprocess.Popen | None = None
         self.starts = 0
@@ -275,10 +282,15 @@ class SourceRuntime:
             if err:
                 return err
         self.stop()
+        if self.pre_start is not None:
+            err = self.pre_start()
+            if err:
+                return err
         self.starts += 1
         log = self.log_dir / ("source-run-%d.log" % self.starts)
         sink = log.open("wb")
         env = dict(os.environ)
+        env.update(self.env_extra)
         env.setdefault("SERVER_PORT", str(self.port))
         # The runner already configures the source two ways -- an environment
         # variable and a ``--key=value`` argument for the port -- so the
@@ -475,6 +487,23 @@ def main(argv: list[str] | None = None) -> int:
     base_path = args.base_path or _context_path(copy)
     log_dir = root / "verification" / "scenarios" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    # D-1 (ADR-027 draft): which engine the source is captured on. On the destination's server engine the source
+    # runs its own profile for it against a capture schema of this run's own database, reloaded from its own scripts.
+    try:
+        decided_ds = datasource(load_decisions(root)) or {}
+    except DecisionsError:
+        decided_ds = {}
+    engine_plan = capture_engine(decided_ds, copy)
+    server: dict[str, Any] = {}
+    if engine_plan["mode"] == "destination":
+        server = server_capture(decided_ds, copy, dict(os.environ))
+        if server.get("refused"):
+            return _fail("SOURCE_CAPTURE_ENGINE decisions.yaml captures the source on %s and that is not possible here: %s"
+                         % (engine_plan["engine"], server["refused"]))
+        if variant:
+            return _fail("SOURCE_CAPTURE_ENGINE fixture variant %s: a variant's dataset is not yet applied to a server-engine "
+                         "capture schema (D-1 increment 3); capture it on the declared engine" % variant)
+    engine_record = {k: v for k, v in (server or engine_plan).items() if k not in ("env", "refused")}
     wanted = [sc for sc in corpus["scenarios"] if not args.scenario or str(sc["id"]) in set(args.scenario)]
     if not wanted:
         return _fail("no scenario selected")
@@ -546,8 +575,20 @@ def main(argv: list[str] | None = None) -> int:
         if conflicts:
             return _fail("--source-config %s carries the value of a credential (%s); configuration is recorded in the "
                          "evidence, so a credential must be passed by reference" % (", ".join(conflicts), ", ".join(credential_refs)))
+    reset_script = Path(__file__).resolve().parent / "reset-parity-db.sh"
+
+    def load_capture_schema() -> str:
+        proc = subprocess.run(["bash", str(reset_script), "--root", str(root), "--source-capture", str(copy)],
+                              text=True, capture_output=True)
+        (log_dir / "source-capture-reset.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+        if proc.returncode != 0:
+            return "the capture schema could not be loaded: %s" % ((proc.stderr or proc.stdout).strip().splitlines() or ["?"])[-1]
+        return ""
+
+    # the declared engine starts the source exactly as before; only a server-engine capture adds its env and reload
+    server_kw = {"env_extra": server["env"], "pre_start": load_capture_schema} if server else {}
     runtime = SourceRuntime(copy, args.port, base_path, args.ready_timeout, args.java, args.mvn, log_dir,
-                            source_config=source_config)
+                            source_config=source_config, **server_kw)
     captured = 0
     failures: list[str] = []
     open_stores: list[Any] = []
@@ -571,7 +612,8 @@ def main(argv: list[str] | None = None) -> int:
                 "receipt_sha256": receipt_sha,
                 "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
                 "source": {"analysis_copy_digest": str(freeze.get("source_digest") or ""), "base_url": runtime.base_url,
-                           "artifact": runtime.jar.name if runtime.jar else "", "starts": runtime.starts},
+                           "artifact": runtime.jar.name if runtime.jar else "", "starts": runtime.starts,
+                           "engine": str(engine_record.get("engine") or "")},
                 "initial_state": dict(corpus.get("initial_state") or {}),
                 "normalization": list(sc.get("normalization") or []),
                 "asserted_headers_extra": list(asserted),
@@ -676,6 +718,10 @@ def main(argv: list[str] | None = None) -> int:
                 declared dataset (or the variant's), so a committed-state step
                 can be read on a new connection before and after the request."""
                 nonlocal store, overrides
+                if server:
+                    # the capture schema IS a same-engine database held outside the process (ADR-026's premise)
+                    store = ServerSchemaStore(reset_script, root, copy)
+                    return ""
                 if not declared_seed:
                     return "the corpus names no declared dataset to initialise the held database with"
                 store, why_ = SOURCE_STORE_OPENER(copy, runtime.jar, log_dir / ("store-" + scenario_slug(sc["id"])), args.java)
@@ -898,13 +944,48 @@ def main(argv: list[str] | None = None) -> int:
         "captured": captured, "requested": len(wanted),
         "scenarios": sorted(str(sc["id"]) for sc in wanted),
         "reads": bool(read_reads), "reads_note": reads_note,
-        "source": {"analysis_copy_digest": str(freeze.get("source_digest") or ""), "starts": runtime.starts},
+        "source": {"analysis_copy_digest": str(freeze.get("source_digest") or ""), "starts": runtime.starts,
+                   "engine": engine_record},
     })
     print("%s: source scenarios captured=%d of %d (corpus %s) → %s"
           % ("OK" if not failures else "REFUSE", captured, len(wanted), corpus_sha[:12], oracles_dir))
     for f in failures:
         print("  - %s" % f, file=sys.stderr)
     return 0 if not failures else 1
+
+
+class ServerSchemaStore:
+    """The capture schema on the run's own server database, read as a held store (D-1 + ADR-026): one SELECT on a
+    new connection through the reset tool (the same ownership check and driver), nothing started or stopped."""
+
+    def __init__(self, reset_script: Path, root: Path, copy: Path) -> None:
+        self.reset_script, self.root, self.copy = reset_script, root, copy
+
+    def start(self, files: list[Path]) -> str:
+        return ""
+
+    def source_overrides(self) -> dict[str, str]:
+        return {}
+
+    def stop(self) -> None:
+        return None
+
+    def observe(self, tables: list[str], path: Path) -> tuple[dict[str, Any], str]:
+        """Row observations of a refused write's tables are the held-store mechanism of a fixture variant, which a
+        server-engine capture does not run yet (D-1 increment 3): nothing to observe is nothing, anything else is
+        said, never faked."""
+        if not tables:
+            return {}, ""
+        return {}, "row observations are not taken on a server-engine capture yet (D-1 increment 3)"
+
+    def query(self, sql: str, path: Path) -> tuple[Any, str]:
+        Path(path).write_text(str(sql).strip() + "\n", encoding="utf-8")
+        proc = subprocess.run(["bash", str(self.reset_script), "--root", str(self.root), "--source-capture",
+                               str(self.copy), "--query", str(path)], text=True, capture_output=True)
+        for line in (proc.stdout or "").splitlines():
+            if line.startswith("VALUE:") and proc.returncode == 0:
+                return line[len("VALUE:"):], ""
+        return None, ((proc.stderr or proc.stdout).strip().splitlines() or ["the read printed no value"])[-1][:300]
 
 
 # the store a revert-then-read capture holds the source's database in; a

@@ -1107,6 +1107,22 @@ to.
   its profile home, so do not override it to repair discovery. Diagnose a
   refused reset from its named failure or `--print-plan`, never by dumping
   the environment or tracing credentials. The runner receives env-var names.
+  `--source-capture COPY` (D-1) loads the frozen source's OWN per-engine
+  schema and seed into the capture schema (`planner.source_engine.CAPTURE_SCHEMA`)
+  on the same instance, leaving the destination's `public` schema untouched;
+  with `--query FILE` it reads that schema instead.
+- **Capture engine (D-1, ADR-027 draft).** `decisions.yaml`
+  `datasource.source_capture_engine: destination` captures the source on the
+  destination's engine through its own profile for it
+  (`application-<engine>.*`), when it ships one. `capture-source-scenarios.py`
+  then starts the source with that profile replacing its engine profile and
+  with its datasource bound by environment to the capture schema, never by
+  argv and never recorded; it reloads the schema before every start. The
+  derivation takes a create's identity from the engine's sequence position
+  (`ALTER SEQUENCE ... RESTART WITH n`), and the destination baseline keeps the
+  schema's own sequence positions instead of aligning them. Fixture variants
+  are refused by name on a server capture (increment 3). The default
+  (`declared`) is unchanged: the source runs on its own declared engine.
 - `scripts/compare-runtime-parity.py` — destination comparison for reads
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects;
   `--issued` binds the verdict to the candidate and the issued card

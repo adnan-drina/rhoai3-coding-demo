@@ -71,6 +71,7 @@ PRINT_PLAN="no"
 VARIANT=""
 REVERT=""
 QUERY=""
+SOURCE_COPY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
@@ -79,6 +80,7 @@ while [[ $# -gt 0 ]]; do
     --revert-variant) REVERT="${2:-}"; shift 2 ;;
     --print-plan) PRINT_PLAN="yes"; shift ;;
     --query) QUERY="${2:-}"; shift 2 ;;
+    --source-capture) SOURCE_COPY="${2:-}"; shift 2 ;;
     *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--variant <name> | --revert-variant <name>] [--print-plan]" >&2; exit 2 ;;
   esac
 done
@@ -90,6 +92,13 @@ done
 # same ownership check, the same decided datasource and the same driver.
 [[ -z "${QUERY}" || ( -z "${VARIANT}" && -z "${REVERT}" && "${PRINT_PLAN}" == "no" ) ]] || { echo "FAIL: --query reads; it takes no --variant, --revert-variant or --print-plan" >&2; exit 2; }
 [[ -z "${QUERY}" || -f "${QUERY}" ]] || { echo "FAIL: --query must name a file holding one SELECT" >&2; exit 2; }
+# --source-capture COPY (D-1, ADR-027 draft): load the FROZEN SOURCE's own per-engine schema and seed (COPY is its
+# analysis copy) into the capture schema planner.source_engine names, on this run's own database -- the same
+# ownership check, datasource and driver as the reset, and the destination's public schema untouched. The
+# capture restarts the source after each load. Taken only when decisions.yaml captures on the destination engine.
+# With --query FILE it READS the capture schema instead (the committed-state step of a source capture): nothing loads.
+[[ -z "${SOURCE_COPY}" || ( -z "${VARIANT}" && -z "${REVERT}" ) ]] || { echo "FAIL: --source-capture takes no --variant or --revert-variant" >&2; exit 2; }
+[[ -z "${SOURCE_COPY}" || -d "${SOURCE_COPY}" ]] || { echo "FAIL: --source-capture must name the frozen source's analysis copy" >&2; exit 2; }
 ROOT="$(cd "${ROOT}" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_TOOL="${HERE}/../../../migration/bootstrap-destination/scripts/_baseline_data.py"
@@ -320,6 +329,38 @@ REGISTERS="$(python3 -c 'import sys, zipfile; print("yes" if "META-INF/services/
 if [[ "${REGISTERS}" != "yes" ]]; then
   echo "FAIL: RESET $(basename "${DRIVER}") registers no JDBC driver; pass --driver <jar>" >&2
   exit 1
+fi
+if [[ -n "${SOURCE_COPY}" ]]; then
+  CAPTURE="$(RESET_WORK="${WORK}" python3 - "${ROOT}" "${SOURCE_COPY}" 2>"${WORK}/capture.err" <<'PYEOF'
+import os, sys
+from pathlib import Path
+root, copy = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
+sys.path.insert(0, str(root / ".hermes" / "lib"))
+from planner.decisions import datasource, load_decisions
+from planner.source_engine import server_capture
+plan = server_capture(datasource(load_decisions(root)), copy, dict(os.environ))
+if plan.get("refused"):
+    raise SystemExit(plan["refused"])
+print(plan["schema"], copy / plan["schema_sql"], copy / plan["seed_sql"], plan["engine"])
+# the schema-selecting URL, for a read of the capture schema: written for this process only, never printed
+Path(os.environ["RESET_WORK"], "capture-url").write_text(plan["env"]["SPRING_DATASOURCE_URL"], encoding="utf-8")
+PYEOF
+)" || { echo "FAIL: RESET SOURCE_CAPTURE_UNPLANNED $(tr '\n' ' ' <"${WORK}/capture.err")" >&2; exit 1; }
+  read -r CAP_SCHEMA CAP_SCHEMA_SQL CAP_SEED_SQL CAP_ENGINE <<<"${CAPTURE}"
+  if [[ -n "${QUERY}" ]]; then
+    RHOAI3_CAPTURE_DB_URL="$(cat "${WORK}/capture-url")" java -cp "${DRIVER}:${WORK}" ResetDb RHOAI3_CAPTURE_DB_URL "${USER_ENV}" "${PASS_ENV}" --query "${QUERY}" \
+      || { echo "FAIL: RESET QUERY the committed-state step could not be read from ${CAP_SCHEMA}" >&2; exit 1; }
+    exit 0
+  fi
+  if [[ "${PRINT_PLAN}" == "yes" ]]; then
+    echo "plan: source capture schema ${CAP_SCHEMA} on ${CAP_ENGINE} from ${URL_ENV} (credentials ${USER_ENV}/${PASS_ENV})"
+    echo "apply: ${CAP_SCHEMA_SQL}"; echo "apply: ${CAP_SEED_SQL}"
+    exit 0
+  fi
+  java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --schema "${CAP_SCHEMA}" "${CAP_SCHEMA_SQL}" "${CAP_SEED_SQL}" \
+    || { echo "FAIL: RESET SOURCE_CAPTURE the frozen source's own scripts did not load into ${CAP_SCHEMA}" >&2; exit 1; }
+  echo "OK: loaded the frozen source's own ${CAP_ENGINE} schema and seed into ${CAP_SCHEMA} ($(basename "${CAP_SCHEMA_SQL}"), $(basename "${CAP_SEED_SQL}")), using $(basename "${DRIVER}")"
+  exit 0
 fi
 if [[ -n "${QUERY}" ]]; then
   java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --query "${QUERY}" \

@@ -454,8 +454,13 @@ class Baseline:
         self.alignment: list[str] = []
 
 
-def build_baseline(dataset_text: str, schema_text: str, engine: str) -> Baseline:
-    """Translate the declared dataset and derive the sequence alignment."""
+def build_baseline(dataset_text: str, schema_text: str, engine: str, align: bool = True) -> Baseline:
+    """Translate the declared dataset and derive the sequence alignment.
+
+    ``align=False`` (D-1: the source was captured on THIS engine, from the same schema asset): no alignment -- the
+    identity sequences are where the schema sets them, which is where the source's own were when it was captured
+    (v31 lab: the source's PostgreSQL schema RESTARTs them at 100; aligning to the seeded maximum would hand the
+    destination ids the source never produced)."""
     if engine not in SUPPORTED_ENGINES:
         raise BaselineRefusal("engine", "the translator has no rules for destination engine %r (it knows %s)"
                               % (engine, ", ".join(SUPPORTED_ENGINES)))
@@ -490,7 +495,8 @@ def build_baseline(dataset_text: str, schema_text: str, engine: str) -> Baseline
             seeded_max = max(ints) if ints and len(ints) == len(values) else None
             out.sequences.append({"table": table, "column": column,
                                   "rows": out.row_counts.get(table, 0), "seeded_max": seeded_max})
-            out.alignment.append(alignment_statement(table, column, engine))
+            if align:
+                out.alignment.append(alignment_statement(table, column, engine))
     return out
 
 

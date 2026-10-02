@@ -79,7 +79,8 @@ CONTRACTS: dict[str, dict[str, Any]] = {
 PRIOR_TEMPLATES: dict[str, dict[str, str]] = {
     CORS: {"4d381666e6f3f87a892ca93c7c6bd8bb85f672db157356c44b4486ff81f3ba05":
            "source-cors-response-adapter/v1 as first installed (before ADR-020 same-origin routing)"},
-    MEDIA_TYPE: {},
+    MEDIA_TYPE: {"95ba774c07980cf706ab6c919cc94657f0598fd3c0ca82821aa203a03b8a092c":
+                 "source-media-type-parameter-adapter/v1 before the restore direction (v31: removal only)"},
 }
 
 
@@ -808,35 +809,48 @@ def media_type_difference(have: str, want: str) -> dict[str, Any] | None:
 
 
 def media_type_decision(differences: list[dict[str, Any]]) -> dict[str, Any]:
-    """The ONE parameter to remove, decided from the recorded differences:
-    every difference must add the same (name, value) and remove nothing.
-    Anything else is not decidable here and is refused by name."""
+    """The ONE parameter (name, value) the destination gets wrong, decided from the recorded differences, and per
+    media type which way: REMOVED where the destination adds it and the source never sent it (``media_types``), or
+    RESTORED where the source sent it and the destination does not (``restore_media_types``; v31 lab: with the
+    exception advice registered, Spring's text/plain answers carried charset=UTF-8 and Quarkus's did not, while its
+    JSON answers carried the charset the source never sent -- one parameter, both directions). Every difference must
+    be exactly that one parameter, one way, on one media type; anything else is refused by name."""
     if not differences:
         raise Refuse("MEDIA_TYPE_UNDECIDED", "no recorded Content-Type difference")
-    # a charset name is case-insensitive (RFC 9110 section 8.3.2), and the adapter removes it with
+    # a charset name is case-insensitive (RFC 9110 section 8.3.2), and the adapter matches it with
     # equalsIgnoreCase: `charset=UTF-8` and `charset=utf-8` are ONE parameter (v30: Quarkus wrote both)
     def _key(p: Any) -> tuple[str, str]:
         name, value = p
         return (name, value.lower() if name == "charset" else value)
-    params = {_key(p) for d in differences for p in d.get("extra") or []}
-    missing = [d for d in differences if d.get("missing")]
-    if missing:
-        raise Refuse("MEDIA_TYPE_UNDECIDED", "the source sent a parameter the destination does not (%s); removing a "
-                     "parameter cannot restore one" % missing[0]["missing"])
-    if len(params) != 1 or any(len(d.get("extra") or []) != 1 for d in differences):
-        raise Refuse("MEDIA_TYPE_UNDECIDED", "the differences do not add exactly one common parameter: %s"
-                     % sorted(params))
+    params, strip, restore = set(), set(), set()
+    for d in differences:
+        extra, missing = list(d.get("extra") or []), list(d.get("missing") or [])
+        if len(extra) + len(missing) != 1:
+            raise Refuse("MEDIA_TYPE_UNDECIDED", "a difference on %s is not exactly one parameter one way (adds %s, "
+                         "drops %s)" % (d.get("media_type"), extra, missing))
+        params.add(_key((extra or missing)[0]))
+        (strip if extra else restore).add(str(d["media_type"]))
+    if len(params) != 1:
+        raise Refuse("MEDIA_TYPE_UNDECIDED", "the differences are not one common parameter: %s" % sorted(params))
+    both = strip & restore
+    if both:
+        raise Refuse("MEDIA_TYPE_UNDECIDED", "the source sent the parameter on some %s answers and not on others; "
+                     "which answers get it is not decidable by media type" % ", ".join(sorted(both)))
     name = next(iter(params))[0]
-    value = sorted({str(p[1]) for d in differences for p in d.get("extra") or []})[0]
+    value = sorted({str((list(d.get("extra") or []) + list(d.get("missing") or []))[0][1]) for d in differences})[0]
     if not value:
-        raise Refuse("MEDIA_TYPE_UNDECIDED", "the added parameter %r carries no value to match" % name)
-    return {"parameter": name, "value": value, "media_types": sorted({d["media_type"] for d in differences})}
+        raise Refuse("MEDIA_TYPE_UNDECIDED", "the parameter %r carries no value to match" % name)
+    return {"parameter": name, "value": value, "media_types": sorted(strip), "restore_media_types": sorted(restore)}
 
 
 def media_type_properties(decision: dict[str, Any]) -> list[tuple[str, str]]:
     pre = CONTRACTS[MEDIA_TYPE]["prefix"]
-    return [(pre + "parameter", decision["parameter"]), (pre + "parameter-value", decision["value"]),
-            (pre + "media-types", ",".join(decision["media_types"]))]
+    out = [(pre + "parameter", decision["parameter"]), (pre + "parameter-value", decision["value"]),
+           (pre + "media-types", ",".join(decision["media_types"]))]
+    # rendered only when something is restored, so an installation that only removes keeps its exact bytes
+    if decision.get("restore_media_types"):
+        out.append((pre + "restore-media-types", ",".join(decision["restore_media_types"])))
+    return out
 
 
 # ---------------------------------------------------------------------------

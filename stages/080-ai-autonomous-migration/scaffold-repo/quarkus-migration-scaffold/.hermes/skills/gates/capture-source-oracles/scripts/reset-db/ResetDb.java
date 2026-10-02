@@ -26,6 +26,13 @@ import java.util.Properties;
  * one SELECT on a new connection, printed as "VALUE:" + the first column of the
  * first row (SQL NULL and no row print "VALUE:"). It changes nothing.
  *
+ *   java -cp <driver.jar>:. ResetDb <url-env> <user-env> <password-env> --schema <name> <sql-file>...
+ *
+ * --schema loads the files into a schema OF THEIR OWN on the same database (D-1: the frozen source captured on
+ * the destination's engine): drop and recreate that schema only, apply the files with it first on the search
+ * path, and count its tables. The public schema -- the destination's -- is not touched. The name is an
+ * identifier ([a-z_][a-z0-9_]*), never SQL.
+ *
  * --keep-schema applies the files to the database as it is: a fixture
  * variant's revert changes only the rows it proves it found, and a dropped
  * schema would erase the very state the revert is there to leave readable.
@@ -50,6 +57,16 @@ public final class ResetDb {
         props.setProperty("user", requiredEnv(args[1]));
         props.setProperty("password", requiredEnv(args[2]));
         boolean keep = args.length > 3 && "--keep-schema".equals(args[3]);
+        String schema = "public";
+        int first = keep ? 4 : 3;
+        if (args.length > 4 && "--schema".equals(args[3])) {
+            schema = args[4];
+            first = 5;
+            if (!schema.matches("[a-z_][a-z0-9_]*") || "public".equals(schema)) {
+                System.err.println("--schema takes a lowercase identifier other than public: " + schema);
+                System.exit(2);
+            }
+        }
         if (args.length > 4 && "--query".equals(args[3])) {
             try (Connection conn = DriverManager.getConnection(url, props);
                  Statement st = conn.createStatement();
@@ -62,23 +79,26 @@ public final class ResetDb {
         try (Connection conn = DriverManager.getConnection(url, props)) {
             if (!keep) {
                 try (Statement st = conn.createStatement()) {
-                    st.execute("DROP SCHEMA IF EXISTS public CASCADE");
-                    st.execute("CREATE SCHEMA public");
+                    st.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+                    st.execute("CREATE SCHEMA " + schema);
                 }
             }
-            for (int i = keep ? 4 : 3; i < args.length; i++) {
+            for (int i = first; i < args.length; i++) {
                 Path p = Path.of(args[i]);
                 String sql = Files.readString(p, StandardCharsets.UTF_8);
                 try (Statement st = conn.createStatement()) {
+                    if (!"public".equals(schema)) {
+                        st.execute("SET search_path TO " + schema);
+                    }
                     st.execute(sql);
                 }
                 System.out.println("applied " + p.getFileName());
             }
             try (Statement st = conn.createStatement();
                  ResultSet rs = st.executeQuery(
-                     "select count(*) from information_schema.tables where table_schema = 'public'")) {
+                     "select count(*) from information_schema.tables where table_schema = '" + schema + "'")) {
                 rs.next();
-                System.out.println("tables in public: " + rs.getInt(1));
+                System.out.println("tables in " + schema + ": " + rs.getInt(1));
             }
         }
     }

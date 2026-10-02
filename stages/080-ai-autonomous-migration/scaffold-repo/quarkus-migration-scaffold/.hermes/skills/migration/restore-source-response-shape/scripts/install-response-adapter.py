@@ -101,15 +101,21 @@ def authority(root: Path, kind: str, args: argparse.Namespace) -> tuple[dict, li
 def decision_for(kind: str, rows: list[dict], args: argparse.Namespace) -> dict | None:
     if kind != ra.MEDIA_TYPE:
         return None
-    if args.parameter or args.media_type:
+    if args.parameter or args.media_type or args.restore_media_type:
         if not args.operator_step:
             raise ra.Refuse("MEDIA_TYPE_UNDECIDED", "--parameter/--media-type are an Operator step's; a worker installs "
                                                     "the parameter its obligation decided")
         name, _, value = str(args.parameter or "").partition("=")
-        if not name or not value or not args.media_type:
-            raise ra.Refuse("MEDIA_TYPE_UNDECIDED", "--parameter NAME=VALUE and --media-type TYPE are both required")
-        return {"parameter": name.strip().lower(), "value": value.strip(),
-                "media_types": sorted({m.strip().lower() for m in args.media_type})}
+        if not name or not value or not (args.media_type or args.restore_media_type):
+            raise ra.Refuse("MEDIA_TYPE_UNDECIDED", "--parameter NAME=VALUE and a --media-type or --restore-media-type TYPE "
+                                                    "are required")
+        strip = sorted({m.strip().lower() for m in args.media_type})
+        restore = sorted({m.strip().lower() for m in args.restore_media_type})
+        if set(strip) & set(restore):
+            raise ra.Refuse("MEDIA_TYPE_UNDECIDED", "a media type is either removed or restored, never both: %s"
+                            % ", ".join(sorted(set(strip) & set(restore))))
+        return {"parameter": name.strip().lower(), "value": value.strip(), "media_types": strip,
+                "restore_media_types": restore}
     diffs = []
     for it in rows:
         diffs.extend((it.get("owed") or {}).get("differences") or [])
@@ -125,7 +131,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--operator-step", default="", help="an Operator application under this ADR")
     ap.add_argument("--reason", default="")
     ap.add_argument("--parameter", default="", help="Operator step, media-type only: NAME=VALUE")
-    ap.add_argument("--media-type", action="append", default=[], help="Operator step, media-type only")
+    ap.add_argument("--media-type", action="append", default=[], help="Operator step, media-type only: remove the parameter here")
+    ap.add_argument("--restore-media-type", action="append", default=[],
+                    help="Operator step, media-type only: restore the parameter here when the response has none")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     kind = args.adapter

@@ -39,7 +39,7 @@ python3 "$HERE/install-response-adapter.py" --root "$APP" --adapter cors \
   --operator-step ADR-019 --reason "runtime fixture: prove the adapter on the real HTTP layer"
 python3 "$HERE/install-response-adapter.py" --root "$APP" --adapter media-type \
   --operator-step ADR-019 --reason "runtime fixture: prove the media-type adapter on the real HTTP layer" \
-  --parameter charset=UTF-8 --media-type application/json
+  --parameter charset=UTF-8 --media-type application/json --restore-media-type text/csv
 # idempotent: a second run changes nothing
 before="$(cat "$APP/src/main/resources/application.properties" | shasum -a 256)"
 python3 "$HERE/install-response-adapter.py" --root "$APP" --adapter cors \

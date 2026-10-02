@@ -39,6 +39,20 @@ public class ContentResource {
         return String.valueOf(origin);
     }
 
+    /** A media type the source sent WITH the decided parameter: the adapter restores it (v31). */
+    @GET
+    @Path("csv-plain")
+    public Response csvPlain() {
+        return typed("text/csv");
+    }
+
+    /** The same media type with another value of that parameter: a real difference, left as it is. */
+    @GET
+    @Path("csv-latin")
+    public Response csvLatin() {
+        return typed("text/csv;charset=ISO-8859-1");
+    }
+
     @GET
     @Path("text-utf8")
     public Response textUtf8() {

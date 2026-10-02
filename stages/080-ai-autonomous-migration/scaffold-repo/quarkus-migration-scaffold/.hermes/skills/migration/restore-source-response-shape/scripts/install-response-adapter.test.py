@@ -281,8 +281,24 @@ def main() -> int:
     check(ra.media_type_difference("text/html", "application/json") is None, "another media type is not a parameter difference")
     check(ra.media_type_difference("application/json", "application/json") is None, "equal values differ in nothing")
     dec = ra.media_type_decision([diff, ra.media_type_difference("application/problem+json; charset=UTF-8", "application/problem+json")])
-    check(dec == {"parameter": "charset", "value": "UTF-8", "media_types": ["application/json", "application/problem+json"]},
+    check(dec == {"parameter": "charset", "value": "UTF-8", "media_types": ["application/json", "application/problem+json"],
+                  "restore_media_types": []},
           "one common parameter decides; its media types are the recorded ones", dec)
+    # v31 lab: with the exception advice registered, the source's text/plain answers carry charset=UTF-8 and the
+    # destination's do not, while its JSON answers carry the charset the source never sent -- ONE parameter, both
+    # directions, each per media type (a renamed twin: another parameter, other media types)
+    for name, value, strip_t, restore_t in (("charset", "UTF-8", "application/json", "text/plain"),
+                                            ("profile", "v2", "application/vnd.ledger+json", "text/csv")):
+        both = [ra.media_type_difference("%s;%s=%s" % (strip_t, name, value), strip_t),
+                ra.media_type_difference(restore_t, "%s;%s=%s" % (restore_t, name, value))]
+        dec2 = ra.media_type_decision(both)
+        check(dec2 == {"parameter": name, "value": value, "media_types": [strip_t], "restore_media_types": [restore_t]},
+              "removed where the source never sent it, restored where it did (%s)" % name, dec2)
+        props = dict(ra.media_type_properties(dec2))
+        check(props.get("rhoai3.source-media-type.restore-media-types") == restore_t, "the restore list is rendered", props)
+        check(ra.media_type_decision(list(reversed(both))) == dec2, "order-independent (%s)" % name)
+    check("rhoai3.source-media-type.restore-media-types" not in dict(ra.media_type_properties(dec)),
+          "an installation that only removes renders exactly what it rendered before")
     # v30: Quarkus answered `;charset=UTF-8` and `; charset=utf-8` on different endpoints; a charset name is
     # case-insensitive (RFC 9110 8.3.2) and the adapter compares it with equalsIgnoreCase -- one parameter
     mixed = [diff, ra.media_type_difference("application/json; charset=utf-8", "application/json")]
@@ -293,7 +309,10 @@ def main() -> int:
     for bad, why in (([], "nothing recorded"),
                      ([ra.media_type_difference("application/json;charset=UTF-8;v=1", "application/json")], "two parameters"),
                      ([diff, ra.media_type_difference("application/json;charset=ISO-8859-1", "application/json")], "two values"),
-                     ([ra.media_type_difference("application/json", "application/json;charset=UTF-8")], "a missing parameter")):
+                     ([ra.media_type_difference("application/json", "application/json;charset=UTF-8"),
+                       ra.media_type_difference("application/json;charset=UTF-8", "application/json")], "one media type both ways"),
+                     ([ra.media_type_difference("text/plain", "text/plain;charset=UTF-8"),
+                       ra.media_type_difference("application/json;v=1", "application/json")], "two parameters across directions")):
         try:
             ra.media_type_decision(bad)
             check(False, "undecidable: " + why)
@@ -423,6 +442,11 @@ def main() -> int:
     check("name.equalsIgnoreCase(parameter) && v.equalsIgnoreCase(value)" in media
           and "types.contains(parts.get(0).trim().toLowerCase(Locale.ROOT))" in media,
           "the media-type adapter removes only the decided parameter value from the decided media types")
+    check("static String with(String header, String parameter, String value, List<String> types)" in media
+          and '(eq < 0 ? p : p.substring(0, eq)).trim().equalsIgnoreCase(parameter)' in media
+          and 'return header + ";" + parameter + "=" + value;' in media
+          and 'with(without(header, parameter, value, types), parameter, value, restore)' in media,
+          "the media-type adapter restores the decided parameter only on the restored media types, only when absent")
     engine = (Path(ra.__file__)).read_text(encoding="utf-8").lower()
     check(not any(tok in engine for tok in ("petclinic", "samples.", "9966")), "the engine names no specimen")
     check(shutil.which("mvn") is None or (HERE / "runtime-check.sh").is_file(), "runtime-check.sh ships beside the installer")
