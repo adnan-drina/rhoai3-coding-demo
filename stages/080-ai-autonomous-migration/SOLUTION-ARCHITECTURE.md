@@ -495,7 +495,15 @@ are in `pins.json` `typed_repair`; the image recipe builds, license-checks and b
 recursion refused, identical patch on reordered sources, grant refusal); `typed-repair.test.py` 15 (planning inside the
 grant, pin refusal, diff inspection, interruption rollback, brief rendering, the real jar end to end);
 `typed-repair-package.test.py` 4 runtime cases (CDI packaging and ArC wiring; repository reads and committed writes on
-PostgreSQL with a StackOverflowError negative control; Location under `/ledger`; the null Location). On the v28 specimen:
+PostgreSQL with a StackOverflowError negative control; Location under `/ledger`; the null Location), plus the bare-rename
+negative control through the executor (refused, unchanged, augmentation fails at the handler) and repeatability (a
+second workspace with fresh run, card and cluster ids: same request, same record, byte-identical patch);
+`typed-repair-loop.test.py` (2026-10-02) runs typed candidates through the real `run-verify.sh` + `advance.py` on a
+planner-formed unit (Maven, the MTA analyzer and the package/boot receipts are stand-ins): the executor's translation
+and its CDI exposure are ACCEPTED, the bare rename, the `@ApplicationScoped`-only delegate and the routed-back delegate
+are REVERTED, on a renamed twin too. It found that a unit sealed on the retired PACKAGE accepted the bare rename; the
+handler-parameter check now takes the documented rename target from the catalog when the unit carries no rename row.
+On the v28 specimen:
 the seven handler sites translate to the loop's own accepted form, the seven fragment implementations are
 already-in-required-form, and the v29 delegating shape is unresolved.
 

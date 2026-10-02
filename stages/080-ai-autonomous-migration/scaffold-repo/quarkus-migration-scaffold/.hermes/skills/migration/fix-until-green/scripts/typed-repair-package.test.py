@@ -26,6 +26,15 @@ text edit of the test's own.
                   application under /ledger answers POST 201 with the absolute
                   Location .../ledger/api/entries/7 (handler-location-package's own
                   _serve).
+  location-bare   negative control through the typed path: the ledger with the v16
+                  t_7074fcda bare rename at addEntry (an unannotated
+                  jakarta.ws.rs.core.UriBuilder): the executor refuses it (unresolved)
+                  and leaves it byte for byte, the structural check refuses it, and
+                  `mvn package` fails augmentation at that resource method.
+  reuse           repeatability: both transformations run twice, the second time in
+                  another workspace with a fresh run id, card and cluster id; the
+                  request (its root aside), the record (all but who/when) and the
+                  staged patch are identical.
   location-null   fixtures/repository-effects-runtime's LabelRestController in
                   the source form buildAndExpand(dto.id): the translated handler
                   answers 201 with Location .../api/labels/ for a body without an
@@ -40,6 +49,7 @@ spring jars, podman and the local PostgreSQL image); a SKIP is never a PASS.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -253,6 +263,123 @@ def location_root(td: Path, exe: dict) -> str:
     return "applied -> structural ok, packaged, POST 201 Location .../ledger/api/entries/7, unused handler 200; re-run already"
 
 
+def location_bare(td: Path, exe: dict) -> str:
+    """Negative control through the typed path: the v16 t_7074fcda bare rename (an unannotated
+    jakarta.ws.rs.core.UriBuilder at the handler) is refused by the executor and left byte for byte, the
+    structural check refuses it, and the platform fails augmentation at that resource method."""
+    root = td / "ledger-bare"
+    shutil.copytree(LOCPKG.FIXTURE, root)
+    prepare(root, api=True)
+    ctrl = LOCPKG.CONTROLLER
+    LOCPKG._bare(root)
+    bare = (root / ctrl).read_text()
+    if "UriBuilder ucBuilder" not in bare:
+        raise Fail("the ledger fixture changed shape; the bare rename could not be written")
+    fqn = "org.acme.ledger.rest.EntryRestController"
+    sealed = [{"path": ctrl, "type": fqn, "member": m, "parameter": "ucBuilder"} for m in ("addEntry", "touch")]
+    recs = run(root, {"target_symbols": [{"from": UCB, "handler_parameter": True, "sites": sealed}]}, [ctrl], exe)
+    if recs[0]["outcome"] != "unresolved" or "not %s" % UCB not in " ".join(recs[0]["reasons"]):
+        raise Fail("the executor refuses the bare rename (unresolved, naming the parameter type): %s" % recs[0])
+    if (root / ctrl).read_text() != bare or recs[0]["changed_files"]:
+        raise Fail("a refused request edits nothing")
+    verdicts = LOCPKG._structural(root, sealed)
+    if verdicts.get("addEntry(ucBuilder)") != "violates":
+        raise Fail("the structural check refuses the unannotated UriBuilder at the handler: %s" % verdicts)
+    p = LOCPKG._mvn(root, "package", "-DskipTests")
+    out = p.stdout + p.stderr
+    if p.returncode == 0:
+        raise Fail("the bare rename at a handler must NOT package")
+    if "addEntry(org.acme.ledger.rest.Entry entry, jakarta.ws.rs.core.UriBuilder ucBuilder)" not in out:
+        gap = CDIPKG._offline_gap(p)
+        if gap:
+            raise rt.Skip(gap)
+        raise Fail("the bare rename fails augmentation at the resource method, not elsewhere: %s" % out[-600:])
+    return "bare rename -> executor unresolved, unchanged; structural violates; augmentation fails at addEntry(..., UriBuilder)"
+
+
+_RECORD_IDENTITY = ("recipe", "source", "target", "executor", "classpath", "api_classpath", "outcome", "reasons",
+                    "matched_symbols", "changed_files", "candidate", "candidate_files", "establishes_requirement")
+
+
+def _attempt(root: Path, rec: dict) -> Path:
+    """The attempt directory this record was written to (request.json, out/patch.diff, out/staged/)."""
+    hits = [p.parent for p in (root / TR.RECORD_DIR / TR.stem(rec["cluster"])).glob("*/record.json")
+            if json.loads(p.read_text()) == rec]
+    if len(hits) != 1:
+        raise Fail("one attempt directory holds the record: %s" % hits)
+    return hits[0]
+
+
+def _one_run(where: Path, fixture: Path, scope_of, edit, run_id: str, cluster: str,
+             exe: dict) -> list[tuple[dict, dict, str, dict]]:
+    """One fresh workspace: (record, request without its root, patch, staged files) per request."""
+    root = where / fixture.name
+    shutil.copytree(fixture, root)
+    api = edit(root)
+    prepare(root, api=api)
+    scope, ws = scope_of(root)
+    os.environ["HERMES_KANBAN_RUN_ID"], os.environ["HERMES_KANBAN_TASK"] = run_id, "t_" + run_id
+    try:
+        reqs, skipped = TR.plan(root, scope, ws, [], CATALOG)
+        if skipped or not reqs:
+            raise Fail("the plan requests the sealed rows inside the write set: %s %s" % (reqs, skipped))
+        recs = TR.execute(root, cluster, reqs, ws, exe=exe)
+    finally:
+        os.environ.pop("HERMES_KANBAN_RUN_ID", None)
+        os.environ.pop("HERMES_KANBAN_TASK", None)
+    if [r["outcome"] for r in recs] != ["applied"] * len(reqs):
+        raise Fail("every request applies on a fresh tree: %s" % [(r["outcome"], r["reasons"]) for r in recs])
+    out = []
+    for rec in recs:
+        att = _attempt(root, rec)
+        request = json.loads((att / "request.json").read_text())
+        if request.pop("root", None) != str(root):
+            raise Fail("the request names this workspace as its root")
+        staged = {str(p.relative_to(att / "out" / "staged")): p.read_bytes()
+                  for p in (att / "out" / "staged").rglob("*") if p.is_file()}
+        out.append((rec, request, (att / "out" / "patch.diff").read_text(), staged))
+    return out
+
+
+def reuse(td: Path, exe: dict) -> str:
+    """V26-2 repeatability at package level: the same fixture, classpath, options and pins, run again in another
+    workspace with a fresh run id, card and cluster id, yields the same request, the same record (everything but
+    who/when) and the byte-identical patch -- for both transformations."""
+    pkg = CDIPKG.PKG
+    parents = [{"parent": "%s.repository.%s" % (pkg, p), "path": "src/main/java/%s/repository/%s.java"
+                % (pkg.replace(".", "/"), p), "members": []} for p in CDIPKG.PARENTS]
+    rows = unit_implementation_obligations(parents)
+    ctrl = LOCPKG.CONTROLLER
+    sites = [{"path": ctrl, "type": "org.acme.ledger.rest.EntryRestController", "member": m, "parameter": "ucBuilder"}
+             for m in ("addEntry", "touch")]
+    cases = (
+        ("cdi", CDIPKG.FIXTURE, lambda r: ({"implementation_obligations": rows}, sorted(x["path"] for x in rows)),
+         lambda r: False),
+        ("uri", LOCPKG.FIXTURE, lambda r: ({"target_symbols": [{"from": UCB, "handler_parameter": True, "sites": sites}]}, [ctrl]),
+         lambda r: (_source_form_ledger(r / ctrl), True)[1]),
+    )
+    out = []
+    for name, fixture, scope_of, edit in cases:
+        first = _one_run(td / ("reuse-%s-a" % name), fixture, scope_of, edit, "run-a", "u:first-%s" % name, exe)
+        second = _one_run(td / ("reuse-%s-b" % name), fixture, scope_of, edit, "run-b", "c:second-%s" % name, exe)
+        if len(first) != len(second):
+            raise Fail("%s: the second run plans the same requests: %d vs %d" % (name, len(first), len(second)))
+        lines = 0
+        for a, b in zip(first, second):
+            if (a[0]["run"], a[0]["card"], a[0]["cluster"]) == (b[0]["run"], b[0]["card"], b[0]["cluster"]):
+                raise Fail("the second run is a fresh run, card and cluster id")
+            if a[1] != b[1]:
+                raise Fail("%s: the second run sends the same request (its root aside): %s vs %s" % (name, a[1], b[1]))
+            diff = {k: (a[0].get(k), b[0].get(k)) for k in _RECORD_IDENTITY if a[0].get(k) != b[0].get(k)}
+            if diff:
+                raise Fail("%s: the second run's record is the first's but for who and when: %s" % (name, diff))
+            if not a[2].strip() or a[2] != b[2] or a[3] != b[3]:
+                raise Fail("%s: the second run stages the byte-identical patch" % name)
+            lines += len(a[2].splitlines())
+        out.append("%s x%d identical (%d patch lines)" % (name, len(first), lines))
+    return "second workspace, fresh run/card/cluster ids: " + "; ".join(out)
+
+
 def location_null(td: Path, exe: dict, pg: dict) -> str:
     root = td / "labels"
     shutil.copytree(EFFECTS.FIXTURE, root)
@@ -295,7 +422,8 @@ def main() -> int:
         exe = TT.executor_for(jar)
         with tempfile.TemporaryDirectory(prefix="typed-repair-pkg-") as tds:
             td = Path(tds)
-            for name, fn in (("cdi-package", cdi_package), ("location-root", location_root)):
+            for name, fn in (("cdi-package", cdi_package), ("location-root", location_root),
+                             ("location-bare", location_bare), ("reuse", reuse)):
                 try:
                     results[name] = "PASS: " + fn(td, exe)
                 except rt.Skip as exc:

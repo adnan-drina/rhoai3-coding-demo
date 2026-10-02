@@ -6888,7 +6888,12 @@ def _assess_handler_parameters(scope: dict[str, Any], by_path: dict[str, list[di
     for row in scope.get("target_symbols") or []:
         if not isinstance(row, dict) or not row.get("handler_parameter"):
             continue
-        banned = {str(row.get("from") or "")} | ({renames[row["from"]]} if renames.get(str(row.get("from") or "")) else set())
+        frm = str(row.get("from") or "")
+        # the documented rename target, from the unit's own rows or else the catalog: a unit sealed on the
+        # retired PACKAGE carries the handler row (via_package) without the type's rename row, and the bare
+        # rename at a handler (v16 t_7074fcda) passed its checkpoint (typed-repair-loop.test.py)
+        to = renames.get(frm) or (str((symbol_renames(root).get(frm) or {}).get("to") or "") if root is not None else "")
+        banned = {frm} | ({to} if to else set())
         # the Jakarta EE namespace move is the same type: a javax.* handler parameter renamed to
         # jakarta.* still takes the retired type (v26 t_4fd2dcec: jakarta.servlet.http.HttpServletResponse,
         # which the catalog deliberately does not map, since the stack has no Servlet API)
