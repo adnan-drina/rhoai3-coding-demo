@@ -158,6 +158,16 @@ M3 cards and recovery (after v20, 2026-09-27):
   Ambiguous ownership is a typed unresolved result: nothing is published.
   An unmeasured scenario is verification debt (`verification_owed`), never a
   repair and never PASS. Raw verdicts never change; M4 measures it again.
+- **A plain scenario comparison follows the same rule** (H-16, v31
+  `t_a7c6ab1a`). A failing `parity:sc:` row whose owner is done, and whose
+  scenario an OTHER open outcome judges now (`open_judges`), is that
+  outcome's repair: the row stays FAIL and owed, no follow-up of the done
+  owner is minted (v31: a generator follow-up scoped to `pom.xml` and a
+  template was handed a persistence exception and a list order, while the
+  Pet behaviour card that judged both scenarios waited on it). A schedule
+  follow-up minted before this rule carries such a comparison to its judges
+  at acceptance (`carried_to_judges` on the record): never PASS, still owed by
+  the judges and by M4. A planned outcome keeps every check M2 gave it.
 - **Scheduled results settle before handoff** (architect decision 2,
   2026-10-01). Every acceptance exit (accept-commit, unchanged rework,
   recovered) measures and routes the rows scheduled at the card; the

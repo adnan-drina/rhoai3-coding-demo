@@ -26,6 +26,10 @@ accepted and restarted through native_control.
    read-only; unknown with the missing input named when it cannot run here.
 6. v29 r1: the Owner repository contract is scheduled at the Owner (and Pet)
    behaviour cards with its owner and named prerequisites.
+7. H-16 (v31 t_a7c6ab1a): a plain scenario comparison scheduled at one card and
+   judged now by ANOTHER open card is that card's repair, never a follow-up of
+   the done owner; a follow-up minted before that rule carries the comparison
+   to its judges at acceptance (named, never passed).
 
 Run: PYTHONDONTWRITEBYTECODE=1 python3 .hermes/lib/planner/schedule_lifecycle.test.py
 """
@@ -142,7 +146,7 @@ class Desk:
                 {"schema": "rhoai3.scenario-parity/v1", "scenario": s, "verdict": v, "security_mode": "disabled",
                  "binding": {"mode": "candidate", "candidate_sha256": tree}}))
 
-    def accept_verified(self, tid, run, scope_by_mode, *, attempt):
+    def accept_verified(self, tid, run, scope_by_mode, *, attempt, record_fail=()):
         """run-verify's acceptance measurement of an issued verification scope: every issued scenario compared
         in its mode on this candidate (records + receipt), run.json naming each mode's assignment, and the
         acceptance judged on that execution record rather than on a worker's list."""
@@ -151,7 +155,7 @@ class Desk:
         NB.git(r.root, "add", "-A")
         NB.git(r.root, "commit", "-qm", "verify %s" % attempt, "--allow-empty")
         sids = [s for m in sorted(scope_by_mode) for s in scope_by_mode[m]]
-        self.measured(scenarios=sids)
+        self.measured(scenarios=sids, record_fail=record_fail)
         r.worklist.update(measure={"known": True, "tuple": [0, 0, 0], "compile_errors": 0, "failing_tests": 0},
                           sources={"surefire": {"reports": 1}})
         r.save_worklist()
@@ -810,6 +814,107 @@ class EarliestMeasurement(unittest.TestCase):
 
 
 # ===========================================================================
+GEN_CHECK = "parity:sc:create-invalid-orders-total"
+
+
+class EvidenceOwnedByAnOpenJudge(unittest.TestCase):
+    """H-16 (v31 t_a7c6ab1a): the Owner card measured two scenario comparisons owned by the accepted
+    generator-configuration requirement; the open Pet behaviour card and the open adapter requirement judge
+    both now. The comparisons were routed to a follow-up of the generator (scope: pom.xml and a template), which
+    could not reach the failing behaviour (a persistence exception, a list order) and which its judges waited on.
+    Here the desk's generator row is ALSO scheduled at the Item card, while the Order card (open) judges it."""
+
+    def setUp(self):
+        self.d = Desk()
+        self.r = self.d.r
+        plan = self.r.plan()
+        self.gen = next(x["owner"] for x in NC.scheduled_rows(plan, B_ORDER)
+                        if x["check"] == GEN_CHECK and x["owner"].startswith("requirement:generator-configuration:"))
+        real = self.real_rows = NC.scheduled_rows
+        gen = self.gen
+
+        def rows(p, holder):
+            out = real(p, holder)
+            if holder == B_ITEM:
+                out = out + [dict(x) for x in real(p, B_ORDER) if x["check"] == GEN_CHECK and x["owner"] == gen]
+            return out
+        NC.scheduled_rows = rows
+        # a status/body difference on that scenario at the Order entry point (v31: a 500 for a 400), not a header
+        self.item = parity_item("parity:gen-body", GEN_CHECK[len("parity:"):], CO_T.EP_ADD)
+        self.d.measured(items=[self.item], clusters=[cluster("c:gen-body", self.item["id"])],
+                        scenarios=REPO_SCENARIOS + [GEN_CHECK[len("parity:"):]])
+
+    def tearDown(self):
+        NC.scheduled_rows = self.real_rows
+        self.d.close()
+
+    def test_a_comparison_an_open_card_judges_is_that_cards_repair_not_a_follow_up(self):
+        r = self.r
+        self.assertIn(GEN_CHECK[len("parity:"):], NC.judged_now(r.plan(), NC._node(r.plan(), B_ORDER)))
+        tid, run, iss = r.issue(B_ITEM)                          # no OWNER_REPAIR_PENDING: nothing to wait on
+        self.assertFalse([n for n in r.plan()["nodes"] if n["outcome_id"].startswith("followup:")])
+        row = next(m for m in r.board.records(tid, "schedule-measure")[-1]["rows"]
+                   if m["check"] == GEN_CHECK and m["owner"] == self.gen)
+        self.assertEqual(row["state"], "fail")                   # never PASS: owed by its judge and by M4
+        self.assertIn("judged now by open outcome(s) %s" % B_ORDER, row["route"])
+        self.assertIn("never a follow-up of %s" % self.gen, row["route"])
+
+    def test_without_an_open_judge_the_done_owner_still_gets_its_follow_up(self):
+        r = self.r
+        self.d.complete(B_ORDER)                                 # the only judge is done
+        # the same body difference, at an entry point an open non-judging card owns (an orphan is refused earlier)
+        item = parity_item("parity:gen-body", GEN_CHECK[len("parity:"):], CO_T.EP_STATUS)
+        self.d.measured(items=[item], clusters=[cluster("c:gen-body", item["id"])],
+                        scenarios=REPO_SCENARIOS + [GEN_CHECK[len("parity:"):]])
+        tid, run, lock = r.claim(B_ITEM)
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "OWNER_REPAIR_PENDING")
+        fnode = NC._node(r.plan(), "followup:%s:m3g1" % self.gen)
+        self.assertEqual(fnode["acceptance"]["requirement_checks"], [GEN_CHECK])
+
+    def test_a_follow_up_minted_before_the_rule_carries_the_comparison_to_its_judge(self):
+        """The live v31 state: the follow-up exists (minted by the earlier routing). Its acceptance carries the
+        comparison its open judge owns: accepted on its own checks, the carry named, the comparison never
+        passed (still FAIL on the candidate) and still owed by the judge."""
+        r = self.r
+        real_judging = NC.judging_now
+        NC.judging_now = lambda *a, **k: []                     # the routing before H-16
+        try:
+            tid, run, lock = r.claim(B_ITEM)
+            with self.assertRaises(Refusal) as cm:
+                NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+            self.assertEqual(cm.exception.code, "OWNER_REPAIR_PENDING")
+            r.native.block_dependency(tid)
+        finally:
+            NC.judging_now = real_judging
+        fid = "followup:%s:m3g1" % self.gen
+        self.assertIn(r.tid(fid), r.native.task(r.tid(B_ORDER))["parents"])   # the judge waits on it: a cycle
+        ftid, frun, fiss = r.issue(fid)
+        fscope = (fiss.get("planned_unit") or {}).get("verification") or {}
+        acc = self.d.accept_verified(ftid, frun, fscope["scenarios_by_mode"], attempt="1",
+                                     record_fail=(GEN_CHECK[len("parity:"):],))
+        self.assertTrue(acc["outcome_accepted"], acc)
+        m = r.board.records(ftid, "accept-commit")[-1]["measurement"]
+        self.assertEqual(m["carried_to_judges"], {GEN_CHECK: [B_ORDER]})
+        self.assertNotIn(GEN_CHECK, m["checks"])                 # carried, never passed
+        self.assertNotIn(GEN_CHECK, m.get("unmet_checks") or {})
+        self.assertNotIn(GEN_CHECK, m.get("deferred_to_m4") or [])
+
+    def test_the_carry_is_only_for_a_schedule_follow_up_and_only_to_an_open_judge(self):
+        plan = self.r.plan()
+        checks = {GEN_CHECK: {"status": "fail"}}
+        judges = {GEN_CHECK[len("parity:"):]: [B_ORDER]}
+        planned = NC._node(plan, self.gen)
+        follow = {"outcome_id": "followup:%s:m3g1" % self.gen, "schedule": [{"check": GEN_CHECK}]}
+        self.assertEqual(NC._carried_to_judges(follow, checks, {GEN_CHECK}, judges), {GEN_CHECK: [B_ORDER]})
+        self.assertEqual(NC._carried_to_judges(planned, checks, {GEN_CHECK}, judges), {})      # M2's checks stay
+        self.assertEqual(NC._carried_to_judges(follow, checks, {GEN_CHECK}, {}), {})           # no open judge
+        self.assertEqual(NC._carried_to_judges(follow, checks, {GEN_CHECK}, None), {})         # not asked
+        self.assertEqual(NC._carried_to_judges(follow, {GEN_CHECK: {"status": "pass"}}, {GEN_CHECK}, judges), {})
+        self.assertEqual(NC.judging_now("behavior:repository-effects:x", {"x": ["y"]}, set()), [])
+
+
 class IssuanceOrder(unittest.TestCase):
 
     def test_the_server_error_producer_goes_before_the_dependent_header_and_the_preflight_is_not_held(self):

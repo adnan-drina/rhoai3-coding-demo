@@ -504,6 +504,9 @@ def _covers(node: dict[str, Any], m: dict[str, Any]) -> bool:
     # by a measurement that records each of their named checks; an empty live
     # work list or a vanished diagnostic never discharges them
     req = set(((node.get("acceptance") or {}).get("requirement_checks")) or [])
+    # H-16: a schedule follow-up's comparison carried to the open outcomes that judge it now is theirs to pass
+    # (named on the record, never passed here)
+    req -= set(m.get("carried_to_judges") or {})
     if req and not req <= set(m.get("checks") or []):
         return False
     if cls not in ("build", "config", "source", "runtime", "behavior"):

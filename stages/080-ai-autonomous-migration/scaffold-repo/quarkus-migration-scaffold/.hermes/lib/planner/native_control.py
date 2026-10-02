@@ -1508,6 +1508,25 @@ def judged_now(plan: dict[str, Any], node: dict[str, Any]) -> set[str]:
     return {s if s.startswith("sc:") else "sc:" + s for s in out}
 
 
+def open_judges(plan: dict[str, Any], native_status: Callable[[str], str]) -> dict[str, list[str]]:
+    """'sc:<id>' -> the EXECUTABLE repair outcomes (a native task that exists and is not done or archived)
+    whose immediate checks judge that scenario now (judged_now)."""
+    judges: dict[str, list[str]] = {}
+    for n in plan.get("nodes") or []:
+        if n.get("role") == "repair" and native_status(n["outcome_id"]) in EXECUTABLE_STATUSES:
+            for s in judged_now(plan, n):
+                judges.setdefault(s, []).append(n["outcome_id"])
+    return judges
+
+
+def judging_now(check: str, judges: dict[str, list[str]], exclude: set[str]) -> list[str]:
+    """H-16: the open outcomes that judge a plain scenario comparison (``parity:sc:<id>``) now, apart from
+    ``exclude``; [] for any other check (a repository-effects row is resolved by its witnesses, _effect_route)."""
+    if not str(check).startswith("parity:sc:"):
+        return []
+    return sorted(set(judges.get(str(check)[len("parity:"):], [])) - set(exclude))
+
+
 def _effect_route(root: Path, plan: dict[str, Any], m: dict[str, Any], worklist: dict[str, Any] | None, tree: str,
                   scen: list[str], native_status: Callable[[str], str]) -> dict[str, Any] | None:
     """H-13 (architect decisions 2026-10-01): who repairs a FAILING repository-effects row. Every failing
@@ -1529,11 +1548,7 @@ def _effect_route(root: Path, plan: dict[str, Any], m: dict[str, Any], worklist:
         node = _node(plan, o) if o else None
         return bool(node and node.get("role") == "repair" and native_status(o) in EXECUTABLE_STATUSES)
 
-    judges: dict[str, list[str]] = {}
-    for n in plan.get("nodes") or []:
-        if n.get("role") == "repair" and executable(n["outcome_id"]):
-            for s in judged_now(plan, n):
-                judges.setdefault(s, []).append(n["outcome_id"])
+    judges = open_judges(plan, native_status)
     owners: dict[str, str] = {}
     unowned: list[str] = []
     ambiguous: dict[str, list[str]] = {}
@@ -1622,6 +1637,7 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
         | set(((hnode.get("acceptance") or {}).get("requirement_checks")) or [])
     reqs = {str(q.get("id")): q for q in plan.get("requirements") or [] if isinstance(q, dict)}
     ownership = plan.get("ownership") or {}
+    judges = open_judges(plan, native_status)
     fails = []
     unrouted: list[Any] = []
     for m in measured:
@@ -1636,6 +1652,14 @@ def schedule_at_issue(root: Path, board: Board, *, task_id: str, run_id: int, ru
             m["route"] = "already routed to %s" % cur
         elif status_of(m["owner"]) != "done":
             m["route"] = "its owner %s is still open: judged there and at M4" % m["owner"]
+        elif judging_now(m["check"], judges, {holder, m["owner"]}):
+            # H-16 (v31 t_a7c6ab1a): H13-R1 for a plain scenario comparison -- an open outcome whose immediate
+            # checks judge this scenario now owns its repair (it can reach the failing behaviour and cannot be
+            # accepted without it); a follow-up of the done owner would be scoped to the owner's files and
+            # waited on by that very judge
+            m["route"] = ("judged now by open outcome(s) %s: their own repair (H13-R1), never a follow-up of %s; the "
+                          "check stays FAIL and owed until measured PASS"
+                          % (", ".join(judging_now(m["check"], judges, {holder, m["owner"]})), m["owner"]))
         elif not ((lambda er: (bool(er["witnesses"]["findings"]) or bool(er["witnesses"]["record_only"]))
                    if er is not None else _producer_difference(m, reqs, worklist))(
                       m.setdefault("_er", _effect_route(root, plan, m, worklist, tree, scen, native_status)))):
@@ -2231,7 +2255,8 @@ def verification_input_gaps(root: Path, scope: dict[str, Any], ex: dict[str, Any
 
 
 def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: dict[str, Any], tree: str,
-             measurement: dict[str, Any], issued_scope: dict[str, Any] | None = None) -> dict[str, Any]:
+             measurement: dict[str, Any], issued_scope: dict[str, Any] | None = None,
+             judges: dict[str, list[str]] | None = None) -> dict[str, Any]:
     from planner.requirement_checks import passed
     scenarios = [str(s) for s in measurement.get("scenarios") or []]
     open_now = open_obligations(worklist)
@@ -2261,9 +2286,13 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
         # only the checks THIS outcome is judged by; a check deferred to M4 (a runtime check an early
         # outcome cannot measure) is named apart, never as a reason this card is not accepted
         kept = set(((node.get("acceptance") or {}).get("requirement_checks")) or [])
+        carried = _carried_to_judges(node, checks, kept, judges)
+        if carried:
+            m["carried_to_judges"] = carried
+            kept -= set(carried)
         m["unmet_checks"] = {k: {"status": v.get("status"), "detail": str(v.get("detail") or "")[:200]}
                              for k, v in sorted(checks.items()) if v.get("status") != "pass" and k in kept}
-        deferred = sorted(k for k, v in checks.items() if k not in kept and v.get("status") != "pass")
+        deferred = sorted(k for k, v in checks.items() if k not in kept and k not in carried and v.get("status") != "pass")
         if deferred:
             m["deferred_to_m4"] = deferred
     if issued_scope is not None:
@@ -2285,6 +2314,23 @@ def _measure(root: Path, plan: dict[str, Any], node: dict[str, Any], worklist: d
     if missing:
         m["missing_classes"] = missing
     return m
+
+
+def _carried_to_judges(node: dict[str, Any], checks: dict[str, Any], kept: set[str],
+                       judges: dict[str, list[str]] | None) -> dict[str, list[str]]:
+    """H-16: a follow-up minted by schedule routing (``schedule``) carries each scheduled scenario comparison it
+    still fails to the OTHER open outcomes that judge that scenario now: their own repair (H13-R1), as routing
+    now decides at issue (schedule_at_issue). The check is never reported passed here -- it stays owed by its
+    judges and by M4 -- and the carry is named on the acceptance record. Only for a schedule follow-up: a
+    planned outcome keeps every check M2 gave it."""
+    if judges is None or not node.get("schedule") or not str(node.get("outcome_id") or "").startswith("followup:"):
+        return {}
+    out: dict[str, list[str]] = {}
+    for k in sorted(kept):
+        js = judging_now(k, judges, {str(node["outcome_id"])})
+        if js and (checks.get(k) or {}).get("status") != "pass":
+            out[k] = js
+    return out
 
 
 def not_accepted_reasons(acc: dict[str, Any]) -> list[str]:
@@ -2374,7 +2420,8 @@ def accept_commit(root: Path, board: Board, *, task_id: str, run_id: int, attemp
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id),
+                 judges=open_judges(plan, _native_status_fn(board, run)))
     evidence_gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not evidence_gaps)
     done = not m["open_owned"] and covered and not evidence_gaps
@@ -2486,7 +2533,8 @@ def evaluate_unchanged_rework(root: Path, board: Board, *, task_id: str, run_id:
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id),
+                 judges=open_judges(plan, _native_status_fn(board, run)))
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
@@ -2536,7 +2584,8 @@ def evaluate_recovered(root: Path, board: Board, *, task_id: str, run_id: int, m
     wl, why = load_worklist(root)
     if wl is None:
         raise Refusal("ACCEPT_" + why, "acceptance reads the rebuilt work list")
-    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id))
+    m = _measure(root, plan, node, wl, tree, measurement, issued_scope=issued_verification(board, task_id, run_id),
+                 judges=open_judges(plan, _native_status_fn(board, run)))
     gaps = repair_evidence_gaps(root, node, tree)
     covered = _covers_or_defers(board, run, plan, node, m, record=not gaps)
     done = not m["open_owned"] and covered and not gaps
