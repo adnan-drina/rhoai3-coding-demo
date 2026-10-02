@@ -1545,8 +1545,19 @@ def select_spill(path: Path, field: str, limit: int = 4000) -> dict:
         if val is None:
             return dict(out, error="no value at %s" % part, keys=sorted(doc)[:40] if isinstance(doc, dict) else [])
     text = val if isinstance(val, str) else json.dumps(val, indent=1, sort_keys=True)
-    out.update({"type": type(val).__name__, "total_chars": len(text), "shown_chars": min(len(text), max(0, limit)),
-                "truncated": len(text) > max(0, limit), "value": text[:max(0, limit)]})
+    shown = text[:max(0, limit)]
+    truncated = len(text) > max(0, limit)
+    out.update({"type": type(val).__name__, "total_chars": len(text), "shown_chars": len(shown),
+                "truncated": truncated, "value": shown})
+    if truncated:
+        # the way out travels INSIDE the value (v32 qwen38 t_2f2509aa: the worker's own grep -o '"value":.*' dropped
+        # the truncated flag and it re-ran one pipeline ~141 times with a larger tail -c, which can never return more
+        # than this command printed)
+        more = ("[truncated: %d of %d characters shown. The rest is not in this output and no tail/head/cut can "
+                "recover it: rerun with --limit %d, or select a narrower --field (e.g. %s[0], or a key below it)]"
+                % (len(shown), len(text), len(text), field or "<field>"))
+        out["value"] = shown + "\n" + more
+        out["more"] = more
     if isinstance(val, (list, dict)):
         out["length"] = len(val)
     return out
