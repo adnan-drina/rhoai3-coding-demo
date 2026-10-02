@@ -338,6 +338,13 @@ require(_sel is not None, 'the selected model has no provider entry')
 require(windows and all((0 < v < WINDOW for v in windows)), 'context limit must be below served window')
 require(c.get('terminal', {}).get('timeout', 0) >= 600, 'terminal timeout')
 require(c.get('compression', {}).get('threshold', 0) >= 0.8, 'compression threshold')
+# E-1 v31: the pinned profile's compression (absolute trigger, tool-result prune, protected tail) is what the worker runs
+_pp = Path('/etc/rhoai3/run-control/profile.json')
+if _pp.is_file():
+    _pd = json.loads(_pp.read_text())
+    _want = ((_pd.get('profiles') or {}).get(_pd.get('default_model')) or {}).get('compression') or {}
+    for _k, _v in _want.items():
+        require(c.get('compression', {}).get(_k) == _v, 'compression %s is %r, the pinned profile says %r' % (_k, c.get('compression', {}).get(_k), _v))
 source = Path('/projects/legacy')
 require(bool(os.statvfs(source).f_flag & os.ST_RDONLY), 'legacy checkout is writable; require a read-only mount')
 source_receipt = source / '.git/rhoai3-source.json'

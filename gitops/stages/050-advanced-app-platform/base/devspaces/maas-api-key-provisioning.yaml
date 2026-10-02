@@ -1444,11 +1444,14 @@ data:
         # worker crossed the threshold a third of the way into every long card
         # (~77K tokens), the summary model timed out, and the worker ran
         # degraded or never terminated (v9 t_d280284d, t_0527c69b, 2026-09-21/22).
-        "compression": {
+        # Per model profile (model-profiles.json "compression", E-1 v31): an
+        # absolute trigger, the no-LLM tool-result prune and a shorter
+        # protected tail, merged over this base block.
+        "compression": dict({
             "enabled": True,
             "threshold": 0.80,
             "target_ratio": 0.20,
-        },
+        }, **(MODEL_PROFILES[DEFAULT_MODEL].get("compression") or {})),
         # Streaming pin (Operator E-20260813T204927Z / E-210050Z): assert
         # display.streaming=true — official key (hermes_cli/config_defaults.py
         # display.streaming; tips.py). API path already prefers stream=True;
