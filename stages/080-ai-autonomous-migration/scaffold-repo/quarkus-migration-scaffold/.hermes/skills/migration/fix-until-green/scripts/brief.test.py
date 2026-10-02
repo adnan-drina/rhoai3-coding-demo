@@ -1485,6 +1485,12 @@ def _worker_evidence_access_case() -> int:
         if body.get("truncated") is not False or body.get("value") != show["task"]["body"] or body.get("total_chars") != len(show["task"]["body"]):
             return _fail("a small field comes back whole, marked not truncated: %s" % {k: body.get(k) for k in ("truncated", "total_chars")})
         many = mod.select_spill(spill, "comments", limit=3000)
+        # v32: a truncated value names its own way out inside the value, so a grep of the value keeps it
+        if many.get("truncated"):
+            if ("--limit %d" % many["total_chars"]) not in many["value"] or "narrower --field" not in many["value"]:
+                return _fail("a truncated --field value must say how to get the rest inside the value: %r" % many["value"][-300:])
+            if not many["value"].startswith(json.dumps(show["comments"], indent=1, sort_keys=True)[:3000]):
+                return _fail("the shown part of a truncated value is unchanged")
         if many.get("truncated") is not True or many.get("length") != 86 or many.get("shown_chars") != 3000 or many.get("total_chars", 0) <= 3000:
             return _fail("a large field is bounded and says so: %s" % {k: many.get(k) for k in ("truncated", "length", "shown_chars", "total_chars")})
         last = mod.select_spill(spill, "comments[-2:]")
