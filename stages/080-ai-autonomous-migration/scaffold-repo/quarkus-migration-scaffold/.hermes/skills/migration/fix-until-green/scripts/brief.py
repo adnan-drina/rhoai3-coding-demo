@@ -1472,6 +1472,8 @@ def main(argv: list[str] | None = None) -> int:
         elsewhere = sorted(r["id"] for r in others if r["id"] not in own["requirements"])
         if elsewhere:
             brief["issued_checks"]["other_owners_on_these_paths"] = elsewhere
+    # V26-3: the resolved context is an attachment beside this brief; the brief carries its index only
+    brief["resolved_context"] = resolved_context(root, cluster, write_set, doc)
     unmet = outcome_unmet(root)
     if unmet:
         brief["outcome_unmet"] = unmet
@@ -2019,6 +2021,10 @@ def brief_digest(brief: dict, stem: str) -> str:
         out.append("CAPABILITY GAP (no qualified translation exists; do not search for one and do not guess one -- block "
                    "the card naming the gap):")
         out += ["  %s -- %s" % (_subject_label(r.get("subject") or r.get("id")), u) for r, u in gaps]
+    rc = brief.get("resolved_context") if isinstance(brief.get("resolved_context"), dict) else {}
+    if rc.get("index") or rc.get("error"):
+        # V26-3: one line naming the attachment; the context itself is never injected here
+        out.append(str(rc.get("index") or "RESOLVED CONTEXT: unavailable (%s)" % _clip(rc.get("error"), 200)))
     for name, b in sorted((rs.get("budget") or {}).items()):
         if isinstance(b, dict):
             out.append("  budget %s: key %s, %s of %s spent (%s)" % (name, b.get("key"), b.get("spent"), b.get("limit"), b.get("means")))
@@ -2531,6 +2537,42 @@ def issued_ownership(root: Path) -> dict | None:
         return None
     return {"outcome": oid, "requirements": {str(r) for r in node.get("requirements") or []},
             "checks_now": sorted(str(c) for c in ((node.get("acceptance") or {}).get("requirement_checks") or []))}
+
+
+def _context_plan(root: Path, cluster: dict, write_set: list) -> tuple[dict, dict, str]:
+    """(plan, node, where the plan was read) for the resolved context: the native plan node of THIS card on
+    an outcome-board/v2 board; off it, the plan-semantics requirements on the write set projected as one node
+    (the same selection planned_requirements makes without an owner)."""
+    board = _outcome_bridge._native(root)
+    if board is not None:
+        from planner import native_control as NC
+        task, _run = _outcome_bridge._ids()
+        _role, run_id, _oid, plan, node = NC.node_context(board, task)
+        return plan, node, "kanban:plan/%s/r%s" % (run_id, plan.get("revision"))
+    from planner.paths import PLAN_SEMANTICS
+    p = root / PLAN_SEMANTICS
+    reqs = list(((load_json(p).get("plan") or {}).get("requirements") or []) if p.is_file() else [])
+    mine = sorted(str(r.get("id")) for r in reqs if isinstance(r, dict) and r.get("status") in ("applicable", "unresolved")
+                  and set(r.get("paths") or []) & set(write_set))
+    return {"requirements": reqs}, {"outcome_id": str(cluster.get("id") or ""), "requirements": mine}, PLAN_SEMANTICS.as_posix()
+
+
+def resolved_context(root: Path, cluster: dict, write_set: list, worklist: dict) -> dict:
+    """V26-3: build this card's resolved context (planner.resolved_context) on the current product tree and
+    write it BESIDE the brief (verification/loop/context-<cluster>.json). The brief keeps only this index --
+    the path, the tree and the counts -- and the digest one line: the context is read on demand, never
+    injected. A build fault is shown, never hidden as "no context"."""
+    from planner import resolved_context as RC
+    from planner.canonical import product_tree_sha256
+    try:
+        plan, node, ref = _context_plan(root, cluster, write_set)
+        tree = product_tree_sha256(root)
+        ctx = RC.build(root, plan, node, worklist, tree, plan_ref=ref)
+        rel = (LOOP_DIR / ("context-%s.json" % str(cluster.get("id") or "").replace(":", "-"))).as_posix()
+        write_canonical(root / rel, ctx)
+        return {"path": rel, "tree": tree, "counts": RC.counts(ctx), "index": RC.index_line(ctx, rel)}
+    except Exception as exc:
+        return {"error": "resolved context failed: %s" % exc}
 
 
 def diagnostic_owners(root: Path) -> dict | None:

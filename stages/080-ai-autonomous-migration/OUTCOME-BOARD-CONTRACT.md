@@ -68,6 +68,21 @@ Stable keys: `outcome:v2:<run>:<outcome>`, `assess:v2:<run>:<outcome>`,
 `deliver:v2:<run>:<outcome>`. Every v2 task body is the node description plus
 one procedure line for its role (`native_control.PROCEDURE`).
 
+Resolved context (V26-3). Each `brief.py` run of an issued M3 card also writes
+`verification/loop/context-<cluster>.json` (`rhoai3.resolved-context/v1`,
+`planner/resolved_context.py`) and adds one index line to the digest; the
+context is never injected into the brief. It separates FROZEN source facts (the
+plan node's requirement rows, the evidence bundle's structural model,
+`decisions.yaml` build profiles) from DESTINATION facts of the current product
+tree (generated versus handwritten placement by file location, the build's
+generators, the measured obligations on the granted paths), and carries the
+owned recipes with their prerequisites and refusals, the immediate and deferred
+checks from the node's `check_plan`, and named unknowns. Every assertion has a
+`<file>#<selector>` provenance and a kind (`fact` or a labelled `inference`).
+A destination fact bound to another tree is withdrawn into the unknowns
+(`resolved_context.fresh`/`staleness`). It is descriptive: it grants no scope
+and judges nothing.
+
 ## A4. Lifecycle
 
 | # | Step | Native operation | Domain check (fail-closed hook or CLI) |
@@ -227,6 +242,7 @@ observers are never acceptance gates.
 |---|---|
 | `.hermes/lib/planner/native_board.test.py` (22) | synthetic board with the pinned review/dependency semantics, real git, the real classifier, the real K2 hook |
 | `.hermes/lib/planner/native_m3_recovery.test.py` (11) | the M3 recovery rules above on the same synthetic board; also passes under the worker's `python3` (3.9) in the ws-080 image |
+| `.hermes/lib/planner/resolved_context.test.py` | the resolved context on the migration specimen and its renamed twin: inactive profile, generated DTO, wrong-tree rejection, explicit unknowns |
 | Historical `test_native_control.py` (36 checks; retired suite in Git history) | the ws-080 image: real `kanban_db` lifecycle, real `hermes kanban` CLI, the golden's `native_gate.py` under the worker's `python3` (3.9), the real K2 hook. No model, no dispatcher loop, no cluster |
 | `outcome-board-hooks.test.py`, `app-migration-template.test.py`, pipeline `provision-migration-run.test.py` | platform side |
 

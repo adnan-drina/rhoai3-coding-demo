@@ -1318,6 +1318,17 @@ def _planned_generated_body_brief_case() -> int:
             if cl["write_set"] != ["pom.xml"] or "<generateJsonCreator>false</generateJsonCreator>" not in act or "items" not in act:
                 return _fail("[%s] the pom card's first action is the V16-8 option, naming the omitted property: %s %r"
                              % (pkg, cl["write_set"], act[:400]))
+            # V26-3: the resolved context is written BESIDE the brief and named by one digest line, never injected
+            import brief as B
+            from planner.canonical import product_tree_sha256
+            idx = brief.get("resolved_context") or {}
+            ctx_p = root / str(idx.get("path") or "-")
+            if idx.get("error") or not ctx_p.is_file() or ctx_p.parent != root / LOOP_DIR \
+                    or load_json(ctx_p).get("schema") != "rhoai3.resolved-context/v1" or idx.get("tree") != product_tree_sha256(root):
+                return _fail("[%s] brief.py writes the resolved context beside the brief, bound to this tree: %s" % (pkg, idx))
+            text = B.brief_digest(brief, "brief-%s" % cl["id"].replace(":", "-"))
+            if text.count("RESOLVED CONTEXT: %s" % idx["path"]) != 1 or '"provenance"' in text or "frozen-source fact" not in text:
+                return _fail("[%s] the digest names the attachment in one line and does not inject it" % pkg)
     return 0
 
 
