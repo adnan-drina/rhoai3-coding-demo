@@ -6,9 +6,12 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import java.util.Collection;
 import org.acme.depot.model.Crate;
+import org.acme.depot.model.Kind;
 import org.acme.depot.model.Label;
 import org.acme.depot.model.Pallet;
+import org.acme.depot.model.Stamp;
 import org.acme.depot.repository.CrateRepository;
+import org.acme.depot.repository.KindRepository;
 import org.acme.depot.repository.LabelRepository;
 
 // one transaction per call, as the source's transactional service: the
@@ -79,5 +82,53 @@ public class DepotService {
     @Transactional
     public void deleteLabel(Label label) {
         labels.delete(label);
+    }
+
+    @Inject
+    KindRepository kinds;
+
+    @Transactional
+    public Kind findKind(int id) {
+        return kinds.findById(id);
+    }
+
+    @Transactional
+    public Kind saveKind(Kind kind) {
+        kinds.save(kind);
+        return kind;
+    }
+
+    @Transactional
+    public void deleteKind(Kind kind) {
+        kinds.delete(kind);
+    }
+
+    @Transactional
+    public boolean setKind(int palletId, int kindId) {
+        Pallet p = em.find(Pallet.class, palletId);
+        Kind k = em.find(Kind.class, kindId);
+        if (p == null || k == null) {
+            return false;
+        }
+        p.kind = k;
+        return true;
+    }
+
+    @Transactional
+    public Stamp addStamp(int palletId, String name) {
+        Pallet p = em.find(Pallet.class, palletId);
+        if (p == null) {
+            return null;
+        }
+        Stamp s = new Stamp();
+        s.name = name;
+        s.pallet = p;
+        em.persist(s);
+        return s;
+    }
+
+    @Transactional
+    public Stamp findStamp(int id) {
+        return em.find(Stamp.class, id);
     }
 }

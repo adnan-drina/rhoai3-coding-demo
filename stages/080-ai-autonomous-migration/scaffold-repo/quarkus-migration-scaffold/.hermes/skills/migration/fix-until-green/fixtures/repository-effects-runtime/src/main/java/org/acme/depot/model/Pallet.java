@@ -27,4 +27,7 @@ public class Pallet {
     @JoinTable(name = "pallet_labels", joinColumns = @JoinColumn(name = "pallet_id"),
                inverseJoinColumns = @JoinColumn(name = "label_id"))
     public Set<Label> labels = new HashSet<>();
+    @ManyToOne
+    @JoinColumn(name = "kind_id")
+    public Kind kind;
 }
