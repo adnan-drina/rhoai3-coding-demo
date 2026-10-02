@@ -317,7 +317,7 @@ def run_cases(q: Q) -> None:
         plan = L.initial_plan_from_root(a)
         native = FakeNative(q.tmp)
         m2 = native.create(title="M2 PLAN", body="plan", assignee="implementer", parents=[], key="m2-plan",
-                           skills=["paved-road-m2"], workspace="", max_retries=1)
+                           skills=["paved-road-m2"], workspace="", max_retries=2)
         store = G.init_store(root, run_id="run-a", m2_task=m2, native_db=native.db_path, protocol="outcome-board/v1")
         G.persist_plan(store, plan)
         native.fail_after = {"create": 3}

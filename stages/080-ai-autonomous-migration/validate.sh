@@ -722,7 +722,7 @@ check "080 golden K4 converter present" \
   "test -f '${SCAFFOLD_KERNEL}/k4_schema.py' && test -f '${SCAFFOLD_KERNEL}/k4_convert.py' && echo present || echo missing" \
   "present"
 # B11 (635d9496): loop cards get one automatic recovery after a halt, so K4
-# pins max_retries to k4_schema.LOOP_MAX_RETRIES = 2 (M1/M2 keep 1)
+# pins max_retries to k4_schema.LOOP_MAX_RETRIES = 2; autostart gives M1/M2 the same 2 (v32)
 check "080 K4 payloads pin max_retries to LOOP_MAX_RETRIES (2)" \
   "grep -q '^LOOP_MAX_RETRIES = 2$' '${SCAFFOLD_KERNEL}/k4_schema.py' && grep -c '\"max_retries\": LOOP_MAX_RETRIES' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
   "1"

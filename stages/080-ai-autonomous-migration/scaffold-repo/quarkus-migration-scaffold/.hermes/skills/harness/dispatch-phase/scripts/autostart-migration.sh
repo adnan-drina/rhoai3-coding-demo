@@ -313,7 +313,7 @@ M1_JSON="$(
   create_card "M1 ANALYZE" \
     --assignee implementer \
     --workspace "dir:${ROOT}" \
-    --max-retries 1 \
+    --max-retries 2 \
     --max-runtime 2h \
     --skill paved-road-m1 \
     --idempotency-key m1-analyze \
@@ -329,7 +329,7 @@ if [[ "${PLANNER_ACTIVATION}" == "activated" || "${PLANNER_ACTIVATION}" == "pilo
       --assignee implementer \
       --workspace "dir:${ROOT}" \
       --parent "${M1_ID}" \
-      --max-retries 1 \
+      --max-retries 2 \
       --max-runtime 2h \
       --skill paved-road-m2 \
       --idempotency-key m2-plan \

@@ -93,7 +93,7 @@ class Run:
         git(self.root, "commit", "-qm", "baseline")
         self.native = FakeNative(self.tmp)
         self.m2 = self.native.create(title="M2 PLAN", body="plan", assignee="implementer", parents=[], key="m2-plan",
-                                     skills=["paved-road-m2"], workspace="", max_retries=1)
+                                     skills=["paved-road-m2"], workspace="", max_retries=2)
         self.m2_run, self.m2_lock = self.native.claim(self.m2)
         self.plan = derive(fx)
         self.store = None
