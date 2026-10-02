@@ -5,7 +5,8 @@
     "request_body": "Both models explicitly disable thinking and pin their model card's non-thinking sampling in each request: Qwen3.8 temperature 0.7, top_p 0.8, top_k 20, min_p 0.0, presence_penalty 1.5, repetition_penalty 1.0 (https://huggingface.co/Qwen/Qwen3.8-27B#best-practices); Qwen3.6 the same values, its card's Instruct/Non-Thinking set (https://huggingface.co/Qwen/Qwen3.6-27B; E-1, 2026-10-01: the qwen3-6-27b server override is the card's thinking/precise-coding set 0.6/0.95/20/0/0.0/1.0, which does not apply to a worker that runs thinking off). Explicit per-run values prevent a server-default change from changing a run's sampling; the served defaults are unchanged for Kilo/OpenCode. A thinking-mode experiment must explicitly supply its own mode and sampling. v12 (2026-09-24, t_655b1607) ran two responses to the full output cap without the thinking-off row.",
     "source": "B4: the ONE declared runtime profile per model and mode. dest-init generates every model-dependent worker setting from it (provider, caps, request body on the main slot and on every auto auxiliary slot, the request pacer); the migration-run provisioner pins a copy per run (<run>-run-control profile.json), and the loop refuses a runtime that differs from the pin.",
     "timeouts": "vLLM buffers a tool call's arguments until complete; a ~12 KB file written through a tool call sends no bytes for ~4K tokens at ~18 tok/s, beyond Hermes's 120s default stream read timeout (pilot v5 M3 t_3efca989).",
-    "compression": "E-1 (v31, 2026-10-02): 7 of 57 implementer runs ended without a terminal call after 40-95 min at ~121-123K real prompt tokens against the 131072 window: HTTP 400 (prompt + 8192 output > window) after 3 compression attempts, or a >900 s prefill cut by the gateway. Compression at 0.80 x 110000 could not shrink a protected tail of 20 messages holding large tool results, and the no-LLM prune was off. Per profile (merged over the base block): threshold_tokens fires compression at the lower of the ratio and this absolute count (Hermes docs), proactive_prune_tokens enables the tool-result prune (docs suggest 48000), protect_last_n keeps fewer raw messages. Both profiles carry the SAME absolute values (2026-10-02 A/B design: two parallel runs, one per model, compare the model and not the context management)."
+    "compression": "E-1 (v31, 2026-10-02): 7 of 57 implementer runs ended without a terminal call after 40-95 min at ~121-123K real prompt tokens against the 131072 window: HTTP 400 (prompt + 8192 output > window) after 3 compression attempts, or a >900 s prefill cut by the gateway. Compression at 0.80 x 110000 could not shrink a protected tail of 20 messages holding large tool results, and the no-LLM prune was off. Per profile (merged over the base block): threshold_tokens fires compression at the lower of the ratio and this absolute count (Hermes docs), proactive_prune_tokens enables the tool-result prune (docs suggest 48000), protect_last_n keeps fewer raw messages. Both profiles carry the SAME absolute values (2026-10-02 A/B design: two parallel runs, one per model, compare the model and not the context management).",
+    "loop_escalation": "qwen3-8-27b-int4 only (Hermes runtime patch 0017): after the guard's third identical-call note the worker's requests switch to this thinking bundle until the first edit (write_file/patch, or terminal sed -i, > src/, tee src/) or verification call (run-verify.sh, advance.py), or max_turns thinking turns (8, a judgement), then return to request_body. Evidence: tmp/v30-screen (v30 real prefixes on the INT4 pod: served profile repeated the command 25/27, thinking 0/27; at max_tokens 8192 xhigh ended in a tool call 14/15, medium 12/15). reasoning_effort travels inside chat_template_kwargs (vLLM 0.18's API field accepts none/low/medium/high only). reasoning_echo keeps the thinking turn's reasoning in the next turn. Ordinary-turn sampling is unchanged; never raise presence/repetition penalties or set frequency_penalty (tested: no cross-turn effect in vLLM 0.18)."
   },
   "profiles": {
     "qwen3-6-27b": {
@@ -78,6 +79,25 @@
         "threshold_tokens": 72000,
         "protect_last_n": 12,
         "proactive_prune_tokens": 48000
+      },
+      "reasoning_echo": true,
+      "loop_escalation": {
+        "enabled": true,
+        "max_turns": 8,
+        "request_body": {
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "top_k": 20,
+          "min_p": 0.0,
+          "presence_penalty": 0.0,
+          "repetition_penalty": 1.0,
+          "max_tokens": 8192,
+          "chat_template_kwargs": {
+            "enable_thinking": true,
+            "preserve_thinking": true,
+            "reasoning_effort": "xhigh"
+          }
+        }
       }
     }
   },

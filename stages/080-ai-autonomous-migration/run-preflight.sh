@@ -345,6 +345,13 @@ if _pp.is_file():
     _want = ((_pd.get('profiles') or {}).get(_pd.get('default_model')) or {}).get('compression') or {}
     for _k, _v in _want.items():
         require(c.get('compression', {}).get(_k) == _v, 'compression %s is %r, the pinned profile says %r' % (_k, c.get('compression', {}).get(_k), _v))
+    # patch 0017: the selected profile's loop escalation and reasoning echo reach the worker config exactly
+    _prof = ((_pd.get('profiles') or {}).get(_pd.get('default_model')) or {})
+    if _prof.get('loop_escalation'):
+        require((_sel or {}).get('loop_escalation') == _prof['loop_escalation'],
+                'the selected model entry does not carry the pinned loop_escalation')
+    if _prof.get('reasoning_echo'):
+        require(_m.get('reasoning_echo') is True, 'model.reasoning_echo is not set for a profile that requires it')
 source = Path('/projects/legacy')
 require(bool(os.statvfs(source).f_flag & os.ST_RDONLY), 'legacy checkout is writable; require a read-only mount')
 source_receipt = source / '.git/rhoai3-source.json'

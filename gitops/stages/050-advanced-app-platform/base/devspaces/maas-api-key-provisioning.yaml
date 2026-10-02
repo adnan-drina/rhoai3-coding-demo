@@ -1235,12 +1235,15 @@ data:
             "api_key": "${env:MAAS_API_KEY}",
             "discover_models": False,
             "models": {
-                model_id: {
+                model_id: dict({
                     "context_length": prof["context_length"],
                     "stale_timeout_seconds": prof["stale_timeout_seconds"],
                     "timeout_seconds": prof["timeout_seconds"],
                     "max_tokens": prof["max_tokens"],
-                },
+                # Loop escalation (runtime patch 0017): the profile's thinking
+                # bundle for the turns after a third identical-call note, until
+                # an edit, a verification call or max_turns. Absent = off.
+                }, **({"loop_escalation": prof["loop_escalation"]} if prof.get("loop_escalation") else {})),
             },
         }
 
@@ -1265,6 +1268,11 @@ data:
             # context (Deputy E-20260809T180800Z), hence max_tokens.
             "context_length": MODEL_PROFILES[DEFAULT_MODEL]["context_length"],
             "max_tokens": MODEL_PROFILES[DEFAULT_MODEL]["max_tokens"],
+            # Echo reasoning_content back to the custom provider (run_agent.py
+            # reads model.reasoning_echo): an escalated thinking turn's
+            # reasoning must reach the next turn, or the worker falls back
+            # into the repeated call (v30 screen, Phase 2).
+            **({"reasoning_echo": True} if MODEL_PROFILES[DEFAULT_MODEL].get("reasoning_echo") else {}),
         },
         "model_aliases": {
             "qwen38": {
