@@ -1,0 +1,272 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 2 Oct 2026 23:33:01 +0200
+Subject: [PATCH] fix(tools): read_file says when it cut a line at the per-line
+ cap
+
+RHOAI3 v32: every read_file of a one-line resolved-context JSON
+(14.7-35.7K characters) returned ~2.2-2.4K characters with
+"truncated": false. The per-line cap (tool_output.max_line_length, 2000 by
+default; ShellFileOperations._add_line_numbers, after the shell clamp
+`cut -b1-{4*cap+1}` in read_file) left only an inline "... [truncated]"
+suffix, and offset/limit page by line, so the rest of the line was
+unreachable. Workers turned to execute_code and inline python instead.
+
+When a page contains a line longer than the cap, read_file now probes that
+line's full length (LC_ALL=C awk over the page's line range, bytes; one
+extra command, only when a line was cut) and reports:
+
+- truncated: true;
+- clipped_lines: [{"line", "length_bytes", "shown_chars"}] (up to 50);
+- a hint sentence: the line(s) cut at the cap with the full length, the
+  "... [truncated]" marker, and that offset and limit page by LINE, so the
+  cut part of a line cannot be reached by paging (appended to a pagination
+  hint when there is one).
+
+The content is unchanged. A page with no cut line runs the same commands
+and returns the same result as before (clipped_lines absent). Local
+extension.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tests/tools/test_read_file_clipped_line.py | 139 +++++++++++++++++++++
+ tools/file_operations.py                   |  64 +++++++++-
+ 2 files changed, 202 insertions(+), 1 deletion(-)
+ create mode 100644 tests/tools/test_read_file_clipped_line.py
+
+diff --git a/tests/tools/test_read_file_clipped_line.py b/tests/tools/test_read_file_clipped_line.py
+new file mode 100644
+index 0000000..2733280
+--- /dev/null
++++ b/tests/tools/test_read_file_clipped_line.py
+@@ -0,0 +1,139 @@
++"""read_file says when it cut a line at the per-line cap (RHOAI3 v32).
++
++Every read_file of a one-line resolved-context JSON (14.7-35.7K characters)
++returned ~2.2K characters with ``"truncated": false``: the per-line cap
++(``tool_output.max_line_length``, 2000 by default) applied in
++``ShellFileOperations._add_line_numbers`` left only an inline
++``... [truncated]`` suffix. A cut line is now reported: ``truncated`` true,
++``clipped_lines`` with the line's full length, and a statement that offset
++and limit page by line. Files with no cut line read exactly as before.
++"""
++
++import json
++import os
++import sys
++
++import pytest
++
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
++
++from tools.environments.local import LocalEnvironment
++from tools.file_operations import ShellFileOperations
++from tools.tool_output_limits import get_max_line_length
++
++
++@pytest.fixture
++def ops():
++    ops = ShellFileOperations(LocalEnvironment())
++    ops.commands = []
++    real_exec = ops._exec
++
++    def _recording_exec(command, *args, **kwargs):
++        ops.commands.append(command)
++        return real_exec(command, *args, **kwargs)
++
++    ops._exec = _recording_exec
++    return ops
++
++
++def test_one_line_30k_file_reports_the_clip_and_its_full_length(tmp_path, ops):
++    cap = get_max_line_length()
++    body = json.dumps({"context": "v" * 30_000})[:30_000]
++    path = tmp_path / "resolved-context.json"
++    path.write_text(body)  # one line, no trailing newline
++    result = ops.read_file(str(path))
++    data = result.to_dict()
++    assert data["content"] == "1|" + body[:cap] + "... [truncated]"  # content as before
++    assert data["truncated"] is True
++    assert data["clipped_lines"] == [{"line": 1, "length_bytes": 30_000, "shown_chars": cap}]
++    assert data["hint"] == (
++        f"Line 1 was cut at {cap} characters of 30,000 bytes; the cut is marked "
++        "'... [truncated]'. offset and limit page by LINE, so the cut part of a "
++        "line cannot be reached by paging."
++    )
++
++
++def test_normal_multiline_file_is_unchanged(tmp_path, ops):
++    path = tmp_path / "plain.txt"
++    path.write_text("alpha\nbeta\ngamma\n")
++    data = ops.read_file(str(path)).to_dict()
++    assert data == {  # today's output, including its trailing "4|" gutter
++        "content": "1|alpha\n2|beta\n3|gamma\n4|",
++        "total_lines": 3,
++        "file_size": 17,
++        "truncated": False,
++        "is_binary": False,
++        "is_image": False,
++    }
++    assert not any("awk" in c for c in ops.commands)  # no extra probe
++
++
++def test_unclipped_reads_match_the_unpatched_path(tmp_path, ops, monkeypatch):
++    """With the report disabled (the code path before this change) the same
++    reads give the same JSON, byte for byte, and the same commands."""
++    files = {
++        "plain.txt": "alpha\nbeta\ngamma\n",
++        "nonl.txt": "a\nb",
++        "paged.txt": "".join(f"line {i}\n" for i in range(30)),
++    }
++    for name, text in files.items():
++        (tmp_path / name).write_text(text)
++    reads = [("plain.txt", 1, 2000), ("nonl.txt", 1, 2000), ("paged.txt", 5, 10)]
++    now = [json.dumps(ops.read_file(str(tmp_path / f), o, n).to_dict()) for f, o, n in reads]
++    commands_now = list(ops.commands)
++    ops.commands.clear()
++    monkeypatch.setattr(ShellFileOperations, "_clipped_line_report", lambda *a, **k: None)
++    before = [json.dumps(ops.read_file(str(tmp_path / f), o, n).to_dict()) for f, o, n in reads]
++    assert now == before and commands_now == ops.commands
++
++
++def test_line_exactly_at_the_cap_is_not_clipped(tmp_path, ops):
++    cap = get_max_line_length()
++    path = tmp_path / "edge.txt"
++    path.write_text("x" * cap + "\nend\n")
++    data = ops.read_file(str(path)).to_dict()
++    assert "clipped_lines" not in data and data["truncated"] is False and "hint" not in data
++
++
++def test_multiline_file_with_one_long_line_marks_that_line(tmp_path, ops):
++    cap = get_max_line_length()
++    lines = ["one", "two", "z" * 5_000, "four", "five"]
++    path = tmp_path / "mixed.txt"
++    path.write_text("\n".join(lines) + "\n")
++    data = ops.read_file(str(path)).to_dict()
++    shown = data["content"].split("\n")
++    assert shown[0] == "1|one" and shown[1] == "2|two" and shown[3] == "4|four" and shown[4] == "5|five"
++    assert shown[2] == "3|" + "z" * cap + "... [truncated]"
++    assert data["truncated"] is True
++    assert data["clipped_lines"] == [{"line": 3, "length_bytes": 5_000, "shown_chars": cap}]
++    assert data["hint"].startswith(f"Line 3 was cut at {cap} characters of 5,000 bytes;")
++
++
++def test_clip_statement_follows_the_pagination_hint(tmp_path, ops):
++    path = tmp_path / "paged.txt"
++    path.write_text("\n".join(["a", "q" * 4_000, "b", "c", "d"]) + "\n")
++    data = ops.read_file(str(path), offset=1, limit=3).to_dict()
++    assert data["hint"].startswith("Use offset=4 to continue reading")
++    assert "offset and limit page by LINE" in data["hint"]
++    assert data["clipped_lines"][0]["line"] == 2
++
++
++def test_read_file_tool_json_reports_the_clip(tmp_path):
++    from tools.file_tools import read_file_tool
++
++    cap = get_max_line_length()
++    path = tmp_path / "ctx.json"
++    path.write_text(json.dumps({"k": "v" * 30_000}))  # 30,009 bytes, one line
++    out = json.loads(read_file_tool(str(path)))
++    assert out["truncated"] is True
++    assert out["clipped_lines"] == [{"line": 1, "length_bytes": 30_009, "shown_chars": cap}]
++    assert "offset and limit page by LINE" in out["hint"]
++
++
++def test_several_cut_lines(tmp_path, ops):
++    cap = get_max_line_length()
++    path = tmp_path / "many.txt"
++    path.write_text("\n".join(["w" * (cap + 1 + k) for k in range(3)]) + "\n")
++    data = ops.read_file(str(path)).to_dict()
++    assert [e["length_bytes"] for e in data["clipped_lines"]] == [cap + 1, cap + 2, cap + 3]
++    assert data["hint"].startswith(f"3 lines were cut at {cap} characters (full lengths in clipped_lines);")
+diff --git a/tools/file_operations.py b/tools/file_operations.py
+index aab5c4e..22601ab 100644
+--- a/tools/file_operations.py
++++ b/tools/file_operations.py
+@@ -173,6 +173,10 @@ class ReadResult:
+     dimensions: Optional[str] = None  # For images: "WIDTHxHEIGHT"
+     error: Optional[str] = None
+     similar_files: List[str] = field(default_factory=list)
++    # Lines cut at the per-line cap (tool_output.max_line_length): one entry
++    # per cut line, {"line", "length_bytes", "shown_chars"}. Absent when no
++    # line was cut, so such reads are unchanged.
++    clipped_lines: Optional[List[Dict[str, Any]]] = None
+     
+     def to_dict(self) -> dict:
+         return {k: v for k, v in self.__dict__.items() if v is not None and v != []}
+@@ -1642,13 +1646,71 @@ class ShellFileOperations(FileOperations):
+                 ),
+             )
+ 
++        clipped = self._clipped_line_report(path, read_output, offset)
++        if clipped:
++            truncated = True
++            hint = f"{hint} {clipped[1]}" if hint else clipped[1]
+         return ReadResult(
+             content=self._add_line_numbers(read_output, offset),
+             total_lines=total_lines,
+             file_size=file_size,
+             truncated=truncated,
+-            hint=hint
++            hint=hint,
++            clipped_lines=clipped[0] if clipped else None,
+         )
++
++    # At most this many cut lines are listed one by one.
++    _CLIPPED_LINES_LISTED = 50
++
++    def _clipped_line_report(self, path: str, read_output: str, offset: int):
++        """``(entries, statement)`` for the lines of this page that
++        ``_add_line_numbers`` cuts at the per-line cap, or None when none is.
++
++        The shell pipeline already clamped each line to a byte budget, so a
++        cut line's full length is probed from the file (bytes, ``LC_ALL=C``
++        awk), only when a line was cut. The content itself is unchanged: a
++        cut line still ends with ``... [truncated]``.
++        """
++        from tools.tool_output_limits import get_max_line_length
++
++        cap = get_max_line_length()
++        numbers = [
++            n for n, line in enumerate(read_output.split("\n"), start=offset)
++            if len(line) > cap
++        ]
++        if not numbers:
++            return None
++        lengths: Dict[int, int] = {}
++        probe = (
++            f"LC_ALL=C awk -v s={numbers[0]} -v e={numbers[-1]} -v m={cap} "
++            "'NR>e {exit} NR>=s && length($0)>m {print NR\" \"length($0)}' "
++            f"{self._escape_shell_arg(path)}"
++        )
++        probe_result = self._exec(probe)
++        if probe_result.exit_code == 0:
++            for row in _strip_terminal_fence_leaks(probe_result.stdout).splitlines():
++                parts = row.split()
++                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
++                    lengths[int(parts[0])] = int(parts[1])
++        entries = [
++            {"line": n, "length_bytes": lengths.get(n), "shown_chars": cap}
++            for n in numbers[: self._CLIPPED_LINES_LISTED]
++        ]
++        if len(numbers) == 1:
++            full = lengths.get(numbers[0])
++            what = f"Line {numbers[0]} was cut at {cap} characters" + (
++                f" of {full:,} bytes" if full else ""
++            )
++        else:
++            what = (
++                f"{len(numbers)} lines were cut at {cap} characters "
++                "(full lengths in clipped_lines)"
++            )
++        statement = (
++            f"{what}; the cut is marked '... [truncated]'. offset and limit page "
++            "by LINE, so the cut part of a line cannot be reached by paging."
++        )
++        return entries, statement
+     
+     def _unicode_variant_match(self, path: str) -> Optional[str]:
+         """Find an existing file whose name is unicode-equivalent to ``path``.
+-- 
+2.54.0 (Apple Git-157)
+

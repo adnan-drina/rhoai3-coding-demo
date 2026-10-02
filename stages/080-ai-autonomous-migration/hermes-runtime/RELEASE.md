@@ -5,14 +5,16 @@ the ordered patch series in [patches/](patches/). This record names what was
 published, how it was qualified, and which image each run uses. A pin edit
 alone does not prove an image was built or deployed.
 
-## Pending (not built): patches 0018 and 0019
+## Pending (not built): patches 0018, 0019 and 0020
 
-Series 0001–0019 gives patched tree `39272a51f73f560e045baeb1c524b996e98326cf` (verified from a fresh base);
-the recipe pins that tree and 19 patches. No image is built, pushed or pinned: the current release below and
+Series 0001–0020 gives patched tree `8328461c4d05e0760e694ea5b9970b019366421a` (verified from a fresh base);
+the recipe pins that tree and 20 patches. No image is built, pushed or pinned: the current release below and
 every run pin are unchanged. 0018 adds the same-result, same-call and repeat-read escalation triggers and the
 restart bound (`same_result_count` 3, `same_call_count` 5, `repeat_read_count` 3 within `repeat_read_window` 8,
 `max_starts_per_signature` 2 on `qwen3-8-27b-int4` only; v32 t_2f2509aa, t_449a35e4 and t_56432803) and ends an escalation when the card's `typed-repair.py` runs (t_6d0f2b9f). 0019 makes a foreground `terminal` call cut at the 420 s foreground limit say that
-the process was killed, the requested and applied limits, and the background + wait route. The Stage 050
+the process was killed, the requested and applied limits, and the background + wait route. 0020 makes
+`read_file` report a line cut at the 2,000-character per-line cap (`truncated` true, `clipped_lines` with the
+full length, and that offset/limit page by line); reads with no cut line are unchanged. The Stage 050
 profile carries the 0018 keys; a 0017 image ignores them (identical-call trigger only).
 
 ## Current release (2026-10-02, patch 0017: Qwen 3.8 loop escalation; v32 A/B package)
