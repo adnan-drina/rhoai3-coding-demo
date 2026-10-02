@@ -131,11 +131,12 @@ ARG HERMES_DATE=2026.8.19
 # same-result / same-call / repeat-read triggers, restart bound and typed-repair
 # end (0018), and a terminal
 # call cut at the foreground limit saying so (0019), read_file reporting a line
-# cut at the per-line cap (0020).
+# cut at the per-line cap (0020), run-scoped compaction with a request ceiling
+# and pruned-stub refusal (0021).
 # Staged into the build context by the operator (cp .../patches/*.patch
 # out/hermes-runtime-patches/). The git tree of the patched source must equal
 # HERMES_PATCHED_TREE or the build fails.
-ARG HERMES_PATCHED_TREE=8328461c4d05e0760e694ea5b9970b019366421a
+ARG HERMES_PATCHED_TREE=819953a69774b655b44985f0b3619f30832ffd2e
 ARG MTA_VSIX_VERSION=8.2.0
 ARG REDHAT_JAVA_VERSION=1.47.0
 ARG KANTRA_VERSION=v0.10.0-beta.1
@@ -191,7 +192,7 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
          --agent-src /opt/hermes-agent \
          --version "${HERMES_VERSION}" \
          --date "${HERMES_DATE}" \
-    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 20 \
+    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 21 \
     && for p in /opt/rhoai3/hermes-runtime-patches/*.patch; do \
          git -C /opt/hermes-agent apply --index "$p" || exit 1; \
        done \

@@ -1,0 +1,1160 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Sat, 3 Oct 2026 00:28:16 +0200
+Subject: [PATCH] feat(compression): run-scoped compaction, request ceiling and
+ pruned-stub refusal
+
+RHOAI3 v32-qwen36, card t_2a95f8c1 run 44 (one Kanban turn, 97 API calls;
+72K trigger, 48K prune, protect_last_n 12, context_length 110000): three
+compaction passes (20:49:47, 20:55:12, 20:55:55Z) took 58-92 ms, removed no
+message and summarised nothing. They used the per-turn attempt budget
+(compression.max_attempts 3); the first armed the insufficient-progress
+block; neither rearms until the provider reports a prompt below the trigger,
+which never happened again. The real prompt grew to 121,375 tokens and the
+next request waited out the 900 s stale timeout twice. Pruned write_file
+arguments ("<200 chars>...[truncated]") were replayed as file content.
+
+Why no summary (reproduced offline): in a single-turn run the only actionable
+user message is the task that opens the transcript. After the first
+compaction protect_first_n decays to 0, and the tail anchor "keep the last
+user message in the tail" (#10896) pulls the tail back to that first message,
+so the window holds only the previous handoff summary; compress() returns its
+Phase-1 prune alone (empty_post_handoff_window). Live: 24->21, then 41->41,
+67->67, 76->76.
+
+With compression.run_scoped: true (agent/run_compaction.py), for the whole run:
+
+- one pre-API guard replaces the per-turn-budgeted pre-API and post-tool gates
+  (the turn-prologue preflight, the proactive prune and the provider-error
+  handlers are unchanged): at or above threshold_tokens a pass runs; there is
+  no attempt budget and no block, and after a pass the next one waits until
+  the projected request has regrown by max(4096, 10% of the trigger);
+- the opening task turn stays verbatim in the head (ContextCompressor
+  _anchor_task_in_head), so a pass has a middle to summarise;
+- a pass that summarised nothing while the request is still at or above the
+  trigger is followed, before any request is sent, by a forced summarising
+  pass with half the tail budget;
+- ceiling: the projected prompt is the provider's last reported prompt count
+  plus the rough size of what was added since, with a 25% margin on that
+  addition only (a removal is credited at 75%); the rough whole-request
+  estimate is used only before the first provider figure of the run. If the
+  projection plus the output cap exceeds context_length, a forced pass runs
+  regardless of runway, cooldown or anti-thrash state (half tail, then the
+  minimum tail); if the request still does not fit, the run ends at once with
+  context_ceiling_unreachable (Kanban: STOP WORKER_CONTEXT_CEILING) and the
+  request is never sent.
+
+Unconditionally: a pruned tool-call argument keeps its head and says what it
+is ("[hermes pruned argument: N chars, first 200 shown; this is a context
+stub, not the value that was sent]...[truncated]"; pruning a stub again
+changes nothing), and write_file / patch refuse content that carries that
+marker or the legacy 200-character "...[truncated]" stub, naming the reason;
+nothing is written.
+
+Without run_scoped every compaction path is unchanged. Local extension.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ agent/agent_init.py                |  12 +
+ agent/context_compressor.py        |  88 +++++-
+ agent/conversation_loop.py         |  61 ++++
+ agent/run_compaction.py            | 228 ++++++++++++++
+ agent/turn_finalizer.py            |  19 ++
+ tests/agent/test_run_compaction.py | 472 +++++++++++++++++++++++++++++
+ tools/file_tools.py                |  37 +++
+ 7 files changed, 914 insertions(+), 3 deletions(-)
+ create mode 100644 agent/run_compaction.py
+ create mode 100644 tests/agent/test_run_compaction.py
+
+diff --git a/agent/agent_init.py b/agent/agent_init.py
+index 84afead..fed4170 100644
+--- a/agent/agent_init.py
++++ b/agent/agent_init.py
+@@ -2762,6 +2762,18 @@ def init_agent(
+         except Exception:
+             pass
+     agent.compression_enabled = compression_enabled
++    # Run-scoped compaction and request ceiling (agent/run_compaction.py,
++    # RHOAI3 patch 0021): inert unless compression.run_scoped is true.
++    try:
++        from agent.run_compaction import RunCompactionGuard
++
++        agent._run_compaction = RunCompactionGuard.from_config(_compression_cfg)
++        if agent._run_compaction.enabled and agent.context_compressor is not None:
++            # A single-turn run keeps its opening task turn in the head.
++            agent.context_compressor._anchor_task_in_head = True
++    except Exception as _rc_err:
++        agent._run_compaction = None
++        _ra().logger.warning("Run-scoped compaction config ignored: %s", _rc_err)
+     agent.compression_in_place = compression_in_place
+     # Apply micro-compaction settings to the compressor (feature is opt-in)
+     _cc = getattr(agent, "context_compressor", None)
+diff --git a/agent/context_compressor.py b/agent/context_compressor.py
+index 4c48794..83b3c5d 100644
+--- a/agent/context_compressor.py
++++ b/agent/context_compressor.py
+@@ -1560,6 +1560,19 @@ def _strip_image_parts_from_parts(parts: Any) -> Any:
+     return out if had_image else None
+ 
+ 
++# Marker inside a tool-call argument value that compression shortened
++# (RHOAI3 patch 0021). write_file / patch refuse content that carries it.
++PRUNED_ARGUMENT_MARKER = "[hermes pruned argument:"
++
++
++def pruned_argument_note(original_chars: int, shown_chars: int) -> str:
++    """The suffix of a pruned argument value: says that it is not the value."""
++    return (
++        f" {PRUNED_ARGUMENT_MARKER} {original_chars:,} chars, first {shown_chars} "
++        "shown; this is a context stub, not the value that was sent]...[truncated]"
++    )
++
++
+ def _truncate_tool_call_args_json(args: str, head_chars: int = 200) -> str:
+     """Shrink long string values inside a tool-call arguments JSON blob while
+     preserving JSON validity.
+@@ -1592,8 +1605,12 @@ def _truncate_tool_call_args_json(args: str, head_chars: int = 200) -> str:
+ 
+     def _shrink(obj: Any) -> Any:
+         if isinstance(obj, str):
++            if PRUNED_ARGUMENT_MARKER in obj:
++                return obj  # already a pruned stub: keep it (idempotent)
+             if len(obj) > head_chars:
+-                return obj[:head_chars] + "...[truncated]"
++                # RHOAI3 v32: a bare "...[truncated]" stub was replayed by the
++                # model as real write_file content. The stub names itself.
++                return obj[:head_chars] + pruned_argument_note(len(obj), head_chars)
+             return obj
+         if isinstance(obj, dict):
+             return {k: _shrink(v) for k, v in obj.items()}
+@@ -2031,6 +2048,8 @@ class ContextCompressor(ContextEngine):
+         self.last_compression_rough_tokens = 0
+         self.last_rough_tokens_when_real_prompt_fit = 0
+         self._pending_request_rough_tokens = 0
++        self._ceiling_anchor_rough = 0
++        self._ceiling_anchor_real = 0
+         self.awaiting_real_usage_after_compression = False
+         self._last_compression_telemetry = None
+         self._active_compression_telemetry = None
+@@ -2316,6 +2335,8 @@ class ContextCompressor(ContextEngine):
+         self.last_compression_rough_tokens = 0
+         self.last_rough_tokens_when_real_prompt_fit = 0
+         self._pending_request_rough_tokens = 0
++        self._ceiling_anchor_rough = 0
++        self._ceiling_anchor_real = 0
+         self.awaiting_real_usage_after_compression = False
+         self._last_compression_telemetry = None
+         self._active_compression_telemetry = None
+@@ -2831,6 +2852,8 @@ class ContextCompressor(ContextEngine):
+         self.last_rough_tokens_when_real_prompt_fit = 0
+         self.last_compression_rough_tokens = 0
+         self._pending_request_rough_tokens = 0
++        self._ceiling_anchor_rough = 0
++        self._ceiling_anchor_real = 0
+         self.awaiting_real_usage_after_compression = False
+         # Strikes were judged against the PREVIOUS threshold; a recomputed
+         # trigger invalidates them. Keep the durable copy in sync so a
+@@ -3128,6 +3151,8 @@ class ContextCompressor(ContextEngine):
+         self.last_compression_rough_tokens = 0
+         self.last_rough_tokens_when_real_prompt_fit = 0
+         self._pending_request_rough_tokens = 0
++        self._ceiling_anchor_rough = 0
++        self._ceiling_anchor_real = 0
+         self.awaiting_real_usage_after_compression = False
+ 
+         self.summary_model = summary_model_override or ""
+@@ -3213,6 +3238,11 @@ class ContextCompressor(ContextEngine):
+         self.last_total_tokens = usage.get("total_tokens", self.last_prompt_tokens + self.last_completion_tokens)
+         if self.last_prompt_tokens > 0:
+             self.last_real_prompt_tokens = self.last_prompt_tokens
++            if self._pending_request_rough_tokens > 0:
++                # The provider's count for the request whose rough estimate was
++                # noted just before it was sent (project_request_tokens).
++                self._ceiling_anchor_rough = self._pending_request_rough_tokens
++                self._ceiling_anchor_real = self.last_prompt_tokens
+             if self.last_prompt_tokens < self.threshold_tokens:
+                 if self.awaiting_real_usage_after_compression and self.last_compression_rough_tokens > 0:
+                     self.last_rough_tokens_when_real_prompt_fit = self.last_compression_rough_tokens
+@@ -3301,6 +3331,27 @@ class ContextCompressor(ContextEngine):
+         except (TypeError, ValueError):
+             self._pending_request_rough_tokens = 0
+ 
++    def project_request_tokens(self, rough_tokens: int, growth_margin: float = 0.25) -> int:
++        """Projected real prompt tokens of a request whose rough estimate is
++        ``rough_tokens`` (RHOAI3 patch 0021).
++
++        The provider's last reported prompt count for a request plus the rough
++        size of what was added since, with ``growth_margin`` applied to that
++        addition only (a removal, e.g. after a compaction, is credited at
++        ``1 - growth_margin``). The rough estimate errs in both directions in
++        one session (it over-counted ~70% early in v32 q36 and under-counted
++        10-15% later), so only the delta is estimated. Without a provider
++        figure yet in this run the rough estimate itself is returned.
++        """
++        rough = max(0, int(rough_tokens or 0))
++        anchor_rough = int(getattr(self, "_ceiling_anchor_rough", 0) or 0)
++        anchor_real = int(getattr(self, "_ceiling_anchor_real", 0) or 0)
++        if anchor_rough <= 0 or anchor_real <= 0:
++            return rough
++        delta = rough - anchor_rough
++        factor = (1.0 + growth_margin) if delta >= 0 else max(0.0, 1.0 - growth_margin)
++        return max(0, int(round(anchor_real + delta * factor)))
++
+     def should_defer_preflight_to_real_usage(self, rough_tokens: int) -> bool:
+         """Return True when a high rough preflight estimate is known-noisy.
+ 
+@@ -7156,9 +7207,13 @@ This compaction should PRIORITISE preserving all information related to the focu
+             self._lean_pristine_tools = {}
+ 
+         # Phase 1: Prune old tool results (cheap, no LLM call)
++        # Run-scoped compaction (RHOAI3 patch 0021) may force a smaller tail
++        # for one pass so the pass has a middle to summarise.
++        _forced_tail = getattr(self, "_forced_tail_token_budget", None)
++        _tail_budget = self.tail_token_budget if _forced_tail is None else max(0, int(_forced_tail))
+         messages, pruned_count = self._prune_old_tool_results(
+             messages, protect_tail_count=self.protect_last_n,
+-            protect_tail_tokens=self.tail_token_budget,
++            protect_tail_tokens=_tail_budget,
+         )
+         if pruned_count and not self.quiet_mode:
+             logger.info("Pre-compression: pruned %d old tool result(s)", pruned_count)
+@@ -7179,9 +7234,32 @@ This compaction should PRIORITISE preserving all information related to the focu
+         # Phase 2: Determine boundaries
+         compress_start = self._protect_head_size(messages)
+         compress_start = self._align_boundary_forward(messages, compress_start)
++        # Run-scoped compaction (RHOAI3 patch 0021): in a single-turn run the
++        # only actionable user message is the task that opens the transcript.
++        # After the first compaction protect_first_n decays to 0, so the tail
++        # anchor "keep the last user message in the tail" (#10896) pulled the
++        # tail back to that first message: the window held only the previous
++        # handoff summary, compress() returned with its Phase-1 prune alone
++        # (empty_post_handoff_window) and nothing was summarised (v32 q36
++        # passes 24->21, 41->41, 67->67, 76->76). Keep that task turn verbatim
++        # in the head instead, so the turns after it can be summarised.
++        if (
++            getattr(self, "_anchor_task_in_head", False)
++            and latest_actionable_idx >= compress_start
++            and all(
++                messages[i].get("role") == "system"
++                or self._is_context_summary_message(messages[i])
++                for i in range(compress_start, latest_actionable_idx)
++            )
++        ):
++            compress_start = self._align_boundary_forward(
++                messages, latest_actionable_idx + 1
++            )
+ 
+         # Use token-budget tail protection instead of fixed message count
+-        compress_end = self._find_tail_cut_by_tokens(messages, compress_start)
++        compress_end = self._find_tail_cut_by_tokens(
++            messages, compress_start, token_budget=_tail_budget,
++        )
+ 
+         # A double role collision can merge the summary into the first tail
+         # row. Keep an actionable user event out of that position by retaining
+@@ -7874,6 +7952,10 @@ This compaction should PRIORITISE preserving all information related to the focu
+                 _pruned_replay,
+             )
+         self._last_compression_made_progress = True
++        # Monotonic count of passes that summarised (LLM or fallback); read by
++        # the run-scoped compaction guard (patch 0021) across the commit, which
++        # may rebind and reset the per-attempt flags above.
++        self.summarized_passes = getattr(self, "summarized_passes", 0) + 1
+ 
+         # A successful compaction just freed the largest allocation a long
+         # session ever drops (the compressed-away message dicts), which makes
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index bcf02da..e95760c 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -2562,6 +2562,60 @@ def run_conversation(
+                 pass
+             break
+ 
++        # Run-scoped compaction and request ceiling (agent/run_compaction.py,
++        # RHOAI3 patch 0021). When compression.run_scoped is set this replaces
++        # the per-turn-budgeted pre-API and post-tool gates below for the
++        # whole run: compaction never switches off, a prune-only pass is
++        # followed by a summarising pass, and a request whose projected size
++        # plus the output cap exceeds the window is compacted (or the run
++        # ends) before it is sent.
++        _run_compaction = getattr(agent, "_run_compaction", None)
++        _run_scoped = bool(getattr(_run_compaction, "enabled", False)) and agent.compression_enabled
++        if _run_scoped and len(messages) > 1:
++            _rc_decision, _rc_messages, _rc_system_prompt = _run_compaction.preflight(
++                agent, messages, system_message, request_pressure_tokens,
++                task_id=effective_task_id,
++            )
++            if _rc_decision == "unreachable":
++                from agent.run_compaction import CEILING_STOP_CODE
++
++                _window, _cap = _run_compaction.window_and_cap(agent)
++                final_response = (
++                    f"I stopped ({CEILING_STOP_CODE}): the next request would not fit "
++                    f"the {_window:,}-token window with its {_cap:,}-token output cap "
++                    "even after forced context compaction, so it was not sent. "
++                    "Files on disk are unchanged by this stop."
++                )
++                failed = True
++                _turn_exit_reason = CEILING_STOP_CODE
++                append_message(messages, {"role": "assistant", "content": final_response})
++                agent._emit_status(f"❌ {CEILING_STOP_CODE}")
++                api_call_count -= 1
++                agent._api_call_count = api_call_count
++                try:
++                    agent.iteration_budget.refund()
++                except Exception:
++                    pass
++                break
++            if _rc_decision == "compact":
++                if _rc_messages is not messages:
++                    messages = _rc_messages
++                    if _rc_system_prompt:
++                        active_system_prompt = _rc_system_prompt
++                    agent._empty_content_retries = 0
++                    agent._thinking_prefill_retries = 0
++                    agent._last_content_with_tools = None
++                    agent._last_content_tools_all_housekeeping = False
++                    agent._mute_post_response = False
++                    conversation_history = conversation_history_after_compression(
++                        agent, messages, conversation_history
++                    )
++                api_call_count -= 1
++                agent._api_call_count = api_call_count
++                agent.iteration_budget.refund()
++                continue
++            _run_compaction.note_sent()
++
+         # Pre-API pressure check. The turn-prologue preflight only saw the
+         # incoming user message; a single turn can then grow by many large
+         # tool results and leave no output budget before the NEXT call (the
+@@ -2619,6 +2673,7 @@ def run_conversation(
+         )()
+         if (
+             agent.compression_enabled
++            and not _run_scoped
+             and len(messages) > 1
+             and compression_attempts < max_compression_attempts
+             and not _preflight_compression_blocked
+@@ -7489,8 +7544,14 @@ def run_conversation(
+                         messages, tools=agent.tools or None
+                     )
+ 
++                # Run-scoped compaction (patch 0021) decides before the next
++                # request instead of here.
++                _post_tool_run_scoped = bool(
++                    getattr(getattr(agent, "_run_compaction", None), "enabled", False)
++                )
+                 if (
+                     agent.compression_enabled
++                    and not _post_tool_run_scoped
+                     and compression_attempts < max_compression_attempts
+                     and _compressor.should_compress(_real_tokens)
+                 ):
+diff --git a/agent/run_compaction.py b/agent/run_compaction.py
+new file mode 100644
+index 0000000..83923e8
+--- /dev/null
++++ b/agent/run_compaction.py
+@@ -0,0 +1,228 @@
++"""Run-scoped context compaction and the request ceiling (RHOAI3 patch 0021).
++
++A Kanban card run is one turn. The stock pre-API and post-tool compaction gates
++share a per-turn attempt budget (``compression.max_attempts``) and an
++"insufficient progress" block, and both stay closed until the provider reports
++a prompt below the trigger. In v32 (q36, t_2a95f8c1 run 44) three deterministic
++passes (Phase-1 prune only, no summary, 58-92 ms, no message removed) used the
++whole budget; no compaction ran again, the real prompt grew from ~80K to 121K
++tokens against a 110K configured window, and the next request got no stream
++chunk for 900 s.
++
++With ``compression.run_scoped: true`` this guard replaces both gates for the
++whole run (the turn-prologue preflight and the provider-error handlers are
++unchanged):
++
++* **Projection.** Every decision uses the projected real prompt of the request
++  about to be sent: the provider's last reported prompt count plus the rough
++  size of what was added since, with a margin on that addition only
++  (``ContextCompressor.project_request_tokens``). Without a provider figure in
++  the run the rough estimate is used.
++* **Always available.** At or above ``threshold_tokens`` a pass runs. There is
++  no attempt budget and no block: after a pass the next one waits until the
++  projection has grown by ``rearm_runway`` tokens, so a pass cannot run on
++  every request.
++* **Summarise after prune.** A pass that made no summary progress (the
++  compressor returned only its Phase-1 prune) while the projection is still at
++  or above the threshold is followed, before any request is sent, by a forced
++  summarising pass with half the tail budget.
++* **Ceiling.** If the projection plus the output cap exceeds the configured
++  window (``model.context_length``), a forced pass runs regardless of runway,
++  cooldown or anti-thrash state: first with half the tail budget, then with
++  the minimum tail. If the request still does not fit, the run ends at once
++  with ``context_ceiling_unreachable``; it is never sent to wait out the
++  stream stale timeout.
++"""
++
++from __future__ import annotations
++
++import logging
++from dataclasses import dataclass
++from typing import Any
++
++logger = logging.getLogger(__name__)
++
++LOG_PREFIX = "[run-compaction]"
++CEILING_STOP_CODE = "context_ceiling_unreachable"
++DEFAULT_GROWTH_MARGIN = 0.25
++# Forced-pass tail budgets, as fractions of the configured tail budget.
++_SUMMARY_FOLLOWUP_TAIL = 0.5
++_CEILING_TAILS = (0.5, 0.0)
++
++DECISION_SEND = "send"
++DECISION_COMPACT = "compact"
++DECISION_UNREACHABLE = "unreachable"
++
++
++@dataclass
++class PassPlan:
++    reason: str  # threshold | summary-followup | ceiling
++    tail_fraction: float | None  # None = the compressor's own tail budget
++    force: bool
++
++
++def _as_bool(value: Any) -> bool:
++    if isinstance(value, str):
++        return value.strip().lower() in {"1", "true", "yes", "on"}
++    return bool(value)
++
++
++def _as_margin(value: Any) -> float:
++    try:
++        margin = float(value)
++    except (TypeError, ValueError):
++        return DEFAULT_GROWTH_MARGIN
++    return margin if 0.0 <= margin <= 1.0 else DEFAULT_GROWTH_MARGIN
++
++
++class RunCompactionGuard:
++    """Per-run compaction decisions for one agent (see module docstring)."""
++
++    def __init__(self, enabled: bool = False, growth_margin: Any = DEFAULT_GROWTH_MARGIN,
++                 rearm_runway: Any = None):
++        self.enabled = _as_bool(enabled)
++        self.growth_margin = _as_margin(growth_margin)
++        try:
++            self._rearm_runway = int(rearm_runway) if rearm_runway is not None else None
++        except (TypeError, ValueError):
++            self._rearm_runway = None
++        self.reset()
++
++    @classmethod
++    def from_config(cls, compression_cfg: Any) -> "RunCompactionGuard":
++        cfg = compression_cfg if isinstance(compression_cfg, dict) else {}
++        return cls(
++            enabled=cfg.get("run_scoped", False),
++            growth_margin=cfg.get("ceiling_growth_margin", DEFAULT_GROWTH_MARGIN),
++            rearm_runway=cfg.get("rearm_runway_tokens"),
++        )
++
++    def reset(self) -> None:
++        self._last_pass_projection: int | None = None
++        self._summary_followup_due = False
++        self._ceiling_level = 0
++        self.passes = 0
++        self.forced_passes = 0
++        self.events: list = []
++
++    # ── arithmetic ──────────────────────────────────────────────────
++    @staticmethod
++    def window_and_cap(agent: Any) -> tuple:
++        compressor = getattr(agent, "context_compressor", None)
++        window = int(getattr(compressor, "context_length", 0) or 0)
++        cap = getattr(agent, "max_tokens", None) or getattr(compressor, "max_tokens", None) or 0
++        try:
++            cap = int(cap)
++        except (TypeError, ValueError):
++            cap = 0
++        return window, max(0, cap)
++
++    def runway(self, threshold: int) -> int:
++        if self._rearm_runway is not None and self._rearm_runway >= 0:
++            return self._rearm_runway
++        return max(4096, int(threshold * 0.1))
++
++    def project(self, compressor: Any, rough_tokens: int) -> int:
++        project = getattr(compressor, "project_request_tokens", None)
++        if callable(project):
++            return int(project(rough_tokens, self.growth_margin))
++        return int(rough_tokens)
++
++    # ── decisions ───────────────────────────────────────────────────
++    def plan(self, projected: int, threshold: int, window: int, cap: int) -> PassPlan | None | str:
++        """Decide before a request is sent: a ``PassPlan``, ``None`` (send), or
++        ``DECISION_UNREACHABLE``."""
++        if window > 0 and projected + cap > window:
++            if self._ceiling_level >= len(_CEILING_TAILS):
++                return DECISION_UNREACHABLE
++            fraction = _CEILING_TAILS[self._ceiling_level]
++            self._ceiling_level += 1
++            return PassPlan("ceiling", fraction, True)
++        self._ceiling_level = 0
++        if threshold <= 0 or projected < threshold:
++            self._summary_followup_due = False
++            return None
++        if self._summary_followup_due:
++            self._summary_followup_due = False
++            return PassPlan("summary-followup", _SUMMARY_FOLLOWUP_TAIL, True)
++        if (
++            self._last_pass_projection is not None
++            and projected < self._last_pass_projection + self.runway(threshold)
++        ):
++            return None
++        return PassPlan("threshold", None, False)
++
++    def note_pass(self, plan: PassPlan, made_summary_progress: bool, projected_after: int,
++                  threshold: int) -> None:
++        self.passes += 1
++        if plan.force:
++            self.forced_passes += 1
++        self._last_pass_projection = projected_after
++        self._summary_followup_due = (
++            plan.reason == "threshold"
++            and not made_summary_progress
++            and projected_after >= threshold
++        )
++
++    def note_sent(self) -> None:
++        self._ceiling_level = 0
++
++    def _log(self, line: str) -> None:
++        self.events.append(line)
++        logger.info("%s %s", LOG_PREFIX, line)
++
++    # ── one pre-API step ────────────────────────────────────────────
++    def preflight(self, agent: Any, messages: list, system_message: Any,
++                  request_pressure_tokens: int, task_id: str = "") -> tuple:
++        """Run before a request. Returns ``(decision, messages, system_prompt)``
++        where decision is ``send``, ``compact`` (the caller rebuilds the request)
++        or ``unreachable``."""
++        compressor = agent.context_compressor
++        threshold = int(getattr(compressor, "threshold_tokens", 0) or 0)
++        window, cap = self.window_and_cap(agent)
++        projected = self.project(compressor, request_pressure_tokens)
++        plan = self.plan(projected, threshold, window, cap)
++        if plan is None:
++            return DECISION_SEND, messages, None
++        if plan == DECISION_UNREACHABLE:
++            self._log(
++                f"{CEILING_STOP_CODE}: projected={projected} + output_cap={cap} > window={window} "
++                "after the forced passes"
++            )
++            return DECISION_UNREACHABLE, messages, None
++        tail = None
++        if plan.tail_fraction is not None:
++            tail = int(int(getattr(compressor, "tail_token_budget", 0) or 0) * plan.tail_fraction)
++        self._log(
++            f"pass reason={plan.reason} projected={projected} threshold={threshold} "
++            f"window={window} output_cap={cap} tail_budget={tail if tail is not None else 'default'}"
++        )
++        before_rough = _messages_rough(messages)
++        summarized_before = int(getattr(compressor, "summarized_passes", 0) or 0)
++        previous_forced = getattr(compressor, "_forced_tail_token_budget", None)
++        try:
++            compressor._forced_tail_token_budget = tail
++            compressed, system_prompt = agent._compress_context(
++                messages, system_message, approx_tokens=projected,
++                task_id=task_id, force=plan.force,
++            )
++        finally:
++            compressor._forced_tail_token_budget = previous_forced
++        made_progress = int(getattr(compressor, "summarized_passes", 0) or 0) > summarized_before
++        after_rough = request_pressure_tokens - before_rough + _messages_rough(compressed)
++        projected_after = self.project(compressor, after_rough)
++        self.note_pass(plan, made_progress, projected_after, threshold)
++        self._log(
++            f"done reason={plan.reason} messages={len(messages)}->{len(compressed)} "
++            f"summary_progress={str(made_progress).lower()} projected_after={projected_after}"
++        )
++        return DECISION_COMPACT, compressed, system_prompt
++
++
++def _messages_rough(messages: list) -> int:
++    from agent.model_metadata import estimate_messages_tokens_rough
++
++    try:
++        return int(estimate_messages_tokens_rough(messages))
++    except Exception:
++        return 0
+diff --git a/agent/turn_finalizer.py b/agent/turn_finalizer.py
+index 5eb3bf0..8856e61 100644
+--- a/agent/turn_finalizer.py
++++ b/agent/turn_finalizer.py
+@@ -553,6 +553,25 @@ def finalize_turn(
+                 _kanban_task, _halt, logger,
+             )
+ 
++    if str(_turn_exit_reason) == "context_ceiling_unreachable":
++        # Run-scoped compaction (agent/run_compaction.py, patch 0021): the next
++        # request could not be brought under the window, so it was not sent.
++        _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
++        if _kanban_task:
++            _rc = getattr(agent, "_run_compaction", None)
++            _window, _cap = (_rc.window_and_cap(agent) if _rc is not None else (0, 0))
++            _record_kanban_worker_stop(
++                _kanban_task,
++                (
++                    "STOP WORKER_CONTEXT_CEILING: context_ceiling_unreachable — the "
++                    f"next request did not fit the {_window}-token window with a "
++                    f"{_cap}-token output cap after forced compaction; it was not "
++                    "sent and this run did not complete the task"
++                ),
++                logger,
++                event_payload_extra={"context_ceiling": {"window": _window, "output_cap": _cap}},
++            )
++
+     # Determine if conversation completed successfully
+     normal_text_response = str(_turn_exit_reason).startswith("text_response(")
+     completed = (
+diff --git a/tests/agent/test_run_compaction.py b/tests/agent/test_run_compaction.py
+new file mode 100644
+index 0000000..f708064
+--- /dev/null
++++ b/tests/agent/test_run_compaction.py
+@@ -0,0 +1,472 @@
++"""Run-scoped compaction, the request ceiling and pruned-stub refusal (RHOAI3 patch 0021).
++
++v32-qwen36 card t_2a95f8c1 run 44 (one Kanban turn, ~100 calls): three
++prune-only compaction passes used the per-turn attempt budget, compaction never
++ran again, the real prompt grew to 121,375 tokens against a 110,000-token
++configured window, and the next request waited 900 s without a stream chunk.
++Pruned write_file arguments ("<200 chars>...[truncated]") were then replayed
++as file content.
++
++Provider figures used below are the session's real ones (agent.log API calls
++#1, #19, #50, #81, #96 and the 20:36Z 80,021-token estimate).
++"""
++
++from __future__ import annotations
++
++import contextlib
++import copy
++import io
++import json
++import os
++import sqlite3
++from pathlib import Path
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import pytest
++
++from agent.context_compressor import (
++    PRUNED_ARGUMENT_MARKER,
++    ContextCompressor,
++    _truncate_tool_call_args_json,
++)
++from agent.model_metadata import estimate_messages_tokens_rough
++from agent.run_compaction import (
++    CEILING_STOP_CODE,
++    DECISION_COMPACT,
++    DECISION_SEND,
++    DECISION_UNREACHABLE,
++    PassPlan,
++    RunCompactionGuard,
++)
++
++WINDOW = 110_000
++CAP = 8_192
++THRESHOLD = 72_000
++OVERHEAD = 22_000  # request minus messages, measured on the v32 session
++
++Q36_COMPRESSION = {  # gitops model-profiles.json qwen3-6-27b + the base block
++    "enabled": True,
++    "threshold": 0.8,
++    "target_ratio": 0.2,
++    "protect_last_n": 12,
++    "threshold_tokens": 72000,
++    "proactive_prune_tokens": 48000,
++    "run_scoped": True,
++}
++
++
++def _compressor(**overrides):
++    kwargs = dict(
++        model="qwen3-6-27b", threshold_percent=0.8, protect_last_n=12, summary_target_ratio=0.2,
++        quiet_mode=True, config_context_length=WINDOW, provider="custom", max_tokens=CAP,
++        threshold_tokens_cap=THRESHOLD, proactive_prune_tokens=48000,
++    )
++    kwargs.update(overrides)
++    c = ContextCompressor(**kwargs)
++    c.summary_calls = []
++
++    def _summary(turns, **_kw):
++        c.summary_calls.append(len(turns))
++        return f"Summary of {len(turns)} turns."
++
++    c._generate_summary = _summary
++    return c
++
++
++def _anchor(compressor, rough, real):
++    compressor.note_request_rough_estimate(rough)
++    compressor.update_from_response({"prompt_tokens": real, "completion_tokens": 100, "total_tokens": real + 100})
++
++
++# ── projection: provider figure + margin on the addition only ─────────────
++
++
++def test_projection_without_a_provider_figure_is_the_rough_estimate():
++    c = _compressor()
++    assert c.project_request_tokens(80_021) == 80_021
++
++
++def test_overcounting_estimate_does_not_force_a_needless_compaction():
++    """20:36Z: 7 messages estimated at 80,021 while the provider reported
++    46,939 (call #1) and 62,771 (call #7) around it."""
++    c = _compressor()
++    _anchor(c, 79_000, 46_939)
++    projected = c.project_request_tokens(80_021)
++    assert projected == 46_939 + round(1_021 * 1.25)
++    guard = RunCompactionGuard(enabled=True)
++    assert guard.plan(projected, THRESHOLD, WINDOW, CAP) is None  # send
++    # The rough figure alone would have compacted.
++    assert RunCompactionGuard(enabled=True).plan(80_021, THRESHOLD, WINDOW, CAP).reason == "threshold"
++
++
++def test_undercounting_estimate_cannot_let_a_request_past_the_window():
++    """After 21:18Z the provider reported 104,668 (call #81) while the rough
++    estimate ran ~12% low."""
++    c = _compressor()
++    _anchor(c, 92_000, 104_668)
++    projected = c.project_request_tokens(93_000)
++    assert projected == 104_668 + 1_250
++    assert 93_000 + CAP <= WINDOW  # the rough estimate alone would have sent it
++    plan = RunCompactionGuard(enabled=True).plan(projected, THRESHOLD, WINDOW, CAP)
++    assert plan.reason == "ceiling" and plan.force
++
++
++def test_removal_is_credited_below_its_estimate():
++    c = _compressor()
++    _anchor(c, 100_000, 119_766)  # call #96
++    assert c.project_request_tokens(60_000) == 119_766 - round(40_000 * 0.75)
++
++
++# ── the guard's decisions ─────────────────────────────────────────────────
++
++
++def test_no_pass_below_the_threshold():
++    guard = RunCompactionGuard(enabled=True)
++    for projected in (10_000, 60_000, THRESHOLD - 1):
++        assert guard.plan(projected, THRESHOLD, WINDOW, CAP) is None
++
++
++def test_compaction_never_switches_off_but_waits_for_regrowth():
++    guard = RunCompactionGuard(enabled=True)
++    for k in range(10):  # far beyond the old per-turn budget of 3, never rearmed by the provider
++        plan = guard.plan(81_000, THRESHOLD, WINDOW, CAP)
++        assert isinstance(plan, PassPlan) and plan.reason == "threshold"
++        guard.note_pass(plan, True, 73_000, THRESHOLD)
++        # Still over the threshold, but no new pass until the runway regrows.
++        assert guard.plan(73_000 + 100, THRESHOLD, WINDOW, CAP) is None
++        assert guard.plan(73_000 + guard.runway(THRESHOLD) - 1, THRESHOLD, WINDOW, CAP) is None
++    assert guard.passes == 10 and guard.runway(THRESHOLD) == 7_200
++
++
++def test_prune_only_pass_is_followed_by_a_summarising_pass_before_sending():
++    guard = RunCompactionGuard(enabled=True)
++    first = guard.plan(75_735, THRESHOLD, WINDOW, CAP)  # the 20:49:47Z pass
++    guard.note_pass(first, False, 72_300, THRESHOLD)  # "~75,735 -> ~72,300", no summary
++    follow = guard.plan(72_300, THRESHOLD, WINDOW, CAP)
++    assert follow.reason == "summary-followup" and follow.force and follow.tail_fraction == 0.5
++    guard.note_pass(follow, True, 45_000, THRESHOLD)
++    assert guard.plan(45_000, THRESHOLD, WINDOW, CAP) is None
++
++
++def test_ceiling_forces_two_passes_then_the_named_stop():
++    guard = RunCompactionGuard(enabled=True)
++    p1 = guard.plan(121_375, THRESHOLD, WINDOW, CAP)
++    p2 = guard.plan(121_000, THRESHOLD, WINDOW, CAP)
++    assert (p1.reason, p1.tail_fraction, p2.reason, p2.tail_fraction) == ("ceiling", 0.5, "ceiling", 0.0)
++    assert guard.plan(120_000, THRESHOLD, WINDOW, CAP) == DECISION_UNREACHABLE
++
++
++def test_disabled_unless_configured():
++    assert RunCompactionGuard.from_config({}).enabled is False
++    # The Qwen 3.8 profile carries no compression block: base config only.
++    assert RunCompactionGuard.from_config({"enabled": True, "threshold": 0.8, "target_ratio": 0.2,
++                                           "protect_last_n": 20}).enabled is False
++    assert RunCompactionGuard.from_config(Q36_COMPRESSION).enabled is True
++
++
++# ── guard + real compressor (FakeAgent forwards to compress()) ────────────
++
++
++class _FakeAgent:
++    def __init__(self, compressor):
++        self.context_compressor = compressor
++        self.max_tokens = CAP
++        self.compress_calls = 0
++
++    def _compress_context(self, messages, system_message, approx_tokens=None, task_id="", force=False):
++        self.compress_calls += 1
++        out = self.context_compressor.compress(
++            [copy.deepcopy(m) for m in messages], current_tokens=approx_tokens, force=force,
++        )
++        return out, None
++
++
++def _request_rough(messages):
++    return estimate_messages_tokens_rough(messages) + OVERHEAD
++
++
++def _drive(guard, agent, messages, max_steps=8):
++    """Run guard.preflight until it says send/unreachable; return (decision, messages)."""
++    for _ in range(max_steps):
++        decision, out, _sp = guard.preflight(agent, messages, None, _request_rough(messages))
++        if decision != DECISION_COMPACT:
++            return decision, messages
++        messages = out
++    raise AssertionError("guard did not settle")
++
++
++def _write_call(i, chars):
++    content = f"// file {i}\n" + "".join(f"line {i}.{k} {'x' * 60}\n" for k in range(chars // 70))
++    return [
++        {"role": "assistant", "content": "", "tool_calls": [{
++            "id": f"call_{i}", "type": "function",
++            "function": {"name": "write_file",
++                         "arguments": json.dumps({"path": f"src/F{i}.java", "content": content})}}]},
++        {"role": "tool", "tool_call_id": f"call_{i}", "content": json.dumps({"success": True, "bytes": len(content)})},
++    ]
++
++
++def test_e1_shape_protected_tail_of_large_results_fits_after_the_ceiling():
++    """E-1 (v31): a protected tail holding large tool results kept the request
++    over the window; the forced ceiling passes bring it under, or stop."""
++    c = _compressor()
++    agent = _FakeAgent(c)
++    msgs = [{"role": "user", "content": "work kanban task t_e1"}]
++    for i in range(20):
++        msgs += [{"role": "assistant", "content": "", "tool_calls": [{
++            "id": f"r{i}", "type": "function",
++            "function": {"name": "terminal", "arguments": json.dumps({"command": f"cat out{i}.log"})}}]},
++            {"role": "tool", "tool_call_id": f"r{i}", "content": f"log {i}\n" + "y" * 24_000}]
++    assert _request_rough(msgs) + CAP > WINDOW
++    guard = RunCompactionGuard(enabled=True)
++    decision, final = _drive(guard, agent, msgs)
++    assert decision == DECISION_SEND
++    assert c.project_request_tokens(_request_rough(final)) + CAP <= WINDOW
++    assert c.summary_calls  # the passes summarised, not only pruned
++
++
++def test_e1_shape_tail_that_alone_exceeds_the_window_is_the_named_stop():
++    c = _compressor()
++    agent = _FakeAgent(c)
++    msgs = [{"role": "user", "content": "work kanban task t_e1"}]
++    for i in range(12):
++        msgs += [{"role": "assistant", "content": "x" * 60_000}, {"role": "user", "content": "y" * 60_000}]
++    guard = RunCompactionGuard(enabled=True)
++    decision, _ = _drive(guard, agent, msgs)
++    assert decision == DECISION_UNREACHABLE
++    assert any(CEILING_STOP_CODE in e for e in guard.events)
++
++
++# ── end to end: the v32 shape through AIAgent.run_conversation ────────────
++
++
++def _config():
++    return {
++        "model": {"context_length": WINDOW},
++        "compression": dict(Q36_COMPRESSION),
++        "tool_loop_guardrails": {"hard_stop_enabled": True},
++        "auxiliary": {"title_generation": {"enabled": False}},
++        "prompt_caching": {"cache_ttl": "5m"},
++        "sessions": {},
++        "bedrock": {},
++    }
++
++
++class _Provider:
++    """Scripted tool calls; reports prompt usage from the request it got
++    (rough estimate x ratio, the v32 late under-count)."""
++
++    def __init__(self, script, ratio=1.12):
++        self.script = list(script)
++        self.ratio = ratio
++        self.prompts = []
++
++    def create(self, **kwargs):
++        rough = estimate_messages_tokens_rough(kwargs.get("messages") or []) + OVERHEAD
++        prompt = int(rough * self.ratio)
++        self.prompts.append(prompt)
++        usage = SimpleNamespace(prompt_tokens=prompt, completion_tokens=200, total_tokens=prompt + 200)
++        if self.script:
++            name, args, call_id = self.script.pop(0)
++            msg = SimpleNamespace(content=None, reasoning=None, tool_calls=[SimpleNamespace(
++                id=call_id, type="function", function=SimpleNamespace(name=name, arguments=json.dumps(args)))])
++            return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="tool_calls")], usage=usage)
++        msg = SimpleNamespace(content="done", reasoning=None, tool_calls=[])
++        return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="stop")], usage=usage)
++
++
++def _agent(monkeypatch, tmp_path, script, compression=None, ratio=1.12):
++    from hermes_cli import config as config_mod
++    from hermes_state import SessionDB
++    from run_agent import AIAgent
++
++    cfg = _config()
++    if compression is not None:
++        cfg["compression"] = compression
++    monkeypatch.setattr(config_mod, "load_config", lambda: cfg)
++    monkeypatch.setattr(config_mod, "load_config_readonly", lambda: cfg)
++    provider = _Provider(script, ratio=ratio)
++    client = SimpleNamespace(chat=SimpleNamespace(completions=provider))
++    monkeypatch.setattr("run_agent.OpenAI", lambda **kwargs: client)
++    monkeypatch.setattr(
++        "run_agent.get_tool_definitions",
++        lambda *a, **k: [{"type": "function", "function": {
++            "name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {}}}}],
++    )
++    monkeypatch.setattr(
++        "run_agent.handle_function_call",
++        lambda name, args, task_id=None, **kw: json.dumps({"success": True, "bytes": len(str(args.get("content", "")))}),
++    )
++    monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
++    summary_calls = []
++    monkeypatch.setattr(
++        ContextCompressor, "_generate_summary",
++        lambda self, turns, **kw: summary_calls.append(len(turns)) or f"Summary of {len(turns)} turns.",
++    )
++    with contextlib.redirect_stdout(io.StringIO()):
++        agent = AIAgent(model="qwen3-6-27b", provider="custom", api_key="k", base_url="http://localhost:8080/v1",
++                        platform="cli", max_iterations=400, quiet_mode=True, skip_memory=True,
++                        skip_context_files=True, max_tokens=CAP,
++                        session_db=SessionDB(db_path=tmp_path / "state.db"), session_id="v32-shape")
++    agent._disable_streaming = True
++    agent.context_compressor.update_model(model="qwen3-6-27b", context_length=WINDOW, max_tokens=CAP)
++    return agent, provider, summary_calls
++
++
++def _v32_script(n=100, chars=7000):
++    script = []
++    for i in range(n):
++        content = f"// file {i}\n" + "".join(f"line {i}.{k} {'x' * 60}\n" for k in range(chars // 70))
++        script.append(("write_file", {"path": f"src/F{i}.java", "content": content}, f"call_{i}"))
++    return script
++
++
++def test_v32_shape_requests_never_exceed_the_window_and_compaction_keeps_running(monkeypatch, tmp_path):
++    agent, provider, summary_calls = _agent(monkeypatch, tmp_path, _v32_script())
++    assert agent._run_compaction.enabled and agent.context_compressor.threshold_tokens == THRESHOLD
++    with contextlib.redirect_stdout(io.StringIO()):
++        result = agent.run_conversation("work kanban task t_v32")
++    assert result["completed"] is True
++    assert len(provider.prompts) == 101
++    # Every request the provider received fitted the window with its output cap.
++    assert max(provider.prompts) + CAP <= WINDOW, max(provider.prompts)
++    guard = agent._run_compaction
++    # Compaction ran far past the old per-turn budget of 3, and summarised.
++    assert guard.passes > 3 and len(summary_calls) > 3
++    # ...but not on every request.
++    assert len(summary_calls) < len(provider.prompts) / 3
++    done = [e for e in guard.events if e.startswith("done ")]
++    assert all("summary_progress=true" in e for e in done), done
++
++
++def test_v32_shape_overcounting_provider_compacts_less(monkeypatch, tmp_path):
++    agent, provider, summary_calls = _agent(monkeypatch, tmp_path, _v32_script(), ratio=0.6)
++    with contextlib.redirect_stdout(io.StringIO()):
++        agent.run_conversation("work kanban task t_v32")
++    assert max(provider.prompts) + CAP <= WINDOW
++    (tmp_path / "b").mkdir()
++    agent2, provider2, summary_calls2 = _agent(monkeypatch, tmp_path / "b", _v32_script(), ratio=1.12)
++    with contextlib.redirect_stdout(io.StringIO()):
++        agent2.run_conversation("work kanban task t_v32")
++    assert len(summary_calls) < len(summary_calls2)
++
++
++def test_without_run_scoped_the_stock_gates_are_unchanged(monkeypatch, tmp_path):
++    compression = {k: v for k, v in Q36_COMPRESSION.items() if k != "run_scoped"}
++    agent, provider, _ = _agent(monkeypatch, tmp_path, _v32_script(n=5), compression=compression)
++    assert agent._run_compaction.enabled is False
++    with contextlib.redirect_stdout(io.StringIO()):
++        agent.run_conversation("work kanban task t_v32")
++    assert agent._run_compaction.passes == 0
++
++
++def test_no_compaction_below_the_threshold(monkeypatch, tmp_path):
++    agent, provider, summary_calls = _agent(monkeypatch, tmp_path, _v32_script(n=3, chars=2000))
++    with contextlib.redirect_stdout(io.StringIO()):
++        agent.run_conversation("work kanban task t_v32")
++    assert agent._run_compaction.passes == 0 and summary_calls == []
++
++
++# ── item 4: a pruned stub can never become file content ───────────────────
++
++
++def test_pruned_arguments_name_themselves_and_stay_stable():
++    content = "/*\n * Copyright 2016-2018\n */\n" + "class A {}\n" * 800
++    shrunk = json.loads(_truncate_tool_call_args_json(json.dumps({"path": "A.java", "content": content})))
++    assert shrunk["path"] == "A.java"
++    assert shrunk["content"].startswith(content[:200])
++    assert PRUNED_ARGUMENT_MARKER in shrunk["content"] and f"{len(content):,} chars" in shrunk["content"]
++    again = _truncate_tool_call_args_json(json.dumps(shrunk))
++    assert json.loads(again) == shrunk  # pruning a stub again changes nothing
++
++
++def test_write_file_refuses_a_pruned_stub(tmp_path):
++    from tools.file_tools import write_file_tool
++
++    target = tmp_path / "BindingErrorsResponse.java"
++    stub = json.loads(_truncate_tool_call_args_json(json.dumps({"content": "/*\n" + "x" * 5000})))["content"]
++    out = json.loads(write_file_tool(str(target), stub))
++    assert "refused" in out["error"] and "context-compression stub" in out["error"]
++    assert not target.exists()
++    # The v32 legacy stub shape: 200 characters + "...[truncated]".
++    legacy = ("/*\n * Copyright 2016-2018 the original author or authors.\n" + " *" * 80)[:200] + "...[truncated]"
++    out = json.loads(write_file_tool(str(target), legacy))
++    assert "refused" in out["error"] and not target.exists()
++
++
++def test_write_file_normal_content_is_unchanged(tmp_path):
++    from tools.file_tools import write_file_tool
++
++    target = tmp_path / "A.java"
++    body = "class A {\n  // see ...[truncated] notes below\n}\n" + "// x\n" * 200
++    out = json.loads(write_file_tool(str(target), body))
++    assert "error" not in out, out
++    assert target.read_text() == body
++
++
++def test_patch_refuses_a_pruned_stub(tmp_path):
++    from tools.file_tools import patch_tool
++
++    target = tmp_path / "A.java"
++    target.write_text("class A {}\n")
++    stub = "class A {" + " x" * 120 + " " + PRUNED_ARGUMENT_MARKER + " 9,000 chars, first 200 shown]...[truncated]"
++    out = json.loads(patch_tool(mode="replace", path=str(target), old_string="class A {}", new_string=stub))
++    assert "refused" in out["error"]
++    assert target.read_text() == "class A {}\n"
++
++
++# ── fixture replay (needs the read-only v32 session copy; not committed) ──
++
++_FIXTURE = os.environ.get("HERMES_V32_COMPRESSION_FIXTURE", "")
++_SID = "20261002_203549_30eecd"
++
++
++def _fixture_messages(path):
++    """The session's messages in order, each with the content it had when it
++    first appeared (the store archives every committed transcript)."""
++    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
++    con.row_factory = sqlite3.Row
++    rows = con.execute("select * from messages where session_id=? order by id", (_SID,)).fetchall()
++    seen, ordered = set(), []
++    for r in rows:
++        if (r["content"] or "").startswith("[CONTEXT COMPACTION"):
++            continue
++        key = (r["role"], round(r["timestamp"], 4), r["tool_call_id"] or "")
++        if key in seen:
++            continue
++        seen.add(key)
++        m = {"role": r["role"], "content": r["content"] or ""}
++        if r["tool_calls"]:
++            m["tool_calls"] = json.loads(r["tool_calls"])
++        if r["tool_call_id"]:
++            m["tool_call_id"] = r["tool_call_id"]
++        ordered.append((r["timestamp"], m))
++    ordered.sort(key=lambda x: x[0])
++    return [m for _, m in ordered]
++
++
++@pytest.mark.skipif(not _FIXTURE or not Path(_FIXTURE).is_file(), reason="v32 compression fixture not present")
++def test_fixture_session_replay_through_the_compressor():
++    msgs = _fixture_messages(_FIXTURE)
++    c = _compressor()
++    agent = _FakeAgent(c)
++    guard = RunCompactionGuard(enabled=True)
++    live, max_projected, requests = [], 0, 0
++    for m in msgs:
++        live.append(m)
++        if m["role"] == "assistant":
++            continue  # a request follows each user/tool step
++        decision, live = _drive(guard, agent, live)
++        assert decision == DECISION_SEND
++        requests += 1
++        rough = _request_rough(live)
++        projected = c.project_request_tokens(rough, guard.growth_margin)
++        max_projected = max(max_projected, projected)
++        c.note_request_rough_estimate(rough)
++        c.update_from_response({"prompt_tokens": int(rough * 1.12), "completion_tokens": 200})
++    print(f"\nfixture replay: {len(msgs)} messages, {requests} requests, {guard.passes} passes "
++          f"({guard.forced_passes} forced), {len(c.summary_calls)} summary calls, "
++          f"max projected request {max_projected} + cap {CAP} vs window {WINDOW}")
++    assert max_projected + CAP <= WINDOW
++    assert len(c.summary_calls) >= 1
+diff --git a/tools/file_tools.py b/tools/file_tools.py
+index 2270fb5..5ae1cf4 100644
+--- a/tools/file_tools.py
++++ b/tools/file_tools.py
+@@ -2219,6 +2219,36 @@ def _check_binary_document_write(filepath: str, task_id: str = "default") -> str
+     return None
+ 
+ 
++# The legacy stub of a compression-pruned tool-call argument: its first 200
++# characters followed by "...[truncated]" (RHOAI3 v32: a model replayed such
++# stubs as write_file content and wrote 209- and 214-byte Java files).
++_LEGACY_PRUNED_STUB_SUFFIX = "...[truncated]"
++_LEGACY_PRUNED_STUB_MAX_CHARS = 400
++
++
++def _pruned_stub_error(tool_name: str, field_name: str, value) -> str | None:
++    """Refuse a write whose text is a compression stub, never real content
++    (RHOAI3 patch 0021)."""
++    if not isinstance(value, str) or not value:
++        return None
++    from agent.context_compressor import PRUNED_ARGUMENT_MARKER
++
++    marked = PRUNED_ARGUMENT_MARKER in value
++    legacy = (
++        len(value) <= _LEGACY_PRUNED_STUB_MAX_CHARS
++        and value.rstrip().endswith(_LEGACY_PRUNED_STUB_SUFFIX)
++    )
++    if not (marked or legacy):
++        return None
++    return (
++        f"{tool_name} refused: {field_name} is a context-compression stub "
++        f"({'it contains the marker ' + repr(PRUNED_ARGUMENT_MARKER) if marked else 'it ends with ' + repr(_LEGACY_PRUNED_STUB_SUFFIX)}), "
++        "not file content. Earlier tool-call arguments were shortened in this "
++        "conversation's context to save space; the shortened text is not what "
++        "was written. Nothing was written."
++    )
++
++
+ def write_file_tool(path: str, content: str, task_id: str = "default",
+                     cross_profile: bool = False,
+                     session_id: str | None = None) -> str:
+@@ -2230,6 +2260,9 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
+     Pass ``True`` after explicit user direction — same shape as ``force``
+     on the terminal tool.
+     """
++    stub_err = _pruned_stub_error("write_file", "content", content)
++    if stub_err:
++        return tool_error(stub_err)
+     sensitive_err = _check_sensitive_path(path, task_id)
+     if sensitive_err:
+         return tool_error(sensitive_err)
+@@ -2321,6 +2354,10 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
+     targets under another profile's skills/plugins/cron/memories
+     directory. Same shape as ``write_file``'s flag.
+     """
++    for _field, _value in (("new_string", new_string), ("patch", patch)):
++        stub_err = _pruned_stub_error("patch", _field, _value)
++        if stub_err:
++            return tool_error(stub_err)
+     # Check sensitive paths for both replace (explicit path) and V4A patch (extract paths)
+     _paths_to_check = []
+     # Paths whose CONTENT will be text-written (Update/Add + explicit path).
+-- 
+2.54.0 (Apple Git-157)
+
