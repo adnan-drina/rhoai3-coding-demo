@@ -128,12 +128,13 @@ ARG HERMES_DATE=2026.8.19
 # loop halt (0014), any new line is progress in that guard (0015), the --skills
 # preload records what it actually loaded (0016), loop escalation to a
 # thinking request profile after the third identical-call note (0017), its
-# same-result / same-call triggers and restart bound (0018), and a terminal
+# same-result / same-call / repeat-read triggers, restart bound and typed-repair
+# end (0018), and a terminal
 # call cut at the foreground limit saying so (0019).
 # Staged into the build context by the operator (cp .../patches/*.patch
 # out/hermes-runtime-patches/). The git tree of the patched source must equal
 # HERMES_PATCHED_TREE or the build fails.
-ARG HERMES_PATCHED_TREE=55c61bfb88c902c5eeed9eaeb502522c90d2ec5c
+ARG HERMES_PATCHED_TREE=39272a51f73f560e045baeb1c524b996e98326cf
 ARG MTA_VSIX_VERSION=8.2.0
 ARG REDHAT_JAVA_VERSION=1.47.0
 ARG KANTRA_VERSION=v0.10.0-beta.1
