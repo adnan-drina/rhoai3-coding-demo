@@ -72,6 +72,8 @@ VARIANT=""
 REVERT=""
 QUERY=""
 SOURCE_COPY=""
+CAPTURE_EXTRA=""
+STORE_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
@@ -81,6 +83,8 @@ while [[ $# -gt 0 ]]; do
     --print-plan) PRINT_PLAN="yes"; shift ;;
     --query) QUERY="${2:-}"; shift 2 ;;
     --source-capture) SOURCE_COPY="${2:-}"; shift 2 ;;
+    --capture-extra) CAPTURE_EXTRA="${2:-}"; shift 2 ;;
+    --store) shift; STORE_ARGS=("$@"); break ;;
     *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--variant <name> | --revert-variant <name>] [--print-plan]" >&2; exit 2 ;;
   esac
 done
@@ -99,6 +103,11 @@ done
 # With --query FILE it READS the capture schema instead (the committed-state step of a source capture): nothing loads.
 [[ -z "${SOURCE_COPY}" || ( -z "${VARIANT}" && -z "${REVERT}" ) ]] || { echo "FAIL: --source-capture takes no --variant or --revert-variant" >&2; exit 2; }
 [[ -z "${SOURCE_COPY}" || -d "${SOURCE_COPY}" ]] || { echo "FAIL: --source-capture must name the frozen source's analysis copy" >&2; exit 2; }
+# --capture-extra FILE (D-1 increment 3): a fixture variant's own statements, applied after the source's schema and seed.
+# --store CMD ARGS... (last): run the held-store runner (StoreDb observe/revert/query) against the capture schema --
+# the URL and the credentials go to it by environment name, never on its command line.
+[[ -z "${CAPTURE_EXTRA}" || ( -n "${SOURCE_COPY}" && -f "${CAPTURE_EXTRA}" ) ]] || { echo "FAIL: --capture-extra needs --source-capture and an existing file" >&2; exit 2; }
+[[ ${#STORE_ARGS[@]} -eq 0 || -n "${SOURCE_COPY}" ]] || { echo "FAIL: --store needs --source-capture" >&2; exit 2; }
 ROOT="$(cd "${ROOT}" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_TOOL="${HERE}/../../../migration/bootstrap-destination/scripts/_baseline_data.py"
@@ -347,6 +356,11 @@ Path(os.environ["RESET_WORK"], "capture-url").write_text(plan["env"]["SPRING_DAT
 PYEOF
 )" || { echo "FAIL: RESET SOURCE_CAPTURE_UNPLANNED $(tr '\n' ' ' <"${WORK}/capture.err")" >&2; exit 1; }
   read -r CAP_SCHEMA CAP_SCHEMA_SQL CAP_SEED_SQL CAP_ENGINE <<<"${CAPTURE}"
+  if [[ ${#STORE_ARGS[@]} -gt 0 ]]; then
+    javac -d "${WORK}" "${HERE}/reset-db/StoreDb.java" >"${WORK}/javac-store.log" 2>&1 || { echo "FAIL: RESET could not compile the store runner: $(tail -3 "${WORK}/javac-store.log")" >&2; exit 1; }
+    RHOAI3_CAPTURE_DB_URL="$(cat "${WORK}/capture-url")" java -cp "${DRIVER}:${WORK}" StoreDb "${STORE_ARGS[0]}" env:RHOAI3_CAPTURE_DB_URL "env:${USER_ENV}" "env:${PASS_ENV}" "${STORE_ARGS[@]:1}"
+    exit $?
+  fi
   if [[ -n "${QUERY}" ]]; then
     RHOAI3_CAPTURE_DB_URL="$(cat "${WORK}/capture-url")" java -cp "${DRIVER}:${WORK}" ResetDb RHOAI3_CAPTURE_DB_URL "${USER_ENV}" "${PASS_ENV}" --query "${QUERY}" \
       || { echo "FAIL: RESET QUERY the committed-state step could not be read from ${CAP_SCHEMA}" >&2; exit 1; }
@@ -357,9 +371,9 @@ PYEOF
     echo "apply: ${CAP_SCHEMA_SQL}"; echo "apply: ${CAP_SEED_SQL}"
     exit 0
   fi
-  java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --schema "${CAP_SCHEMA}" "${CAP_SCHEMA_SQL}" "${CAP_SEED_SQL}" \
+  java -cp "${DRIVER}:${WORK}" ResetDb "${URL_ENV}" "${USER_ENV}" "${PASS_ENV}" --schema "${CAP_SCHEMA}" "${CAP_SCHEMA_SQL}" "${CAP_SEED_SQL}" ${CAPTURE_EXTRA:+"${CAPTURE_EXTRA}"} \
     || { echo "FAIL: RESET SOURCE_CAPTURE the frozen source's own scripts did not load into ${CAP_SCHEMA}" >&2; exit 1; }
-  echo "OK: loaded the frozen source's own ${CAP_ENGINE} schema and seed into ${CAP_SCHEMA} ($(basename "${CAP_SCHEMA_SQL}"), $(basename "${CAP_SEED_SQL}")), using $(basename "${DRIVER}")"
+  echo "OK: loaded the frozen source's own ${CAP_ENGINE} schema and seed into ${CAP_SCHEMA} ($(basename "${CAP_SCHEMA_SQL}"), $(basename "${CAP_SEED_SQL}")${CAPTURE_EXTRA:+, then $(basename "${CAPTURE_EXTRA}")}), using $(basename "${DRIVER}")"
   exit 0
 fi
 if [[ -n "${QUERY}" ]]; then

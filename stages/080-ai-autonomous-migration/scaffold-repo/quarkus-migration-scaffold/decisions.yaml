@@ -205,6 +205,12 @@ datasource:
   seed_sql: src/main/resources/db/postgresql/populateDB.sql
   hibernate_generation: none
   source_baseline_db_kind: hsqldb
+  # D-1 (ADR-027, decided 2026-10-02): the frozen source is captured on the DESTINATION's engine through its own
+  # profile for it (application-postgresql.properties) in a capture schema of this run's own database, so unordered
+  # rows, provider messages and identity sequences are the source's own on that engine, not HSQLDB artifacts (v31:
+  # every update-* list order and the create identities). Without such a profile the declared engine is used and
+  # the reason recorded. planner.source_engine; capture-source-oracles SKILL "Capture engine".
+  source_capture_engine: destination
 
 # The source's security switch, and who the enabled-mode source capture
 # authenticates as (ADR-014). The frozen source has two behaviours, not one:

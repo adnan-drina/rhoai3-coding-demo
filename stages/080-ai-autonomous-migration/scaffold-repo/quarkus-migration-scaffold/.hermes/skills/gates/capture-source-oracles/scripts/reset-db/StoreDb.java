@@ -48,9 +48,9 @@ public final class StoreDb {
             System.exit(2);
         }
         Properties props = new Properties();
-        props.setProperty("user", args[2]);
-        props.setProperty("password", args[3]);
-        try (Connection conn = DriverManager.getConnection(args[1], props)) {
+        props.setProperty("user", value(args[2]));
+        props.setProperty("password", value(args[3]));
+        try (Connection conn = DriverManager.getConnection(value(args[1]), props)) {
             switch (args[0]) {
                 case "ping":
                     System.out.println("connected");
@@ -88,6 +88,21 @@ public final class StoreDb {
                     System.exit(2);
             }
         }
+    }
+
+    /**
+     * An argument, or -- written {@code env:NAME} -- the value of that environment variable: a server-engine
+     * capture's URL and credentials (D-1) never appear on the command line.
+     */
+    static String value(String arg) {
+        if (arg != null && arg.startsWith("env:")) {
+            String v = System.getenv(arg.substring(4));
+            if (v == null) {
+                throw new IllegalArgumentException("required environment variable is not set: " + arg.substring(4));
+            }
+            return v;
+        }
+        return arg;
     }
 
     /** One committed value, the way reference_qualification.sql_scalar reads one. */

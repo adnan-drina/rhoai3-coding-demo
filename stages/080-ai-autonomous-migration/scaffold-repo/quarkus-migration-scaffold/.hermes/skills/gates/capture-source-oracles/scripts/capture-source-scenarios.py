@@ -500,9 +500,6 @@ def main(argv: list[str] | None = None) -> int:
         if server.get("refused"):
             return _fail("SOURCE_CAPTURE_ENGINE decisions.yaml captures the source on %s and that is not possible here: %s"
                          % (engine_plan["engine"], server["refused"]))
-        if variant:
-            return _fail("SOURCE_CAPTURE_ENGINE fixture variant %s: a variant's dataset is not yet applied to a server-engine "
-                         "capture schema (D-1 increment 3); capture it on the declared engine" % variant)
     engine_record = {k: v for k, v in (server or engine_plan).items() if k not in ("env", "refused")}
     wanted = [sc for sc in corpus["scenarios"] if not args.scenario or str(sc["id"]) in set(args.scenario)]
     if not wanted:
@@ -577,8 +574,17 @@ def main(argv: list[str] | None = None) -> int:
                          "evidence, so a credential must be passed by reference" % (", ".join(conflicts), ", ".join(credential_refs)))
     reset_script = Path(__file__).resolve().parent / "reset-parity-db.sh"
 
+    # D-1 increment 3: a fixture variant is the source's schema and seed plus the variant's own statements, applied
+    # on every reload while the variant dataset is selected (a revert-then-read selects the baseline for its restart)
+    variant_sql = log_dir / "variant-statements.sql"
+    if server and variant:
+        variant_sql.write_text("".join((x if x.rstrip().endswith(";") else x + ";") + "\n"
+                                       for x in (variant_record.get("statements") or [])), encoding="utf-8")
+
     def load_capture_schema() -> str:
-        proc = subprocess.run(["bash", str(reset_script), "--root", str(root), "--source-capture", str(copy)],
+        extra = (["--capture-extra", str(variant_sql)]
+                 if variant and variant_location and runtime.source_config.get(dataset_key) == variant_location else [])
+        proc = subprocess.run(["bash", str(reset_script), "--root", str(root), "--source-capture", str(copy)] + extra,
                               text=True, capture_output=True)
         (log_dir / "source-capture-reset.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
         if proc.returncode != 0:
@@ -694,6 +700,10 @@ def main(argv: list[str] | None = None) -> int:
                     gap_ = revert_plan_gap(plan)
                     if gap_:
                         return "the variant corpus carries no executable revert (%s)" % gap_
+                if server:
+                    # the capture schema already holds the variant state outside the process (increment 3)
+                    store = ServerSchemaStore(reset_script, root, copy, str(server.get("engine") or ""))
+                    return ""
                 store, why_ = SOURCE_STORE_OPENER(copy, runtime.jar, log_dir / ("store-" + scenario_slug(sc["id"])), args.java)
                 if store is None:
                     return why_
@@ -720,7 +730,7 @@ def main(argv: list[str] | None = None) -> int:
                 nonlocal store, overrides
                 if server:
                     # the capture schema IS a same-engine database held outside the process (ADR-026's premise)
-                    store = ServerSchemaStore(reset_script, root, copy)
+                    store = ServerSchemaStore(reset_script, root, copy, str(server.get("engine") or ""))
                     return ""
                 if not declared_seed:
                     return "the corpus names no declared dataset to initialise the held database with"
@@ -958,8 +968,9 @@ class ServerSchemaStore:
     """The capture schema on the run's own server database, read as a held store (D-1 + ADR-026): one SELECT on a
     new connection through the reset tool (the same ownership check and driver), nothing started or stopped."""
 
-    def __init__(self, reset_script: Path, root: Path, copy: Path) -> None:
+    def __init__(self, reset_script: Path, root: Path, copy: Path, engine: str = "") -> None:
         self.reset_script, self.root, self.copy = reset_script, root, copy
+        self.spec = {"engine": engine or "server-capture"}
 
     def start(self, files: list[Path]) -> str:
         return ""
@@ -970,13 +981,55 @@ class ServerSchemaStore:
     def stop(self) -> None:
         return None
 
+    jar_record: dict[str, str] = {}
+
+    def _store(self, *args: str) -> tuple[int, str]:
+        proc = subprocess.run(["bash", str(self.reset_script), "--root", str(self.root), "--source-capture", str(self.copy),
+                               "--store"] + [str(a) for a in args], text=True, capture_output=True)
+        return proc.returncode, (proc.stdout + proc.stderr).strip()[-600:]
+
     def observe(self, tables: list[str], path: Path) -> tuple[dict[str, Any], str]:
-        """Row observations of a refused write's tables are the held-store mechanism of a fixture variant, which a
-        server-engine capture does not run yet (D-1 increment 3): nothing to observe is nothing, anything else is
-        said, never faked."""
+        """Every row of each scoped table, all columns, read in one transaction (the held store's own runner and
+        format, so compare_observations judges it unchanged)."""
         if not tables:
             return {}, ""
-        return {}, "row observations are not taken on a server-engine capture yet (D-1 increment 3)"
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        listing = path.with_suffix(".tables")
+        listing.write_text("\n".join(tables) + "\n", encoding="utf-8")
+        rc, out = self._store("observe", listing, path)
+        if rc != 0 or not path.is_file():
+            return {}, "SOURCE_STORE_OBSERVE the capture schema was not read: %s" % out[-200:]
+        return {"path": str(path), "sha256": _source_store.hashlib.sha256(path.read_bytes()).hexdigest(),
+                "rows": sum(1 for ln in path.read_text(encoding="utf-8").splitlines() if not ln.endswith("\t#table"))}, ""
+
+    def snapshot(self, path: Path) -> tuple[dict[str, Any], str]:
+        """The post-request state, retained: every table of the capture schema observed (PostgreSQL has no
+        engine-level SCRIPT; the schema outlives the process, so a later restart reads it as it is)."""
+        q = Path(path).with_suffix(".tables.sql")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        q.write_text("SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables "
+                     "WHERE table_schema = current_schema()\n", encoding="utf-8")
+        names, why = self.query(q.read_text(encoding="utf-8"), q)
+        if why or not names:
+            return {}, "SOURCE_STORE_SNAPSHOT the capture schema's tables were not listed: %s" % (why or "none")
+        doc, why = self.observe(names.split(","), Path(path))
+        if why:
+            return {}, why.replace("OBSERVE", "SNAPSHOT")
+        return dict(doc, kind="row-observation", bytes=Path(path).stat().st_size), ""
+
+    def revert(self, plan: dict[str, Any]) -> tuple[int, str]:
+        rows = []
+        for r in plan.get("rows") or []:
+            fields = [str(r[k]) for k in ("table", "column", "variant_value", "baseline_value", "where_column",
+                                          "where_value", "rows", "table_rows")]
+            if any("\t" in f or "\n" in f for f in fields):
+                return 2, "REVERT_PLAN_MALFORMED a plan value carries a tab or a newline"
+            rows.append("\t".join(fields))
+        tsv = Path(self.root) / "verification" / "scenarios" / "logs" / "revert-plan.tsv"
+        tsv.parent.mkdir(parents=True, exist_ok=True)
+        tsv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        return self._store("revert", tsv)
 
     def query(self, sql: str, path: Path) -> tuple[Any, str]:
         Path(path).write_text(str(sql).strip() + "\n", encoding="utf-8")
