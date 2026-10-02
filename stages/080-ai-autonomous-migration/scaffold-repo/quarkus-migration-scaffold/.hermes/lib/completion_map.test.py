@@ -302,6 +302,38 @@ class FalseGreen(unittest.TestCase):
         self.assertEqual(cm["causal_groups"]["ungrouped_failures"], 2)
 
 
+class CheckSchedule(unittest.TestCase):
+    """M-2 gap 1: the completion map says which LATER checks are due, from the plan's schedule and the board."""
+
+    def plan(self, a, b, c):
+        def node(oid, checks):
+            return {"outcome_id": oid, "role": "repair", "check_plan": checks}
+        later = lambda chk, ms, at: {"check": chk, "stage": "later", "earliest": {"milestone": ms, "at": at}, "requires": ["x"]}
+        return {"nodes": [node(a, [{"check": "compile:%s" % a, "stage": "immediate"},
+                                   later("parity:sc:%s-1" % a, "application-behavior-preserved", [b])]),
+                          node(b, [later("gate:startup", "persistence-and-one-http-path", [c])]),
+                          node(c, [])]}
+
+    def check(self, a, b, c):
+        plan = self.plan(a, b, c)
+        unknown = CM.check_schedule(plan, None)
+        self.assertFalse(unknown["known"])
+        self.assertEqual({r["state"] for r in unknown["rows"]}, {"unknown"})        # never assumed without the board
+        got = CM.check_schedule(plan, {a: "done", b: "done", c: "ready"})
+        st = {r["check"]: r["state"] for r in got["rows"]}
+        self.assertEqual(st["parity:sc:%s-1" % a], "due")                          # its earliest card is done
+        self.assertEqual(st["gate:startup"], "pending")                            # its earliest card is not
+        self.assertEqual(got["done_owners_with_pending_checks"], [b])
+        self.assertEqual((got["due"], got["pending"]), (1, 1))
+        self.assertEqual(got["by_milestone"]["application-behavior-preserved"], {"due": 1, "pending": 0, "unknown": 0})
+
+    def test_schedule(self):
+        self.check("repair:OwnerRepository", "repair:Startup", "repair:Datasource")
+
+    def test_renamed_twin(self):
+        self.check("repair:LedgerStore", "repair:Boot", "repair:Pool")
+
+
 class Delivery(unittest.TestCase):
     """(b) a deployed, live-checked, INCONCLUSIVE application: its URL, ship=false."""
 

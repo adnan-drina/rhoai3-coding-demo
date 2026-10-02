@@ -148,6 +148,41 @@ def inventory(plan: dict[str, Any]) -> dict[str, Any]:
             "later_checks_by_outcome": dict(sorted(later.items()))}
 
 
+DONE_STATUSES = ("done", "archived")
+
+
+def check_schedule(plan: dict[str, Any], status: dict[str, str] | None) -> dict[str, Any]:
+    """M-2: every LATER check the plan scheduled (check-schedule/v1), when it is due and whether it is.
+
+    A row is ``due`` when every card its ``earliest.at`` names is done on the board: the check can be measured now
+    and is owed; ``pending`` while one is not; ``unknown`` without the board (never assumed either way). An outcome whose
+    own card is done with a check still pending is listed: its completion is conditional on that later card."""
+    rows: list[dict[str, Any]] = []
+    for n in plan.get("nodes") or []:
+        if n.get("role") != "repair":
+            continue
+        for c in _l(n.get("check_plan")):
+            c = _d(c)
+            if c.get("stage") != "later" or not isinstance(c.get("earliest"), dict):
+                continue
+            at = [str(x) for x in _l(c["earliest"].get("at"))]
+            state = ("unknown" if status is None
+                     else "due" if at and all(status.get(a) in DONE_STATUSES for a in at) else "pending")
+            rows.append({"check": str(c.get("check") or ""), "owner": str(n.get("outcome_id") or ""),
+                         "milestone": str(c["earliest"].get("milestone") or ""), "at": at, "state": state,
+                         "requires": len(_l(c.get("requires"))), "after": [str(x) for x in _l(c.get("after"))]})
+    by_ms: dict[str, dict[str, int]] = {}
+    for r in rows:
+        m = by_ms.setdefault(r["milestone"], {"due": 0, "pending": 0, "unknown": 0})
+        m[r["state"]] += 1
+    conditional = sorted({r["owner"] for r in rows if status is not None and r["state"] != "due"
+                          and status.get(r["owner"]) in DONE_STATUSES})
+    return {"known": status is not None, "rows": rows, "by_milestone": dict(sorted(by_ms.items())),
+            "due": sum(1 for r in rows if r["state"] == "due"), "pending": sum(1 for r in rows if r["state"] == "pending"),
+            "done_owners_with_pending_checks": conditional,
+            "note": "" if status is not None else "the board was not read: when later checks are due is unknown"}
+
+
 # --------------------------------------------------------------------------- the contract
 
 def owed_modes(decisions: Any) -> list[str]:
@@ -763,6 +798,7 @@ def build(inputs: dict[str, Any], *, classification: Any = None) -> dict[str, An
         "distinctions": distinctions(ms, d, classification),
         "delivery": d,
         "causal_groups": groups,
+        "check_schedule": (check_schedule(latest, inputs.get("native_status")) if latest else None),
         "headline": {
             "state": headline(ms, validity, d),
             "last_demonstrated_milestone": last,
@@ -852,6 +888,17 @@ def load_inputs(root: Path, plan_paths: list[Path] | None = None) -> dict[str, A
     if out["migration"] is None:
         missing["migration"] = "migration.yaml is absent or unreadable"
     out["dynamic_entry_sites"] = dynamic_entry_sites(root)
+    # M-2: the board's status of each plan node, so the map can say which later checks are due; unknown without it
+    out["native_status"] = None
+    try:
+        from planner.native_control import _native_status_fn, board_for, run_id_of
+        board = board_for(root)
+        run = run_id_of(root, board)
+        fn = _native_status_fn(board, run)
+        out["native_status"] = {str(n.get("outcome_id")): fn(str(n.get("outcome_id")))
+                                for n in (board.plan(run) or {}).get("nodes") or [] if n.get("outcome_id")}
+    except Exception:  # noqa: BLE001 - no board here (a copy, a lab, a test): the schedule's state is unknown
+        out["native_status"] = None
     out["pins"] = get("pins", PINS)
     out["freeze"] = get("freeze", producer_receipt(root, "freeze").relative_to(root))
     out["source_manifest"] = get("source_manifest", SOURCE_MANIFEST)
@@ -940,6 +987,15 @@ def render_lines(cm: dict[str, Any]) -> list[str]:
     for g in cm["causal_groups"]["groups"]:
         L.append("- causal group: %s (%s), producer %s %s, %d owner(s), %d check(s) kept" % (
             g["exception"], g["mechanism"], g["producer"]["family"], ",".join(g["producer"]["recipes"]), len(g["owners"]), len(g["checks"])))
+    sched = cm.get("check_schedule")
+    if sched:
+        if not sched["known"]:
+            L.append("- later checks: %d scheduled; %s" % (len(sched["rows"]), sched["note"]))
+        else:
+            L.append("- later checks: %d due now, %d pending (%s)" % (sched["due"], sched["pending"], ", ".join(
+                "%s %d/%d" % (m, c["due"], c["due"] + c["pending"]) for m, c in sched["by_milestone"].items()) or "none"))
+            if sched["done_owners_with_pending_checks"]:
+                L.append("  done but conditional on a later check: %s" % ", ".join(sched["done_owners_with_pending_checks"][:12]))
     for lim in cm["contract"]["limitations"]:
         L.append("- scope limit: %s" % lim)
     for lim in cm["contract"].get("scope_limitations") or []:
