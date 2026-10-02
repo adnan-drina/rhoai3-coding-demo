@@ -123,6 +123,19 @@ def main() -> int:
         expect_allow("export PATH=/bin:$PATH; ls", "pathless_ls_cwd", cwd=cwd)
         expect_block("export PATH=/bin:$PATH; ls", "pathless_ls_no_cwd", "unproven")
         expect_block("cat /etc/passwd", "etc_passwd", "outside allow root")
+        # v32 (message text only): the refusal names this card's scratch directory, inside the allow root
+        scratch_env = {"HERMES_KANBAN_TASK": "t_scr0001", "HERMES_WRITE_SAFE_ROOT": str(dest)}
+        expect_block("echo x > /tmp/out.json", "outside_root_names_card_scratch",
+                     "use this card scratch directory %s/.derived/scratch/t_scr0001/" % os.path.realpath(str(dest)),
+                     cwd=cwd, extra_env=scratch_env)
+        expect_block("echo x > /tmp/out.json", "outside_root_names_scratch_without_task",
+                     "%s/.derived/scratch/<task>/" % os.path.realpath(str(dest)), cwd=cwd)
+        for needle in ("execute_code is pathless-or-mutation; deny", "read_file", "verification/loop/brief-<cluster>.txt",
+                       "verification/loop/context-<cluster>.txt", "--section <key> (repeatable)", "--spill <file> --field <path>"):
+            expect_block("", "execute_code_names_reads_" + needle.split()[0].strip("-<>/"), needle, cwd=cwd,
+                         tool="execute_code", extra_input={"code": "print(1)"})
+        expect_block("", "delegate_task_message_unchanged", "delegate_task is pathless-or-mutation; deny", cwd=cwd,
+                     tool="delegate_task")
         expect_allow(f"ls {dest}", "inside_root")
         expect_block(
             "export JAVA_HOME=/usr/lib/jvm/x && cat /etc/passwd",

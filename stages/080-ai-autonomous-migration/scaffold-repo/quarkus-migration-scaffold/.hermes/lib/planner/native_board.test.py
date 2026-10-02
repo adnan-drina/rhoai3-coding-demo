@@ -1431,6 +1431,17 @@ class LifecycleReconciliation(unittest.TestCase):
         from planner.paths import LOOP_ISSUED
         mirror_layout(r.root)
         key = NG.write_issued_projection(r.root, first)
+        # v32: the issue creates this card's scratch directory (a redirect into it failed before the worker's mkdir);
+        # it is outside the product, and the brief names the same directory
+        from planner.paths import SCRATCH_DIR, is_product_path
+        self.assertTrue((r.root / SCRATCH_DIR / tid).is_dir())
+        self.assertFalse(is_product_path((SCRATCH_DIR / tid / "out.json").as_posix()))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "generator_template", LIB.parent / "skills/migration/fix-until-green/scripts/generator-template.py")
+        gt = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gt)
+        self.assertEqual(gt.scratch_dir(tid), (SCRATCH_DIR / tid).as_posix())
         proj = json.loads((r.root / LOOP_ISSUED).read_text())
         proj["continuations"] = [{"n": 1, "reported": ["x"]}]                # the loop wrote onto its projection
         (r.root / LOOP_ISSUED).write_text(json.dumps(proj))

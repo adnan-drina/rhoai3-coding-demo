@@ -230,6 +230,29 @@ def specimen_case(base: str, n: dict) -> tuple[int, str]:
     return 0, json.dumps([doc, doc2], sort_keys=True)
 
 
+def by_line_case(doc: dict, tag: str) -> int:
+    """v32: the canonical context is one ~33K line (read_file previews ~2K). Its by-line text parses back to the
+    same document, has one line per key, and the index line names it with every top-level key and its lines."""
+    from planner.canonical import canonical_text
+    text = RC.text(doc)
+    if len(canonical_text(doc).splitlines()) != 1 or len(text.splitlines()) <= 1 or json.loads(text) != doc:
+        return _fail("[%s] the by-line text has more than one line and parses to the same document" % tag)
+    keys = RC.key_lines(text)
+    lines = text.splitlines()
+    if [k for k, *_ in keys] != sorted(doc):
+        return _fail("[%s] every top-level key, in order: %s vs %s" % (tag, [k for k, *_ in keys], sorted(doc)))
+    for key, first, last, chars in keys:
+        part = "{" + "\n".join(lines[first - 1:last]).rstrip(",") + "}"
+        if json.loads(part) != {key: doc[key]} or chars != sum(len(x) + 1 for x in lines[first - 1:last]):
+            return _fail("[%s] lines %d-%d hold exactly the key %s" % (tag, first, last, key))
+    line = RC.index_line(doc, "verification/loop/context-c-x.json", "verification/loop/context-c-x.txt")
+    if line.count("\n") or "verification/loop/context-c-x.txt" not in line \
+            or any("%s (lines %d-%d" % (k, a, b) not in line for k, a, b, _c in keys) \
+            or not line.startswith(RC.index_line(doc, "verification/loop/context-c-x.json")):
+        return _fail("[%s] the index line names the by-line copy and every key with its lines: %s" % (tag, line))
+    return 0
+
+
 def main() -> int:
     rc, clinic = specimen_case("org.acme.clinic", S.PETCLINIC_NAMES)
     if rc:
@@ -242,6 +265,9 @@ def main() -> int:
                     if S.PETCLINIC_NAMES[k] in ledger)
     if leaked or "org.acme.clinic" in ledger:
         return _fail("the twin's context names only the twin's own types: %s" % leaked)
+    for tag, built in (("clinic", clinic), ("ledger", ledger)):
+        if by_line_case(json.loads(built)[0], tag):
+            return 1
     print("OK: resolved context (the inactive-profile and generated-DTO questions are answered from the attachment with "
           "provenance on every fact; contract-derived paths and ungenerated types are labelled inferences; a destination "
           "fact of another tree is rejected and withdrawn; missing inputs stay named unknowns; a renamed twin answers the same)")

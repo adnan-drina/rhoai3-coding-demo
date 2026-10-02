@@ -55,8 +55,22 @@ def write_issued_projection(root: Path, issued: dict) -> str:
     issuance's publication (architect review of 0dd677ba)."""
     if not issued.get("cluster"):
         return ""
+    ensure_scratch(root, str(issued.get("task_id") or ""))
     with NC.publication_lock(Path(root)):
         return _write_issued_projection(root, issued)
+
+
+def ensure_scratch(root: Path, task: str) -> None:
+    """Create this card's scratch directory (.derived/scratch/<task>/) when it is issued: the brief and the K2
+    refusals name it, and v32 shows a redirect into it failing with "No such file or directory" until the
+    worker ran mkdir. Outside the product (.derived/ is exempt from the tree digest and the write set).
+    Best effort: an issue never fails on it (the worker can still mkdir it)."""
+    from planner.paths import SCRATCH_DIR
+    if task and "/" not in task and task not in (".", ".."):
+        try:
+            (Path(root) / SCRATCH_DIR / task).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
 
 def _write_issued_projection(root: Path, issued: dict) -> str:

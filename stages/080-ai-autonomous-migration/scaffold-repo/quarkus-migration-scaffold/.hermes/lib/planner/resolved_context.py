@@ -41,6 +41,7 @@ names under ``root``; it writes nothing.
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -387,11 +388,37 @@ def counts(doc: dict[str, Any]) -> dict[str, int]:
             "deferred": len((doc.get("checks") or {}).get("deferred") or []), "unknowns": len(doc.get("unknowns") or [])}
 
 
-def index_line(doc: dict[str, Any], rel: str) -> str:
-    """The ONE digest line naming the attachment (the context itself stays on disk)."""
+def text(doc: dict[str, Any]) -> str:
+    """The same document, indented with sorted keys and one trailing newline: the .txt beside the canonical
+    .json, readable by line (v32: the canonical form is ONE line of ~33K characters, of which read_file
+    previews ~2K). It parses back to exactly the document; it carries no authority and nothing hashes it."""
+    return json.dumps(doc, indent=2, sort_keys=True) + "\n"
+
+
+def key_lines(rendered: str) -> list[tuple[str, int, int, int]]:
+    """(top-level key, first line, last line, characters) of each top-level key of a document rendered by
+    ``text`` -- 1-based line numbers, for read_file offset/limit. JSON strings never span lines, so a line
+    indented by exactly two spaces and opening with a quote starts a top-level key."""
+    lines = rendered.splitlines()
+    starts = [(i, json.JSONDecoder().raw_decode(ln[2:])[0]) for i, ln in enumerate(lines) if ln.startswith('  "')]
+    out = []
+    for n, (i, key) in enumerate(starts):
+        end = (starts[n + 1][0] if n + 1 < len(starts) else len(lines) - 1) - 1
+        out.append((key, i + 1, end + 1, sum(len(x) + 1 for x in lines[i:end + 1])))
+    return out
+
+
+def index_line(doc: dict[str, Any], rel: str, text_rel: str = "") -> str:
+    """The ONE digest line naming the attachment (the context itself stays on disk). With ``text_rel``, the
+    line also names the by-line copy and its top-level keys with their line ranges and sizes."""
     c = counts(doc)
-    return ("RESOLVED CONTEXT: %s -- %d frozen-source fact(s), %d destination fact(s) of tree %s, %d recipe(s), %d check(s) now, "
+    line = ("RESOLVED CONTEXT: %s -- %d frozen-source fact(s), %d destination fact(s) of tree %s, %d recipe(s), %d check(s) now, "
             "%d deferred, %d named unknown(s). Read it (provenance on every fact) for the active profile and selected "
             "implementation, generated vs handwritten types, the recipe and its checks BEFORE searching the repository."
             % (rel, c["source"], c["destination"], _s((doc.get("destination") or {}).get("tree"))[:12], c["recipes"],
                c["immediate"], c["deferred"], c["unknowns"]))
+    if text_rel:
+        keys = key_lines(text(doc))
+        line += (" The .json is one line: read %s by line instead (read_file with offset/limit). Its top-level keys "
+                 "(the only keys): %s." % (text_rel, ", ".join("%s (lines %d-%d, %d chars)" % k for k in keys)))
+    return line

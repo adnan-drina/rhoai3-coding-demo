@@ -91,6 +91,10 @@ PRODUCER_NAMES = ("freeze", "build", "jdk-model", "mta", "bootstrap")
 # .worktrees/: the parallel pilot's native worktrees (PARALLEL-M3-PILOT.md) -- each is its own candidate,
 # never part of the canonical product tree or its digest
 PRODUCT_EXEMPT = ("evidence/", "verification/", ".hermes/", ".derived/", "target/", ".git/", ".worktrees/")
+# each issued card's sanctioned scratch directory is SCRATCH_DIR/<task> (outside the product, inside the
+# allow root); the issue creates it. The same literal is in fix-until-green/scripts/generator-template.py
+# (SCRATCH) and in the K2 hook's outside-allow-root refusal text.
+SCRATCH_DIR = Path(".derived") / "scratch"
 
 
 def is_product_path(rel: str) -> bool:

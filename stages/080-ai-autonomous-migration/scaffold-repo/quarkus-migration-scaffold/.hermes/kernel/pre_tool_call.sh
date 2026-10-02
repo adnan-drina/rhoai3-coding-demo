@@ -445,7 +445,13 @@ if profile == "reviewer":
         block("%s disabled for profile reviewer" % ts)
 
 if tool in {"execute_code", "delegate_task", "mcp", "skill_manage"}:
-    block("%s is pathless-or-mutation; deny" % tool)
+    # message text only (v32): an execute_code read names the reads that work
+    block("%s is pathless-or-mutation; deny%s" % (tool, (
+        ". To read, use read_file on the by-line copies verification/loop/brief-<cluster>.txt and "
+        "verification/loop/context-<cluster>.txt (offset/limit), or the bounded brief.py selectors: "
+        "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --section <key> (repeatable) "
+        "| --file <path> | --item <id> | --symbol <name> | --card | --spill <file> --field <path> [--limit <n>]")
+        if tool == "execute_code" else ""))
 
 # Graph mutation veto (SAD §9 K2): a worker never creates or links cards.
 # Cards come from K4 (python3 .hermes/kernel/k4_mint.py --root . --exec)
@@ -1604,7 +1610,14 @@ for p in paths:
     if inside(rp):
         proven = True
     else:
-        block("path %s resolves outside allow root" % p)
+        # message text only (v32): name the place that works -- this card scratch directory, inside the
+        # allow root and created when the card was issued (native_gate.py issue)
+        _sd = os.path.join(PILOT_ROOT or (os.path.realpath(os.environ.get("HERMES_WRITE_SAFE_ROOT") or "")
+                                          if (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip() else roots[0]),
+                           ".derived", "scratch", hook_task_id() or "<task>")
+        block("path %s resolves outside allow root; for scratch output (downloads, extracted files, tool output, "
+              "temporary files) use this card scratch directory %s/ instead -- it is inside the allow root and "
+              "is not part of the product" % (p, _sd))
 if paths and only_toolchain:
     print("{}")
     raise SystemExit(0)

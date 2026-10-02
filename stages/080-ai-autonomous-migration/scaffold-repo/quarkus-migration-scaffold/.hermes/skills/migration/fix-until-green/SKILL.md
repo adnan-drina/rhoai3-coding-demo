@@ -71,7 +71,8 @@ edit on a new card; a prior card's amendment never carries over.
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
 #   the default always prints a DIGEST on stdout (write set, obligations per file, procedure, a section index); read what
-#   you need in full with --section <key> (e.g. --section unit --section items), never by grep/cut on the .json
+#   you need in full with --section <key> (repeatable in one call: --section unit --section items), never by grep/cut on
+#   the .json; brief-<cluster>.txt and context-<cluster>.txt are the same documents by line, for read_file offset/limit
 #   --full is the explicit machine-readable JSON interface, not the worker's first read.
 #   --file <path>, --symbol <name> and --item <id> give measured facts with candidate and issuance labels.
 #   A diagnostic on a shared file is not automatically this card's obligation; unsealed diagnostics may still be

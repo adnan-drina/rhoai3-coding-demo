@@ -1450,7 +1450,15 @@ def main(argv: list[str] | None = None) -> int:
             now = candidate_sha256(root)
         except Exception:
             now = ""
-        brief["last_verify_state"] = verification_state(brief["last_verify"], _outcome_bridge._ids()[0], now)
+        this_task = _outcome_bridge._ids()[0]
+        brief["last_verify_state"] = verification_state(brief["last_verify"], this_task, now)
+        note = other_card_note(brief["last_verify"], this_task)
+        if note:
+            # last-verify.json holds the verifier's LATEST record, whichever card ran it: labelled, never passed
+            # off as this card's (v32: last_verify showed another card's record while last_verify_state said
+            # "no verifier record of this card"). Kept, not omitted: which card verified last is a fact a reader
+            # can use, and the digest, --section last_verify and --section last_verify_state all say the same.
+            brief["last_verify"] = dict(brief["last_verify"], not_this_card=note)
     own = issued_ownership(root)
     planned = planned_requirements(root, write_set, own)
     if planned:
@@ -1553,9 +1561,10 @@ def select_spill(path: Path, field: str, limit: int = 4000) -> dict:
         # the way out travels INSIDE the value (v32 qwen38 t_2f2509aa: the worker's own grep -o '"value":.*' dropped
         # the truncated flag and it re-ran one pipeline ~141 times with a larger tail -c, which can never return more
         # than this command printed)
-        more = ("[truncated: %d of %d characters shown. The rest is not in this output and no tail/head/cut can "
-                "recover it: rerun with --limit %d, or select a narrower --field (e.g. %s[0], or a key below it)]"
-                % (len(shown), len(text), len(text), field or "<field>"))
+        # the marker says it is not data, and shown_chars counts the data only: value[:shown_chars] is the data
+        more = ("[brief.py, not part of the value -- truncated: %d of %d characters shown. The rest is not in this "
+                "output and no tail/head/cut can recover it: rerun with --limit %d, or select a narrower --field "
+                "(e.g. %s[0], or a key below it)]" % (len(shown), len(text), len(text), field or "<field>"))
         out["value"] = shown + "\n" + more
         out["more"] = more
     if isinstance(val, (list, dict)):
@@ -2066,7 +2075,11 @@ def brief_digest(brief: dict, stem: str) -> str:
         out.append("  last loop step it completed: %s" % ("%s (exit %s)" % (st["script"], st["exit_code"]) if st else "none recorded"))
         out.append("  left in the working tree: %s" % (", ".join(pr.get("left_in_tree") or []) or "no product edits"))
     lv = brief.get("last_verify") if isinstance(brief.get("last_verify"), dict) else None
-    if lv is not None and lv.get("schema") == "rhoai3.last-verify/v2":
+    if lv is not None and lv.get("not_this_card"):
+        # another card's record: one line saying whose it is, never its result as if it were this card's
+        out.append("LAST VERIFICATION: none of this card -- %s; run run-verify.sh --mode acceptance after your edit"
+                   % lv["not_this_card"])
+    elif lv is not None and lv.get("schema") == "rhoai3.last-verify/v2":
         tests = lv.get("tests")
         out.append("LAST VERIFICATION (card %s, run %s): procedure %s (exit %s); compilation %s (%s); %s -- the verifier's "
                    "own record; a filter or echo after run-verify.sh does not change it"
@@ -2124,8 +2137,17 @@ def brief_digest(brief: dict, stem: str) -> str:
                 "--item <id> | --symbol <name>"]
     out += ["", "SECTIONS (read any in full: brief.py --root . --cluster %s --section <key>; "
                 "the whole brief one key per line: verification/loop/%s.txt):" % (cl.get("id"), stem)]
-    out += ["  %-22s %s" % (k, _size(brief[k])) for k in sorted(brief)]
+    # v32: one --section per call cost workers 5-29 brief.py calls a card; an empty section is not a row to fetch
+    out.append("  --section is repeatable: read several sections in ONE call (--section <key> --section <key> ...)")
+    out += ["  %-22s %s" % (k, _size(brief[k])) for k in sorted(brief) if not _empty(brief[k])]
+    empty = sorted(k for k in brief if _empty(brief[k]))
+    if empty:
+        out.append("  empty (nothing to fetch): %s" % ", ".join(empty))
     return "\n".join(out)
+
+
+def _empty(v) -> bool:
+    return v is None or (isinstance(v, (str, list, dict)) and not v)
 
 
 SELECT_LIMIT = 80
@@ -2466,12 +2488,28 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
             "repeated": repeated, "last_loop_step": step, "left_in_tree": list(dirty)[:10]}
 
 
+def other_card_note(record: dict, task: str) -> str:
+    """'' when the verifier record is THIS card's; else one sentence naming whose record it is (the record
+    file holds the latest verification of whichever card ran last)."""
+    card = str(record.get("card") or "")
+    if task and card == task:
+        return ""
+    whose = ("card %s (run %s)" % (card, record.get("run") or "?")) if card else "no card (the record names none)"
+    mine = ("this card %s" % task) if task else "this card (HERMES_KANBAN_TASK is not set, so this card is unknown)"
+    return ("the verifier's latest record (verification/loop/last-verify.json) is of %s, not of %s: it says nothing "
+            "about this card's tree" % (whose, mine))
+
+
 def verification_state(record: dict | None, task: str, candidate_now: str) -> dict:
     """Whether the verifier's own latest record is evidence about THIS card's tree NOW:
     current (same card, finished, same candidate digest), stale (the tree changed since)
     or unknown (no record, another card, unfinished, or a record without a digest)."""
-    if not isinstance(record, dict) or str(record.get("card") or "") != task or not task:
+    if not isinstance(record, dict):
         return {"state": "unknown", "why": "no verifier record of this card"}
+    note = other_card_note(record, task)
+    if note:
+        return {"state": "unknown", "why": "no verifier record of this card: %s" % note,
+                "record_card": str(record.get("card") or "")}
     if record.get("status") not in (None, "finished"):
         return {"state": "unknown", "why": "its latest verification did not record a finish (interrupted)"}
     was = str(record.get("candidate_sha256") or "")
@@ -2570,7 +2608,8 @@ def _context_plan(root: Path, cluster: dict, write_set: list) -> tuple[dict, dic
 
 def resolved_context(root: Path, cluster: dict, write_set: list, worklist: dict) -> dict:
     """V26-3: build this card's resolved context (planner.resolved_context) on the current product tree and
-    write it BESIDE the brief (verification/loop/context-<cluster>.json). The brief keeps only this index --
+    write it BESIDE the brief (verification/loop/context-<cluster>.json, and the same document by line in
+    context-<cluster>.txt). The brief keeps only this index --
     the path, the tree and the counts -- and the digest one line: the context is read on demand, never
     injected. A build fault is shown, never hidden as "no context"."""
     from planner import resolved_context as RC
@@ -2581,7 +2620,11 @@ def resolved_context(root: Path, cluster: dict, write_set: list, worklist: dict)
         ctx = RC.build(root, plan, node, worklist, tree, plan_ref=ref)
         rel = (LOOP_DIR / ("context-%s.json" % str(cluster.get("id") or "").replace(":", "-"))).as_posix()
         write_canonical(root / rel, ctx)
-        return {"path": rel, "tree": tree, "counts": RC.counts(ctx), "index": RC.index_line(ctx, rel)}
+        # the same document by line beside it, as for brief-<stem>.txt (v32: the canonical .json is one ~33K
+        # line, read_file previewed ~2K of it, and workers guessed keys such as `--field facts`)
+        text_rel = rel[:-len(".json")] + ".txt"
+        (root / text_rel).write_text(RC.text(ctx), encoding="utf-8")
+        return {"path": rel, "tree": tree, "counts": RC.counts(ctx), "index": RC.index_line(ctx, rel, text_rel)}
     except Exception as exc:
         return {"error": "resolved context failed: %s" % exc}
 
