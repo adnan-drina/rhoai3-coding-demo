@@ -1,0 +1,252 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 2 Oct 2026 22:09:40 +0200
+Subject: [PATCH 19/19] fix(tools): a terminal call cut at the foreground limit
+ says so
+
+RHOAI3 v32: an M1 capture call requested timeout=7170 (a Kanban worker's
+TERMINAL_MAX_FOREGROUND_TIMEOUT, derived from the task's max runtime, lets
+the terminal tool accept it) and was cut by the executor's per-call deadline
+(tools.sequential_call / tools.concurrent_batch, 420s by default). The tool
+result said only "timed out after 420.0s", so the worker retried the same
+foreground call.
+
+The deadline is where the requested timeout is clamped: it is applied
+whatever the call asked for, and the cut interrupts the worker thread, which
+makes the terminal tool's foreground wait kill the process. For a foreground
+terminal call the timeout result (sequential and concurrent paths) now keeps
+the existing first sentence and adds: the process was killed at the
+foreground limit, the requested and applied limits, and that a longer
+command needs terminal(background=true, notify_on_complete=true) and then
+process(action="wait") with a timeout below the limit, repeated until the
+process exits. Other tools and background calls keep the plain message. The
+limit's value is unchanged. Local extension.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ agent/tool_executor.py                        |  55 +++++++-
+ .../test_terminal_foreground_limit_result.py  | 132 ++++++++++++++++++
+ 2 files changed, 181 insertions(+), 6 deletions(-)
+ create mode 100644 tests/run_agent/test_terminal_foreground_limit_result.py
+
+diff --git a/agent/tool_executor.py b/agent/tool_executor.py
+index 688291d..2baeae3 100644
+--- a/agent/tool_executor.py
++++ b/agent/tool_executor.py
+@@ -414,6 +414,53 @@ class _ToolTimeoutResult(str):
+     """Marker for a synthesized sequential-tool timeout result."""
+ 
+ 
++def _tool_timeout_message(function_name: str, function_args: Any, timeout_s: float | None) -> str:
++    """Result text for a tool call cut at the executor's per-call deadline.
++
++    The deadline (``tools.sequential_call`` / ``tools.concurrent_batch``,
++    default 420s) is the foreground limit of a ``terminal`` call: it is
++    applied whatever ``timeout`` the call requested (a Kanban worker's
++    TERMINAL_MAX_FOREGROUND_TIMEOUT lets the terminal tool accept a longer
++    one), and the cut interrupts the worker thread, which kills the
++    foreground process. A foreground ``terminal`` result states that clamp,
++    the kill and the background route instead of the bare timeout.
++    """
++    suffix = f"{timeout_s:.1f}s" if timeout_s is not None else "the configured timeout"
++    message = f"Error executing tool '{function_name}': timed out after {suffix}"
++    if (
++        function_name != "terminal"
++        or timeout_s is None
++        or not isinstance(function_args, dict)
++        or function_args.get("background")
++    ):
++        return message
++    limit = f"{timeout_s:g}s"
++    requested = function_args.get("timeout")
++    try:
++        requested = None if isinstance(requested, bool) else float(requested)
++    except (TypeError, ValueError):
++        requested = None
++    if requested is not None and requested > 0:
++        if requested > timeout_s:
++            clamp = (
++                f"The requested timeout of {requested:g}s was not applied: "
++                f"requested {requested:g}s, applied {limit}."
++            )
++        else:
++            clamp = f"Requested timeout {requested:g}s, applied {limit}."
++    else:
++        clamp = f"No timeout was requested; applied {limit}."
++    return (
++        f"{message}. The foreground process was killed at the foreground limit of "
++        f"{limit}. {clamp} A command that runs longer than {limit} needs a "
++        "background process plus a wait: terminal(background=true, "
++        "notify_on_complete=true), then process(action=\"wait\", "
++        f"session_id=<the returned id>, timeout=<below {timeout_s:g}>), repeated "
++        "until the process has exited (a wait is cut at the same limit; the "
++        "background process keeps running)."
++    )
++
++
+ class _ToolCancelledResult(str):
+     """Marker for a synthesized sequential-tool user-interrupt result.
+ 
+@@ -961,10 +1008,7 @@ def _run_sequential_tool_execution_middleware(
+ 
+         # Only reachable when a deadline exists (interrupted returns above).
+         assert timeout_s is not None
+-        message = (
+-            f"Error executing tool '{function_name}': "
+-            f"timed out after {timeout_s:.1f}s"
+-        )
++        message = _tool_timeout_message(function_name, function_args, timeout_s)
+         logger.warning(
+             "sequential tool %s timed out after %.1fs", function_name, timeout_s
+         )
+@@ -1704,8 +1748,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
+         # tool genuinely succeeded, just slightly late.
+         effect_disposition = None
+         if i in timed_out_indices and r is None:
+-            suffix = f"{timeout_s:.1f}s" if timeout_s is not None else "the configured timeout"
+-            function_result = f"Error executing tool '{name}': timed out after {suffix}"
++            function_result = _tool_timeout_message(name, args, timeout_s)
+             effect_disposition = "unknown"
+             _emit_terminal_post_tool_call(
+                 agent,
+diff --git a/tests/run_agent/test_terminal_foreground_limit_result.py b/tests/run_agent/test_terminal_foreground_limit_result.py
+new file mode 100644
+index 0000000..085bad9
+--- /dev/null
++++ b/tests/run_agent/test_terminal_foreground_limit_result.py
+@@ -0,0 +1,132 @@
++"""A terminal call cut at the executor's foreground limit says so (RHOAI3 v32).
++
++v32 M1 capture calls requested ``timeout`` 7170 (a Kanban worker's
++TERMINAL_MAX_FOREGROUND_TIMEOUT lets the terminal tool accept it) and were
++cut by the executor's per-call deadline (420s by default). The result said
++only "timed out after 420.0s". It now states the requested and applied
++limits, that the foreground process was killed, and the background + wait
++route. The limit itself is unchanged.
++"""
++
++import threading
++import time
++from pathlib import Path
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++import pytest
++
++from agent.tool_executor import _tool_timeout_message, execute_tool_calls_sequential
++from run_agent import AIAgent
++from tests.run_agent.test_sequential_tool_timeout import _deterministic_worker_start  # noqa: F401
++
++
++def test_terminal_message_states_the_clamp_the_kill_and_the_background_route():
++    message = _tool_timeout_message("terminal", {"command": "python3 capture.py", "timeout": 7170}, 420.0)
++    assert message.startswith("Error executing tool 'terminal': timed out after 420.0s.")
++    assert "killed at the foreground limit of 420s" in message
++    assert "requested 7170s, applied 420s" in message
++    assert "terminal(background=true" in message and 'process(action="wait"' in message
++
++
++@pytest.mark.parametrize(
++    "args,expected",
++    [
++        ({"command": "x"}, "No timeout was requested; applied 420s."),
++        ({"command": "x", "timeout": "7170"}, "requested 7170s, applied 420s"),
++        ({"command": "x", "timeout": 300}, "Requested timeout 300s, applied 420s."),
++    ],
++)
++def test_terminal_message_variants(args, expected):
++    assert expected in _tool_timeout_message("terminal", args, 420.0)
++
++
++@pytest.mark.parametrize(
++    "name,args",
++    [
++        ("web_extract", {"url": "x"}),
++        ("terminal", {"command": "x", "background": True, "timeout": 7170}),
++    ],
++)
++def test_other_timeouts_keep_the_plain_message(name, args):
++    assert _tool_timeout_message(name, args, 420.0) == f"Error executing tool '{name}': timed out after 420.0s"
++
++
++def _terminal_agent(tmp_path: Path) -> AIAgent:
++    with (
++        patch(
++            "run_agent.get_tool_definitions",
++            return_value=[
++                {
++                    "type": "function",
++                    "function": {
++                        "name": "terminal",
++                        "description": "test terminal",
++                        "parameters": {"type": "object", "properties": {}},
++                    },
++                }
++            ],
++        ),
++        patch("run_agent.check_toolset_requirements", return_value={}),
++        patch("run_agent.OpenAI"),
++        patch("run_agent._hermes_home", tmp_path),
++        patch("agent.model_metadata.fetch_model_metadata", return_value={}),
++    ):
++        agent = AIAgent(
++            api_key="test-key",
++            base_url="https://openrouter.ai/api/v1",
++            quiet_mode=True,
++            skip_context_files=True,
++            skip_memory=True,
++        )
++    agent._flush_messages_to_session_db = MagicMock(return_value=True)
++    agent._append_guardrail_observation = MagicMock(side_effect=lambda _name, _args, result, **_kw: result)
++    agent._record_file_mutation_result = MagicMock()
++    agent._subdirectory_hints.check_tool_call = MagicMock(return_value="")
++    agent._tool_result_content_for_active_model = MagicMock(side_effect=lambda _name, result: result)
++    return agent
++
++
++def test_cut_foreground_terminal_call_reports_the_limit_and_is_interrupted(tmp_path, monkeypatch):
++    """The cut interrupts the worker thread (the terminal tool's foreground
++    wait kills its process on that interrupt) and the tool result says so."""
++    from tools.interrupt import is_interrupted
++
++    agent = _terminal_agent(tmp_path)
++    interrupted = threading.Event()
++    release = threading.Event()
++
++    def _dispatch(_name, _args, _task_id, **_kwargs):
++        deadline = time.monotonic() + 10
++        while time.monotonic() < deadline and not release.is_set():
++            if is_interrupted():
++                interrupted.set()
++                return "[Command interrupted]"
++            time.sleep(0.02)
++        return "late"
++
++    call = SimpleNamespace(
++        id="cut",
++        type="function",
++        function=SimpleNamespace(
++            name="terminal",
++            arguments='{"command": "python3 capture-source-scenarios.py --root .", "timeout": 7170}',
++        ),
++    )
++    messages: list[dict] = []
++    monkeypatch.setenv("HERMES_CONCURRENT_TOOL_TIMEOUT_S", "1.0")
++    try:
++        with (
++            patch("run_agent.handle_function_call", side_effect=_dispatch),
++            patch("agent.tool_executor._emit_terminal_post_tool_call"),
++        ):
++            execute_tool_calls_sequential(agent, SimpleNamespace(tool_calls=[call]), messages, "task")
++        assert interrupted.wait(timeout=5)
++    finally:
++        release.set()
++
++    content = messages[0]["content"]
++    assert content.startswith("Error executing tool 'terminal': timed out after 1.0s.")
++    assert "killed at the foreground limit of 1s" in content
++    assert "requested 7170s, applied 1s" in content
++    assert "terminal(background=true" in content and 'process(action="wait"' in content
+-- 
+2.54.0 (Apple Git-157)
+
