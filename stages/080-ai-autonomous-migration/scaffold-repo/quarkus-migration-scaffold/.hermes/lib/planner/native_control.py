@@ -3770,13 +3770,21 @@ def progress_account(root: Path, board: Board, run_id: str) -> dict[str, Any]:
     """active = baseline + additions = accepted + unfinished; accepted splits
     into proof_applicable (accepted on the current tree, or covered by an
     accepted M4 of the current tree) and awaiting_revalidation. Derived from
-    native tasks and their records only; never read back as a decision."""
+    native tasks and their records only; never read back as a decision.
+
+    A split objective (split-large-objectives/v1) counts ONCE, as its last
+    part: that part keeps the objective's id and waits on every earlier part,
+    so it is done only when the whole objective is."""
     plan = board.plan(run_id)
     tasks = board.run_tasks(run_id)
     tree = _product_tree(root)
     revs = board.revisions(run_id)
-    base_ids = {n["outcome_id"] for n in revs[min(revs)][1]["plan"]["nodes"] if n.get("role") == "repair"} if revs else set()
-    repair = [n for n in plan["nodes"] if n.get("role") == "repair"]
+
+    def counted(n: dict[str, Any]) -> bool:
+        return n.get("role") == "repair" and not (isinstance(n.get("split"), dict)
+                                                  and n["outcome_id"] != n["split"].get("objective"))
+    base_ids = {n["outcome_id"] for n in revs[min(revs)][1]["plan"]["nodes"] if counted(n)} if revs else set()
+    repair = [n for n in plan["nodes"] if counted(n)]
     now_ids = {n["outcome_id"] for n in repair}
     m4 = m4_acceptance(Path(root), board, run_id, plan)
     accepted, applicable = [], []

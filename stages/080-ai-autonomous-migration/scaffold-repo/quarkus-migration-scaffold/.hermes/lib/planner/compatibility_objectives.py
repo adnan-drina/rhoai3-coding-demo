@@ -47,6 +47,23 @@ is that requirement owner's obligation inside its existing scope, with the
 runtime account joining the owner's budget family
 (absorb_recipe_runtime_findings); as a separate runtime outcome it would both
 wait on and block that owner.
+
+Split for capacity (``split-large-objectives/v1``, split_large_objectives). A
+finding objective is still composed, bounded and conserved whole. When its
+final write set holds more than SPLIT_MAX_FILES files or more than
+SPLIT_MAX_BYTES bytes, measured on the tree at planning time (``file_sizes``;
+never a name or a pattern), it is issued as ordered PARTS, one card each: a
+part owns the obligations located in its files and the requirements whose
+files it holds (a requirement's files, and requirements linked by
+``dependencies``, are never separated), and its checkpoint discharges exactly
+those. The LAST part keeps the objective's id, its clusters and every
+obligation no file places; it depends on every earlier part and its
+checkpoint judges the WHOLE objective again (every admitted identity gone,
+every constituent member assessed) -- the existing objective-completion
+mechanism. Every part carries the objective's descriptor, class checks and
+budget family; every node that waited on the objective waits on all its
+parts; the plan counts the objective once. Below both bounds (or without a
+measured tree) the revision is byte-identical.
 """
 from __future__ import annotations
 
@@ -59,6 +76,15 @@ POLICY = "compatibility-objectives/v1"
 # the same prefixes native_control.RUNTIME_CHECK_PREFIXES defers (asserted equal in the test)
 LATER_CHECK_PREFIXES = ("parity:", "behavior:", "gate:package", "gate:augmentation", "gate:startup")
 MAX_FILES, MAX_SITES, MAX_SYMBOLS, MAX_FRAGMENT_SYMBOLS = 20, 160, 8, 16
+# split-large-objectives/v1: the largest write set ONE card is issued. Evidence
+# (2026-10-02): an 8-file request-boundary objective crashed three times
+# (v31) and stalled at 121K prompt tokens rewriting whole controllers (v32) on
+# Qwen 3.6 (110000-token declared context), while Qwen 3.8 finished it in
+# 654 s (v30): capacity, not correctness. 4 files is half the file count
+# that failed; 40 KiB is about 10K tokens to read once (~4 bytes a token), so
+# a read, a whole-file rewrite and a re-read stay near a third of the window.
+SPLIT_POLICY = "split-large-objectives/v1"
+SPLIT_MAX_FILES, SPLIT_MAX_BYTES = 4, 40 * 1024
 PARITY_GENERATED_BODY = "PARITY_GENERATED_BODY"
 # check -> what its prerequisite set is read from (the first explicit table;
 # design §7.2). "files": owners of obligations still open in the
@@ -248,6 +274,19 @@ def seal_site_keys(seal: dict[str, Any]) -> list[str]:
                    for m in seal.get("members") or [] if isinstance(m, dict)})
 
 
+def part_site_keys(seal: dict[str, Any] | None, items: list[str], *, paths: set[str] | None,
+                   obligations: set[str] | None) -> set[str]:
+    """A constituent's sites as one split part counts them (the unit former's
+    units, seal_site_keys): a sealed child's members in the part's files, an
+    unsealed child's items the part owns. ``paths`` None is the whole child.
+    Derivation (split_large_objectives) and consumption
+    (worklist.build_objective_scope) both call this."""
+    if seal is not None:
+        mem = [m for m in seal.get("members") or [] if isinstance(m, dict) and (paths is None or _s(m.get("path")) in paths)]
+        return set(seal_site_keys({"members": mem}))
+    return {"i|%s" % i for i in items if obligations is None or i in obligations}
+
+
 def fragment_seal(seal: dict[str, Any]) -> bool:
     """The unit former qualified this sealed unit for the fragment-set symbol
     limit (worklist._bound_unit records max_symbols); nothing else does."""
@@ -302,10 +341,13 @@ def _subject_type(r: dict[str, Any]) -> str:
 
 def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements: list[dict[str, Any]] | None,
             catalog: dict[str, Any], seals: dict[str, dict[str, Any]] | None, item_symbols: dict[str, str] | None,
-            structure_types: list[dict[str, Any]] | None, run_id: str) -> dict[str, Any]:
+            structure_types: list[dict[str, Any]] | None, run_id: str,
+            file_sizes: dict[str, int] | None = None) -> dict[str, Any]:
     """The objective revision for this run, or ObjectiveError / a PlanError
     from the caller's validation. ``baseline`` is the current policy's revision
-    1 on the same inputs (its digest excluded)."""
+    1 on the same inputs (its digest excluded). ``file_sizes`` (path -> bytes of
+    every product file of the tree at planning time) is what
+    split_large_objectives measures; None splits nothing."""
     from planner.outcome_graph import CHECKS, CONTROL_M2, IMPL, REPAIR_SKILL, REPAIR_SKILLS, PlanError, _acyclic, _title, render_description
 
     fams = families(catalog)
@@ -332,6 +374,8 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
             if len(comp) > 1 and not b["within"]:
                 # a connected component is ONE repair; splitting it by size alone would issue halves whose
                 # independent acceptance nobody proved. A typed planning refusal, never a fallback.
+                # (split_large_objectives issues an objective WITHIN the bound in parts for capacity;
+                # its last part re-judges the whole objective.)
                 raise PlanError("COMPOSITION_OVERSIZE", _oversize("the %s component" % fam, comp, b, bnodes))
             objectives.append({"family": fam, "atoms": comp, "bounds": b, "requirements": [],
                                "fallback_reason": comp[0]["fallback_reason"] if not fam else ""})
@@ -651,8 +695,14 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
                 "check_plan": [dict(r) for r in n.get("check_plan") or []]}
         n["description"] = render_description(n)
         out_nodes.append(n)
+    # split-large-objectives/v1: an objective past the per-card size is issued as ordered parts
+    out_nodes, moved_obs, moved_reqs, split_rows = split_large_objectives(
+        out_nodes, atoms=atoms, reqrows=reqrows, items=items, seals=seals or {}, file_sizes=file_sizes,
+        structure=structure, fams=fams)
+    owned.update(moved_obs)
+    account.update(moved_reqs)
     assess = next(x for x in base["nodes"] if x.get("role") == "assess")
-    assess["parents"] = sorted({CONTROL_M2} | set(ids))
+    assess["parents"] = sorted({CONTROL_M2} | {n["outcome_id"] for n in out_nodes})
     # every LATER check is due at M4, exactly as the current policy defers a
     # runtime check an early outcome cannot measure (native_control.
     # defer_runtime_checks): planned here, never dropped, never a pass
@@ -682,6 +732,9 @@ def compose(*, baseline: dict[str, Any], worklist: dict[str, Any], requirements:
         "budget": {"baseline_total": sum(int(b.get("limit") or 0) for b in budget_of.values()),
                    "objective_total": sum(int(limit) for limit in {n["budget"]["key"]: n["budget"]["limit"] for n in out_nodes}.values())},
     }
+    if split_rows:
+        # the plan still counts each objective once (counts.baseline_outcomes); its parts are listed here
+        doc["composition"]["split"] = split_rows
     if doc["composition"]["budget"]["baseline_total"] != doc["composition"]["budget"]["objective_total"]:
         raise PlanError("BUDGET_NOT_CONSERVED", "%s" % doc["composition"]["budget"])
     schedule_checks(doc)
@@ -762,6 +815,216 @@ def absorb_recipe_runtime_findings(nodes: dict[str, dict[str, Any]], lineage: di
         if not n.get("obligations") and not n.get("requirements"):
             del nodes[rt]
             lineage.pop(rt, None)
+
+
+def part_id(oid: str, index: int) -> str:
+    """The outcome id of an earlier split part; the last part keeps ``oid``."""
+    return "%s/part:%02d" % (oid, index)
+
+
+def _split_groups(paths: list[str], reqs: list[str], reqrows: dict[str, dict[str, Any]]) -> list[list[str]]:
+    """The objective's files in the smallest groups a part may hold: a
+    requirement's files stay together (its checks are judged where all of them
+    are writable), and requirements one ``dependencies`` row links share a
+    group. Union-find over paths; each group sorted."""
+    parent = {p: p for p in paths}
+
+    def find(p: str) -> str:
+        while parent[p] != p:
+            parent[p] = parent[parent[p]]
+            p = parent[p]
+        return p
+
+    def join(group: list[str]) -> None:
+        group = [p for p in group if p in parent]
+        for p in group[1:]:
+            parent[find(p)] = find(group[0])
+
+    mine = set(reqs)
+    for rq in sorted(mine):
+        r = reqrows.get(rq) or {}
+        join(sorted(r.get("paths") or []))
+        for dep in r.get("dependencies") or []:
+            if _s(dep) in mine:
+                join(sorted(set(r.get("paths") or []) | set((reqrows.get(_s(dep)) or {}).get("paths") or [])))
+    out: dict[str, list[str]] = {}
+    for p in paths:
+        out.setdefault(find(p), []).append(p)
+    return [sorted(g) for g in out.values()]
+
+
+def _leaf_rank(groups: list[list[str]], structure: dict[str, dict[str, Any]]) -> dict[int, int]:
+    """Group index -> how many OTHER groups reference a type declared in it
+    (the frozen model's type_refs and supertypes): the work list's leaf-first
+    order, so a shared type is edited before the files that use it. No model:
+    every rank is 0 and path order stands."""
+    declared: dict[str, set[str]] = {}
+    refs: dict[str, set[str]] = {}
+    for fqn, t in structure.items():
+        p = _s(t.get("path"))
+        if p:
+            declared.setdefault(p, set()).add(fqn)
+            refs.setdefault(p, set()).update(_s(x) for x in list(t.get("type_refs") or []) + list(t.get("supertypes") or []))
+    rank: dict[int, int] = {}
+    for i, g in enumerate(groups):
+        mine = {f for p in g for f in declared.get(p, set())}
+        rank[i] = sum(1 for j, h in enumerate(groups) if j != i and mine & {r for p in h for r in refs.get(p, set())})
+    return rank
+
+
+def split_large_objectives(nodes: list[dict[str, Any]], *, atoms: dict[str, dict[str, Any]],
+                           reqrows: dict[str, dict[str, Any]], items: dict[str, dict[str, Any]],
+                           seals: dict[str, dict[str, Any]], file_sizes: dict[str, int] | None,
+                           structure: dict[str, dict[str, Any]], fams: dict[str, dict[str, Any]]
+                           ) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, str], list[dict[str, Any]]]:
+    """split-large-objectives/v1 over the finished repair nodes of a composed
+    revision. Returns (nodes, obligation -> new owner, requirement -> new
+    owner, one summary row per split objective); nothing changes -- the same
+    node objects, empty maps -- when no objective passes a bound.
+
+    Eligible: a finding objective (build, config or source class, at least one
+    constituent unit). A requirement-only objective is never split: it has no
+    located obligation to partition and its checks read its whole planned
+    scope. ``file_sizes`` None (no measured tree) splits nothing: a size that
+    was not measured is unknown, never zero; a path missing from a measured
+    tree is a file the objective will create (0 bytes)."""
+    from planner.outcome_graph import CHECKS, _title, render_description
+
+    if file_sizes is None:
+        return nodes, {}, {}, []
+    out: list[dict[str, Any]] = []
+    owner_of: dict[str, str] = {}
+    req_owner: dict[str, str] = {}
+    summary: list[dict[str, Any]] = []
+    split_of: dict[str, list[str]] = {}
+    for n in nodes:
+        cons = [c for c in (n.get("objective") or {}).get("constituents") or [] if c.get("cluster") in atoms]
+        if n.get("role") != "repair" or n.get("class") not in ("build", "config", "source") or not cons:
+            out.append(n)
+            continue
+        oid = n["outcome_id"]
+        comp = [atoms[c["cluster"]] for c in cons]
+        reqs = sorted(n.get("requirements") or [])
+        req_paths = {p for q in reqs for p in (reqrows.get(q) or {}).get("paths") or []}
+        paths = sorted(set(n.get("plan_paths") or []) | req_paths | {f for a in comp for f in a["writable"]})
+        size = {p: int(file_sizes.get(p) or 0) for p in paths}
+        total = sum(size.values())
+        if len(paths) <= SPLIT_MAX_FILES and total <= SPLIT_MAX_BYTES:
+            out.append(n)
+            continue
+        groups = _split_groups(paths, reqs, reqrows)
+        rank = _leaf_rank(groups, structure)
+        # leaf first, then the larger group first (measured, so a rename changes nothing); the path
+        # only breaks an exact tie
+        order = sorted(range(len(groups)), key=lambda i: (-rank[i], -sum(size[p] for p in groups[i]), groups[i]))
+        parts: list[list[str]] = []
+        cur: list[str] = []
+        for i in order:
+            g = groups[i]
+            if cur and (len(cur) + len(g) > SPLIT_MAX_FILES or sum(size[p] for p in cur + g) > SPLIT_MAX_BYTES):
+                parts.append(cur)
+                cur = []
+            cur = cur + g
+        parts.append(cur)
+        if len(parts) < 2:
+            out.append(n)   # one file (or one requirement's files) past the bound: the smallest card there is
+            continue
+        total_n = len(parts)
+        ids = [part_id(oid, i) for i in range(1, total_n)] + [oid]
+        where = {p: k for k, part in enumerate(parts) for p in part}
+        obs: list[list[str]] = [[] for _ in parts]
+        for ob in n.get("obligations") or []:
+            obs[where.get(_s((items.get(ob) or {}).get("path")), total_n - 1)].append(ob)
+        rq_part: list[list[str]] = [[] for _ in parts]
+        for q in reqs:
+            rp = [where[p] for p in (reqrows.get(q) or {}).get("paths") or [] if p in where]
+            rq_part[rp[0] if rp else total_n - 1].append(q)
+        fam = _s((n.get("objective") or {}).get("family"))
+        base = _s((fams.get(fam) or {}).get("title")) if fam and len(cons) > 1 else _s(n.get("subject"))
+        identities = {ob: _s(items.get(ob, {}).get("identity")) or ob for ob in n.get("obligations") or []}
+        summary.append({"objective": oid, "parts": list(ids), "files": len(paths), "bytes": total,
+                        "limits": {"files": SPLIT_MAX_FILES, "bytes": SPLIT_MAX_BYTES}})
+        split_of[oid] = list(ids)
+        for k, part in enumerate(parts):
+            last = k == total_n - 1
+            mine = set(part)
+            p = copy.deepcopy(n)
+            p["outcome_id"] = ids[k]
+            p["obligations"] = sorted(obs[k])
+            p["plan_paths"] = sorted(part)
+            p["requirements"] = sorted(rq_part[k])
+            p["check_plan"] = [dict(r) for r in n.get("check_plan") or [] if r.get("requirement") in set(rq_part[k])]
+            acc = {"checks": list(CHECKS[n["class"]])}
+            immediate = sorted({r["check"] for r in p["check_plan"] if r["stage"] == "immediate"})
+            if immediate or p["requirements"]:
+                acc["requirement_checks"] = immediate
+                acc["later_checks"] = sorted({r["check"] for r in p["check_plan"] if r["stage"] == "later"})
+            p["acceptance"] = acc
+            recipes = sorted({"%s@%s" % (_s(((reqrows.get(q) or {}).get("recipe") or {}).get("id")),
+                                         _s(((reqrows.get(q) or {}).get("recipe") or {}).get("version")))
+                              for q in p["requirements"] if (reqrows.get(q) or {}).get("recipe")})
+            p.pop("recipes", None)
+            if recipes:
+                p["recipes"] = recipes
+            if not last:
+                # the clusters, entry points and scenarios stay with the part that judges the whole objective
+                p["clusters"], p["entry_points"], p["scenarios"] = [], [], []
+                p.pop("causal_scope", None)
+            # the parts run in order; the last waits on every earlier one (it verifies the whole objective)
+            p["parents"] = sorted(set(n["parents"]) | set(ids[:k]))
+            p["prerequisites"] = {q: list(w) for q, w in (n.get("prerequisites") or {}).items()}
+            for q in ids[:k]:
+                p["prerequisites"][q] = ["split: part %d of %d of %s follows part %d" % (k + 1, total_n, oid, ids.index(q) + 1)]
+            p["prerequisites"] = {q: p["prerequisites"][q] for q in sorted(p["prerequisites"])}
+            p["order_hint"] = list(n.get("order_hint") or []) + [json.dumps("part"), json.dumps("%03d" % (k + 1))]
+            names = [x.rsplit("/", 1)[-1] for x in sorted(part)]
+            p["subject"] = "%s (part %d of %d: %s)" % (base, k + 1, total_n, ", ".join(names[:3]) + (", ..." if len(names) > 3 else ""))
+            p["title"] = _title(n["class"], p["subject"])
+            verifies = "objective" if last else "part"
+            p["split"] = {"policy": SPLIT_POLICY, "objective": oid, "part": k + 1, "of": total_n, "parts": list(ids),
+                          "paths": sorted(part), "bytes": sum(size[x] for x in part), "verifies": verifies,
+                          "measured": {"files": len(paths), "bytes": total},
+                          "limits": {"files": SPLIT_MAX_FILES, "bytes": SPLIT_MAX_BYTES}}
+            # the part's execution scope: its own files; its own obligations' identities -- or, for the
+            # last part, every identity of the objective and every constituent member (the whole objective)
+            kids = comp if last else [a for a in comp if (set(a["writable"]) & mine) or (set(a["items"]) & set(obs[k]))]
+            own = set(n.get("obligations") or []) if last else set(obs[k])
+            sites: set[str] = set()
+            for a in kids:
+                sites |= part_site_keys(seals.get(a["cluster"]) if a["seal"] else None, list(a["items"]),
+                                        paths=None if last else mine, obligations=None if last else own)
+            bounds = scope_bounds(files=sorted(part), sites=sites, symbols={q for a in kids for q in a["symbols"]},
+                                  fragment=bool(kids) and all(a["fragment"] for a in kids))
+            p["execution_unit"] = {
+                "policy": POLICY, "constituents": sorted(a["cluster"] for a in kids),
+                "units": [{"cluster": a["cluster"], "seal": a["seal"], "write_set": a["files"], "items": sorted(a["items"]),
+                           "symbols": sorted(a["symbols"]), "fragment": a["fragment"]} for a in sorted(kids, key=lambda a: a["cluster"])],
+                "obligations": sorted(own), "requirements": list(p["requirements"]),
+                "identities": {ob: identities[ob] for ob in sorted(own)},
+                "paths": sorted(part), "bounds": bounds, "family": fam,
+                "check_plan": [dict(r) for r in p["check_plan"]],
+                "part": {"objective": oid, "index": k + 1, "of": total_n, "paths": sorted(part), "verifies": verifies}}
+            p["description"] = render_description(p)
+            for ob in p["obligations"]:
+                owner_of[ob] = p["outcome_id"]
+            for q in p["requirements"]:
+                req_owner[q] = p["outcome_id"]
+            out.append(p)
+    if split_of:
+        # whatever waited on a split objective waits on ALL its parts
+        for m in out:
+            hit = [o for o in split_of if o in (m.get("parents") or []) and m.get("split", {}).get("objective") != o]
+            if not hit:
+                continue
+            extra = {q for o in hit for q in split_of[o]}
+            m["parents"] = sorted(set(m["parents"]) | extra)
+            pre = dict(m.get("prerequisites") or {})
+            for o in hit:
+                for q in split_of[o]:
+                    if q != o:
+                        pre.setdefault(q, ["split: %s of %s, which %s waits on" % (q, o, m["outcome_id"])])
+            m["prerequisites"] = {q: pre[q] for q in sorted(pre)}
+    return out, owner_of, req_owner, summary
 
 
 def _ancestors(parents: dict[str, set[str]], k: str) -> set[str]:

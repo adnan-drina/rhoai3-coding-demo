@@ -105,8 +105,10 @@ def objective_inputs(root: Path, worklist: dict[str, Any]) -> dict[str, Any] | N
     when decisions.yaml does not select it. Read here so the composition stays
     pure: the catalog, every admitted unit's sealed inventory, the qualified
     symbol of each unsealed compile item (resolved through the declaring file's
-    imports in the destination model -- unresolved stays absent, never guessed)
-    and the frozen structural model. A selected policy whose catalog is missing
+    imports in the destination model -- unresolved stays absent, never guessed),
+    the frozen structural model, and the size in bytes of every product file of
+    the tree at planning time (split-large-objectives/v1 measures an
+    objective's write set by it). A selected policy whose catalog is missing
     refuses (OBJECTIVES_CATALOG) instead of planning without it."""
     from planner.decisions import compatibility_objectives, load_decisions
     from planner.paths import CATALOGS_DIR
@@ -146,7 +148,21 @@ def objective_inputs(root: Path, worklist: dict[str, Any]) -> dict[str, Any] | N
             item_symbols = {}
     st = _read_json(root / STRUCTURE)
     return {"catalog": catalog, "seals": seals, "item_symbols": item_symbols,
-            "structure_types": (st or {}).get("types") or [] if isinstance(st, dict) else []}
+            "structure_types": (st or {}).get("types") or [] if isinstance(st, dict) else [],
+            "file_sizes": planning_file_sizes(root)}
+
+
+def planning_file_sizes(root: Path) -> dict[str, int]:
+    """path -> bytes of every product file on disk (planner.paths.is_product_path,
+    the product tree's own definition). A path absent here does not exist yet."""
+    from planner.paths import is_product_path
+    root = Path(root)
+    out: dict[str, int] = {}
+    for p in sorted(root.rglob("*")):
+        rel = p.relative_to(root).as_posix()
+        if is_product_path(rel) and p.is_file():
+            out[rel] = p.stat().st_size
+    return out
 
 
 def _oracles(root: Path) -> dict[str, list[str]] | None:

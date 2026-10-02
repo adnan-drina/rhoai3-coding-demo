@@ -1341,6 +1341,22 @@ def main(argv: list[str] | None = None) -> int:
                          "objective once, after every constituent. A later check is not passed by this card and is "
                          "measured where it is due."),
             }
+            part = desc.get("part") if isinstance(desc.get("part"), dict) else None
+            if part:
+                # split-large-objectives/v1: this card is one part of a larger objective
+                mine = set(part.get("paths") or [])
+                for a in brief["objective"]["actions"]:
+                    a["files"] = [f for f in a["files"] if f in mine]
+                brief["objective"]["part"] = {k: part.get(k) for k in ("index", "of", "paths", "verifies")}
+                brief["objective"]["rule"] = (
+                    "This card is part %s of %s of one objective, split because the whole objective is too large for "
+                    "one card. Edit only this part's files: %s. Keep every type and member the other parts' files use "
+                    "as it is, unless this part's files are its only users. The checkpoint judges %s. A later check is "
+                    "not passed by this card and is measured where it is due."
+                    % (part.get("index"), part.get("of"), ", ".join(sorted(mine)),
+                       "the WHOLE objective again: every admitted obligation of every part gone and every constituent "
+                       "member assessed" if part.get("verifies") == "objective" else
+                       "this part's obligations and the members in its files; the last part judges the whole objective"))
         if unit:
             # THE UNIT, as the worker has to see it: what one coherent repair
             # covers, what it is moving to and on whose authority, what decides

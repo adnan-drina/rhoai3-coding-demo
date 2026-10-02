@@ -270,7 +270,8 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
     or an explicit unresolved responsibility (attach_requirements).
 
     ``objectives`` (policy compatibility-objectives/v1: {"catalog", "seals",
-    "item_symbols", "structure_types"}) recomposes that revision by
+    "item_symbols", "structure_types"} and, measured on the tree,
+    "file_sizes" for split-large-objectives/v1) recomposes that revision by
     compatibility objective (planner.compatibility_objectives.compose); the
     revision derived above is its budget and conservation baseline. None
     leaves the revision exactly as before."""
@@ -503,7 +504,8 @@ def derive_initial_graph(*, run_id: str, worklist: dict[str, Any], entry_points:
         try:
             doc = compose(baseline=doc, worklist=worklist, requirements=requirements, catalog=objectives.get("catalog") or {},
                           seals=objectives.get("seals"), item_symbols=objectives.get("item_symbols"),
-                          structure_types=objectives.get("structure_types"), run_id=run_id)
+                          structure_types=objectives.get("structure_types"), run_id=run_id,
+                          file_sizes=objectives.get("file_sizes"))
         except ObjectiveError as exc:
             raise PlanError(exc.code, exc.detail)
     doc["digest"] = plan_digest(doc)

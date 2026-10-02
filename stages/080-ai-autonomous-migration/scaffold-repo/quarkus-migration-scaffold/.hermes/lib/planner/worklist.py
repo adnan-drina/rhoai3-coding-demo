@@ -6403,8 +6403,17 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
     targets and members (each tagged with its constituent) so the checkpoint
     judges the objective once. Requirement files the objective owns join the
     file seal; nothing else does. Raises ObjectiveScopeError when a child
-    inventory is missing or changed."""
-    from planner.compatibility_objectives import fragment_seal, scope_bounds, seal_site_keys
+    inventory is missing or changed.
+
+    A split part (split-large-objectives/v1, ``descriptor["part"]``) writes
+    its own files only. An earlier part (verifies "part") carries the members
+    in its files and its own obligations' sites; the last part (verifies
+    "objective") carries every member, so its checkpoint judges the whole
+    objective again."""
+    from planner.compatibility_objectives import fragment_seal, part_site_keys, scope_bounds
+    part = descriptor.get("part") if isinstance(descriptor.get("part"), dict) else None
+    mine = {str(p) for p in (part or {}).get("paths") or []} if part and part.get("verifies") != "objective" else None
+    own = {str(o) for o in descriptor.get("obligations") or []} if mine is not None else None
     children: list[dict[str, Any]] = []
     writable: set[str] = set()
     site_keys: set[str] = set()
@@ -6421,13 +6430,14 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
               "write_set": sorted(unit.get("write_set") or []), "items": sorted(unit.get("items") or [])}
         children.append(ch)
     for ch, doc in objective_children(root, {"children": children}):
-        writable |= set(ch["write_set"])
+        if part is None:
+            writable |= set(ch["write_set"])
+        site_keys |= part_site_keys(doc, ch["items"], paths=mine, obligations=own)
         if doc is None:
-            site_keys |= {"i|%s" % i for i in ch["items"]}
             fragment = False
             continue
-        writable |= {str(p) for p in doc.get("writable_paths") or []}
-        site_keys |= set(seal_site_keys(doc))
+        if part is None:
+            writable |= {str(p) for p in doc.get("writable_paths") or []}
         fragment = fragment and fragment_seal(doc)
         for s in doc.get("symbols") or []:
             if s not in symbols:
@@ -6435,7 +6445,8 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
         for t in doc.get("target_symbols") or []:
             if t not in targets:
                 targets.append(t)
-        members += [dict(m, constituent=ch["cluster"]) for m in doc.get("members") or []]
+        members += [dict(m, constituent=ch["cluster"]) for m in doc.get("members") or []
+                    if mine is None or str(m.get("path") or "") in mine]
     for ob, ident in sorted((descriptor.get("identities") or {}).items()):
         idents.add(str(ident))
     writable |= {str(p) for p in descriptor.get("paths") or []}
@@ -6466,6 +6477,12 @@ def build_objective_scope(root: Path, objective_id: str, descriptor: dict[str, A
                        {"check": "unit-assessment", "tool": "worklist.assess_unit",
                         "detail": "every constituent's sealed members, assessed by that constituent's own rule"}],
     }
+    if part is not None:
+        # split-large-objectives/v1: the part travels with its envelope (assess_unit reads it)
+        env["part"] = {k: part.get(k) for k in ("objective", "index", "of", "paths", "verifies")}
+        if mine is not None:
+            env["completion"][1]["detail"] = ("the sealed members in this part's files, assessed by their constituent's "
+                                              "own rule; the objective's last part assesses every member")
     env["digest"] = batch_scope_digest(env)
     return env
 
@@ -6494,9 +6511,13 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         except ObjectiveScopeError as exc:
             return [{"member": "*", "verdict": "violates", "detail": str(exc)}]
         rows: list[dict[str, Any]] = []
+        part = scope.get("part") if isinstance(scope.get("part"), dict) else {}
+        # an earlier split part answers for the members in its own files; the last part for every member
+        mine = {str(p) for p in part.get("paths") or []} if part and part.get("verifies") != "objective" else None
         for ch, doc in kids:
             if doc is not None:
-                rows += [dict(r, constituent=ch["cluster"]) for r in assess_unit(root, doc)]
+                rows += [dict(r, constituent=ch["cluster"]) for r in assess_unit(root, doc)
+                         if mine is None or str(r.get("path") or "") in mine or r.get("member") == "*"]
         return rows
     if rule == CHECKED_FAMILY_RULE:
         return assess_checked_family(root, scope)
