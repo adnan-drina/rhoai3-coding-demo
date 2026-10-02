@@ -250,6 +250,35 @@ def _protocol_cases(run: str, commit: str) -> int:
                 gap = _selection_agrees(td, run, c, decl)
                 if gap:
                     return _fail(gap)
+    # the worker model this run requested: pinned as the profile's default_model; none keeps the platform default;
+    # a model the table does not serve is refused before anything is written
+    table = json.loads(PROFILES.read_text(encoding="utf-8"))
+    for want_model in sorted(table["profiles"]):
+        with tempfile.TemporaryDirectory() as d:
+            td = Path(d)
+            _serve_request(td, run, commit, dict(base, board_protocol=NATIVE, model=want_model))
+            rc, out, st = _provision(td, run, commit)
+            ctl = st["objects"].get("ConfigMap/%s-run-control" % run, {}).get("text", "")
+            pinned = json.loads(json.loads(_yaml_value_raw(ctl, "profile.json"))) if ctl else {}
+            c = _contract_of(st, run)
+            if rc != 0 or pinned.get("default_model") != want_model or set(pinned.get("profiles") or {}) != set(table["profiles"]) \
+                    or (c.get("model_request") or {}).get("model") != want_model:
+                return _fail("requested model %s is pinned (got %r, request %r): %s" % (
+                    want_model, pinned.get("default_model"), c.get("model_request"), out[-300:]))
+    with tempfile.TemporaryDirectory() as d:
+        td = Path(d)
+        _serve_request(td, run, commit, dict(base, board_protocol=NATIVE))
+        rc, out, st = _provision(td, run, commit)
+        ctl = st["objects"].get("ConfigMap/%s-run-control" % run, {}).get("text", "")
+        pinned = json.loads(json.loads(_yaml_value_raw(ctl, "profile.json"))) if ctl else {}
+        if rc != 0 or pinned.get("default_model") != table["default_model"] or "model_request" in _contract_of(st, run):
+            return _fail("a run without a model request keeps the platform default: %s" % out[-300:])
+    with tempfile.TemporaryDirectory() as d:
+        td = Path(d)
+        _serve_request(td, run, commit, dict(base, board_protocol=NATIVE, model="qwen9-unserved"))
+        rc, out, st = _provision(td, run, commit)
+        if rc == 0 or "does not serve with a quota" not in out or any(k.endswith("-run-control") for k in st["objects"]):
+            return _fail("an unserved model is refused before the record is written: %s" % out[-300:])
     for bad in ("qualification", "enabled-ish", ""):
         with tempfile.TemporaryDirectory() as d:
             rc, out, st = _provision(Path(d), run, commit, OB_EXECUTION=bad)

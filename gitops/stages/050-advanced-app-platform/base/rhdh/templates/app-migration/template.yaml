@@ -102,6 +102,25 @@ spec:
             the protected-authority sidecar, is no longer offered to new runs.)
             Recorded once, in the destination's initial commit; a run never
             changes protocol.
+        model:
+          title: Worker model
+          type: string
+          default: qwen3-6-27b
+          enum:
+            - qwen3-6-27b
+            - qwen3-8-27b-int4
+          enumNames:
+            - Qwen 3.6 27B (FP8, 131K window)
+            - Qwen 3.8 27B INT4 (262K window, loop escalation)
+          description: |
+            The model every worker of this run uses. Recorded once, in the
+            destination's initial commit (run-budget.json model); the
+            migration-run provisioner pins that model's profile in the run's
+            read-only run control, and dest-init generates the worker
+            configuration from the pin (sampling, context, compression, and for
+            Qwen 3.8 the loop escalation to a thinking turn). A model the
+            platform's profile table does not serve is refused at provisioning.
+            A run never changes model.
 
   steps:
     - id: fetch-golden
@@ -155,6 +174,9 @@ spec:
           # immutable in the initial commit). The provisioner turns it into the
           # platform's selection; execution is never a template value.
           boardProtocol: ${{ parameters.boardProtocol }}
+          # The model this run REQUESTS (run-budget.json model, immutable in the
+          # initial commit). The provisioner pins that profile in the run control.
+          model: ${{ parameters.model }}
           # The scaffolder task that declares this run (run-budget.json). The
           # task context is the only run-specific fact the installed scaffolder
           # exposes besides the parameters: it has no clock, so no time is stamped.

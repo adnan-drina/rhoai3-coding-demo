@@ -28,7 +28,7 @@ SKELETON = HERE / "skeleton"
 TEMPLATE = HERE / "template.yaml"
 
 
-def render(name: str, protocol: str) -> str:
+def render(name: str, protocol: str, model: str = "qwen3-6-27b") -> str:
     import jinja2
     env = jinja2.Environment(variable_start_string="${{", variable_end_string="}}", undefined=jinja2.StrictUndefined,
                              keep_trailing_newline=True)
@@ -36,7 +36,7 @@ def render(name: str, protocol: str) -> str:
     values = {"name": "orders-migration", "legacyRepoUrl": "https://example.test/orders.git", "autoStartMigration": True,
               "scaffolderTaskId": "task-1", "maasHost": "maas.example.test", "maasInternalIp": "172.30.1.1",
               "sonarqubeUrl": "https://sonar.example.test", "devspacesUrl": "https://devspaces.example.test",
-              "boardProtocol": protocol}
+              "boardProtocol": protocol, "model": model}
     return env.from_string((SKELETON / name).read_text()).render(values=values)
 
 
@@ -58,6 +58,19 @@ def main() -> int:
     step = next(s for s in tmpl["spec"]["steps"] if s["id"] == "add-catalog-info")
     if step["input"]["values"].get("boardProtocol") != "${{ parameters.boardProtocol }}":
         fails.append("the skeleton does not receive boardProtocol")
+
+    # the worker model (2026-10-02): offered from the platform profile table, defaulting to its default, passed to the
+    # skeleton and stamped in run-budget.json, where the provisioner reads it
+    table = json.loads((HERE.parents[2] / "devspaces" / "model-profiles.json").read_text())
+    mp = props.get("model") or {}
+    if mp.get("default") != table["default_model"] or sorted(mp.get("enum") or []) != sorted(table["profiles"]):
+        fails.append("template model parameter %s does not offer the profile table %s (default %s)"
+                     % (mp, sorted(table["profiles"]), table["default_model"]))
+    if step["input"]["values"].get("model") != "${{ parameters.model }}":
+        fails.append("the skeleton does not receive model")
+    for model in sorted(table["profiles"]):
+        if json.loads(render("run-budget.json", "outcome-board/v2", model)).get("model") != model:
+            fails.append("run-budget.json does not stamp model %s" % model)
 
     for protocol in ("serial-loop/v1", "outcome-board/v2"):
         budget = json.loads(render("run-budget.json", protocol))

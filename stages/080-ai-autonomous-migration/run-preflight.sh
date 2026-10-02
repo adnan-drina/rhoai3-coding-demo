@@ -101,7 +101,15 @@ need(cmd('git','-C',str(golden),'rev-parse','HEAD').strip() == sha, 'golden chec
 need(not cmd('git','-C',str(golden),'status','--porcelain').strip(), 'golden checkout is dirty')
 defaults = json.loads((golden / 'run-defaults.json').read_text())
 need(defaults.get('schema') == 'rhoai3.run-defaults/v1', 'golden predates run-defaults.json; use the preflight of that run')
-os.environ['EXPECTED_MODEL'] = os.environ.get('EXPECTED_MODEL') or defaults['configuration']['model']['id']
+# The model this run requested at creation is the one the provisioner pinned in its run control (template parameter
+# "model", 2026-10-02); the golden's run-defaults model is only the fallback for a run created before that.
+def _pinned_run_model():
+    try:
+        cm = json.loads(oc('get','configmap',os.environ['WORKSPACE']+'-run-control','-n',os.environ.get('NS','wksp-ai-developer'),'-o','json'))
+        return json.loads(cm['data']['profile.json']).get('default_model') or ''
+    except Exception:
+        return ''
+os.environ['EXPECTED_MODEL'] = os.environ.get('EXPECTED_MODEL') or _pinned_run_model() or defaults['configuration']['model']['id']
 expected_hours = defaults['budget']['max_wall_hours']
 # The operator retired repeated isolation campaigns. Validate this workspace
 # against the released defaults and live platform; do not promote old receipts.

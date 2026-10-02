@@ -633,9 +633,26 @@ spec:
             if value in ("outcome-board/v1", "outcome-board/v2"):
                 doc["outcome_board"] = dict({"execution": execution}, **({"measurement_trust": trust} if trust else {}))
         doc["protocol_request"] = request
+        # The worker model this run REQUESTED (run-budget.json model, same commit-addressed declaration). The profile
+        # pinned below selects it; a run declared before the field existed keeps the platform default.
+        if decl is not None and decl.get("model"):
+            doc["model_request"] = {"source": "run-budget.json@" + scaffold, "model": str(decl["model"])}
         print(json.dumps(doc, sort_keys=True))
         PYCONTRACT
           )"
+          # Pin the requested model: the platform table, copied verbatim, with default_model set to the run's request.
+          # A model the table does not serve (or serves without a quota) is refused by name -- never a silent default.
+          PROFILE_JSON="$(printf '%s' "${PROFILE_JSON}" | python3 -c '
+        import json, sys
+        doc = json.load(sys.stdin)
+        req = (json.loads(sys.argv[1]).get("model_request") or {}).get("model") or ""
+        if req:
+            if not (doc.get("profiles", {}).get(req) or {}).get("quota"):
+                sys.exit("REFUSED: the run requested model %r, which migration-model-profiles does not serve with a quota (%s)"
+                         % (req, ", ".join(sorted(doc.get("profiles", {})))))
+            doc["default_model"] = req
+        print(json.dumps(doc, indent=2))
+        ' "${CONTRACT_JSON}")" || { echo "REFUSED: the requested model cannot be pinned for ${RUN}" >&2; exit 1; }
           {
             cat <<YAML
         apiVersion: v1
