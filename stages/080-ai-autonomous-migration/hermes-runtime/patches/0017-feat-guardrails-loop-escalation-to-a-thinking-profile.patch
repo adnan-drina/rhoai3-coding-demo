@@ -1,0 +1,955 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "adnan.drina" <adnan.drina@gmail.com>
+Date: Fri, 2 Oct 2026 16:53:03 +0200
+Subject: [PATCH] feat(guardrails): loop escalation to a thinking profile
+
+RHOAI3 E-1 (2026-10-02): a worker that repeats one identical call keeps
+sending the same thinking-off request until the identical-call guard halts
+it. When the stall guard emits its note for the THIRD consecutive identical
+call, that worker's following model requests now use an escalation request
+body from config; the escalation ends at the first edit (write_file, patch,
+or a terminal sed -i / > src/ / tee src/), the first verification command
+(run-verify.sh, advance.py), or after max_turns escalated requests (default
+8). Then the normal body returns. A later third-call note may start a new
+escalation. The guardrails are unchanged: the streak keeps counting and can
+still halt; near-duplicate and refusal halts stay on the normal body.
+
+Config: providers.<provider>.models.<model>.loop_escalation, falling back to
+providers.<provider>.loop_escalation, {enabled, max_turns, request_body}.
+request_body replaces the normal extra_body for escalated requests (chat
+completions wire); its max_tokens is the output cap. Absent or disabled
+config changes nothing. Reasoning from an escalated turn is echoed on later
+turns through the existing model.reasoning_echo path (not bypassed).
+
+agent.log lines carry the prefix [loop-escalation]: start (task, tool, args
+digest), turn k/N, end reason=edit|verification|cap, and cap-hit when an
+escalated response stops on finish_reason=length (logged before the
+truncated response is discarded). State: agent._loop_escalation.snapshot().
+Local extension.
+---
+ agent/agent_init.py                 |  12 +
+ agent/chat_completion_helpers.py    |  24 +-
+ agent/conversation_loop.py          |  12 +
+ agent/loop_escalation.py            | 280 +++++++++++++++++++
+ agent/tool_guardrails.py            |   5 +
+ agent/turn_context.py               |   3 +
+ run_agent.py                        |  40 +++
+ tests/agent/test_loop_escalation.py | 416 ++++++++++++++++++++++++++++
+ 8 files changed, 788 insertions(+), 4 deletions(-)
+ create mode 100644 agent/loop_escalation.py
+ create mode 100644 tests/agent/test_loop_escalation.py
+
+diff --git a/agent/agent_init.py b/agent/agent_init.py
+index db92f18..84afead 100644
+--- a/agent/agent_init.py
++++ b/agent/agent_init.py
+@@ -864,6 +864,9 @@ def init_agent(
+     agent._executing_tools = False
+     agent._tool_guardrails = ToolCallGuardrailController()
+     agent._tool_guardrail_halt_decision: ToolGuardrailDecision | None = None
++    # Loop escalation (agent/loop_escalation.py): inert until configured below.
++    from agent.loop_escalation import LoopEscalation
++    agent._loop_escalation = LoopEscalation()
+ 
+     # Interrupt mechanism for breaking out of tool loops
+     agent._interrupt_requested = False
+@@ -1801,6 +1804,15 @@ def init_agent(
+         )
+     except Exception as _tlg_err:
+         _ra().logger.warning("Tool loop guardrail config ignored: %s", _tlg_err)
++    try:
++        from agent.loop_escalation import LoopEscalation
++        _le_model_cfg = _agent_cfg.get("model")
++        agent._loop_escalation = LoopEscalation(
++            _agent_cfg.get("providers"),
++            (_le_model_cfg.get("provider") if isinstance(_le_model_cfg, dict) else "") or "",
++        )
++    except Exception as _le_err:
++        _ra().logger.warning("Loop escalation config ignored: %s", _le_err)
+     # Cache only the derived auxiliary compression context override that is
+     # needed later by the startup feasibility check.  Avoid exposing a
+     # broad pseudo-public config object on the agent instance.
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index 55a61a0..6945f5d 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -1960,6 +1960,22 @@ def build_api_kwargs(agent, api_messages: list, tools_for_api: list | None = Non
+     # ── chat_completions (default) ─────────────────────────────────────
+     _ct = agent._get_transport()
+ 
++    # Loop escalation (agent/loop_escalation.py): an escalated request sends
++    # the configured escalation body in place of the normal extra_body and its
++    # max_tokens as the output cap. Normal requests are unchanged.
++    _req_overrides = agent.request_overrides
++    _req_max_tokens = agent.max_tokens
++    _loop_escalation = getattr(agent, "_loop_escalation", None)
++    if _loop_escalation is not None:
++        try:
++            _req_overrides, _req_max_tokens = _loop_escalation.request_shape(
++                _req_overrides, _req_max_tokens,
++                getattr(agent, "provider", "") or "", agent.model or "",
++            )
++        except Exception as exc:
++            logger.debug("loop escalation request shape failed: %s", exc)
++            _req_overrides, _req_max_tokens = agent.request_overrides, agent.max_tokens
++
+     # Provider detection flags
+     _is_qwen = agent._is_qwen_portal()
+     _is_or = agent._is_openrouter_url()
+@@ -2045,11 +2061,11 @@ def build_api_kwargs(agent, api_messages: list, tools_for_api: list | None = Non
+             tools=tools_for_api,
+             base_url=agent.base_url,
+             timeout=agent._resolved_api_call_timeout(),
+-            max_tokens=agent.max_tokens,
++            max_tokens=_req_max_tokens,
+             ephemeral_max_output_tokens=_ephemeral_out,
+             max_tokens_param_fn=agent._max_tokens_param,
+             reasoning_config=agent.reasoning_config,
+-            request_overrides=agent.request_overrides,
++            request_overrides=_req_overrides,
+             session_id=getattr(agent, "session_id", None),
+             cache_scope_id=_cache_scope_id,
+             provider_profile=_profile,
+@@ -2078,11 +2094,11 @@ def build_api_kwargs(agent, api_messages: list, tools_for_api: list | None = Non
+         tools=tools_for_api,
+         base_url=agent.base_url,
+         timeout=agent._resolved_api_call_timeout(),
+-        max_tokens=agent.max_tokens,
++        max_tokens=_req_max_tokens,
+         ephemeral_max_output_tokens=_ephemeral_out,
+         max_tokens_param_fn=agent._max_tokens_param,
+         reasoning_config=agent.reasoning_config,
+-        request_overrides=agent.request_overrides,
++        request_overrides=_req_overrides,
+         session_id=getattr(agent, "session_id", None),
+         cache_scope_id=_cache_scope_id,
+         model_lower=(agent.model or "").lower(),
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index a486114..bcf02da 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -2001,6 +2001,15 @@ def run_conversation(
+                 agent._safe_print(f"\n⚠️  Iteration budget exhausted ({agent.iteration_budget.used}/{agent.iteration_budget.max_total} iterations used)")
+             break
+ 
++        # Loop escalation (agent/loop_escalation.py): one escalated turn per
++        # model request; retries of the same request reuse it.
++        _loop_escalation = getattr(agent, "_loop_escalation", None)
++        if _loop_escalation is not None:
++            try:
++                _loop_escalation.begin_request()
++            except Exception as _le_err:
++                logger.debug("loop escalation turn accounting failed: %s", _le_err)
++
+         # Fire step_callback for gateway hooks (agent:step event)
+         if agent.step_callback is not None:
+             try:
+@@ -3632,6 +3641,9 @@ def run_conversation(
+                         error_detail=_refusal_text or "model declined (content_filter)",
+                     )
+ 
++                if finish_reason == "length" and getattr(agent, "_loop_escalation", None) is not None:
++                    # Logged before the truncated response is discarded.
++                    agent._loop_escalation.observe_finish(finish_reason)
+                 if finish_reason == "length":
+                     if getattr(response, "id", "") == PARTIAL_STREAM_STUB_ID:
+                         agent._vprint(
+diff --git a/agent/loop_escalation.py b/agent/loop_escalation.py
+new file mode 100644
+index 0000000..bac71e0
+--- /dev/null
++++ b/agent/loop_escalation.py
+@@ -0,0 +1,280 @@
++"""Per-worker loop escalation to a thinking request profile.
++
++When the identical-call stall guard emits its notice for the THIRD
++consecutive identical call (``STALL_GUARD_IDENTICAL_CALL_THRESHOLD``), the
++worker's following model requests use an escalation request body taken from
++the active provider's config instead of the normal one. Escalation ends at
++the first of:
++
++* an edit: a ``write_file`` / ``patch`` call, or a ``terminal`` command that
++  writes (``sed -i``, ``> src/``, ``tee src/``);
++* a verification: a ``terminal`` command naming ``run-verify.sh`` or
++  ``advance.py``;
++* ``max_turns`` escalated model requests (the cap).
++
++After any of these the normal body is sent again. The guardrails are not
++touched: the identical-call streak keeps counting and can still halt.
++
++Config (read from the raw ``providers:`` section; absent or disabled means no
++behaviour change)::
++
++    providers:
++      <provider>:
++        loop_escalation: {...}          # provider-wide fallback
++        models:
++          <model>:
++            loop_escalation:            # wins over the provider-wide block
++              enabled: true
++              max_turns: 8
++              request_body: {...}       # replaces extra_body; max_tokens is the output cap
++
++Every transition is written to agent.log with the ``[loop-escalation]``
++prefix (start, turn k/N, end reason=..., cap-hit).
++"""
++
++from __future__ import annotations
++
++import copy
++import logging
++import os
++import re
++from dataclasses import dataclass, field
++from typing import Any, Mapping
++
++logger = logging.getLogger(__name__)
++
++LOG_PREFIX = "[loop-escalation]"
++DEFAULT_MAX_TURNS = 8
++
++EDIT_TOOLS = frozenset({"write_file", "patch"})
++# A terminal command that writes source: in-place sed, a redirect into src/,
++# or tee into src/.
++_TERMINAL_EDIT_RE = re.compile(
++    r"\bsed\s+(?:-[^\s]*\s+)*-i|>\s*src/|\btee\s+(?:-[^\s]+\s+)*src/"
++)
++_TERMINAL_VERIFY_RE = re.compile(r"run-verify\.sh|advance\.py")
++
++
++@dataclass(frozen=True)
++class LoopEscalationConfig:
++    enabled: bool = False
++    max_turns: int = DEFAULT_MAX_TURNS
++    request_body: dict = field(default_factory=dict)
++
++    @classmethod
++    def from_mapping(cls, data: Any) -> "LoopEscalationConfig | None":
++        """Return the config for one ``loop_escalation`` block, or None when
++        the block is absent, disabled or carries no request body."""
++        if not isinstance(data, Mapping):
++            return None
++        enabled = data.get("enabled", True)
++        if isinstance(enabled, str):
++            enabled = enabled.strip().lower() in {"1", "true", "yes", "on"}
++        if not enabled:
++            return None
++        body = data.get("request_body")
++        if not isinstance(body, Mapping) or not body:
++            return None
++        max_turns = data.get("max_turns", DEFAULT_MAX_TURNS)
++        try:
++            max_turns = DEFAULT_MAX_TURNS if isinstance(max_turns, bool) else int(max_turns)
++        except (TypeError, ValueError):
++            max_turns = DEFAULT_MAX_TURNS
++        if max_turns < 1:
++            max_turns = DEFAULT_MAX_TURNS
++        return cls(enabled=True, max_turns=max_turns, request_body=copy.deepcopy(dict(body)))
++
++
++def _norm(name: Any) -> str:
++    return str(name or "").strip().lower().replace(" ", "-")
++
++
++def _lookup(mapping: Mapping, key: str) -> Any:
++    if not isinstance(mapping, Mapping) or not key:
++        return None
++    if key in mapping:
++        return mapping[key]
++    for k, v in mapping.items():
++        if _norm(k) == _norm(key):
++            return v
++    return None
++
++
++def resolve_config(
++    providers: Any, provider: str, model: str, default_provider: str = ""
++) -> LoopEscalationConfig | None:
++    """``providers.<provider>.models.<model>.loop_escalation``, falling back to
++    ``providers.<provider>.loop_escalation``. ``custom:<key>`` resolves to
++    ``<key>``; a bare ``custom`` runtime provider resolves to the configured
++    ``model.provider``."""
++    if not isinstance(providers, Mapping) or not providers:
++        return None
++    candidates = []
++    p = _norm(provider)
++    if p.startswith("custom:"):
++        candidates.append(p.split(":", 1)[1])
++    if p and p != "custom":
++        candidates.append(p)
++    d = _norm(default_provider)
++    if d.startswith("custom:"):
++        d = d.split(":", 1)[1]
++    if d and (p in {"", "custom"} or not candidates):
++        candidates.append(d)
++    for key in candidates:
++        entry = _lookup(providers, key)
++        if not isinstance(entry, Mapping):
++            continue
++        models = entry.get("models")
++        if isinstance(models, Mapping):
++            meta = _lookup(models, str(model or ""))
++            if isinstance(meta, Mapping) and "loop_escalation" in meta:
++                return LoopEscalationConfig.from_mapping(meta.get("loop_escalation"))
++        return LoopEscalationConfig.from_mapping(entry.get("loop_escalation"))
++    return None
++
++
++def classify_end_call(tool_name: str, args: Any) -> str | None:
++    """``edit`` / ``verification`` when this executed call ends an escalation."""
++    if tool_name in EDIT_TOOLS:
++        return "edit"
++    if tool_name != "terminal" or not isinstance(args, Mapping):
++        return None
++    command = args.get("command")
++    if not isinstance(command, str):
++        return None
++    if _TERMINAL_VERIFY_RE.search(command):
++        return "verification"
++    if _TERMINAL_EDIT_RE.search(command):
++        return "edit"
++    return None
++
++
++class LoopEscalation:
++    """Escalation state of one worker (one AIAgent)."""
++
++    def __init__(self, providers: Any = None, default_provider: str = ""):
++        self._providers = providers if isinstance(providers, Mapping) else {}
++        self._default_provider = default_provider or ""
++        self.reset()
++
++    # ── state ────────────────────────────────────────────────────────
++    def reset(self) -> None:
++        self.active = False
++        self.turns = 0
++        self.max_turns = 0
++        self.config: LoopEscalationConfig | None = None
++        self.started = 0
++        self.last_end_reason = ""
++        self.request_escalated = False
++        self.trigger: dict = {}
++        self.events: list = []
++
++    def snapshot(self) -> dict:
++        return {
++            "active": self.active,
++            "turns": self.turns,
++            "max_turns": self.max_turns,
++            "started": self.started,
++            "last_end_reason": self.last_end_reason,
++            "request_escalated": self.request_escalated,
++            "trigger": dict(self.trigger),
++            "events": list(self.events),
++        }
++
++    def config_for(self, provider: str, model: str) -> LoopEscalationConfig | None:
++        try:
++            return resolve_config(self._providers, provider, model, self._default_provider)
++        except Exception as exc:  # never break a request over config shape
++            logger.debug("%s config ignored: %s", LOG_PREFIX, exc)
++            return None
++
++    def _log(self, event: str, line: str) -> None:
++        self.events.append(event)
++        logger.info("%s %s", LOG_PREFIX, line)
++
++    # ── transitions ──────────────────────────────────────────────────
++    def on_tool_result(
++        self,
++        tool_name: str,
++        args: Any,
++        *,
++        third_note: bool,
++        args_digest: str = "",
++        provider: str = "",
++        model: str = "",
++        task_id: str = "",
++    ) -> None:
++        """Observe one executed tool call (after the guardrail observation)."""
++        if self.active:
++            reason = classify_end_call(tool_name, args)
++            if reason:
++                self.end(reason)
++        if third_note and not self.active:
++            cfg = self.config_for(provider, model)
++            if cfg is None:
++                return
++            self.active = True
++            self.turns = 0
++            self.max_turns = cfg.max_turns
++            self.config = cfg
++            self.started += 1
++            self.trigger = {"task": task_id, "tool": tool_name, "args_digest": args_digest}
++            self._log(
++                "start",
++                f"start task={task_id or '-'} tool={tool_name} args={args_digest or '-'} "
++                f"max_turns={cfg.max_turns}",
++            )
++
++    def end(self, reason: str) -> None:
++        if not self.active:
++            return
++        self.active = False
++        self.last_end_reason = reason
++        self._log(f"end:{reason}", f"end reason={reason} turns={self.turns}/{self.max_turns}")
++        self.turns = 0
++        self.config = None
++
++    def begin_request(self) -> bool:
++        """Called once per model request (loop iteration, not per retry).
++        Returns whether this request is escalated."""
++        if self.active and self.turns >= self.max_turns:
++            self.end("cap")
++        if self.active:
++            self.turns += 1
++            self._log(f"turn:{self.turns}", f"turn {self.turns}/{self.max_turns}")
++        self.request_escalated = self.active
++        return self.request_escalated
++
++    def observe_finish(self, finish_reason: str) -> None:
++        """Log an escalated response that stopped on the output cap, before the
++        runtime discards the truncated response."""
++        if self.request_escalated and finish_reason == "length":
++            self._log(
++                "cap-hit",
++                f"cap-hit turn {self.turns}/{self.max_turns} finish_reason=length",
++            )
++
++    def request_shape(
++        self, request_overrides: Any, max_tokens: Any, provider: str, model: str
++    ) -> tuple:
++        """Return (request_overrides, max_tokens) for the request being built.
++
++        Normal requests get the inputs unchanged. An escalated request gets the
++        escalation body as ``extra_body`` (replacing the normal one) and its
++        ``max_tokens`` (when given) as the output cap."""
++        if not (self.active and self.request_escalated):
++            return request_overrides, max_tokens
++        cfg = self.config_for(provider, model)
++        if cfg is None:  # the active provider has no escalation profile
++            return request_overrides, max_tokens
++        body = copy.deepcopy(cfg.request_body)
++        cap = body.pop("max_tokens", None)
++        overrides = dict(request_overrides or {})
++        overrides["extra_body"] = body
++        if isinstance(cap, int) and not isinstance(cap, bool) and cap > 0:
++            max_tokens = cap
++        return overrides, max_tokens
++
++
++def current_task_id(agent: Any) -> str:
++    return os.environ.get("HERMES_KANBAN_TASK", "") or str(getattr(agent, "_current_task_id", "") or "")
+diff --git a/agent/tool_guardrails.py b/agent/tool_guardrails.py
+index 9b1e0c2..f61b1e1 100644
+--- a/agent/tool_guardrails.py
++++ b/agent/tool_guardrails.py
+@@ -472,6 +472,11 @@ class ToolCallGuardrailController:
+     def halt_decision(self) -> ToolGuardrailDecision | None:
+         return self._halt_decision
+ 
++    @property
++    def identical_streak_count(self) -> int:
++        """Length of the current consecutive identical-call streak (read-only)."""
++        return self._identical_streak_count
++
+     def request_turn_stop(self, decision: ToolGuardrailDecision) -> None:
+         """End this turn: record ``decision`` as the halt and refuse every
+         later tool call in the turn (e.g. the rest of a parallel batch)."""
+diff --git a/agent/turn_context.py b/agent/turn_context.py
+index df8969a..9b997d7 100644
+--- a/agent/turn_context.py
++++ b/agent/turn_context.py
+@@ -580,6 +580,9 @@ def build_turn_context(
+     agent._mute_post_response = False
+     agent._unicode_sanitization_passes = 0
+     agent._tool_guardrails.reset_for_turn()
++    _loop_escalation = getattr(agent, "_loop_escalation", None)
++    if _loop_escalation is not None:
++        _loop_escalation.reset()
+     agent._tool_guardrail_halt_decision = None
+     _reset_consol = getattr(agent._memory_store, "reset_consolidation_failures", None)
+     if callable(_reset_consol):
+diff --git a/run_agent.py b/run_agent.py
+index 65ff863..15b6d23 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -8327,6 +8327,7 @@ class AIAgent:
+                 self._set_tool_guardrail_halt(streak_halt)
+         if stall_notice:
+             function_result = (function_result or "") + "\n\n" + stall_notice
++        AIAgent._observe_loop_escalation(self, tool_name, function_args, stall_notice)
+         if os.environ.get("HERMES_KANBAN_STOP_REQUEST"):
+             # Only dispatcher-spawned kanban workers carry the path.
+             stop_note = AIAgent._honour_kanban_stop_request(self, tool_name)
+@@ -8334,6 +8335,45 @@ class AIAgent:
+                 function_result = (function_result or "") + "\n\n" + stop_note
+         return function_result
+ 
++    def _observe_loop_escalation(self, tool_name: str, function_args, stall_notice) -> None:
++        """Feed one executed call to the loop escalation (agent/loop_escalation.py).
++
++        The identical-call notice emitted for the THIRD consecutive identical
++        call starts an escalation; an edit or verification call ends one.
++        Request bodies only — the guardrails above are unchanged.
++        """
++        escalation = getattr(self, "_loop_escalation", None)
++        if escalation is None:
++            return
++        try:
++            from agent.loop_escalation import current_task_id
++            from agent.tool_guardrails import (
++                STALL_GUARD_IDENTICAL_CALL_THRESHOLD,
++                ToolCallSignature,
++                _coerce_args,
++            )
++
++            third_note = bool(stall_notice) and (
++                self._tool_guardrails.identical_streak_count
++                == STALL_GUARD_IDENTICAL_CALL_THRESHOLD
++            )
++            digest = ""
++            if third_note:
++                digest = ToolCallSignature.from_call(
++                    tool_name, _coerce_args(function_args)
++                ).args_hash[:16]
++            escalation.on_tool_result(
++                tool_name,
++                function_args,
++                third_note=third_note,
++                args_digest=digest,
++                provider=getattr(self, "provider", "") or "",
++                model=getattr(self, "model", "") or "",
++                task_id=current_task_id(self),
++            )
++        except Exception as exc:
++            logger.debug("loop escalation observation failed: %s", exc)
++
+     def _honour_kanban_stop_request(self, tool_name: str) -> str:
+         """End the turn when a tool created this worker run's stop request.
+ 
+diff --git a/tests/agent/test_loop_escalation.py b/tests/agent/test_loop_escalation.py
+new file mode 100644
+index 0000000..4137aeb
+--- /dev/null
++++ b/tests/agent/test_loop_escalation.py
+@@ -0,0 +1,416 @@
++"""Loop escalation to a thinking request profile (agent/loop_escalation.py).
++
++A fake provider records every request's kwargs. The model repeats one
++identical terminal call three times; the third identical-call note starts an
++escalation, and the following requests carry the configured escalation body
++until an edit, a verification command or the turn cap ends it.
++"""
++
++import copy
++import json
++import logging
++from types import SimpleNamespace
++
++import pytest
++
++from agent.loop_escalation import (
++    LOG_PREFIX,
++    LoopEscalation,
++    LoopEscalationConfig,
++    classify_end_call,
++    resolve_config,
++)
++from agent.tool_guardrails import ToolCallGuardrailConfig, ToolCallGuardrailController
++
++NORMAL_BODY = {
++    "chat_template_kwargs": {"enable_thinking": False},
++    "min_p": 0.0,
++    "presence_penalty": 1.5,
++    "repetition_penalty": 1.0,
++    "temperature": 0.7,
++    "top_k": 20,
++    "top_p": 0.8,
++    "normal_only_marker": 1,
++}
++ESCALATION_BODY = {
++    "temperature": 1.0,
++    "top_p": 0.95,
++    "top_k": 20,
++    "min_p": 0.0,
++    "presence_penalty": 0.0,
++    "repetition_penalty": 1.0,
++    "max_tokens": 8192,
++    "chat_template_kwargs": {
++        "enable_thinking": True,
++        "preserve_thinking": True,
++        "reasoning_effort": "xhigh",
++    },
++}
++ESCALATED_EXTRA_BODY = {k: v for k, v in ESCALATION_BODY.items() if k != "max_tokens"}
++NORMAL_MAX_TOKENS = 4096  # differs from the escalation cap so the switch is visible
++LOOP_CALL = ("terminal", {"command": "ls build"})
++
++
++def _escalation_block(max_turns=8, enabled=True):
++    return {"enabled": enabled, "max_turns": max_turns, "request_body": copy.deepcopy(ESCALATION_BODY)}
++
++
++# ── fake provider ───────────────────────────────────────────────────────
++
++
++def _tool_response(name, args, call_id, reasoning_content=None, finish_reason="tool_calls"):
++    msg = SimpleNamespace(
++        content=None,
++        reasoning=None,
++        tool_calls=[
++            SimpleNamespace(
++                id=call_id,
++                type="function",
++                function=SimpleNamespace(name=name, arguments=json.dumps(args)),
++            )
++        ],
++    )
++    if reasoning_content is not None:
++        msg.reasoning_content = reasoning_content
++    return SimpleNamespace(
++        choices=[SimpleNamespace(message=msg, finish_reason=finish_reason)], usage=None
++    )
++
++
++def _text_response(text="done", finish_reason="stop"):
++    return SimpleNamespace(
++        choices=[
++            SimpleNamespace(
++                message=SimpleNamespace(content=text, reasoning=None, tool_calls=[]),
++                finish_reason=finish_reason,
++            )
++        ],
++        usage=None,
++    )
++
++
++class _FakeCompletions:
++    """Returns the scripted responses in order; records each request's kwargs."""
++
++    def __init__(self, script):
++        self.script = list(script)
++        self.requests = []
++
++    def create(self, **kwargs):
++        self.requests.append(copy.deepcopy(kwargs))
++        if self.script:
++            return self.script.pop(0)
++        return _text_response()
++
++
++def _loop_script(after):
++    """Three identical calls, then ``after`` (responses for escalated turns on)."""
++    name, args = LOOP_CALL
++    return [_tool_response(name, args, f"loop_{i}") for i in range(1, 4)] + list(after)
++
++
++def _results(name, args, task_id=None, **_kw):
++    if name == "terminal":
++        return json.dumps({"output": f"out of {args.get('command')}\n", "exit_code": 0})
++    if name == "write_file":
++        return json.dumps({"success": True, "path": args.get("path")})
++    return json.dumps({"ok": True})
++
++
++def _agent(monkeypatch, script, *, provider="custom:qwen27b", providers=None,
++           hard_stop=False, reasoning_echo=False):
++    from run_agent import AIAgent
++
++    completions = _FakeCompletions(script)
++    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
++    monkeypatch.setattr("run_agent.OpenAI", lambda **kwargs: client)
++    monkeypatch.setattr(
++        "run_agent.get_tool_definitions",
++        lambda *a, **k: [
++            {"type": "function", "function": {"name": n, "description": n,
++                                              "parameters": {"type": "object", "properties": {}}}}
++            for n in ("terminal", "write_file", "patch", "read_file")
++        ],
++    )
++    monkeypatch.setattr("run_agent.handle_function_call", _results)
++    monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
++
++    agent = AIAgent(
++        model="qwen3-6-27b",
++        provider=provider,
++        api_key="test-key",
++        base_url="http://localhost:8080/v1",
++        platform="cli",
++        max_iterations=20,
++        quiet_mode=True,
++        skip_memory=True,
++    )
++    agent._disable_streaming = True
++    agent.request_overrides = {"extra_body": copy.deepcopy(NORMAL_BODY)}
++    agent.max_tokens = NORMAL_MAX_TOKENS
++    agent._tool_guardrails = ToolCallGuardrailController(
++        ToolCallGuardrailConfig(hard_stop_enabled=hard_stop, no_progress_block_after=5)
++    )
++    if providers is None:
++        providers = {"qwen27b": {"models": {"qwen3-6-27b": {"loop_escalation": _escalation_block()}}}}
++    agent._loop_escalation = LoopEscalation(providers, "qwen27b")
++    agent._reasoning_echo_flag = reasoning_echo
++    agent._thinking_pad_cache = None
++    return agent, completions
++
++
++def _max_tokens(kwargs):
++    return kwargs.get("max_tokens", kwargs.get("max_completion_tokens"))
++
++
++def _is_normal(kwargs):
++    eb = kwargs.get("extra_body") or {}
++    return (
++        eb.get("normal_only_marker") == 1
++        and eb.get("chat_template_kwargs") == {"enable_thinking": False}
++        and _max_tokens(kwargs) == NORMAL_MAX_TOKENS
++    )
++
++
++def _is_escalated(kwargs):
++    eb = kwargs.get("extra_body") or {}
++    return (
++        "normal_only_marker" not in eb
++        and all(eb.get(k) == v for k, v in ESCALATED_EXTRA_BODY.items())
++        and "max_tokens" not in eb
++        and _max_tokens(kwargs) == 8192
++        and "reasoning_effort" not in kwargs  # travels inside chat_template_kwargs only
++    )
++
++
++# ── end-to-end: request bodies ──────────────────────────────────────────
++
++
++@pytest.mark.parametrize("provider", ["custom:qwen27b", "custom"])
++def test_escalated_body_after_third_identical_call_normal_before(monkeypatch, provider):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response("terminal", {"command": "cat pom.xml"}, "esc_1"),
++            _tool_response("write_file", {"path": "src/A.java", "content": "x"}, "edit_1"),
++            _text_response(),
++        ]),
++        provider=provider,
++    )
++    agent.run_conversation("fix it")
++
++    reqs = fake.requests
++    assert len(reqs) == 6
++    # Requests 1-3 precede the third note: the normal body, unchanged.
++    assert all(_is_normal(r) for r in reqs[:3]), [r.get("extra_body") for r in reqs[:3]]
++    # Requests 4-5 are escalated (the read in turn 1 ends nothing).
++    assert _is_escalated(reqs[3]) and _is_escalated(reqs[4])
++    assert reqs[3]["extra_body"]["chat_template_kwargs"]["reasoning_effort"] == "xhigh"
++    # The write_file ended it: request 6 is normal again.
++    assert _is_normal(reqs[5])
++    snap = agent._loop_escalation.snapshot()
++    assert snap["active"] is False and snap["last_end_reason"] == "edit"
++    assert snap["started"] == 1
++    assert snap["trigger"]["tool"] == "terminal" and len(snap["trigger"]["args_digest"]) == 16
++    assert snap["events"] == ["start", "turn:1", "turn:2", "end:edit"]
++    # The configured bodies were not mutated.
++    assert agent.request_overrides["extra_body"] == NORMAL_BODY
++
++
++def test_terminal_sed_in_place_ends_escalation(monkeypatch):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response("terminal", {"command": "sed -i 's/a/b/' src/main/A.java"}, "sed_1"),
++            _text_response(),
++        ]),
++    )
++    agent.run_conversation("fix it")
++    reqs = fake.requests
++    assert _is_escalated(reqs[3]) and _is_normal(reqs[4])
++    assert agent._loop_escalation.last_end_reason == "edit"
++
++
++def test_verification_command_ends_escalation(monkeypatch):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response("terminal", {"command": "bash .hermes/bin/run-verify.sh T-1"}, "v_1"),
++            _text_response(),
++        ]),
++    )
++    agent.run_conversation("fix it")
++    reqs = fake.requests
++    assert _is_escalated(reqs[3]) and _is_normal(reqs[4])
++    assert agent._loop_escalation.last_end_reason == "verification"
++
++
++def test_turn_cap_ends_escalation_and_guard_still_halts_on_fifth_call(monkeypatch, caplog):
++    name, args = LOOP_CALL
++    providers = {"qwen27b": {"loop_escalation": _escalation_block(max_turns=1)}}  # provider-wide
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response(name, args, "loop_4"),  # escalated turn 1/1
++            _tool_response(name, args, "loop_5"),  # normal again: 5th identical call
++            _text_response("should not be reached"),
++        ]),
++        providers=providers,
++        hard_stop=True,
++    )
++    with caplog.at_level(logging.INFO, logger="agent.loop_escalation"):
++        agent.run_conversation("fix it")
++
++    reqs = fake.requests
++    assert len(reqs) == 5  # the halt ends the turn; no sixth request
++    assert all(_is_normal(r) for r in reqs[:3])
++    assert _is_escalated(reqs[3])
++    assert _is_normal(reqs[4])
++    assert agent._loop_escalation.last_end_reason == "cap"
++    halt = agent._tool_guardrails.halt_decision
++    assert halt is not None and halt.code == "identical_call_streak_halt" and halt.count == 5
++    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith(LOG_PREFIX)]
++    assert lines[0].startswith(f"{LOG_PREFIX} start task=")
++    assert "tool=terminal" in lines[0]
++    assert lines[1] == f"{LOG_PREFIX} turn 1/1"
++    assert lines[2].startswith(f"{LOG_PREFIX} end reason=cap")
++
++
++def test_eight_turn_default_cap(monkeypatch):
++    reads = [_tool_response("terminal", {"command": f"cat f{i}"}, f"r{i}") for i in range(10)]
++    agent, fake = _agent(monkeypatch, _loop_script(reads + [_text_response()]))
++    agent.run_conversation("fix it")
++    reqs = fake.requests
++    flags = [_is_escalated(r) for r in reqs]
++    assert flags[3:11] == [True] * 8 and not any(flags[11:])
++    assert agent._loop_escalation.last_end_reason == "cap"
++
++
++def test_no_config_means_no_change(monkeypatch):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response("terminal", {"command": "cat pom.xml"}, "esc_1"),
++            _text_response(),
++        ]),
++        providers={"qwen27b": {"models": {"qwen3-6-27b": {"context_length": 1000}}}},
++    )
++    agent.run_conversation("fix it")
++    assert len(fake.requests) == 5
++    assert all(_is_normal(r) for r in fake.requests)
++    assert agent._loop_escalation.snapshot()["events"] == []
++
++
++def test_disabled_config_means_no_change(monkeypatch):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([_text_response()]),
++        providers={"qwen27b": {"loop_escalation": _escalation_block(enabled=False)}},
++    )
++    agent.run_conversation("fix it")
++    assert all(_is_normal(r) for r in fake.requests)
++
++
++def _assistant_reasoning(request):
++    return [
++        m.get("reasoning_content")
++        for m in request["messages"]
++        if isinstance(m, dict) and m.get("role") == "assistant"
++    ]
++
++
++def test_escalated_reasoning_is_echoed_on_following_turns(monkeypatch):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response("terminal", {"command": "cat pom.xml"}, "esc_1",
++                           reasoning_content="THINK-escalated-1"),
++            _tool_response("write_file", {"path": "src/A.java", "content": "x"}, "edit_1"),
++            _text_response(),
++        ]),
++        reasoning_echo=True,
++    )
++    agent.run_conversation("fix it")
++    reqs = fake.requests
++    assert _is_escalated(reqs[4])
++    assert "THINK-escalated-1" in _assistant_reasoning(reqs[4])
++    # Still echoed after the escalation ended (normal request 6).
++    assert _is_normal(reqs[5])
++    assert "THINK-escalated-1" in _assistant_reasoning(reqs[5])
++
++
++def test_cap_hit_logged_for_truncated_escalated_response(monkeypatch, caplog):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([_text_response("partial", finish_reason="length")]),
++    )
++    with caplog.at_level(logging.INFO, logger="agent.loop_escalation"):
++        agent.run_conversation("fix it")
++    assert "cap-hit" in agent._loop_escalation.snapshot()["events"]
++    assert any(
++        r.getMessage().startswith(f"{LOG_PREFIX} cap-hit turn 1/8 finish_reason=length")
++        for r in caplog.records
++    )
++
++
++# ── units ───────────────────────────────────────────────────────────────
++
++
++@pytest.mark.parametrize(
++    "tool,args,expected",
++    [
++        ("write_file", {"path": "x"}, "edit"),
++        ("patch", {"path": "x"}, "edit"),
++        ("terminal", {"command": "sed -i 's/a/b/' src/A.java"}, "edit"),
++        ("terminal", {"command": "sed -E -i 's/a/b/' x"}, "edit"),
++        ("terminal", {"command": "cat > src/main/A.java <<EOF"}, "edit"),
++        ("terminal", {"command": "printf x | tee src/A.java"}, "edit"),
++        ("terminal", {"command": "bash run-verify.sh"}, "verification"),
++        ("terminal", {"command": "python3 .hermes/bin/advance.py --task T"}, "verification"),
++        ("terminal", {"command": "sed -n 1,5p src/A.java"}, None),
++        ("terminal", {"command": "cat src/A.java > /tmp/x"}, None),
++        ("read_file", {"path": "src/A.java"}, None),
++    ],
++)
++def test_classify_end_call(tool, args, expected):
++    assert classify_end_call(tool, args) == expected
++
++
++def test_resolve_config_model_entry_wins_over_provider_entry():
++    providers = {
++        "QWEN27B": {
++            "loop_escalation": _escalation_block(max_turns=3),
++            "models": {"qwen3-6-27b": {"loop_escalation": _escalation_block(max_turns=5)}},
++        }
++    }
++    assert resolve_config(providers, "custom:qwen27b", "qwen3-6-27b").max_turns == 5
++    assert resolve_config(providers, "qwen27b", "other-model").max_turns == 3
++    assert resolve_config(providers, "custom", "qwen3-6-27b", "qwen27b").max_turns == 5
++    assert resolve_config(providers, "custom:other", "qwen3-6-27b") is None
++    # A model entry that disables it is not overridden by the provider block.
++    providers["QWEN27B"]["models"]["qwen3-6-27b"]["loop_escalation"]["enabled"] = False
++    assert resolve_config(providers, "custom:qwen27b", "qwen3-6-27b") is None
++
++
++def test_config_shape_defaults_and_rejections():
++    assert LoopEscalationConfig.from_mapping(None) is None
++    assert LoopEscalationConfig.from_mapping({"enabled": True}) is None  # no body
++    cfg = LoopEscalationConfig.from_mapping({"request_body": {"temperature": 1.0}})
++    assert cfg.max_turns == 8
++    assert LoopEscalationConfig.from_mapping(
++        {"max_turns": 0, "request_body": {"temperature": 1.0}}
++    ).max_turns == 8
++
++
++def test_new_third_note_starts_a_new_escalation():
++    le = LoopEscalation({"p": {"loop_escalation": _escalation_block(max_turns=2)}})
++    le.on_tool_result("terminal", {"command": "ls"}, third_note=True, provider="custom:p")
++    assert le.active and le.started == 1
++    le.on_tool_result("write_file", {"path": "x"}, third_note=False)
++    assert not le.active
++    le.on_tool_result("terminal", {"command": "ls"}, third_note=True, provider="custom:p")
++    assert le.active and le.started == 2
++    # A note while escalated does not restart or extend it.
++    le.begin_request()
++    le.on_tool_result("terminal", {"command": "ls"}, third_note=True, provider="custom:p")
++    assert le.turns == 1 and le.started == 2
+-- 
+2.54.0 (Apple Git-157)
+

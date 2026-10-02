@@ -126,11 +126,12 @@ ARG HERMES_DATE=2026.8.19
 # family halt (0011), read-only cycle and identical pre-execution refusal
 # halts (0012), review handoff terminal in the stop guard (0013), near-duplicate
 # loop halt (0014), any new line is progress in that guard (0015), the --skills
-# preload records what it actually loaded (0016).
+# preload records what it actually loaded (0016), loop escalation to a
+# thinking request profile after the third identical-call note (0017).
 # Staged into the build context by the operator (cp .../patches/*.patch
 # out/hermes-runtime-patches/). The git tree of the patched source must equal
 # HERMES_PATCHED_TREE or the build fails.
-ARG HERMES_PATCHED_TREE=37b147baef0c2678507c52e59e3b9231ab6ab64f
+ARG HERMES_PATCHED_TREE=eaa713b9017a86ee217ed9d623f339da82603acc
 ARG MTA_VSIX_VERSION=8.2.0
 ARG REDHAT_JAVA_VERSION=1.47.0
 ARG KANTRA_VERSION=v0.10.0-beta.1
@@ -186,7 +187,7 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
          --agent-src /opt/hermes-agent \
          --version "${HERMES_VERSION}" \
          --date "${HERMES_DATE}" \
-    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 16 \
+    && test "$(ls /opt/rhoai3/hermes-runtime-patches/*.patch | wc -l)" -eq 17 \
     && for p in /opt/rhoai3/hermes-runtime-patches/*.patch; do \
          git -C /opt/hermes-agent apply --index "$p" || exit 1; \
        done \

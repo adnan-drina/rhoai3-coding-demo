@@ -8,8 +8,8 @@ patches are build inputs; keep their contents and application order intact.
 |-------|----------|
 | Hermes base | `NousResearch/hermes-agent`, tag `v2026.8.19`, version `0.20.5` |
 | Base commit | `fcbd1076a93841fa88855acce810e342a5b78101` |
-| Patch series | [patches/](patches/), 0001–0016 in filename order |
-| Expected patched Git tree | `37b147baef0c2678507c52e59e3b9231ab6ab64f`, the current published image (superseded 0001–0014 image: `498e2faf`) |
+| Patch series | [patches/](patches/), 0001–0017 in filename order |
+| Expected patched Git tree | `eaa713b9017a86ee217ed9d623f339da82603acc` (0001–0017; image not yet built). Current published image: `37b147ba` (0001–0016); superseded 0001–0014 image: `498e2faf` |
 | Release manifest | [RELEASE.md](RELEASE.md): published image, qualification, and the image each run uses |
 
 ## Patch responsibilities
@@ -29,6 +29,7 @@ patches are build inputs; keep their contents and application order intact.
 | 0014 | Halt near-duplicate tool-call loops (`near_duplicate_loop_halt`): calls with the same operands after number normalisation, a growing literal, or an exact alternation, with no progress, edit or board transition in between; a new query or file is progress. Local extension, active only under `tool_loop_guardrails.hard_stop_enabled` |
 | 0015 | Any new line is progress in the near-duplicate guard: a call that shows a line not shown before is not counted toward `near_duplicate_loop_halt`. Identifiers, digests and timestamps the tool printed are content; only the runtime's own appended notices (loop warnings, hard stops, identical-call notes) are excluded, and the terminal envelope is read even when they follow it. Exact repetitions and unchanged-output loops still halt |
 | 0016 | The `--skills` preload records what it actually loaded: a Kanban worker's native finalizer appends one run-bound `preload` row to the task's execution ledger (status loaded / partial / failed / timeout / error / no-result; per loaded skill the resolved `SKILL.md`, its sha256 and the prompt-text digest). A requested skill that did not load is never listed as loaded. Local extension |
+| 0017 | Loop escalation to a thinking profile: the identical-call note for the third consecutive identical call switches that worker's next model requests to `providers.<provider>.models.<model>.loop_escalation.request_body` (fallback `providers.<provider>.loop_escalation`; `{enabled, max_turns, request_body}`), which replaces the normal `extra_body` and whose `max_tokens` is the output cap. Ends at the first edit (`write_file`, `patch`, terminal `sed -i` / `> src/` / `tee src/`), verification command (`run-verify.sh`, `advance.py`) or `max_turns` escalated requests (default 8). Guardrails unchanged; reasoning is echoed through `model.reasoning_echo`; agent.log lines prefixed `[loop-escalation]`. Absent or disabled config changes nothing. Local extension |
 
 Patch 0001 backports the controller/runtime changes from upstream commit
 `76648a7faf7822cdd6c0e147c35857e15780c1af`; patch 0013 backports the upstream
