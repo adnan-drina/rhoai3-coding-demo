@@ -1535,23 +1535,34 @@ def select_spill(path: Path, field: str, limit: int = 4000) -> dict:
     except (OSError, ValueError) as exc:
         return dict(out, error="not a readable JSON document: %s" % str(exc)[:200])
     out["file_chars"] = len(raw)
-    val = doc
+    val, at = doc, ""
     for part in [p for p in _re.split(r"\.(?![^\[]*\])", field) if p] if field else []:
         m = _re.fullmatch(r"([^\[\]]*)((?:\[[^\]]*\])*)", part)
         key, sels = (m.group(1), _re.findall(r"\[([^\]]*)\]", m.group(2))) if m else (part, [])
+        # the deepest value that resolved, and its path: a miss describes it, not the document root (v32: a
+        # miss under a list of 4 answered with the document's top-level keys)
+        parent, parent_path = val, at
         try:
             if key:
                 val = val[key] if isinstance(val, dict) else None
+                if val is not None:
+                    parent, parent_path = val, ("%s.%s" % (parent_path, key)).lstrip(".")
             for sel in sels:
                 if ":" in sel:
                     a, b = sel.split(":", 1)
                     val = val[int(a) if a else None:int(b) if b else None]
                 else:
                     val = val[int(sel)]
+                if val is not None:
+                    parent, parent_path = val, "%s[%s]" % (parent_path, sel)
         except (KeyError, IndexError, TypeError, ValueError):
             val = None
         if val is None:
-            return dict(out, error="no value at %s" % part, keys=sorted(doc)[:40] if isinstance(doc, dict) else [])
+            if parent is doc:
+                # a miss at the root: unchanged (the document's own keys are the answer)
+                return dict(out, error="no value at %s" % part, keys=sorted(doc)[:40] if isinstance(doc, dict) else [])
+            return dict(out, error="no value at %s" % part, deepest_resolved=_describe_parent(parent, parent_path))
+        at = parent_path
     text = val if isinstance(val, str) else json.dumps(val, indent=1, sort_keys=True)
     shown = text[:max(0, limit)]
     truncated = len(text) > max(0, limit)
@@ -1570,6 +1581,18 @@ def select_spill(path: Path, field: str, limit: int = 4000) -> dict:
     if isinstance(val, (list, dict)):
         out["length"] = len(val)
     return out
+
+
+def _describe_parent(val, path: str) -> dict:
+    """The deepest value a --field path resolved before it missed: its path, its type and what can be selected
+    below it -- a list's length and valid index range, an object's keys."""
+    d: dict = {"path": path, "type": type(val).__name__}
+    if isinstance(val, list):
+        d["length"] = len(val)
+        d["valid"] = ("%s[0]..%s[%d]" % (path, path, len(val) - 1)) if val else "(empty list: nothing to select)"
+    elif isinstance(val, dict):
+        d["keys"] = sorted(val)[:40]
+    return d
 
 
 def card_view(root: Path, task: str, board=None, recent: int = 5) -> str:

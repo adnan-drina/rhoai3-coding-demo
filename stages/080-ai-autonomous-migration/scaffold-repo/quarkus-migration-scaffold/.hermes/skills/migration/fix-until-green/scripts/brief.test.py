@@ -1530,6 +1530,47 @@ def _unresolved_history_digest_case() -> int:
     return 0
 
 
+def _field_miss_parent_case(mod, root: Path) -> int:
+    """v32 (a repository card): `--field source.behaviour` answered with the document's top-level keys although
+    `source` is a list of 4. A miss describes the deepest value that resolved; a miss at the root and every
+    success are as before. A context-shaped document with renamed-twin content."""
+    doc = {"schema": "rhoai3.resolved-context/v1", "outcome": "o:ledger-store",
+           "card": {"task": "t_twin0001", "write_set": ["src/main/java/org/example/ledger/EntryStore.java"]},
+           "source": [{"value": {"type": "org.example.ledger.EntryStore", "role": "selected"}, "provenance": "p#%d" % i}
+                      for i in range(4)],
+           "checks": {"immediate": ["unit:x"], "deferred": []}, "unknowns": []}
+    p = root / "twin-context.json"
+    p.write_text(json.dumps(doc, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    base = {"file": str(p), "file_chars": len(p.read_text(encoding="utf-8"))}
+    under_list = mod.select_spill(p, "source.behaviour")
+    if under_list != dict(base, field="source.behaviour", error="no value at behaviour", deepest_resolved={
+            "path": "source", "type": "list", "length": 4, "valid": "source[0]..source[3]"}):
+        return _fail("a miss under a list names its path, length and valid index range: %s" % under_list)
+    past_end = mod.select_spill(p, "source[7].value")
+    if (past_end.get("deepest_resolved") or {}).get("valid") != "source[0]..source[3]" or "keys" in past_end:
+        return _fail("an index past the end names the list's valid range: %s" % past_end)
+    under_obj = mod.select_spill(p, "source[2].value.members")
+    if under_obj.get("error") != "no value at members":
+        return _fail("the error text is kept: %s" % under_obj)
+    if under_obj.get("deepest_resolved") != {"path": "source[2].value", "type": "dict", "keys": ["role", "type"]} or "keys" in under_obj:
+        return _fail("a miss under an object names that object's keys: %s" % under_obj)
+    at_root = mod.select_spill(p, "facts")
+    if at_root != dict(base, field="facts", error="no value at facts", keys=sorted(doc)):
+        return _fail("a miss at the root is unchanged (the document's keys, nothing else): %s" % at_root)
+    # successes: exactly the shape and bytes they had
+    for field, val in (("source[1]", doc["source"][1]), ("checks.immediate", doc["checks"]["immediate"]),
+                       ("outcome", doc["outcome"]), ("source[1:3]", doc["source"][1:3]), ("", doc)):
+        text = val if isinstance(val, str) else json.dumps(val, indent=1, sort_keys=True)
+        want = dict({"file": base["file"], "field": field or "(whole document)"}, file_chars=base["file_chars"], type=type(val).__name__, total_chars=len(text),
+                    shown_chars=len(text), truncated=False, value=text)
+        if isinstance(val, (list, dict)):
+            want["length"] = len(val)
+        got = mod.select_spill(p, field)
+        if json.dumps(got, indent=2) != json.dumps(want, indent=2):
+            return _fail("a successful selection is unchanged (%s): %s" % (field, got))
+    return 0
+
+
 def _worker_evidence_access_case() -> int:
     """Architect diagnosis of Owner run 89: the worker must reach its evidence through allowed, bounded
     selectors. A one-line 300K spill shaped like the kanban_show response is read field by field with honest
@@ -1572,8 +1613,11 @@ def _worker_evidence_access_case() -> int:
         if last.get("length") != 2:
             return _fail("a list slice selects: %s" % last.get("length"))
         miss = mod.select_spill(spill, "task.nothing")
-        if "error" not in miss or "task" not in (miss.get("keys") or []):
-            return _fail("a missing path is an answer naming what exists: %s" % miss)
+        if miss.get("error") != "no value at nothing" or "keys" in miss \
+                or miss.get("deepest_resolved") != {"path": "task", "type": "dict", "keys": ["body", "id", "title"]}:
+            return _fail("a missing path is an answer naming what exists below the deepest resolved value: %s" % miss)
+        if _field_miss_parent_case(mod, root):
+            return 1
 
         # the bounded card view over a board: every record retained, only the latest verdicts shown
         class Board:
