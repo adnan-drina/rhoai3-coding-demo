@@ -36,6 +36,13 @@ argument hash, or tool plus result hash for same-result) may start that many
 escalations in a run; the next start on it is a guardrail halt through the
 existing halt path with the code loop_escalation_restart_halt.
 
+Running the card's typed repair executor (a terminal command naming
+typed-repair.py) is a new escalation end condition, end reason=typed-repair
+(v32 t_6d0f2b9f: the thinking turns named typed-repair.py as the first
+action, then spent all 8 turns reading files). Like an edit or verification
+call it also restarts the same-result and same-call counts. The edit and
+verification patterns are unchanged.
+
 Absent keys mean the 0017 behaviour (identical-call trigger only, unbounded).
 The halting rules of 0001, 0012, 0014 and 0015 and the escalation's end
 conditions, turn cap and request body are unchanged.
@@ -49,23 +56,23 @@ do not fire. Local extension.
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
- agent/loop_escalation.py                      | 321 ++++++++++++++-
- run_agent.py                                  |  46 ++-
- tests/agent/test_loop_escalation_triggers.py  | 386 ++++++++++++++++++
+ agent/loop_escalation.py                      | 331 ++++++++++++-
+ run_agent.py                                  |  46 +-
+ tests/agent/test_loop_escalation_triggers.py  | 441 ++++++++++++++++++
  .../v32-q36-t_9dc305ef-run1-capture.jsonl     |  10 +
  .../v32-q38-t_2f2509aa-run30-tail-c.jsonl     |  36 ++
  .../v32-q38-t_449a35e4-run1-poll.jsonl        |  52 +++
- 6 files changed, 823 insertions(+), 28 deletions(-)
+ 6 files changed, 887 insertions(+), 29 deletions(-)
  create mode 100644 tests/agent/test_loop_escalation_triggers.py
  create mode 100644 tests/fixtures/loop_escalation/v32-q36-t_9dc305ef-run1-capture.jsonl
  create mode 100644 tests/fixtures/loop_escalation/v32-q38-t_2f2509aa-run30-tail-c.jsonl
  create mode 100644 tests/fixtures/loop_escalation/v32-q38-t_449a35e4-run1-poll.jsonl
 
 diff --git a/agent/loop_escalation.py b/agent/loop_escalation.py
-index bac71e0..c3d696e 100644
+index bac71e0..9b4e897 100644
 --- a/agent/loop_escalation.py
 +++ b/agent/loop_escalation.py
-@@ -1,10 +1,32 @@
+@@ -1,15 +1,39 @@
  """Per-worker loop escalation to a thinking request profile.
  
 -When the identical-call stall guard emits its notice for the THIRD
@@ -89,7 +96,7 @@ index bac71e0..c3d696e 100644
 +
 +The two optional triggers never count pollers exempt from the identical-call
 +notice (``is_stall_guard_repeatable``: they neither count nor break a run),
-+and an edit or verification call (``classify_end_call``), a background
++and an edit, verification or typed-repair call (``classify_end_call``), a background
 +command or another evidence-changing call starts the count again. When one
 +of them starts an escalation a factual note is appended to the triggering
 +result. ``max_starts_per_signature`` (optional) bounds how many escalations
@@ -103,7 +110,14 @@ index bac71e0..c3d696e 100644
  
  * an edit: a ``write_file`` / ``patch`` call, or a ``terminal`` command that
    writes (``sed -i``, ``> src/``, ``tee src/``);
-@@ -27,9 +49,12 @@ behaviour change)::
+ * a verification: a ``terminal`` command naming ``run-verify.sh`` or
+   ``advance.py``;
++* a typed repair: a ``terminal`` command naming ``typed-repair.py`` (the
++  card's typed repair executor);
+ * ``max_turns`` escalated model requests (the cap).
+ 
+ After any of these the normal body is sent again. The guardrails are not
+@@ -27,9 +51,12 @@ behaviour change)::
                enabled: true
                max_turns: 8
                request_body: {...}       # replaces extra_body; max_tokens is the output cap
@@ -117,10 +131,14 @@ index bac71e0..c3d696e 100644
  """
  
  from __future__ import annotations
-@@ -54,12 +79,36 @@ _TERMINAL_EDIT_RE = re.compile(
+@@ -53,6 +80,29 @@ _TERMINAL_EDIT_RE = re.compile(
+     r"\bsed\s+(?:-[^\s]*\s+)*-i|>\s*src/|\btee\s+(?:-[^\s]+\s+)*src/"
  )
  _TERMINAL_VERIFY_RE = re.compile(r"run-verify\.sh|advance\.py")
- 
++# Running the card's typed repair executor (RHOAI3 v32 t_6d0f2b9f: the
++# thinking turns named it first, then read files for all 8 turns).
++_TERMINAL_TYPED_REPAIR_RE = re.compile(r"typed-repair\.py")
++
 +TRIGGER_IDENTICAL = "identical"
 +TRIGGER_SAME_RESULT = "same-result"
 +TRIGGER_SAME_CALL = "same-call"
@@ -140,10 +158,10 @@ index bac71e0..c3d696e 100644
 +    except (TypeError, ValueError):
 +        return 0
 +    return value if value >= minimum else 0
-+
+ 
  
  @dataclass(frozen=True)
- class LoopEscalationConfig:
+@@ -60,6 +110,10 @@ class LoopEscalationConfig:
      enabled: bool = False
      max_turns: int = DEFAULT_MAX_TURNS
      request_body: dict = field(default_factory=dict)
@@ -154,7 +172,7 @@ index bac71e0..c3d696e 100644
  
      @classmethod
      def from_mapping(cls, data: Any) -> "LoopEscalationConfig | None":
-@@ -82,7 +131,14 @@ class LoopEscalationConfig:
+@@ -82,7 +136,14 @@ class LoopEscalationConfig:
              max_turns = DEFAULT_MAX_TURNS
          if max_turns < 1:
              max_turns = DEFAULT_MAX_TURNS
@@ -170,7 +188,24 @@ index bac71e0..c3d696e 100644
  
  
  def _norm(name: Any) -> str:
-@@ -149,12 +205,87 @@ def classify_end_call(tool_name: str, args: Any) -> str | None:
+@@ -134,7 +195,8 @@ def resolve_config(
+ 
+ 
+ def classify_end_call(tool_name: str, args: Any) -> str | None:
+-    """``edit`` / ``verification`` when this executed call ends an escalation."""
++    """``edit`` / ``verification`` / ``typed-repair`` when this executed call
++    ends an escalation."""
+     if tool_name in EDIT_TOOLS:
+         return "edit"
+     if tool_name != "terminal" or not isinstance(args, Mapping):
+@@ -144,17 +206,94 @@ def classify_end_call(tool_name: str, args: Any) -> str | None:
+         return None
+     if _TERMINAL_VERIFY_RE.search(command):
+         return "verification"
++    if _TERMINAL_TYPED_REPAIR_RE.search(command):
++        return "typed-repair"
+     if _TERMINAL_EDIT_RE.search(command):
+         return "edit"
      return None
  
  
@@ -258,7 +293,7 @@ index bac71e0..c3d696e 100644
          self.reset()
  
      # ── state ────────────────────────────────────────────────────────
-@@ -168,6 +299,14 @@ class LoopEscalation:
+@@ -168,6 +307,14 @@ class LoopEscalation:
          self.request_escalated = False
          self.trigger: dict = {}
          self.events: list = []
@@ -273,7 +308,7 @@ index bac71e0..c3d696e 100644
  
      def snapshot(self) -> dict:
          return {
-@@ -179,6 +318,9 @@ class LoopEscalation:
+@@ -179,6 +326,9 @@ class LoopEscalation:
              "request_escalated": self.request_escalated,
              "trigger": dict(self.trigger),
              "events": list(self.events),
@@ -283,7 +318,7 @@ index bac71e0..c3d696e 100644
          }
  
      def config_for(self, provider: str, model: str) -> LoopEscalationConfig | None:
-@@ -192,6 +334,51 @@ class LoopEscalation:
+@@ -192,6 +342,51 @@ class LoopEscalation:
          self.events.append(event)
          logger.info("%s %s", LOG_PREFIX, line)
  
@@ -335,7 +370,7 @@ index bac71e0..c3d696e 100644
      # ── transitions ──────────────────────────────────────────────────
      def on_tool_result(
          self,
-@@ -203,27 +390,115 @@ class LoopEscalation:
+@@ -203,27 +398,115 @@ class LoopEscalation:
          provider: str = "",
          model: str = "",
          task_id: str = "",
@@ -466,7 +501,7 @@ index bac71e0..c3d696e 100644
  
      def end(self, reason: str) -> None:
          if not self.active:
-@@ -233,6 +508,8 @@ class LoopEscalation:
+@@ -233,6 +516,8 @@ class LoopEscalation:
          self._log(f"end:{reason}", f"end reason={reason} turns={self.turns}/{self.max_turns}")
          self.turns = 0
          self.config = None
@@ -476,7 +511,7 @@ index bac71e0..c3d696e 100644
      def begin_request(self) -> bool:
          """Called once per model request (loop iteration, not per retry).
 diff --git a/run_agent.py b/run_agent.py
-index 15b6d23..a7ac4e2 100644
+index 15b6d23..975df65 100644
 --- a/run_agent.py
 +++ b/run_agent.py
 @@ -8265,6 +8265,9 @@ class AIAgent:
@@ -521,8 +556,8 @@ index 15b6d23..a7ac4e2 100644
 -        call starts an escalation; an edit or verification call ends one.
 -        Request bodies only — the guardrails above are unchanged.
 +        call starts an escalation; so do the configured same-result and
-+        same-call runs, which read the call's raw result. An edit or
-+        verification call ends one. Returns ``function_result`` with the
++        same-call runs, which read the call's raw result. An edit,
++        verification or typed-repair call ends one. Returns ``function_result`` with the
 +        escalation's factual note, or its restart-bound halt, appended.
 +        Request bodies only: the guardrails above are unchanged.
          """
@@ -571,10 +606,10 @@ index 15b6d23..a7ac4e2 100644
          """End the turn when a tool created this worker run's stop request.
 diff --git a/tests/agent/test_loop_escalation_triggers.py b/tests/agent/test_loop_escalation_triggers.py
 new file mode 100644
-index 0000000..0acef04
+index 0000000..189d8d8
 --- /dev/null
 +++ b/tests/agent/test_loop_escalation_triggers.py
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,441 @@
 +"""Loop escalation start triggers beyond the identical-call note (RHOAI3 v32).
 +
 +Two loops on Qwen 3.8 never produced the identical-call note, so they never
@@ -609,6 +644,7 @@ index 0000000..0acef04
 +    RESTART_HALT_CODE,
 +    LoopEscalation,
 +    LoopEscalationConfig,
++    classify_end_call,
 +)
 +from agent.tool_guardrails import ToolCallGuardrailConfig, ToolCallGuardrailController
 +from run_agent import AIAgent
@@ -617,6 +653,7 @@ index 0000000..0acef04
 +    _agent,
 +    _is_escalated,
 +    _is_normal,
++    _loop_script,
 +    _text_response,
 +    _tool_response,
 +)
@@ -961,6 +998,59 @@ index 0000000..0acef04
 +    snap = agent._loop_escalation.snapshot()
 +    assert snap["trigger"]["kind"] == "same-call" and snap["last_end_reason"] == "edit"
 +    assert any(" trigger=same-call " in r.getMessage() for r in caplog.records)
++
++
++# ── typed repair ends an escalation (RHOAI3 v32 t_6d0f2b9f) ─────────────
++
++TYPED_REPAIR = "python3 .hermes/skills/migration/typed-repair/scripts/typed-repair.py --root . --card T-7"
++
++
++@pytest.mark.parametrize(
++    "tool,args,expected",
++    [
++        ("terminal", {"command": TYPED_REPAIR}, "typed-repair"),
++        ("terminal", {"command": "cd /projects/modernized && python3 typed-repair.py --plan"}, "typed-repair"),
++        ("terminal", {"command": "cat .hermes/skills/migration/typed-repair/SKILL.md"}, None),
++        ("read_file", {"path": "scripts/typed-repair.py"}, None),
++        # the existing patterns are unchanged
++        ("terminal", {"command": "bash run-verify.sh"}, "verification"),
++        ("terminal", {"command": "sed -i 's/a/b/' src/A.java"}, "edit"),
++        ("write_file", {"path": "x"}, "edit"),
++    ],
++)
++def test_classify_typed_repair(tool, args, expected):
++    assert classify_end_call(tool, args) == expected
++
++
++def test_typed_repair_ends_escalation_end_to_end(monkeypatch, caplog):
++    agent, fake = _agent(
++        monkeypatch,
++        _loop_script([
++            _tool_response("terminal", {"command": "cat pom.xml"}, "read_1"),
++            _tool_response("terminal", {"command": TYPED_REPAIR}, "tr_1"),
++            _text_response(),
++        ]),
++    )
++    with caplog.at_level(logging.INFO, logger="agent.loop_escalation"):
++        agent.run_conversation("fix it")
++    reqs = fake.requests
++    assert _is_escalated(reqs[3]) and _is_escalated(reqs[4]) and _is_normal(reqs[5])
++    snap = agent._loop_escalation.snapshot()
++    assert snap["last_end_reason"] == "typed-repair" and snap["events"][-1] == "end:typed-repair"
++    assert any(r.getMessage().startswith(f"{LOG_PREFIX} end reason=typed-repair") for r in caplog.records)
++
++
++def test_typed_repair_restarts_the_counts():
++    replay = _Replay(_providers())
++    call = ("terminal", {"command": "ls build"})
++    for k in range(4):
++        replay.call(*call, json.dumps({"output": f"{k}", "exit_code": 0}))
++    replay.call("terminal", {"command": TYPED_REPAIR}, json.dumps({"output": "repaired 0", "exit_code": 0}))
++    for k in range(4):
++        replay.call(*call, json.dumps({"output": f"{k}", "exit_code": 0}))
++    assert replay.starts == []
++    replay.call(*call, json.dumps({"output": "4", "exit_code": 0}))
++    assert [kind for _i, _l, kind in replay.starts] == ["same-call"]
 diff --git a/tests/fixtures/loop_escalation/v32-q36-t_9dc305ef-run1-capture.jsonl b/tests/fixtures/loop_escalation/v32-q36-t_9dc305ef-run1-capture.jsonl
 new file mode 100644
 index 0000000..aef0908

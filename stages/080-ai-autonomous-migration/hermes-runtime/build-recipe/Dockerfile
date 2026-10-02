@@ -133,7 +133,7 @@ ARG HERMES_DATE=2026.8.19
 # Staged into the build context by the operator (cp .../patches/*.patch
 # out/hermes-runtime-patches/). The git tree of the patched source must equal
 # HERMES_PATCHED_TREE or the build fails.
-ARG HERMES_PATCHED_TREE=94550e2ebbae08058c5ddbd4f09cbdf747a4f342
+ARG HERMES_PATCHED_TREE=55c61bfb88c902c5eeed9eaeb502522c90d2ec5c
 ARG MTA_VSIX_VERSION=8.2.0
 ARG REDHAT_JAVA_VERSION=1.47.0
 ARG KANTRA_VERSION=v0.10.0-beta.1

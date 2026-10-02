@@ -7,11 +7,11 @@ alone does not prove an image was built or deployed.
 
 ## Pending (not built): patches 0018 and 0019
 
-Series 0001–0019 gives patched tree `94550e2ebbae08058c5ddbd4f09cbdf747a4f342` (verified from a fresh base);
+Series 0001–0019 gives patched tree `55c61bfb88c902c5eeed9eaeb502522c90d2ec5c` (verified from a fresh base);
 the recipe pins that tree and 19 patches. No image is built, pushed or pinned: the current release below and
 every run pin are unchanged. 0018 adds the same-result and same-call escalation triggers and the restart bound
 (`same_result_count` 3, `same_call_count` 5, `max_starts_per_signature` 2 on `qwen3-8-27b-int4` only; v32
-t_2f2509aa and t_449a35e4). 0019 makes a foreground `terminal` call cut at the 420 s foreground limit say that
+t_2f2509aa and t_449a35e4) and ends an escalation when the card's `typed-repair.py` runs (t_6d0f2b9f). 0019 makes a foreground `terminal` call cut at the 420 s foreground limit say that
 the process was killed, the requested and applied limits, and the background + wait route. The Stage 050
 profile carries the 0018 keys; a 0017 image ignores them (identical-call trigger only).
 
