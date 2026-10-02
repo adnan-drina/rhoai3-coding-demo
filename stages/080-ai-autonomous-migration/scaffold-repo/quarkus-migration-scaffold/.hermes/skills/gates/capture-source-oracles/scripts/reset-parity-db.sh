@@ -200,7 +200,10 @@ PYEOF
   fi
 fi
 
-if [[ -z "${REVERT}" && -z "${QUERY}" ]]; then
+# --source-capture loads only the FROZEN SOURCE's own scripts into its own schema: the destination's schema asset and
+# derived baseline are neither read nor required (v32: at M1 the destination is not bootstrapped yet, and the
+# file check below refused every M1 source capture with "decisions.yaml names ..., which is not in the tree").
+if [[ -z "${REVERT}" && -z "${QUERY}" && -z "${SOURCE_COPY}" ]]; then
 # The derived baseline, when this tree has one: what to load after the schema,
 # and what must then be true. Exit 3 says the tree predates it.
 BASELINE_FACTS=""
