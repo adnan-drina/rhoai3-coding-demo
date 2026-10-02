@@ -62,6 +62,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
 #    segment) and stops what it started. No admission receipt is needed: M1
 #    precedes M2, so the capture binds to the evidence bundle.
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized
+#
+#    LONG-RUNNING: on the destination's server engine (decisions datasource.source_capture_engine: destination)
+#    every scenario restarts the source and reloads its PostgreSQL schema -- a full capture takes 15-25 minutes, longer
+#    than one tool call may run (the executor cuts a foreground call at 420 s; v32: one capture was ended after
+#    source run 50 of 103 and the worker then polled a capture that no longer existed). Start it as a BACKGROUND
+#    process (terminal background=true) and wait with a blocking process wait, repeated until it exits. Never poll it
+#    with ls/date/ps loops; the capture's own receipt (_capture.json) says when it finished and what it captured. A
+#    capture that died is re-run, never pieced together.
 
 #    then qualify what was captured against each scenario's own contract;
 #    the parity receipt counts only qualified captures as coverage. This is

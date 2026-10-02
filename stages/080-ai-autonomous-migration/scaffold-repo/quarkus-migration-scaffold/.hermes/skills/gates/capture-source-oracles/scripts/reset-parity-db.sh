@@ -333,7 +333,16 @@ PYEOF
 fi
 [[ -n "${DRIVER}" && -f "${DRIVER}" ]] || { echo "FAIL: RESET no ${DB_KIND} JDBC driver found in the verifier classpath or OS-account Maven cache; pass --driver <jar>" >&2; exit 1; }
 
-javac -d "${WORK}" "${HERE}/reset-db/ResetDb.java" >"${WORK}/javac.log" 2>&1 || { echo "FAIL: RESET could not compile the reset runner: $(tail -3 "${WORK}/javac.log")" >&2; exit 1; }
+# The runner is compiled ONCE per source digest and reused (v32: a server-engine capture reloads the schema before every
+# scenario, and recompiling for each of ~100 starts made the capture outlive a tool call). The cache lives under the
+# run's derived tree, keyed by the sources' sha256; a missing or partial cache is simply compiled again.
+RUNNER_CACHE="${ROOT}/.derived/reset-runner/$(cat "${HERE}/reset-db/ResetDb.java" "${HERE}/reset-db/StoreDb.java" | sha256sum | cut -c1-16)"
+if [[ -f "${RUNNER_CACHE}/ResetDb.class" && -f "${RUNNER_CACHE}/StoreDb.class" ]]; then
+  cp "${RUNNER_CACHE}"/*.class "${WORK}/"
+else
+  javac -d "${WORK}" "${HERE}/reset-db/ResetDb.java" "${HERE}/reset-db/StoreDb.java" >"${WORK}/javac.log" 2>&1 || { echo "FAIL: RESET could not compile the reset runner: $(tail -3 "${WORK}/javac.log")" >&2; exit 1; }
+  mkdir -p "${RUNNER_CACHE}.tmp.$$" && cp "${WORK}"/*.class "${RUNNER_CACHE}.tmp.$$/" && mv -n "${RUNNER_CACHE}.tmp.$$" "${RUNNER_CACHE}" 2>/dev/null; rm -rf "${RUNNER_CACHE}.tmp.$$"
+fi
 # read the jar directly: `unzip -l | grep -q` closes the pipe on the first
 # match, and under pipefail that reads as a failure (the same trap the stage
 # validator hit)
@@ -360,7 +369,7 @@ PYEOF
 )" || { echo "FAIL: RESET SOURCE_CAPTURE_UNPLANNED $(tr '\n' ' ' <"${WORK}/capture.err")" >&2; exit 1; }
   read -r CAP_SCHEMA CAP_SCHEMA_SQL CAP_SEED_SQL CAP_ENGINE <<<"${CAPTURE}"
   if [[ ${#STORE_ARGS[@]} -gt 0 ]]; then
-    javac -d "${WORK}" "${HERE}/reset-db/StoreDb.java" >"${WORK}/javac-store.log" 2>&1 || { echo "FAIL: RESET could not compile the store runner: $(tail -3 "${WORK}/javac-store.log")" >&2; exit 1; }
+    [[ -f "${WORK}/StoreDb.class" ]] || javac -d "${WORK}" "${HERE}/reset-db/StoreDb.java" >"${WORK}/javac-store.log" 2>&1 || { echo "FAIL: RESET could not compile the store runner: $(tail -3 "${WORK}/javac-store.log")" >&2; exit 1; }
     RHOAI3_CAPTURE_DB_URL="$(cat "${WORK}/capture-url")" java -cp "${DRIVER}:${WORK}" StoreDb "${STORE_ARGS[0]}" env:RHOAI3_CAPTURE_DB_URL "env:${USER_ENV}" "env:${PASS_ENV}" "${STORE_ARGS[@]:1}"
     exit $?
   fi
