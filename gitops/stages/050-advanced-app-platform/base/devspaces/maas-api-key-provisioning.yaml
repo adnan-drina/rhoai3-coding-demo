@@ -1703,6 +1703,53 @@ data:
     cfg["kanban"]["max_in_progress"] = _m3_cap
     print("M3 EXECUTION POLICY: kanban.max_in_progress %d -- %s" % (_m3_cap, _m3_why))
     # <<< M3 execution policy
+    # >>> run budgets
+    # v32 (stages/080-ai-autonomous-migration/README.md, "In-workspace stops"):
+    # a destination whose harness ships .hermes/kernel/run_budget.py gets it
+    # copied into Managed Scope (like the K2 hook) and run by THIS interpreter
+    # (the Hermes venv: its native writes import hermes_cli.kanban_db):
+    #   pre_tool_call, matcher .*  the per-worker-run prompt-token budget of the
+    #                              selected profile (run_input_token_budget);
+    #                              fail-open, never fail_closed
+    #   on_kanban_dispatch_tick    the run-level token budget and the
+    #                              no-accepted-checkpoint stop (run-defaults.json
+    #                              budget, read from the initial commit); stop
+    #                              records beside the request ledger
+    # A shipped enforcer with a selected profile that pins no budget refuses
+    # here. .hermes/kernel/worker_launch.py, when shipped, becomes HERMES_BIN
+    # (managed .env below): the dispatcher spawns every worker through it, and
+    # it starts a retry after a loop stop escalated (loop_escalation profiles).
+    import sys as _rb_sys
+    _rb_src = os.path.join(safe_root, ".hermes", "kernel", "run_budget.py")
+    _wl_src = os.path.join(safe_root, ".hermes", "kernel", "worker_launch.py")
+    _rb_state = "/projects/.platform/run-control-state"
+    _launch_bin = ""
+    if os.path.isfile(_rb_src):
+        _rb_limit = MODEL_PROFILES[DEFAULT_MODEL].get("run_input_token_budget")
+        if not isinstance(_rb_limit, int) or isinstance(_rb_limit, bool) or _rb_limit <= 0:
+            raise SystemExit("ERROR: RUN_TOKEN_BUDGET: the selected profile %s pins no positive "
+                             "run_input_token_budget (model-profiles.json)" % DEFAULT_MODEL)
+        os.makedirs(hooks_dir, exist_ok=True)
+        _rb_dst = os.path.join(hooks_dir, "run_budget.py")
+        shutil.copy2(_rb_src, _rb_dst)
+        os.chmod(_rb_dst, 0o755)
+        cfg["hooks"].setdefault("pre_tool_call", []).append(
+            {"matcher": ".*", "command": "%s %s pre-tool" % (_rb_sys.executable, _rb_dst), "timeout": 10})
+        cfg["hooks"].setdefault("on_kanban_dispatch_tick", []).append({
+            "command": "%s %s tick --root %s --stops %s" % (_rb_sys.executable, _rb_dst, safe_root,
+                                                            os.path.join(_rb_state, "run-stops.jsonl")),
+            "timeout": 60,
+        })
+        print("RUN BUDGETS: per-run %d prompt tokens (%s); run-level stops on the dispatcher tick"
+              % (_rb_limit, DEFAULT_MODEL))
+    if os.path.isfile(_wl_src):
+        _wl_bin = os.path.join(managed, "bin")
+        os.makedirs(_wl_bin, exist_ok=True)
+        _launch_bin = os.path.join(_wl_bin, "hermes-worker-launch")
+        shutil.copy2(_wl_src, _launch_bin)
+        os.chmod(_launch_bin, 0o755)
+        print("WORKER LAUNCH: HERMES_BIN=%s" % _launch_bin)
+    # <<< run budgets
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
         # a JSON round trip unshares nested values (the provider and the
@@ -1724,6 +1771,10 @@ data:
         # Terminal allow-root (Architect 214325ZA). Not the write sandbox.
         fh.write(f"K2_ALLOW_ROOT={safe_root}:/projects/legacy\n")
         fh.write("HERMES_REAL_BIN=/usr/local/bin/hermes\n")
+        # v32 item 2: the dispatcher spawns workers through the harness launch
+        # shim (run budgets block above); it execs HERMES_REAL_BIN.
+        if _launch_bin:
+            fh.write("HERMES_BIN=%s\n" % _launch_bin)
         # B3 / R2: the run's ENFORCED request allowance, paced by the Hermes
         # runtime (patch 0007) across every model request of every process of
         # the run: main calls, each retry, auxiliary and reviewer calls. The

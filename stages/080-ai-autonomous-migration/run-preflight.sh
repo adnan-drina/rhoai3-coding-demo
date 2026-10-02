@@ -59,6 +59,27 @@ def check_worker_identity(pod, receipt, default_binding, namespace, workspace):
                 'system:serviceaccount:' + namespace + ':' + expected)
         need(not (direct or group or user), 'worker is bound to devworkspace-default-role')
 
+def run_stop_gaps(profile_doc, model, defaults):
+    """v32: the token budgets and the stall limit the workspace enforces are pinned: the selected
+    model profile's run_input_token_budget (and, with loop escalation, retry_start_turns) and the
+    golden's run-level budget.run_input_token_budget and budget.no_accepted_checkpoint_minutes."""
+    def positive(v):
+        return isinstance(v, int) and not isinstance(v, bool) and v > 0
+    prof = ((profile_doc or {}).get('profiles') or {}).get(model) if isinstance(profile_doc, dict) else None
+    if not isinstance(prof, dict):
+        return ['RUN_TOKEN_BUDGET: no model profile for %s' % model]
+    gaps = []
+    if not positive(prof.get('run_input_token_budget')):
+        gaps.append('RUN_TOKEN_BUDGET: the profile for %s pins no positive run_input_token_budget' % model)
+    esc = prof.get('loop_escalation')
+    if isinstance(esc, dict) and esc.get('enabled') is True and not positive(esc.get('retry_start_turns')):
+        gaps.append('RUN_TOKEN_BUDGET: the profile for %s enables loop_escalation without a positive retry_start_turns' % model)
+    budget = (defaults or {}).get('budget') or {}
+    for key in ('run_input_token_budget', 'no_accepted_checkpoint_minutes'):
+        if not positive(budget.get(key)):
+            gaps.append('RUN_STOPS: run-defaults.json budget.%s is not a positive integer' % key)
+    return gaps
+
 def worker_kubeconfig_mount_ok(pod, container_name):
     spec = pod['spec']
     worker = next(c for c in spec['containers'] if c['name'] == container_name)
@@ -111,6 +132,17 @@ def _pinned_run_model():
         return ''
 os.environ['EXPECTED_MODEL'] = os.environ.get('EXPECTED_MODEL') or _pinned_run_model() or defaults['configuration']['model']['id']
 expected_hours = defaults['budget']['max_wall_hours']
+# v32: the selected profile's per-run token budget (the run's pinned run-control copy, else the platform table)
+# and the golden's run-level stops are pinned before anything starts.
+def _profile_doc():
+    for name, key in ((os.environ['WORKSPACE'] + '-run-control', 'profile.json'), ('migration-model-profiles', 'model-profiles.json')):
+        try:
+            return json.loads(json.loads(oc('get','configmap',name,'-n',os.environ.get('NS','wksp-ai-developer'),'-o','json'))['data'][key])
+        except Exception:
+            continue
+    return None
+_stop_gaps = run_stop_gaps(_profile_doc(), os.environ['EXPECTED_MODEL'], defaults)
+need(not _stop_gaps, '; '.join(_stop_gaps))
 # The operator retired repeated isolation campaigns. Validate this workspace
 # against the released defaults and live platform; do not promote old receipts.
 app = json.loads(oc('get','application','050-advanced-app-platform','-n','openshift-gitops','-o','json'))
@@ -267,6 +299,21 @@ require((root / '.hermes/kernel/post_tool_call.py').is_file()
         and any(h.get('matcher') == 'terminal' and str(h.get('command', '')).endswith('post_tool_call.py')
                 and not h.get('fail_closed') for h in hooks.get('post_tool_call') or []),
         'the terminal post_tool_call observer is not shipped or not registered')
+# v32: the in-workspace stops (kernel/run_budget.py): the per-run token budget before every tool call
+# (fail-open, never fail-closed) and the run-level stops on the dispatcher tick; the launch shim
+# (kernel/worker_launch.py) is the dispatcher's HERMES_BIN.
+if (root / '.hermes/kernel/run_budget.py').is_file():
+    require(any(h.get('matcher') == '.*' and str(h.get('command', '')).endswith('run_budget.py pre-tool')
+                and not h.get('fail_closed') for h in hooks.get('pre_tool_call') or []),
+            'RUN_TOKEN_BUDGET: the per-run budget hook is not registered (pre_tool_call .* run_budget.py pre-tool)')
+    require(any(' tick --root ' in str(h.get('command', '')) and 'run_budget.py' in str(h.get('command', ''))
+                for h in hooks.get('on_kanban_dispatch_tick') or []),
+            'RUN_STOPS: the run-level stops are not registered on the dispatcher tick (run_budget.py tick)')
+if (root / '.hermes/kernel/worker_launch.py').is_file():
+    _shim = config.parent / 'bin' / 'hermes-worker-launch'
+    _envt = (config.parent / '.env').read_text() if (config.parent / '.env').is_file() else ''
+    require(('HERMES_BIN=%s' % _shim) in _envt.splitlines() and _shim.is_file(),
+            'RETRY_ESCALATION: the managed .env does not route worker spawns through the launch shim (HERMES_BIN)')
 require(c.get('model', {}).get('default') == MODEL, 'worker model mismatch')
 import socket
 from urllib.parse import urlsplit
@@ -417,7 +464,7 @@ else:
         m = str((hk.get('pre_tool_call') or [{}])[0].get('matcher', '')).split('|')
         require(all(t in m for t in ('kanban_block', 'kanban_request_review', 'request_review', 'kanban_comment',
                                      'kanban_attach', 'kanban_create', 'kanban_link'))
-                and not hk.get('on_kanban_dispatch_tick'),
+                and not any('outcome_reconcile.py' in str(h.get('command', '')) for h in hk.get('on_kanban_dispatch_tick') or []),
                 'BOARD_PROTOCOL: the managed config lacks the outcome-board/v2 hooks (review/block terminators, '
                 'kanban record/graph tools) or registers a reconciler')
     if protocol == 'outcome-board/v1':

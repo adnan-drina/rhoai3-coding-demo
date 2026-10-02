@@ -162,6 +162,14 @@ class PreviousRun(unittest.TestCase):
         self.assertIn("no candidate was judged or rejected", text)
         self.assertIn("what it returned (last 400 of 1066 characters)", text)
 
+    def test_a_token_budget_stop_is_a_halted_investigation(self):
+        # v32: RUN_TOKEN_BUDGET_EXHAUSTED ends the run as timed_out; the reading was cut off, nothing was judged
+        runs = [{"id": 17, "outcome": "timed_out", "error": "RUN_TOKEN_BUDGET_EXHAUSTED: 12000417 of 12000000 input tokens"},
+                {"id": 18, "outcome": None}]
+        pr = BR.previous_run_context(runs, [], "18", [], task="t_x")
+        self.assertEqual((pr["kind"], pr["outcome"]), ("halted-investigation", "timed_out"))
+        self.assertTrue(pr["stop"].startswith("RUN_TOKEN_BUDGET_EXHAUSTED"))
+
     def test_an_unrecorded_result_is_unknown_not_empty(self):
         pr = BR.previous_run_context(self.RUNS, self._ledger(), "18", [], task="t_x")
         self.assertIsNone(pr["repeated"]["result_tail"])

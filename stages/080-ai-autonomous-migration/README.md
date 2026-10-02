@@ -348,3 +348,21 @@ validated scaffolding push. The coding worker cannot write it:
 The workspace image carries a small patch series for the pinned Hermes
 runtime (`hermes-runtime/`) that stops a worker repeating the same successful
 tool call and records the halt as a failed run.
+
+### In-workspace stops
+
+Token budgets bound every loop, whatever its shape. The workspace enforces them
+itself, so a run stops on time even when nobody is watching:
+
+| Stop | Limit (pinned in) | Enforced by | Effect |
+|------|-------------------|-------------|--------|
+| `RUN_TOKEN_BUDGET_EXHAUSTED` | `run_input_token_budget` of the selected model profile (`model-profiles.json`, 12M) | `.hermes/kernel/run_budget.py`, a `pre_tool_call` hook of every worker | ends that worker run as a timed-out attempt, the same retry accounting as an exhausted iteration budget |
+| `MIGRATION_TOKEN_BUDGET_EXHAUSTED` | `budget.run_input_token_budget` (`run-defaults.json`, 250M) | the same file on every dispatcher tick | blocks every running or ready card until an Operator lifts the stop |
+| `MIGRATION_NO_ACCEPTED_CHECKPOINT` | `budget.no_accepted_checkpoint_minutes` (`run-defaults.json`, 240) | the same file on every dispatcher tick | blocks every running or ready card until an Operator lifts the stop |
+
+Input tokens are the prompt tokens Hermes records per session. On a model
+profile with loop escalation (Qwen 3.8), a retry after a loop halt, an
+exhausted iteration budget or a run token budget starts its first
+`loop_escalation.retry_start_turns` turns on the thinking profile
+(`.hermes/kernel/worker_launch.py`, the dispatcher's `HERMES_BIN`). The wall
+budget is declared and reported, but nothing in the workspace enforces it.

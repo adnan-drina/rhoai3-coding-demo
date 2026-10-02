@@ -14,12 +14,17 @@
         "accept": "1h"
       }
     },
+    "run_input_token_budget": 250000000,
+    "no_accepted_checkpoint_minutes": 240,
+    "in_workspace_stops": "v32 (2026-10-03): these two limits are enforced inside the workspace by .hermes/kernel/run_budget.py on every dispatcher tick (an on_kanban_dispatch_tick hook the Stage 050 producer registers), never by a lead watching from outside. run_input_token_budget: prompt tokens of every kanban worker session of the run; 250000000 = 36 cards x ~7M (the largest healthy Qwen 3.8 implementer run, 6M, plus a review), a judgement. no_accepted_checkpoint_minutes: 240 = two consecutive runs at the 2h per-card max runtime (a run and its retry, or a run and its review), a judgement. A stop blocks every running or ready card with its named reason (MIGRATION_TOKEN_BUDGET_EXHAUSTED, MIGRATION_NO_ACCEPTED_CHECKPOINT) until an Operator lifts it (run_budget.py lift, recorded in run-stops.jsonl beside the request ledger). The wall budget is declared and reported but enforced by nothing in the workspace.",
     "stopping_conditions": [
       "terminal M4 outcome in both modes; full and provisional outcomes reported separately",
       "wall budget exhausted",
       "blocking harness defect requiring installation",
       "sealed unit or family retry budget exhausted",
-      "M5 PREFLIGHT/DEPLOY/VALIDATE stage runtime exhausted (1h/3h/1h, max_retries 1)"
+      "M5 PREFLIGHT/DEPLOY/VALIDATE stage runtime exhausted (1h/3h/1h, max_retries 1)",
+      "run input-token budget exhausted (MIGRATION_TOKEN_BUDGET_EXHAUSTED, enforced in the workspace)",
+      "no card accepted for no_accepted_checkpoint_minutes (MIGRATION_NO_ACCEPTED_CHECKPOINT, enforced in the workspace)"
     ],
     "continuation": "live repair, rewind or harness replacement is an assisted continuation; preserve the initial deadline and record"
   },
