@@ -4255,6 +4255,40 @@ def _split_discharge_case() -> int:
             return _fail("an obligation whose scenario was not re-run is never discharged")
         if parity_obligation_discharged(root, dict(row, scenario=""), {"cors-actual-accounts"})[0]:
             return _fail("a read oracle is discharged only by PASS")
+
+        # H-18 (v31 t_467fb0f1): the scenario answers a server error whose body carries a per-request error id (the
+        # comparator's server_error.error_id, found in the observed body). The charset card's candidate removed the
+        # charset; the 500 it does not own came back with the same differences but a new id, so a new digest.
+        summary = " (4 difference(s): extra at $.details (1); missing at $.id (1); missing at $.name (1); extra at $.stack (1))"
+
+        def err(reason, eid, *, in_body=True, recorded=True):
+            doc = rec(reason)
+            if recorded:
+                doc["server_error"] = {"error_id": eid, "exception": "jakarta.persistence.PersistenceException"}
+            doc["observed"] = {"body_sample": '{"details":"Error id %s-1","stack":""}' % (eid if in_body else "elsewhere")}
+            return doc
+
+        def judge(live_doc, issued):
+            (root / PARITY_DIR / "scenarios" / "sc.json").write_text(json.dumps(live_doc))
+            (root / PARITY_DIR / "receipt.json").write_text(json.dumps(receipt("FAIL", nav=False, sha="after")))
+            judged, _carried = judged_parity_receipt(root)
+            return parity_obligation_discharged(root, parity_state(judged)["obligations"][issued], {"cors-actual-accounts"}, judged)
+
+        (acc / "scenarios" / "sc.json").write_text(json.dumps(
+            err("status 500 vs 201; body aaaa vs 22bb" + summary + "; " + charset, "1111-aaaa")))
+        ok, why = judge(err("status 500 vs 201; body bbbb vs 22bb" + summary, "2222-bbbb"), rep_id)
+        if ok is not True:
+            return _fail("H-18: a server-error body that differs only by its per-request id is not a change: %s" % why)
+        ok, why = judge(err("status 500 vs 201; body bbbb vs 22bb (3 difference(s): extra at $.details (1); missing at $.id (1);"
+                            " extra at $.stack (1))", "2222-bbbb"), rep_id)
+        if ok is not False or "3 difference(s)" not in why:
+            return _fail("H-18: a server-error body whose differences changed is still a new difference: %s %s" % (ok, why))
+        ok, why = judge(err("status 500 vs 201; body bbbb vs 22bb" + summary, "2222-bbbb", recorded=False), rep_id)
+        if ok is not False or "bbbb" not in why:
+            return _fail("H-18 control: without a recorded error id the digest is compared strictly: %s %s" % (ok, why))
+        ok, why = judge(err("status 500 vs 201; body bbbb vs 22bb" + summary, "2222-bbbb", in_body=False), rep_id)
+        if ok is not False or "bbbb" not in why:
+            return _fail("H-18 control: an error id the body does not carry proves no volatility: %s %s" % (ok, why))
     return 0
 
 

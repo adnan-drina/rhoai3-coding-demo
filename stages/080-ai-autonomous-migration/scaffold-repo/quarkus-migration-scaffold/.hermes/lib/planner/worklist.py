@@ -1287,6 +1287,26 @@ def canonical_diff(diff: str) -> str:
     return str(diff or "").strip()
 
 
+_DIFF_BODY_RE = re.compile(r"^body (?P<have>\S+) vs (?P<want>\S+)(?P<rest>.*)$", re.S)
+
+
+def _server_error_body(rec: dict[str, Any]) -> bool:
+    """H-18 (v31 t_467fb0f1): the destination answered a server error whose body carries the per-request error id
+    the comparator recorded (``server_error.error_id`` found in the observed body): that body's digest differs on
+    every request, so it cannot show whether a candidate changed the failure."""
+    eid = str(((rec or {}).get("server_error") or {}).get("error_id") or "")
+    return bool(eid) and eid in str(((rec or {}).get("observed") or {}).get("body_sample") or "")
+
+
+def _stable_diff(diff: str, volatile_body: bool) -> str:
+    """canonical_diff; with ``volatile_body`` (both records answered such a server error) a body difference is
+    compared by the source's digest and its difference summary (every kind and path, with counts) -- never by the
+    destination digest the error id moves. Every other difference stays character for character."""
+    c = canonical_diff(diff)
+    m = _DIFF_BODY_RE.match(c) if volatile_body else None
+    return "body <server-error body> vs %s%s" % (m.group("want"), m.group("rest")) if m else c
+
+
 def parse_parity_diff(diff: str) -> dict[str, str]:
     """One comparator diff, taken apart: what the DESTINATION answered
     (``have``) and what the SOURCE answered (``want``). ``kind`` is status,
@@ -2230,7 +2250,8 @@ def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: se
         return False, "its own difference(s) remain: %s" % "; ".join(own)[:200]
     now = set(_split_diffs(str(cur.get("reason") or "")))
     was = set(_split_diffs(str(prev.get("reason") or ""))) if str(prev.get("verdict")) == "FAIL" else set()
-    new = sorted(d for d in now if canonical_diff(d) not in {canonical_diff(w) for w in was})
+    volatile = _server_error_body(cur) and _server_error_body(prev)
+    new = sorted(d for d in now if _stable_diff(d, volatile) not in {_stable_diff(w, volatile) for w in was})
     if new:
         return False, "the candidate changed or introduced %s in %s" % ("; ".join(new)[:200], name)
     return True, ("its own difference(s) are gone from the re-run %s; what remains (%s) belongs to other obligations "
