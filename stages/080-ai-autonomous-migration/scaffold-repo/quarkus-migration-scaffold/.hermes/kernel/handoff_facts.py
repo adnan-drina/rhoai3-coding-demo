@@ -395,9 +395,34 @@ def main(argv: list[str] | None = None) -> int:
     print("Hand these keys off verbatim in the review request's metadata (facts, factual_summary%s); explain in "
           "summary, never contradict." % (", unresolved" if args.phase == "m2" else ""), file=sys.stderr)
     if args.phase == "m2":
+        if args.write:
+            # M-1: the initial completion map is PERSISTED with the M2 handoff -- what completion means, which known
+            # gaps can prevent it, who resolves each and what evidence closes it -- not only printed as a hint
+            print("Completion map: %s" % persist_completion_map(root, args.plan), file=sys.stderr)
         print("Completion map (read-only view; owner and exit per unresolved entry point): python3 "
               ".hermes/lib/completion_map.py --root %s --plan <the plan.r<N>.json counted above>" % root, file=sys.stderr)
     return 0
+
+
+COMPLETION_MAP_M2 = Path("evidence") / "completion-map.m2.json"
+
+
+def persist_completion_map(root: Path, plan: str | None) -> str:
+    """Write the M2 completion map beside the handoff facts; an underivable map is written as its reason (unknown,
+    never an empty successful plan)."""
+    lib = Path(__file__).resolve().parents[1] / "lib"
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+    dst = Path(root) / COMPLETION_MAP_M2
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import completion_map as CM
+        doc = CM.build(CM.load_inputs(Path(root), [Path(plan)] if plan else []))
+        doc = dict(doc, written_at_phase="m2")
+    except Exception as exc:  # noqa: BLE001 - an unknown map is recorded as unknown, with why
+        doc = {"schema": None, "written_at_phase": "m2", "unknown": "the completion map could not be derived: %s" % exc}
+    dst.write_text(json.dumps(doc, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    return str(dst)
 
 
 if __name__ == "__main__":

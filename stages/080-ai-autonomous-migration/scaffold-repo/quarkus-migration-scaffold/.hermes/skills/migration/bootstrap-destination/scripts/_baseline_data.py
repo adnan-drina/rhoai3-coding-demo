@@ -717,16 +717,20 @@ def _dataset_from_corpus(corpus: dict[str, Any]) -> tuple[str, str]:
 
 
 def discover_dataset(base: Path, source_engine: str) -> str:
-    """The same rule derive-source-scenarios.py uses to find the seed: the
-    source engine's directory, then the default, then whatever is there."""
-    db = Path(base) / RESOURCES / "db"
-    if not db.is_dir():
-        return ""
-    names = [source_engine, DEFAULT_SEED_ENGINE] + sorted(d.name for d in db.iterdir() if d.is_dir())
-    for name in names:
-        if name and (db / name / SEED_BASENAME).is_file():
-            return (RESOURCES / "db" / name / SEED_BASENAME).as_posix()
-    return ""
+    """The SAME rule derive-source-scenarios.py uses to find the seed (D-1: one implementation,
+    planner.source_engine.seed): the capture engine's directory, then the default, then whatever is there."""
+    if str(_hermes_lib()) not in sys.path:
+        sys.path.insert(0, str(_hermes_lib()))
+    from planner.source_engine import seed
+    p, _engine = seed(Path(base), source_engine)
+    return p.relative_to(Path(base)).as_posix() if p is not None else ""
+
+
+def _capture_engine(ds: dict[str, Any], copy: Path | None) -> str:
+    if str(_hermes_lib()) not in sys.path:
+        sys.path.insert(0, str(_hermes_lib()))
+    from planner.source_engine import capture_engine
+    return str(capture_engine(ds, Path(copy) if copy else None)["engine"] or "")
 
 
 def declared_dataset(root: Path, ds: dict[str, Any], copy: Path | None = None) -> tuple[Path, str, str]:
@@ -741,10 +745,10 @@ def declared_dataset(root: Path, ds: dict[str, Any], copy: Path | None = None) -
         except (OSError, ValueError):
             rel, named_by = "", ""
     if not rel:
-        rel = discover_dataset(root, str(ds.get("source_baseline_db_kind") or ""))
+        rel = discover_dataset(root, _capture_engine(ds, copy))
         named_by = "discovery (the source engine's %s)" % SEED_BASENAME if rel else ""
     if not rel and copy is not None and Path(copy).is_dir():
-        rel = discover_dataset(Path(copy), str(ds.get("source_baseline_db_kind") or ""))
+        rel = discover_dataset(Path(copy), _capture_engine(ds, copy))
         named_by = "discovery in the frozen copy" if rel else ""
     if not rel:
         return Path(""), "", ""

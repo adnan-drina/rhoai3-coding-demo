@@ -824,6 +824,37 @@ PYEOF
     # the obligations it still reports are the ones this candidate left
     python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
     VERIFY_RC=$?
+    if [[ "${PARITY_TRIGGER}" == "runtime-feedback" ]]; then
+      # R-3: the whole-phase comparison of this package, read ONCE as a census -- every FAIL, the files its evidence
+      # names, the open cards that can reach it, the shared producers. A FAIL no open card can reach is a planning
+      # gap named now, not when a behaviour card meets it hours later (v31). Evidence only; never acceptance.
+      python3 - "${ROOT}" "${RUN}" "${HARNESS_LIB}" <<'PYEOF' || echo "runtime census: not written (see above)"
+import json, sys
+from pathlib import Path
+root, run_p = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, sys.argv[3])
+from planner.canonical import write_canonical
+from planner.runtime_census import CENSUS, of_root
+from planner.native_control import _native_status_fn, board_for, run_id_of
+tree = str((json.load(open(run_p)) or {}).get("candidate_sha256") or "")
+try:
+    board = board_for(root)
+    run = run_id_of(root, board)
+    plan = board.plan(run)
+    status = _native_status_fn(board, run)
+except Exception as exc:  # noqa: BLE001 - no board: the census is unknown, not empty
+    print("runtime census: the native plan could not be read (%s); not written" % exc)
+    raise SystemExit(0)
+doc = of_root(root, plan, status, tree)
+write_canonical(root / CENSUS, doc)
+s = doc["summary"]
+print("runtime census: %d failing scenario(s), %d unreachable by any open card, %d shared producer group(s) -> %s"
+      % (s["failing"], s["unreachable"], s["groups"], CENSUS))
+for u in doc["unreachable"][:10]:
+    print("  UNREACHABLE %s: evidence %s; open judges %s" % (u["scenario"], ", ".join(u["evidenced_files"]) or "none",
+                                                          ", ".join(u["open_judges"]) or "none"))
+PYEOF
+    fi
     fi
     # <<< parity-execution
   fi

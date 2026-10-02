@@ -179,6 +179,52 @@ class MissingOraclesNeverVanish(unittest.TestCase):
         self.assertEqual(sorted(r["status"] for r in full["release_blockers"]), ["closed", "open"])
 
 
+class DynamicEntryPaths(unittest.TestCase):
+    """M-1: the scheduled / message-driven / event-driven entry paths THIS source has are named per specimen."""
+
+    def test_detected_from_the_model(self):
+        import json as _j, shutil, tempfile
+        here = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            from planner.paths import CATALOGS_DIR, EVIDENCE_BUNDLE
+            (root / CATALOGS_DIR).mkdir(parents=True)
+            shutil.copyfile(here.parent / "planning" / "catalogs" / "cross-cutting.json", root / CATALOGS_DIR / "cross-cutting.json")
+            (root / EVIDENCE_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
+            (root / EVIDENCE_BUNDLE).write_text(_j.dumps({"structure": {"types": [
+                {"fqn": "com.acme.jobs.Nightly", "annotations": [], "methods": [
+                    {"signature": "run()", "annotations": [{"fqn": "org.springframework.scheduling.annotation.Scheduled"}]}]},
+                {"fqn": "com.acme.bus.Orders", "annotations": [], "methods": [
+                    {"signature": "on(java.lang.String)", "annotations": [{"fqn": "org.springframework.kafka.annotation.KafkaListener"}]}]},
+                {"fqn": "com.acme.web.Plain", "annotations": [], "methods": []}]}}))
+            sites = CM.dynamic_entry_sites(root)
+            self.assertEqual(sorted((x["type"], x["kind"]) for x in sites),
+                             [("com.acme.bus.Orders", "message-driven"), ("com.acme.jobs.Nightly", "scheduled")])
+            line = CM._dynamic_limitation(sites)
+            self.assertIn("2 dynamic entry path(s) present and UNANALYSED", line)
+            self.assertIn("scheduled: Nightly#run", line)
+        self.assertIn("no catalogued scheduled", CM._dynamic_limitation([]))
+        self.assertIn("not read", CM._dynamic_limitation(None))
+
+
+class ExplainedRevisions(unittest.TestCase):
+    """M-1: a planned addition is an explained revision: why, which outcome it follows, who found it, the trigger and
+    the obligations it conserves."""
+
+    def test_an_addition_carries_its_reason_and_conserved_obligations(self):
+        base = {"schema": "rhoai3.native-plan/v1", "revision": 1, "plan": {"digest": "d", "run_id": "r", "policy": "p",
+                "unresolved": [], "nodes": [{"outcome_id": "a", "role": "repair"}]}}
+        nxt = {"schema": "rhoai3.native-plan/v1", "revision": 2, "plan": {"digest": "e", "run_id": "r", "policy": "p",
+               "unresolved": [], "trigger": {"intent": "m3-schedule:behavior:x"},
+               "nodes": [{"outcome_id": "a", "role": "repair"},
+                         {"outcome_id": "followup:a:m3g1", "role": "repair", "obligations": ["ob1"],
+                          "lineage": [{"follows": "a", "found_by": "behavior:x", "reason": "M3 found an obligation"}]}]}}
+        cm = CM.build({"plans": [CM.normalize_plan(base), CM.normalize_plan(nxt)], "missing": {}})
+        self.assertEqual(cm["planned_vs_added"]["added"], [{
+            "outcome_id": "followup:a:m3g1", "revision": 2, "reason": "M3 found an obligation", "follows": "a",
+            "found_by": "behavior:x", "trigger": "m3-schedule:behavior:x", "conserved_obligations": ["ob1"]}])
+
+
 class FalseGreen(unittest.TestCase):
     """(a) the v29 false-green snapshot."""
 
@@ -213,6 +259,39 @@ class FalseGreen(unittest.TestCase):
                          ("java.lang.StackOverflowError", "selected-repository-implementation", ["fragment-impl@1"]))
         self.assertEqual(len(g["owners"]), 2)
         self.assertEqual([c["scenario"] for c in g["checks"]], ["sc:read-a", "sc:read-b"])
+
+    def test_v31_the_same_root_exception_across_repositories_is_one_group_from_the_excerpt(self):
+        """R-2 (v31): every create answered 500 with StaleObjectStateException thrown in a repository save the M3
+        cards wrote -- not a recursion, and recorded as a log excerpt rather than frames. One group, each check kept."""
+        inp = false_green(neutral_plan())
+        rec = inp["accepted_parity"]["disabled"]["records"]
+        for sid, n in (("sc:read-a", "A"), ("sc:read-b", "B")):
+            rec[sid]["server_error"] = {
+                "exception": "jakarta.persistence.OptimisticLockException",
+                "causes": [{"exception": "org.hibernate.StaleObjectStateException", "message": "Row was already updated"}],
+                "excerpt": ["ERROR [io.qua.ver.htt.run.QuarkusErrorHandler] HTTP Request failed",
+                            "\tat org.hibernate.internal.ExceptionConverterImpl.wrapStaleStateException(ExceptionConverterImpl.java:201)",
+                            "\tat a.repo.%sStoreImpl.save(%sStoreImpl.java:62)" % (n, n),
+                            "\tat a.repo.%sStoreImpl_ClientProxy.save(Unknown Source)" % n]}
+        g = CM.build(inp)["causal_groups"]
+        self.assertEqual(len(g["groups"]), 1, g)
+        grp = g["groups"][0]
+        self.assertEqual((grp["exception"], grp["kind"], grp["producer"]["family"]),
+                         ("org.hibernate.StaleObjectStateException", "same-exception", "selected-repository-implementation"))
+        self.assertEqual(len(grp["owners"]), 2)
+        self.assertEqual([c["owned_frame"] for c in grp["checks"]], ["a.repo.AStoreImpl.save", "a.repo.BStoreImpl.save"])
+
+    def test_failures_without_a_server_error_share_a_signature_never_a_cause(self):
+        inp = false_green(neutral_plan())
+        rec = inp["accepted_parity"]["disabled"]["records"]
+        for sid in ("sc:read-a", "sc:read-b"):
+            rec[sid].pop("server_error")
+            rec[sid]["reason"] = "effect eff:list-after-update: status 200 vs 200, body 09b2 vs 073e"
+        g = CM.build(inp)["causal_groups"]
+        self.assertEqual(g["groups"], [])
+        self.assertEqual(len(g["shared_signatures"]), 1)
+        self.assertEqual(g["shared_signatures"][0]["signature"], "effect; status 200 vs 200; body")
+        self.assertIn("not proven", g["shared_signatures"][0]["producer"])
 
     def test_no_shared_producer_no_group(self):
         inp = false_green(neutral_plan())

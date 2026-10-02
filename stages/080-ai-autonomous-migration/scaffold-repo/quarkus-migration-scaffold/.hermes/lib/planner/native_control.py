@@ -1016,6 +1016,8 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
     if in_progress is None and committed and tree != committed and not (pending and pending.get("candidate") == tree):
         raise Refusal("ISSUE_BASELINE_DRIFT", "the product tree differs from HEAD %s and is not the retained candidate of %s; "
                       "unexplained edits are not blessed" % (head[:12], oid))
+    if role == "repair" and str(node.get("class") or "") == "behavior" and in_progress is None:
+        _census_gate(root, tree, oid)
     worklist, why = load_worklist(root)
     if role == "repair" and worklist is None:
         raise Refusal("ISSUE_" + why, "an outcome is issued against the measured work list")
@@ -1507,6 +1509,24 @@ def judged_now(plan: dict[str, Any], node: dict[str, Any]) -> set[str]:
                     for v in (q.get("facts") or {}).get("verification") or []:
                         out |= {_bare_scenario(s) for s in (v.get("scenarios") or [] if isinstance(v, dict) else [])}
     return {s if s.startswith("sc:") else "sc:" + s for s in out}
+
+
+def _census_gate(root: Path, tree: str, oid: str) -> None:
+    """R-3: the first-package census of THIS product tree names failures whose evidence no open card's write set
+    holds: a planning gap, refused once, named in full, before another behaviour card spends a run on it. A census of
+    another tree (a later commit) is history, not a gate."""
+    from planner.runtime_census import CENSUS
+    try:
+        doc = json.loads((Path(root) / CENSUS).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(doc, dict) or str(doc.get("tree") or "") != tree or not doc.get("unreachable"):
+        return
+    named = "; ".join("%s (evidence %s)" % (u.get("scenario"), ", ".join(u.get("evidenced_files") or [])[:160])
+                      for u in doc["unreachable"][:6])
+    raise Refusal("RUNTIME_CENSUS_UNREACHABLE", "%s is not issued: the first-package census of this tree found %d failing "
+                  "scenario(s) whose evidence no open card can reach -- a planning gap, not this card's repair: %s. "
+                  "kanban_block kind=needs_input quoting this line" % (oid, len(doc["unreachable"]), named))
 
 
 def open_judges(plan: dict[str, Any], native_status: Callable[[str], str]) -> dict[str, list[str]]:

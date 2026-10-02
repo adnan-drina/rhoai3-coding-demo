@@ -958,6 +958,35 @@ class Reliability(unittest.TestCase):
         self.assertEqual(out["retried_cards"]["value"], ["t_a", "t_b"])
         self.assertEqual(out["gave_up_cards"]["value"], ["t_b"])
         self.assertEqual(out["repeated_investigation"]["value"]["rows"][0]["identical_consecutive_calls"], 5)
+        # M-6: model requests and tokens from profile state databases (worker sessions only); an older schema
+        # without api_call_count names the column missing instead of reading it as zero
+        import tempfile as _tf
+        _keep = _tf.TemporaryDirectory()
+        self.addCleanup(_keep.cleanup)
+        td = Path(_keep.name)
+        sdb = td / "state-implementer.db"
+        sc = sqlite3.connect(sdb)
+        sc.execute("CREATE TABLE sessions (id TEXT, source TEXT, profile_name TEXT, api_call_count INT, input_tokens INT, "
+                   "output_tokens INT, tool_call_count INT)")
+        sc.executemany("INSERT INTO sessions VALUES (?,?,?,?,?,?,?)", [("s1", "kanban", "implementer", 10, 1000, 20, 9),
+                                                                     ("s2", "kanban", "implementer", 5, 500, 10, 4),
+                                                                     ("s3", "cli", "implementer", 99, 9999, 99, 99)])
+        sc.commit(); sc.close()
+        old_db = td / "state-reviewer.db"
+        sc = sqlite3.connect(old_db)
+        sc.execute("CREATE TABLE sessions (id TEXT, source TEXT, input_tokens INT, output_tokens INT)")
+        sc.execute("INSERT INTO sessions VALUES ('r1', 'kanban', 300, 7)")
+        sc.commit(); sc.close()
+        mu = rr.model_usage([sdb, old_db])["value"]
+        self.assertEqual(mu["by_profile"]["implementer"], {"sessions": 2, "api_call_count": 15, "input_tokens": 1500,
+                                                           "output_tokens": 30, "tool_call_count": 13})
+        self.assertEqual(mu["by_profile"]["reviewer"], {"sessions": 1, "input_tokens": 300, "output_tokens": 7})
+        self.assertIn("api_call_count", mu["columns_missing"])
+        self.assertIsNone(rr.model_usage([]).get("value"))
+        # M-5: why each run stopped, classified (an older board copy without summary/status columns still reads)
+        st = out["stops"]["value"]
+        self.assertEqual({k: v["count"] for k, v in st["by_class"].items()}, {"completed": 3, "review-rework": 1, "worker-crash": 2})
+        self.assertEqual(st["by_subtype"], {"worker-crash/tool-loop": 2})
         self.assertEqual(out["preload"]["value"], {"by_status": {"loaded": 1}, "runs_without_a_preload_row": 1})
         cp = dict(out["checkpoints"]["value"])
         self.assertEqual(len(cp.pop("witness_rows")), 1)

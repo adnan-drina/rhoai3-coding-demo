@@ -283,13 +283,10 @@ def run_corpus(base: str, corpus: dict, mode: str, engine: str, pg: Optional[dic
 # ------------------------------------------------------------- normalization
 
 def _canon_ctype(v: str) -> str:
-    parts = [p.strip() for p in v.split(";") if p.strip()]
-    if not parts:
-        return ""
-    head = parts[0].lower()
-    params = sorted(p.split("=", 1)[0].strip().lower() + "=" + p.split("=", 1)[1].strip().strip('"').lower()
-                    for p in parts[1:] if "=" in p)
-    return ";".join([head] + params)
+    """V29-4: the one RFC 9110 canonical form (response_adapters.canonical_media_type): names and charset are
+    case-insensitive, every other parameter value is kept byte for byte, quoted delimiters never split a value."""
+    from response_adapters import canonical_media_type
+    return canonical_media_type(v) if str(v or "").strip() else ""
 
 
 def _canon_list(v: str) -> List[str]:

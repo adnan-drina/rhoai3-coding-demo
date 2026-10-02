@@ -557,7 +557,11 @@
         "kind": "write",
         "semantics": "SimpleJpaRepository.save: persist a NEW entity (null id / version), merge an existing one, inside a read-write transaction; the change is committed when the transaction ends, so a later request reads it. A non-null id whose row does not exist is merged, and the SOURCE's provider (Hibernate 5) INSERTED a new row with a newly generated id for it; the destination's (Hibernate 6.6+) merge throws OptimisticLockException instead. Port the source's effect: when the id is set but no row exists, persist it as new (the identifier generated, never the requested one); merge only a row that exists",
         "source": "https://docs.hibernate.org/orm/6.6/migration-guide/migration-guide.html#merge-versioned-deleted (\"Previously, merging a detached entity resulted in a SQL insert whenever there was no matching row in the database ... An OptimisticLockException is now thrown\"); https://docs.spring.io/spring-data/jpa/reference/jpa/entity-persistence.html (a null id or null non-primitive version is new and persisted, anything else is merged)",
-        "evidence": "v31 (spring-petclinic-rest-legacy-v31, 2026-10-02): every captured create whose request carries an id answered 500 (StaleObjectStateException from <X>RepositoryImpl.save, 'id == null ? persist : merge') where the source answered 201 with a newly generated id"
+        "evidence": "v31 (spring-petclinic-rest-legacy-v31, 2026-10-02): every captured create whose request carries an id answered 500 (StaleObjectStateException from <X>RepositoryImpl.save, 'id == null ? persist : merge') where the source answered 201 with a newly generated id",
+        "checked_by": [
+          "skills/migration/fix-until-green/scripts/merge-without-row-runtime.test.py (pinned platform, PostgreSQL 16: the literal merge answers 500 with OptimisticLockException/StaleObjectStateException and stores nothing; the port answers 201 with a generated id read back by a later request)",
+          "M4 parity over the create scenarios"
+        ]
       },
       "saveAll/1": {
         "kind": "write",
@@ -653,7 +657,11 @@
       },
       "obligation": "the source removes the entity and THEN queries or bulk-deletes its dependents. Hibernate 6 (the destination's ORM) flushes the pending removal before an AUTO-flush query or a native/bulk statement runs, as the source's provider did for the captured scenarios. Port the COMMITTED EFFECTS THE SOURCE PRODUCED, scenario by scenario, never a reordering that changes them: where the source's delete SUCCEEDED (the row and its dependents gone), the destination's must too; where the source REFUSED it (a row still referenced: the constraint violation the flushed removal raised answered an error and the row stayed), the destination must refuse it the same way and keep the row -- never delete or detach the dependents first to make a refused delete succeed. Reorder only where the literal order fails on the destination (TransientPropertyValueException) for a delete the source completed; the check is the committed state the source recorded for each of its scenarios (the delete and the refused-delete scenarios alike)",
       "evidence": "v17 (spring-petclinic-rest-legacy-v17, 2026-09-26): the literal port of the PetType and Specialty override deletes failed with TransientPropertyValueException / FK vet_specialties for deletes the source completed; reordering dependents-first matched those captured effects (204, row and dependents gone). v31 (2026-10-02): the same reordering made sc:delete-referenced-specialties-1 succeed (204, row gone) where the source REFUSED it (400, row kept) -- the reordering is bounded by the source's recorded refusals",
-      "source": "https://docs.jboss.org/hibernate/orm/6.2/userguide/html_single/Hibernate_User_Guide.html#flushing-auto (AUTO flush before a query that may be affected; before any native query)"
+      "source": "https://docs.jboss.org/hibernate/orm/6.2/userguide/html_single/Hibernate_User_Guide.html#flushing-auto (AUTO flush before a query that may be affected; before any native query)",
+      "checked_by": [
+        "skills/migration/fix-until-green/scripts/referenced-delete-runtime.test.py (pinned platform, PostgreSQL 16: the literal order refuses a referenced delete -- FK, rows kept -- and completes an unreferenced one; dependents-first makes the referenced delete succeed, the v31 regression)",
+        "behavior:repository-effects and M4 parity over the delete and delete-referenced scenarios"
+      ]
     },
     "hibernate66-merge-detached-without-row": {
       "when": {
@@ -678,7 +686,11 @@
       },
       "obligation": "the source merges an entity it did not load (a request's id). On the source's provider (Hibernate 5) a merge whose row does not exist INSERTED a new row with a newly generated id; on the destination's (Hibernate 6.6+) it throws OptimisticLockException (StaleObjectStateException), answered 500. Port the effect: when the id is set but no row exists, persist the entity as new (the identifier generated); merge only a row that exists. The check is the committed state and the status the source recorded for its create and update scenarios",
       "evidence": "v31 (spring-petclinic-rest-legacy-v31, 2026-10-02): every captured create whose request carries an id answered 500 (StaleObjectStateException from <X>RepositoryImpl.save, 'id == null ? persist : merge') where the source answered 201 with a newly generated id",
-      "source": "https://docs.hibernate.org/orm/6.6/migration-guide/migration-guide.html#merge-versioned-deleted (\"Previously, merging a detached entity resulted in a SQL insert whenever there was no matching row in the database ... An OptimisticLockException is now thrown\"); https://docs.spring.io/spring-data/jpa/reference/jpa/entity-persistence.html (a null id or null non-primitive version is new and persisted, anything else is merged)"
+      "source": "https://docs.hibernate.org/orm/6.6/migration-guide/migration-guide.html#merge-versioned-deleted (\"Previously, merging a detached entity resulted in a SQL insert whenever there was no matching row in the database ... An OptimisticLockException is now thrown\"); https://docs.spring.io/spring-data/jpa/reference/jpa/entity-persistence.html (a null id or null non-primitive version is new and persisted, anything else is merged)",
+      "checked_by": [
+        "skills/migration/fix-until-green/scripts/merge-without-row-runtime.test.py (pinned platform, PostgreSQL 16: the literal merge answers 500 with OptimisticLockException/StaleObjectStateException and stores nothing; the port answers 201 with a generated id read back by a later request)",
+        "M4 parity over the create scenarios"
+      ]
     }
   },
   "validation_helpers": {

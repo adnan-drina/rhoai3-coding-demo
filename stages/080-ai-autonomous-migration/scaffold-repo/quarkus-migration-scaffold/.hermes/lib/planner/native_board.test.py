@@ -970,6 +970,26 @@ class K2Hook(unittest.TestCase):
                            cwd=str(self.r.root))
         return json.loads(p.stdout or "{}")
 
+    def test_shell_writes_outside_the_issue_are_refused_by_their_operands(self):
+        """H-24 (v31 t_4b97a8a5): a worker cp-ed HEAD bytes over another card file before any issue -- a RELATIVE operand,
+        never read as a path. Writer operands are read by their argv; scratch writes and reads stay allowed."""
+        root = self.r.root
+        (root / "verification" / "loop").mkdir(parents=True, exist_ok=True)
+        (root / "verification" / "loop" / "h.java").write_text("class H {}")
+        tgt = "src/main/java/com/acme/shop/web/ItemController.java"
+        refused = ["cd %s && cp verification/loop/h.java %s && rm verification/loop/h.java" % (root, tgt),
+                   "cp verification/loop/h.java %s" % tgt, "mv verification/loop/h.java %s" % tgt,
+                   "cat verification/loop/h.java | tee %s" % tgt, "install -m 644 verification/loop/h.java %s" % tgt,
+                   "dd if=verification/loop/h.java of=%s" % tgt, "touch %s" % tgt, "rm %s" % tgt,
+                   "python3 -c \"import shutil; shutil.copy('verification/loop/h.java', '%s')\"" % tgt]
+        for cmd in refused:
+            self.assertIn("WRITE_OUTSIDE_ISSUE", self.hook("terminal", {"command": cmd}).get("message", ""), cmd)
+        allowed = ["cp verification/loop/h.java pom.xml", "cp verification/loop/h.java verification/loop/i.java",
+                   "rm verification/loop/i.java", "cat %s" % tgt, "grep -n x %s" % tgt, "echo x | tee /dev/null",
+                   "cd %s && cp verification/loop/h.java verification/loop/j.java" % root]
+        for cmd in allowed:
+            self.assertEqual(self.hook("terminal", {"command": cmd}), {}, cmd)
+
     def test_decisions(self):
         root = self.r.root
         self.assertEqual(self.hook("write_file", {"path": str(root / "pom.xml"), "content": "x"}), {})
@@ -1586,6 +1606,9 @@ class LifecycleReconciliation(unittest.TestCase):
         steps.parent.mkdir(parents=True, exist_ok=True)
         steps.write_text(json.dumps({"steps": [], "attempts": {key: limit}}))
         steps_bytes = steps.read_bytes()
+        # V29-1: the published limits and the deadline are the run's declaration; a void never touches them
+        budget = r.root / "run-budget.json"
+        budget_bytes = budget.read_bytes() if budget.is_file() else None
         creates = len([c for c in r.native.calls if c[0] == "create"])
         before = NC.effective_budget(r.board, tid)
         self.assertEqual((before["spent"], before["remaining"], before["exhausted"]), (limit, 0, True))
@@ -1600,6 +1623,7 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual([k["cluster"] for k in got["kept"]], ["c:held"])                 # the unrelated blocker stays
         eff = got["effective"]
         self.assertEqual(eff["before"], eff["after"])                                     # reconciling moves no budget
+        self.assertEqual(budget.read_bytes() if budget.is_file() else None, budget_bytes)   # deadline and limits preserved
         self.assertEqual((eff["after"]["spent"], eff["after"]["remaining"], eff["after"]["limit"], eff["after"]["voided"]),
                          (0, limit, limit, limit))
         doc = json.loads(p.read_text())

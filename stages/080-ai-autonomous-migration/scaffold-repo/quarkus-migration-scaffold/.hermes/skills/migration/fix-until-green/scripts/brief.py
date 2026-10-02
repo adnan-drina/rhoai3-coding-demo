@@ -171,6 +171,19 @@ def bom_managed(root: Path) -> set[str]:
     return {str(x) for x in (load_json(p).get("managed") or [])}
 
 
+def _later_line(r: dict) -> str:
+    """One later check as the schedule placed it: first measured at (card, milestone), after N prerequisite checks,
+    due at."""
+    e = r.get("earliest") if isinstance(r.get("earliest"), dict) else {}
+    at = [str(x).split(":", 2)[-1].rsplit(".", 1)[-1][:40] for x in (e.get("at") or [])][:2]
+    parts = ["%s -> due %s" % (r.get("check"), ", ".join(r.get("due") or ["M4"]))]
+    if at:
+        parts.append("first measured at %s%s" % (", ".join(at), (" (%s)" % e["milestone"]) if e.get("milestone") else ""))
+    if r.get("after"):
+        parts.append("after %d prerequisite check(s)" % len(r["after"]))
+    return "; ".join(parts)
+
+
 def _advice_shapes_of(root: Path) -> list:
     """H-20/D-2: the source's exception-advice shapes from its frozen structural model ([] when unavailable)."""
     try:
@@ -1321,8 +1334,9 @@ def main(argv: list[str] | None = None) -> int:
                 "by_file": obligations_by_file(items),
                 "checks_now": sorted({"%s (%s)" % (r["check"], r["requirement"].split(":", 2)[-1][:80])
                                       for r in desc.get("check_plan") or [] if r.get("stage") == "immediate"}),
-                "checks_later": sorted({"%s -> %s" % (r["check"], ", ".join(r.get("due") or ["M4"]))
-                                        for r in desc.get("check_plan") or [] if r.get("stage") == "later"})[:40],
+                # M-2: WHERE a later check is first measured (its earliest card and milestone), what it waits on, and
+                # where it is due -- not only "M4": the schedule already knows the earliest useful point
+                "checks_later": sorted({_later_line(r) for r in desc.get("check_plan") or [] if r.get("stage") == "later"})[:40],
                 "rule": ("All constituents are ONE coordinated change inside one write set: the checkpoint judges the "
                          "objective once, after every constituent. A later check is not passed by this card and is "
                          "measured where it is due."),

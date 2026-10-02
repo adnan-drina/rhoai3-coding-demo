@@ -1230,13 +1230,9 @@ def find_openapi(copy: Path) -> tuple[Path, dict[str, Any]] | None:
 
 
 def find_seed(copy: Path, engine: str) -> tuple[Path | None, str]:
-    db = copy / RESOURCES / "db"
-    if not db.is_dir():
-        return None, ""
-    for name in [engine, DEFAULT_ENGINE] + sorted(d.name for d in db.iterdir() if d.is_dir()):
-        if name and (db / name / "populateDB.sql").is_file():
-            return db / name / "populateDB.sql", name
-    return None, ""
+    """D-1: one seed rule for the derivation and the destination baseline (planner.source_engine.seed)."""
+    from planner.source_engine import seed
+    return seed(copy, engine)
 
 
 def find_schema_sql(seed_p: Path) -> list[Path]:
@@ -1261,13 +1257,15 @@ def find_schema_sql(seed_p: Path) -> list[Path]:
     return out
 
 
-def _decided_engines(root: Path) -> tuple[str, str]:
-    """(source engine, destination engine) from decisions.yaml when it is
-    readable; a preference for which seed to read, never a gate."""
+def _decided_engines(root: Path, copy: Path | None = None) -> tuple[str, str]:
+    """(source CAPTURE engine, destination engine) from decisions.yaml when it is readable; a preference for which
+    seed to read, never a gate. The capture engine is planner.source_engine.capture_engine's (D-1): the declared
+    source engine, or the destination's when decided and the frozen source ships a profile for it."""
     try:
         from planner.decisions import load_decisions
+        from planner.source_engine import capture_engine
         ds = (load_decisions(root).get("datasource") or {})
-        return str(ds.get("source_baseline_db_kind") or ""), str(ds.get("db_kind") or "")
+        return str(capture_engine(ds, copy)["engine"] or ""), str(ds.get("db_kind") or "")
     except Exception:  # noqa: BLE001 - decisions may not exist yet at M1; the seed still does
         return "", ""
 
@@ -3581,7 +3579,7 @@ def _sql_evidence(root: Path, copy: Path, inputs: dict[str, Any], gaps: list[str
     enabled corpus reads the seeded identities' roles out of the same parse.
     Which files were read is recorded on the receipt (``inputs.sql``): a
     missing schema is why a decision was made blind."""
-    src_engine, dest_engine = _decided_engines(root)
+    src_engine, dest_engine = _decided_engines(root, copy)
     seed_p, engine = find_seed(copy, src_engine)
     seed: dict[str, dict[str, Any]] = {}
     columns: dict[str, list[str]] = {}

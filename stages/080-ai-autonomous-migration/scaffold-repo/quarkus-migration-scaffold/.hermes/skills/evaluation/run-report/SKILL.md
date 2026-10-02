@@ -48,6 +48,16 @@ python3 "${HERMES_SKILL_DIR}/scripts/run-report.py" --root /projects/modernized 
 
 Markdown goes to stdout; the JSON (`rhoai3.run-report/v1`) to `--out`.
 
+## Behaviour coverage by scenario kind (R-1, M-3)
+
+`scripts/rehearsal-coverage.py --root /projects/modernized [--json]` lists every (security mode, scenario kind,
+resource) cell of the run's OWN corpus with the verdict a comparison of the current candidate gave it: PASS, FAIL,
+INCONCLUSIVE or not compared. A cell nobody compared is listed, never assumed covered. Use it on a lab candidate before
+a run (the rehearsal) and on a run's candidate to see which kinds of behaviour remain unproven.
+
+The model usage block (requests, tokens per profile) needs `--state-db <copy of a profile state.db>` (repeatable); the
+"why runs stopped" line needs `--kanban-db`.
+
 ## Headline: end-to-end state
 
 `## End-to-end state` comes first; everything after it is supporting task

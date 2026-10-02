@@ -831,6 +831,20 @@ def _servlet_compile_item_first_action_case() -> int:
     return 0
 
 
+def _later_line_case() -> int:
+    """M-2: a later check is rendered where the schedule first measures it, not only where it is due."""
+    b = __import__("brief")
+    line = b._later_line({"check": "parity:sc:create-items", "due": ["M4"], "after": ["x#behavior:repository-effects:r"],
+                          "earliest": {"at": ["behavior:http:com.acme.web.ItemResource"], "milestone": "application-behavior-preserved"}})
+    want = ("parity:sc:create-items -> due M4; first measured at ItemResource (application-behavior-preserved); "
+            "after 1 prerequisite check(s)")
+    if line != want:
+        return _fail("the later check names its earliest card, milestone and prerequisites: %r" % line)
+    if b._later_line({"check": "gate:package", "due": ["M4"]}) != "gate:package -> due M4":
+        return _fail("a check with no schedule stays its due point")
+    return 0
+
+
 def _exception_advice_case() -> int:
     """ADR-025 (1): a parity item whose SOURCE capture is the advice's answer to a body-read failure gets the
     catalog's mapper action as a documented first action; another 400 does not."""
@@ -1553,6 +1567,8 @@ def main() -> int:
     if _absent_result_brief_case():
         return 1
     if _objective_family_action_case():
+        return 1
+    if _later_line_case():
         return 1
     if _exception_advice_case():
         return 1

@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -116,7 +117,7 @@ def normalize_plan(doc: Any) -> dict[str, Any] | None:
             "nodes": [n for n in plan["nodes"] if isinstance(n, dict)],
             "requirements": [r for r in _l(plan.get("requirements")) if isinstance(r, dict)],
             "unresolved": [u for u in plan["unresolved"] if isinstance(u, dict)],
-            "provenance": _d(plan.get("provenance"))}
+            "provenance": _d(plan.get("provenance")), "trigger": _d(plan.get("trigger"))}
 
 
 def inventory(plan: dict[str, Any]) -> dict[str, Any]:
@@ -159,6 +160,41 @@ def owed_modes(decisions: Any) -> list[str]:
         return ["disabled"]
 
 
+def dynamic_entry_sites(root: Path) -> list[dict[str, str]] | None:
+    """M-1: the source types and members carrying a catalogued dynamic entry annotation (cross-cutting.json
+    ``dynamic_entry_annotations``), from the frozen model; None when the model or the catalog cannot be read."""
+    from planner.paths import CATALOGS_DIR, EVIDENCE_BUNDLE
+    bundle, _w = _json(Path(root) / EVIDENCE_BUNDLE)
+    cc, _w2 = _json(Path(root) / CATALOGS_DIR / "cross-cutting.json")
+    if not isinstance(bundle, dict) or not isinstance(cc, dict):
+        return None
+    kinds = {k: v for k, v in _d(cc.get("dynamic_entry_annotations")).items() if k != "note" and isinstance(v, str)}
+    out = []
+    for t in _l(_d(bundle.get("structure")).get("types")):
+        t = _d(t)
+        holders = [("", t.get("annotations"))] + [(str(_d(m).get("signature") or ""), _d(m).get("annotations")) for m in _l(t.get("methods"))]
+        for member, anns in holders:
+            for a in _l(anns):
+                k = kinds.get(str(_d(a).get("fqn") or ""))
+                if k:
+                    out.append({"type": str(t.get("fqn") or ""), "member": member, "kind": k, "annotation": str(_d(a).get("fqn"))})
+    return out
+
+
+def _dynamic_limitation(sites: Any) -> str:
+    if sites is None:
+        return ("the entry-point inventory is structural: it does not establish coverage of %s entry paths; they are "
+                "unanalysed, not absent (the source model or catalog was not read)" % ", ".join(UNANALYSED_ENTRY_PATHS))
+    if not sites:
+        return ("no catalogued scheduled, message-driven, event-driven or asynchronous entry annotation is present in the "
+                "source model; reflective and other dynamic dispatch remain unanalysed, not absent")
+    by_kind: dict[str, list[str]] = {}
+    for s in sites:
+        by_kind.setdefault(s["kind"], []).append("%s%s" % (s["type"].rsplit(".", 1)[-1], ("#" + s["member"].split("(")[0]) if s["member"] else ""))
+    return ("%d dynamic entry path(s) present and UNANALYSED by the HTTP inventory: %s; reflective dispatch remains unanalysed"
+            % (len(sites), "; ".join("%s: %s" % (k, ", ".join(sorted(v)[:6])) for k, v in sorted(by_kind.items()))))
+
+
 def contract(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[str, Any]:
     from planner.decisions import build_profiles, datasource
     dec = _d(inputs.get("decisions"))
@@ -180,8 +216,12 @@ def contract(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[str, A
         "source": {
             "content_digest": str(manifest.get("digest") or freeze.get("source_digest") or "") or None,
             "repository": str(_d(_d(inputs.get("migration")).get("migration")).get("legacyRepoUrl") or "") or None,
-            "revision": None,
-            "revision_reason": "no artifact records the cloned legacy commit; the frozen content digest is the source identity",
+            "revision": (_d(manifest.get("revision")).get("commit") or None),
+            "revision_reason": ("the frozen content digest is the source identity; the legacy work tree had uncommitted edits"
+                                if _d(manifest.get("revision")).get("commit") and _d(manifest.get("revision")).get("clean") is False
+                                else str(_d(manifest.get("revision")).get("reason") or "") or
+                                ("" if _d(manifest.get("revision")).get("commit") else
+                                 "the freeze manifest records no revision (frozen before M-1); the content digest is the source identity")),
             "build": {"status": build.get("status") or None, "outcome": build.get("outcome") or None,
                       "toolchain": _d(build.get("toolchain")) or None,
                       "generated_source_roots": sorted(str(x) for x in _l(build.get("generated_source_roots")))},
@@ -198,8 +238,7 @@ def contract(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[str, A
         "http_behavior": {"entry_points": len(eps), "by_kind": dict(sorted(kinds.items())),
                           "source": "admitted plan behavior-verification requirements" if plan else None,
                           "m1_inventory": _d(m1.get("entry_points")) or None},
-        "limitations": ["the entry-point inventory is structural: it does not establish coverage of %s entry paths; they "
-                        "are unanalysed, not absent" % ", ".join(UNANALYSED_ENTRY_PATHS)]
+        "limitations": [_dynamic_limitation(inputs.get("dynamic_entry_sites"))]
                        + (["no admitted plan was read (%s): requirements and missing oracles are unknown" % missing.get("plan", "absent")]
                           if plan is None else []),
         "unknown_inputs": dict(sorted((k, v) for k, v in missing.items() if k in (
@@ -509,11 +548,53 @@ def _class_path(cls: str) -> str:
     return cls.split("$", 1)[0].replace(".", "/") + ".java"
 
 
+_FRAME_RE = re.compile(r"\bat ([\w$.]+)\.([\w$<>]+)\(([\w$]+\.java)(?::\d+)?\)")
+
+
+def _frames(se: dict[str, Any]) -> list[dict[str, str]]:
+    """The recorded stack frames: the structured ``frames``, else parsed from the comparator's log ``excerpt`` lines
+    ("at pkg.Type.method(File.java:N)" -- v31 records carry only the excerpt)."""
+    got = [f for f in _l(se.get("frames")) if isinstance(f, dict) and f.get("class")]
+    if got:
+        return got
+    out = []
+    for line in _l(se.get("excerpt")):
+        for m in _FRAME_RE.finditer(str(line)):
+            out.append({"class": m.group(1), "method": m.group(2), "file": m.group(3)})
+    return out
+
+
+def _root_exception(se: dict[str, Any]) -> str:
+    causes = [c for c in _l(se.get("causes")) if isinstance(c, dict) and c.get("exception")]
+    return str(causes[-1]["exception"]) if causes else str(se.get("exception") or "")
+
+
+_SIG_RE = re.compile(r"(status \d+ vs \d+)|(header [A-Za-z-]+)|(effect)|(body)")
+
+
+def _signature(reason: str) -> str:
+    """A FAIL's difference shape without values: status pairs, header names, and whether a body or an effect
+    differs."""
+    parts = []
+    for m in _SIG_RE.finditer(str(reason or "")):
+        tok = m.group(0)
+        if tok not in parts:
+            parts.append(tok)
+    return "; ".join(parts)
+
+
 def causal_groups(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[str, Any]:
-    """Failures grouped only where the records prove a shared producer: the same
-    exception, a recursion the recorded frames show (a frame repeats), and
-    throwing files owned by plan outcomes of one family and recipe. Each
-    affected check is kept; nothing else is grouped."""
+    """Failures grouped only where the records prove a shared producer (M-6), each affected check kept:
+
+      recursion       the same exception, a recursion the recorded frames show (a frame repeats), thrown in files
+                      owned by plan outcomes of one family and recipe set
+      same-exception  the same ROOT exception (the deepest recorded cause), thrown inside files owned by plan outcomes
+                      of one family and recipe set, across two or more owners (v31: StaleObjectStateException from
+                      every repository save the M3 repository cards wrote)
+
+    Frames come from the record's structured frames or its log excerpt. Failures without a server error are never
+    causal groups; those sharing a difference signature are listed apart as ``shared_signatures`` with the producer
+    stated as not proven."""
     owners: dict[str, dict[str, Any]] = {}
     for n in (plan["nodes"] if plan else []):
         for p in _l(n.get("plan_paths")):
@@ -521,32 +602,46 @@ def causal_groups(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[s
     recs = dict(_records(inputs, "accepted_parity"))
     recs.update({k: r for k, r in _records(inputs, "parity").items() if r.get("verdict") == "FAIL"})
     groups: dict[tuple, dict[str, Any]] = {}
+    signatures: dict[str, list[str]] = {}
     ungrouped = 0
     for key, r in sorted(recs.items()):
-        se = _d(r.get("server_error"))
-        if r.get("verdict") != "FAIL" or not se.get("exception"):
+        if r.get("verdict") != "FAIL":
             continue
-        frames = [f for f in _l(se.get("frames")) if isinstance(f, dict) and f.get("class")]
+        se = _d(r.get("server_error"))
+        if not se.get("exception"):
+            sig = _signature(str(r.get("reason") or ""))
+            if sig:
+                signatures.setdefault(sig, []).append(key)
+            continue
+        frames = _frames(se)
         sig = [(str(f.get("class")), str(f.get("method"))) for f in frames]
         recursive = len(set(sig)) < len(sig)
-        node = None
+        node, at = None, None
         for f in frames:
-            path = str(f.get("file") or "") if "/" in str(f.get("file") or "") else _class_path(str(f.get("class")))
+            fname = str(f.get("file") or "")
+            path = fname if "/" in fname else _class_path(str(f.get("class")))
             node = next((owners[p] for p in sorted(owners) if p.endswith(path)), None)
             if node is not None:
+                at = "%s.%s" % (f.get("class"), f.get("method"))
                 break
-        if node is None or not recursive:
+        if node is None:
             ungrouped += 1
             continue
         fam = str(_d(node.get("objective")).get("family") or node.get("class") or "")
         recipes = tuple(sorted(str(x) for x in _l(node.get("recipes"))))
-        gk = (str(se.get("exception")), "recursion", fam, recipes)
-        g = groups.setdefault(gk, {"exception": gk[0], "mechanism": "recursion shown by repeated recorded frames",
+        if recursive:
+            gk = (str(se.get("exception")), "recursion", fam, recipes)
+            mech = "recursion shown by repeated recorded frames"
+        else:
+            gk = (_root_exception(se), "same-exception", fam, recipes)
+            mech = "the same root exception thrown inside code owned by outcomes of one family"
+        g = groups.setdefault(gk, {"exception": gk[0], "mechanism": mech, "kind": gk[1],
                                    "producer": {"family": fam, "recipes": list(recipes)}, "owners": set(), "checks": []})
         g["owners"].add(str(node.get("outcome_id")))
         mode, sid = key.split("|", 1)
         g["checks"].append({"mode": mode, "scenario": sid, "entry_point": r.get("entry_point") or None,
-                            "owner": str(node.get("outcome_id")), "first_frame": "%s.%s" % sig[0] if sig else None})
+                            "owner": str(node.get("outcome_id")), "first_frame": "%s.%s" % sig[0] if sig else None,
+                            "owned_frame": at})
     out = []
     for gk in sorted(groups):
         g = groups[gk]
@@ -554,7 +649,10 @@ def causal_groups(inputs: dict[str, Any], plan: dict[str, Any] | None) -> dict[s
             ungrouped += len(g["checks"])
             continue
         out.append(dict(g, owners=sorted(g["owners"]), checks=sorted(g["checks"], key=lambda c: (c["mode"], c["scenario"]))))
-    return {"groups": out, "ungrouped_failures": ungrouped}
+    shared = [{"signature": s, "checks": sorted(ks), "producer": "not proven (no server error names a producer)"}
+              for s, ks in sorted(signatures.items()) if len(ks) >= 2]
+    ungrouped += sum(len(ks) for ks in signatures.values() if len(ks) < 2)
+    return {"groups": out, "ungrouped_failures": ungrouped, "shared_signatures": shared}
 
 
 # --------------------------------------------------------------------------- oldest cause, headline
@@ -633,7 +731,15 @@ def build(inputs: dict[str, Any], *, classification: Any = None) -> dict[str, An
             for n in p["nodes"]:
                 if n.get("role") == "repair" and n.get("outcome_id") not in base:
                     base.add(n.get("outcome_id"))
-                    added.append({"outcome_id": n.get("outcome_id"), "revision": p["revision"]})
+                    # M-1: an addition is an EXPLAINED revision -- why it exists, which outcome it follows and which
+                    # card found it, and the obligations it conserves -- not only an id
+                    lin = [x for x in _l(n.get("lineage")) if isinstance(x, dict)]
+                    added.append({"outcome_id": n.get("outcome_id"), "revision": p["revision"],
+                                  "reason": str((lin[-1] if lin else {}).get("reason") or "") or None,
+                                  "follows": str((lin[-1] if lin else {}).get("follows") or "") or None,
+                                  "found_by": str((lin[-1] if lin else {}).get("found_by") or "") or None,
+                                  "trigger": str(_d(p.get("trigger")).get("intent") or "") or None,
+                                  "conserved_obligations": sorted(str(x) for x in _l(n.get("obligations")))[:20]})
     open_ = [b for b in blockers if b["status"] == "open"]
     out = {
         "schema": SCHEMA,
@@ -745,6 +851,7 @@ def load_inputs(root: Path, plan_paths: list[Path] | None = None) -> dict[str, A
         out["migration"] = None
     if out["migration"] is None:
         missing["migration"] = "migration.yaml is absent or unreadable"
+    out["dynamic_entry_sites"] = dynamic_entry_sites(root)
     out["pins"] = get("pins", PINS)
     out["freeze"] = get("freeze", producer_receipt(root, "freeze").relative_to(root))
     out["source_manifest"] = get("source_manifest", SOURCE_MANIFEST)

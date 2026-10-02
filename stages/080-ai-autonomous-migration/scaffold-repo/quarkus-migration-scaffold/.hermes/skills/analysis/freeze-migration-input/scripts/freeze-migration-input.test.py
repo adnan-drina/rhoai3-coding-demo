@@ -73,6 +73,28 @@ def main() -> int:
         inside = _run("--source", str(src), "--root", str(root), "--copy-to", str(src / "copy"))
         if inside.returncode != 1 or "FREEZE_COPY_INSIDE_SOURCE" not in inside.stderr:
             return _fail("copy inside source must refuse: %s" % inside.stderr)
+        # M-1: the exact source revision -- the legacy commit, clean or not; a fake .git records the reason
+        import json as _json
+        real = t / "real"
+        (real / "src" / "main" / "java" / "b").mkdir(parents=True)
+        (real / "src" / "main" / "java" / "b" / "B.java").write_text("class B {}\n", encoding="utf-8")
+        g = lambda *a: subprocess.run(["git", "-C", str(real)] + list(a), capture_output=True, text=True)  # noqa: E731
+        g("init", "-q"); g("add", "-A"); g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed")
+        head = g("rev-parse", "HEAD").stdout.strip()
+        root2 = t / "dest2"
+        root2.mkdir()
+        sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+        from planner.paths import SOURCE_MANIFEST
+        if _run("--source", str(real), "--root", str(root2)).returncode != 0:
+            return _fail("a git source freezes")
+        rev = _json.loads((root2 / SOURCE_MANIFEST).read_text())["revision"]
+        if rev.get("commit") != head or rev.get("clean") is not True:
+            return _fail("the clean legacy commit is recorded: %s vs %s" % (rev, head))
+        (real / "src" / "main" / "java" / "b" / "B.java").write_text("class B { int y; }\n", encoding="utf-8")
+        _run("--source", str(real), "--root", str(root2))
+        rev = _json.loads((root2 / SOURCE_MANIFEST).read_text())["revision"]
+        if rev.get("commit") != head or rev.get("clean") is not False:
+            return _fail("an uncommitted edit is recorded as not clean: %s" % rev)
     print("OK: freeze-migration-input (identical rerun; verified copy; empty/no-java/inside refuse)")
     return 0
 

@@ -238,6 +238,25 @@ class MediaType(unittest.TestCase):
         self.differ("a/b; q = 1", "a/b; q=1")                         # no whitespace around '='
         self.same('a/b; q="unterminated', 'a/b; q="unterminated')    # only itself
 
+    def test_every_media_type_reader_uses_the_one_parser(self):
+        """V29-4 completion: the adapter's parameter difference and the reference qualification's comparator read
+        media types with the same RFC 9110 parser -- a quoted ';' never splits a value, distinct values stay distinct."""
+        import response_adapters as RA
+        a, b = 'text/plain; note="A; X=Y"', 'text/plain; note="A; x=Y"'
+        self.assertEqual(RA._media(a), ("text/plain", [("note", "A; X=Y")]))
+        self.assertIsNotNone(RA.media_type_difference(a, b))              # distinct values: a parameter difference
+        self.assertIsNone(RA.media_type_difference(a, 'TEXT/plain;NOTE="A; X=Y"'))
+        self.assertEqual(RA._media('text/plain; note="unterminated')[0], 'malformed:text/plain; note="unterminated')
+        scripts = Path(__file__).resolve().parents[2] / "skills" / "migration" / "fix-until-green" / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        spec = importlib.util.spec_from_file_location("rq_v294", scripts / "reference_qualification.py")
+        rq = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rq)
+        self.assertNotEqual(rq._canon_ctype(a), rq._canon_ctype(b))
+        self.assertEqual(rq._canon_ctype("application/json;charset=UTF-8"), rq._canon_ctype("application/json; charset=utf-8"))
+        self.assertEqual(rq._canon_ctype(""), "")
+
     def test_canonical_diff_uses_it(self):
         self.assertEqual(canonical_diff("header content-type application/json; charset=utf-8 vs application/json"),
                          canonical_diff("header content-type application/json;charset=UTF-8 vs application/json"))

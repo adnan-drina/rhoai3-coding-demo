@@ -1401,6 +1401,55 @@ def write_effect_paths(c):
         found.append(m.group(1))
     return found
 
+# H-24 (v31 t_4b97a8a5): a relative operand (cp a src/X.java) was never read as a path -- only tokens starting
+# with /, ./, ../ or ~ were -- so a worker restored the file of another card before any issue with a relative cp. The
+# operands a writer command WRITES are read by its argv semantics, resolved against a cd earlier in the same
+# command. Still command-text reading, not a syscall fence (AD-020): it closes these forms, not every write.
+_WRITERS_LAST = {"cp", "install", "ln", "rsync", "scp"}           # the last operand is written (or -t DIR)
+_WRITERS_ALL = {"rm", "rmdir", "unlink", "touch", "truncate", "tee", "shred"}
+_WRITERS_BOTH = {"mv"}                                              # the source vanishes, the destination is written
+_PY_WRITE_RE = re.compile(r"\b(?:shutil\.(?:copy|copy2|copyfile|copytree|move)|os\.(?:rename|replace)|"
+                          r"(?:Path\([^)]*\)\.(?:rename|replace)))\s*\(\s*(?:" + chr(34) + "|" + chr(39) + r")?([^" + chr(34) + chr(39) + r",)]*)"
+                          r"(?:" + chr(34) + "|" + chr(39) + r")?\s*,\s*(?:" + chr(34) + "|" + chr(39) + r")([^" + chr(34) + chr(39) + r")]+)")
+
+def writer_operands(c):
+    """The paths a command writes through the argv of a writer (cp/mv/install/ln/rsync destinations, rm/touch/tee/...
+    operands, dd of=) or a Python copy/rename call, each resolved against a preceding cd in the same command."""
+    found = []
+    if not c:
+        return found
+    cwd = None
+    for seg in _command_segments(c):
+        base, args = seg[0].rsplit("/", 1)[-1], seg[1:]
+        def at(x):
+            return x if (os.path.isabs(x) or cwd is None) else os.path.join(cwd, x)
+        if base == "cd" and args:
+            cwd = args[0] if os.path.isabs(args[0]) else (os.path.join(cwd, args[0]) if cwd else args[0])
+            continue
+        ops = [a for a in args if not a.startswith("-")]
+        if base in _WRITERS_LAST:
+            target = None
+            for i, a in enumerate(args):
+                if a in ("-t", "--target-directory") and i + 1 < len(args):
+                    target = args[i + 1]
+                elif a.startswith("--target-directory="):
+                    target = a.split("=", 1)[1]
+            if target:
+                found.append(at(target))
+            elif len(ops) >= 2:
+                found.append(at(ops[-1]))
+        elif base in _WRITERS_BOTH and len(ops) >= 2:
+            found.extend(at(o) for o in ops)
+        elif base in _WRITERS_ALL:
+            found.extend(at(o) for o in ops)
+        elif base == "dd":
+            found.extend(at(a.split("=", 1)[1]) for a in args if a.startswith("of="))
+    for m in _PY_WRITE_RE.finditer(c):
+        dst = m.group(2).strip()
+        if dst:
+            found.append(dst if (os.path.isabs(dst) or cwd is None) else os.path.join(cwd, dst))
+    return [f for f in found if f and not f.startswith("/dev/")]
+
 def inplace_edit_targets(c):
     """Files an IN-PLACE EDITOR in the command text would rewrite: sed -i /
     --in-place (GNU, and BSD -i with an empty suffix) and perl -i / -pi / -ni[.bak].
@@ -1513,7 +1562,7 @@ def redirect_targets(c):
         found.append(target)
     return found
 
-effect = write_effect_paths(cmd)
+effect = write_effect_paths(cmd) + [w for w in writer_operands(cmd) if w not in write_effect_paths(cmd)]
 for p in effect:
     if p not in paths:
         paths.append(p)
@@ -1787,6 +1836,8 @@ def looks_like_write_cmd(c):
     if re.search(r"\btee\b", c) and "/dev/null" not in c:
         return True
     if re.search(r"\b(?:mv|cp|rm|mkdir|install|install_name_tool)\b", c):
+        return True
+    if writer_operands(c):
         return True
     if "quarkus:add-extension" in c or "add-extension" in c:
         return True

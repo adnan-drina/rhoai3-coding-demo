@@ -66,6 +66,21 @@ def copy_verified(source: Path, dest: Path, files: list[dict[str, str]]) -> list
     return bad
 
 
+def source_revision(source: Path) -> dict:
+    """M-1: the exact source revision the frozen content came from -- the git commit of the legacy work tree and
+    whether the tree is clean against it (an uncommitted edit means the content digest, not the commit, is the
+    identity). Never a guess: no git work tree records the reason instead."""
+    import subprocess
+    def git(*args):
+        return subprocess.run(["git", "-C", str(source)] + list(args), capture_output=True, text=True)
+    head = git("rev-parse", "--verify", "-q", "HEAD^{commit}")
+    if head.returncode != 0 or not head.stdout.strip():
+        return {"commit": None, "reason": "the source root is not a git work tree with a commit"}
+    url = git("config", "--get", "remote.origin.url").stdout.strip()
+    dirty = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    return {"commit": head.stdout.strip(), "remote": url or None, "clean": not dirty}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--source", required=True, help="original legacy root (read-only)")
@@ -93,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         "root_kind": "frozen-legacy",
         "source_root": str(source),
         "digest": digest,
+        "revision": source_revision(source),
         "files": files,
     }
     reasons: list[str] = []

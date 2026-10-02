@@ -219,5 +219,22 @@ class HandoffComparison(unittest.TestCase):
             self.assertTrue(gaps and "did not request review" in gaps[0], gaps)
 
 
+class CompletionMapAtM2(unittest.TestCase):
+    """M-1: the M2 handoff persists the initial completion map -- a map, or the reason it is unknown; never absent."""
+
+    def test_written_with_the_handoff(self):
+        import importlib.util, tempfile
+        spec = importlib.util.spec_from_file_location("hf_m1", Path(__file__).resolve().parent / "handoff_facts.py")
+        hf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hf)
+        with tempfile.TemporaryDirectory() as td:
+            out = hf.persist_completion_map(Path(td), None)
+            doc = json.loads(Path(out).read_text())
+            self.assertEqual(doc["written_at_phase"], "m2")
+            self.assertTrue(doc.get("schema") or doc.get("unknown"), doc)
+            if doc.get("schema"):                                  # no plan: the map says unknown, not none
+                self.assertFalse(doc["release_blocker_summary"]["known"])
+
+
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

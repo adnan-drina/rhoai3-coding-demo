@@ -288,6 +288,18 @@
             "null"
           ],
           "description": "the engine the frozen source ran on; kept so the source baseline and its provenance are not rewritten by the destination's choice"
+        },
+        "source_capture_engine": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "declared",
+            "destination",
+            null
+          ],
+          "description": "D-1 (ADR-027 draft): the engine the frozen source is CAPTURED on -- declared (its own selected profiles, ADR-017; the default) or destination (the destination's db_kind through the source's own profile for it, when it ships one)"
         }
       }
     },

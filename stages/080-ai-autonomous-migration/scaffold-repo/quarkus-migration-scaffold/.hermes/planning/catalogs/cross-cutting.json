@@ -31,6 +31,21 @@
     "javax.ws.rs.ext.ExceptionMapper": {"reach": "by-references"},
     "org.springframework.security.core.userdetails.UserDetailsService": {"reach": "application-wide"}
   },
+  "dynamic_entry_annotations": {
+    "note": "M-1: entry paths an HTTP inventory does not establish. A source type or member carrying one of these is an UNANALYSED entry path the completion map names per specimen; reflective dispatch has no annotation and stays a generic limitation.",
+    "org.springframework.scheduling.annotation.Scheduled": "scheduled",
+    "io.quarkus.scheduler.Scheduled": "scheduled",
+    "jakarta.ejb.Schedule": "scheduled",
+    "javax.ejb.Schedule": "scheduled",
+    "org.springframework.kafka.annotation.KafkaListener": "message-driven",
+    "org.springframework.jms.annotation.JmsListener": "message-driven",
+    "org.springframework.amqp.rabbit.annotation.RabbitListener": "message-driven",
+    "jakarta.ejb.MessageDriven": "message-driven",
+    "javax.ejb.MessageDriven": "message-driven",
+    "org.springframework.context.event.EventListener": "event-driven",
+    "org.springframework.transaction.event.TransactionalEventListener": "event-driven",
+    "org.springframework.scheduling.annotation.Async": "asynchronous"
+  },
   "global_resources": [
     "src/main/resources/application.properties",
     "src/main/resources/application.yml",

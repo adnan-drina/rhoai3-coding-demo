@@ -2077,6 +2077,11 @@ def render(rep: Dict[str, Any]) -> str:
                     L.append("- %s: %s" % (label, val(pp[key])))
             L.append("")
         L.append("## Reliability (V26-4, from existing records)")
+        st = rl.get("stops") or {}
+        stv = st.get("value") if isinstance(st, dict) else None
+        L.append("- why runs stopped: %s" % ((", ".join("%s %d" % (k, v["count"]) for k, v in stv["by_class"].items()) or "none")
+                                            + ((" (" + ", ".join("%s %d" % kv for kv in stv["by_subtype"].items()) + ")") if stv["by_subtype"] else "")
+                                            if isinstance(stv, dict) else val(st)))
         wh = rl.get("worker_halts") or {}
         whv = wh.get("value") if isinstance(wh, dict) else None
         L.append("- worker halts: %s" % (("%d (%s)" % (whv["total"], ", ".join("%s %d" % (k, v["count"]) for k, v in whv["by_guardrail"].items()) or "none"))
@@ -2202,6 +2207,45 @@ def parallel_pilot(kanban_db: Optional[Path]) -> Dict[str, Any]:
     return out
 
 
+USAGE_COLS = ("api_call_count", "input_tokens", "output_tokens", "cache_read_tokens", "reasoning_tokens", "tool_call_count")
+
+
+def model_usage(state_dbs: Optional[List[Path]]) -> Dict[str, Any]:
+    """M-6/V26-4: model requests and reported token usage from read-only copies of the Hermes profile state
+    databases (sessions table, worker sessions only: source='kanban'), per profile and in total. Columns a copy
+    lacks are reported missing, never zero; no copy is an unknown, never zero."""
+    if not state_dbs:
+        return U("no --state-db (a read-only copy of a Hermes profile state.db) was given; model requests and tokens unknown")
+    import sqlite3
+    by_profile: Dict[str, Dict[str, Any]] = {}
+    missing: set = set()
+    srcs = []
+    for p in state_dbs:
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % p, uri=True)
+            have = {str(r[1]) for r in con.execute("PRAGMA table_info(sessions)")}
+            cols = [c for c in USAGE_COLS if c in have]
+            missing |= set(USAGE_COLS) - have
+            prof = "profile_name" if "profile_name" in have else None
+            q = "SELECT %s%s FROM sessions WHERE source='kanban'" % (", ".join(cols), (", " + prof) if prof else "")
+            for row in con.execute(q):
+                name = (row[len(cols)] if prof else None) or Path(p).stem.replace("state-", "") or "unknown"
+                ent = by_profile.setdefault(str(name), {"sessions": 0, **{c: 0 for c in cols}})
+                ent["sessions"] += 1
+                for i, c in enumerate(cols):
+                    ent[c] = ent.get(c, 0) + int(row[i] or 0)
+            con.close()
+            srcs.append(Path(p).name)
+        except Exception as exc:  # noqa: BLE001 - an unreadable copy is named, not zero
+            return U("state database %s could not be read: %s" % (p, exc))
+    total: Dict[str, int] = {}
+    for ent in by_profile.values():
+        for k, v in ent.items():
+            total[k] = total.get(k, 0) + int(v)
+    return V({"total": total, "by_profile": by_profile, "columns_missing": sorted(missing)},
+             "state-db:%s sessions (source=kanban)" % ",".join(srcs))
+
+
 def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kanban_db: Optional[Path]) -> Dict[str, Any]:
     """V26-4: the reliability measures of one run, from records it already keeps -- native run
     rows (a read-only copy of the board database), the per-card execution ledgers and the
@@ -2211,7 +2255,7 @@ def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kan
     runs: List[Dict[str, Any]] = []
     if kanban_db is None:
         why = "no --kanban-db (a read-only copy of the Hermes kanban.db) was given"
-        for k in ("run_outcomes", "worker_halts", "review_change_requests", "retried_cards", "gave_up_cards"):
+        for k in ("run_outcomes", "worker_halts", "review_change_requests", "retried_cards", "gave_up_cards", "stops"):
             out[k] = U(why)
     else:
         import sqlite3
@@ -2219,11 +2263,13 @@ def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kan
         try:
             con = sqlite3.connect("file:%s?mode=ro" % kanban_db, uri=True)
             con.row_factory = sqlite3.Row
-            runs = [dict(r) for r in con.execute("SELECT id, task_id, profile, outcome, error FROM task_runs ORDER BY id")]
+            have = {str(r[1]) for r in con.execute("PRAGMA table_info(task_runs)")}
+            cols = [c for c in ("id", "task_id", "profile", "outcome", "status", "summary", "error") if c in have]
+            runs = [dict(r) for r in con.execute("SELECT %s FROM task_runs ORDER BY id" % ", ".join(cols))]
             con.close()
         except Exception as exc:  # noqa: BLE001 - an unreadable copy is an unknown, not a zero
             runs = []
-            for k in ("run_outcomes", "worker_halts", "review_change_requests", "retried_cards", "gave_up_cards"):
+            for k in ("run_outcomes", "worker_halts", "review_change_requests", "retried_cards", "gave_up_cards", "stops"):
                 out[k] = U("the board copy could not be read: %s" % exc, src)
         if runs or "run_outcomes" not in out:
             outcomes: Dict[str, int] = {}
@@ -2245,6 +2291,11 @@ def reliability(steps_doc: Any, steps_why: str, kanban_logs: Optional[Path], kan
             out["review_change_requests"] = V(sum(1 for r in runs if r.get("outcome") == "changes_requested"), src)
             out["retried_cards"] = V(sorted(t for t, n in impl.items() if n > 1), src, "cards with more than one implementer run")
             out["gave_up_cards"] = V(sorted({str(r.get("task_id")) for r in runs if r.get("outcome") == "gave_up"}), src)
+            # M-5: why each run ended -- product, harness, source, provider, crash -- so a harness cascade or a crash
+            # streak is never read as product failure
+            ensure_hermes_lib()
+            from planner.stop_class import summarize
+            out["stops"] = V(summarize(runs), src, "planner.stop_class over the native run rows")
     if kanban_logs is None or not Path(kanban_logs).is_dir():
         out["repeated_investigation"] = U("no --kanban-logs directory with <task>.exec.jsonl ledgers")
         out["preload"] = U("no --kanban-logs directory with <task>.exec.jsonl ledgers")
@@ -2324,7 +2375,9 @@ def end_to_end(root: Path, rep: Dict[str, Any], plans: Optional[List[Path]]) -> 
     overlays = len(as_list(as_dict(rep.get("harness_changes")).get("installs_after_start")))
     live = sum(int(counts.get(k) or 0) for k in ("operator_steps", "rewinds", "dispositions"))
     ver = as_dict(as_dict(rep.get("cost")).get("verifications"))
-    tokens = as_dict(as_dict(rep.get("parallel_pilot")).get("tokens_and_requests"))
+    tokens = as_dict(rep.get("model_usage"))
+    if tokens.get("value") is None:
+        tokens = as_dict(as_dict(rep.get("parallel_pilot")).get("tokens_and_requests"))
     parity = {}
     for mode, e in as_dict(as_dict(rep.get("final_state")).get("parity")).items():
         e = as_dict(e)
@@ -2371,7 +2424,7 @@ def end_to_end(root: Path, rep: Dict[str, Any], plans: Optional[List[Path]]) -> 
 def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs: Optional[Path] = None, git_log: Optional[Path] = None,
                  hermes_configs: Optional[List[Path]] = None, budget_file: Optional[Path] = None,
                  compare_with: Optional[List[Tuple[str, Dict[str, Any]]]] = None, kanban_db: Optional[Path] = None,
-                 plans: Optional[List[Path]] = None) -> Dict[str, Any]:
+                 plans: Optional[List[Path]] = None, state_dbs: Optional[List[Path]] = None) -> Dict[str, Any]:
     ensure_hermes_lib()
     tree = Tree(root)
     hist = load_history(root, git_log)
@@ -2408,6 +2461,7 @@ def build_report(root: Path, *, kanban_json: Optional[Path] = None, kanban_logs:
         "board": board_section(board, kanban_logs, steps_doc),
         "reliability": reliability(steps_doc, steps_why, kanban_logs, kanban_db),
         "parallel_pilot": parallel_pilot(kanban_db),
+        "model_usage": model_usage(state_dbs),
     }
     rep["classification"] = classification(steps_doc, steps_why, inter, boot)
     rep["completion_map"], rep["end_to_end"] = end_to_end(root, rep, plans)
@@ -2423,6 +2477,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--kanban-json", type=Path, help="output of `hermes kanban list --json`")
     ap.add_argument("--kanban-logs", type=Path, help="directory of per-card worker logs (<task>.log)")
     ap.add_argument("--kanban-db", type=Path, help="a read-only copy of the Hermes kanban.db (native run rows)")
+    ap.add_argument("--state-db", type=Path, action="append", default=[],
+                    help="a read-only copy of a Hermes profile state.db (model requests and tokens); repeatable")
     ap.add_argument("--git-log", type=Path, help="file of `git log --format='%%H %%ct %%s'` lines, instead of running git")
     ap.add_argument("--hermes-config", type=Path, action="append", default=[], help="a copy of the live Hermes config (YAML/JSON); repeatable")
     ap.add_argument("--budget", type=Path, help="the run budget and stopping conditions declared before launch (JSON/YAML)")
@@ -2449,7 +2505,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         rep = build_report(root, kanban_json=args.kanban_json, kanban_logs=args.kanban_logs, git_log=args.git_log,
                            hermes_configs=args.hermes_config, budget_file=args.budget, compare_with=others,
-                           kanban_db=args.kanban_db, plans=args.plan)
+                           kanban_db=args.kanban_db, plans=args.plan, state_dbs=args.state_db)
     except (OSError, ValueError) as exc:
         print("FAIL: %s" % exc, file=sys.stderr)
         return 2
