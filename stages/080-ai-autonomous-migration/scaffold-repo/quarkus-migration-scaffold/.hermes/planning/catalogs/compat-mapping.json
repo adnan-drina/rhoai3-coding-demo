@@ -555,11 +555,13 @@
     "crud_defaults": {
       "save/1": {
         "kind": "write",
-        "semantics": "SimpleJpaRepository.save: persist a NEW entity (null id / version), merge an existing one, inside a read-write transaction; the change is committed when the transaction ends, so a later request reads it"
+        "semantics": "SimpleJpaRepository.save: persist a NEW entity (null id / version), merge an existing one, inside a read-write transaction; the change is committed when the transaction ends, so a later request reads it. A non-null id whose row does not exist is merged, and the SOURCE's provider (Hibernate 5) INSERTED a new row with a newly generated id for it; the destination's (Hibernate 6.6+) merge throws OptimisticLockException instead. Port the source's effect: when the id is set but no row exists, persist it as new (the identifier generated, never the requested one); merge only a row that exists",
+        "source": "https://docs.hibernate.org/orm/6.6/migration-guide/migration-guide.html#merge-versioned-deleted (\"Previously, merging a detached entity resulted in a SQL insert whenever there was no matching row in the database ... An OptimisticLockException is now thrown\"); https://docs.spring.io/spring-data/jpa/reference/jpa/entity-persistence.html (a null id or null non-primitive version is new and persisted, anything else is merged)",
+        "evidence": "v31 (spring-petclinic-rest-legacy-v31, 2026-10-02): every captured create whose request carries an id answered 500 (StaleObjectStateException from <X>RepositoryImpl.save, 'id == null ? persist : merge') where the source answered 201 with a newly generated id"
       },
       "saveAll/1": {
         "kind": "write",
-        "semantics": "SimpleJpaRepository.saveAll: save each element as save/1 does, in one transaction"
+        "semantics": "SimpleJpaRepository.saveAll: save each element as save/1 does (including its id-without-row case), in one transaction"
       },
       "delete/1": {
         "kind": "write",
@@ -619,7 +621,7 @@
     }
   },
   "persistence_behaviour_translations": {
-    "note": "Behaviour a LITERAL port of source persistence code does not preserve on the destination's persistence provider (V17-3). Each row is matched against the ORDERED calls the frozen structural model records for the selected source method (owner type and method name, pre-order); a match adds an obligation to that owed member: port the BEHAVIOUR (the committed effects the source produced), not the text. Evidence is cited per row.",
+    "note": "Behaviour a LITERAL port of source persistence code does not preserve on the destination's persistence provider (V17-3). Each row is matched against the ORDERED calls the frozen structural model records for the selected source method (owner type and method name, pre-order); a match adds an obligation to that owed member: port the BEHAVIOUR (the committed effects the source produced), not the text. Evidence is cited per row. A row's `when` may name `then_any` (a later call must follow the first) and `unless_any` (no call of the method may match: a merge that only re-attaches before a remove is not a save).",
     "hibernate6-flush-before-query": {
       "when": {
         "first": {
@@ -649,9 +651,34 @@
           ]
         }
       },
-      "obligation": "the source removes the entity and THEN queries or bulk-deletes its dependents. Hibernate 6 (the destination's ORM) flushes the pending removal before an AUTO-flush query or a native/bulk statement runs, so the literal order deletes the parent row while dependents still reference it (TransientPropertyValueException, or a foreign-key violation). Preserve the source's committed effects: delete or detach the dependents first, then remove the entity, in one transaction; the check is the committed state after the request (the row and its dependents gone), never the order of the source text.",
-      "evidence": "v17 (spring-petclinic-rest-legacy-v17, 2026-09-26): the literal port of the PetType and Specialty override deletes failed with TransientPropertyValueException / FK vet_specialties; reordering dependents-first matched the captured source effects (204, row and dependents gone) and 43/43 repository write behaviours passed on committed effects",
+      "obligation": "the source removes the entity and THEN queries or bulk-deletes its dependents. Hibernate 6 (the destination's ORM) flushes the pending removal before an AUTO-flush query or a native/bulk statement runs, as the source's provider did for the captured scenarios. Port the COMMITTED EFFECTS THE SOURCE PRODUCED, scenario by scenario, never a reordering that changes them: where the source's delete SUCCEEDED (the row and its dependents gone), the destination's must too; where the source REFUSED it (a row still referenced: the constraint violation the flushed removal raised answered an error and the row stayed), the destination must refuse it the same way and keep the row -- never delete or detach the dependents first to make a refused delete succeed. Reorder only where the literal order fails on the destination (TransientPropertyValueException) for a delete the source completed; the check is the committed state the source recorded for each of its scenarios (the delete and the refused-delete scenarios alike)",
+      "evidence": "v17 (spring-petclinic-rest-legacy-v17, 2026-09-26): the literal port of the PetType and Specialty override deletes failed with TransientPropertyValueException / FK vet_specialties for deletes the source completed; reordering dependents-first matched those captured effects (204, row and dependents gone). v31 (2026-10-02): the same reordering made sc:delete-referenced-specialties-1 succeed (204, row gone) where the source REFUSED it (400, row kept) -- the reordering is bounded by the source's recorded refusals",
       "source": "https://docs.jboss.org/hibernate/orm/6.2/userguide/html_single/Hibernate_User_Guide.html#flushing-auto (AUTO flush before a query that may be affected; before any native query)"
+    },
+    "hibernate66-merge-detached-without-row": {
+      "when": {
+        "first": {
+          "owners": [
+            "javax.persistence.EntityManager",
+            "jakarta.persistence.EntityManager"
+          ],
+          "names": [
+            "merge"
+          ]
+        },
+        "unless_any": {
+          "owners": [
+            "javax.persistence.EntityManager",
+            "jakarta.persistence.EntityManager"
+          ],
+          "names": [
+            "remove"
+          ]
+        }
+      },
+      "obligation": "the source merges an entity it did not load (a request's id). On the source's provider (Hibernate 5) a merge whose row does not exist INSERTED a new row with a newly generated id; on the destination's (Hibernate 6.6+) it throws OptimisticLockException (StaleObjectStateException), answered 500. Port the effect: when the id is set but no row exists, persist the entity as new (the identifier generated); merge only a row that exists. The check is the committed state and the status the source recorded for its create and update scenarios",
+      "evidence": "v31 (spring-petclinic-rest-legacy-v31, 2026-10-02): every captured create whose request carries an id answered 500 (StaleObjectStateException from <X>RepositoryImpl.save, 'id == null ? persist : merge') where the source answered 201 with a newly generated id",
+      "source": "https://docs.hibernate.org/orm/6.6/migration-guide/migration-guide.html#merge-versioned-deleted (\"Previously, merging a detached entity resulted in a SQL insert whenever there was no matching row in the database ... An OptimisticLockException is now thrown\"); https://docs.spring.io/spring-data/jpa/reference/jpa/entity-persistence.html (a null id or null non-primitive version is new and persisted, anything else is merged)"
     }
   },
   "validation_helpers": {
@@ -1115,6 +1142,38 @@
         "the handler calls a Servlet response member other than sendRedirect (capability gap servlet-response-member)",
         "the handler never calls the response it takes"
       ]
+    },
+    "exception-advice-registration": {
+      "version": "1",
+      "rule": "exception-advice",
+      "phase": "m3",
+      "applies_to": [
+        "org.springframework.web.bind.annotation.ControllerAdvice",
+        "org.springframework.web.bind.annotation.RestControllerAdvice"
+      ],
+      "implementation": {
+        "kind": "agent-bounded",
+        "architecture": "register the source's exception advice where the destination scans it: annotate the advice class @RestControllerAdvice (Quarkus spring-web: its @ExceptionHandler methods become global Jakarta REST exception mappers; handler returns ResponseEntity or Map), or port each handler to a Jakarta REST mapper defined OUTSIDE a resource class (@ServerExceptionMapper, or a @Provider ExceptionMapper). Preserve what the source answered for each scenario the advice produced: the status, the media type and the body's keys (D-2: the values are each platform's own diagnostics)"
+      },
+      "acceptance": [
+        {
+          "check": "structure:annotation-absent",
+          "checker": "planner.requirement_checks.measure (structure:annotation-absent over the destination model: the unscanned annotation is gone from the advice's file)"
+        },
+        {
+          "check": "gate:compile",
+          "checker": "planner.worklist.compile_items"
+        },
+        {
+          "check": "parity:<scenario>",
+          "checker": "planner.requirement_checks.measure (parity:<scenario> for every captured scenario whose SOURCE response has the advice's model-derived shape, planner.exception_advice.advice_scenarios)"
+        }
+      ],
+      "refuse": [
+        "an advice left as a plain @ControllerAdvice (compiles, never registered)",
+        "a mapper declared inside a resource class (applies only to that class's exceptions)"
+      ],
+      "source": "https://quarkus.io/guides/spring-web (supported annotations: @RestControllerAdvice -- only the @ExceptionHandler capability; @ExceptionHandler only in a @RestControllerAdvice class; return types ResponseEntity and Map); https://quarkus.io/guides/rest (Exception mapping: @ServerExceptionMapper; global when defined outside a REST endpoint class)"
     }
   },
   "objective_families": {
@@ -1313,6 +1372,17 @@
         "M4 parity under ADR-025 (status, media type and keys enforced; values present)"
       ],
       "source": "quarkus-rest-jackson 3.27.3 FullyFeaturedServerJacksonMessageBodyReader.readFrom (MismatchedInputException rethrown; StreamReadException wrapped in WebApplicationException(BAD_REQUEST)), read from the pinned jar; https://jakarta.ee/specifications/restful-ws/3.1/jakarta-restful-ws-spec-3.1#exceptionmapper"
+    },
+    "advice_annotations": [
+      "org.springframework.web.bind.annotation.ControllerAdvice",
+      "org.springframework.web.bind.annotation.RestControllerAdvice"
+    ],
+    "unscanned_on_destination": {
+      "annotations": [
+        "org.springframework.web.bind.annotation.ControllerAdvice"
+      ],
+      "why": "Quarkus spring-web registers the @ExceptionHandler methods of a @RestControllerAdvice class as global Jakarta REST exception mappers (one per handled type) and scans no other advice annotation: a plain @ControllerAdvice compiles on the compatibility layer and is silently never registered",
+      "source": "https://quarkus.io/guides/spring-web (supported annotations: @RestControllerAdvice -- only the @ExceptionHandler capability; @ExceptionHandler only in a @RestControllerAdvice class; return types ResponseEntity and Map)"
     }
   }
 }

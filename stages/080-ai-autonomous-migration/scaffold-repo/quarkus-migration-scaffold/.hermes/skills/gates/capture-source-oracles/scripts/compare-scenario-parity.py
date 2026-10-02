@@ -48,7 +48,8 @@ ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
-from response_equivalence import adr_accepted, advice_values_equivalent, deserialization_advice  # noqa: E402  ADR-025
+from response_equivalence import adr_accepted, advice_equivalent  # noqa: E402  ADR-025 (+ D-2)
+from planner.exception_advice import shapes_of_root  # noqa: E402  H-20/D-2: the advice shapes from the source model
 
 
 def _identity_label(identity: dict) -> str:
@@ -466,14 +467,14 @@ def main(argv: list[str] | None = None) -> int:
         verdict["observed"]["evidence"] = retain_body(dest_dir, "response", got_raw, str(got.get("body_sha256") or ""))
         src_raw, src_why = retained_bytes(root, exp.get("evidence"),
                                           root / oracles_dir / "bodies" / scenario_slug(args.scenario) / "response.body")
-        # ADR-025 (1): the SOURCE answered through its exception advice for a request-body
-        # deserialization failure (decided from the frozen capture alone): the keys are
-        # enforced, the two framework-diagnostic values only as present non-empty strings
-        equiv = (advice_values_equivalent(src_raw, got_raw)
-                 if adr025 and src_raw is not None and src_why != "truncated"
-                 and deserialization_advice(exp.get("status"), src_raw) else None)
+        # ADR-025 (1), extended by D-2 (2026-10-02) to every exception-advice response: the SOURCE answered an
+        # error through its exception advice (the body has a key set derived from the source model, decided from
+        # the frozen capture alone): the keys are enforced, the framework-diagnostic values only as present and
+        # non-empty -- the status is compared apart
+        equiv = (advice_equivalent(exp.get("status"), src_raw, got_raw, shapes_of_root(root))
+                 if adr025 and src_raw is not None and src_why != "truncated" else None)
         if equiv is not None and equiv[0]:
-            verdict["equivalence"] = {"adr": "ADR-025", "rule": "deserialization-advice-values", "detail": equiv[1]}
+            verdict["equivalence"] = {"adr": "ADR-025", "rule": "advice-values", "detail": equiv[1]}
         else:
             diffs.append("body %s vs %s" % (str(got.get("body_sha256"))[:12], str(exp.get("body_sha256"))[:12]))
             verdict["body_diff"] = (body_diff(None, None, unavailable="the source body: %s" % src_why) if src_raw is None else

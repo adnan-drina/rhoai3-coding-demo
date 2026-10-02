@@ -46,8 +46,8 @@ rt_lib = rt.GOLDEN / ".hermes" / "lib"
 import sys as _sys  # noqa: E402
 if str(rt_lib) not in _sys.path:
     _sys.path.insert(0, str(rt_lib))
-from response_equivalence import (adr_accepted, advice_values_equivalent, challenge_set,  # noqa: E402,F401  ADR-025
-                                  deserialization_advice, outside_application_root)
+from response_equivalence import (adr_accepted, advice_equivalent, challenge_set,  # noqa: E402,F401  ADR-025 (+ D-2)
+                                  outside_application_root)
 
 Skip = rt.Skip
 HERE = Path(__file__).resolve().parent
@@ -66,6 +66,11 @@ def sha256_file(path: Path) -> str:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _advice_shapes(corpus: dict) -> list:
+    """The reference source's exception-advice shapes (D-2): recorded in the corpus from its structural model."""
+    return [s for s in corpus.get("advice_shapes") or [] if isinstance(s, dict)]
 
 
 def load_corpus() -> dict:
@@ -424,10 +429,11 @@ def compare(step: dict, oracle_ex: dict, dest_ex: dict, oracle_bound: Mapping[st
         if o["status"] != d["status"]:
             return "MISMATCH", ["status: source %s, destination %s" % (o["status"], d["status"])]
         return "MATCH", []
-    if (adr025 and "absent" not in o and "absent" not in d and step.get("kind") != "sql"
-            and deserialization_advice(o.get("status"), (oracle_ex.get("response") or {}).get("body"))):
-        ok, why = advice_values_equivalent((oracle_ex.get("response") or {}).get("body"),
-                                           (dest_ex.get("response") or {}).get("body"))
+    equiv = (advice_equivalent(o.get("status"), (oracle_ex.get("response") or {}).get("body"),
+                               (dest_ex.get("response") or {}).get("body"), _advice_shapes(corpus))
+             if adr025 and "absent" not in o and "absent" not in d and step.get("kind") != "sql" else None)
+    if equiv is not None:
+        ok, why = equiv
         if ok:
             # ADR-025 (1): keys enforced, the framework-diagnostic values present and non-empty
             if notes is not None:

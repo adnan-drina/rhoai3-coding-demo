@@ -39,15 +39,39 @@ class Challenges(unittest.TestCase):
         self.assertFalse(R.challenges_equal('Basic realm="x', 'Basic realm="x"'))    # raw comparison then
 
 
+# the reference source's advice shape, as planner.exception_advice derives it from its model (test data)
+SHAPES = [{"fqn": "com.acme.web.Advice", "body_keys": [["className", "exMessage"]]}]
+
+
 class Advice(unittest.TestCase):
     def test_identified_from_the_source_response_only(self):
-        self.assertTrue(R.deserialization_advice(400, ADVICE))
-        self.assertTrue(R.deserialization_advice("400", ADVICE.encode()))
-        self.assertFalse(R.deserialization_advice(500, ADVICE))
+        self.assertTrue(R.deserialization_advice(400, ADVICE, SHAPES))
+        self.assertTrue(R.deserialization_advice("400", ADVICE.encode(), SHAPES))
+        self.assertFalse(R.deserialization_advice(500, ADVICE, SHAPES))
         other = json.dumps({"className": "java.lang.IllegalStateException", "exMessage": "x"})
-        self.assertFalse(R.deserialization_advice(400, other))                   # the advice, but not a body-read failure
-        self.assertFalse(R.deserialization_advice(400, json.dumps({"className": R.SOURCE_DESERIALIZATION_EXCEPTIONS[0]})))
-        self.assertFalse(R.deserialization_advice(400, ""))
+        self.assertFalse(R.deserialization_advice(400, other, SHAPES))           # the advice, but not a body-read failure
+        self.assertFalse(R.deserialization_advice(400, json.dumps({"className": R.SOURCE_DESERIALIZATION_EXCEPTIONS[0]}), SHAPES))
+        self.assertFalse(R.deserialization_advice(400, "", SHAPES))
+        self.assertFalse(R.deserialization_advice(400, ADVICE, []))              # no advice in the model: never assumed
+
+    def test_d2_every_advice_error_is_compared_by_keys_and_present_values(self):
+        """D-2 (2026-10-02): ADR-025 extended to any error the source answered through its advice -- the v31
+        refused create: the source named its framework's persistence exception, the destination its own."""
+        src = json.dumps({"className": "org.springframework.dao.DataIntegrityViolationException", "exMessage": "constraint"})
+        dest = json.dumps({"className": "org.hibernate.exception.ConstraintViolationException", "exMessage": "not-null"})
+        self.assertTrue(R.advice_equivalent(400, src, dest, SHAPES)[0])
+        self.assertFalse(R.advice_equivalent(400, src, json.dumps({"details": "Error id x", "stack": ""}), SHAPES)[0])
+        self.assertIsNone(R.advice_equivalent(201, src, dest, SHAPES))            # not an error: not the advice's
+        self.assertIsNone(R.advice_equivalent(400, src, dest, []))                # no advice shape in the model
+        self.assertIsNone(R.advice_equivalent(400, json.dumps({"error": "x"}), dest, SHAPES))   # another shape
+
+    def test_d2_a_renamed_advice_shape_is_its_own(self):
+        """The shape is whatever the source model says -- another application's error type, no PetClinic names."""
+        shapes = [{"fqn": "io.ledger.api.Errors", "body_keys": [["code", "detail", "trace"]]}]
+        src = json.dumps({"code": "LEDGER-17", "detail": "duplicate", "trace": "t1"})
+        self.assertTrue(R.advice_equivalent(409, src, json.dumps({"code": "X", "detail": "dup", "trace": "t2"}), shapes)[0])
+        self.assertFalse(R.advice_equivalent(409, src, json.dumps({"code": "X", "detail": "dup"}), shapes)[0])
+        self.assertIsNone(R.advice_equivalent(409, src, src, SHAPES))             # PetClinic's shape does not match it
 
     def test_keys_enforced_values_present_and_non_empty(self):
         ok = json.dumps({"className": "com.fasterxml.jackson.core.io.JsonEOFException", "exMessage": "Unexpected end"})

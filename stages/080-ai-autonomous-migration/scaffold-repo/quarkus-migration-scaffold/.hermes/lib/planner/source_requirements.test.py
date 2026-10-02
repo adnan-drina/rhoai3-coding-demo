@@ -196,8 +196,8 @@ def satisfied_case() -> int:
 
 def recipes_case() -> int:
     recipes = SR.recipes_of(CATALOG)
-    if len(recipes) != 6:
-        return _fail("six qualified recipes expected, found %s" % sorted(recipes))
+    if len(recipes) != 7:
+        return _fail("seven qualified recipes expected, found %s" % sorted(recipes))
     for rid, r in recipes.items():
         if r["rule"] not in SR.RULES:
             return _fail("%s names an unknown rule %s" % (rid, r["rule"]))
@@ -208,6 +208,10 @@ def recipes_case() -> int:
                     return _fail("%s cites %s, which does not exist" % (rid, name))
             elif name.startswith("planner.source_requirements."):
                 if not callable(getattr(SR, name.rsplit(".", 1)[-1], None)):
+                    return _fail("%s cites %s, which does not exist" % (rid, name))
+            elif name.startswith("planner.requirement_checks."):
+                from planner import requirement_checks as RC
+                if not callable(getattr(RC, name.rsplit(".", 1)[-1], None)):
                     return _fail("%s cites %s, which does not exist" % (rid, name))
             elif name.startswith("skills/"):
                 if not (HERMES / name).is_file():
@@ -635,10 +639,68 @@ def unobservable_write_case() -> int:
     return 0
 
 
+def advice_case() -> int:
+    """H-20 (v31): the source's exception advice compiles on the compatibility layer, so nothing ever named it and no
+    card owned it; a plain @ControllerAdvice is never registered on the destination. It is planned as its own
+    requirement over its own file, judged on the scenarios whose SOURCE response has its model-derived shape -- the
+    same on a renamed twin whose error type has other fields."""
+    adv_ann = "org.springframework.web.bind.annotation.ControllerAdvice"
+    rest_ann = "org.springframework.web.bind.annotation.RestControllerAdvice"
+
+    def world(base, error_fields, ann=adv_ann):
+        p = "src/main/java/%s" % base.replace(".", "/")
+        advice = {"fqn": "%s.web.ErrorAdvice" % base, "kind": "class", "path": "%s/web/ErrorAdvice.java" % p,
+                  "annotations": [{"fqn": ann, "values": {}}], "type_refs": ["%s.web.ErrorAdvice.Body" % base], "fields": [],
+                  "supertypes": [], "resolution": "full",
+                  "methods": [{"name": "on", "signature": "on(java.lang.Exception)", "returns": "org.springframework.http.ResponseEntity",
+                               "annotations": [{"fqn": "org.springframework.web.bind.annotation.ExceptionHandler", "values": {"value": ["class"]}}],
+                               "calls": [], "params": [], "resolution": "full", "type_refs": []}]}
+        body = {"fqn": "%s.web.ErrorAdvice.Body" % base, "kind": "class", "path": advice["path"], "annotations": [], "methods": [],
+                "fields": [{"name": f, "type": "java.lang.String", "annotations": []} for f in error_fields],
+                "type_refs": [], "supertypes": [], "resolution": "full"}
+        return advice, body
+
+    for base, names, fields in (("org.acme.clinic", S.PETCLINIC_NAMES, ["className", "exMessage"]),
+                                ("com.example.ledger", S.LEDGER_NAMES, ["code", "detail", "trace"])):
+        advice, body = world(base, fields)
+        types = S.migration_types(base, names) + [advice, body]
+        eps = derive_entry_points({"types": types}, CATALOGS)
+        common = dict(types=types, entry_points=eps, catalog=CATALOG, decisions=DECISIONS, oracles=None, structure_complete=True,
+                      decided_rows=None, bootstrap={"status": "ok", "blocks": []})
+        doc = SR.derive(advice_scenarios={advice["fqn"]: ["sc:create-refused-items"]}, **common)
+        got = by_rule(doc, "exception-advice")
+        if len(got) != 1 or got[0]["status"] != SR.APPLICABLE or got[0]["paths"] != [advice["path"]]:
+            return _fail("[%s] the advice is one applicable requirement over its own file: %s" % (base, got))
+        acc = got[0]["acceptance"]
+        if acc != ["structure:annotation-absent:%s" % adv_ann, "gate:compile", "parity:sc:create-refused-items"]:
+            return _fail("[%s] a plain @ControllerAdvice must stop being one, compile, and answer its scenarios: %s" % (base, acc))
+        if got[0]["facts"]["body_keys"] != [sorted(fields)] or (got[0].get("recipe") or {}).get("id") != "exception-advice-registration":
+            return _fail("[%s] the body keys come from the model's error type and the recipe is qualified: %s" % (base, got[0]))
+        if got[0]["class"] != "source":
+            return _fail("[%s] the advice is source work: %s" % (base, got[0]["class"]))
+        # a @RestControllerAdvice is registered already: no annotation to retire, still owned and judged
+        advice2, body2 = world(base, fields, rest_ann)
+        doc2 = SR.derive(advice_scenarios={advice2["fqn"]: []}, **dict(common, types=S.migration_types(base, names) + [advice2, body2]))
+        acc2 = by_rule(doc2, "exception-advice")[0]["acceptance"]
+        if acc2 != ["gate:compile"] or not by_rule(doc2, "exception-advice")[0]["facts"]["registered_on_destination"]:
+            return _fail("[%s] a @RestControllerAdvice keeps its annotation: %s" % (base, acc2))
+        # the captures unread: still planned, the unknown named
+        doc3 = SR.derive(**common)
+        r3 = by_rule(doc3, "exception-advice")[0]
+        if not any("source captures were not read" in u for u in r3["unknowns"]):
+            return _fail("[%s] unread captures are a named unknown: %s" % (base, r3["unknowns"]))
+        # no advice in the model: not applicable, proven by the complete model
+        doc4 = SR.derive(**dict(common, types=S.migration_types(base, names)))
+        r4 = by_rule(doc4, "exception-advice")
+        if [r["status"] for r in r4] != [SR.NOT_APPLICABLE]:
+            return _fail("[%s] a model without an advice has none to plan: %s" % (base, r4))
+    return 0
+
+
 def main() -> int:
     for case in (planned_case, twin_case, incomplete_case, ambiguity_case, satisfied_case, recipes_case, graph_case,
                  repository_behaviour_case, bounds_case, v17_body_location_case, planned_grant_case, application_path_case,
-                 servlet_case, unobservable_write_case):
+                 servlet_case, unobservable_write_case, advice_case):
         if case():
             return 1
     print("OK: source requirements (every V16 responsibility planned before a failure; a renamed twin derives the same "

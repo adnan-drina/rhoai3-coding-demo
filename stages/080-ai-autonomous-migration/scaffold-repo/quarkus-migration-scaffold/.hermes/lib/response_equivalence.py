@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional, Tuple
 
 ADR = "ADR-025"
-ADVICE_KEYS = ("className", "exMessage")
+# H-20/D-2 (v31): the advice's body keys are DERIVED from the source model (planner.exception_advice.shapes): the
+# field names of the error type the advice references. No key set is assumed here.
 # the source framework's request-body read failure: the exception class the
 # source advice names when Spring's message converter could not read the body
 # (spring-web HttpMessageNotReadableException; the frozen source oracle records it)
@@ -191,14 +192,40 @@ def _json_object(raw: Any) -> Optional[dict]:
     return doc if isinstance(doc, dict) else None
 
 
-def deserialization_advice(source_status: Any, source_body: Any) -> bool:
+def deserialization_advice(source_status: Any, source_body: Any, shapes: Any) -> bool:
     """Did the SOURCE answer through its exception advice for a request-body
     deserialization failure? Decided from the frozen source's own response only:
-    a 400 whose body is exactly {className, exMessage} and whose className is the
-    source framework's body-read failure."""
+    a 400 in one of the advice's shapes (``shapes``: planner.exception_advice.shapes,
+    derived from the source model) one of whose values names the source framework's
+    body-read failure. Used for the brief's specific first action; equivalence
+    is advice_equivalent's, for every advice response (D-2)."""
     doc = _json_object(source_body)
-    return (str(source_status) == "400" and doc is not None and sorted(doc) == sorted(ADVICE_KEYS)
-            and str(doc.get("className") or "") in SOURCE_DESERIALIZATION_EXCEPTIONS)
+    if str(source_status) != "400" or doc is None:
+        return False
+    if not _advice_shape(doc, shapes):
+        return False
+    return any(str(v) in SOURCE_DESERIALIZATION_EXCEPTIONS for v in doc.values() if isinstance(v, str))
+
+
+def _advice_shape(doc: dict, shapes: Any) -> bool:
+    keys = sorted(doc)
+    return any(keys in (sh.get("body_keys") or []) for sh in shapes or [] if isinstance(sh, dict))
+
+
+def advice_equivalent(source_status: Any, source_body: Any, observed_body: Any, shapes: Any) -> Tuple[bool, str] | None:
+    """D-2 (2026-10-02, ADR-025 extended to every exception-advice response): None unless the SOURCE answered an
+    error (4xx/5xx) whose body has the shape of one of its exception advices (model-derived key sets); then whether
+    the destination kept those keys with present, non-empty values -- the values are each platform's own
+    diagnostics (exception class names, provider messages). The status is compared apart, never here."""
+    try:
+        code = int(str(source_status))
+    except ValueError:
+        return None
+    src = _json_object(source_body)
+    if code < 400 or src is None or not _advice_shape(src, shapes):
+        return None
+    ok, why = advice_values_equivalent(source_body, observed_body)
+    return ok, why.replace("for a request-body deserialization failure", "for an error")
 
 
 def advice_values_equivalent(source_body: Any, observed_body: Any) -> Tuple[bool, str]:
@@ -208,10 +235,12 @@ def advice_values_equivalent(source_body: Any, observed_body: Any) -> Tuple[bool
     if src is None:
         return False, "the source body is not the advice's JSON object"
     if got is None:
-        return False, "the destination body is not a JSON object (the advice's {%s} are owed)" % ", ".join(ADVICE_KEYS)
+        return False, "the destination body is not a JSON object (the advice's {%s} are owed)" % ", ".join(sorted(src))
     if sorted(got) != sorted(src):
         return False, "the destination keys %s are not the source advice's %s" % (sorted(got), sorted(src))
-    empty = [k for k in ADVICE_KEYS if not isinstance(got.get(k), str) or not got[k].strip()]
+    # each value keeps the source value's JSON type and is not empty (a string with text, a present object)
+    empty = [k for k in sorted(src) if got.get(k) is None or type(got.get(k)) is not type(src.get(k))
+             or (isinstance(got.get(k), str) and not got[k].strip())]
     if empty:
         return False, "the destination leaves %s empty or not a string" % ", ".join(empty)
     return True, ("%s: the source answered its exception advice for a request-body deserialization failure; the keys "

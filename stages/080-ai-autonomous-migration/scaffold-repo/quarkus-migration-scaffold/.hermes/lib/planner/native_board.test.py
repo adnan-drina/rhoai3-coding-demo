@@ -1344,6 +1344,58 @@ class LifecycleReconciliation(unittest.TestCase):
             NC.issue(r.root, r.board, task_id=tid, run_id=run3, claim_lock=lock3)
         self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
 
+    def test_a_parked_candidates_comparison_does_not_survive_the_park(self):
+        """H-19 (v31): the Owner card parked its candidate; the parity records its last comparison left were bound to
+        that candidate, and the next card's checkpoint snapshotted them into the ACCEPTED baseline -- a tree HEAD
+        never held. Parking restores the accepted reports, as a revert does."""
+        r = self.r
+        mirror_layout(r.root)
+        tid, run, iss = r.issue("build:rk:pom")
+        from planner.paths import LOOP_ACCEPTED, PARITY_DIR
+        snap = r.root / LOOP_ACCEPTED / "parity" / "scenarios"
+        live = r.root / PARITY_DIR / "scenarios"
+        snap.mkdir(parents=True, exist_ok=True)
+        live.mkdir(parents=True, exist_ok=True)
+        accepted = {"schema": "rhoai3.scenario-parity/v1", "scenario": "sc:x", "verdict": "FAIL", "reason": "header content-type a vs b",
+                    "binding": {"mode": "candidate", "candidate_sha256": "accepted-tree"}}
+        (snap / "sc_x.json").write_text(json.dumps(accepted))
+        r.edit(iss["allowed_paths"][0], "<project>candidate</project>\n")
+        (live / "sc_x.json").write_text(json.dumps(dict(accepted, reason="", verdict="PASS",
+                                                        binding={"mode": "candidate", "candidate_sha256": r.tree()})))
+        got = NC.park(r.root, r.board, task_id=tid, run_id=run)
+        self.assertTrue(got["reports_restored"])
+        self.assertEqual(json.loads((live / "sc_x.json").read_text()), accepted)   # the accepted comparison, not the candidate's
+
+    def test_a_crashed_cards_edits_are_set_aside_onto_it_when_another_card_issues(self):
+        """H-15 (v31 t_0ad06b42): a card's run crashed with its candidate in the shared tree and the card BLOCKED,
+        so its next run never came; every other ready card refused ISSUE_BASELINE_DRIFT. The next card to issue
+        proves the edits are the crashed run's (issued paths, run window, ended) and sets them aside onto THAT card."""
+        r = self.r
+        ta, ra, ia = r.issue("build:rk:pom")
+        rel = ia["allowed_paths"][0]
+        r.edit(rel, "<project>left by a crashed worker</project>\n")
+        r.native.end_run(ta, "blocked", "crashed")                         # no terminator ran; the card waits
+        tb, rb, ib = r.issue("config:rk:cfg")                              # no drift refusal
+        self.assertEqual(ib["outcome_id"], "config:rk:cfg")
+        ab = r.board.records(ta, NC.ABANDONED)
+        self.assertEqual((len(ab), ab[0]["run"], ab[0]["paths"]), (1, ra, [rel]))     # onto the crashed card
+        self.assertIsNotNone(r.board.attachment(ta, ab[0]["attachment"]))
+        self.assertEqual(r.board.records(tb, NC.ABANDONED), [])
+        self.assertEqual(git(r.root, "status", "--porcelain", "--", rel), "")
+
+    def test_an_edit_no_ended_run_owns_still_refuses_another_cards_issue(self):
+        """H-15 control: an edit outside what any ended run was issued is nobody's to set aside."""
+        r = self.r
+        ta, ra, ia = r.issue("build:rk:pom")
+        r.native.end_run(ta, "blocked", "crashed")
+        r.edit("src/main/java/com/acme/shop/Unrelated.java", "class Unrelated {}\n")
+        tid = r.tid("config:rk:cfg")
+        run, lock = r.native.claim(tid)
+        with self.assertRaises(Refusal) as cm:
+            NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
+        self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
+        self.assertEqual(r.board.records(ta, NC.ABANDONED), [])
+
     def test_a_repeated_issue_keeps_the_current_runs_edits(self):
         """V29-3 (architect reproduction of 0dd677ba): old stopped run -> new issue -> new legitimate edit ->
         repeated issue parked the CURRENT worker's repair under the older run and reset it."""

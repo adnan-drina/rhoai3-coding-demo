@@ -849,7 +849,20 @@ def _exception_advice_case() -> int:
             (base / "bodies" / slug).mkdir(parents=True)
             (base / "bodies" / slug / "response.body").write_text(body, encoding="utf-8")
             (base / (slug + ".json")).write_text(json.dumps({"response": {"status": 400}}), encoding="utf-8")
-        got = b.advice_guidance(root, [{"scenario": sid, "security_mode": "disabled"} for sid in bodies])
+        items = [{"scenario": sid, "security_mode": "disabled"} for sid in bodies]
+        # D-2: the advice's shape comes from the source model; without an advice in the model nothing is assumed
+        if b.advice_guidance(root, items) is not None:
+            return _fail("no advice in the source model: no advice guidance is assumed")
+        from planner.paths import EVIDENCE_BUNDLE
+        (root / EVIDENCE_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
+        adv = "com.acme.portal.web.Errors"
+        (root / EVIDENCE_BUNDLE).write_text(json.dumps({"structure": {"types": [
+            {"fqn": adv, "path": "src/main/java/com/acme/portal/web/Errors.java", "type_refs": [adv + ".Info"],
+             "annotations": [{"fqn": "org.springframework.web.bind.annotation.ControllerAdvice", "values": {}}], "methods": []},
+            {"fqn": adv + ".Info", "path": "src/main/java/com/acme/portal/web/Errors.java", "annotations": [], "methods": [],
+             "fields": [{"name": "className", "type": "java.lang.String"}, {"name": "exMessage", "type": "java.lang.String"}]}]}}),
+            encoding="utf-8")
+        got = b.advice_guidance(root, items)
         if not got or got["scenarios"] != ["sc:create-malformed"] or "MismatchedInputException" not in got["action"]:
             return _fail("the advice row applies to the advice's own deserialization answer only: %s" % got)
         text = b.brief_digest({"cluster": {"id": "c:1"}, "exception_advice": got}, "brief-c-1")

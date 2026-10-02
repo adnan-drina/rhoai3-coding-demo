@@ -171,6 +171,15 @@ def bom_managed(root: Path) -> set[str]:
     return {str(x) for x in (load_json(p).get("managed") or [])}
 
 
+def _advice_shapes_of(root: Path) -> list:
+    """H-20/D-2: the source's exception-advice shapes from its frozen structural model ([] when unavailable)."""
+    try:
+        from planner.exception_advice import shapes_of_root
+    except ImportError:
+        return []
+    return shapes_of_root(root)
+
+
 def catalog(root: Path) -> dict:
     p = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
     return load_json(p) if p.is_file() else {}
@@ -2264,7 +2273,7 @@ def advice_guidance(root: Path, items: list) -> dict | None:
         body_p = base / "bodies" / slug / "response.body"
         cand = [root / str(ev.get("body_file"))] if ev.get("body_file") else []
         raw = next((c.read_bytes() for c in cand + [body_p] if c.is_file()), None)
-        if raw is not None and deserialization_advice(resp.get("status"), raw):
+        if raw is not None and deserialization_advice(resp.get("status"), raw, _advice_shapes_of(root)):
             hits.append(sid)
     if not hits:
         return None

@@ -410,6 +410,13 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
                                   its owner or causal repair (a cycle that
                                   would only surface at M4), or a behaviour
                                   whose only route is an out-of-scope edit
+      UNPLANNED_SOURCE_COMPONENT  a source type the cross-cutting catalog
+                                  classifies (an exception advice, a filter,
+                                  a web or security configuration ...) that no
+                                  outcome or requirement owns, no decision
+                                  retires and the bootstrap does not handle
+                                  (H-20, v31: such a component compiles, so
+                                  nothing else would name it before M3)
     Unresolved requirements are not blocks here: like a missing oracle they
     are named responsibilities that block delivery, never an empty plan."""
     from planner.source_requirements import RECIPE_RULES
@@ -432,7 +439,30 @@ def contract(root: Path) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
             blocks.append({"class": "PLAN_ACCEPTANCE_MISSING", "subject": r["id"], "detail": "an applicable requirement names no completion check"})
         if not r.get("recipe") and str(r.get("rule") or "").split("/", 1)[0] in RECIPE_RULES:
             blocks.append({"class": "PLAN_RECIPE_MISSING", "subject": r["id"], "detail": "an applicable repair requirement has no qualified recipe"})
+    for c in _unplanned_components(Path(root), doc):
+        blocks.append({"class": "UNPLANNED_SOURCE_COMPONENT", "subject": c["fqn"],
+                       "detail": ("%s (%s) is an application-wide source component (%s) that no planned outcome or requirement "
+                                  "owns, no decision retires and the bootstrap does not handle: plan it (a catalog rule) or "
+                                  "retire it with an ADR" % (c["fqn"], c["path"], ", ".join(c["classified_by"])))[:300]})
     return doc, blocks
+
+
+def _unplanned_components(root: Path, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    from planner.component_coverage import bootstrap_annotations, unplanned
+    from planner.decisions import load_decisions
+    from planner.paths import CATALOGS_DIR, EVIDENCE_BUNDLE
+    bundle, cc, catalog = _read(root / EVIDENCE_BUNDLE), _read(root / CATALOGS_DIR / "cross-cutting.json"), _read(root / CATALOGS_DIR / "compat-mapping.json")
+    if not isinstance(bundle, dict) or not isinstance(cc, dict):
+        return []
+    try:
+        decisions = load_decisions(root) or {}
+    except (OSError, ValueError):
+        decisions = {}
+    retired = [str(r.get("path") or "") for r in decisions.get("retired_sources") or [] if isinstance(r, dict)]
+    return unplanned(((bundle.get("structure") or {}).get("types")) or [], cross_cutting=cc,
+                     plan_nodes=((doc.get("plan") or {}).get("graph") or {}).get("nodes") or [],
+                     requirements=(doc.get("plan") or {}).get("requirements") or [], retired_paths=retired,
+                     bootstrap_annotations=bootstrap_annotations(catalog if isinstance(catalog, dict) else {}))
 
 
 def frozen(root: Path) -> dict[str, Any] | None:

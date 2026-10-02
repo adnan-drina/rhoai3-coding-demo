@@ -168,6 +168,29 @@ M3 cards and recovery (after v20, 2026-09-27):
   follow-up minted before this rule carries such a comparison to its judges
   at acceptance (`carried_to_judges` on the record): never PASS, still owed by
   the judges and by M4. A planned outcome keeps every check M2 gave it.
+- **A stopped card's leftovers belong to that card, whoever issues next** (H-15,
+  v31 `t_0ad06b42`). `park_abandoned` proves ownership against every card of
+  the run (the edits lie in what its most recent ended run was issued, were
+  written inside that run's window, and the issuing run started after it) and
+  sets them aside onto the single proven owner; none or two owners stay the
+  `ISSUE_BASELINE_DRIFT` refusal.
+- **A parked or set-aside candidate takes its reports with it** (H-19). Restoring
+  the tree to HEAD also restores the accepted tool reports and parity comparison
+  (`restore_reports`, as a revert does), so a later checkpoint never snapshots a
+  comparison of a tree HEAD never held into the accepted baseline.
+- **Every application-wide source component is planned at M2** (H-20). A source
+  type the cross-cutting catalog classifies (exception advice, filter, web or
+  security configuration ...) must be owned by an outcome or requirement, retired
+  by a decision, or handled by the bootstrap -- else admission refuses
+  `UNPLANNED_SOURCE_COMPONENT`. The source's exception advice is its own
+  requirement (`exception-advice`): its file, the destination registration
+  (Quarkus scans only `@RestControllerAdvice`), and every scenario whose SOURCE
+  response has the advice's shape, derived from the model's error type.
+- **An exception-advice error is compared by its keys** (D-2, extending ADR-025
+  to every advice response). The destination keeps the status and the advice's
+  body keys with present, non-empty values of the source's JSON types; the values
+  are each platform's own diagnostics. No key set is assumed: the shapes come
+  from the source model (`planner.exception_advice`).
 - **Scheduled results settle before handoff** (architect decision 2,
   2026-10-01). Every acceptance exit (accept-commit, unchanged rework,
   recovered) measures and routes the rows scheduled at the card; the

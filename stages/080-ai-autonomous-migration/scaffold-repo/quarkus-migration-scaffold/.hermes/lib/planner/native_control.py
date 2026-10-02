@@ -52,6 +52,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -2861,7 +2862,33 @@ def _stash(root: Path, board: Board, *, task_id: str, run_id: int, head: str, ch
     left = [c for c in (_changed_vs_head(root)[1]) if c in set(changed)]
     if left:
         raise Refusal("PARK_INCOMPLETE", "the tree still differs from HEAD at %s" % ", ".join(left[:4]))
-    return {"parked": sorted(files), "attachment": name, "record": rec["key"], "head": head}
+    # H-19 (v31): the tree is HEAD's again, so its reports must be too -- exactly as a rejected candidate's revert
+    # restores them. A parked candidate's comparison left in verification/parity was snapshotted into the ACCEPTED
+    # baseline by the next card's checkpoint, bound to a tree HEAD never held.
+    restored = _restore_accepted_reports(root)
+    return {"parked": sorted(files), "attachment": name, "record": rec["key"], "head": head, "reports_restored": restored}
+
+
+def _restore_accepted_reports(root: Path) -> bool:
+    """Put the accepted state's tool reports and parity comparison back over the live ones (the fix-until-green
+    loop's restore_reports, the same call a revert makes). False when the loop's module is not in this tree."""
+    import importlib.util
+    scripts = Path(root) / ".hermes" / "skills" / "migration" / "fix-until-green" / "scripts"
+    mod_path = scripts / "_loop_common.py"
+    if not mod_path.is_file():
+        return False
+    added = str(scripts) not in sys.path
+    if added:
+        sys.path.insert(0, str(scripts))
+    try:
+        spec = importlib.util.spec_from_file_location("_loop_common_restore", mod_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.restore_reports(Path(root))
+        return True
+    finally:
+        if added:
+            sys.path.remove(str(scripts))
 
 
 ABANDONED = "abandoned-candidate"
@@ -2878,6 +2905,13 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     candidate of the card is retained. Anything else stays the drift refusal:
     an edit no ended run of this card was issued is not this card's to discard.
 
+    H-15 (v31 t_0ad06b42): the stopped card need not be the one issuing next. Its
+    card blocked after the crash, so its next run never came and every OTHER
+    ready card refused the drift. The same proof is run against every other card
+    of the run; when exactly one card's most recent ended run owns the edits,
+    they are set aside onto THAT card (its evidence, its record). Two owners, or
+    none, leave the tree untouched for the drift refusal.
+
     Ownership is proven, never inferred from path overlap (architect review of
     0dd677ba: a replacement run that edited an allowed file and asked for its
     issue again had its own work archived as its predecessor's). So this runs
@@ -2893,16 +2927,49 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     head, changed = _changed_vs_head(root)
     if not changed or _open_pending(board, task_id) is not None:
         return None
+    cur = board.native.run(int(run_id)) or {}
+    if not cur.get("started_at"):
+        return None
+    own = _abandoned_by(root, board, task_id, changed, float(cur["started_at"]), before_run=int(run_id))
+    if own is not None:
+        return dict(_stash(root, board, task_id=task_id, run_id=own["run"], head=head, changed=sorted(changed), kind=ABANDONED),
+                    run=own["run"], window=own["window"])
+    parsed = board.node_of(task_id)
+    if parsed is None:
+        return None
+    owners = []
+    for _oid, row in sorted((board.run_tasks(parsed[1]) or {}).items()):
+        other = str(row.get("id") or "")
+        if not other or other == task_id or _open_pending(board, other) is not None:
+            continue
+        got = _abandoned_by(root, board, other, changed, float(cur["started_at"]))
+        if got is not None:
+            owners.append((other, got))
+    if len(owners) != 1:
+        return None                       # no proven owner, or two: the drift refusal names it
+    other, got = owners[0]
+    return dict(_stash(root, board, task_id=other, run_id=got["run"], head=head, changed=sorted(changed), kind=ABANDONED),
+                run=got["run"], window=got["window"], owner_task=other)
+
+
+def _abandoned_by(root: Path, board: Board, owner: str, changed: list[str], successor_started: float,
+                  before_run: int | None = None) -> dict[str, Any] | None:
+    """The proof that ``owner``'s most recent ENDED, issued run (before ``before_run`` when given) wrote
+    every path of ``changed``: the native run ended, the successor started after it, every path lies in what
+    that run was issued and was last written inside its window. None when any fact is missing."""
+    records = board.records(owner, "issue")
     runs = sorted({int(r.get("run") or 0) for r in records} - {0})
-    if not runs or runs[-1] >= int(run_id):
+    if before_run is not None:
+        runs = [r for r in runs if r < before_run]
+    if not runs:
         return None
     last = runs[-1]
-    prev, cur = board.native.run(last) or {}, board.native.run(int(run_id)) or {}
-    if (str(prev.get("task_id") or "") != task_id or str(prev.get("status") or "") in ("", "running")
+    prev = board.native.run(last) or {}
+    if (str(prev.get("task_id") or "") != owner or str(prev.get("status") or "") in ("", "running")
             or not prev.get("started_at") or not prev.get("ended_at")):
         return None                       # no native proof the predecessor ended
     t0, t1 = float(prev["started_at"]), float(prev["ended_at"])
-    if not cur.get("started_at") or float(cur["started_at"]) < t1:
+    if successor_started < t1:
         return None                       # the current run is not provably its successor
     issued = {p for r in records if int(r.get("run") or 0) == last for p in (r.get("allowed_paths") or [])}
     if not set(changed) <= issued:
@@ -2913,8 +2980,7 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
             return None                   # a deletion carries no time: ownership unproven
         if not (t0 <= p.stat().st_mtime <= t1 + ABANDON_WINDOW_SLACK):
             return None                   # written outside the predecessor's run: not provably its own
-    return dict(_stash(root, board, task_id=task_id, run_id=last, head=head, changed=sorted(changed), kind=ABANDONED),
-                run=last, window=[t0, t1])
+    return {"run": last, "window": [t0, t1]}
 
 
 # seconds past a run's recorded end in which its own last write may still land (the runtime records the

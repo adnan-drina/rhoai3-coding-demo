@@ -69,11 +69,13 @@ REQUEST_BODY = "org.springframework.web.bind.annotation.RequestBody"
 FRAGMENT_SUFFIX = "Impl"  # Spring Data's fragment naming contract (worklist.FRAGMENT_IMPL_CONTRACT)
 
 RULES = ("repository-architecture", "request-validation", "handler-parameter-binding", "annotation-retirement",
-         "adapter-behavior", "generator-configuration", "configuration-decision", "application-path", "behavior-verification")
+         "adapter-behavior", "generator-configuration", "configuration-decision", "application-path", "behavior-verification",
+         "exception-advice")
 # the outcome class a requirement's work belongs to (outcome_graph.CLASSES)
 RULE_CLASS = {"repository-architecture": "source", "request-validation": "source", "handler-parameter-binding": "source",
               "annotation-retirement": "source", "adapter-behavior": "behavior", "generator-configuration": "build",
-              "configuration-decision": "config", "application-path": "config", "behavior-verification": "behavior"}
+              "configuration-decision": "config", "application-path": "config", "behavior-verification": "behavior",
+              "exception-advice": "source"}
 APPLICABLE, NOT_APPLICABLE, UNRESOLVED, SATISFIED = "applicable", "not-applicable", "unresolved", "satisfied"
 # The rules whose work is a source REPAIR and so needs a qualified recipe
 # (compat-mapping migration_recipes) before admission. Verification
@@ -81,7 +83,7 @@ APPLICABLE, NOT_APPLICABLE, UNRESOLVED, SATISFIED = "applicable", "not-applicabl
 # configuration by the decision and the bootstrap that applies it: neither has
 # a recipe, and requiring one would refuse every run that captured an oracle.
 RECIPE_RULES = ("repository-architecture", "request-validation", "handler-parameter-binding", "annotation-retirement",
-                "generator-configuration")
+                "generator-configuration", "exception-advice")
 
 
 def _s(v: Any) -> str:
@@ -223,7 +225,8 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
            decided_rows: list[dict[str, Any]] | None = None, bootstrap: dict[str, Any] | None = None,
            scenario_facts: dict[str, dict[str, Any]] | None = None,
            generator_facts: dict[str, Any] | None = None,
-           source_config: dict[str, Any] | None = None) -> dict[str, Any]:
+           source_config: dict[str, Any] | None = None,
+           advice_scenarios: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """{"schema", "requirements": [...], "unknowns": [...]}. Pure.
 
     ``scenario_facts``: scenario id -> {method, effects} from the captured
@@ -379,6 +382,32 @@ def derive(*, types: list[dict[str, Any]], entry_points: list[dict[str, Any]], c
                         unknowns=[] if scen else ["no captured %s scenario for the covered entry points: behaviour coverage is unresolved" % adapter],
                         dependencies=[rid("annotation-retirement", "%s@%s" % (f, ad["annotation"])) for f in sorted(ad["types"])],
                         facts={"contract": ad["contract"], "security_modes": modes, "policy_source": "M1 structural model (source policy)"}))
+
+    # -- H-20 (v31): the source's exception advice ------------------------
+    # It compiles on the compatibility layer, so no compile finding ever names it, and a plain @ControllerAdvice is
+    # never registered on the destination: it is planned as its own requirement, owned by an outcome, judged on the
+    # scenarios whose SOURCE response it produced (their shape derived from the model, never assumed)
+    from planner.exception_advice import shapes as _advice_shapes
+    unscanned = set((((catalog or {}).get("exception_advice") or {}).get("unscanned_on_destination") or {}).get("annotations") or [])
+    advs = _advice_shapes(types, catalog)
+    for sh in advs:
+        rec = _recipe_for(recipes, "exception-advice", sh["annotation"])
+        scen = sorted((advice_scenarios or {}).get(sh["fqn"]) or [])
+        unk = [] if rec else ["no qualified recipe for %s" % sh["annotation"]]
+        if not sh["body_keys"]:
+            unk.append("the model shows no error type the advice serializes: its responses cannot be recognised")
+        if advice_scenarios is None:
+            unk.append("the source captures were not read: the scenarios the advice answered are unknown")
+        out.append(_req("exception-advice", sh["fqn"], APPLICABLE if rec and sh["body_keys"] else UNRESOLVED,
+                        evidence=[_sel("structure", "types[%s]" % sh["fqn"], "annotations")], paths=[sh["path"]],
+                        recipe=rec,
+                        acceptance=(["structure:annotation-absent:%s" % sh["annotation"]] if sh["annotation"] in unscanned else [])
+                                   + ["gate:compile"] + ["parity:%s" % s for s in scen],
+                        unknowns=unk,
+                        facts={"annotation": sh["annotation"], "handlers": sh["handlers"], "body_keys": sh["body_keys"],
+                               "registered_on_destination": sh["annotation"] not in unscanned, "scenarios": scen}))
+    if not advs:
+        none_found("exception-advice", "exception advice type")
 
     # -- repository fragments and single injectable implementations -------
     # V17-3: every fragment member also carries its SELECTED source behaviour
@@ -619,8 +648,11 @@ def persistence_translations(method: dict[str, Any], catalog: dict[str, Any]) ->
         first = next((i for i, c in enumerate(calls) if _calls_match(when.get("first") or {}, c)), None)
         if first is None:
             continue
-        later = [c for c in calls[first + 1:] if _calls_match(when.get("then_any") or {}, c)]
-        if later:
+        if when.get("unless_any") and any(_calls_match(when["unless_any"], c) for c in calls):
+            continue
+        # a row with no ``then_any`` is a single-call condition (the call alone carries the behaviour difference)
+        later = [c for c in calls[first + 1:] if _calls_match(when.get("then_any") or {}, c)] if when.get("then_any") else []
+        if later or not when.get("then_any"):
             out.append({"id": rid_, "obligation": _s(row.get("obligation")), "evidence": _s(row.get("evidence")),
                         "source": _s(row.get("source")),
                         "calls": ["%s.%s" % (_s(c.get("owner")).rsplit(".", 1)[-1], _s(c.get("name")))
@@ -931,6 +963,16 @@ def _scenario_facts(root: Path) -> dict[str, dict[str, Any]] | None:
     return corpus_scenario_facts(root)[1]
 
 
+def _advice_scenarios(root: Path, structure: dict[str, Any], catalog: dict[str, Any]) -> dict[str, list[str]] | None:
+    """H-20: advice fqn -> the scenarios whose frozen SOURCE response has that advice's shape; None when the
+    source captures are absent (the requirement then names the unknown)."""
+    from planner.exception_advice import advice_scenarios, shapes, source_responses
+    responses = source_responses(root)
+    if not responses:
+        return None
+    return advice_scenarios(shapes(structure.get("types") or [], catalog), responses)
+
+
 def for_root(root: Path, *, oracles: dict[str, list[str]] | None = None) -> dict[str, Any]:
     from planner.decisions import load_decisions
     from planner.paths import BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECIDED_REPAIRS_RECEIPT, EVIDENCE_BUNDLE
@@ -965,7 +1007,7 @@ def for_root(root: Path, *, oracles: dict[str, list[str]] | None = None) -> dict
                  decisions=decisions, oracles=oracles, structure_complete=bool(st.get("available")) and str(st.get("mode")) == "full",
                  generator=generator, generator_known=gen_known, decided_rows=rows, bootstrap=read(root / BOOTSTRAP_RECEIPT),
                  scenario_facts=_scenario_facts(root), generator_facts=gen_facts,
-                 source_config=source_configuration(root))
+                 source_config=source_configuration(root), advice_scenarios=_advice_scenarios(root, st, catalog))
     if decisions is None:
         doc["unknowns"] = sorted(set(doc["unknowns"]) | {"decisions.yaml missing or invalid: decided configuration is unknown"})
     return doc
