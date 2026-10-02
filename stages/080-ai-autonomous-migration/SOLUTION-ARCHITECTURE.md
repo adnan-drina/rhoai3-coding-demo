@@ -369,7 +369,9 @@ the pinned MTA CLI 8.2 (the host's mta-cli is 7.3.0, not admissible; the
 pinned 8.2.1 exists locally only as linux/amd64 inside the ws-080 image, and
 under emulation on the arm64 workstation its Java provider did not start the
 analysis within 21 minutes -- the native run takes about a minute), so MTA
-findings are recorded evidence. Equal plans from recorded evidence are not
+findings are recorded evidence. The driver itself now runs the M1 MTA
+producer twice whenever a CLI resolves (M-7) and grades the claims in its
+report. The statement above is about the 2026-09-26 run. Equal plans from recorded evidence are not
 equal results from a fresh M1 analysis. Planning equality does not authorize
 execution or establish behavioural PASS.
 

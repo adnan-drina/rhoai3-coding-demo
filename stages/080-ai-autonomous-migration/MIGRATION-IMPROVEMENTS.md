@@ -510,6 +510,18 @@ Distinguish three claims:
 | Repeatable transformations | Deterministic recipes produce equivalent patches and no second-application changes; agent-authored exceptions satisfy the same independent behavior contract. Exact LLM text or byte-identical generated timestamps are not required. |
 | Repeatable migration | A clean M1→M5 full-release result, then one confirming run on the same supported inputs, with no harness overlays, manual repairs or Operator rescue. Report measured cost and variation; two successes do not prove universal reliability. |
 
+The measurement is checked in. `qualify-repeatability.py` (build-worklist skill)
+runs the M1 MTA producer on two clean frozen copies (`--source`) and compares
+rule ids and locations; `--build-fresh SOURCE` builds both fresh M1 → M2 roots
+with `rehearse-legacy.sh` and the offline corpus derivations, then compares
+plans and MTA findings; `--patches A B` compares the typed-repair patch digests
+of two independent applications. Source captures are reported NOT-RUN, as is
+MTA when no CLI resolves. `stages/080-ai-autonomous-migration/qualify-release.sh`
+runs the scaffold suites and this driver, then writes `verdict.json`. Each claim
+in the table above is graded MEASURED, PARTIAL, NOT-MEASURED or FAILED, and the
+verdict lists what each claim is missing. Repeatable migration stays
+NOT-MEASURED until the two full runs exist.
+
 Keep qualification and diagnostic spending visible and bounded. If a genuinely
 new defect stops validation, preserve evidence and fix the reusable procedure;
 do not rescue the same run and call it autonomous. Ordinary in-scope product

@@ -35,6 +35,36 @@ Proof levels:
                     logical graph and compatibility-objective membership
                     compared outcome by outcome
 
+  --build-fresh DIR the driver BUILDS the two fresh roots itself: the existing
+                    M1 -> M2 producer sequence (rehearse-legacy.sh: freeze,
+                    build evidence, JDK model, MTA when a CLI is on PATH,
+                    evidence bundle, bootstrap, first verification) run twice
+                    on two clean copies of the frozen source DIR, then the
+                    offline corpus derivations (derive-source-scenarios.py,
+                    both modes); each step's receipt is judged per root, the
+                    roots are compared as --fresh does and, when both ran
+                    MTA, their findings are compared. Source CAPTURES (they
+                    start the source runtime and its database) are named
+                    NOT-RUN, never faked. --producer CMD replaces the
+                    producer (fixtures only; the claim then says so).
+
+  MTA               (producer level, with --source) the M1 MTA producer
+                    (scan-with-mta mta-analyze-legacy.sh, its own ensure_cli
+                    resolution and pins) run on two clean frozen copies; the
+                    semantic findings (rule id, file relative to the
+                    analysed copy, line) compared. NOT-RUN only when no CLI
+                    resolves or ensure_cli refuses it as unusable, with the
+                    reason; a non-admissible CLI is run, compared and named
+                    non-admissible in the claim boundary.
+
+  --patches A B     two INDEPENDENT applications on the same frozen inputs:
+                    their typed-repair records (rhoai3.typed-repair-record/v1
+                    under verification/loop/typed-repair/) compared per
+                    cluster, recipe and target; a deterministic recipe
+                    (catalog implementation.kind typed-repair or
+                    decided-repairs) must stage the identical patch digest
+                    with the same outcome and changed files
+
   check schedule    (recorded-evidence, always run) the check-schedule/v1
                     view (roadmap M-2: each check's kind, owner, verification
                     prerequisites, earliest measurement point, causal order,
@@ -45,15 +75,19 @@ Proof levels:
                     and in reversed order: identical logical ownership,
                     checks, dependencies and budgets, nothing unschedulable
 
-Usage: qualify-repeatability.py [--out FILE] [--keep DIR] [--specimen DIR] [--source DIR] [--fresh A B] [--no-producers]
+Usage: qualify-repeatability.py [--out FILE] [--keep DIR] [--specimen DIR] [--source DIR] [--fresh A B]
+                                [--build-fresh DIR [--producer CMD]] [--patches A B] [--no-producers]
 Exit 0 when no case FAILED (NOT-RUN cases are listed, with their reason).
 """
 from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
+import os
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -536,7 +570,16 @@ def _membership(g: dict) -> dict:
             for n in g["nodes"]} | ({"_budget": comp.get("budget")} if comp else {})
 
 
-def fresh_cases(q: Q, a: Path, b: Path) -> None:
+FRESH_CASE = "two fresh M1 -> M2 derivations of one frozen source"
+BUILT_CASE = "built fresh roots: two M1 -> M2 derivations of one frozen source"
+BUILT_PRODUCERS_CASE = "built fresh roots: M1 -> M2 producers run twice on the frozen source"
+BUILT_MTA_CASE = "MTA CLI in the built fresh roots: two fresh analyses compared"
+MTA_CASE = "MTA CLI on the frozen source: two independent clean copies"
+PATCH_CASE = "typed-repair patches of two independent applications on the same frozen inputs"
+
+
+def fresh_cases(q: Q, a: Path, b: Path, name: str = FRESH_CASE, level: str = "producer-replay (fresh roots)",
+                key: str = "fresh_comparison") -> None:
     """Two INDEPENDENT fresh M1 -> M2 derivations of the same frozen source
     with the same tool and decision pins (producers re-run on each; the
     caller made them). Their requirements, logical graph -- objectives
@@ -555,13 +598,13 @@ def fresh_cases(q: Q, a: Path, b: Path) -> None:
 
     def compare():
         from planner.canonical import digest
-        ca, cb = installed(a, "fresh-a"), installed(b, "fresh-b")
+        ca, cb = installed(a, key + "-a"), installed(b, key + "-b")
         ga, gb = _graph_of(ca, "run-fresh-a", "fresh derivation"), _graph_of(cb, "run-fresh-b", "fresh derivation")
         ra, rb = digest(ga["requirements"]["requirements"]), digest(gb["requirements"]["requirements"])
         pa, pb = PS.graph_projection(ga["graph"]), PS.graph_projection(gb["graph"])
         ma, mb = _membership(ga["graph"]), _membership(gb["graph"])
         diff = sorted(k for k in set(ma) | set(mb) if ma.get(k) != mb.get(k))
-        q.evidence["fresh_comparison"] = {
+        q.evidence[key] = {
             "a": str(a), "b": str(b), "decisions_and_catalogs": "this golden's", "requirements_digest": [ra, rb],
             "logical_graph_digest": [digest(pa), digest(pb)], "policy": (ga["graph"].get("policy") or {}).get("id") if isinstance(ga["graph"].get("policy"), dict) else (ga["graph"].get("policy") or "per-unit"), "objectives": sum(1 for k in ma if k.startswith("objective:")),
             "membership_differences": diff[:40], "equal": ra == rb and pa == pb and not diff}
@@ -569,9 +612,9 @@ def fresh_cases(q: Q, a: Path, b: Path) -> None:
             return FAIL, "fresh derivations differ: requirements %s/%s; outcomes %s" % (ra[:12], rb[:12], diff[:6])
         return PASS, "%d requirements, %d outcomes (%s, %d objective(s)) identical across two fresh derivations" % (
             len(ga["requirements"]["requirements"]), len(ga["graph"]["nodes"]), ga["graph"].get("policy") or "per-unit",
-            q.evidence["fresh_comparison"]["objectives"])
+            q.evidence[key]["objectives"])
 
-    q.case("two fresh M1 -> M2 derivations of one frozen source", "producer-replay (fresh roots)", compare)
+    q.case(name, level, compare)
 
 
 def specimen_cases(q: Q, specimen: Path) -> None:
@@ -726,28 +769,359 @@ def producer_cases(q: Q) -> None:
     if q.source is not None:
         q.case("M1 build + structure producers (capture-build-evidence, JdkModelExtract) on the frozen source: two independent clean copies", "producer-replay",
                lambda: m1_structure_replay(q, q.source))
-    q.case("MTA CLI 8.2 (pinned) on the frozen source: two independent clean copies", "producer-replay", mta_probe)
+    q.case(MTA_CASE, "producer-replay", lambda: mta_probe(q))
 
 
-def mta_probe():
-    """The pinned MTA CLI is admissible only as mta-cli 8.2.x (pins.mta_cli).
-    This driver does not run any other analyzer as a stand-in: a host
-    mta-cli of another version, or none, is NOT-RUN with the version it
-    reports."""
-    cli = shutil.which("mta-cli")
-    if not cli:
-        return NOT_RUN, "no mta-cli on PATH: the pinned MTA CLI 8.2 producer was not executed; MTA findings stay recorded evidence"
+# ---------------------------------------------------------------------------
+# fresh MTA: the M1 MTA producer itself, twice
+# ---------------------------------------------------------------------------
+
+MTA_SCRIPTS = HERMES / "skills/analysis/scan-with-mta/scripts"
+MTA_ANALYZE = MTA_SCRIPTS / "mta-analyze-legacy.sh"
+FREEZE = HERMES / "skills/analysis/freeze-migration-input/scripts/freeze-migration-input.py"
+MTA_TIMEOUT_S = int(os.environ.get("QUALIFY_MTA_TIMEOUT_S") or 2700)
+# mta-analyze-legacy.sh's own refusal when ensure_cli resolves nothing usable
+ENSURE_CLI_REFUSAL = "mta-cli/kantra missing or unusable"
+
+
+def mta_cli_candidates() -> list[str]:
+    """The CLIs mta-analyze-legacy.sh's ensure_cli would probe, in its order:
+    $MTA_CLI_HOME/mta-cli, $KANTRA_HOME/kantra, then kantra and mta-cli on
+    PATH. Presence only; the script's own capability probe decides usability."""
+    found = []
+    for p in (Path(os.environ.get("MTA_CLI_HOME") or "/opt/mta-cli") / "mta-cli",
+              Path(os.environ.get("KANTRA_HOME") or "/projects/.tools/kantra") / "kantra"):
+        if p.is_file() and os.access(str(p), os.X_OK):
+            found.append(str(p))
+    for name in ("kantra", "mta-cli"):
+        w = shutil.which(name)
+        if w and w not in found:
+            found.append(w)
+    return found
+
+
+def _producer_env(base: Path) -> dict:
+    """The M1 producers' environment, contained in the disposable directory:
+    the analyzer's working directory (Equinox writes into its cwd) and the
+    AD-003 heap bound when the caller's environment does not set one."""
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    env.setdefault("MTA_RUN_CWD", str(base / "mta-run"))
+    env.setdefault("JVM_MAX_MEM", "4G")
+    return env
+
+
+def mta_analyze_copy(q: Q, source: Path, label: str) -> dict:
+    """One clean frozen copy analysed by the M1 MTA producer exactly as M1
+    runs it: freeze-migration-input (analysis copy + manifest), then
+    mta-analyze-legacy.sh with the golden's migration.yaml targets, custom
+    rules, canary and pins."""
+    base = q.tmp / ("mta-%s" % label)
+    shutil.rmtree(base, ignore_errors=True)
+    src, root = base / "frozen", base / "root"
+    shutil.copytree(source, src, ignore=shutil.ignore_patterns("target", ".git"))
+    (root / ".hermes").mkdir(parents=True)
+    shutil.copy(HERMES / "pins.json", root / ".hermes/pins.json")
+    shutil.copytree(HERMES / "planning", root / ".hermes/planning")
+    shutil.copy(HERMES.parent / "migration.yaml", root / "migration.yaml")
+    frozen_copy = root / ".derived/frozen-input"
+    f = subprocess.run([sys.executable, str(FREEZE), "--source", str(src), "--root", str(root), "--copy-to", str(frozen_copy)],
+                       capture_output=True, text=True, timeout=600)
+    if f.returncode != 0:
+        return {"label": label, "root": root, "input": frozen_copy, "rc": None, "error": "freeze: " + (f.stdout + f.stderr)[-300:]}
     try:
-        v = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=60)
-        line = next((ln for ln in (v.stdout + v.stderr).splitlines() if ln.lower().startswith("version")), "unknown")
-    except (OSError, subprocess.SubprocessError) as exc:
-        line = "unreadable (%s)" % exc
-    ver = line.split(":", 1)[-1].strip()
-    if not ver.startswith("8.2"):
-        return NOT_RUN, ("the host mta-cli (%s) reports version %s, not the pinned 8.2.x: not admissible, not run as a "
-                         "stand-in; MTA findings stay recorded evidence" % (cli, ver))
-    return NOT_RUN, ("mta-cli %s is present; this driver does not yet execute an MTA analysis replay (bounded: recorded "
-                     "evidence only)" % ver)
+        p = subprocess.run(["bash", str(MTA_ANALYZE), "--root", str(root)], capture_output=True, text=True,
+                           timeout=MTA_TIMEOUT_S, env=_producer_env(base))
+        rc, out = p.returncode, p.stdout + p.stderr
+    except subprocess.TimeoutExpired:
+        rc, out = None, "the analysis exceeded the bound of %d s (QUALIFY_MTA_TIMEOUT_S)" % MTA_TIMEOUT_S
+    return {"label": label, "root": root, "input": frozen_copy, "rc": rc, "tail": out[-600:]}
+
+
+def mta_semantic_findings(findings: Path, input_root: Path) -> list[list]:
+    """The findings as the plan consumes them: (section, rule id, file
+    relative to the analysed copy, line), every incident, sorted. Timestamps,
+    absolute paths, messages and code snippets are not semantic."""
+    doc = load_json(findings)
+    prefixes = sorted({str(input_root).rstrip("/"), os.path.realpath(str(input_root)).rstrip("/")}, key=len, reverse=True)
+    rows = []
+    for section in ("violations", "insights"):
+        for rid, v in sorted((doc.get(section) or {}).items()):
+            incidents = (v.get("incidents") or []) if isinstance(v, dict) else []
+            for inc in (i for i in incidents if isinstance(i, dict)):
+                path = str(inc.get("uri") or "")
+                path = path[len("file://"):] if path.startswith("file://") else path
+                for pre in prefixes:
+                    if path.startswith(pre + "/"):
+                        path = path[len(pre) + 1:]
+                        break
+                try:
+                    line = int(inc.get("lineNumber") or 0)
+                except (TypeError, ValueError):
+                    line = 0
+                rows.append([section, str(rid), path, line])
+    return sorted(rows)
+
+
+def judge_mta_pair(q: Q, runs: list, key: str = "mta_fresh"):
+    """Two fresh MTA analyses: each must have completed (an ok receipt and
+    its findings), and their semantic findings must be equal. ensure_cli
+    refusing every resolved CLI on both copies is NOT-RUN with its reason;
+    any other failure is FAIL."""
+    for r in runs:
+        r["receipt_doc"] = load_json(r["root"] / "evidence/producers/mta.json") if (r["root"] / "evidence/producers/mta.json").is_file() else {}
+        r["findings"] = r["root"] / "evidence/mta-findings.json"
+        r["ok"] = r["receipt_doc"].get("status") == "ok" and r["findings"].is_file()
+    if not any(r["ok"] for r in runs):
+        tails = [r.get("error") or r.get("tail") or "" for r in runs]
+        if all(ENSURE_CLI_REFUSAL in t for t in tails):
+            return NOT_RUN, ("an MTA CLI is present but mta-analyze-legacy.sh's ensure_cli refused it as unusable (its "
+                             "capability probe, e.g. kantra-assert-exec under HUMAN_HOME): %s" % tails[0][-200:])
+    bad = [r for r in runs if not r["ok"]]
+    if bad:
+        return FAIL, "copy %s: the MTA analysis did not complete (rc %s): %s" % (
+            bad[0]["label"], bad[0].get("rc"), (bad[0].get("error") or bad[0].get("tail") or "")[-300:])
+    fa, fb = (mta_semantic_findings(r["findings"], r["input"]) for r in runs)
+    tools_ = [r["receipt_doc"].get("tool") or {} for r in runs]
+    only_a = [x for x in fa if x not in fb][:20]
+    only_b = [x for x in fb if x not in fa][:20]
+    q.evidence[key] = {
+        "roots": [str(r["root"]) for r in runs],
+        "cli": [t.get("binary_realpath") for t in tools_], "version_measured": [t.get("version_measured") for t in tools_],
+        "artifact_sha256": [t.get("artifact_sha256") for t in tools_],
+        "admissible": all(t.get("admissible") for t in tools_), "provenance": sorted({str(t.get("provenance")) for t in tools_}),
+        "incidents": [len(fa), len(fb)], "rules": [len({x[1] for x in fa}), len({x[1] for x in fb})],
+        "semantic_digest": [hashlib.sha256(json.dumps(x).encode()).hexdigest() for x in (fa, fb)],
+        "only_a": only_a, "only_b": only_b, "equal": fa == fb,
+    }
+    if tools_[0].get("artifact_sha256") != tools_[1].get("artifact_sha256"):
+        return FAIL, "the two analyses ran different binaries (%s / %s): not the same pinned producer" % (
+            tools_[0].get("artifact_sha256"), tools_[1].get("artifact_sha256"))
+    if not fa:
+        return FAIL, "both analyses report no incident at all (not even the canary): the analysis is not evidenced"
+    if fa != fb:
+        return FAIL, "the fresh MTA findings differ: %d / %d incidents; only in a %s; only in b %s" % (
+            len(fa), len(fb), json.dumps(only_a[:3]), json.dumps(only_b[:3]))
+    adm = q.evidence[key]["admissible"]
+    return PASS, "%d incidents over %d rules identical across two fresh analyses (%s, %s%s)" % (
+        len(fa), q.evidence[key]["rules"][0], tools_[0].get("version_measured") or "version unmeasured",
+        "admissible" if adm else "NON-ADMISSIBLE",
+        "" if adm else ": " + ", ".join(q.evidence[key]["provenance"]))
+
+
+def mta_probe(q: Q):
+    """The M1 MTA producer on two clean copies of the frozen source (--source).
+    NOT-RUN only when no CLI resolves, or no frozen source was given; a
+    resolved CLI is executed through the producer, whatever its admissibility,
+    and the claim boundary names a non-admissible one."""
+    clis = mta_cli_candidates()
+    if not clis:
+        return NOT_RUN, ("no MTA CLI: none of $MTA_CLI_HOME/mta-cli (default /opt/mta-cli), $KANTRA_HOME/kantra (default "
+                         "/projects/.tools/kantra), kantra or mta-cli on PATH; MTA findings stay recorded evidence")
+    if q.source is None:
+        return NOT_RUN, "an MTA CLI is present (%s) but no frozen source was given (--source DIR): nothing to analyse" % clis[0]
+    return judge_mta_pair(q, [mta_analyze_copy(q, q.source, label) for label in ("a", "b")])
+
+
+# ---------------------------------------------------------------------------
+# --build-fresh: the driver builds the two fresh M1 -> M2 roots
+# ---------------------------------------------------------------------------
+
+REHEARSE = HERE / "rehearse-legacy.sh"
+DERIVE_SCENARIOS = HERMES / "skills/gates/capture-source-oracles/scripts/derive-source-scenarios.py"
+BUILD_TIMEOUT_S = int(os.environ.get("QUALIFY_BUILD_TIMEOUT_S") or 7200)
+# (step, the artefact that proves it ran); a producers/ receipt also carries its status
+M1M2_STEPS = (
+    ("freeze-migration-input", "evidence/producers/freeze.json"),
+    ("capture-build-evidence", "evidence/producers/build.json"),
+    ("inventory-legacy-surface", "evidence/producers/jdk-model.json"),
+    ("scan-with-mta", "evidence/producers/mta.json"),
+    ("assemble-evidence-bundle", "evidence/planning/evidence-bundle.json"),
+    ("bootstrap-destination", "evidence/producers/bootstrap.json"),
+    ("run-verify (work list)", "evidence/planning/worklist.json"),
+)
+REQUIRED_FOR_COMPARISON = ("evidence/planning/evidence-bundle.json", "evidence/planning/worklist.json",
+                           "evidence/entry-point-inventory.json")
+NOT_EXECUTED_HERE = {
+    step: "starts the frozen source's isolated runtime and its per-run database: not executed by this builder; "
+          "the plan comparison holds captures absent on both roots"
+    for step in ("capture-source-scenarios", "qualify-source-captures",
+                 "capture-source-scenarios-enabled", "qualify-source-captures-enabled")}
+
+
+def build_fresh_root(q: Q, source: Path, label: str, producer: list) -> dict:
+    """One fresh root: a clean copy of the frozen source, the producer
+    (rehearse-legacy.sh: the M1 -> M2 producers in M1 order) into an empty
+    root, then the offline corpus derivations of both security modes. Each
+    step is judged by its own artefact, never by the producer's exit."""
+    base = q.tmp / ("built-%s" % label)
+    shutil.rmtree(base, ignore_errors=True)
+    src, root = base / "frozen", base / "root"
+    shutil.copytree(source, src, ignore=shutil.ignore_patterns("target", ".git"))
+    try:
+        p = subprocess.run(producer + ["--legacy", str(src), "--root", str(root)], capture_output=True, text=True,
+                           timeout=BUILD_TIMEOUT_S, env=_producer_env(base))
+        rc, tail = p.returncode, (p.stdout + p.stderr)[-600:]
+    except subprocess.TimeoutExpired:
+        rc, tail = None, "the producer exceeded the bound of %d s (QUALIFY_BUILD_TIMEOUT_S)" % BUILD_TIMEOUT_S
+    steps = {}
+    for step, rel in M1M2_STEPS:
+        f = root / rel
+        if not f.is_file():
+            steps[step] = "absent"
+        elif "/producers/" in rel:
+            try:
+                steps[step] = str(load_json(f).get("status") or "unknown")
+            except (OSError, ValueError):
+                steps[step] = "unreadable"
+        else:
+            steps[step] = "ok"
+    notes = {}
+    for step, extra in (("derive-source-scenarios", []), ("derive-source-scenarios-enabled", ["--security-mode", "enabled"])):
+        if steps["assemble-evidence-bundle"] != "ok":
+            steps[step] = "absent"
+            continue
+        d = subprocess.run([sys.executable, str(DERIVE_SCENARIOS), "--root", str(root)] + extra,
+                           capture_output=True, text=True, timeout=900, env=_producer_env(base))
+        steps[step] = "ok" if d.returncode == 0 else "failed"
+        if d.returncode != 0:
+            notes[step] = (d.stdout + d.stderr).strip()[-300:]
+    return {"label": label, "root": root, "input": root / ".derived/frozen-input", "rc": rc, "tail": tail, "steps": steps,
+            "notes": notes}
+
+
+def build_cases(q: Q, source: Path, producer: list | None = None) -> None:
+    default = producer is None
+    producer = producer or ["bash", str(REHEARSE)]
+    runs = []
+
+    def build():
+        runs.extend(build_fresh_root(q, source, label, producer) for label in ("a", "b"))
+        a, b = runs
+        q.evidence["built_fresh_roots"] = {
+            "source": str(source), "producer": producer, "producer_is_harness_default": default,
+            "roots": [str(a["root"]), str(b["root"])], "producer_rc": [a["rc"], b["rc"]],
+            "steps": {"a": a["steps"], "b": b["steps"]}, "step_notes": {"a": a["notes"], "b": b["notes"]},
+            "not_executed": NOT_EXECUTED_HERE}
+        if a["steps"] != b["steps"]:
+            diff = {k: [a["steps"].get(k), b["steps"].get(k)] for k in a["steps"] if a["steps"].get(k) != b["steps"].get(k)}
+            return FAIL, "the two fresh builds' steps differ: %s" % json.dumps(diff)[:400]
+        missing = [rel for rel in REQUIRED_FOR_COMPARISON if not (a["root"] / rel).is_file()]
+        if missing:
+            return NOT_RUN, "the producers did not reach M2 on this host (missing %s; steps %s): %s" % (
+                ", ".join(missing), json.dumps(a["steps"]), a["tail"][-240:])
+        return PASS, "two roots built by %s: steps %s (identical); not executed here: %s" % (
+            "rehearse-legacy.sh" if default else "a caller-supplied producer", json.dumps(a["steps"]), ", ".join(sorted(NOT_EXECUTED_HERE)))
+
+    q.case(BUILT_PRODUCERS_CASE, "producer-run (built here)", build)
+    if not runs or q.cases[-1]["status"] != PASS:
+        return
+    a, b = runs
+    fresh_cases(q, a["root"], b["root"], name=BUILT_CASE, level="producer-run (built here)", key="built_fresh_comparison")
+
+    def mta():
+        sa, sb = a["steps"]["scan-with-mta"], b["steps"]["scan-with-mta"]
+        if sa == "absent" and sb == "absent":
+            return NOT_RUN, ("no MTA analysis in either root: the producer found no mta-cli or kantra on PATH "
+                             "(rehearse-legacy.sh step 4); the plans compared carry no fresh MTA findings")
+        return judge_mta_pair(q, [a, b], key="built_mta_fresh")
+
+    q.case(BUILT_MTA_CASE, "producer-run (built here)", mta)
+
+
+# ---------------------------------------------------------------------------
+# --patches: typed-repair patches of two independent applications
+# ---------------------------------------------------------------------------
+
+TYPED_REPAIR_DIR = Path("verification/loop/typed-repair")
+TYPED_REPAIR_SCHEMA = "rhoai3.typed-repair-record/v1"
+DETERMINISTIC_KINDS = ("typed-repair", "decided-repairs")
+
+
+def typed_repair_applications(root: Path) -> dict:
+    """cluster|recipe|target -> its attempts in order, each with the outcome,
+    changed files, recipe version, executor and the sha256 of the complete
+    staged patch (out/patch.diff, the root's own path removed). Read from the
+    per-attempt directories the executor writes (record.json beside out/)."""
+    out: dict = {}
+    base = Path(root) / TYPED_REPAIR_DIR
+    prefixes = sorted({str(root).rstrip("/") + "/", os.path.realpath(str(root)).rstrip("/") + "/"}, key=len, reverse=True)
+    for rec_path in sorted(base.glob("*/*/record.json")):
+        try:
+            rec = load_json(rec_path)
+        except (OSError, ValueError):
+            continue
+        if rec.get("schema") != TYPED_REPAIR_SCHEMA:
+            continue
+        attempt = rec_path.parent
+        patch = attempt / "out/patch.diff"
+        text = patch.read_text(encoding="utf-8") if patch.is_file() else ""
+        for pre in prefixes:
+            text = text.replace(pre, "")
+        tail = attempt.name.rsplit("-", 1)[-1]
+        recipe = rec.get("recipe") or {}
+        key = "%s|%s|%s" % (rec.get("cluster"), recipe.get("id"), json.dumps(rec.get("target"), sort_keys=True))
+        out.setdefault(key, []).append((int(tail) if tail.isdigit() else 0, {
+            "recipe": recipe.get("id"), "recipe_version": recipe.get("version"), "operation": recipe.get("operation"),
+            "outcome": rec.get("outcome"), "changed_files": sorted(rec.get("changed_files") or []),
+            "executor_sha256": (rec.get("executor") or {}).get("sha256"),
+            "patch_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest() if text.strip() else None}))
+    return {k: [x for _o, x in sorted(v, key=lambda t: t[0])] for k, v in out.items()}
+
+
+def _final_view(attempts: list) -> dict:
+    """What two applications must agree on: the last attempt's outcome and
+    the patch the last APPLIED attempt staged (with its changed files)."""
+    last = attempts[-1]
+    applied = [x for x in attempts if x["outcome"] == "applied"]
+    return {"outcome": last["outcome"], "recipe_version": last["recipe_version"],
+            "patch_sha256": applied[-1]["patch_sha256"] if applied else None,
+            "changed_files": applied[-1]["changed_files"] if applied else []}
+
+
+def compare_patches(a: Path, b: Path, catalog: dict | None = None) -> dict:
+    a, b = Path(a), Path(b)
+    if catalog is None:
+        cat_path = a / ".hermes/planning/catalogs/compat-mapping.json"
+        catalog = load_json(cat_path if cat_path.is_file() else HERMES / "planning/catalogs/compat-mapping.json")
+    kinds = {k: ((v.get("implementation") or {}).get("kind") if isinstance(v, dict) else None)
+             for k, v in (catalog.get("migration_recipes") or {}).items()}
+    ra, rb = typed_repair_applications(a), typed_repair_applications(b)
+    det, agent, diffs = [], [], []
+    executors = sorted({str(x["executor_sha256"]) for r in (ra, rb) for v in r.values() for x in v})
+    for key in sorted(set(ra) | set(rb)):
+        recipe = key.split("|", 2)[1]
+        if kinds.get(recipe) not in DETERMINISTIC_KINDS:
+            agent.append(key)
+            continue
+        det.append(key)
+        if key not in ra or key not in rb:
+            diffs.append({"key": key, "only_in": "a" if key in ra else "b"})
+            continue
+        va, vb = _final_view(ra[key]), _final_view(rb[key])
+        if va != vb:
+            diffs.append({"key": key, "a": va, "b": vb})
+    return {"a": str(a), "b": str(b), "deterministic": det, "not_compared_agent_or_unclassified": agent,
+            "executors": executors, "differences": diffs, "equal": not diffs,
+            "applied": sum(1 for k in det if k in ra and _final_view(ra[k])["patch_sha256"])}
+
+
+def patch_cases(q: Q, a: Path, b: Path) -> None:
+    def compare():
+        c = compare_patches(a, b)
+        q.evidence["patch_comparison"] = c
+        if not c["deterministic"]:
+            return NOT_RUN, "no typed-repair record of a deterministic recipe in either application (%d other record key(s))" % len(
+                c["not_compared_agent_or_unclassified"])
+        if len(c["executors"]) > 1:
+            return NOT_RUN, "the two applications used different executors (%s): not the same frozen inputs" % ", ".join(
+                x[:12] for x in c["executors"])
+        if not c["equal"]:
+            return FAIL, "deterministic recipe applications differ: %s" % json.dumps(c["differences"][:3])[:400]
+        return PASS, "%d deterministic recipe application(s) identical (%d staged patch digest(s) equal, same outcomes); " \
+                     "%d agent-authored or unclassified record key(s) not compared by patch" % (
+                         len(c["deterministic"]), c["applied"], len(c["not_compared_agent_or_unclassified"]))
+
+    q.case(PATCH_CASE, "recorded applications (caller-supplied roots)", compare)
 
 
 def m1_structure_replay(q: Q, source: Path):
@@ -848,20 +1222,76 @@ def claim_boundary(q: Q) -> dict:
     """What this run's repeatability claim covers, from the cases that ran --
     never wider (round 3): equal plans from RECORDED evidence are not equal
     results from a FRESH M1 analysis, and a producer not executed here is
-    named as such."""
+    named as such. `claims` grades the three M-7 claims (repeatable
+    planning, transformations, migration) MEASURED / PARTIAL / NOT-MEASURED /
+    FAILED with what each is missing."""
     ran = {c["case"]: c["status"] for c in q.cases}
-    fresh = [k for k, v in ran.items() if v == PASS and k.startswith(("M1 build + structure", "MTA CLI"))]
+    fresh = [k for k, v in ran.items() if v == PASS and k.startswith(("M1 build + structure", "MTA CLI", "built fresh roots"))]
     not_run = [k for k, v in ran.items() if v == NOT_RUN]
+    covers = (["planning determinism for FIXED evidence (recorded-evidence cases: synthetic specimens"
+               + (", and the preserved PetClinic M1 evidence" if q.specimen is not None else "") + ")"]
+              + ["fresh producer execution: %s" % k for k in fresh])
+    if ran.get(FRESH_CASE) == PASS:
+        covers.append("equal plans from two caller-supplied fresh roots (their freshness is the caller's claim)")
+    if ran.get(PATCH_CASE) == PASS:
+        covers.append("identical deterministic typed-repair patches from two caller-supplied applications")
+    does_not = ["equal initial plans from a FRESH end-to-end M1 analysis beyond the producers listed as fresh",
+                "live source behaviour, a successful migration, native outcome execution readiness"]
+    for name, key in ((MTA_CASE, "mta_fresh"), (BUILT_MTA_CASE, "built_mta_fresh")):
+        ev = q.evidence.get(key) or {}
+        if ran.get(name) == PASS and not ev.get("admissible"):
+            does_not.append("the pinned MTA CLI 8.2: %s ran a NON-ADMISSIBLE CLI (%s); its repeatability was measured, "
+                            "its admissibility was not" % (name, ", ".join(ev.get("provenance") or [])))
     return {
-        "covers": ["planning determinism for FIXED evidence (recorded-evidence cases: synthetic specimens"
-                   + (", and the preserved PetClinic M1 evidence" if q.specimen is not None else "") + ")"]
-                  + ["fresh producer execution: %s" % k for k in fresh],
-        "does_not_cover": ["equal initial plans from a FRESH end-to-end M1 analysis beyond the producers listed as fresh",
-                           "live source behaviour, a successful migration, native outcome execution readiness"]
-                          + ["not run here: %s" % k for k in not_run],
+        "covers": covers,
+        "does_not_cover": does_not + ["not run here: %s" % k for k in not_run],
+        "claims": _claims(q, ran),
         "initial_analysis_cache": "the initial M2 analysis always rebuilds (no warm-up reuse; run.json warmup.cache "
                                   "not-reused-initial-analysis); routine verification may reuse a matching warm-up",
     }
+
+
+def _claims(q: Q, ran: dict) -> dict:
+    def grade(failed: list, basis: list, missing: list) -> str:
+        return "FAILED" if failed else "MEASURED" if basis and not missing else "PARTIAL" if basis else "NOT-MEASURED"
+
+    planning_cases = (BUILT_PRODUCERS_CASE, BUILT_CASE, BUILT_MTA_CASE, FRESH_CASE, MTA_CASE)
+    m1 = [k for k in ran if k.startswith("M1 build + structure")]
+    failed = [k for k in planning_cases + tuple(m1) if ran.get(k) == FAIL]
+    basis = [k for k in (BUILT_CASE, BUILT_MTA_CASE, FRESH_CASE, MTA_CASE) + tuple(m1) if ran.get(k) == PASS]
+    built = q.evidence.get("built_fresh_roots") or {}
+    missing = []
+    if ran.get(BUILT_CASE) != PASS:
+        missing.append("two fresh M1 -> M2 roots built and compared by this driver (--build-fresh): %s" % (
+            ran.get(BUILT_CASE) or ran.get(BUILT_PRODUCERS_CASE) or "not attempted"))
+    else:
+        if not built.get("producer_is_harness_default"):
+            missing.append("the fresh roots were built by a caller-supplied producer, not the harness's rehearse-legacy.sh")
+        incomplete = {k: v for k, v in ((built.get("steps") or {}).get("a") or {}).items() if v != "ok" and k != "scan-with-mta"}
+        if incomplete:
+            missing.append("complete fresh roots: these M1 -> M2 steps did not succeed on either root: %s" % json.dumps(incomplete))
+    mta = q.evidence.get("built_mta_fresh") or {}
+    if ran.get(BUILT_MTA_CASE) != PASS:
+        missing.append("fresh MTA findings in both built roots: %s" % (ran.get(BUILT_MTA_CASE) or "not attempted"))
+    elif not mta.get("admissible"):
+        missing.append("the ADMISSIBLE pinned MTA CLI 8.2 in the built roots (ran %s)" % ", ".join(mta.get("provenance") or []))
+    planning = {"status": grade(failed, basis, missing), "basis": basis, "failed": failed, "missing": missing,
+                "held_fixed": "source captures (the runtime capture steps are not executed by this driver)"}
+
+    pt = ran.get(PATCH_CASE)
+    transformations = {
+        "status": "FAILED" if pt == FAIL else "PARTIAL" if pt == PASS else "NOT-MEASURED",
+        "basis": [PATCH_CASE] if pt == PASS else [], "failed": [PATCH_CASE] if pt == FAIL else [],
+        "missing": ([] if pt == PASS else ["identical deterministic patches from two independent applications (--patches A B): %s"
+                                           % (pt or "not attempted")])
+                   + ["agent-authored exceptions judged against the same independent behaviour contract in both runs "
+                      "(M4 parity of each run): not compared by this driver",
+                      "second-application no-op: the executor's own recipe tests, not run by this driver"],
+    }
+    migration = {"status": "NOT-MEASURED", "basis": [], "failed": [],
+                 "missing": ["a clean M1 -> M5 full-release run, then one confirming run on the same supported inputs without "
+                             "overlays, manual repairs or Operator rescue (needs the cluster and a live model)"]}
+    return {"repeatable_planning": planning, "repeatable_transformations": transformations, "repeatable_migration": migration}
 
 
 def tools() -> dict:
@@ -873,7 +1303,7 @@ def tools() -> dict:
             return "absent"
     return {"python": platform.python_version(), "java": out(["java", "-version"]), "javac": out(["javac", "-version"]),
             "mvn": out(["mvn", "-v"]) if shutil.which("mvn") else "absent",
-            "mta-cli": shutil.which("mta-cli") or "absent"}
+            "mta-cli": shutil.which("mta-cli") or "absent", "mta_cli_candidates": mta_cli_candidates()}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -885,6 +1315,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--source", default="", help="a FROZEN source tree to run the M1 structure producer on (two clean copies)")
     ap.add_argument("--fresh", nargs=2, default=None, metavar=("ROOT_A", "ROOT_B"),
                     help="two independently derived fresh M1 -> M2 roots of one frozen source to compare")
+    ap.add_argument("--build-fresh", default="", metavar="SOURCE",
+                    help="build two fresh M1 -> M2 roots of this FROZEN source with the harness producers, then compare them")
+    ap.add_argument("--producer", default="", help="--build-fresh producer command (fixtures only; default rehearse-legacy.sh)")
+    ap.add_argument("--patches", nargs=2, default=None, metavar=("ROOT_A", "ROOT_B"),
+                    help="two independent applications on the same frozen inputs: compare their typed-repair patches")
     a = ap.parse_args(argv)
     tmp = Path(a.keep) if a.keep else Path(tempfile.mkdtemp(prefix="qualify-repeatability-"))
     tmp.mkdir(parents=True, exist_ok=True)
@@ -896,6 +1331,10 @@ def main(argv: list[str] | None = None) -> int:
             specimen_cases(q, q.specimen)
         if a.fresh:
             fresh_cases(q, Path(a.fresh[0]).resolve(), Path(a.fresh[1]).resolve())
+        if a.build_fresh:
+            build_cases(q, Path(a.build_fresh).resolve(), shlex.split(a.producer) if a.producer else None)
+        if a.patches:
+            patch_cases(q, Path(a.patches[0]).resolve(), Path(a.patches[1]).resolve())
         if not a.no_producers:
             producer_cases(q)
     finally:

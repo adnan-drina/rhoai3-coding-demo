@@ -121,5 +121,5 @@ diagnostics are measurements; a failed verifier process is a tool failure.
 ## Scripts
 
 - `scripts/build-worklist.sh` — verifier + baseline (`--initial` verification under plan semantics v1)
-- `scripts/qualify-repeatability.py` — Operator/maintainer tool, not a card step: bounded local qualification of the repeatable initial plan in disposable directories (recorded-evidence and producer replay, SYNTHETIC specimens, FakeNative); never against a live run
+- `scripts/qualify-repeatability.py` — Operator/maintainer tool, not a card step: bounded local qualification of the repeatable initial plan in disposable directories (recorded-evidence and producer replay, SYNTHETIC specimens, FakeNative); fresh MTA on two frozen copies (`--source`), two fresh M1 → M2 roots built with `rehearse-legacy.sh` (`--build-fresh`), typed-repair patch comparison of two applications (`--patches`); the report's `claim_boundary.claims` grades the M-7 claims. Aggregated with the suites by `stages/080-ai-autonomous-migration/qualify-release.sh` (platform repo) into `verdict.json`; never against a live run
 - `scripts/rehearse-legacy.sh` — isolated rehearsal without dispatch (`--legacy <checkout> --root <fresh dir>`): M1 producers → bootstrap → first verification → work-list head; SAD v3 §9 exit 5
