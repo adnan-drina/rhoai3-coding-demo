@@ -5,7 +5,7 @@ An eight-file request-boundary objective (three units sharing a response type,
 one requirement spanning two of its files, one requirement on one file, a
 repository contract that waits on it) measured at 92 KiB on the tree:
 
-1. Over the pinned bound (4 files / 40 KiB) it is issued as three ordered
+1. Over the pinned byte bound (40 KiB) it is issued as three ordered
    parts. The parts partition the objective's write set and its obligations
    exactly; each obligation lies in its part's files; a requirement's files
    stay in one part and the requirement is owned and checked there; every
@@ -18,9 +18,12 @@ repository contract that waits on it) measured at 92 KiB on the tree:
    objective once.
 3. Renamed twin: renaming every package, type and file and reordering the
    clusters gives the same partition under the rename mapping.
-4. Below the bound (a three-file objective) the revision is byte-identical to
-   the revision without the split; without a measured tree nothing splits; a
-   single file past the byte bound is not split further.
+4. The bound is BYTES only. The same eight files at 42.8 KB split into two
+   parts; at a few bytes each they do not split (no file-count bound); a
+   15-file 18.5 KB single-unit objective is one card. Below the bound (a
+   three-file objective) the revision is byte-identical to the revision
+   without the split; without a measured tree nothing splits; a single file
+   past the byte bound is not split further.
 5. Native execution (FakeNative board, real git, real native control): a part
    is issued its own files only, a write to another part's file refuses, the
    envelope carries the part and assesses only its files' members, the last
@@ -158,8 +161,8 @@ def check_split(whole: dict, split: dict, sizes: dict[str, int]) -> str:
         if set(p["execution_unit"]["paths"]) != set(p["plan_paths"]) or p["execution_unit"]["bounds"]["files"] != len(p["plan_paths"]):
             return "a part's executable scope is exactly its own files: %s" % p["outcome_id"]
         b = sum(sizes.get(x, 0) for x in p["plan_paths"])
-        if (len(p["plan_paths"]) > CO.SPLIT_MAX_FILES or b > CO.SPLIT_MAX_BYTES) and len(p["plan_paths"]) > 1:
-            return "%s holds %d files / %d bytes, past the bound" % (p["outcome_id"], len(p["plan_paths"]), b)
+        if b > CO.SPLIT_MAX_BYTES and len(p["plan_paths"]) > 1:
+            return "%s holds %d bytes over %d files, past the bound" % (p["outcome_id"], b, len(p["plan_paths"]))
     obs = [set(p["obligations"]) for p in parts]
     if set().union(*obs) != set(obj["obligations"]) or sum(len(x) for x in obs) != len(obj["obligations"]):
         return "the parts must partition the objective's obligations"
@@ -306,12 +309,12 @@ def planning_cases() -> int:
     a, b = derive(small, ssizes), derive(small, None)
     if json.dumps(a, sort_keys=True) != json.dumps(b, sort_keys=True):
         return _fail("a three-file objective under the bound must be byte-identical to the revision without the split")
-    saved = CO.SPLIT_MAX_FILES, CO.SPLIT_MAX_BYTES
+    saved = CO.SPLIT_MAX_BYTES
     try:
-        CO.SPLIT_MAX_FILES, CO.SPLIT_MAX_BYTES = 10 ** 6, 10 ** 12
+        CO.SPLIT_MAX_BYTES = 10 ** 12
         c = derive(small, ssizes)
     finally:
-        CO.SPLIT_MAX_FILES, CO.SPLIT_MAX_BYTES = saved
+        CO.SPLIT_MAX_BYTES = saved
     if json.dumps(a, sort_keys=True) != json.dumps(c, sort_keys=True) or "split" in a["composition"] or \
             any(n.get("split") for n in a["nodes"]):
         return _fail("below the bound the split changes nothing")
@@ -322,12 +325,28 @@ def planning_cases() -> int:
     g = derive(big, sizes_of(big, {"web/Problem.java": 60 * KB}))
     if any(n.get("split") for n in g["nodes"]):
         return _fail("one file past the byte bound is the smallest card there is; it is not split")
-    # the count bound alone splits too (small files)
-    g = derive(w, sizes_of(w, {f: 1 for f in SIZES}))
+    # bytes only: the same eight files at 42.8 KB split into two parts ...
+    s428 = sizes_of(w, {"web/Problem.java": 1536, "web/ItemApi.java": 6144, "web/OrderApi.java": 7168,
+                        "web/CartApi.java": 6144, "web/UserApi.java": 5632, "web/AdminApi.java": 5120,
+                        "web/AuditApi.java": 4915, "web/StockApi.java": 7168})
+    g = derive(w, s428)
     SPLIT_ITEMS[id(g)] = w.items
-    why = check_split(whole, g, sizes_of(w, {f: 1 for f in SIZES}))
-    if why:
-        return _fail("count bound: " + why)
+    why = check_split(whole, g, s428)
+    if why or len(parts_of(g, oid)) != 2:
+        return _fail("eight files at 42.8 KB split into exactly two parts: %s (%d parts)" % (why, len(parts_of(g, oid))))
+    # ... and at a few bytes each they do not split: there is no file-count bound
+    g = derive(w, sizes_of(w, {f: 1 for f in SIZES}))
+    if any(n.get("split") for n in g["nodes"]) or "split" in g["composition"]:
+        return _fail("eight small files under the byte bound are one card: a file count never splits")
+    # a 15-file, 18.5 KB single-unit objective (one annotation across many small files) is one card
+    many = CO_T.World()
+    files = ["cfg/Profile%02d.java" % i for i in range(15)]
+    many.unit("u:many", "org.springframework.context.annotation.Profile", "annotation", files, 0,
+              types=[fqn(f) for f in files])
+    msizes = sizes_of(many, {f: 1263 for f in files})          # 18945 bytes = 18.5 KiB
+    a, b = derive(many, msizes), derive(many, None)
+    if any(n.get("split") for n in a["nodes"]) or json.dumps(a, sort_keys=True) != json.dumps(b, sort_keys=True):
+        return _fail("a 15-file 18.5 KB objective is one card, byte-identical to the unsplit revision")
     return 0
 
 
@@ -451,7 +470,7 @@ def main() -> int:
     print("OK: objective split (an 8-file, 92 KiB objective is issued as 3 ordered parts that partition its files, "
           "obligations and requirements, carry its descriptor, checks and budget family, follow each other with the "
           "last keeping its id and verifying the whole; everything that waited on it waits on every part; acyclic, no "
-          "new schedule finding, counted once; the renamed twin splits identically; a 3-file objective under the bound "
+          "new schedule finding, counted once; the renamed twin splits identically; bytes only: 8 files at 42.8 KB give 2 parts, 8 tiny files and a 15-file 18.5 KB unit stay one card; a 3-file objective under the bound "
           "is byte-identical, an unmeasured tree and a single oversized file are not split; natively each part is "
           "issued and judged on its own files, the last on the whole objective, and the account counts it once)")
     return 0
