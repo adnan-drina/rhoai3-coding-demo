@@ -1343,7 +1343,8 @@ class LifecycleReconciliation(unittest.TestCase):
         self.assertEqual(NC.retire_issuance(r.root, r.board, by="operator", reason="again")["retired"], None)
         self.assertEqual(len(r.board.records(tid, "issuance-retired")), 1)
 
-    def test_a_stopped_runs_edits_inside_its_issue_are_set_aside_at_the_next_issue(self):
+    def test_a_stopped_runs_edits_inside_its_issue_are_its_cards_candidate_at_the_next_issue(self):
+        """D-1 (B11): the next run of the SAME card continues them -- kept on the tree, never set aside."""
         r = self.r
         tid, run, iss = r.issue("build:rk:pom")
         r.edit(iss["allowed_paths"][0], "<project>left by a stopped worker</project>\n")
@@ -1351,11 +1352,10 @@ class LifecycleReconciliation(unittest.TestCase):
         run2, lock2 = r.native.claim(tid)
         again = NC.issue(r.root, r.board, task_id=tid, run_id=run2, claim_lock=lock2)   # v29 run 76: no drift refusal
         self.assertEqual(again["outcome_id"], "build:rk:pom")
-        ab = r.board.records(tid, NC.ABANDONED)
-        self.assertEqual((len(ab), ab[0]["run"], ab[0]["paths"]), (1, run, [iss["allowed_paths"][0]]))
-        self.assertIsNotNone(r.board.attachment(tid, ab[0]["attachment"]))
-        self.assertEqual(git(r.root, "status", "--porcelain", "--", iss["allowed_paths"][0]), "")
-        self.assertIsNone(NC.parked_pending(r.board, tid))                 # evidence, never a candidate to restore
+        self.assertEqual(again["candidate_kept"]["paths"], [iss["allowed_paths"][0]])
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
+        self.assertIn("stopped worker", (r.root / iss["allowed_paths"][0]).read_text())
+        self.assertEqual(again["baseline_tree"], NC.commit_product_tree(r.root, NC._head(r.root)))   # never the baseline
         # control: an edit outside what the stopped run was issued is still the drift refusal
         r.native.end_run(tid, "ready", "gave_up")
         run3, lock3 = r.native.claim(tid)
@@ -1426,7 +1426,8 @@ class LifecycleReconciliation(unittest.TestCase):
         r.native.end_run(tid, "ready", "gave_up")                          # no terminator ran
         run, lock = r.native.claim(tid)
         first = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
-        self.assertEqual([a["run"] for a in r.board.records(tid, NC.ABANDONED)], [old])   # the old run's leftovers
+        self.assertEqual(first["candidate_kept"]["run"], old)              # D-1: the old run's leftovers are continued
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
         import native_gate as NG
         from planner.paths import LOOP_ISSUED
         mirror_layout(r.root)
@@ -1454,7 +1455,7 @@ class LifecycleReconciliation(unittest.TestCase):
             self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
             self.assertEqual((r.root / rel).read_text(), live)               # byte-identical
         self.assertEqual(json.loads((r.root / LOOP_ISSUED).read_text())["continuations"], proj["continuations"])
-        self.assertEqual([a["run"] for a in r.board.records(tid, NC.ABANDONED)], [old])   # nothing new attributed
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])           # nothing attributed to anyone
         self.assertEqual(len([x for x in r.board.records(tid, "issue") if x["run"] == run]), 1)
         # an edit outside what this run was issued: the drift refusal, and still nothing is set aside
         r.edit("src/main/java/com/acme/shop/Unrelated.java", "class Unrelated {}\n")
@@ -1462,7 +1463,7 @@ class LifecycleReconciliation(unittest.TestCase):
             NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=True)
         self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
         self.assertEqual((r.root / rel).read_text(), live)
-        self.assertEqual(len(r.board.records(tid, NC.ABANDONED)), 1)
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
 
     def test_leftovers_of_a_run_not_proven_ended_are_not_abandoned(self):
         r = self.r
