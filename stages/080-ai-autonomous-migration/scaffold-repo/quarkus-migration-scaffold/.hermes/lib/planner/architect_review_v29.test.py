@@ -59,8 +59,9 @@ class AbandonedCandidate(unittest.TestCase):
         r = self.r
         tid, old, rel = self.stopped_predecessor()
         run, lock = r.native.claim(tid)
-        NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)   # archives the predecessor's
-        self.assertEqual([x["run"] for x in r.board.records(tid, NC.ABANDONED)], [old])
+        got = NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)   # D-1: continues the predecessor's
+        self.assertEqual(got["candidate_kept"]["run"], old)
+        self.assertEqual(r.board.records(tid, NC.ABANDONED), [])
         live = "<project>legitimate current-run repair</project>\n"
         r.edit(rel, live)
         # issue's own rule is unchanged: a re-issue over unjudged edits refuses ISSUE_BASELINE_DRIFT (it never
@@ -70,11 +71,16 @@ class AbandonedCandidate(unittest.TestCase):
                 NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock, replay_unchanged=replay)
             self.assertEqual(cm.exception.code, "ISSUE_BASELINE_DRIFT")
             self.assertEqual((r.root / rel).read_text(), live)
-            self.assertEqual([x["run"] for x in r.board.records(tid, NC.ABANDONED)], [old])   # attribution unchanged
+            self.assertEqual(r.board.records(tid, NC.ABANDONED), [])   # attributed to nobody else
 
     def test_a_proven_predecessor_candidate_is_archived_before_restoration(self):
         r = self.r
         tid, old, rel = self.stopped_predecessor("<project>abandoned bytes</project>\n")
+        # D-1: the same card continues a predecessor's candidate on its own baseline; once HEAD has moved under
+        # it, the candidate is no longer one against this tree and is archived as before
+        (r.root / "OPERATOR-NOTE.txt").write_text("unrelated commit\n")
+        git(r.root, "add", "OPERATOR-NOTE.txt")
+        git(r.root, "commit", "-qm", "unrelated")
         run, lock = r.native.claim(tid)
         NC.issue(r.root, r.board, task_id=tid, run_id=run, claim_lock=lock)
         rec = r.board.records(tid, NC.ABANDONED)[0]

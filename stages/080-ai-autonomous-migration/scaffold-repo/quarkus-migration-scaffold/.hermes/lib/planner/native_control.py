@@ -995,7 +995,7 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         recover_accept(root, board, task_id=task_id, skip_run=run_id)
     pending = _open_pending(board, task_id)
     committed = commit_product_tree(root, head) if head else ""
-    in_progress = None
+    in_progress = kept = None
     if committed and tree != committed and not (pending and pending.get("candidate") == tree):
         # V29-3: a REJECTED candidate whose revert was interrupted (the worker was stopped between the
         # native reject record and the restore) is exactly the judged bytes: set aside onto the card that
@@ -1010,9 +1010,15 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
         in_progress = _in_progress_issue(root, board, task_id=task_id, run_id=run_id, head=head)
         if in_progress is not None:
             tree = committed
-        # a run the runtime stopped left its unjudged edits: set them aside as evidence (v29 run 75)
-        elif park_abandoned(root, board, task_id=task_id, run_id=run_id):
-            tree = _product_tree(root)
+        else:
+            # D-1 (B11): a stopped run of THIS card left its unjudged edits: they stay on the tree as this card's
+            # candidate, measured against HEAD's tree (never blessed as the baseline); the brief hands them over
+            kept = own_leftover(root, board, task_id=task_id, run_id=run_id) if role == "repair" else None
+            if kept is not None:
+                tree = committed
+            # anyone else's stopped run left its unjudged edits: set them aside as evidence (v29 run 75, H-15)
+            elif park_abandoned(root, board, task_id=task_id, run_id=run_id):
+                tree = _product_tree(root)
     if in_progress is None and committed and tree != committed and not (pending and pending.get("candidate") == tree):
         raise Refusal("ISSUE_BASELINE_DRIFT", "the product tree differs from HEAD %s and is not the retained candidate of %s; "
                       "unexplained edits are not blessed" % (head[:12], oid))
@@ -1095,8 +1101,20 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
             allowed = sorted(set(allowed) | amended_paths(board, task_id, cluster))
         elif satisfied is None and not (unit and unit.get("refusal")):
             satisfied, unsatisfied = _satisfied(root, board, run, plan, node, worklist, tree, head)
+    set_aside = None
+    if kept is not None and not (cluster and set(kept["paths"]) <= set(allowed)):
+        # D-1: a kept candidate must lie inside what THIS issue grants. Proven ownership covers the stopped run's
+        # write set; when the new issue grants a different one (the work list moved) or nothing (satisfied, not
+        # open), advance.py would reject the edits outside it as out of scope and spend an attempt, so they are
+        # set aside as evidence exactly as before D-1 -- the conservative choice: never lost, never judged
+        set_aside = dict(_stash(root, board, task_id=task_id, run_id=kept["run"], head=head, changed=kept["paths"],
+                                kind=ABANDONED), run=kept["run"], window=kept["window"],
+                         why="outside this issue's write set: %s" % ", ".join(sorted(set(kept["paths"]) - set(allowed))[:4]))
+        kept = None
     fields = dict(outcome_id=oid, role=role, cluster=cluster, allowed_paths=allowed, baseline_commit=head, baseline_tree=tree,
                   budget_key=budget["key"], revision=int(plan["revision"]))
+    if kept is not None:
+        fields["candidate_kept"] = {"from_run": kept["run"], "paths": kept["paths"]}
     if unit and isinstance(unit.get("verification"), dict):
         # the issued verification scope is recorded ON the native issue: acceptance judges against it
         fields["verification"] = unit["verification"]
@@ -1134,7 +1152,15 @@ def issue(root: Path, board: Board, *, task_id: str, run_id: int, claim_lock: st
                "recorded since), so nothing new was recorded. To inspect it, read verification/loop/issued.json or run "
                "brief.py; issuing again changes nothing.%s %s" % (
                    seq, " Your edits in progress are kept as they are." if in_progress is not None else "", nxt)).strip()
-    return {"issue_id": seq, "replayed": replayed, "in_progress": in_progress is not None, "next": nxt, "satisfied": satisfied, "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
+    if kept is not None:
+        nxt = ("CANDIDATE KEPT: run %d of this card stopped with unjudged edits of %s; they stay on the tree as this "
+               "card's candidate. Run brief.py: its candidate_on_tree names the one next action. %s"
+               % (kept["run"], ", ".join(kept["paths"][:4]) + (" (+%d)" % (len(kept["paths"]) - 4) if len(kept["paths"]) > 4 else ""),
+                  nxt)).strip()
+    return {"issue_id": seq, "replayed": replayed, "in_progress": in_progress is not None, "next": nxt, "satisfied": satisfied,
+            "candidate_kept": dict(kept, window=list(kept["window"])) if kept is not None else None,
+            "candidate_set_aside": set_aside,
+            "task_id": task_id, "run_id": int(run_id), "outcome_id": oid, "role": role,
             "cluster": cluster, "allowed_paths": allowed, "budget": budget, "retained_candidate": bool(pending),
             "objective": objective,
             "planned_unit": (dict(unit, owed=unit.get("owed") or [], bounds=unit.get("bounds") or {},
@@ -2918,9 +2944,10 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     """v29 run 75: a worker the runtime STOPPED (a loop guard's gave_up, a
     crash, a timeout) runs no terminator, so its unjudged edits stay in the
     shared tree and the next issue refuses ISSUE_BASELINE_DRIFT until someone
-    cleans up by hand. The next issue of the same card sets them aside instead
-    -- as evidence (an attachment and an ``abandoned-candidate`` record), never
-    as a candidate to restore -- when, and only when, every changed product
+    cleans up by hand. The next issue sets them aside instead -- as evidence
+    (an attachment and an ``abandoned-candidate`` record), never as a
+    candidate to restore -- unless they are the issuing card's own continuable
+    candidate (own_leftover, D-1 below) -- when, and only when, every changed product
     path lies inside what the card's most recent ENDED run was issued, and no
     candidate of the card is retained. Anything else stays the drift refusal:
     an edit no ended run of this card was issued is not this card's to discard.
@@ -2939,18 +2966,18 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     and only when the native run table shows the predecessor ENDED, the
     current run started after it, and every changed file was last written
     inside the predecessor's run window. A deletion carries no time, and any
-    missing fact leaves the tree untouched for the drift refusal."""
+    missing fact leaves the tree untouched for the drift refusal.
+
+    D-1 (fix-until-green B11): the issue first asks own_leftover whether the
+    edits are this card's own continuable candidate; only when they are not
+    (HEAD moved, a parked candidate, a write set that no longer covers them)
+    does this set the card's own leftovers aside."""
     root = Path(root)
-    records = board.records(task_id, "issue")
-    if any(int(r.get("run") or 0) == int(run_id) for r in records):
-        return None                       # this run has been issued: the tree's edits are its own
-    head, changed = _changed_vs_head(root)
-    if not changed or _open_pending(board, task_id) is not None:
+    facts = _transition(root, board, task_id, run_id)
+    if facts is None:
         return None
-    cur = board.native.run(int(run_id)) or {}
-    if not cur.get("started_at"):
-        return None
-    own = _abandoned_by(root, board, task_id, changed, float(cur["started_at"]), before_run=int(run_id))
+    head, changed, started = facts
+    own = _abandoned_by(root, board, task_id, changed, started, before_run=int(run_id))
     if own is not None:
         return dict(_stash(root, board, task_id=task_id, run_id=own["run"], head=head, changed=sorted(changed), kind=ABANDONED),
                     run=own["run"], window=own["window"])
@@ -2962,7 +2989,7 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
         other = str(row.get("id") or "")
         if not other or other == task_id or _open_pending(board, other) is not None:
             continue
-        got = _abandoned_by(root, board, other, changed, float(cur["started_at"]))
+        got = _abandoned_by(root, board, other, changed, started)
         if got is not None:
             owners.append((other, got))
     if len(owners) != 1:
@@ -2970,6 +2997,43 @@ def park_abandoned(root: Path, board: Board, *, task_id: str, run_id: int) -> di
     other, got = owners[0]
     return dict(_stash(root, board, task_id=other, run_id=got["run"], head=head, changed=sorted(changed), kind=ABANDONED),
                 run=got["run"], window=got["window"], owner_task=other)
+
+
+def _transition(root: Path, board: Board, task_id: str, run_id: int) -> tuple[str, list[str], float] | None:
+    """(HEAD, changed product paths, the current run's start) on the transition into ``run_id`` -- before its
+    first issue, with edits on the tree and no retained candidate of the card. None otherwise."""
+    if any(int(r.get("run") or 0) == int(run_id) for r in board.records(task_id, "issue")):
+        return None                       # this run has been issued: the tree's edits are its own
+    head, changed = _changed_vs_head(Path(root))
+    if not changed or _open_pending(board, task_id) is not None:
+        return None
+    cur = board.native.run(int(run_id)) or {}
+    if not cur.get("started_at"):
+        return None
+    return head, changed, float(cur["started_at"])
+
+
+def own_leftover(root: Path, board: Board, *, task_id: str, run_id: int) -> dict[str, Any] | None:
+    """D-1 (fix-until-green B11, v12 t_e5c9a129): a run the runtime stopped leaves its unjudged edits on the
+    tree, and the next run of the SAME card continues them -- its brief hands them over as candidate_on_tree.
+    Setting them aside here made every retry start over (the post-v32 qualification: 7 controller edits).
+
+    The proof is park_abandoned's, unchanged (_abandoned_by: this card's most recent ENDED issued run, the
+    current run started after it, every changed path inside what that run was issued and written inside its
+    window), plus one fact a continuation needs: HEAD is still the baseline that run was issued at, so the
+    edits are a candidate against the tree they were made on. Also refused while the card holds a parked
+    candidate (restore-parked would write over them). None -> park_abandoned decides, exactly as before."""
+    facts = _transition(root, board, task_id, run_id)
+    if facts is None:
+        return None
+    head, changed, started = facts
+    own = _abandoned_by(root, board, task_id, changed, started, before_run=int(run_id))
+    if own is None or parked_pending(board, task_id) is not None:
+        return None
+    last = [r for r in board.records(task_id, "issue") if int(r.get("run") or 0) == own["run"]][-1]
+    if str(last.get("baseline_commit") or "") != head:
+        return None                       # HEAD moved under the stopped run: not a candidate on this baseline
+    return {"run": own["run"], "window": own["window"], "paths": sorted(changed), "head": head}
 
 
 def _abandoned_by(root: Path, board: Board, owner: str, changed: list[str], successor_started: float,

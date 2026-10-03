@@ -193,6 +193,14 @@ M3 cards and recovery (after v20, 2026-09-27):
   written inside that run's window, and the issuing run started after it) and
   sets them aside onto the single proven owner; none or two owners stay the
   `ISSUE_BASELINE_DRIFT` refusal.
+- **A stopped card's leftovers are its own next run's candidate** (D-1,
+  post-v32 qualification; fix-until-green B11). When the issuing run's card is
+  the proven owner (the same proof), HEAD is still the baseline the stopped run
+  was issued at, and every leftover path lies in this issue's write set, the
+  issue keeps them on the tree (`candidate_kept`, measured against HEAD's tree,
+  never blessed as the baseline) and the brief hands them over as
+  `candidate_on_tree`. A moved HEAD, a parked candidate of the card, or a write
+  set that no longer covers them sets them aside as before.
 - **A parked or set-aside candidate takes its reports with it** (H-19). Restoring
   the tree to HEAD also restores the accepted tool reports and parity comparison
   (`restore_reports`, as a revert does), so a later checkpoint never snapshots a
