@@ -50,9 +50,9 @@ wait on and block that owner.
 
 Split for capacity (``split-large-objectives/v1``, split_large_objectives). A
 finding objective is still composed, bounded and conserved whole. When its
-final write set holds more than SPLIT_MAX_FILES files or more than
-SPLIT_MAX_BYTES bytes, measured on the tree at planning time (``file_sizes``;
-never a name or a pattern), it is issued as ordered PARTS, one card each: a
+final write set holds more than SPLIT_MAX_BYTES bytes, measured on the tree
+at planning time (``file_sizes``; never a file count, a name or a pattern),
+it is issued as ordered PARTS, one card each: a
 part owns the obligations located in its files and the requirements whose
 files it holds (a requirement's files, and requirements linked by
 ``dependencies``, are never separated), and its checkpoint discharges exactly
@@ -62,8 +62,8 @@ checkpoint judges the WHOLE objective again (every admitted identity gone,
 every constituent member assessed) -- the existing objective-completion
 mechanism. Every part carries the objective's descriptor, class checks and
 budget family; every node that waited on the objective waits on all its
-parts; the plan counts the objective once. Below both bounds (or without a
-measured tree) the revision is byte-identical.
+parts; the plan counts the objective once. At or below the bound (or without
+a measured tree) the revision is byte-identical.
 """
 from __future__ import annotations
 
@@ -76,15 +76,19 @@ POLICY = "compatibility-objectives/v1"
 # the same prefixes native_control.RUNTIME_CHECK_PREFIXES defers (asserted equal in the test)
 LATER_CHECK_PREFIXES = ("parity:", "behavior:", "gate:package", "gate:augmentation", "gate:startup")
 MAX_FILES, MAX_SITES, MAX_SYMBOLS, MAX_FRAGMENT_SYMBOLS = 20, 160, 8, 16
-# split-large-objectives/v1: the largest write set ONE card is issued. Evidence
-# (2026-10-02): an 8-file request-boundary objective crashed three times
-# (v31) and stalled at 121K prompt tokens rewriting whole controllers (v32) on
-# Qwen 3.6 (110000-token declared context), while Qwen 3.8 finished it in
-# 654 s (v30): capacity, not correctness. 4 files is half the file count
-# that failed; 40 KiB is about 10K tokens to read once (~4 bytes a token), so
-# a read, a whole-file rewrite and a re-read stay near a third of the window.
+# split-large-objectives/v1: the largest write set ONE card is issued, in BYTES
+# only. Evidence (2026-10-02): the 8-file, 42.8 KB request-boundary objective
+# crashed three times (v31) and stalled at 121K prompt tokens rewriting whole
+# controllers (v32) on Qwen 3.6 (110000-token declared context), while Qwen 3.8
+# finished it in 654 s (v30): capacity, not correctness. The window holds the
+# bytes a worker reads and rewrites, not a file count: v32 finished the
+# 15-file, 18.5 KB Profile unit in one checkpoint. 40 KiB is about 10K tokens
+# to read once (~4 bytes a token), so a read, a whole-file rewrite and a
+# re-read stay near a third of the window. There is deliberately no file-count
+# bound (qualification on the v32 plan: a 4-file bound split that Profile unit
+# into 4 sequential cards for nothing).
 SPLIT_POLICY = "split-large-objectives/v1"
-SPLIT_MAX_FILES, SPLIT_MAX_BYTES = 4, 40 * 1024
+SPLIT_MAX_BYTES = 40 * 1024
 PARITY_GENERATED_BODY = "PARITY_GENERATED_BODY"
 # check -> what its prerequisite set is read from (the first explicit table;
 # design §7.2). "files": owners of obligations still open in the
@@ -909,7 +913,7 @@ def split_large_objectives(nodes: list[dict[str, Any]], *, atoms: dict[str, dict
         paths = sorted(set(n.get("plan_paths") or []) | req_paths | {f for a in comp for f in a["writable"]})
         size = {p: int(file_sizes.get(p) or 0) for p in paths}
         total = sum(size.values())
-        if len(paths) <= SPLIT_MAX_FILES and total <= SPLIT_MAX_BYTES:
+        if total <= SPLIT_MAX_BYTES:
             out.append(n)
             continue
         groups = _split_groups(paths, reqs, reqrows)
@@ -921,7 +925,7 @@ def split_large_objectives(nodes: list[dict[str, Any]], *, atoms: dict[str, dict
         cur: list[str] = []
         for i in order:
             g = groups[i]
-            if cur and (len(cur) + len(g) > SPLIT_MAX_FILES or sum(size[p] for p in cur + g) > SPLIT_MAX_BYTES):
+            if cur and sum(size[p] for p in cur + g) > SPLIT_MAX_BYTES:
                 parts.append(cur)
                 cur = []
             cur = cur + g
@@ -943,7 +947,7 @@ def split_large_objectives(nodes: list[dict[str, Any]], *, atoms: dict[str, dict
         base = _s((fams.get(fam) or {}).get("title")) if fam and len(cons) > 1 else _s(n.get("subject"))
         identities = {ob: _s(items.get(ob, {}).get("identity")) or ob for ob in n.get("obligations") or []}
         summary.append({"objective": oid, "parts": list(ids), "files": len(paths), "bytes": total,
-                        "limits": {"files": SPLIT_MAX_FILES, "bytes": SPLIT_MAX_BYTES}})
+                        "limits": {"bytes": SPLIT_MAX_BYTES}})
         split_of[oid] = list(ids)
         for k, part in enumerate(parts):
             last = k == total_n - 1
@@ -984,7 +988,7 @@ def split_large_objectives(nodes: list[dict[str, Any]], *, atoms: dict[str, dict
             p["split"] = {"policy": SPLIT_POLICY, "objective": oid, "part": k + 1, "of": total_n, "parts": list(ids),
                           "paths": sorted(part), "bytes": sum(size[x] for x in part), "verifies": verifies,
                           "measured": {"files": len(paths), "bytes": total},
-                          "limits": {"files": SPLIT_MAX_FILES, "bytes": SPLIT_MAX_BYTES}}
+                          "limits": {"bytes": SPLIT_MAX_BYTES}}
             # the part's execution scope: its own files; its own obligations' identities -- or, for the
             # last part, every identity of the objective and every constituent member (the whole objective)
             kids = comp if last else [a for a in comp if (set(a["writable"]) & mine) or (set(a["items"]) & set(obs[k]))]

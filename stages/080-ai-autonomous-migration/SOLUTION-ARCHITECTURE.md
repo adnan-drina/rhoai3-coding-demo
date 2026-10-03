@@ -436,9 +436,11 @@ into objectives using the versioned `objective_families` of
   spending budget, and an independent objective proceeds.
 - **Split for capacity** (`split-large-objectives/v1`). Composition and its
   bound are unchanged; a composed or single-unit finding objective whose final
-  write set holds more than 4 files or 40 KiB on the M2 tree is then issued
-  as ordered parts, one card per part (v31/v32: Qwen 3.6 crashed or stalled on
-  one 8-file card that Qwen 3.8 finished in 654 s). Parts partition the files,
+  write set holds more than 40 KiB on the M2 tree is then issued as ordered
+  parts of at most 40 KiB, one card per part (v31/v32: Qwen 3.6 crashed or
+  stalled on one 8-file, 42.8 KB card that Qwen 3.8 finished in 654 s). The
+  bound is bytes only: the window holds what a worker reads and rewrites, and
+  v32 finished a 15-file, 18.5 KB unit in one checkpoint. Parts partition the files,
   the obligations (by their file) and the requirements (a requirement's files
   stay in one part); the last part keeps the objective's id, waits on every
   part and re-judges the whole objective. Dependents wait on every part; the
