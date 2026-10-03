@@ -606,7 +606,7 @@ def fresh_cases(q: Q, a: Path, b: Path, name: str = FRESH_CASE, level: str = "pr
         diff = sorted(k for k in set(ma) | set(mb) if ma.get(k) != mb.get(k))
         q.evidence[key] = {
             "a": str(a), "b": str(b), "decisions_and_catalogs": "this golden's", "requirements_digest": [ra, rb],
-            "logical_graph_digest": [digest(pa), digest(pb)], "policy": (ga["graph"].get("policy") or {}).get("id") if isinstance(ga["graph"].get("policy"), dict) else (ga["graph"].get("policy") or "per-unit"), "objectives": sum(1 for k in ma if k.startswith("objective:")),
+            "logical_graph_digest": [digest(pa), digest(pb)], "policy": (ga["graph"].get("policy") or {}).get("id") if isinstance(ga["graph"].get("policy"), dict) else (ga["graph"].get("policy") or "per-unit"), "objectives": sum(1 for k in ma if k.startswith("objective:") and "/part:" not in k),
             "membership_differences": diff[:40], "equal": ra == rb and pa == pb and not diff}
         if ra != rb or pa != pb or diff:
             return FAIL, "fresh derivations differ: requirements %s/%s; outcomes %s" % (ra[:12], rb[:12], diff[:6])

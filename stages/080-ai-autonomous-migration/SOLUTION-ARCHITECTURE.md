@@ -434,6 +434,16 @@ into objectives using the versioned `objective_families` of
   `advance.py` rebuilds and compares that envelope before judging each
   constituent with its own assessor. A blocked objective parks without
   spending budget, and an independent objective proceeds.
+- **Split for capacity** (`split-large-objectives/v1`). Composition and its
+  bound are unchanged; a composed or single-unit finding objective whose final
+  write set holds more than 4 files or 40 KiB on the M2 tree is then issued
+  as ordered parts, one card per part (v31/v32: Qwen 3.6 crashed or stalled on
+  one 8-file card that Qwen 3.8 finished in 654 s). Parts partition the files,
+  the obligations (by their file) and the requirements (a requirement's files
+  stay in one part); the last part keeps the objective's id, waits on every
+  part and re-judges the whole objective. Dependents wait on every part; the
+  plan and the progress account count the objective once; below the bound
+  the plan is byte-identical.
 
 Borrowed from OpenRewrite/Moderne as patterns; no recipe engine composes objectives (the one reused OpenRewrite component is the §7.3 executor, which edits a single issued unit and composes nothing):
 declarative, versioned composition metadata; preconditions (applicability)

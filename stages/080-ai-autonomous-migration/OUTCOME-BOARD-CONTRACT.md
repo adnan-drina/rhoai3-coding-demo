@@ -214,6 +214,25 @@ M3 cards and recovery (after v20, 2026-09-27):
   `schedule-settled` record follows the routing. The review/complete gate
   refuses a positive acceptance whose schedule is not settled, and
   `evaluate_recovered` settles one interrupted between the two.
+- **A large objective is issued in parts** (`split-large-objectives/v1`,
+  `compatibility_objectives.split_large_objectives`). An objective whose final
+  write set holds more than 4 files or more than 40 KiB, measured on the tree
+  at M2 (`objective_inputs` `file_sizes`), is published as ordered parts, one
+  card each: v31/v32 on Qwen 3.6 crashed or stalled on an 8-file
+  request-boundary card that v30 on Qwen 3.8 finished, a capacity limit. A
+  part owns the obligations in its files and the requirements whose files it
+  holds (a requirement's files and linked requirements stay together), and its
+  issue grants only its files; its checkpoint judges its own identities and the
+  members in its files. Parts run leaf-first, each after the one before. The
+  last part keeps the objective's id and clusters, waits on every earlier part
+  and is issued every identity of the objective: its checkpoint judges the whole
+  objective again (the existing objective completion). Every node that waited on
+  the objective waits on every part; parts share the objective's descriptor,
+  class checks and budget family; the progress account counts the objective
+  once (its last part). Below both bounds the plan is byte-identical. A part
+  that must change a type another part's file uses is refused
+  `INTRODUCED_COMPILE_DIAGNOSTIC` unless the constituent's sealed symbols explain
+  the diagnostic: the brief tells the part to keep shared members stable.
 - **Repeated refusal.** The third identical `native_gate.py` refusal in one
   run parks that run's candidate and answers `REPEATED_REFUSAL`. K2 then
   refuses every tool except `kanban_block` for that run.
@@ -242,6 +261,7 @@ observers are never acceptance gates.
 |---|---|
 | `.hermes/lib/planner/native_board.test.py` (22) | synthetic board with the pinned review/dependency semantics, real git, the real classifier, the real K2 hook |
 | `.hermes/lib/planner/native_m3_recovery.test.py` (11) | the M3 recovery rules above on the same synthetic board; also passes under the worker's `python3` (3.9) in the ws-080 image |
+| `.hermes/lib/planner/objective_split.test.py` | the split of an 8-file objective and its renamed twin: partition, requirement placement, dependencies, counted once, byte-identical below the bound; each part issued and judged on the same synthetic board |
 | `.hermes/lib/planner/resolved_context.test.py` | the resolved context on the migration specimen and its renamed twin: inactive profile, generated DTO, wrong-tree rejection, explicit unknowns |
 | Historical `test_native_control.py` (36 checks; retired suite in Git history) | the ws-080 image: real `kanban_db` lifecycle, real `hermes kanban` CLI, the golden's `native_gate.py` under the worker's `python3` (3.9), the real K2 hook. No model, no dispatcher loop, no cluster |
 | `outcome-board-hooks.test.py`, `app-migration-template.test.py`, pipeline `provision-migration-run.test.py` | platform side |
