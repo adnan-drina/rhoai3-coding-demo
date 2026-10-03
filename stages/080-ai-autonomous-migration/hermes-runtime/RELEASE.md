@@ -7,7 +7,7 @@ alone does not prove an image was built or deployed.
 
 ## Pending (not built): patches 0018–0021
 
-Series 0001–0021 gives patched tree `ac9c5f5bf895509dd77f1be159fb3dfc2c168bb2` (verified from a fresh base);
+Series 0001–0021 gives patched tree `9e5b79b9583d7aef515e8866eba993eb96679f4b` (verified from a fresh base);
 the recipe pins that tree and 21 patches. No image is built, pushed or pinned: the current release below and
 every run pin are unchanged. 0018 adds the same-result, same-call and repeat-read escalation triggers and the
 restart bound (`same_result_count` 3, `same_call_count` 5, `repeat_read_count` 3 within `repeat_read_window` 8,
