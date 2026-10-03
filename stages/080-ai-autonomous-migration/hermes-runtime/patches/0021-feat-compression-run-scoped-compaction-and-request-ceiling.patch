@@ -32,8 +32,9 @@ context_length, a forced pass runs regardless of budget, runway, cooldown or
 anti-thrash state, with the opening task turn kept in the head (half tail,
 then the minimum tail); if the request still does not fit, the run ends at
 once with context_ceiling_unreachable (Kanban: STOP WORKER_CONTEXT_CEILING)
-and the request is never sent. Below the ceiling the stock gates are
-untouched.
+and the request is never sent. The check runs after the stock pre-API gate,
+so below the ceiling (and whenever the stock gate compacts first) the stock
+path is unchanged.
 
 With compression.run_scoped: true, in addition, for the whole run:
 
@@ -61,13 +62,13 @@ Local extension.
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  agent/agent_init.py                |  12 +
- agent/context_compressor.py        |  88 ++++-
- agent/conversation_loop.py         |  63 ++++
+ agent/context_compressor.py        |  91 ++++-
+ agent/conversation_loop.py         |  67 ++++
  agent/run_compaction.py            | 238 +++++++++++++
  agent/turn_finalizer.py            |  19 ++
- tests/agent/test_run_compaction.py | 518 +++++++++++++++++++++++++++++
- tools/file_tools.py                |  37 +++
- 7 files changed, 972 insertions(+), 3 deletions(-)
+ tests/agent/test_run_compaction.py | 520 +++++++++++++++++++++++++++++
+ tools/file_tools.py                |  37 ++
+ 7 files changed, 981 insertions(+), 3 deletions(-)
  create mode 100644 agent/run_compaction.py
  create mode 100644 tests/agent/test_run_compaction.py
 
@@ -95,7 +96,7 @@ index 92e9f7f..b8c95bd 100644
      # Apply micro-compaction settings to the compressor (feature is opt-in)
      _cc = getattr(agent, "context_compressor", None)
 diff --git a/agent/context_compressor.py b/agent/context_compressor.py
-index 4c48794..83b3c5d 100644
+index 4c48794..4da90c0 100644
 --- a/agent/context_compressor.py
 +++ b/agent/context_compressor.py
 @@ -1560,6 +1560,19 @@ def _strip_image_parts_from_parts(parts: Any) -> Any:
@@ -223,7 +224,7 @@ index 4c48794..83b3c5d 100644
          )
          if pruned_count and not self.quiet_mode:
              logger.info("Pre-compression: pruned %d old tool result(s)", pruned_count)
-@@ -7179,9 +7234,32 @@ This compaction should PRIORITISE preserving all information related to the focu
+@@ -7179,9 +7234,35 @@ This compaction should PRIORITISE preserving all information related to the focu
          # Phase 2: Determine boundaries
          compress_start = self._protect_head_size(messages)
          compress_start = self._align_boundary_forward(messages, compress_start)
@@ -251,13 +252,16 @@ index 4c48794..83b3c5d 100644
  
          # Use token-budget tail protection instead of fixed message count
 -        compress_end = self._find_tail_cut_by_tokens(messages, compress_start)
-+        compress_end = self._find_tail_cut_by_tokens(
-+            messages, compress_start, token_budget=_tail_budget,
-+        )
++        if _forced_tail is None:
++            compress_end = self._find_tail_cut_by_tokens(messages, compress_start)
++        else:
++            compress_end = self._find_tail_cut_by_tokens(
++                messages, compress_start, token_budget=_tail_budget,
++            )
  
          # A double role collision can merge the summary into the first tail
          # row. Keep an actionable user event out of that position by retaining
-@@ -7874,6 +7952,10 @@ This compaction should PRIORITISE preserving all information related to the focu
+@@ -7874,6 +7955,10 @@ This compaction should PRIORITISE preserving all information related to the focu
                  _pruned_replay,
              )
          self._last_compression_made_progress = True
@@ -269,12 +273,32 @@ index 4c48794..83b3c5d 100644
          # A successful compaction just freed the largest allocation a long
          # session ever drops (the compressed-away message dicts), which makes
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index bcf02da..6afd671 100644
+index bcf02da..a47905b 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
-@@ -2562,6 +2562,62 @@ def run_conversation(
+@@ -2562,6 +2562,11 @@ def run_conversation(
                  pass
              break
+ 
++        # Run-scoped compaction (patch 0021) replaces the stock pre-API gate
++        # below; the ceiling check itself runs after that gate.
++        _run_compaction = getattr(agent, "_run_compaction", None)
++        _run_scoped = bool(getattr(_run_compaction, "enabled", False)) and agent.compression_enabled
++
+         # Pre-API pressure check. The turn-prologue preflight only saw the
+         # incoming user message; a single turn can then grow by many large
+         # tool results and leave no output budget before the NEXT call (the
+@@ -2619,6 +2624,7 @@ def run_conversation(
+         )()
+         if (
+             agent.compression_enabled
++            and not _run_scoped
+             and len(messages) > 1
+             and compression_attempts < max_compression_attempts
+             and not _preflight_compression_blocked
+@@ -2789,6 +2795,61 @@ def run_conversation(
+                 if callable(_warn_fn):
+                     _warn_fn(request_pressure_tokens, _ctx_len)
  
 +        # Request ceiling and run-scoped compaction (agent/run_compaction.py,
 +        # RHOAI3 patch 0021). For every model, a request whose projected size
@@ -283,10 +307,9 @@ index bcf02da..6afd671 100644
 +        # replaces the per-turn-budgeted pre-API and post-tool gates below for
 +        # the whole run: compaction never switches off and a prune-only pass is
 +        # followed by a summarising pass.
-+        # The ceiling part runs for every model with compression enabled,
-+        # with or without run_scoped.
-+        _run_compaction = getattr(agent, "_run_compaction", None)
-+        _run_scoped = bool(getattr(_run_compaction, "enabled", False)) and agent.compression_enabled
++        # It runs after the stock pre-API gate: when that gate compacts it
++        # continues the loop first, so with run_scoped off and the ceiling not
++        # hit the stock path is unchanged.
 +        if _run_compaction is not None and agent.compression_enabled and len(messages) > 1:
 +            _rc_decision, _rc_messages, _rc_system_prompt = _run_compaction.preflight(
 +                agent, messages, system_message, request_pressure_tokens,
@@ -332,18 +355,10 @@ index bcf02da..6afd671 100644
 +                continue
 +            _run_compaction.note_sent()
 +
-         # Pre-API pressure check. The turn-prologue preflight only saw the
-         # incoming user message; a single turn can then grow by many large
-         # tool results and leave no output budget before the NEXT call (the
-@@ -2619,6 +2675,7 @@ def run_conversation(
-         )()
-         if (
-             agent.compression_enabled
-+            and not _run_scoped
-             and len(messages) > 1
-             and compression_attempts < max_compression_attempts
-             and not _preflight_compression_blocked
-@@ -7489,8 +7546,14 @@ def run_conversation(
+         # Thinking spinner for quiet mode (animated during API call)
+         thinking_spinner = None
+         
+@@ -7489,8 +7550,14 @@ def run_conversation(
                          messages, tools=agent.tools or None
                      )
  
@@ -360,7 +375,7 @@ index bcf02da..6afd671 100644
                  ):
 diff --git a/agent/run_compaction.py b/agent/run_compaction.py
 new file mode 100644
-index 0000000..15c413a
+index 0000000..38a9d44
 --- /dev/null
 +++ b/agent/run_compaction.py
 @@ -0,0 +1,238 @@
@@ -577,10 +592,10 @@ index 0000000..15c413a
 +            if plan.force:
 +                # A forced pass must be able to summarise in a single-turn run.
 +                compressor._anchor_task_in_head = True
-+            compressed, system_prompt = agent._compress_context(
-+                messages, system_message, approx_tokens=projected,
-+                task_id=task_id, force=plan.force,
-+            )
++            kwargs = {"approx_tokens": projected, "task_id": task_id}
++            if plan.force:
++                kwargs["force"] = True
++            compressed, system_prompt = agent._compress_context(messages, system_message, **kwargs)
 +        finally:
 +            compressor._forced_tail_token_budget = previous_forced
 +            compressor._anchor_task_in_head = previous_anchor
@@ -634,10 +649,10 @@ index 5eb3bf0..8856e61 100644
      completed = (
 diff --git a/tests/agent/test_run_compaction.py b/tests/agent/test_run_compaction.py
 new file mode 100644
-index 0000000..3a75e32
+index 0000000..af10e48
 --- /dev/null
 +++ b/tests/agent/test_run_compaction.py
-@@ -0,0 +1,518 @@
+@@ -0,0 +1,520 @@
 +"""Run-scoped compaction, the request ceiling and pruned-stub refusal (RHOAI3 patch 0021).
 +
 +v32-qwen36 card t_2a95f8c1 run 44 (one Kanban turn, ~100 calls): three
@@ -947,16 +962,18 @@ index 0000000..3a75e32
 +    )
 +    monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
 +    summary_calls = []
-+    monkeypatch.setattr(
-+        ContextCompressor, "_generate_summary",
-+        lambda self, turns, **kw: summary_calls.append(len(turns)) or f"Summary of {len(turns)} turns.",
-+    )
 +    with contextlib.redirect_stdout(io.StringIO()):
 +        agent = AIAgent(model=model, provider="custom", api_key="k", base_url="http://localhost:8080/v1",
 +                        platform="cli", max_iterations=400, quiet_mode=True, skip_memory=True,
 +                        skip_context_files=True, max_tokens=CAP,
 +                        session_db=SessionDB(db_path=tmp_path / "state.db"), session_id="v32-shape")
 +    agent._disable_streaming = True
++    # Patched on the instance: other tests may reload agent.context_compressor,
++    # so the class imported here need not be the agent's class.
++    monkeypatch.setattr(
++        agent.context_compressor, "_generate_summary",
++        lambda turns, **kw: summary_calls.append(len(turns)) or f"Summary of {len(turns)} turns.",
++    )
 +    agent.context_compressor.update_model(model=model, context_length=window, max_tokens=CAP)
 +    return agent, provider, summary_calls
 +
