@@ -1454,7 +1454,12 @@ data:
         # degraded or never terminated (v9 t_d280284d, t_0527c69b, 2026-09-21/22).
         # Per model profile (model-profiles.json "compression", E-1 v31): an
         # absolute trigger, the no-LLM tool-result prune and a shorter
-        # protected tail, merged over this base block.
+        # protected tail, merged over this base block. qwen3-6-27b also sets
+        # run_scoped (Hermes runtime patch 0021, v32): compaction stays
+        # available for the whole card run instead of the per-turn budget.
+        # qwen3-8-27b-int4 keeps this base block as it is (v30 values). The
+        # 0021 request ceiling applies to every model from its own
+        # context_length and max_tokens; it needs no key here.
         "compression": dict({
             "enabled": True,
             "threshold": 0.80,

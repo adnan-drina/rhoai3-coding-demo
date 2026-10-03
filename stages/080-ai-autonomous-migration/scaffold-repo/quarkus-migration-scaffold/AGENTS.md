@@ -145,8 +145,9 @@ name `Token:` / `verdict:` `PROVISIONAL_ACCEPT`/`ACCEPT` or `ship:`.
 `assert-m4-card-body.py` refuses a body that pre-specifies the verdict.
 M4 `files_writable` is `evidence/verdicts/` (and other `evidence/` receipts);
 the hook refuses `quarkus:add-extension` and product writes on phase M4.
-Story `kanban_create` passes `--max-retries 1` (null inherits `failure_limit` 2
-and masks a Gate K first failure). Mint those cards through
+Story `kanban_create` passes `--max-retries 2` (`k4_schema.LOOP_MAX_RETRIES`;
+M1/M2 also get 2, so a first loop halt, exhausted budget or token-budget stop
+gets one native retry). Mint those cards through
 `.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).
 M3 argv also passes `--workspace dir:/projects/modernized`, `--skill` per
 story, `--max-runtime 2h`, `--idempotency-key`, and `--parent` for the
