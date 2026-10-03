@@ -41,6 +41,17 @@ class Classes(unittest.TestCase):
         self.assertEqual(c("gave_up", "STOP WORKER_TOOL_LOOP: tool read_file"), ("worker-crash", "tool-loop"))
         self.assertEqual(c("reclaimed", "manual_reclaim: operator I-3: run enumerated brief"), ("operator", "reclaim"))
 
+    def test_v32_in_workspace_stops(self):
+        # the per-run token budget ends a run like an exhausted iteration budget: a worker crash, never a product outcome
+        tok = "RUN_TOKEN_BUDGET_EXHAUSTED: 12000417 of 12000000 input tokens -- this worker run read more"
+        self.assertEqual(c("timed_out", tok), ("worker-crash", "token-budget"))
+        self.assertEqual(c("gave_up", tok), ("worker-crash", "token-budget"))      # the breaker tripped on it
+        self.assertEqual(c("timed_out", "Iteration budget exhausted (500/500)")[0], c("timed_out", tok)[0])
+        self.assertEqual(c("blocked", "MIGRATION_TOKEN_BUDGET_EXHAUSTED: 250000001 of 250000000 input tokens"),
+                         ("run-stop", "MIGRATION_TOKEN_BUDGET_EXHAUSTED"))
+        self.assertEqual(c("blocked", "MIGRATION_NO_ACCEPTED_CHECKPOINT: no card accepted for 241 min"),
+                         ("run-stop", "MIGRATION_NO_ACCEPTED_CHECKPOINT"))
+
     def test_provider_and_source_and_unknown(self):
         self.assertEqual(c("crashed", "HTTP 429 Too Many Requests from the model gateway"), ("provider", ""))
         self.assertEqual(c("rate_limited", ""), ("provider", ""))

@@ -56,6 +56,35 @@ class Preflight(unittest.TestCase):
             with self.subTest(subject=subject), self.assertRaises(SystemExit):
                 check(pod, receipt, {'subjects': [subject]}, namespace, workspace)
 
+    def test_run_stops_need_a_pinned_budget_for_the_selected_model(self):
+        import json
+        here = Path(__file__).resolve().parent
+        table = json.loads((here.parents[1] / 'gitops/stages/050-advanced-app-platform/base/devspaces/model-profiles.json').read_text())
+        defaults = json.loads((here / 'scaffold-repo/quarkus-migration-scaffold/run-defaults.json').read_text())
+        gaps = SCOPE['run_stop_gaps']
+        for model in table['profiles']:
+            with self.subTest(model=model):
+                self.assertEqual(gaps(table, model, defaults), [])
+        missing = copy.deepcopy(table)
+        missing['profiles']['qwen3-6-27b'].pop('run_input_token_budget')
+        self.assertEqual(gaps(missing, 'qwen3-8-27b-int4', defaults), [])          # only the SELECTED model counts
+        self.assertIn('RUN_TOKEN_BUDGET', gaps(missing, 'qwen3-6-27b', defaults)[0])
+        for bad in (0, -1, True, '12000000', None):
+            other = copy.deepcopy(table)
+            other['profiles']['qwen3-8-27b-int4']['run_input_token_budget'] = bad
+            with self.subTest(bad=bad):
+                self.assertTrue(gaps(other, 'qwen3-8-27b-int4', defaults))
+        no_retry = copy.deepcopy(table)
+        no_retry['profiles']['qwen3-8-27b-int4']['loop_escalation'].pop('retry_start_turns')
+        self.assertIn('retry_start_turns', gaps(no_retry, 'qwen3-8-27b-int4', defaults)[0])
+        self.assertIn('RUN_TOKEN_BUDGET', gaps(table, 'unserved-model', defaults)[0])
+        self.assertIn('RUN_TOKEN_BUDGET', gaps(None, 'qwen3-8-27b-int4', defaults)[0])
+        for key in ('run_input_token_budget', 'no_accepted_checkpoint_minutes'):
+            d = copy.deepcopy(defaults)
+            d['budget'].pop(key)
+            with self.subTest(key=key):
+                self.assertEqual(gaps(table, 'qwen3-8-27b-int4', d), ['RUN_STOPS: run-defaults.json budget.%s is not a positive integer' % key])
+
 
 if __name__ == '__main__':
     unittest.main()

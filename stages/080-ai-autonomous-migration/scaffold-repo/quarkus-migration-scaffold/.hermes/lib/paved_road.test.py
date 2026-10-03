@@ -458,7 +458,8 @@ class TestAutostartAndCoverage(unittest.TestCase):
         self.assertIn("--skill paved-road-m2", src)
         for leaf in ("freeze-migration-input", "scan-with-mta", "inventory-legacy-surface", "bootstrap-destination", "build-worklist", "admit-migration-plan", "derive-legacy-boot3"):
             self.assertNotIn("--skill %s" % leaf, src)
-        self.assertIn("--max-retries 1", src)
+        self.assertIn("--max-retries 2", src)        # M1/M2: one native retry, like the loop cards (v32)
+        self.assertNotIn("--max-retries 1", src)
         # the terminators and step order live in the pinned skills the card bodies name
         for leaf in ("paved-road-m1", "paved-road-m2"):
             self.assertIn("Procedure: %s" % leaf, src)

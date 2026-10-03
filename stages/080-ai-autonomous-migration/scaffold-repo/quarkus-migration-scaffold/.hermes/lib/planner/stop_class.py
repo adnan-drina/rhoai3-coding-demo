@@ -15,7 +15,10 @@ Classes:
   provider             the model provider or runtime was unavailable (rate limit, stream, gateway)
   worker-blocked       the worker blocked with its own diagnosis (its stop rule, a write set that cannot reach the
                        evidenced failure); the text is the evidence
-  worker-crash         the worker ended without a terminal call: tool-loop stop, protocol violation, timeout, gave up
+  worker-crash         the worker ended without a terminal call: tool-loop stop, protocol violation, timeout, gave up,
+                       the per-run token budget (RUN_TOKEN_BUDGET_EXHAUSTED, subtype token-budget)
+  run-stop             an in-workspace migration stop held the card (MIGRATION_TOKEN_BUDGET_EXHAUSTED,
+                       MIGRATION_NO_ACCEPTED_CHECKPOINT; .hermes/kernel/run_budget.py)
   operator             an Operator reclaim
   unclassified         anything else, named
 """
@@ -30,6 +33,7 @@ HARNESS_CODES = ("ISSUE_BASELINE_DRIFT", "HARNESS_RELEASE_MISMATCH", "RUN_CONTRO
                  "LOOP_", "HERMES_RUNTIME_", "STAGE_EVIDENCE_")
 SOURCE_CODES = ("SOURCE_", "CAPTURE_", "ORACLE_", "CORPUS_", "SCENARIO_PARITY", "QUALIFICATION_")
 WAIT_CODES = ("OWNER_REPAIR_PENDING",)
+RUN_STOP_CODES = ("MIGRATION_TOKEN_BUDGET_EXHAUSTED", "MIGRATION_NO_ACCEPTED_CHECKPOINT")
 PROVIDER_RE = re.compile(r"\b(429|rate[ _-]?limit|too many requests|stream (?:stale|stalled)|upstream|bad gateway|"
                          r"gateway timeout|service unavailable|connection (?:reset|refused)|read timed out)\b", re.I)
 CODE_RE = re.compile(r"^\s*(?:native_gate\.py issue refused:\s*)?([A-Z][A-Z0-9_]{3,})\b")
@@ -62,12 +66,16 @@ def classify(row: dict[str, Any]) -> dict[str, str]:
     if outcome in ("crashed", "gave_up", "timed_out"):
         if "WORKER_TOOL_LOOP" in text:
             return out("worker-crash", "tool-loop")
+        if text.startswith("RUN_TOKEN_BUDGET_EXHAUSTED"):
+            return out("worker-crash", "token-budget")
         if "protocol violation" in text or "without calling kanban_complete or kanban_block" in text:
             return out("worker-crash", "protocol")
         if outcome == "timed_out" or re.search(r"elapsed \d+s > limit", text):
             return out("worker-crash", "timeout")
         return out("worker-crash", outcome)
     if outcome == "blocked":
+        if code and _starts(code, RUN_STOP_CODES):
+            return out("run-stop", code)
         if code and _starts(code, WAIT_CODES):
             return out("dependency-wait")
         if code and _starts(code, SOURCE_CODES):

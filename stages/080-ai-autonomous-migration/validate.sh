@@ -552,6 +552,15 @@ check "080 K2 refuses hand-written native-control records and reserved attachmen
 check "080 K2 post_tool_call observer records positive execution evidence" \
   "python3 '${SCAFFOLD_KERNEL}/post_tool_call.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 in-workspace stops: per-run token budget, run-level token budget and no-accepted-checkpoint (run_budget selftest)" \
+  "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/run_budget.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 a retry after a loop stop starts escalated only on a loop_escalation profile (worker_launch selftest)" \
+  "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/worker_launch.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 the producer installs the run budgets and the worker launch shim (run-budgets-hooks selftest)" \
+  "python3 '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/run-budgets-hooks.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 K2 implementer complete is request_review" \
   "tr -d '\n' < '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | sed 's/\"[[:space:]]*\"//g' | grep -c 'implementer terminator is kanban_request_review' || echo 0" \
   "1"
@@ -713,7 +722,7 @@ check "080 golden K4 converter present" \
   "test -f '${SCAFFOLD_KERNEL}/k4_schema.py' && test -f '${SCAFFOLD_KERNEL}/k4_convert.py' && echo present || echo missing" \
   "present"
 # B11 (635d9496): loop cards get one automatic recovery after a halt, so K4
-# pins max_retries to k4_schema.LOOP_MAX_RETRIES = 2 (M1/M2 keep 1)
+# pins max_retries to k4_schema.LOOP_MAX_RETRIES = 2; autostart gives M1/M2 the same 2 (v32)
 check "080 K4 payloads pin max_retries to LOOP_MAX_RETRIES (2)" \
   "grep -q '^LOOP_MAX_RETRIES = 2$' '${SCAFFOLD_KERNEL}/k4_schema.py' && grep -c '\"max_retries\": LOOP_MAX_RETRIES' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
   "1"

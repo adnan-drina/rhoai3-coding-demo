@@ -95,7 +95,7 @@ class Run:
         self.native = FakeNative(self.tmp)
         self.board = NC.Board(self.native, author="implementer")
         self.m2 = self.native.create(title="M2 PLAN", body="plan", assignee="implementer", parents=[], key="m2-plan",
-                                     skills=["paved-road-m2"], workspace="", max_retries=1)
+                                     skills=["paved-road-m2"], workspace="", max_retries=2)
         self.m2_run, _ = self.native.claim(self.m2)
         self.run_id = run_id
         self.plan_file = self.tmp / "plan.json"
@@ -1014,7 +1014,7 @@ class K2Hook(unittest.TestCase):
         self.assertIn("graph mutation", out.get("message", ""))
         # an M1-style card (neither M2 nor a v2 node) keeps the serial rules: the branch answers None
         m1 = self.r.native.create(title="M1 ANALYZE", body="m1", assignee="implementer", parents=[], key="m1-analyze",
-                                  skills=["paved-road-m1"], workspace="", max_retries=1)
+                                  skills=["paved-road-m1"], workspace="", max_retries=2)
         self.r.native.sync()
         saved = os.environ.get("HERMES_KANBAN_DB")
         os.environ["HERMES_KANBAN_DB"] = self.r.native.db_path

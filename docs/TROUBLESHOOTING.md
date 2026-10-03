@@ -1150,6 +1150,42 @@ explicit **Auto-start migration** off switch still skips autostart without
 checking. Diagnose from the workspace with
 `PYTHONPATH=/projects/modernized/.hermes/lib python3 -m planner.run_declaration --root /projects/modernized`.
 
+## Migration Cards Blocked With MIGRATION_* Or A Run Ended With RUN_TOKEN_BUDGET_EXHAUSTED
+
+**Affected stage:** Stage 080
+
+**Symptom:** every running or ready card is blocked with a reason that starts
+with `MIGRATION_TOKEN_BUDGET_EXHAUSTED` or `MIGRATION_NO_ACCEPTED_CHECKPOINT`;
+or one worker run ended `timed_out` (or `gave_up`) with
+`RUN_TOKEN_BUDGET_EXHAUSTED: <used> of <limit> input tokens`.
+
+**Cause:** an in-workspace stop fired (`.hermes/kernel/run_budget.py`, see the
+Stage 080 README, "In-workspace stops"). The per-run stop is a timed-out
+attempt: the dispatcher retries the card or gives up under the card's
+`max_retries`, exactly as after an exhausted iteration budget. A migration
+stop is recorded in `/projects/.platform/run-control-state/run-stops.jsonl`
+and held on every dispatcher tick until it is lifted.
+
+**Diagnose:**
+
+```bash
+cat /projects/.platform/run-control-state/run-stops.jsonl
+hermes kanban runs <task-id>          # the run's error names the stop and the counts
+```
+
+**Recover:** a lift is an assisted continuation. Record it, then unblock the
+cards natively:
+
+```bash
+/opt/hermes-venv/bin/python /projects/.platform/hermes/agent-hooks/run_budget.py lift \
+  --stops /projects/.platform/run-control-state/run-stops.jsonl \
+  --code MIGRATION_NO_ACCEPTED_CHECKPOINT --by <operator> --note "<why>"
+hermes kanban unblock <task-id>
+```
+
+A lifted token stop does not fire again in that run. The stall stop re-arms and
+measures from the lift.
+
 ## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
 **Affected stage:** Stage 060

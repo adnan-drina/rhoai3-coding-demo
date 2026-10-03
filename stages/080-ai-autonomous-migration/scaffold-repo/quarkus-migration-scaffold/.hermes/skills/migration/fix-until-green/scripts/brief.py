@@ -2397,7 +2397,7 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
     kind separates the two retries that need different next steps:
       rejected-candidate    advance.py judged this run's candidate and REVERTED/DEFERRED it
                             (its receipt names this card and run)
-      halted-investigation  the run was stopped (a guardrail, a crash) without a judged
+      halted-investigation  the run was stopped (a guardrail, the run token budget, a crash) without a judged
                             candidate: nothing was rejected, the reading was cut off
       ended                 neither is recorded"""
     try:
@@ -2457,7 +2457,8 @@ def previous_run_context(runs: list, ledger: list, current_run: str, dirty: list
         kind = "rejected-candidate"
         why = next((str(r.get("reason") or "") for r in reversed(rejected or [])
                     if isinstance(r, dict) and str(r.get("card") or "") == task), "")
-    elif "WORKER_TOOL_LOOP" in stop or "guardrail" in stop or str(last.get("outcome") or "") == "crashed":
+    elif ("WORKER_TOOL_LOOP" in stop or "guardrail" in stop or "RUN_TOKEN_BUDGET_EXHAUSTED" in stop
+          or str(last.get("outcome") or "") == "crashed"):
         kind, why = "halted-investigation", ""
     else:
         kind, why = "ended", ""
