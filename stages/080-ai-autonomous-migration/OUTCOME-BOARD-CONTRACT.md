@@ -71,7 +71,11 @@ one procedure line for its role (`native_control.PROCEDURE`).
 Resolved context (V26-3). Each `brief.py` run of an issued M3 card also writes
 `verification/loop/context-<cluster>.json` (`rhoai3.resolved-context/v1`,
 `planner/resolved_context.py`) and adds one index line to the digest; the
-context is never injected into the brief. It separates FROZEN source facts (the
+context is never injected into the brief. The canonical `.json` is a single
+line, so the same document is also written indented with sorted keys to
+`context-<cluster>.txt`. That copy carries no authority and nothing hashes it.
+The index line names the `.txt` file and lists each top-level key with its
+line range and size. It separates FROZEN source facts (the
 plan node's requirement rows, the evidence bundle's structural model,
 `decisions.yaml` build profiles) from DESTINATION facts of the current product
 tree (generated versus handwritten placement by file location, the build's

@@ -120,6 +120,36 @@ def ledger_home():
         home = root
     return home
 
+# v32 (advisory, never a decision): a write_file over an EXISTING product file is a whole-file rewrite -- minutes of
+# silent stream and a whole file of context; patch is the preferred tool. A pre_tool_call shell hook carries a message
+# only with block or approve (Hermes hooks contract), so the allow path cannot show it to the model: the line rides on
+# this call execution-ledger row (kanban/logs/<task>.exec.jsonl, field "advice"); the model-facing text is the
+# fix-until-green and paved-road-m3 skill guidance.
+PATCH_ADVICE = ("advisory: %s already exists -- edit an existing file with patch (a small unique anchor, one hunk per "
+                "call); if a patch misses, re-read the exact lines with read_file offset/limit and retry the patch "
+                "instead of rewriting the whole file")
+
+def existing_product_write_advice():
+    if tool not in ("write_file", "write", "create_file"):
+        return ""
+    p = str(inp.get("path") or inp.get("file_path") or "").strip()
+    wr = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()
+    first = next((x.strip() for x in allow.split(os.pathsep) if x.strip()), "")
+    base = PILOT_ROOT or wr or first
+    if not p or not base:
+        return ""
+    try:
+        root = os.path.realpath(base)
+        rp = os.path.realpath(p if os.path.isabs(p) else os.path.join(hook_cwd or root, p))
+    except OSError:
+        return ""
+    if not rp.startswith(root + os.sep) or not os.path.isfile(rp):
+        return ""
+    rel = rp[len(root) + 1:].replace(os.sep, "/")
+    if rel.split("/", 1)[0] in ("evidence", "verification", ".hermes", ".derived", "target", ".git", ".worktrees"):
+        return ""
+    return PATCH_ADVICE % rel
+
 def record_invocation():
     terminal = tool in ("terminal", "bash", "shell")
     if not tool:
@@ -135,6 +165,9 @@ def record_invocation():
         row.update(command=cmd, command_sha256=hashlib.sha256(cmd.encode("utf-8", errors="replace")).hexdigest())
     else:
         row.update(tool=tool, path=str(inp.get("path") or inp.get("file_path") or "")[:400])
+        _adv = existing_product_write_advice()
+        if _adv:
+            row["advice"] = _adv
     try:
         fd = os.open(os.path.join(home, "kanban", "logs", "%s.exec.jsonl" % task), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         try:
@@ -445,7 +478,13 @@ if profile == "reviewer":
         block("%s disabled for profile reviewer" % ts)
 
 if tool in {"execute_code", "delegate_task", "mcp", "skill_manage"}:
-    block("%s is pathless-or-mutation; deny" % tool)
+    # message text only (v32): an execute_code read names the reads that work
+    block("%s is pathless-or-mutation; deny%s" % (tool, (
+        ". To read, use read_file on the by-line copies verification/loop/brief-<cluster>.txt and "
+        "verification/loop/context-<cluster>.txt (offset/limit), or the bounded brief.py selectors: "
+        "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --section <key> (repeatable) "
+        "| --file <path> | --item <id> | --symbol <name> | --card | --spill <file> --field <path> [--limit <n>]")
+        if tool == "execute_code" else ""))
 
 # Graph mutation veto (SAD §9 K2): a worker never creates or links cards.
 # Cards come from K4 (python3 .hermes/kernel/k4_mint.py --root . --exec)
@@ -1319,8 +1358,69 @@ def expression_args(c):
                 break
     return [e for e in out if e]
 
-cmd_for_paths = strip_env_assignments(cmd) if cmd else ""
-for _expr in expression_args(cmd):
+# v32: a heredoc BODY fed to a data sink (cat, tee) is the text being written, not the command: a generic
+# return type such as `Map<K, V> addEntry(` in a Java body read as the redirection `> addEntry` and the write was
+# refused as a product path outside the issue. For such a heredoc the body, its delimiter word and its terminator
+# line are dropped from the text the PATH readers below see; the write target still comes from the redirection
+# (>, >>, >|, N>) or the tee operand. A body fed to anything else (bash, sh, python3, a pipe into an interpreter)
+# is code and stays visible. Only path extraction reads this view; every other check reads the full command.
+HEREDOC_SINKS = {"cat", "tee"}
+_HEREDOC_OP = re.compile(r"(?<!<)<<(-?)[ \t]*(?:" + chr(39) + r"([^" + chr(39) + r"\n]*)" + chr(39)
+                         + r"|" + chr(34) + r"([^" + chr(34) + r"\n]*)" + chr(34) + r"|\\?([A-Za-z0-9_.@%+-]+))")
+
+def _heredoc_feeds_sink(line, start, end):
+    """True when the pipeline holding the heredoc operator at line[start:end] is made only of data sinks."""
+    seg_start = max([line.rfind(s, 0, start) + len(s) for s in (";", "&&", "||", "(", "{") if line.rfind(s, 0, start) >= 0] or [0])
+    tails = [i for i in (line.find(s, end) for s in (";", "&&", "||", ")", "}")) if i >= 0]
+    seg = line[seg_start:min(tails) if tails else len(line)]
+    for part in seg.split("|"):
+        words = [w for w in strip_env_assignments(part).split() if w]
+        while words and re.match(r"^[0-9]*[<>]", words[0]):
+            words = words[2:] if words[0] in ("<", ">", ">>", ">|", "<<", "<<-") or re.match(r"^[0-9]*>{1,2}$", words[0]) else words[1:]
+        if not words or words[0].rsplit("/", 1)[-1] not in HEREDOC_SINKS:
+            return False
+    return True
+
+def heredoc_data_bodies_dropped(c):
+    if not c or "<<" not in c:
+        return c
+    lines = c.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        ops = list(_HEREDOC_OP.finditer(line))
+        if not ops:
+            out.append(line)
+            continue
+        bodies, data = [], []
+        for m in ops:
+            delim = next(g for g in (m.group(2), m.group(3), m.group(4)) if g is not None)
+            body, end = [], None
+            while i < len(lines):
+                b = lines[i]
+                i += 1
+                if (b.lstrip("\t") if m.group(1) else b) == delim:
+                    end = b
+                    break
+                body.append(b)
+            # an UNQUOTED delimiter expands $( ) and backticks in the body: such a body runs code and stays visible
+            expands = m.group(4) is not None and any("$(" in b or chr(96) in b for b in body)
+            bodies.append((body, end))
+            data.append(_heredoc_feeds_sink(line, m.start(), m.end()) and not expands)
+        kept = line
+        for m, d in reversed(list(zip(ops, data))):
+            if d:
+                kept = kept[:m.start()] + " " + kept[m.end():]
+        out.append(kept)
+        for (body, end), d in zip(bodies, data):
+            if not d:
+                out.extend(body + ([end] if end is not None else []))
+    return "\n".join(out)
+
+cmd_paths = heredoc_data_bodies_dropped(cmd) if cmd else ""
+cmd_for_paths = strip_env_assignments(cmd_paths) if cmd_paths else ""
+for _expr in expression_args(cmd_paths):
     # the first occurrence only: the expression precedes the file operands,
     # and a file operand spelled the same way must still be read as a path
     cmd_for_paths = cmd_for_paths.replace(_expr, " ", 1)
@@ -1421,6 +1521,19 @@ def writer_operands(c):
     cwd = None
     for seg in _command_segments(c):
         base, args = seg[0].rsplit("/", 1)[-1], seg[1:]
+        # a redirection and its operand are not argv (v32: `tee FILE >/dev/null <<EOF` read >/dev/null as a tee
+        # operand); the redirection target itself is read by redirect_targets
+        _argv, _k = [], 0
+        while _k < len(args):
+            if re.match(r"^[0-9]*(?:[<>]|>>|>\||<<-?)$", args[_k]):
+                _k += 2
+                continue
+            if re.match(r"^[0-9]*(?:>>|>\||>|<<-?|<)", args[_k]):
+                _k += 1
+                continue
+            _argv.append(args[_k])
+            _k += 1
+        args = _argv
         def at(x):
             return x if (os.path.isabs(x) or cwd is None) else os.path.join(cwd, x)
         if base == "cd" and args:
@@ -1562,14 +1675,14 @@ def redirect_targets(c):
         found.append(target)
     return found
 
-effect = write_effect_paths(cmd) + [w for w in writer_operands(cmd) if w not in write_effect_paths(cmd)]
+effect = write_effect_paths(cmd_paths) + [w for w in writer_operands(cmd_paths) if w not in write_effect_paths(cmd_paths)]
 for p in effect:
     if p not in paths:
         paths.append(p)
 # in-place edits and redirections name their operands in the command text:
 # they are paths of the command like any other (checked against the allow
 # root and, when the command is a write, against the write set)
-for p in inplace_edit_targets(cmd) + redirect_targets(cmd):
+for p in inplace_edit_targets(cmd_paths) + redirect_targets(cmd_paths):
     if p not in paths:
         paths.append(p)
 
@@ -1604,7 +1717,14 @@ for p in paths:
     if inside(rp):
         proven = True
     else:
-        block("path %s resolves outside allow root" % p)
+        # message text only (v32): name the place that works -- this card scratch directory, inside the
+        # allow root and created when the card was issued (native_gate.py issue)
+        _sd = os.path.join(PILOT_ROOT or (os.path.realpath(os.environ.get("HERMES_WRITE_SAFE_ROOT") or "")
+                                          if (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip() else roots[0]),
+                           ".derived", "scratch", hook_task_id() or "<task>")
+        block("path %s resolves outside allow root; for scratch output (downloads, extracted files, tool output, "
+              "temporary files) use this card scratch directory %s/ instead -- it is inside the allow root and "
+              "is not part of the product" % (p, _sd))
 if paths and only_toolchain:
     print("{}")
     raise SystemExit(0)
@@ -1960,7 +2080,7 @@ _stop_req = (os.environ.get("HERMES_KANBAN_STOP_REQUEST") or "").strip()
 _stop_marks = ["stop-requests"] + ([_stop_req, os.path.dirname(_stop_req)] if _stop_req else [])
 _stop_targets = " ".join([cmd or "", str(inp.get("path") or ""), str(inp.get("file_path") or ""),
                           " ".join(str(x) for x in (effect or []))])
-if (tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect or re.search(r"\btouch\b", cmd or "")) \
+if (tool in WRITE_TOOLS or looks_like_write_cmd(cmd_paths) or effect or re.search(r"\btouch\b", cmd or "")) \
         and any(m and m in _stop_targets for m in _stop_marks):
     block("write to the kanban stop-requests directory refused: the stop request is raised by advance.py "
           "after a VERIFICATION_PENDING is recorded (runtime 0011), never by a tool call")
@@ -2000,7 +2120,7 @@ if profile == "implementer" and not is_block() and not is_complete():
                 "exited non-zero; re-run that needle or kanban_block"
                 % unmatched[0]
             )
-        elif tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
+        elif tool in WRITE_TOOLS or looks_like_write_cmd(cmd_paths) or effect:
             block(
                 "product-tree write refused: mandated needle %s last "
                 "exited non-zero; re-run that needle or kanban_block"
@@ -2113,9 +2233,9 @@ def harness_owned_hits(candidates, command):
                 hits.append(r)
     return sorted(set(hits)), roots
 
-if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
+if tool in WRITE_TOOLS or looks_like_write_cmd(cmd_paths) or effect:
     if profile == "implementer" or loop_write_set() is not None:
-        owned, owned_roots = harness_owned_hits(list(effect) if effect else list(paths), cmd)
+        owned, owned_roots = harness_owned_hits(list(effect) if effect else list(paths), cmd_paths)
         if owned:
             block("write refused: %s is under a harness-owned generated test root (%s). The generated product "
                   "tests belong to generate-product-tests (ADR-015); no worker has test-source write authority "
@@ -2138,7 +2258,7 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
               "card would be lost. Keep scratch work under verification/ or /tmp, and "
               "kanban_block kind=needs_input if the fix truly needs another path."
               % (outside[0], ", ".join(loop_write_set() or []) or "none"))
-    if looks_like_write_cmd(cmd) and (
+    if looks_like_write_cmd(cmd_paths) and (
         "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
     ):
         pom = os.path.join(dest_root() or "", "pom.xml")
@@ -2150,7 +2270,7 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
             block("write pom.xml is outside the dest write sandbox (legacy is read-only)")
 
 OB_WRITES = None
-if OB is not None and (tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect):
+if OB is not None and (tool in WRITE_TOOLS or looks_like_write_cmd(cmd_paths) or effect):
     _ob_rels = []
     for p in (paths if tool in WRITE_TOOLS else (list(effect) if effect else list(paths))):
         _rp = resolve_rp(p)
@@ -2177,14 +2297,14 @@ if writeset is not None and _issued_ws:
     writeset = list(writeset) + [w for w in _issued_ws if w not in writeset]
 phase = load_phase() if OB_WRITES is None else ""
 if phase in {"M4", "VERDICT"}:
-    if looks_like_write_cmd(cmd) and (
+    if looks_like_write_cmd(cmd_paths) and (
         "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
     ):
         block("M4 VERDICT must not implement; quarkus:add-extension writes pom.xml")
     receipt_check = []
     if tool in WRITE_TOOLS:
         receipt_check = list(paths)
-    elif looks_like_write_cmd(cmd) or effect:
+    elif looks_like_write_cmd(cmd_paths) or effect:
         receipt_check = list(effect) if effect else list(paths)
     for p in receipt_check:
         rel = dest_rel(resolve_rp(p)) or str(p).replace("\\", "/").lstrip("./")
@@ -2210,7 +2330,7 @@ if writeset is not None and not scratch_ok:
             rel = dest_rel(resolve_rp(p))
             if rel:
                 rels.append(rel)
-    elif looks_like_write_cmd(cmd) or effect:
+    elif looks_like_write_cmd(cmd_paths) or effect:
         targets = list(effect) if effect else list(paths)
         for p in targets:
             rp = resolve_rp(p)
@@ -2219,7 +2339,7 @@ if writeset is not None and not scratch_ok:
             rel = dest_rel(rp)
             if rel:
                 rels.append(rel)
-        if looks_like_write_cmd(cmd) and (
+        if looks_like_write_cmd(cmd_paths) and (
             "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
         ):
             rels.append("pom.xml")

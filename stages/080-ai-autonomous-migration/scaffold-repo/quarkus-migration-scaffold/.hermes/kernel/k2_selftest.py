@@ -123,6 +123,19 @@ def main() -> int:
         expect_allow("export PATH=/bin:$PATH; ls", "pathless_ls_cwd", cwd=cwd)
         expect_block("export PATH=/bin:$PATH; ls", "pathless_ls_no_cwd", "unproven")
         expect_block("cat /etc/passwd", "etc_passwd", "outside allow root")
+        # v32 (message text only): the refusal names this card's scratch directory, inside the allow root
+        scratch_env = {"HERMES_KANBAN_TASK": "t_scr0001", "HERMES_WRITE_SAFE_ROOT": str(dest)}
+        expect_block("echo x > /tmp/out.json", "outside_root_names_card_scratch",
+                     "use this card scratch directory %s/.derived/scratch/t_scr0001/" % os.path.realpath(str(dest)),
+                     cwd=cwd, extra_env=scratch_env)
+        expect_block("echo x > /tmp/out.json", "outside_root_names_scratch_without_task",
+                     "%s/.derived/scratch/<task>/" % os.path.realpath(str(dest)), cwd=cwd)
+        for needle in ("execute_code is pathless-or-mutation; deny", "read_file", "verification/loop/brief-<cluster>.txt",
+                       "verification/loop/context-<cluster>.txt", "--section <key> (repeatable)", "--spill <file> --field <path>"):
+            expect_block("", "execute_code_names_reads_" + needle.split()[0].strip("-<>/"), needle, cwd=cwd,
+                         tool="execute_code", extra_input={"code": "print(1)"})
+        expect_block("", "delegate_task_message_unchanged", "delegate_task is pathless-or-mutation; deny", cwd=cwd,
+                     tool="delegate_task")
         expect_allow(f"ls {dest}", "inside_root")
         expect_block(
             "export JAVA_HOME=/usr/lib/jvm/x && cat /etc/passwd",
@@ -1631,6 +1644,64 @@ def main() -> int:
                 fails += 1
             else:
                 print("ok loop_write_allowed")
+        # v32: a heredoc BODY written by cat/tee is data -- identifier-like and path-like tokens in it, and a
+        # `> other/file` line, are never write targets; the target is the redirection (or tee operand) alone
+        body = ("public class EntryStore {\n    Map<String, Entry> addEntry(Entry e) { return ledger; }\n"
+                "    // see src/main/java/org/example/ledger/Other.java and ./notes /etc/passwd\n"
+                "    echo x > other/file\n}\n")
+        heredocs = (("cat > pom.xml <<%sEOF%s\n%sEOF", "quoted"), ("cat > pom.xml <<-EOF%s%s\n%sEOF", "dash"),
+                    ("cat <<%sEOF%s > pom.xml\n%sEOF", "target_after"), ("tee pom.xml >/dev/null <<%sEOF%s\n%sEOF", "tee"))
+        for shape, label in heredocs:
+            q = "" if label == "dash" else chr(39)
+            text = shape % (q, q, body) if "%sEOF%s" in shape else shape % ("", "", body)
+            r = run(text, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") == "block":
+                print("FAIL heredoc_body_not_a_target_%s" % label, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok heredoc_body_not_a_target_%s" % label)
+        for text, label, needle in (
+                ("cat > src/main/java/org/example/ledger/EntryStore.java <<%sEOF%s\n%sEOF" % (chr(39), chr(39), body),
+                 "out_of_issue_target_refused", "outside this card write set"),
+                ("cat > pom.xml <<EOF\n$(cat /etc/passwd)\nEOF", "unquoted_expanding_body_still_read", "outside allow root"),
+                ("bash <<%sEOF%s\ncat /etc/passwd\nEOF" % (chr(39), chr(39)), "interpreter_body_still_read", "outside allow root"),
+                ("cat <<%sEOF%s | sh\ncat /etc/passwd\nEOF" % (chr(39), chr(39)), "body_piped_to_interpreter_still_read",
+                 "outside allow root")):
+            r = run(text, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") != "block" or needle not in (r.get("message") or ""):
+                print("FAIL heredoc_%s" % label, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok heredoc_%s" % label)
+        # v32 (advisory, never a decision): write_file over an EXISTING product file records a patch advisory on its
+        # ledger row (the pre_tool_call allow path carries no message); a new file gets none; both are allowed alike
+        adv_home = Path(td) / "adv-home"
+        (adv_home / "kanban" / "logs").mkdir(parents=True)
+        adv_env = dict(loop_card_env, HERMES_HOME=str(adv_home), HERMES_WRITE_SAFE_ROOT=str(dest))
+        pom_before = (dest / "pom.xml").read_bytes() if (dest / "pom.xml").exists() else None
+        (dest / "pom.xml").write_text("<project/>\n", encoding="utf-8")
+        led = adv_home / "kanban" / "logs" / "t_loopcard.exec.jsonl"
+        for target, existing in (("pom.xml", True), ("verification/new-notes.txt", False), ("pom-new.xml", False)):
+            if not existing and (dest / target).exists():
+                (dest / target).unlink()
+            led.write_text("", encoding="utf-8")
+            r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / target), "content": "x"},
+                    extra_env=adv_env)
+            r0 = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / target), "content": "x"},
+                     extra_env=loop_card_env)
+            rows = [json.loads(x) for x in led.read_text(encoding="utf-8").splitlines() if x.strip()]
+            advice = [x.get("advice") for x in rows if x.get("advice")]
+            want = ["advisory: %s already exists -- edit an existing file with patch" % target] if existing else []
+            if r.get("action") != r0.get("action") or len(advice) != len(want) \
+                    or (want and not advice[0].startswith(want[0])) or (want and "re-read the exact lines" not in advice[0]):
+                print("FAIL patch_advisory_%s" % ("existing" if existing else "new"), target, r, r0, rows, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok patch_advisory_%s" % ("existing" if existing else "new"))
+        if pom_before is None:
+            (dest / "pom.xml").unlink()
+        else:
+            (dest / "pom.xml").write_bytes(pom_before)
         # ADR-015/ADR-019: the generated test roots are the harness's; a worker write there is refused even when
         # the card's write set (wrongly) names the file. The roots come from the generator's own declaration.
         sys.path.insert(0, str(HOOK.parent.parent / "skills" / "gates" / "generate-product-tests" / "scripts"))

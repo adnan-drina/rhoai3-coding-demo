@@ -95,7 +95,10 @@ rule to `kanban_complete`.
    or dependency the brief did not ask for. A path outside the amended write
    set is reverted by advance.py. Never a whole-file rewrite
    (the model server buffers a tool call's arguments; a 12 KB rewrite is
-   minutes of silence). Never tests, never `evidence/`, never
+   minutes of silence): an existing file is edited with `patch` (a small
+   unique anchor, one hunk per call); when a patch misses, re-read the exact
+   lines with `read_file` offset/limit and retry the patch. `write_file` is
+   for a file that does not exist yet. Never tests, never `evidence/`, never
    `decisions.yaml`, never a plugin or dependency the brief did not ask
    for.
    No inline python (`python3 -c`, `python3 -`) on a loop card: K2 refuses

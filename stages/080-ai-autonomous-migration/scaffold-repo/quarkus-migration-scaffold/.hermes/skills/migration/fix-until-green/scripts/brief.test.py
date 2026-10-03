@@ -1329,6 +1329,73 @@ def _planned_generated_body_brief_case() -> int:
             text = B.brief_digest(brief, "brief-%s" % cl["id"].replace(":", "-"))
             if text.count("RESOLVED CONTEXT: %s" % idx["path"]) != 1 or '"provenance"' in text or "frozen-source fact" not in text:
                 return _fail("[%s] the digest names the attachment in one line and does not inject it" % pkg)
+            # v32: the same context by line beside it, named with its keys in the digest
+            txt_p = ctx_p.with_suffix(".txt")
+            txt = txt_p.read_text(encoding="utf-8") if txt_p.is_file() else ""
+            if len(ctx_p.read_text(encoding="utf-8").splitlines()) != 1 or len(txt.splitlines()) <= 1 \
+                    or json.loads(txt) != load_json(ctx_p):
+                return _fail("[%s] context .txt exists, has more than one line and parses to the .json document" % pkg)
+            rc_line = next((ln for ln in text.splitlines() if ln.startswith("RESOLVED CONTEXT: ")), "")
+            if txt_p.relative_to(root).as_posix() not in rc_line \
+                    or any("%s (lines " % k not in rc_line for k in load_json(ctx_p)) or "--field facts" in rc_line:
+                return _fail("[%s] the digest names the context .txt and every top-level key: %s" % (pkg, rc_line))
+            if _last_verify_agreement_case(root, "t_gbplan1", pkg):
+                return 1
+    return 0
+
+
+def _brief_stdout(root: Path, task: str, args: list) -> tuple[int, str]:
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+    prev = os.environ.get("HERMES_KANBAN_TASK")
+    os.environ["HERMES_KANBAN_TASK"] = task
+    try:
+        err, out = io.StringIO(), io.StringIO()
+        with redirect_stderr(err), redirect_stdout(out):
+            rc = __import__("brief").main(["--root", str(root)] + list(args))
+    finally:
+        if prev is None:
+            os.environ.pop("HERMES_KANBAN_TASK", None)
+        else:
+            os.environ["HERMES_KANBAN_TASK"] = prev
+    return rc, out.getvalue()
+
+
+def _last_verify_agreement_case(root: Path, task: str, tag: str) -> int:
+    """v32: last_verify showed another card's record while last_verify_state said there was no record of this
+    card. With another card's record, the digest and both sections name that card and none of them presents its
+    result as this card's; with this card's record the output is what it was."""
+    from planner.paths import LOOP_DIR
+    rec = {"schema": "rhoai3.last-verify/v2", "status": "finished", "card": "t_other0001", "run": "4", "seq": 1,
+           "mode": "acceptance", "procedure": "completed", "rc": 0, "compilation": "passed", "compilation_detail": "",
+           "tests": "ran", "tests_rc": 0, "candidate_sha256": "f" * 64, "finished_at": "T"}
+    lv_p = root / LOOP_DIR / "last-verify.json"
+    write_canonical(lv_p, rec)
+    rc, digest = _brief_stdout(root, task, [])
+    rc2, sec = _brief_stdout(root, task, ["--section", "last_verify", "--section", "last_verify_state"])
+    if rc or rc2:
+        return _fail("[%s] brief.py serves another card's record: %s %s" % (tag, rc, rc2))
+    secs = json.loads(sec)
+    lv, vs = secs.get("last_verify") or {}, secs.get("last_verify_state") or {}
+    lines = [ln for ln in digest.splitlines() if ln.startswith("LAST VERIFICATION")]
+    for where, said in (("digest", " ".join(lines)), ("last_verify", lv.get("not_this_card") or ""), ("last_verify_state", vs.get("why") or "")):
+        if "t_other0001" not in said or "not of this card %s" % task not in said:
+            return _fail("[%s] %s names whose record it is and that it is not this card's: %r" % (tag, where, said))
+    if vs.get("state") != "unknown" or any("PASSED" in ln or "that result stands" in ln for ln in digest.splitlines()
+                                           if ln.startswith(("LAST VERIFICATION", "  it is"))):
+        return _fail("[%s] another card's result is never presented as this card's: %s" % (tag, lines))
+    if {k: v for k, v in lv.items() if k != "not_this_card"} != rec:
+        return _fail("[%s] the record itself is kept unchanged beside its label" % tag)
+    # this card's record: unchanged output -- the record as it is, and the v2 line naming it
+    mine = dict(rec, card=task)
+    write_canonical(lv_p, mine)
+    rc, digest = _brief_stdout(root, task, [])
+    rc2, sec = _brief_stdout(root, task, ["--section", "last_verify"])
+    if rc or rc2 or json.loads(sec).get("last_verify") != mine or "not_this_card" in sec or \
+            not any(ln.startswith("LAST VERIFICATION (card %s, run 4): procedure completed (exit 0); compilation PASSED" % task)
+                    for ln in digest.splitlines()):
+        return _fail("[%s] this card's own record is served unchanged:\n%s" % (tag, sec))
+    lv_p.unlink()
     return 0
 
 
@@ -1463,6 +1530,47 @@ def _unresolved_history_digest_case() -> int:
     return 0
 
 
+def _field_miss_parent_case(mod, root: Path) -> int:
+    """v32 (a repository card): `--field source.behaviour` answered with the document's top-level keys although
+    `source` is a list of 4. A miss describes the deepest value that resolved; a miss at the root and every
+    success are as before. A context-shaped document with renamed-twin content."""
+    doc = {"schema": "rhoai3.resolved-context/v1", "outcome": "o:ledger-store",
+           "card": {"task": "t_twin0001", "write_set": ["src/main/java/org/example/ledger/EntryStore.java"]},
+           "source": [{"value": {"type": "org.example.ledger.EntryStore", "role": "selected"}, "provenance": "p#%d" % i}
+                      for i in range(4)],
+           "checks": {"immediate": ["unit:x"], "deferred": []}, "unknowns": []}
+    p = root / "twin-context.json"
+    p.write_text(json.dumps(doc, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    base = {"file": str(p), "file_chars": len(p.read_text(encoding="utf-8"))}
+    under_list = mod.select_spill(p, "source.behaviour")
+    if under_list != dict(base, field="source.behaviour", error="no value at behaviour", deepest_resolved={
+            "path": "source", "type": "list", "length": 4, "valid": "source[0]..source[3]"}):
+        return _fail("a miss under a list names its path, length and valid index range: %s" % under_list)
+    past_end = mod.select_spill(p, "source[7].value")
+    if (past_end.get("deepest_resolved") or {}).get("valid") != "source[0]..source[3]" or "keys" in past_end:
+        return _fail("an index past the end names the list's valid range: %s" % past_end)
+    under_obj = mod.select_spill(p, "source[2].value.members")
+    if under_obj.get("error") != "no value at members":
+        return _fail("the error text is kept: %s" % under_obj)
+    if under_obj.get("deepest_resolved") != {"path": "source[2].value", "type": "dict", "keys": ["role", "type"]} or "keys" in under_obj:
+        return _fail("a miss under an object names that object's keys: %s" % under_obj)
+    at_root = mod.select_spill(p, "facts")
+    if at_root != dict(base, field="facts", error="no value at facts", keys=sorted(doc)):
+        return _fail("a miss at the root is unchanged (the document's keys, nothing else): %s" % at_root)
+    # successes: exactly the shape and bytes they had
+    for field, val in (("source[1]", doc["source"][1]), ("checks.immediate", doc["checks"]["immediate"]),
+                       ("outcome", doc["outcome"]), ("source[1:3]", doc["source"][1:3]), ("", doc)):
+        text = val if isinstance(val, str) else json.dumps(val, indent=1, sort_keys=True)
+        want = dict({"file": base["file"], "field": field or "(whole document)"}, file_chars=base["file_chars"], type=type(val).__name__, total_chars=len(text),
+                    shown_chars=len(text), truncated=False, value=text)
+        if isinstance(val, (list, dict)):
+            want["length"] = len(val)
+        got = mod.select_spill(p, field)
+        if json.dumps(got, indent=2) != json.dumps(want, indent=2):
+            return _fail("a successful selection is unchanged (%s): %s" % (field, got))
+    return 0
+
+
 def _worker_evidence_access_case() -> int:
     """Architect diagnosis of Owner run 89: the worker must reach its evidence through allowed, bounded
     selectors. A one-line 300K spill shaped like the kanban_show response is read field by field with honest
@@ -1491,14 +1599,25 @@ def _worker_evidence_access_case() -> int:
                 return _fail("a truncated --field value must say how to get the rest inside the value: %r" % many["value"][-300:])
             if not many["value"].startswith(json.dumps(show["comments"], indent=1, sort_keys=True)[:3000]):
                 return _fail("the shown part of a truncated value is unchanged")
+            # the marker cannot be read as data: shown_chars counts the data only, the marker follows it on its
+            # own line, says it is not part of the value, and is text the document does not contain
+            data = json.dumps(show["comments"], indent=1, sort_keys=True)[:3000]
+            if many["value"][:many["shown_chars"]] != data or many["value"][many["shown_chars"]:] != "\n" + many["more"] \
+                    or not many["more"].startswith("[brief.py, not part of the value -- truncated: 3000 of ") \
+                    or many["more"] in spill.read_text(encoding="utf-8"):
+                return _fail("the truncation marker is separable from the data and shown_chars counts data only: %r"
+                             % many["value"][many["shown_chars"] - 20:many["shown_chars"] + 80])
         if many.get("truncated") is not True or many.get("length") != 86 or many.get("shown_chars") != 3000 or many.get("total_chars", 0) <= 3000:
             return _fail("a large field is bounded and says so: %s" % {k: many.get(k) for k in ("truncated", "length", "shown_chars", "total_chars")})
         last = mod.select_spill(spill, "comments[-2:]")
         if last.get("length") != 2:
             return _fail("a list slice selects: %s" % last.get("length"))
         miss = mod.select_spill(spill, "task.nothing")
-        if "error" not in miss or "task" not in (miss.get("keys") or []):
-            return _fail("a missing path is an answer naming what exists: %s" % miss)
+        if miss.get("error") != "no value at nothing" or "keys" in miss \
+                or miss.get("deepest_resolved") != {"path": "task", "type": "dict", "keys": ["body", "id", "title"]}:
+            return _fail("a missing path is an answer naming what exists below the deepest resolved value: %s" % miss)
+        if _field_miss_parent_case(mod, root):
+            return 1
 
         # the bounded card view over a board: every record retained, only the latest verdicts shown
         class Board:
@@ -1546,8 +1665,13 @@ def _large_brief_digest_case() -> int:
            "items": items, "measure": {"tuple": [0, 40, 0]}, "attempts_left": 3, "budget": {"left": 3},
            "procedure": "Patch the write set one item at a time.", "rule": "Edit only the write set.", "stop_rule": "Stop after two.",
            "evidence_rule": "Only run-verify.", "unit": {"checkpoint": "judged once", "members_by_rule": {"r": ["x"] * 2000}},
-           "planned_requirements": ["y" * 5000] * 4}
+           "planned_requirements": ["y" * 5000] * 4, "previous_attempts": [], "voided_attempts": [], "exception_advice": None}
     text = B.brief_digest(doc, "brief-u-big")
+    # v32: the footer says --section repeats, and lists empty sections on one line, not as rows to fetch
+    footer = text[text.index("SECTIONS ("):]
+    if "--section is repeatable" not in footer or "  empty (nothing to fetch): exception_advice, previous_attempts, voided_attempts" not in footer \
+            or any(ln.split()[0] in ("previous_attempts", "voided_attempts", "exception_advice") for ln in footer.splitlines()[1:] if ln.strip()):
+        return _fail("the SECTIONS footer carries the repeatable note and one empty-sections line:\n%s" % footer)
     for needle in ("WRITE SET (3 file(s)", "src/A0.java -- 14 item(s)", "cannot find symbol symbol: class Profile location: package x",
                    "line 39 compiler.err.cant.resolve:", "PROCEDURE:", "Patch the write set", "STOP_RULE:", "checkpoint: judged once",
                    "--section <key>", "verification/loop/brief-u-big.txt", "planned_requirements"):

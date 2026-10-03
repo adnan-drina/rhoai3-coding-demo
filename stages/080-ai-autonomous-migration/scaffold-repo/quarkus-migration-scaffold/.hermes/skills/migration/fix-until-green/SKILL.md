@@ -71,7 +71,8 @@ edit on a new card; a prior card's amendment never carries over.
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
 #   the default always prints a DIGEST on stdout (write set, obligations per file, procedure, a section index); read what
-#   you need in full with --section <key> (e.g. --section unit --section items), never by grep/cut on the .json
+#   you need in full with --section <key> (repeatable in one call: --section unit --section items), never by grep/cut on
+#   the .json; brief-<cluster>.txt and context-<cluster>.txt are the same documents by line, for read_file offset/limit
 #   --full is the explicit machine-readable JSON interface, not the worker's first read.
 #   --file <path>, --symbol <name> and --item <id> give measured facts with candidate and issuance labels.
 #   A diagnostic on a shared file is not automatically this card's obligation; unsealed diagnostics may still be
@@ -81,6 +82,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --clu
 #   applied -> run-verify.sh + advance.py; UNRESOLVED -> the brief shows the reason, finish with the bounded repair
 #   … patch the write set one item at a time (the brief lists each item with its advice and,
 #     for pom.xml, the element at the reported line); never a whole-file rewrite; never tests … # 2. propose
+#   an EXISTING file is edited with `patch`: a small anchor that is unique in the file, one hunk per call. If a patch
+#     misses, re-read the exact lines with read_file offset/limit and retry the patch -- never fall back to write_file
+#     of the whole file (each rewrite is minutes of silent stream and a whole file of context). write_file is for a
+#     file that does not exist yet.
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode acceptance  # 3. tools recompute the work list
 python3 "${HERMES_SKILL_DIR}/scripts/advance.py" --root /projects/modernized \
   --cluster <cluster id from the brief> --card "$HERMES_KANBAN_TASK"               # 4. accept / revert / pending / defer, then mint or block
