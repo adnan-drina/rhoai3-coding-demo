@@ -5,6 +5,25 @@ the ordered patch series in [patches/](patches/). This record names what was
 published, how it was qualified, and which image each run uses. A pin edit
 alone does not prove an image was built or deployed.
 
+## Pending (not built): patches 0018–0021
+
+Series 0001–0021 gives patched tree `ac9c5f5bf895509dd77f1be159fb3dfc2c168bb2` (verified from a fresh base);
+the recipe pins that tree and 21 patches. No image is built, pushed or pinned: the current release below and
+every run pin are unchanged. 0018 adds the same-result, same-call and repeat-read escalation triggers and the
+restart bound (`same_result_count` 3, `same_call_count` 5, `repeat_read_count` 3 within `repeat_read_window` 8,
+`max_starts_per_signature` 2 on `qwen3-8-27b-int4` only; v32 t_2f2509aa, t_449a35e4 and t_56432803; one
+repeat-read signature per no-edit stretch), ends an escalation when the card's `typed-repair.py` runs
+(t_6d0f2b9f), and starts a retry escalated when `HERMES_START_ESCALATED_TURNS` is set. 0019 makes a foreground
+`terminal` call cut at the 420 s foreground limit say that the process was killed, the requested and applied
+limits, and the background + wait route. 0020 makes `read_file` report a line cut at the 2,000-character
+per-line cap (`truncated` true, `clipped_lines` with the full length, and that offset/limit page by line); reads
+with no cut line are unchanged. 0021 adds a request ceiling for every model with compression enabled
+(projected prompt + `max_tokens` never above `context_length`; forced compaction, else
+`context_ceiling_unreachable`), run-scoped compaction (`compression.run_scoped` on `qwen3-6-27b` only; v32
+t_2a95f8c1 run 44), and refuses pruned tool-call stubs as write content. The Stage 050
+profile carries the 0018 keys and the 0021 `run_scoped` key; a 0017 image ignores them (identical-call trigger
+only, stock compaction).
+
 ## Current release (2026-10-02, patch 0017: Qwen 3.8 loop escalation; v32 A/B package)
 
 | Item | Identity |
