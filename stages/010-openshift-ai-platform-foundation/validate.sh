@@ -42,6 +42,17 @@ csv_phase_from_subscription() {
     -o jsonpath='{.status.phase}' --insecure-skip-tls-verify=true 2>/dev/null || echo ""
 }
 
+native_ready() {
+  local kind="$1" name="$2" require_generation="$3"
+  oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get "$kind" "$name" -o json | python3 -c '
+import json,sys
+obj=json.load(sys.stdin); status=obj.get("status",{})
+ready=any(c.get("type")=="Ready" and c.get("status")=="True" for c in status.get("conditions",[]))
+current=sys.argv[1]=="false" or status.get("observedGeneration",0)>=obj.get("metadata",{}).get("generation",1)
+print("pass" if status.get("phase")=="Ready" and ready and current else "native Ready/current-generation contract not satisfied")
+' "$require_generation" 2>/dev/null || echo "native status unavailable"
+}
+
 # ── 1. OpenShift GitOps operator ─────────────────────────────────────────────
 GITOPS_CSV=$(csv_phase_from_subscription openshift-operators openshift-gitops-operator)
 [[ "$GITOPS_CSV" == "Succeeded" ]] && R="pass" || R="phase=${GITOPS_CSV:-not found}"
@@ -99,10 +110,7 @@ TEMPO_CSV=$(csv_phase_from_subscription openshift-tempo-operator tempo-product)
 check "Tempo Operator CSV Succeeded" "$R"
 
 # ── 8. DSCInitialization Ready ────────────────────────────────────────────────
-DSCI_PHASE=$(oc get dscinitialization default-dsci \
-  -o jsonpath='{.status.phase}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$DSCI_PHASE" == "Ready" ]] && R="pass" || R="phase=${DSCI_PHASE:-not found}"
-check "DSCInitialization phase Ready" "$R"
+check "DSCInitialization phase and condition Ready" "$(native_ready dscinitialization default-dsci false)"
 
 # ── 9. RHOAI observability stack and dashboard flag ──────────────────────────
 OBS_MGMT=$(oc get dscinitialization default-dsci \
@@ -155,10 +163,7 @@ validate_persona administrator "${RHOAI_ADMIN_KUBECONFIG:-}" "${RHOAI_ADMIN_USER
 validate_persona developer "${RHOAI_DEVELOPER_KUBECONFIG:-}" "${RHOAI_DEVELOPER_USER:-}"
 
 # ── 10. DataScienceCluster Ready ──────────────────────────────────────────────
-DSC_PHASE=$(oc get datasciencecluster default-dsc \
-  -o jsonpath='{.status.phase}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$DSC_PHASE" == "Ready" ]] && R="pass" || R="phase=${DSC_PHASE:-not found}"
-check "DataScienceCluster phase Ready" "$R"
+check "DataScienceCluster Ready at current generation" "$(native_ready datasciencecluster default-dsc true)"
 
 # ── 11. Model Registry operator running ──────────────────────────────────────
 MR_READY=$(oc get deployment model-registry-operator-controller-manager \
@@ -179,9 +184,7 @@ else
 fi
 
 # Native Auth and foundation component ownership.
-AUTH_READY=$(oc get auth.services.platform.opendatahub.io auth -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
-[[ "$AUTH_READY" == True ]] && R="pass" || R="Auth not Ready"
-check "Native Auth Ready" "$R"
+check "Native Auth Ready at current generation" "$(native_ready auth.services.platform.opendatahub.io auth true)"
 COMPONENT_CHECK=$(oc get datasciencecluster default-dsc -o json | python3 -c '
 import json,sys
 c=json.load(sys.stdin)["spec"]["components"]

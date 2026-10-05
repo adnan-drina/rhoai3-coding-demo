@@ -1,12 +1,12 @@
 # Stage 010 foundation design review
 
-Status: user-authorized implementation, 2026-10-05. The isolated candidate has passed source review and static/mocked checks. Publication awaits explicit user authorization; no platform deployment or live acceptance is demonstrated. OpenShell/Hermes hosting remains a later design decision.
+Status: user-authorized implementation, 2026-10-05. The isolated candidate passed source review and static/mocked checks. The user explicitly authorized push and deployment without a PR; native installation is in progress at published revision `8cf15ab2`. Full Stage 010 acceptance is not demonstrated. OpenShell/Hermes hosting remains a later design decision.
 
 ## Reconciliation gate
 
 The primary checkout remains on `59169d28` with its preserved changes. An isolated managed worktree was created at cached upstream `bfd6cc39`, preserving all 47 intervening commits. The private checkpoint in `tmp/platform-migration/checkpoint-20261005/` contains the original tracked diff and 12 grouped scripts with modes/checksums. Seven upstream overlaps were reconciled without textual conflicts; existing Kilo, workspace creation, catalog and MaaS routing regressions pass against the resulting tree.
 
-Cleanup is committed separately as `a1637d29`; Stage 010 source and helper fixes follow on `codex/stage-010-foundation-35`. No primary checkout branch, index or history was changed. Deployment must use a published immutable candidate SHA matching local GitOps, stage scripts and executed shared helpers. The script refuses unpublished or mismatched content. External publication is currently blocked by automatic approval review pending explicit user authorization for the repository/branch and draft PR.
+Cleanup is committed separately as `a1637d29`; Stage 010 source and helper fixes follow on `codex/stage-010-foundation-35`. No primary checkout branch, index or history was changed. Deployment must use a published immutable candidate SHA matching local GitOps, stage scripts and executed shared helpers. The script refuses unpublished or mismatched content. Automatic approval initially rejected publication; the user then explicitly authorized push and deployment without a PR. The candidate branch is published; main remains unmerged.
 
 ## Target and source boundaries
 
@@ -88,7 +88,7 @@ With reconciliation and source review complete: guarded bootstrap → native ope
 
 ## Remaining gates and implementation evidence
 
-Publication to `github.com/adnan-drina/rhoai3-coding-demo` on `codex/stage-010-foundation-35`, with a draft PR and no merge, requires explicit user authorization after automatic approval review rejected external code egress. The clean isolated candidate is ready locally. Native deployment, exact installed CSV/CRD validation, S3 functional write/read, registry API access, native metrics/traces and dashboard discovery remain unproven.
+The user authorized publication to `github.com/adnan-drina/rhoai3-coding-demo` on `codex/stage-010-foundation-35` and deployment without a PR. Remote SHA was verified and the Argo Application targets immutable `8cf15ab20c1813b4518ee5a7836c9ae4d7f0aa48`. GitOps/Argo and reviewed prerequisite operators are installed. Native Monitoring recovered to Ready/current generation after a transient webhook bootstrap race. DSCI briefly reported phase Ready with Ready=False; validators now require the Ready condition and generation where served rather than phase alone. No generated workload was patched.
 
 The user selected existing OpenID usernames `ai-admin` and `ai-developer`; no htpasswd or provider account changes are included. Group membership may precede first login, but final acceptance requires their private authenticated sessions. The non-kubeadmin installation account has bootstrap permissions and matches neither persona. Provider OAuth/Keycloak ownership remains intact.
 
@@ -98,4 +98,4 @@ The demo project carries the empty EvalHub tenant presence label and an explicit
 
 Validation completed locally: per-file Bash syntax; embedded Python parsing; five stage Kustomize renders; Kilo, workspace creation, catalog and MaaS routing regressions; exact owned InstallPlan approval with rejection of foreign ownership/extra CSVs; 13 service helper credential/reuse/fault/readiness/RBAC/timeout cases; functional-helper mock endpoint flow and stale-registry rejection; diff whitespace and scoped secret/private-endpoint scans. No live platform or evaluation claim follows from these results.
 
-Exact newer OpenTelemetry/OCP 4.22 support-table coverage and an official tested observability tuple remain unverified. Full native tracing is selected; metrics-only would require separate user alignment if native compatibility fails. Missing AWS root credentials may affect native object-store provisioning: inspect actual NooBaa/BackingStore status before considering documented pv-pool resources; make no speculative cloud IAM change. First real evaluation and durable evaluation evidence await Stage 030/040 endpoints. OpenShell/Hermes hosting remains outside Stage 010.
+Exact newer OpenTelemetry/OCP 4.22 support-table coverage and an official tested observability tuple remain unverified. Full native tracing is selected; metrics-only would require separate user alignment if native compatibility fails. NooBaa reached Configuring after its native CNPG database and PVCs became healthy, then reported its cloud credentials secret unavailable. This blocks storage and later sync waves. A documented native pv-pool ownership path is under review; no provider IAM or generated NooBaa patch is authorized by this observation. S3 functional write/read, registry API access, service/dashboard discovery and actual persona acceptance remain unproven. First real evaluation and durable evaluation evidence await Stage 030/040 endpoints. OpenShell/Hermes hosting remains outside Stage 010.
