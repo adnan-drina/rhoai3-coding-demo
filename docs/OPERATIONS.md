@@ -101,6 +101,10 @@ Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and
 
 MLflow, EvalHub and TrustyAI belong together in Stage 050 source; the current MLflow service remains Stage 010-owned on live f38; registry and both catalogs are Stage 030-owned in source, while the current cluster retains their previous Stage 010 ownership pending a safe handoff; OpenShell with standalone Hermes per project remains later-stage design. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
 
+### Bucket naming review before creation
+
+Before creating any new project ObjectBucketClaim or S3 bucket, notify the user and propose the stage, namespace, claim name and intended S3 name for review. This checkpoint precedes the Application sync or other action that can create the bucket. An OBC name is not necessarily the S3 name: `generateBucketName` is a prefix, while `bucketName` requests an exact name; verify the resolved name after provisioning. Before changing an existing bucket, assess its data, retention and dependent connections, artifact URIs, credentials/configuration references and ownership. Naming review does not authorize renaming, deleting or recreating existing storage.
+
 ### Local inputs and read-only preflight
 
 Keep API/console addresses, login credentials and kubeconfigs only in local private inputs. `OPENSHIFT_API_URL`, `OPENSHIFT_CONSOLE_URL`, `OPENSHIFT_USER`, `OPENSHIFT_PASSWORD` and `RHOAI_EXPECTED_API_SERVER` must describe the same environment. The expected-server substring must be unique. Do not reuse an inherited endpoint silently: `load_env` preserves values already exported by a caller. Load access inputs in a fresh shell, use a private kubeconfig and call `load_env` plus `check_oc_logged_in` before discovery. The guard's normal output contains the private endpoint; keep its output private when producing evidence for publication.
