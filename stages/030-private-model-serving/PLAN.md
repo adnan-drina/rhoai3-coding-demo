@@ -10,7 +10,7 @@
 - Enterprise value: Converts governed GPU capacity into a usable, measurable model endpoint path before shared-service governance is introduced.
 - Depends on: `010-openshift-ai-platform-foundation` and `020-gpu-infrastructure-private-ai`.
 - New components: KServe model serving platform through the RHOAI `DataScienceCluster`, vLLM NVIDIA GPU runtime availability, idempotent `demo-registry` and Nemotron metadata readiness, a deployment path for `nemotron-3-nano-30b-a3b`, user workload monitoring, a GitOps-managed Grafana dashboard, and an on-demand GuideLLM benchmark runner.
-- Existing components reused: Stage 010 OpenShift GitOps, RHOAI Dashboard, `demo-sandbox`, ODF MCG, Model Registry, and Stage 020 GPU hardware profiles.
+- Existing components reused: Stage 010 OpenShift GitOps, RHOAI Dashboard, `demo-sandbox`, ODF MCG, and Stage 020 GPU hardware profiles.
 - Non-goals:
   - MaaS governance, subscriptions, quotas, external OpenAI model registration, or API-key issuance; deferred to `040-governed-models-as-a-service`.
   - EvalHub, MLflow, LMEval, LLM-as-judge, risk assessment, or formal model quality evaluation; deferred to later MLOps/evaluation stages.
@@ -106,8 +106,8 @@
 | File | Kind | Source authority | Validation |
 |------|------|------------------|------------|
 | `gitops/stages/030-private-model-serving/base/rhoai-dsc/base/patch-dsc-kserve.yaml` | GitOps hook that patches `DataScienceCluster` KServe state | RHOAI 3.4 docs plus live `oc explain` for v2 schema | `kustomize build gitops/stages/030-private-model-serving/base`; `oc get datasciencecluster default-dsc` after sync |
-| `gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/registry/base/modelregistry-demo.yaml` | `ModelRegistry` | RHOAI 3.4 managing model registries plus live `oc explain modelregistries.modelregistry.opendatahub.io` | `kustomize build gitops/stages/010-openshift-ai-platform-foundation/base`; `oc get modelregistries.modelregistry.opendatahub.io demo-registry -n rhoai-model-registries` |
-| `gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/registry/base/rolebinding-demo-registry-*.yaml` | `RoleBinding` | RHOAI generated registry RBAC model | `oc get role registry-user-demo-registry -n rhoai-model-registries`; user dashboard access |
+| `gitops/stages/030-private-model-serving/base/model-discovery/registry/modelregistry-demo.yaml` | `ModelRegistry` | RHOAI 3.5 managing model registries plus live `oc explain modelregistries.modelregistry.opendatahub.io` | `kustomize build gitops/stages/030-private-model-serving/base`; `oc get modelregistries.modelregistry.opendatahub.io demo-registry -n rhoai-model-registries` |
+| `gitops/stages/030-private-model-serving/base/model-discovery/registry/rolebinding-demo-registry-*.yaml` | `RoleBinding` | RHOAI generated registry RBAC model | `oc get role registry-user-demo-registry -n rhoai-model-registries`; user dashboard access |
 | `gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/aggregate/overlays/demo/kustomization.yaml` | Kustomize overlay | Project shared-owner pattern | `kustomize build gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/aggregate/overlays/demo` |
 | `gitops/argocd/app-of-apps/030-private-model-serving.yaml` | `Application` | Project Argo CD standards | `oc get applications.argoproj.io 030-private-model-serving -n openshift-gitops` |
 | `gitops/stages/030-private-model-serving/base/monitoring/base/cluster-monitoring-config.yaml` | `ConfigMap` | OCP monitoring docs | `oc get configmap cluster-monitoring-config -n openshift-monitoring` |

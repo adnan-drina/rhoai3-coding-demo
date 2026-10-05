@@ -37,6 +37,35 @@ GIT_REPO_BRANCH="$selected_commit"
 command -v python3 >/dev/null || { echo "ERROR: python3 is required for exact InstallPlan checks" >&2; exit 1; }
 
 
+# Source relocation must not prune a registry still owned by an older Stage 010.
+# Read-only preflight runs before the first bootstrap/Application write.
+python3 - <<'PY_GUARD'
+import json, subprocess, sys
+old_app = "010-openshift-ai-platform-foundation"
+new_app = "030-private-model-serving"
+def read(args):
+    result = subprocess.run(["oc", "--request-timeout=10s", *args], capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError("Registry handoff preflight could not inspect cluster ownership")
+    return result.stdout.strip()
+def tracked_by(obj, app):
+    return obj.get("metadata", {}).get("annotations", {}).get("argocd.argoproj.io/tracking-id", "").startswith(app + ":")
+try:
+    text = read(["get", "namespace", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
+    namespace = json.loads(text) if text else {}
+    if tracked_by(namespace, old_app):
+        raise RuntimeError("Registry namespace is still Stage 010-owned; keep the deployed revision pinned until the reviewed Stage 030 adoption")
+    available = read(["api-resources", "--api-group=modelregistry.opendatahub.io", "-o", "name"])
+    if "modelregistries.modelregistry.opendatahub.io" in available.splitlines():
+        text = read(["get", "modelregistries.modelregistry.opendatahub.io", "demo-registry", "-n", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
+        registry = json.loads(text) if text else {}
+        if registry and not tracked_by(registry, new_app):
+            raise RuntimeError("Existing demo-registry has not been adopted by Stage 030; refusing a potentially destructive foundation transition")
+except (RuntimeError, ValueError) as error:
+    print("ERROR: " + str(error), file=sys.stderr)
+    sys.exit(1)
+PY_GUARD
+
 # Fail fast if the nodes are too small for the demo stack, before any changes.
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 

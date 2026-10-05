@@ -6,6 +6,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$ROOT_DIR"
+source "$ROOT_DIR/scripts/shared/lib.sh"
+load_env
+check_oc_logged_in
+
 
 PASS=0
 FAIL=0
@@ -29,12 +34,7 @@ MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-24Gi}"
 MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-8192}"
 MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-8192}"
 
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  set -a
-  # shellcheck source=/dev/null
-  source "$ROOT_DIR/.env"
-  set +a
-fi
+
 
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-$REGISTRY_NS}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-$REGISTRY_NAME}"
@@ -52,16 +52,6 @@ MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
 MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
 MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
 
-if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
-  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set. Set it in .env." >&2
-  exit 1
-fi
-
-ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
-if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
-  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match guard." >&2
-  exit 1
-fi
 
 check() {
   local label="$1"
@@ -302,5 +292,11 @@ else
 fi
 
 echo ""
+if "$SCRIPT_DIR/validate-model-discovery.sh"; then
+  check "Stage 030 registry, Model Catalog and Agent Catalog" pass
+else
+  check "Stage 030 registry, Model Catalog and Agent Catalog" "native discovery readiness failed"
+fi
+
 echo "Results: ${PASS} passed, ${FAIL} failed"
 [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1

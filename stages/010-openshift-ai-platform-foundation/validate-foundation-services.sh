@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native registry/metrics checks and one synthetic trace roundtrip; no workloads created.
+# Native metrics checks and one synthetic trace roundtrip; no workloads created.
 # Actual persona sessions and dashboard UI acceptance remain separate.
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -19,10 +19,6 @@ def oc(*args):
 def get(kind, name=None, namespace=None):
     args = ['get', kind] + ([name] if name else []) + (['-n', namespace] if namespace else [])
     return json.loads(oc(*args, '-o', 'json'))
-def fresh(obj):
-    status, spec = obj.get('status', {}), obj['spec']
-    need(status.get('observedGeneration') == obj['metadata']['generation'], 'workload generation is stale')
-    need(status.get('readyReplicas', 0) >= spec.get('replicas', 1) > 0 and status.get('updatedReplicas', 0) >= spec.get('replicas', 1), 'workload replicas are not current and ready')
 def http(url, body=None, headers=None):
     request = urllib.request.Request(url, data=body, headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json', **(headers or {})})
     with urllib.request.urlopen(request, context=context, timeout=20) as response: return json.load(response)
@@ -46,27 +42,6 @@ try:
     need(len(monitors) == 1, 'expected exactly one native Monitoring resource')
     monitor = monitors[0]
     need(monitor.get('status', {}).get('phase') == 'Ready' and monitor['status'].get('observedGeneration') == monitor['metadata']['generation'] and any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in monitor['status'].get('conditions', [])), 'Monitoring phase, Ready condition or current generation is not ready')
-    regns = 'rhoai-model-registries'
-    registry = get('modelregistries.modelregistry.opendatahub.io', 'demo-registry', regns)
-    conditions = {c['type']: c.get('status') for c in registry.get('status', {}).get('conditions', [])}
-    need(all(conditions.get(t) == 'True' for t in ['Available', 'KubeRBACProxyAvailable']), 'ModelRegistry native availability conditions are absent or false')
-    uid = registry['metadata']['uid']
-    def owned(obj): return any(o.get('uid') == uid and o.get('controller') is True for o in obj['metadata'].get('ownerReferences', []))
-    workloads = [d for d in get('deployments', namespace=regns)['items'] if owned(d)]
-    databases = [d for d in workloads if any('postgresql' in c.get('image', '') for c in d['spec']['template']['spec']['containers'])]
-    apis = [d for d in workloads if d not in databases]
-    need(len(apis) == 1, 'generated registry API deployment is not uniquely discoverable')
-    fresh(apis[0])
-    need(len(databases) == 1, 'generated registry PostgreSQL deployment is not uniquely discoverable')
-    fresh(databases[0])
-    claims = [v['persistentVolumeClaim']['claimName'] for v in databases[0]['spec']['template']['spec'].get('volumes', []) if 'persistentVolumeClaim' in v]
-    need(claims, 'registry database has no persistent claim')
-    for claim in claims: need(get('pvc', claim, regns).get('status', {}).get('phase') == 'Bound', 'registry database PVC is not Bound')
-    routes = [r for r in get('routes', namespace=regns)['items'] if owned(r)]
-    need(len(routes) == 1, 'registry authenticated route is not uniquely discoverable')
-    result = http('https://' + routes[0]['spec']['host'] + '/api/model_registry/v1alpha3/registered_models')
-    need(isinstance(result.get('items'), list), 'registry authenticated list API returned no collection')
-    print('[PASS] Registry current generation, PostgreSQL readiness, Bound storage and authenticated list API')
     # Native namespace proxy requires the namespace query parameter for its SAR and label filter.
     port = forward('data-science-prometheus-namespace-proxy', namespace, 8443)
     query = urllib.parse.urlencode({'query': 'up == 1 and (time() - timestamp(up) >= 0) and (time() - timestamp(up) <= 120)', 'namespace': namespace})

@@ -13,7 +13,9 @@ spec:
   dashboardConfig:
     autorag: false
     automl: false
-    agentsCatalog: true
+    agentsCatalog: false
+    disableModelCatalog: true
+    disableModelRegistry: true
     disableKueue: false
     disableTracking: false
     genAiStudio: true

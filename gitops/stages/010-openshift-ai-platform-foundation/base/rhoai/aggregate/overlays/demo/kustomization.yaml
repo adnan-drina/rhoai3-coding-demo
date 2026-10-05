@@ -7,4 +7,3 @@ commonAnnotations:
 resources:
   - ../../../operator/overlays/stable-3.5
   - ../../../instance/base
-  - ../../../registry/base

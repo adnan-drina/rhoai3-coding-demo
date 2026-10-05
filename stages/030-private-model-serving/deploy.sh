@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # deploy.sh - Stage 030: Model Serving Foundation
-# Reconciles the shared Stage 010 RHOAI owner, then ensures the demo registry,
+# Treats Stage 010 as a read-only prerequisite, then provisions discovery and
 # Qwen27B registry metadata, and vLLM endpoint exist for fresh environments.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$ROOT_DIR"
+source "$ROOT_DIR/scripts/shared/lib.sh"
+load_env
+check_oc_logged_in
+
 
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-rhoai-model-registries}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-demo-registry}"
@@ -26,12 +31,7 @@ MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-24Gi}"
 MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-8192}"
 MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-8192}"
 
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  set -a
-  # shellcheck source=/dev/null
-  source "$ROOT_DIR/.env"
-  set +a
-fi
+
 
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-$REGISTRY_NS}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-$REGISTRY_NAME}"
@@ -52,18 +52,7 @@ MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
 MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
 MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
 
-if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
-  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set." >&2
-  exit 1
-fi
 
-ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
-if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
-  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match RHOAI_EXPECTED_API_SERVER." >&2
-  exit 1
-fi
-
-echo "✓ Cluster guard passed: $ACTUAL_SERVER"
 
 # Fail fast if the nodes are too small for the demo stack, before any changes.
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
@@ -138,21 +127,37 @@ apply_argocd_application() {
     --insecure-skip-tls-verify=true >/dev/null
 }
 
-echo "── Applying shared Stage 010 Argo CD Application ──"
-apply_argocd_application \
-  "010-openshift-ai-platform-foundation" \
-  "$ROOT_DIR/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml"
-
-echo "✓ Application 010-openshift-ai-platform-foundation applied"
-echo "  Argo CD will reconcile the base shared DSC owner."
-
-wait_for_jsonpath "Stage 010 shared owner Application sync" \
-  "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" \
-  "{.status.sync.status}" "Synced"
-
-wait_for_jsonpath "Stage 010 shared owner Application health" \
-  "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" \
-  "{.status.health.status}" "Healthy"
+# Do not repoint the foundation while adopting its former registry resources.
+# All checks precede the first modifying Stage 030 Application action.
+python3 - <<'PY_PREREQUISITE'
+import json, subprocess, sys
+result = subprocess.run(["oc", "--request-timeout=10s", "get", "application", "010-openshift-ai-platform-foundation", "-n", "openshift-gitops", "-o", "json"], capture_output=True, text=True)
+try:
+    if result.returncode:
+        raise ValueError("cannot inspect the foundation Application")
+    app = json.loads(result.stdout)
+    status = app.get("status", {})
+    if status.get("sync", {}).get("status") != "Synced" or status.get("health", {}).get("status") != "Healthy":
+        raise ValueError("foundation must be Synced and Healthy")
+    spec = app["spec"]
+    if "RespectIgnoreDifferences=true" not in spec.get("syncPolicy", {}).get("syncOptions", []):
+        raise ValueError("foundation does not respect delegated field ownership")
+    ignores = spec.get("ignoreDifferences", [])
+    def paths(group, kind, name, namespace=None):
+        return {path for entry in ignores
+                if entry.get("group") == group and entry.get("kind") == kind
+                and entry.get("name") == name
+                and (namespace is None or entry.get("namespace") == namespace)
+                for path in entry.get("jsonPointers", [])}
+    if "/spec/components/modelregistry" not in paths("datasciencecluster.opendatahub.io", "DataScienceCluster", "default-dsc"):
+        raise ValueError("foundation has not delegated the modelregistry component")
+    required = {"/spec/dashboardConfig/agentsCatalog", "/spec/dashboardConfig/disableModelCatalog", "/spec/dashboardConfig/disableModelRegistry"}
+    if not required <= paths("opendatahub.io", "OdhDashboardConfig", "odh-dashboard-config", "redhat-ods-applications"):
+        raise ValueError("foundation has not delegated all three discovery visibility fields")
+except (ValueError, KeyError) as error:
+    print("ERROR: " + str(error) + "; complete the reviewed non-destructive registry ownership handoff before Stage 030 deployment", file=sys.stderr)
+    sys.exit(1)
+PY_PREREQUISITE
 
 echo "── Applying Stage 030 Argo CD Application ──"
 apply_argocd_application \
@@ -172,6 +177,9 @@ wait_for_jsonpath "DataScienceCluster readiness" \
 
 wait_for_jsonpath "DataScienceCluster KServe management" \
   "datasciencecluster/default-dsc" "" "{.spec.components.kserve.managementState}" "Managed"
+
+wait_for_jsonpath "DataScienceCluster registry management" \
+  "datasciencecluster/default-dsc" "" "{.spec.components.modelregistry.managementState}" "Managed"
 
 wait_for_jsonpath "demo-registry availability" \
   "modelregistries.modelregistry.opendatahub.io/${REGISTRY_NAME}" "$REGISTRY_NS" \

@@ -56,7 +56,7 @@ The KServe model-serving **foundation** — the platform, runtime, registry, and
 
 - **KServe enablement** — patches the shared DataScienceCluster to `kserve.managementState: Managed` via an Argo CD Sync hook Job
 - **vLLM ServingRuntime** — the RHOAI-managed vLLM runtime the Stage 040 models are served on
-- **Model Registry** — the `demo-registry` instance plus the baseline model card (registered model, version, artifact pointer) created via REST API; the Stage 040 `MaaSModelRef` consumes this card
+- **Model Registry and catalogs** — enables the native registry/catalog component, Model Catalog and Agent Catalog discovery (Agent Catalog is Developer Preview); provisions the `demo-registry` instance plus the baseline model card (registered model, version, artifact pointer) created via REST API; the Stage 040 `MaaSModelRef` consumes this card
 - **User workload monitoring** — enables `prometheus.retention: 7d` for the user workload Prometheus instance (reduced from 15d to avoid disk pressure on the demo cluster); configures Alertmanager with three receivers routing to a demo-local webhook
 
 ## What To Notice And Why It Matters
@@ -88,7 +88,7 @@ Red Hat OpenShift AI provides the KServe model serving platform as a managed com
 
 | Product | Version/Channel |
 |---------|-----------------|
-| Red Hat OpenShift AI Self-Managed | stable-3.4 (KServe, Model Registry) |
+| Red Hat OpenShift AI Self-Managed | stable-3.5 (KServe, Model Registry and catalogs) |
 | Red Hat OpenShift Container Platform | 4.22 (user workload monitoring, Alertmanager) |
 
 ## Open Source Projects To Know
@@ -121,9 +121,9 @@ The deploy script uses an idempotent discover-or-create flow: it checks for exis
 
 | Source | Role |
 |--------|------|
-| [RHOAI 3.4 - Configuring model-serving platform](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/configuring_your_model-serving_platform/index) | KServe, ServingRuntime platform enablement |
-| [RHOAI 3.4 - Deploying models](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/deploying_models/index) | Model deployment and OCI modelcar pattern |
-| [RHOAI 3.4 - Managing model registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/managing_model_registries/index) | Registry provisioning and access |
+| [RHOAI 3.5 - Configuring model-serving platform](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/configuring_your_model-serving_platform/index) | KServe, ServingRuntime platform enablement |
+| [RHOAI 3.5 - Deploying models](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index) | Model deployment and OCI modelcar pattern |
+| [RHOAI 3.5 - Managing model registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_model_registries/index) | Registry provisioning and access |
 | [Red Hat Developer - GuideLLM](https://developers.redhat.com/articles/2025/06/20/guidellm-evaluate-llm-deployments-real-world-inference) | Benchmark methodology and workload-shaped testing |
 | [Red Hat Developer - Why vLLM](https://developers.redhat.com/articles/2025/10/30/why-vllm-best-choice-ai-inference-today) | vLLM value and OpenShift AI integration |
 | [OCP 4.22 - Monitoring](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/monitoring/index) | User workload monitoring and Alertmanager |
@@ -131,3 +131,5 @@ The deploy script uses an idempotent discover-or-create flow: it checks for exis
 ## Next Stage
 
 [Stage 040: Governed Models-as-a-Service](../040-governed-models-as-a-service/) publishes the validated local model endpoints (and an external GPT-4o-mini registration) through Red Hat OpenShift AI Models-as-a-Service with identity, API keys, rate limits, and tiered access policies.
+
+[OpenShift AI 3.5 registry enablement](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_model_registries/enabling-the-model-registry-component_managing-model-registries) provisions registry and catalog capabilities. [Dashboard configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard) controls their visibility and the Agent Catalog preview.

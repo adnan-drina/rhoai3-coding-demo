@@ -165,13 +165,6 @@ validate_persona developer "${RHOAI_DEVELOPER_KUBECONFIG:-}" "${RHOAI_DEVELOPER_
 # ── 10. DataScienceCluster Ready ──────────────────────────────────────────────
 check "DataScienceCluster Ready at current generation" "$(native_ready datasciencecluster default-dsc true)"
 
-# ── 11. Model Registry operator running ──────────────────────────────────────
-MR_READY=$(oc get deployment model-registry-operator-controller-manager \
-  -n redhat-ods-applications \
-  -o jsonpath='{.status.readyReplicas}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "${MR_READY:-0}" -ge 1 ]] && R="pass" || R="readyReplicas=${MR_READY:-0}"
-check "Model Registry operator running" "$R"
-
 # ── 12. RHOAI Dashboard route responds ───────────────────────────────────────
 DASHBOARD_HOST=$(oc get route rhods-dashboard -n redhat-ods-applications \
   -o jsonpath='{.spec.host}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
@@ -188,7 +181,7 @@ check "Native Auth Ready at current generation" "$(native_ready auth.services.pl
 COMPONENT_CHECK=$(oc get datasciencecluster default-dsc -o json | python3 -c '
 import json,sys
 c=json.load(sys.stdin)["spec"]["components"]
-managed=["dashboard","workbenches","modelregistry","mlflowoperator"]
+managed=["dashboard","workbenches","mlflowoperator"]
 removed=["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer","trustyai"]
 print("pass" if all(c.get(k,{}).get("managementState")=="Managed" for k in managed) and all(c.get(k,{}).get("managementState")=="Removed" for k in removed) else "component ownership mismatch")
 ' 2>/dev/null || echo "component inspection failed")

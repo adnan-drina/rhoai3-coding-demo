@@ -15,8 +15,9 @@ spec:
     workbenches:
       managementState: Managed
       workbenchNamespace: rhods-notebooks
+    # Stage 030 enables registry and both catalog backends.
     modelregistry:
-      managementState: Managed
+      managementState: Removed
       registriesNamespace: rhoai-model-registries
 
     # ---- Shared workload management integration (used by stage-020) ----

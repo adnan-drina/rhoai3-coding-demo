@@ -1,0 +1,20 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: enable-model-discovery
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-model-discovery
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: enable-model-discovery
+subjects:
+  - kind: ServiceAccount
+    name: enable-model-discovery
+    namespace: redhat-ods-applications

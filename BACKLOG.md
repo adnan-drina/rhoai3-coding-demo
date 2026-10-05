@@ -8,11 +8,11 @@ evidence, excluded from Git.
 
 The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-05) is read-only evidence on OCP 4.22.14, not a deployed stage verdict.
 
-- [ ] Stage 010: finish real OpenID persona/dashboard acceptance and MLflow artifact persistence. RHOAI 3.5.1/ODF 4.22.5 installed; native registry, metrics, Perses transport and exact trace retrieval passed. The old COO hold and monitoring transport workarounds are retired; AutoRAG/AutoML remain disabled.
+- [ ] Stage 010: finish real OpenID persona/dashboard acceptance; synthetic MLflow artifact/database persistence passed. RHOAI 3.5.1/ODF 4.22.5 installed; native registry, metrics, Perses transport and exact trace retrieval passed. The old COO hold and monitoring transport workarounds are retired; AutoRAG/AutoML remain disabled.
 - [ ] Provisioner follow-up: Lightspeed 1.1.4 installed but API NotReady; cloud-credential missing parent credentials prevents future OCP minor/major upgrades. Preserve add-on/operator ownership; no credentials or resources were changed during inventory.
 - [ ] Stage 020: revalidate `stable-v1.3` Kueue against the OCP 4.22 catalog and current lifecycle/known-issue discrepancy before choosing the replacement. Trainer remains disabled; this inventory does not establish a full-stack compatibility failure.
 - [ ] Stage 050: resolve integration with the preinstalled OpenID/Keycloak (`keycloak`, namespace-scoped operator) before applying the separate project `rhbk` identity installation.
-- [ ] Later stage gates: qualify EvalHub, MLflow and Agent Catalog/OpenShell with standalone per-project Hermes; AutoRAG/AutoML excluded. No new capability is installed by this documentation change.
+- [ ] Stage 030: adopt the preserved Model Registry/Model Catalog/Agent Catalog resources without data loss; revised source is not deployed. EvalHub/TrustyAI and OpenShell/Hermes remain separate later design. MLflow stays Stage 010; AutoRAG/AutoML remain excluded.
 
 Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform revision pods are not project cleanup candidates. Historical validation stays historical; obsolete project resources need purpose, owner, replacement behavior and a validated removal condition before deletion.
 

@@ -45,8 +45,18 @@ spec:
       jsonPointers:
         - /spec/components/kueue
         - /spec/components/kserve
+        - /spec/components/modelregistry
         - /spec/components/llamastackoperator
         - /spec/components/aipipelines
+    # Stage 030 owns only these discovery visibility fields; the shared CR stays here.
+    - group: opendatahub.io
+      kind: OdhDashboardConfig
+      name: odh-dashboard-config
+      namespace: redhat-ods-applications
+      jsonPointers:
+        - /spec/dashboardConfig/agentsCatalog
+        - /spec/dashboardConfig/disableModelCatalog
+        - /spec/dashboardConfig/disableModelRegistry
     # Membership is assigned from provider identities by setup-access.sh.
     - group: user.openshift.io
       kind: Group

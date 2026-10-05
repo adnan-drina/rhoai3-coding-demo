@@ -71,9 +71,9 @@ Stages 010–050 construct the three platform layers declaratively — every res
 
 | Stage | Intent |
 |-------|--------|
-| [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | Establish the AI control plane: operator, dashboard, model registry, identity, and observability |
+| [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | Establish the AI control plane: operator, dashboard, MLflow, identity, and observability |
 | [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | Provision GPU workers and quota-controlled scheduling for model workloads |
-| [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Serve private LLMs with vLLM inside the platform boundary |
+| [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Provide Model Registry, Model Catalog and Agent Catalog discovery alongside private model serving |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | Expose private and external models through a governed MaaS gateway with API keys, rate limits, and telemetry |
 | [050 - Advanced Application Platform](stages/050-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
 

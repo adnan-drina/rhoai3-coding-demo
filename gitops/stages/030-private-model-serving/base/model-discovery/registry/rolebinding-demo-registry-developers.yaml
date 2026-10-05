@@ -7,8 +7,11 @@ metadata:
     # The registry operator creates this Role after the ModelRegistry exists.
     argocd.argoproj.io/sync-wave: "7"
   labels:
+    app.kubernetes.io/name: model-discovery
+    app.kubernetes.io/component: model-discovery
+    app.kubernetes.io/managed-by: argocd
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "010"
+    demo.rhoai.io/stage: "030"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

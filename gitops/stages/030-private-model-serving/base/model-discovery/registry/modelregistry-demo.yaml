@@ -4,11 +4,14 @@ metadata:
   name: demo-registry
   namespace: rhoai-model-registries
   labels:
+    app.kubernetes.io/name: model-discovery
+    app.kubernetes.io/component: model-discovery
+    app.kubernetes.io/managed-by: argocd
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "010"
+    demo.rhoai.io/stage: "030"
   annotations:
     # The ModelRegistry CRD is installed by the modelregistry DSC component.
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false
     argocd.argoproj.io/sync-wave: "6"
     openshift.io/display-name: demo-registry
     openshift.io/description: "RHOAI demo model registry"

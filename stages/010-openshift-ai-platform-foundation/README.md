@@ -4,7 +4,7 @@
 
 Enterprise AI has moved past experimentation. Business leaders are asking how to scale it safely, control costs, and protect sensitive data. Autonomous agents, model serving, pipelines, and evaluation workflows all require a stable, governed infrastructure beneath them. Without that foundation, AI projects stall at the proof-of-concept stage.
 
-This stage builds the durable, GitOps-managed demo base that every subsequent demo stage depends on. It proves that a platform team can deliver a private AI platform on OpenShift — with S3-compatible object storage, identity, observability, and a governed model registry — before a single model is deployed. The infrastructure-first lesson: you cannot bypass the boring work of standardization if you want to reach the exciting work of AI innovation.
+This stage builds the durable, GitOps-managed demo base that every subsequent demo stage depends on. It proves that a platform team can deliver a private AI platform on OpenShift — with S3-compatible object storage, identity, observability, and MLflow experiment tracking — before a single model is deployed. The infrastructure-first lesson: you cannot bypass the boring work of standardization if you want to reach the exciting work of AI innovation.
 
 Red Hat OpenShift AI 3.5 delivers this as a metal-to-agent platform that runs consistently across bare-metal, private cloud, managed Kubernetes, and edge footprints. Open models such as Llama, Qwen, Granite, and DeepSeek run locally with predictable costs. The same platform integrates governed access to proprietary endpoints when required. Object storage is the connective tissue — model artifacts, pipeline data, and evaluation evidence all flow through S3-compatible storage provided natively by OpenShift Data Foundation.
 
@@ -27,7 +27,7 @@ Red Hat OpenShift AI 3.5 delivers this as a metal-to-agent platform that runs co
 │  │   storage)      │   │                                  │   │
 │  │  NooBaa/S3 ─────┼──▶│  DSCI · DSC (v2)                 │   │
 │  │  OBC storage    │   │  Dashboard · Workbenches         │   │
-│  │  class          │   │  Model Registry                  │   │
+│  │  class          │   │  MLflow                  │   │
 │  │       │         │   │  (redhat-ods-applications)       │   │
 │  └───────┼─────────┘   └──────────────────────────────────┘   │
 │          │ OBC                          ▲                      │
@@ -78,10 +78,9 @@ A durable demo AI platform foundation that all subsequent stages build on.
 
 - **OpenShift GitOps** — Argo CD (channel `gitops-1.21`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled via sync-wave Job for Argo CD visibility in the OpenShift web console
 - **OpenShift Data Foundation MCG** — standalone Multicloud Object Gateway (NooBaa) providing S3-compatible object storage via `ObjectBucketClaim`; StorageCluster uses `dbStorageClassName: gp3-csi`
-- **Red Hat OpenShift AI 3.5** — operator on `stable-3.5`; Dashboard, Workbenches, Model Registry and MLflow experiment tracking; Agent Catalog discovery; model serving and MaaS are added by later stages
-- **Model Registry** — `demo-registry` CR in `rhoai-model-registries` namespace with embedded PostgreSQL; RBAC grants `rhods-admins` and `rhoai-developers` the operator-generated `registry-user-demo-registry` Role
+- **Red Hat OpenShift AI 3.5** — operator on `stable-3.5`; Dashboard, Workbenches, MLflow experiment tracking; model serving and MaaS are added by later stages
 - **Observability stack** — Cluster Observability Operator, Red Hat build of OpenTelemetry and Tempo through native RHOAI monitoring; metrics dashboards and PV-backed tracing
-- **Dashboard capabilities** — native metrics dashboards and Agent Catalog discovery; AutoRAG and AutoML are disabled
+- **Dashboard capabilities** — native metrics dashboards; AutoRAG and AutoML are disabled
 - **Platform access** — existing provider identities mapped to explicit `rhods-admins` and `rhoai-developers` groups; administrators and developers receive separate project permissions
 - **MLflow** — shared experiment tracking with S3 artifacts and PostgreSQL-backed records
 - **Demo storage** — native NooBaa local object storage and separate persistent PostgreSQL databases; finite capacity and single-instance databases suit the workshop rather than an HA production deployment
@@ -98,7 +97,7 @@ A durable demo AI platform foundation that all subsequent stages build on.
 
 ## How Red Hat And Open Source Make It Work
 
-OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift Data Foundation delivers S3-compatible object storage through the Multicloud Object Gateway (NooBaa). Red Hat OpenShift AI installs the control plane — Dashboard, Workbenches, and Model Registry — with a single operator. The Cluster Observability Operator, OpenTelemetry Operator, and Tempo Operator provide the metrics and tracing stack that the RHOAI observability dashboard consumes. OpenShift identity providers and RBAC give platform teams fine-grained control over who can access which AI resources.
+OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift Data Foundation delivers S3-compatible object storage through the Multicloud Object Gateway (NooBaa). Red Hat OpenShift AI installs the control plane — Dashboard, Workbenches, and MLflow — with a single operator. The Cluster Observability Operator, OpenTelemetry Operator, and Tempo Operator provide the metrics and tracing stack that the RHOAI observability dashboard consumes. OpenShift identity providers and RBAC give platform teams fine-grained control over who can access which AI resources.
 
 ## Trust Boundaries
 
@@ -106,7 +105,6 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 |----------|---------|
 | Cluster admin vs AI admin | `kubeadmin` is the recovery path; `ai-admin` gets RHOAI dashboard admin via `rhods-admins` and namespace admin on `demo-sandbox` only |
 | Admin vs developer | `ai-developer` has edit (not admin) on `demo-sandbox`; no cluster-scoped privileges |
-| Model Registry access | Operator-generated Role (`registry-user-demo-registry`) bound to `rhods-admins` and `rhoai-developers` — no anonymous access |
 | Object storage | Per-namespace OBC; credentials are generated and never committed to Git |
 | Secrets posture | Identity credentials and S3 connection secrets remain outside Git |
 | Observability | Native RHOAI metrics dashboards and tracing; verify authorized user access |
@@ -130,7 +128,7 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 | Argo CD | GitOps reconciliation engine |
 | NooBaa | S3-compatible object gateway (MCG) |
 | Open Data Hub | Upstream for RHOAI operator and dashboard |
-| Kubeflow Model Registry | Upstream for RHOAI Model Registry |
+| Kubeflow MLflow | Upstream for RHOAI MLflow |
 | Perses | Observability dashboard (COO operand) |
 | OpenTelemetry | Distributed tracing and telemetry |
 | Grafana Tempo | Trace storage backend |
