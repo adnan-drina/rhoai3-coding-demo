@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-evaluator
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-evaluator
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [trustyai.opendatahub.io]
+    resources: [evaluations, collections, providers]
+    verbs: [get, list, create, update, delete]
+# Native MLflow roles aggregate into existing project edit/admin bindings.

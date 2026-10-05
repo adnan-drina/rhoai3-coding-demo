@@ -70,7 +70,7 @@ All queried core inventory APIs responded; Argo CD Application API was unavailab
 | Preinstalled operator | Channel / approval / installed version | Primary CR / health / scope | Owner and consequence |
 |---|---|---|---|
 | cert-manager | `stable-v1` / Automatic / **1.20.1** | Operator and three cert-manager deployments Ready; OperatorGroup targets `cert-manager-operator` | Existing environment add-on; preserve its ownership when reviewing prerequisite overlap |
-| Red Hat build of Keycloak | `stable-v26.4` / Automatic / **26.4.16-opr.1** | CSV Succeeded; Keycloak Ready; OperatorGroup watches only `keycloak` | Preinstalled; Stage 050 independently declares `rhbk` / `stable-v26`. Namespace/watch scope are distinct; reuse vs separate installation needs an explicit integration decision |
+| Red Hat build of Keycloak | `stable-v26.4` / Automatic / **26.4.16-opr.1** | CSV Succeeded; Keycloak Ready; OperatorGroup watches only `keycloak` | Preinstalled; Stage 060 independently declares `rhbk` / `stable-v26`. Namespace/watch scope are distinct; reuse vs separate installation needs an explicit integration decision |
 | OpenShift Lightspeed | `stable` / Automatic / **1.1.4** | CSV Succeeded; OLSConfig **NotReady**, ApiReady=False; two API containers running but unready, deployment has zero Ready replicas. Console/cache/collector/MCP/RHOKP Ready; optional agentic plugin/alerts adapter disabled | Selected provisioning add-on exists but is not fully healthy. Bounded API logs show `azure.core.exceptions.ClientAuthenticationError` and readiness requests returning 500; credential/provider configuration and user-facing service were not validated; provisioner follow-up required |
 
 The CloudCredential CR has an empty `spec.credentialsMode` and no populated status; effective mode was not established without credential metadata. [OCP 4.22 cloud credential guidance](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/postinstallation_configuration/changing-cloud-credentials-configuration) permits root-credential removal in supported configurations. The observed upgrade condition is not, by itself, evidence of an improperly provisioned or unhealthy running cluster. Provider action is needed when an upgrade or new/changed CredentialsRequests require parent credentials.
@@ -97,7 +97,7 @@ Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and
 | GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | `stable-v1.3` Kueue choice needs OCP 4.22 catalog/lifecycle review before Stage 020; no GPU capacity is implied by CPU worker settings |
 | Model serving / MaaS / developer services | Stages 030 / 040 / 050 | Inventory any existing installations without promoting catalog entries into installed/compatible evidence |
 
-MLflow, EvalHub and TrustyAI belong together in the unnumbered future evaluation stage in revised source; the current MLflow service remains Stage 010-owned on live f38; registry and both catalogs are Stage 030-owned in source, while the current cluster retains their previous Stage 010 ownership pending a safe handoff; OpenShell with standalone Hermes per project remains later-stage design. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
+MLflow, EvalHub and TrustyAI belong together in Stage 050 source; the current MLflow service remains Stage 010-owned on live f38; registry and both catalogs are Stage 030-owned in source, while the current cluster retains their previous Stage 010 ownership pending a safe handoff; OpenShell with standalone Hermes per project remains later-stage design. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
 
 ### Local inputs and read-only preflight
 
@@ -112,7 +112,7 @@ Collect ClusterVersion/ClusterOperators, nodes/Machines/MachineSets/autoscalers,
 | Directory | Purpose | Entry points |
 |---|---|---|
 | `scripts/platform/` | Platform sizing, GPU lifecycle and workshop layout validation | `require-node-sizing.sh`, `resume-gpu-demo.sh`, `validate-stage-flow.sh` |
-| `scripts/demo/` | Stage 060–080 golden publishing, demo reset/cleanup and consumer checks | `bootstrap-scaffold-repos.sh`, `reset-coolstore-demo.sh`, `delete-scaffolded-project.sh`, `check-kilo-provider.py`, `check-workspace-creation.py` |
+| `scripts/demo/` | Stages 110–130 golden publishing, demo reset/cleanup and consumer checks | `bootstrap-scaffold-repos.sh`, `reset-coolstore-demo.sh`, `delete-scaffolded-project.sh`, `check-kilo-provider.py`, `check-workspace-creation.py` |
 | `scripts/shared/` | Helpers used by both platform and developer workflow stages | `lib.sh`, `validate-lib.sh` |
 
 Tests remain beside their helpers. Run scripts from the repository root using their full grouped paths; source common helpers from `scripts/shared/`. Publishing, reset, cleanup and GPU lifecycle actions retain their existing effects and guards. Stage-local deploy/validate scripts remain in their stage directories.
@@ -131,7 +131,7 @@ The repository follows a GitOps-first pattern:
 
 The deploy scripts do not imperatively install every component themselves. They hand ownership to Argo CD.
 
-## Stage 080 golden
+## Stage 130 golden
 
 Stage 080 authoring lives in
 `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/`
@@ -229,7 +229,7 @@ and runs normal parent gating. Record the diagnosis in a native comment and
 verify those fields and the issued seal remain unchanged. Do not rerun an LLM
 specifier or decomposer over the sealed card, or edit its database directly.
 
-### Stage 080 run declaration and launch preflight
+### Stage 130 run declaration and launch preflight
 
 Every run created by the `app-migration` template after 2026-09-24 carries
 `run-budget.json` (schema `rhoai3.run-budget/v2`), written by the factory into
@@ -259,10 +259,10 @@ implementations remain in Git history. A `rhoai3.run-budget/v1` file is refused
 as stale. New runs use the current preflight above.
 
 `validate.sh` checks stage readiness and the remaining scaffold/platform checks.
-The retired Stage 080 helper suites are no longer part of validation;
+The retired Stage 130 helper suites are no longer part of validation;
 the launch preflight has syntax and image/identity regression checks in this entrypoint.
 
-### Stage 080 run isolation
+### Stage 130 run isolation
 
 Repeated isolation campaigns are retired by the operator's decision. New runs
 use the current read-only preflight against the selected platform and golden.
@@ -278,7 +278,7 @@ new workers does not revoke existing legacy workspace accounts. Future changes t
 that security boundary need a targeted review; they do not silently restart the
 retired campaign.
 
-Stage 050 reserves three concurrent workspace slots per user. The next migration
+Stage 060 reserves three concurrent workspace slots per user. The next migration
 uses one fresh workspace and its bounded startup preflight.
 The existing group grant still permits GET of the two named MaaS Secrets;
 other-run parity Secrets must remain forbidden. The MaaS route helper loads the
@@ -312,11 +312,11 @@ present in that ancestor commit. These checks detect inconsistent bindings;
 they are not a sandbox against a worker that can alter its environment or invoke
 a database client outside the harness.
 
-### Stage 080: after creating a migration workspace
+### Stage 130: after creating a migration workspace
 
 The current app-migration factory stamps the MaaS hostAlias at creation using the Gateway hostname and internal Service IP validated by the catalog generator. Confirm the workspace resolves the MaaS hostname to that internal address; `run-preflight.sh` refuses the public load-balancer path. If routing inputs are stale, refresh the catalog, preserve existing work and run evidence, and create a new workspace through the current template. Do not manually repair the old workspace route.
 
-### Stage 080: authorizing a run (the pilot seal)
+### Stage 130: authorizing a run (the pilot seal)
 
 Parity resets resolve the JDBC driver from
 `verification/build/.work/classpath.txt`, with the OS-account Maven cache as
@@ -354,7 +354,7 @@ board history and evidence, then unblock the original task. Record this as an
 assisted continuation without restarting its time budget. See the
 [fresh-M2 recovery](TROUBLESHOOTING.md#fresh-m2-verification-exits-silently-before-producing-its-work-list).
 
-### Stage 080 loop: Operator actions (no human sign-off)
+### Stage 130 loop: Operator actions (no human sign-off)
 
 The M3 loop is autonomous by design: every card ends on a mechanical
 verdict (`advance.py` ACCEPTED / REVERTED / VERIFICATION_PENDING / DEFERRED).
@@ -388,7 +388,7 @@ does is repair mechanisms, never edit product code or evidence by hand:
 
 ## Workspace overlay images
 
-Stages 070 and 080 destfiles pull digest-pinned images from
+Stages 120 and 130 destfiles pull digest-pinned images from
 `quay.io/rhoai3-coding-demo/rhoai3-ws-070` and
 `quay.io/rhoai3-coding-demo/rhoai3-ws-080`. Image bake and push are not
 part of this repository. Demo users do not build those images.
@@ -468,7 +468,7 @@ Deploy stages in order:
 ./stages/060-advanced-app-platform/deploy.sh
 ```
 
-Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
+Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 060 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 060's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; the matching Application is `gitops/argocd/app-of-apps/<directory-name>.yaml`. Workflow-only stages omit `deploy.sh` and have no Application.
 
@@ -479,9 +479,9 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. GitOps stages ar
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
 | 050 | `060-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
-| 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
+| 060 | *(workflow-only)* | AI-assisted development on stage 060 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
-| 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MTA stack |
+| 080 | *(workflow-only)* | AI-autonomous migration on the stage 060 MTA stack |
 
 ## Validation Strategy
 
@@ -547,9 +547,9 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 ## Developer Workflow Branch Validation
 
-Deferred developer-workflow topics `100-170` are not `stages/` directories yet. When validating developer-workflow changes on a sandbox cluster, patch only the existing platform applications that own the affected live resources.
+When validating developer-workflow changes on a sandbox cluster, patch only the existing platform applications that own the affected live resources.
 
-For Stage 060 vibe-coding changes, patch Stage 050 (it owns Dev Spaces and the developer portal) to the feature branch being validated:
+For Stage 110 assisted-development changes, patch Stage 060 (it owns Dev Spaces and the developer portal) to the feature branch being validated:
 
 ```bash
 oc patch application 060-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
@@ -577,7 +577,7 @@ Use the existing OpenID accounts `ai-admin` and `ai-developer`; authenticate eac
 
 MLflow uses a dedicated single-instance PostgreSQL 16 workload with a retained gp3 PVC and namespace NetworkPolicy. Database connections are plaintext within its namespace (`sslmode=disable`); this is a durable demo setup without HA or a production database claim. Provider Keycloak storage is not reused. The historical runtime helpers create missing credentials, reuse existing secrets without rotation and use NooBaa-generated S3 inputs with service CA trust.
 
-Fresh Stage 010 owns native Auth; MLflow joins EvalHub/TrustyAI in the unimplemented later evaluation stage. The deployed f38 MLflow service remains preserved. TrustyAI and KServe are Removed; evaluation is a separate later stage after serving/MaaS prerequisites. Native metrics/tracing acceptance replaces legacy workaround-presence checks; persona-dependent dashboard permissions remain pending actual access evidence. Design and remaining gates are in [the migration plan](migration/010-foundation-plan.md).
+Fresh Stage 010 owns native Auth; MLflow joins EvalHub/TrustyAI in Stage 050 source. The deployed f38 MLflow service remains preserved. TrustyAI and KServe are Removed; evaluation is a separate later stage after serving/MaaS prerequisites. Native metrics/tracing acceptance replaces legacy workaround-presence checks; persona-dependent dashboard permissions remain pending actual access evidence. Design and remaining gates are in [the migration plan](migration/010-foundation-plan.md).
 
 
 Useful checks:
@@ -758,11 +758,11 @@ oc get pods -n coding-assistant
 oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 ```
 
-### Stage 050 — Dev Spaces (devspaces component)
+### Stage 060 — Dev Spaces (devspaces component)
 
-The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 060/070/080).
+The stage 060 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 110/120/130).
 
-Validation now checks both service readiness and persona namespace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users, and the Stage 060 catalog seat `agentic-coolstore` exists in `wksp-ai-developer` and `wksp-ai-admin`. Stages 070 and 080 create additional workspaces from RHDH factory templates at demo time. Those factory destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `agentic-coolstore` without multi-attaching the CheCluster per-user RWO claim. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired.
+Validation now checks both service readiness and persona namespace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users, and the Stage 110 catalog seat `agentic-coolstore` exists in `wksp-ai-developer` and `wksp-ai-admin`. Stages 120 and 130 create additional workspaces from RHDH factory templates at demo time. Those factory destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `agentic-coolstore` without multi-attaching the CheCluster per-user RWO claim. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired.
 
 Useful checks:
 
@@ -788,9 +788,9 @@ requests without creating any workspace. Existing catalog entries retain
 their originally published links; use their exact workspace dashboard link
 until their catalog link is deliberately updated.
 
-### Stage 050 — Identity (identity component)
+### Stage 060 — Identity (identity component)
 
-The stage 050 `identity` component deploys the standalone platform RHBK (Red Hat build of Keycloak, namespace `rhbk`): RHBK Operator (`stable-v26`), a PostgreSQL backing store, the `platform-rhbk` Keycloak CR (HTTP-enabled behind an edge-terminated Route, `proxy.headers: xforwarded`), a `KeycloakRealmImport` for the `platform` realm shell, and the `configure-platform-identity` PostSync job that patches the `platform-keycloak` OAuthClient, creates the `openshift-v4` identity provider, and pre-creates the demo users with IdP links. RHDH signs in against this realm; the MTA-operator-managed Keycloak is MTA-only.
+The stage 060 `identity` component deploys the standalone platform RHBK (Red Hat build of Keycloak, namespace `rhbk`): RHBK Operator (`stable-v26`), a PostgreSQL backing store, the `platform-rhbk` Keycloak CR (HTTP-enabled behind an edge-terminated Route, `proxy.headers: xforwarded`), a `KeycloakRealmImport` for the `platform` realm shell, and the `configure-platform-identity` PostSync job that patches the `platform-keycloak` OAuthClient, creates the `openshift-v4` identity provider, and pre-creates the demo users with IdP links. RHDH signs in against this realm; the MTA-operator-managed Keycloak is MTA-only.
 
 Useful checks:
 
@@ -801,9 +801,9 @@ oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}'
 oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}'
 ```
 
-### Stage 050 — MTA (mta component)
+### Stage 060 — MTA (mta component)
 
-The stage 050 `mta` component installs Migration Toolkit for Applications 8.2 (consumed by the workflow-only stage 080). Developer Lightspeed/Kai is disabled until the demo needs it (`kai_llm_proxy_enabled`/`kai_solution_server_enabled: false`; no MaaS wiring — see BACKLOG "Developer Lightspeed re-enable"). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mta-hub-workspace-config` PostSync job (`mta-hub-config` ConfigMaps in the persona namespaces). Stage 080 analysis workspaces come from the `app-migration` factory destfile; stage 080's `validate.sh` covers that contract.
+The stage 060 `mta` component installs Migration Toolkit for Applications 8.2 (consumed by the workflow-only stage 130). Developer Lightspeed/Kai is disabled until the demo needs it (`kai_llm_proxy_enabled`/`kai_solution_server_enabled: false`; no MaaS wiring — see BACKLOG "Developer Lightspeed re-enable"). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mta-hub-workspace-config` PostSync job (`mta-hub-config` ConfigMaps in the persona namespaces). Stage 130 analysis workspaces come from the `app-migration` factory destfile; stage 130's `validate.sh` covers that contract.
 
 Useful checks:
 
@@ -812,7 +812,7 @@ oc get tackle mta -n openshift-mta -o yaml
 oc get deployment -n openshift-mta
 ```
 
-### Stage 050 — Coolstore dev environment (coolstore component)
+### Stage 060 — Coolstore dev environment (coolstore component)
 
 The `coolstore` component keeps a running `coolstore-inventory-service` in `coolstore-dev` so the demo starts from a deployed brownfield system. The Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared pipeline's `tag-latest` task republishes that tag on every green run. `deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions `quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on a fresh cluster, the seed run has not completed yet — re-run `stages/060-advanced-app-platform/deploy.sh`.
 
@@ -824,11 +824,11 @@ oc get deployment,route -n coolstore-dev
 curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}')/q/health/ready
 ```
 
-### Stage 050 — Developer Hub (rhdh component)
+### Stage 060 — Developer Hub (rhdh component)
 
-The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA 8.2's built-in Hub OIDC provider federates to the same realm (`platform-sso` IdentityProvider).
+The stage 060 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA 8.2's built-in Hub OIDC provider federates to the same realm (`platform-sso` IdentityProvider).
 
-The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork. Golden-path template Locations use that same `targetRevision` (stable branch). They must not be SHA-pinned blob URLs — those accumulate and flap `template:default/app-migration` 200/404.
+The RHDH catalog location is runtime-derived from the Stage 060 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork. Golden-path template Locations use that same `targetRevision` (stable branch). They must not be SHA-pinned blob URLs — those accumulate and flap `template:default/app-migration` 200/404.
 
 After a cluster suspend/resume, restart RHDH before demoing: the long-running backend can hold stale connections from before the suspend and fail OIDC sign-in with 504 errors even though Keycloak is healthy (`oc rollout restart deployment/backstage-developer-hub -n rhdh`; see TROUBLESHOOTING "Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout").
 
@@ -876,7 +876,7 @@ To scale GPU capacity down for shutdown:
 
 Kueue queue resources survive normal cluster restarts because they are Kubernetes API objects. Kueue does not create cloud GPU nodes by itself; GPU node lifecycle remains a platform capacity action through the MachineSet.
 
-After any cluster suspend/resume, also restart the Stage 050 Developer Hub deployment — its long-running backend holds stale connections across the suspend and OIDC sign-in fails with 504 errors until it is bounced (see the Stage 050 Developer Hub notes and TROUBLESHOOTING).
+After any cluster suspend/resume, also restart the Stage 060 Developer Hub deployment — its long-running backend holds stale connections across the suspend and OIDC sign-in fails with 504 errors until it is bounced (see the Stage 060 Developer Hub notes and TROUBLESHOOTING).
 
 ## Coolstore Demo Reset
 
@@ -909,9 +909,9 @@ Or: `git push origin main:golden --force`.
 
 `qwen3-8-27b-int4` is a second governed local model. It is not a Red Hat validated model. The validated-model matrix reviewed on 2026-09-22 has no `RedHatAI/Qwen3.8-27B-INT4` entry and no modelcar. The service runs on the installed RHOAI 3.4 operator vLLM through `hf://RedHatAI/Qwen3.8-27B-INT4:7fb3aaca2d21c0db4716572945208db40cef9966`. Recorded runtime image: `registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:dd65c7ed88a9369b962f1299ed19c6c8819ff0a64595c10e32f1e82ab0750e27` (running image ID `sha256:d2ed07d307845135c089bc7644b64734b9349d517abf746c9aa0aa23ed263da5`, vLLM `0.18.0+rhaiv.14`). The retained context is `--max-model-len=262144`. A 246077-token needle recall passed with a 512-token output reserve. A 128-token cap failed that shape at 222077 tokens. Stage 040's README has the comparison with Qwen 3.6.
 
-Qwen 3.8's declared server defaults use its [recommended non-thinking profile](https://huggingface.co/Qwen/Qwen3.8-27B#best-practices): temperature 0.7, top_p 0.8, top_k 20, min_p 0.0, presence_penalty 1.5, repetition_penalty 1.0, and `--default-chat-template-kwargs={"enable_thinking":false}`. The Stage 050 Hermes profile explicitly supplies the same values, so each new run keeps its own sampling when server defaults change. Existing run-control profiles are not rewritten. Thinking-mode clients must explicitly set `enable_thinking: true` and the recommended thinking sampling (temperature 1.0, top_p 0.95, top_k 20, min_p 0.0, presence_penalty 0.0, repetition_penalty 1.0); changing the mode alone does not select another sampling profile.
+Qwen 3.8's declared server defaults use its [recommended non-thinking profile](https://huggingface.co/Qwen/Qwen3.8-27B#best-practices): temperature 0.7, top_p 0.8, top_k 20, min_p 0.0, presence_penalty 1.5, repetition_penalty 1.0, and `--default-chat-template-kwargs={"enable_thinking":false}`. The Stage 060 Hermes profile explicitly supplies the same values, so each new run keeps its own sampling when server defaults change. Existing run-control profiles are not rewritten. Thinking-mode clients must explicitly set `enable_thinking: true` and the recommended thinking sampling (temperature 1.0, top_p 0.95, top_k 20, min_p 0.0, presence_penalty 0.0, repetition_penalty 1.0); changing the mode alone does not select another sampling profile.
 
-Apply these serving arguments through the Stage 040 GitOps sync. They trigger a workload rollout: at one replica, the rolling strategy requests a second GPU before retiring the old pod. Schedule the rollout with available capacity or a planned serving interruption. Read back the Ready workload's arguments and the Stage 050 profile ConfigMap after sync; a local manifest check does not establish live adoption. Roll back sampling by reverting the serving/profile change together, preserving existing run-control records.
+Apply these serving arguments through the Stage 040 GitOps sync. They trigger a workload rollout: at one replica, the rolling strategy requests a second GPU before retiring the old pod. Schedule the rollout with available capacity or a planned serving interruption. Read back the Ready workload's arguments and the Stage 060 profile ConfigMap after sync; a local manifest check does not establish live adoption. Roll back sampling by reverting the serving/profile change together, preserving existing run-control records.
 
 The Stage 020 provisioner creates a GPU MachineSet at 2 replicas only when none exists. This cluster's MachineSet `cluster-grnl8-ng7jk-gpu-us-east-2b` already existed at 1 replica, so it was scaled to 2 with `oc scale`. Instance type, disk, labels, and taints were left as they were.
 
@@ -994,7 +994,7 @@ overlay README). Its registry card stays active, marked
 
 **Retired seats** (registry keeps the archived cards — never delete):
 
-- `nemotron-3-nano-30b-a3b` — retired after the stage 080 harness A/B: empty
+- `nemotron-3-nano-30b-a3b` — retired after the stage 130 harness A/B: empty
   tool calls and instruction drift in long orchestration sessions (a
   small-model failure mode; the same packet later succeeded first-pass on a
   stronger model).
@@ -1022,7 +1022,7 @@ BF16 output on Ada/sm89), MTP speculative decoding (`qwen3_next_mtp`),
 
 ## Migration worker identity
 
-Stage 050 provisions `<run>-worker` with only the init ConfigMap GET and named `container-build` SCC use. The factory pod-overrides selects that ServiceAccount. The DevWorkspace Operator's leftover generated account keeps its default Role and must not be mounted by new workers. Existing workspace identities are not revoked. Effective permissions also include the existing group GET grants for `maas-devspace-api-keys` and `workspace-maas-credentials`; no other-run parity Secret access is allowed.
+Stage 060 provisions `<run>-worker` with only the init ConfigMap GET and named `container-build` SCC use. The factory pod-overrides selects that ServiceAccount. The DevWorkspace Operator's leftover generated account keeps its default Role and must not be mounted by new workers. Existing workspace identities are not revoked. Effective permissions also include the existing group GET grants for `maas-devspace-api-keys` and `workspace-maas-credentials`; no other-run parity Secret access is allowed.
 
 Qualify isolation on a fresh disposable workspace with migration auto-start disabled, using `run-preflight.sh` and a receipt for the golden and platform under test. A standalone Job or a passing fixture is not that qualification.
 

@@ -107,6 +107,28 @@ spec:
       hs.status = "Healthy"
       hs.message = "Subscription status not reported by OLM; version pins + approval guards apply"
       return hs
+    # Native MLflow health requires availability and current operator/migration reconciliation.
+    resource.customizations.health.mlflow.opendatahub.io_MLflow: |
+      hs = {status = "Progressing", message = "Waiting for Available and current MLflowOperatorReady conditions"}
+      local available = false
+      local current = false
+      local migrated = false
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for _, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Available" then
+            available = condition.status == "True"
+          elseif condition.type == "Migration" then
+            migrated = condition.status == "True" and (condition.observedGeneration or 0) >= obj.metadata.generation
+          elseif condition.type == "MLflowOperatorReady" then
+            current = condition.status == "True" and (condition.observedGeneration or 0) >= obj.metadata.generation
+          end
+        end
+      end
+      if available and current and migrated then
+        hs.status = "Healthy"
+        hs.message = "MLflow Available with current operator reconciliation"
+      end
+      return hs
   rbac:
     policy: |
       g, system:cluster-admins, role:admin

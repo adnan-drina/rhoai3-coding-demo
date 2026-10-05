@@ -23,6 +23,7 @@ PUSH=0; [ "${2:-}" = "--push" ] && PUSH=1
 BASE_SHA=fcbd1076a93841fa88855acce810e342a5b78101
 COMMIT=bb66b50e98b2d87fe94d524e80c0aa7c277a13a4
 C=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc
+AUTHORITY_PREFIX=stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes
 PREFIX_HERMES=stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes
 PATCHES=stages/130-ai-autonomous-migration/hermes-runtime/patches
 QUAY=quay.io/rhoai3-coding-demo/rhoai3-ws-080
@@ -52,7 +53,7 @@ rm -rf "$W/out/hermes-runtime-patches"; mkdir -p "$W/out/hermes-runtime-patches"
 cp "$PATCHES"/*.patch "$W/out/hermes-runtime-patches/"
 rm -rf "$W/out/outcome-authority"
 got="$(PYTHONDONTWRITEBYTECODE=1 python3 stages/130-ai-autonomous-migration/hermes-runtime/outcome-authority/stage-outcome-authority.py \
-        --repo . --commit "$COMMIT" --prefix "$PREFIX_HERMES" --out "$W/out/outcome-authority" | tail -1)"
+        --repo . --commit "$COMMIT" --prefix "$AUTHORITY_PREFIX" --out "$W/out/outcome-authority" | tail -1)"
 [ "$got" = "$C" ] || { echo "STOP: staged authority identity $got != C $C"; exit 1; }
 
 echo "== 2b. build the typed repair executor from the pinned sources (V26-1; pins.json typed_repair)"

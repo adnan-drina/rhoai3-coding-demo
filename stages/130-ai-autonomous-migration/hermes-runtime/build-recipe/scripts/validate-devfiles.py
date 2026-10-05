@@ -5,7 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = next(parent for parent in Path(__file__).resolve().parents
+            if (parent / "AGENTS.md").is_file() and (parent / "gitops").is_dir())
 FILES = [
     ROOT
     / "gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml",

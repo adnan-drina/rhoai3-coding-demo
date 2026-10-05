@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Bootstrap (or reset) the golden repositories that the stage 050
+# Bootstrap (or reset) the golden repositories that the stage 060
 # golden-path templates copy from. Idempotent: re-running force-pushes the
 # golden state, which is also the demo reset mechanism for the sources.
 #
 # Repositories managed (under github.com/${GITHUB_OWNER}):
-#   agentic-quarkus-scaffold         — Stage 070, pushed verbatim from
+#   agentic-quarkus-scaffold         — Stage 120, pushed verbatim from
 #                                      stages/120-ai-agentic-development/scaffold-repo/
-#   quarkus-migration-scaffold-v2    — live Stage 080 golden from
+#   quarkus-migration-scaffold-v2    — live Stage 130 golden from
 #                                      stages/130-ai-autonomous-migration/scaffold-repo/
 #                                      Dest omit of .hermes/_park; refuse if
 #                                      run-chaos-matrix.py is in the staged tree.
@@ -22,9 +22,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GITHUB_OWNER="${GITHUB_OWNER:-adnan-drina}"
 MIGRATION_GOLDEN_REPO="${MIGRATION_GOLDEN_REPO:-quarkus-migration-scaffold-v2}"
 MIGRATION_SRC="$REPO_ROOT/stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
-# Which goldens to push: all (default; the demo reset), agentic (Stage 070 only)
-# or migration (Stage 080 only). A Stage 080 release publishes only its own
-# golden, so an unrelated Stage 070 change is never published as a side effect.
+# Which goldens to push: all (default; the demo reset), agentic (Stage 120 only)
+# or migration (Stage 130 only). A Stage 130 release publishes only its own
+# golden, so an unrelated Stage 120 change is never published as a side effect.
 SCAFFOLD_REPOS="${SCAFFOLD_REPOS:-all}"
 case "$SCAFFOLD_REPOS" in
   all|agentic|migration) ;;
@@ -92,7 +92,7 @@ push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
 fi
 [[ "$SCAFFOLD_REPOS" == "agentic" ]] && { log "Done (agentic only)."; exit 0; }
 
-# --- 2. live Stage 080 golden ---
+# --- 2. live Stage 130 golden ---
 test -f "$MIGRATION_SRC/migration.yaml" || { echo "REFUSE: missing authoring tree at $MIGRATION_SRC"; exit 1; }
 if [[ -e "$MIGRATION_SRC/.hermes/_park" ]]; then
   echo "REFUSE: authoring tree still has .hermes/_park" >&2
@@ -111,5 +111,5 @@ log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"
 echo "    'All repositories' so template-created repos trigger the pipeline."
 echo "  - Re-running this script force-pushes golden state (demo reset)."
-echo "  - Stage 080 dest golden omits .hermes/_park; chaos never dest."
+echo "  - Stage 130 dest golden omits .hermes/_park; chaos never dest."
 echo "  - Historical quarkus-migration-scaffold is not updated."

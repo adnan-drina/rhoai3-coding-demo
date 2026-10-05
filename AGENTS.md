@@ -50,16 +50,17 @@ The workshop has two parts:
 - Stages 010–060 build the trusted AI development platform for platform engineers.
 - Stages 110 and later show enterprise developer workflows that consume that platform.
 
-Current implemented stages:
+Current source stages:
 
 1. 010 OpenShift AI Platform Foundation
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 060 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
-6. 110 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
-7. 120 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
-8. 130 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
+5. 050 Model Evaluation (MLflow, EvalHub and TrustyAI; deployment qualification pending)
+6. 060 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
+7. 110 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
+8. 120 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
+9. 130 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
 
 The stages renumbered when stage 040 absorbed the former external-model and MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became 050/060/070/080.
 
@@ -222,6 +223,7 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 | 020 GPU infra | `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-kueue-workload-management`, `rhoai-distributed-workloads`, `ocp-machine-management`, `ocp-node-feature-discovery` |
 | 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
 | 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |
+| 050 evaluation | `rhoai-mlflow`, `rhoai-evaluation`, `rhoai-monitoring-trustyai`, `rhoai-dsci-dsc-configuration` |
 | 060 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
 | 110 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
 | 120 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
@@ -250,7 +252,7 @@ for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$sc
 ./stages/130-ai-autonomous-migration/validate.sh
 ```
 
-Stage 120 consumes the Stage 110 Dev Spaces platform and Stage 060 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
+Stage 120 consumes the Stage 060 Dev Spaces platform and Stage 060 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 

@@ -19,7 +19,7 @@
 
 Stages 010–040 build the governed model platform. Before a single developer prompt is issued, the enterprise also needs the **application platform layer** that AI-driven development will run on: a developer portal where every workflow starts as a self-service template, and a delivery path where every change exits through pipelines with quality gates and provenance.
 
-That is this stage's job. The AI development maturity ladder (stages 060–080) does not treat self-service and trusted delivery as separate rungs — they are constants. Every rung enters through the portal and exits through the pipeline: *self-service in, trusted delivery out, at every maturity level.*
+That is this stage's job. The AI development maturity ladder (stages 110–130) does not treat self-service and trusted delivery as separate rungs — they are constants. Every rung enters through the portal and exits through the pipeline: *self-service in, trusted delivery out, at every maturity level.*
 
 Without a portal, the AI platform remains scattered across dashboards, routes, namespaces, and README files. Without delivery gates, AI-multiplied output multiplies the question auditors ask: *who built this artifact, from what, and can we prove it?* This stage answers both before the developer arc begins.
 
@@ -121,7 +121,7 @@ Developer Hub is a discovery and self-service surface: it links to approved plat
 
 ### Part 1 — The platform layer, before the first prompt
 
-**Know.** Stages 010–040 governed the models. This stage governs the application side: one portal where every AI development workflow will start, one delivery path where every AI-generated change will be proven. The maturity ladder you are about to climb (060–080) enters through this portal and exits through these pipelines at every rung.
+**Know.** Stages 010–040 governed the models. This stage governs the application side: one portal where every AI development workflow will start, one delivery path where every AI-generated change will be proven. The maturity ladder you are about to climb (110–130) enters through this portal and exits through these pipelines at every rung.
 
 **Show.**
 - Open Developer Hub from the console launcher; sign in via OIDC to the MTA Keycloak realm (OpenShift identity is federated into Keycloak as a broker — one identity chain, end to end).
@@ -135,7 +135,7 @@ Developer Hub is a discovery and self-service surface: it links to approved plat
 **Show (today, base setup).**
 - OpenShift console, Pipelines view: the Tekton stack is operator-managed; each project namespace runs its own `app-push` pipeline instantiated from the shared `project-pipeline` base.
 - Operators view: Trusted Artifact Signer installed — the sigstore stack awaiting its Securesign instance.
-- Talk track: in the implementation phase, every push from stages 060–080 goes through build, SonarQube quality gate, and (with Chains + TAS) signed SLSA attestation. "The same platform that lets agents write code proves what was built from it."
+- Talk track: in the implementation phase, every push from stages 110–130 goes through build, SonarQube quality gate, and (with Chains + TAS) signed SLSA attestation. "The same platform that lets agents write code proves what was built from it."
 
 ## Deploy And Validate
 
@@ -148,7 +148,7 @@ Manifests: [`gitops/stages/060-advanced-app-platform/base/`](../../gitops/stages
 
 Flow dependency: Stage 040 (Governed Models-as-a-Service). `deploy.sh` provisions the build-pipeline secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application, then seeds the coolstore dev environment: it sets the `rhoai3-golden-path` topic on `coolstore-inventory-service`, creates a seed PipelineRun, waits for it to go green (cold cache ~15 min), and rolls the `coolstore-dev` deployment onto the fresh `:latest` image. Re-running `deploy.sh` skips the seed when the deployment is already Available.
 
-Validation notes: `validate.sh` treats a missing Securesign instance as a warning, not a failure — it arrives with the implementation phase. Stages 060–080 each keep a read-only `validate.sh` that checks this stage's resources from their demo's perspective.
+Validation notes: `validate.sh` treats a missing Securesign instance as a warning, not a failure — it arrives with the implementation phase. Stages 110–130 each keep a read-only `validate.sh` that checks this stage's resources from their demo's perspective.
 
 ## References
 

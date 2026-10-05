@@ -12,7 +12,7 @@ The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-0
 - [ ] Provisioner follow-up: Lightspeed 1.1.4 installed but API NotReady; cloud-credential missing parent credentials prevents future OCP minor/major upgrades. Preserve add-on/operator ownership; no credentials or resources were changed during inventory.
 - [ ] Stage 020: revalidate `stable-v1.3` Kueue against the OCP 4.22 catalog and current lifecycle/known-issue discrepancy before choosing the replacement. Trainer remains disabled; this inventory does not establish a full-stack compatibility failure.
 - [ ] Stage 050: resolve integration with the preinstalled OpenID/Keycloak (`keycloak`, namespace-scoped operator) before applying the separate project `rhbk` identity installation.
-- [ ] Stage 030: adopt the preserved Model Registry/Model Catalog/Agent Catalog resources without data loss; revised source is not deployed. EvalHub/TrustyAI and OpenShell/Hermes remain separate later design. MLflow joins EvalHub/TrustyAI in the unnumbered later evaluation stage; the live service remains protected; AutoRAG/AutoML remain excluded.
+- [ ] Stage 030: adopt the preserved Model Registry/Model Catalog/Agent Catalog resources without data loss; revised source is not deployed. EvalHub/TrustyAI and OpenShell/Hermes remain separate later design. MLflow joins EvalHub/TrustyAI in the Stage 050 model-evaluation source; the live service remains protected; AutoRAG/AutoML remain excluded.
 
 Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform revision pods are not project cleanup candidates. Historical validation stays historical; obsolete project resources need purpose, owner, replacement behavior and a validated removal condition before deletion.
 

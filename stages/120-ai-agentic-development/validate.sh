@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Stage 070: Agentic Development - Validation
+# Stage 120: Agentic Development - Validation
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
-echo "Stage 070: Agentic Development — Validation"
+echo "Stage 120: Agentic Development — Validation"
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"

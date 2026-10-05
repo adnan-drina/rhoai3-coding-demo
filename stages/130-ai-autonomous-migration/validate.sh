@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 080: MTA — Validation Script
+# Stage 130: MTA — Validation Script
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 080: Autonomous Application Migration (MTA 8.2)     ║"
+echo "║  Stage 130: Autonomous Application Migration (MTA 8.2)     ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -242,7 +242,7 @@ check "live workspace-maas-credentials Secret exists" \
   "workspace-maas-credentials"
 
 log_step "Factory Migration Workspace (app-migration destfile)"
-# Stage 080 seats are created at demo time from the RHDH template. Do not
+# Stage 130 seats are created at demo time from the RHDH template. Do not
 # require a standing mca-coolstore DevWorkspace. Assert the factory contract
 # and that the retired GitOps seats are gone.
 SKELETON_080="$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml"
@@ -303,7 +303,7 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "1"
 done
 
-# Stage 080 dest is Hermes Kanban. OpenCode skill diffs against stage 070
+# Stage 130 dest is Hermes Kanban. OpenCode skill diffs against stage 070
 # were the dual-tool destfile lie (ST-7). Static destfile contract:
 SCAFFOLD_DEVFILE="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/devfile.yaml"
 SCAFFOLD_DASH="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard"

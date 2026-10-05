@@ -76,16 +76,16 @@ Check pods:
 oc get pods -A | egrep 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 ```
 
-## Stage 050 jobs cannot pull ose-cli after a restart
+## Stage 060 jobs cannot pull ose-cli after a restart
 
-**Affected stage:** Stage 050 provisioning, catalog refresh, and delivery.
+**Affected stage:** Stage 060 provisioning, catalog refresh, and delivery.
 
 **Cause:** `registry.redhat.io/openshift4/ose-cli` does not publish a `latest`
 tag. Cached images can hide an invalid reference until a node is replaced or
 the image must be pulled again. On 2026-09-24 the catalog-refresh job reported
 `unsupported: This repository does not use the "latest" tag`.
 
-**Recover:** Sync the Stage 050 manifests with the explicit CLI digest also
+**Recover:** Sync the Stage 060 manifests with the explicit CLI digest also
 used by `provision-migration-run`. Confirm the next catalog-refresh and
 project-provisioner Jobs succeed. A Healthy Argo application alone does not
 prove recurring Jobs or future Tekton steps can pull their images.
@@ -186,7 +186,7 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 
 **Affected stage:** any operator in `openshift-operators` (shared namespace)
 
-**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one InstallPlan. Approving a plan to unblock one operator can silently upgrade others past their pins (observed live: approving the Stage 050 pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and dependency-generated subscriptions (authorino, created by OLM for RHCL) then sit in `UpgradePending` toward versions we never approve — which wedged every Stage 040 sync until the Argo Subscription health check learned that an installed CSV with a pending channel upgrade is Healthy by policy.
+**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one InstallPlan. Approving a plan to unblock one operator can silently upgrade others past their pins (observed live: approving the Stage 060 pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and dependency-generated subscriptions (authorino, created by OLM for RHCL) then sit in `UpgradePending` toward versions we never approve — which wedged every Stage 040 sync until the Argo Subscription health check learned that an installed CSV with a pending channel upgrade is Healthy by policy.
 
 **Diagnose:**
 
@@ -228,7 +228,7 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 
 ## Manually Triggered Sync Finishes In Seconds And Skips Hooks
 
-**Affected stage:** Any, observed on Stage 050 catalog changes
+**Affected stage:** Any, observed on Stage 060 catalog changes
 
 **Symptom:** A sync operation triggered by patching `.operation` on the Application completes in ~15 seconds, applies only a handful of resources, and never runs Sync/PostSync hook Jobs (e.g. `job-generate-rhdh-catalog`). The controller logs `Partial sync operation to <rev> succeeded`.
 
@@ -355,7 +355,7 @@ The recovery script syncs Stage 020, scales GPU capacity back up, waits for allo
 
 ## Worker Nodes Evict Pods After A Cluster Resume (KubeNodeEviction)
 
-**Affected stage:** platform-wide (observed via Stage 030 model routing and Stage 050 components)
+**Affected stage:** platform-wide (observed via Stage 030 model routing and Stage 060 components)
 
 **Symptom:** `KubeNodeEviction` fires shortly after a sandbox cluster resume. Node events show `NodeHasDiskPressure` and `EvictionThresholdMet ... Attempting to reclaim ephemeral-storage` on CPU worker nodes, and a wave of pods across unrelated namespaces lands in `Failed` with reason `Evicted` (observed live 2026-07-14: GitOps repo-server, RHOAI dashboard, Perses, Thanos, NooBaa, Authorino, Dev Spaces server, SonarQube, kuadrant operator, among others). Secondary failures look like their own incidents — Argo CD syncs abort with repo-server restarts, Dev Spaces workspace postStart hooks time out.
 
@@ -840,7 +840,7 @@ oc get authpolicy,tokenratelimitpolicy -n maas
 
 ## Red Hat Developer Lightspeed for MTA Cannot Call MaaS
 
-**Affected stage:** Stage 080
+**Affected stage:** Stage 130
 
 **Likely cause:** `kai-api-keys` contains placeholder values, the MaaS API key is invalid, or `llm-proxy` did not restart after secret patching.
 
@@ -855,12 +855,12 @@ oc logs deployment/llm-proxy -n openshift-mta --tail=100
 
 **Recover:**
 
-- Re-run or re-sync Stage 080 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
+- Re-run or re-sync Stage 130 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
 - Confirm `./stages/130-ai-autonomous-migration/validate.sh` reports the MaaS credential checks as passing.
 
 ## MTA OpenShift Login Does Not Appear
 
-**Affected stage:** Stage 080
+**Affected stage:** Stage 130
 
 **Likely cause:** OAuthClient redirect URI not patched, Keycloak identity provider not configured, or MTA route not available when the PostSync job ran.
 
@@ -874,13 +874,13 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 
 **Recover:**
 
-- Re-sync Stage 080.
+- Re-sync Stage 130.
 - Confirm the MTA route exists before the auth configuration job runs.
-- Re-run Stage 080 validation.
+- Re-run Stage 130 validation.
 
 ## Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout
 
-**Affected stage:** Stage 050
+**Affected stage:** Stage 060
 
 **Symptom:** The RHDH sign-in popup fails with `OPError: expected 200 OK, got: 504 Gateway Timeout` and `/api/auth/oidc/start` returns 500, while Keycloak itself is healthy — the OIDC discovery URL answers 200 from outside the cluster and even from a fresh process inside the RHDH pod.
 
@@ -915,7 +915,7 @@ Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to Keyclo
 
 ## Developer Hub Topology/CI/Kubernetes Tabs Show "Problem Retrieving Kubernetes Objects"
 
-**Affected stage:** Stage 050
+**Affected stage:** Stage 060
 
 **Symptom:** The Kubernetes-backed entity tabs show a warning banner; expanding it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate chain` for every object query, while cluster discovery (the cluster dropdown) works and the Argo CD card is fine.
 
@@ -951,7 +951,7 @@ oc exec deployment/backstage-developer-hub -n rhdh -c backstage-backend -- \
 
 ## Red Hat Developer Hub Catalog Does Not Load Coolstore
 
-**Affected stage:** Stage 050
+**Affected stage:** Stage 060
 
 **Likely cause:** RHDH backend is not allowed to read the raw GitHub catalog URL, the catalog location is not reachable, or `RHDH_CATALOG_URL` does not match the GitOps revision deployed by Argo CD.
 
@@ -974,14 +974,14 @@ is not allowed. You may need to configure an integration for the target host, or
 **Recover:**
 
 - Add a narrow `backend.reading.allow` entry or configure the GitHub integration.
-- Re-sync Stage 050 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
-- Confirm the Stage 050 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
+- Re-sync Stage 060 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
+- Confirm the Stage 060 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
 - Restart the RHDH deployment.
-- Re-run Stage 050 validation after adding catalog checks.
+- Re-run Stage 060 validation after adding catalog checks.
 
 ## RHDH Template Entity Returns 200 Then 404 After a Catalog Re-stamp
 
-**Affected stage:** Stage 050 / 080 (golden-path templates)
+**Affected stage:** Stage 060 / 080 (golden-path templates)
 
 **Symptom:** `template:default/app-migration` flaps 200/404 after a push. RHDH logs `conflicting entityRef`. More than one Location is registered for the same template.
 
@@ -1002,13 +1002,13 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 **Recover:**
 
 - Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
-- Confirm Stage 050/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
+- Confirm Stage 060/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
 
 **Related:** `gitops/stages/060-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
 
 ## RHDH Catalog Generator Refuses `FACTORY_BUNDLE_MISMATCH`
 
-**Affected stage:** Stage 050 (runtime catalog)
+**Affected stage:** Stage 060 (runtime catalog)
 
 **Symptom:** The `job-generate-rhdh-catalog` or `refresh-rhdh-catalog` log ends with `REFUSE FACTORY_BUNDLE_MISMATCH: bundle <id>, revision <sha>: <file> at <sha> is not the bundled file`. The runtime catalog is unchanged.
 
@@ -1016,12 +1016,12 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 
 **Recover:**
 
-- Hard-refresh and sync Stage 050 so the bundle and `operationState.syncResult.revision` come from the same commit. The next `refresh-rhdh-catalog` run publishes.
+- Hard-refresh and sync Stage 060 so the bundle and `operationState.syncResult.revision` come from the same commit. The next `refresh-rhdh-catalog` run publishes.
 - `CATALOG_RENDER` refusals name the invalid value (for example a MaaS gateway host that is not an RFC 1123 host). Fix that source object. The last good catalog stays in place until then.
 
 ## Migration Workspace Creation Fails With `FACTORY_MAAS_ROUTE_MISSING`
 
-**Affected stage:** Stage 050 / 080 (app-migration template)
+**Affected stage:** Stage 060 / 080 (app-migration template)
 
 **Symptom:** The app-migration scaffolder run fails at "MaaS route present (this step runs only to refuse with FACTORY_MAAS_ROUTE_MISSING)". Nothing is published.
 
@@ -1029,9 +1029,9 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 
 **Recover:** Run the catalog generator (see above), confirm both annotations hold a host and an IPv4 address, then create the run again. A workspace is never created without the route. At every start and continuation, the workspace's own `planner.maas_route` gate refuses `STARTUP_MAAS_ROUTE` if the pod still resolves the gateway publicly.
 
-## Red Hat Developer Hub Is Healthy But Stage 050 Is OutOfSync
+## Red Hat Developer Hub Is Healthy But Stage 060 Is OutOfSync
 
-**Affected stage:** Stage 050
+**Affected stage:** Stage 060
 
 **Likely cause:** Operator-defaulted fields differ from Git, or PostSync jobs patched dynamic fields.
 
@@ -1052,7 +1052,7 @@ oc get backstage developer-hub -n rhdh -o yaml
 
 ## Factory workspace FailedMount while agentic-coolstore is Running
 
-**Affected stage:** Stages 070 and 080 (RHDH factory DevWorkspaces)
+**Affected stage:** Stages 120 and 130 (RHDH factory DevWorkspaces)
 
 **Symptom:** The factory workspace stays `Failed` / `Starting`. Events show `FailedMount` or a multi-attach error on `claim-devworkspace`. The Stage 060 `agentic-coolstore` seat is `Running` in the same persona namespace.
 
@@ -1169,7 +1169,7 @@ checking. Diagnose from the workspace with
 
 ## Migration Cards Blocked With MIGRATION_* Or A Run Ended With RUN_TOKEN_BUDGET_EXHAUSTED
 
-**Affected stage:** Stage 080
+**Affected stage:** Stage 130
 
 **Symptom:** every running or ready card is blocked with a reason that starts
 with `MIGRATION_TOKEN_BUDGET_EXHAUSTED` or `MIGRATION_NO_ACCEPTED_CHECKPOINT`;
@@ -1177,7 +1177,7 @@ or one worker run ended `timed_out` (or `gave_up`) with
 `RUN_TOKEN_BUDGET_EXHAUSTED: <used> of <limit> input tokens`.
 
 **Cause:** an in-workspace stop fired (`.hermes/kernel/run_budget.py`, see the
-Stage 080 README, "In-workspace stops"). The per-run stop is a timed-out
+Stage 130 README, "In-workspace stops"). The per-run stop is a timed-out
 attempt: the dispatcher retries the card or gives up under the card's
 `max_retries`, exactly as after an exhausted iteration budget. A migration
 stop is recorded in `/projects/.platform/run-control-state/run-stops.jsonl`
@@ -1224,9 +1224,9 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 060 validation.
 
-## Stage 080 dest postStart fails on dest-profile Portal `auth.json`
+## Stage 130 dest postStart fails on dest-profile Portal `auth.json`
 
-**Affected stage:** Stage 080 factory workspace (`app-migration` destfile, `development-tooling`)
+**Affected stage:** Stage 130 factory workspace (`app-migration` destfile, `development-tooling`)
 
 **Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with `ERROR: auth.json under dest profile implementer; refuse Portal leftover.` (or `reviewer`).
 
@@ -1243,12 +1243,12 @@ oc get dw spring-petclinic-rest-legacy-v8 -n "$NS" -o jsonpath='{.status.phase}{
 
 **Recover:**
 
-- Confirm live `devspace-ai-tools-init` **removes** dest-profile `auth.json` / `auth.lock` instead of `return 1`. Sync Stage 050 if the ConfigMap still prints `refuse Portal leftover`.
+- Confirm live `devspace-ai-tools-init` **removes** dest-profile `auth.json` / `auth.lock` instead of `return 1`. Sync Stage 060 if the ConfigMap still prints `refuse Portal leftover`.
 - Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
 
-## Stage 080 dest postStart fails on MaaS Secret poll or dest-init mvn SSL
+## Stage 130 dest postStart fails on MaaS Secret poll or dest-init mvn SSL
 
-**Affected stage:** Stage 080 factory workspace (`app-migration` destfile, `development-tooling`)
+**Affected stage:** Stage 130 factory workspace (`app-migration` destfile, `development-tooling`)
 
 **Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with one of:
 
@@ -1277,9 +1277,9 @@ oc get dw "$DW" -n "$NS" -o jsonpath='{.status.phase}{"\n"}{.status.message}{"\n
 - Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
 - Keep Argo CD `060-advanced-app-platform` paused until this ConfigMap is committed and pushed; restoring auto-sync while GitHub still has the refuse/`secret_value`-only copy puts the failing script back.
 
-## Stage 080 dest postStart fails EX-3 write-set hook missing
+## Stage 130 dest postStart fails EX-3 write-set hook missing
 
-**Affected stage:** Stage 080 measurement dest on `harness-v2`
+**Affected stage:** Stage 130 measurement dest on `harness-v2`
 
 **Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with `ERROR: EX-3 write-set hook missing: .../enforce-authority-boundary/scripts/write-set-hook.py`.
 
@@ -1298,9 +1298,9 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 - Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook. Hatch is WARN + empty `pre_tool_call` only while `.hermes/kernel/pre_tool_call.sh` is absent. That file is the K2 kernel REHOST of the measured hook (not claimed control; Gate P-kernel is CLOSED — Architect `142526Z`). Do not mkdir empty `.hermes/kernel/` to satisfy the check. K1/K3/K4 Python live beside the hook; GitOps still copies only `pre_tool_call.sh` into Managed Scope. Do not dest-apply a K2 REHOST or K4 converter as if it were a new fence.
 - Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
 
-## Stage 080 dest postStart fails agent-vs-pin assert
+## Stage 130 dest postStart fails agent-vs-pin assert
 
-**Affected stage:** Stage 080 measurement dest on `harness-v2`
+**Affected stage:** Stage 130 measurement dest on `harness-v2`
 
 **Symptom:** DevWorkspace Failed. postStart log contains `ERROR: overlay Hermes --version does not match .hermes/pins.json` (or `ensure_hermes` mismatch). Older dest-init copies may still print `assert-agent-pin: refusing off-pin agent` until ConfigMap uptake.
 
@@ -1318,12 +1318,12 @@ Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. O
 
 **Recover:**
 
-- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19. Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`). Spec Kit is removed from Stage 080; planning is the deterministic planner under `.hermes/lib/planner/` (activation-gated via `pins.planner.activation`).
+- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19. Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`). Spec Kit is removed from Stage 130; planning is the deterministic planner under `.hermes/lib/planner/` (activation-gated via `pins.planner.activation`).
 - Do not treat dest-armed (a) as MATCH until dest `pins.json` and `hermes --version` agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss. Do not restore dest `.hermes/checks/`.
 
-## Stage 080 MTA receipt is kantra-fallback though overlay mta-cli is 8.2.1
+## Stage 130 MTA receipt is kantra-fallback though overlay mta-cli is 8.2.1
 
-**Affected stage:** Stage 080 factory workspace (`app-migration` destfile, `development-tooling`)
+**Affected stage:** Stage 130 factory workspace (`app-migration` destfile, `development-tooling`)
 
 **Symptom:** `mta-cli version` in the overlay prints `version: 8.2.1` and `readlink -f $(command -v mta-cli)` is `/opt/mta-cli/mta-cli`, but `evidence/producers/mta.json` has `provenance: kantra-fallback`, `admissible: false`, `binary_realpath: /opt/kantra/kantra`, and harness admission blocks `MTA_PROVENANCE`. Analyzer stderr contains `mta-analyze-legacy: /opt/mta-cli/mta-cli present but unusable; falling through` and `kantra-assert-exec: 1 runnable files under /opt/mta-cli are not executable and could not be chmod'd (/opt/mta-cli/rulesets/go/fips/tests/data/build/build.sh)`.
 
@@ -1349,9 +1349,9 @@ oc exec -n "$NS" "$POD" -c development-tooling -- \
 
 **Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
 
-## Stage 080 rehearsal dies on yamlite `[id]` under UDI python3.9
+## Stage 130 rehearsal dies on yamlite `[id]` under UDI python3.9
 
-**Affected stage:** Stage 080 factory workspace / `rehearse-legacy.sh`
+**Affected stage:** Stage 130 factory workspace / `rehearse-legacy.sh`
 
 **Symptom:** `rehearse-legacy.sh` freeze and build succeed (`outcome=success warmup=success`), then step 3 prints `planner.yamlite.YamlLiteError: line 43: unsupported YAML construct '[id]' (use block form)` from `normalize-structure.py`. Dest M1 may still complete if a worker installs PyYAML for python3.11; the harness scripts call `python3` (UDI 3.9, no PyYAML).
 
@@ -1372,7 +1372,7 @@ python3 -c 'from pathlib import Path; import sys; sys.path.insert(0,"/projects/m
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
-**Affected stage:** Stage 050 RHDH templates (factory workspaces for 070/080)
+**Affected stage:** Stage 060 RHDH templates (factory workspaces for 070/080)
 
 **Likely cause:** `postStart` fetched `devspace-ai-tools-init` with a single `curl` against the Kubernetes API (`172.30.0.1:443`). When the pod's CNI was not ready yet, curl timed out (`curl: (28) Failed to connect ... Connection timed out`), wrote `/tmp/init-ai-tools.sh` at 0 bytes, printed a warning, and still exited 0. The workspace reported Running/Healthy with no `hermes` binary. The SA token and CA are projected volumes and are present at container start; the race is network, not credentials. Observed on 4 of 5 provisions (v21, v23, v24; v22 succeeded).
 
@@ -1402,7 +1402,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 ## Dest Hermes worker profiles missing (`harness-v2`)
 
-**Affected stage:** Stage 080 dest on branch `harness-v2` only. Overlay / v1 goldens stay single-persona.
+**Affected stage:** Stage 130 dest on branch `harness-v2` only. Overlay / v1 goldens stay single-persona.
 
 **Likely cause:** `ensure_hermes` could not seat `orchestrator` + `implementer` (overlay `/usr/local/bin/hermes` missing, golden templates missing, or a profile `.env` gained assignments). Dest-init must not curl-install Hermes (Architect `185531ZA`). Operator GO `231808Z` retired the C-2(a) skip. Do **not** recover with `hermes profile create --clone` (EX-4 isolated `$HOME` and copied installer `.env`).
 
@@ -1423,7 +1423,7 @@ ls /projects/modernized/.hermes/home/profiles/
 
 ## Dest Hermes terminal keeps literal `${env:MAAS_*}` (`harness-v2`)
 
-**Affected stage:** Stage 080 dest. Gateway can look healthy while a later login shell is unconfigured.
+**Affected stage:** Stage 130 dest. Gateway can look healthy while a later login shell is unconfigured.
 
 **Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. Worker `MAAS_API_BASE_URL` is the **MaaS gateway** (`MAAS_BASE_URL` + `/models-as-a-service/qwen3-6-27b/v1`), not the in-cluster KServe Service.
 
@@ -1446,7 +1446,7 @@ A green terminal that sourced Managed Scope `.env` is **not** the verification b
 
 ## Dest Hermes `APIConnectionError` against the MaaS route (`harness-v2`)
 
-**Affected stage:** Stage 080 dest. Worker exits with `APIConnectionError` / "Connection error" in under a second; official kanban log has no `kanban_complete` / `kanban_block`.
+**Affected stage:** Stage 130 dest. Worker exits with `APIConnectionError` / "Connection error" in under a second; official kanban log has no `kanban_complete` / `kanban_block`.
 
 **Likely cause:** `providers.qwen27b.ssl_ca_cert` is pinned to the workspace ServiceAccount `service-ca.crt` while `MAAS_API_BASE_URL` is the **MaaS ingress route** (`.apps`). OpenShift service serving certificates are valid only for `<service>.<namespace>.svc` and internal communications, so that pin cannot verify the route. Dev Spaces already mounts the platform-merged bundle at `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`. dest-init must pair them: `.svc` host requires the service-CA pin; a route host must omit `ssl_ca_cert`. Do **not** set `ssl_verify: false`. Do **not** dest-unblock the card.
 
@@ -1468,7 +1468,7 @@ A live comment of the pin on an already-running dest is not dest-init. Next dest
 
 ## Fresh M2 verification exits silently before producing its work list
 
-**Affected stage:** Stage 080, first `build-worklist.sh` after bootstrap.
+**Affected stage:** Stage 130, first `build-worklist.sh` after bootstrap.
 
 **Cause:** The verifier previously hashed `admission-receipt.json` with an
 unguarded pipeline. First admission follows work-list creation, so the file
@@ -1485,7 +1485,7 @@ receipt or suppress every hashing error. Run `run-verify.test.sh`, then unblock
 the same M2 task with the repair reference using native Kanban. Preserve prior
 attempts and the run deadline; read the official worker log after dispatch.
 
-**Related docs:** [Stage 080 operations](OPERATIONS.md#stage-080-golden).
+**Related docs:** [Stage 130 operations](OPERATIONS.md#stage-080-golden).
 
 ## Repeated tool calls: diagnose the input before changing the guard
 
@@ -1535,7 +1535,7 @@ scratch file it writes, with known exits, equal complete outputs and no edit bet
 
 ## M1/M2 reviewer audit `[exit 1]` on `--log /projects/modernized/kanban/logs/`
 
-**Affected stage:** Stage 080 dest paved-road reviewer (measured live v9 M1 `t_e84503a8`, M2 `t_77e1fdac`)
+**Affected stage:** Stage 130 dest paved-road reviewer (measured live v9 M1 `t_e84503a8`, M2 `t_77e1fdac`)
 
 **Likely cause:** The SKILL said `--log <official>` and the reviewer passed a workshop path that is not `$HERMES_HOME/kanban/logs/<id>.log`. The audit needs the official file; a missing `--log` is not a reason to invent a path.
 
@@ -1547,7 +1547,7 @@ scratch file it writes, with known exits, equal complete outputs and no edit bet
 
 ## Dest worker "Transient APIConnectionError … one last primary attempt" after minutes of silence (`harness-v3`)
 
-**Affected stage:** Stage 080 dest M3 workers on the MaaS route while the model writes a large tool call (a whole `pom.xml` patch). The kanban task log shows the worker reading the brief and the pom, then nothing for ~9–12 minutes, then `🔁 Transient APIConnectionError on custom — rebuilt client, waiting 6s before one last primary attempt.` The gateway access log shows one `200 DC downstream_remote_disconnect` line per abort, each with a duration of exactly 180 s and 0 response bytes.
+**Affected stage:** Stage 130 dest M3 workers on the MaaS route while the model writes a large tool call (a whole `pom.xml` patch). The kanban task log shows the worker reading the brief and the pom, then nothing for ~9–12 minutes, then `🔁 Transient APIConnectionError on custom — rebuilt client, waiting 6s before one last primary attempt.` The gateway access log shows one `200 DC downstream_remote_disconnect` line per abort, each with a duration of exactly 180 s and 0 response bytes.
 
 **Likely cause:** Hermes's client-side stream stale detector, not the gateway. It aborts a stream after 180 s without a chunk (`HERMES_STREAM_STALE_TIMEOUT` default; the `qwen3` reasoning floor is also 180) and retries up to `HERMES_STREAM_STALE_GIVEUP` (5) times. vLLM's `qwen3_xml` tool-call parser emits nothing while a tool call's arguments are generated, so at ~18 tok/s a pom patch is minutes of silence. The per-model `stale_timeout_seconds: 900` under `providers.qwen27b` is not consulted because the runtime provider id of a base_url provider is `custom`. A 343 s fully silent non-streaming request through the same gateway completed, which rules the gateway out (Envoy HCM `stream_idle_timeout` and the qwen route timeout are both `0s`).
 
@@ -1574,7 +1574,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- bash -c \
 
 ## MaaS route HTTP 500 / Envoy `ext_proc_error_gRPC_error_14` (`harness-v2`)
 
-**Affected stage:** Stage 040 gateway, Stage 080 dest workers on the MaaS route.
+**Affected stage:** Stage 040 gateway, Stage 130 dest workers on the MaaS route.
 
 **Likely cause:** Operator `networkpolicy/payload-processing` in `openshift-ingress` admits TCP 9004 only from `gateway.networking.k8s.io/gateway-name: data-science-gateway`. Dest Qwen is served by `maas-default-gateway` (the RHOAI 3.4 documented MaaS Gateway). Packets drop; Envoy ext_proc connect times out; the client sees HTTP 500. IPP/BBR sits in front of the endpoint picker, so a healthy EPP `:9002` is a false all-clear. Do **not** `oc edit` / `oc delete` the operator NetworkPolicy (it reverts). Do **not** repoint `router.gateway.refs` to `data-science-gateway`. Do **not** dest-unblock a gave_up M2 until the route returns 200 with a MaaS key.
 
@@ -1594,7 +1594,7 @@ oc get pods -n openshift-ingress \
 
 ## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
 
-**Affected stage:** Stage 080 dest on `harness-v2`. Overlay owns runtime (`/usr/local/bin/hermes`, `/opt/hermes-agent`, `HERMES_WEB_DIST`). Golden must not ship `.hermes/home/scripts` (Architect `202501ZA`).
+**Affected stage:** Stage 130 dest on `harness-v2`. Overlay owns runtime (`/usr/local/bin/hermes`, `/opt/hermes-agent`, `HERMES_WEB_DIST`). Golden must not ship `.hermes/home/scripts` (Architect `202501ZA`).
 
 **Likely cause:** Destfile or dest-init still looked for dest `supervise-gateway.sh` or `kanban-stuck-watchdog.py` under `.hermes/home/scripts`. Those files are not in the golden (`validate.sh` forbids the directory). The honest signal until a named overlay persist/watchdog GO is a WARN, not a dest script restore.
 
@@ -1613,7 +1613,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 ## Factory Create Fails With Can't Parse Devfile Yaml
 
-**Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
+**Affected stage:** Stage 060 RHDH app-migration skeleton (factory workspaces for 080)
 
 **Likely cause:** A line at column 0 inside `commandLine: |` ended the YAML block scalar. Dev Spaces reports `Can't parse devfile yaml` (example: a multi-line `python3 -c` whose body was not indented). Indenting Python to satisfy YAML breaks Python; keep every line of the scalar indented and write helper scripts with indented `printf` lines.
 
@@ -1635,7 +1635,7 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 
 ## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
 
-**Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
+**Affected stage:** Stage 060 RHDH app-migration skeleton (factory workspaces for 080)
 
 **Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `HERMES_WEB_DIST`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: the 080 overlay bakes `web_dist` at `/usr/local/share/hermes/web_dist`. `start-dashboard.sh` defaults `HERMES_WEB_DIST` to that bake (Operator `191234Zop`) and keeps the Managed Scope `basic_auth` gate; it does not dest-copy into `hermes_cli/web_dist`. Unset `HERMES_WEB_DIST` still tries a runtime Vite build. Dashboard failure does not fail the workspace (observability, not capability).
 
@@ -1691,7 +1691,7 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 **Recover:**
 
-- Sync Stage 050 so each DevWorkspace sets the current `DEFAULT_EXTENSIONS` policy with the Kilo Code extension.
+- Sync Stage 060 so each DevWorkspace sets the current `DEFAULT_EXTENSIONS` policy with the Kilo Code extension.
 - Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
 - Confirm the Kilo Code sidebar appears in Che Code and that the MaaS configuration has been rendered by the init script.
 
@@ -1712,11 +1712,11 @@ oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
   -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen27b'
 ```
 
-**Recover:** Sync Stage 050, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
+**Recover:** Sync Stage 060, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
 
 ## First Factory Workspace Asks To Trust Authors
 
-**Affected stage:** Stage 070 (and any RHDH factory workspace in `wksp-*`)
+**Affected stage:** Stage 120 (and any RHDH factory workspace in `wksp-*`)
 
 **Likely cause:** Che Code copies `vscode-editor-configurations` `extensions.json` into `/projects/.code-workspace`. Installing `redhat.vscode-openshift-connector` then shows **Trust Workspace & Install** because Machine `settings.json` is applied after that prompt. The startup hook is `product.json` `configurationDefaults` in the same ConfigMap.
 
@@ -1727,7 +1727,7 @@ oc get configmap vscode-editor-configurations -n wksp-ai-developer \
   -o jsonpath='{.data.product\.json}' | jq .
 ```
 
-**Recover:** Sync Stage 050 so the ConfigMap includes `product.json`, then **stop and start** the factory workspace (Che Code reads the ConfigMap only at launcher start). The current session can click **Trust Workspace & Install** — these namespaces only run platform-provisioned repos. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
+**Recover:** Sync Stage 060 so the ConfigMap includes `product.json`, then **stop and start** the factory workspace (Che Code reads the ConfigMap only at launcher start). The current session can click **Trust Workspace & Install** — these namespaces only run platform-provisioned repos. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
 
 ## Kilo Code Cannot Reach MaaS Endpoint
 
@@ -1756,9 +1756,9 @@ oc get secret -n wksp-ai-developer -l app.kubernetes.io/part-of=devspaces-maas
 
 ## Coding Assistant Project Is Missing From OpenShift AI Projects
 
-**Affected stage:** Stage 080
+**Affected stage:** Stage 130
 
-**Likely cause:** The `coding-assistant` namespace was created before the Stage 080 Argo CD Application reconciled its namespace metadata, or Argo CD was configured to ignore namespace labels and annotations. OpenShift AI shows accessible OpenShift projects in the Projects page when they carry the dashboard project metadata and the user has suitable RBAC.
+**Likely cause:** The `coding-assistant` namespace was created before the Stage 130 Argo CD Application reconciled its namespace metadata, or Argo CD was configured to ignore namespace labels and annotations. OpenShift AI shows accessible OpenShift projects in the Projects page when they carry the dashboard project metadata and the user has suitable RBAC.
 
 **Diagnose:**
 
@@ -1805,7 +1805,7 @@ Confirm the new pod stays `1/1` and that an unauthenticated model request return
 
 ## Hermes API timeouts while the model is healthy
 
-**Affected stages:** Stage 040 gateway and Stage 080 workers.
+**Affected stages:** Stage 040 gateway and Stage 130 workers.
 
 **Observed on v10, 2026-09-22:** six model connection timeouts ended a worker
 before its first tool action. The Qwen 3.8 workload was ready, but the MaaS
@@ -1897,11 +1897,11 @@ oc get application <app> -n openshift-gitops -o json \
   | jq '.spec.ignoreDifferences[] | select(.kind=="Namespace")'
 ```
 
-**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). For labels a controller depends on (like the pipeline-project provisioning label), the stage deploy.sh must assert the label on every run — see `seed_coolstore` step 0 in stage 050.
+**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). For labels a controller depends on (like the pipeline-project provisioning label), the stage deploy.sh must assert the label on every run — see `seed_coolstore` step 0 in stage 060.
 
 ## OpenCode: "unknown certificate verification error" for Every Model
 
-**Affected stage:** Stage 070 (OpenCode workspaces)
+**Affected stage:** Stage 120 (OpenCode workspaces)
 
 **Symptom:** OpenCode fails on *every* model (MiniMax, Qwen, Nemotron) with `Error: unknown certificate verification error`. The request never reaches the MaaS gateway (no access-log entry). Kilo Code and the VS Code Kubernetes tabs keep working against the same endpoint.
 
@@ -2116,7 +2116,7 @@ oc exec -n openshift-ingress "$GW" -c istio-proxy -- pilot-agent request GET con
 
 ## Red Hat Registry Outage Starves Scaffolded-Project Provisioning
 
-**Affected stage:** Stage 050/070 (project-provisioner, seed runs, any pipeline building from UBI base images)
+**Affected stage:** Stage 060/070 (project-provisioner, seed runs, any pipeline building from UBI base images)
 
 **Symptom:** freshly scaffolded projects get no credentials and no seed PipelineRun; the provisioner CronJob's `lastSuccessfulTime` stops advancing; pods show `ErrImagePull` with `503 Service Unavailable` from registry.redhat.io, or a seed run fails at `build-and-push` with `502 Bad Gateway` from registry.access.redhat.com.
 
@@ -2140,7 +2140,7 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Scaffolded Project Does Not Self-Provision (No Argo CD App / Pipeline)
 
-**Affected stage:** Stage 050 (RHDH scaffolder → dispatcher bootstrap)
+**Affected stage:** Stage 060 (RHDH scaffolder → dispatcher bootstrap)
 
 **Symptom:** a developer creates a project from the "New Quarkus App" template; the GitHub repo is created (with topics `rhoai3-golden-path` + `rhoai3-scaffolded`) and pushed, but no `project-<repo>` Argo CD Application appears, no `<repo>-dev` namespace or `app-push` pipeline is created, and no build runs. Nothing is happening in the background.
 
@@ -2254,7 +2254,7 @@ registry records live in the separate demo-registry database, so prefer
 this surgical recovery over drops.
 
 
-## Stage 080 run-resource refusal
+## Stage 130 run-resource refusal
 
 `RUN_RESOURCES_UNASSIGNED` after stamping means the resource declaration is
 missing; restore the assigned declaration, never downgrade the run to legacy.
@@ -2266,7 +2266,7 @@ must be retrieved before that binding can be verified; do not replace the receip
 Wait for the owner to finish. A killed task may leave the lock: prove the holder
 and its pod are stopped before platform cleanup. A `retiring` receipt permits
 only retirement recovery; a `retired` identity is never provisioned again.
-See [Stage 080 run isolation](OPERATIONS.md#stage-080-run-isolation) for the qualification requirements.
+See [Stage 130 run isolation](OPERATIONS.md#stage-080-run-isolation) for the qualification requirements.
 
 ### Correct Secret mounts but failed workspace identity isolation
 
@@ -2283,9 +2283,9 @@ deferred this hardening for the controlled v10 experiment; its launch preflight
 warns on that measured failure while retaining the other checks. That exception
 makes no claim of worker security confinement.
 
-The Stage 050 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
+The Stage 060 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
 destfile pod-overrides; operator-owned `devworkspace-default-role` unpatched)
-is described in [Stage 080 run isolation](OPERATIONS.md#stage-080-run-isolation).
+is described in [Stage 130 run isolation](OPERATIONS.md#stage-080-run-isolation).
 Do not hand-edit the operator-reconciled default role or broaden another
 identity to make startup pass. Restricting new workers does not revoke existing
 legacy `workspace*-sa` accounts. Verify startup and restart credentials on
@@ -2331,7 +2331,7 @@ The 2026-09-22 update omitted `config-triggers-core-interceptors`, which every
 new binary requires. The resulting crashes leave ClusterInterceptor CA bundles
 empty and may leave the EventListener's old Ready condition stale.
 
-The Stage 050 GitOps workaround supplies the default from the exact shipped
+The Stage 060 GitOps workaround supplies the default from the exact shipped
 [Triggers revision](https://github.com/openshift-pipelines/tektoncd-triggers/blob/72ad4eda38d96540182c6bf98fa12565ab5bab46/config/interceptors/config-core-interceptors.yaml).
 After sync, require TektonConfig Ready, ready deployment replicas, populated
 interceptor CA bundles and a real signed scaffolding delivery. A template's
@@ -2353,7 +2353,7 @@ Preserve the failed TaskRun. If its per-run lock exists, prove the holder TaskRu
 and pod are stopped before releasing it. A failed task is not a provisioning
 receipt and must not be bypassed with manually created database resources.
 
-### Stage 080: accepted compile repair leaves no successor
+### Stage 130: accepted compile repair leaves no successor
 
 An ACCEPTED step can be followed by a nonzero `advance.py` exit if its replan
 cannot admit the next unit. On v10, `UNIT_OVERSIZE` described seven repository
@@ -2376,7 +2376,7 @@ current tree before intervening; a clean retry must not be interrupted on the
 assumption that the dirty amendment remains. Record the amendment at the next
 idle boundary, without committing a worker's candidate or resetting attempts.
 
-### Stage 080: a diagnostic-family repair is pending despite lower compile errors
+### Stage 130: a diagnostic-family repair is pending despite lower compile errors
 
 **Symptom:** `VERIFICATION_PENDING cause=unassessable-scope` says a sealed file
 could not fully resolve, although the retired symbol's diagnostics disappeared.

@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: enable-model-evaluation
+  labels:
+    app.kubernetes.io/name: enable-model-evaluation
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: [datasciencecluster.opendatahub.io]
+    resources: [datascienceclusters]
+    resourceNames: [default-dsc]
+    verbs: [get, patch]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    resourceNames: [evalhubs.trustyai.opendatahub.io, mlflows.mlflow.opendatahub.io]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [namespaces]
+    resourceNames: [demo-sandbox]
+    verbs: [get, patch]

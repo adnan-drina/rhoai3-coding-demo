@@ -63,7 +63,7 @@ The central design choice: developers and their tools never connect directly to 
 
 ## What The Demo Shows
 
-The demo follows an eight-stage flow organized in two parts.
+The demo follows a nine-stage flow organized in two parts.
 
 **Part 1: Building the platform (GitOps-driven)**
 
@@ -75,6 +75,7 @@ Stages 010–060 construct the three platform layers declaratively — every res
 | [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | Provision GPU workers and quota-controlled scheduling for model workloads |
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Provide Model Registry, Model Catalog and Agent Catalog discovery alongside private model serving |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | Expose private and external models through a governed MaaS gateway with API keys, rate limits, and telemetry |
+| [050 - Model Evaluation](stages/050-model-evaluation/README.md) | Evaluate model behavior through EvalHub and retain experiments and artifacts in MLflow |
 | [060 - Advanced Application Platform](stages/060-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
@@ -155,7 +156,7 @@ rhoai3-coding-demo/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
-|   |-- argocd/app-of-apps/          # Argo CD Applications for GitOps stages 010-050
+|   |-- argocd/app-of-apps/          # Argo CD Applications for GitOps stages 010–060
 |   `-- stages/                      # GitOps source for stage manifests
 |-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs

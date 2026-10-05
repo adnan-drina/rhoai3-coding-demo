@@ -394,3 +394,8 @@ For organizations, this closes the loop that ungoverned AI tooling leaves open: 
 - [Vibes, specs, skills, and agents: The four pillars of AI coding](https://developers.redhat.com/articles/2026/03/30/vibes-specs-skills-agents-ai-coding)
 - [Prompt engineering big vs. small prompts](https://developers.redhat.com/articles/2026/02/23/prompt-engineering-big-vs-small-prompts-ai-agents)
 - [Generative AI LLM prompt patterns](https://developers.redhat.com/articles/2024/10/08/ai-llm-prompt-patterns-developers)
+
+
+## Next Stage
+
+[Stage 120: AI-Agentic Development](../120-ai-agentic-development/README.md) continues the developer workflow ladder.

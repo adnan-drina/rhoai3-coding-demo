@@ -1,0 +1,37 @@
+# Stage 050 native model evaluation
+
+## Scope and evidence boundary
+
+Stage 050 groups MLflow, EvalHub and the TrustyAI operator after serving/MaaS. This is source implementation, not a deployed stage. The current cluster remains pinned to Stage 010 revision `f38d84c072ee18c38fb21072a6442a1b07d468eb`, retaining its MLflow service, database, PVC, credentials and artifacts. Stage 030 ownership adoption and Stage 050 MLflow adoption require separate reviewed transitions before deployment. No Argo Application was synced or repointed by this reorganization.
+
+The [3.5 supported-configurations matrix](https://access.redhat.com/articles/rhoai-supported-configs-3.x) labels MLflow 3.14 and TrustyAI 1.37 GA, EvalHub 0.3 TP. AutoRAG/AutoML and OpenShell/Hermes hosting are outside this stage.
+
+## Native ownership and sequencing
+
+Stage 010 owns the shared DSC, with fresh `mlflowoperator` and `trustyai` defaults Removed. Its Argo configuration delegates those subtrees to Stage 050 through exact ignore paths and RespectIgnoreDifferences. A narrowly scoped Stage 050 hook enables only the native components and labels the existing `demo-sandbox` tenant. Stage 010 delegates that label too; Stage 050 does not duplicate the namespace or DSC.
+
+The sequence is read-only prerequisite/retention preflight → Stage 050 Application at reviewed published source → component/CRD readiness → dedicated PostgreSQL and S3 inputs → MLflow CR and native readiness → EvalHub CR → tenant/API acceptance. Stage 030 supplies KServe RawDeployment and served models; Stage 040 supplies governed access. Neither is repointed by Stage 050. The bootstrap MLflow health customization requires Available plus current operator and migration conditions; runtime checks also inspect fresh controller-owned workloads.
+
+The [MLflow guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_mlflow/installing-mlflow_mlflow) uses the MLflow operator, PostgreSQL and S3. Exact extracted 3.5.1 schemas establish cluster-scoped `mlflow.opendatahub.io/v1` MLflow and namespaced `trustyai.opendatahub.io/v1` EvalHub. Preserve MLflow identity `mlflow` and its existing `redhat-ods-applications` backend/storage names during eventual adoption. EvalHub resides in dedicated `evalhub`; its PostgreSQL is separate. No provider Keycloak database is reused. Generated deployments, migration jobs, service accounts, token/CA projections and tenant bindings remain operator-owned.
+
+## Source discrepancies and decisions
+
+The [evaluation guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems/evaluating-llms-with-evalhub_evaluate) recommends a dedicated namespace, tenant labels/RBAC and MLflow integration. Its dashboard flag wording differs from the shipped schema: `disableLMEval` exists, `disableEvalHub` does not. Do not invent the latter or relabel the legacy LM-Eval flag as an EvalHub visibility control. API/SDK capability is valid; actual dashboard discovery remains an independent acceptance gate.
+
+[Known issue RHOAIENG-67534](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/known-issues_relnotes) describes MLflow creation before “Evaluations” resources. The shipped bundle has one EvalHub CR and no Evaluations CR; no fictional resource is introduced. The project uses the stronger gate of MLflow readiness before EvalHub creation and requires durable tracking/artifact evidence for full acceptance. The same release page's RHOAIENG-66068 heading/body disagree about EvalHub versus MLflow namespace discovery; namespace selection alone is not proof the UI works.
+
+The extracted RHOAI 3.5.1 image metadata labels identify TrustyAI operator source commit `e43cdff198b90289167f2d7cd5678821b21d8643`; the inspected tree matches it. Pinned [deployment source](https://github.com/opendatahub-io/trustyai-service-operator/blob/e43cdff198b90289167f2d7cd5678821b21d8643/controllers/evalhub/deployment.go) and [tenant source](https://github.com/opendatahub-io/trustyai-service-operator/blob/e43cdff198b90289167f2d7cd5678821b21d8643/controllers/evalhub/tenant_namespaces.go) establish native token/CA projections and tenant binding behavior. This image-label-backed source evidence does not replace inspection of generated live workloads or authenticated tenant execution.
+
+## Retention and adoption gate
+
+Stage 050 preflight must reject the existing Stage 010-tracked MLflow CR and its known database/storage/configuration paths. The foundation's independent retention guard remains fail-closed even after registry adoption. Protected PVC/OBC annotations alone do not preserve an operator-owned service when its CR/component is removed. A future transition must inventory exact identities and data, establish receiving ownership without resource recreation, preserve secrets/storage, and then prove both applications converge. No global prune disable, forced ownership takeover or generated-operand patch is allowed by this design.
+
+The recovered validated source is commit `671798bc5459eb2addc6e6bf92f506b2add2ef1f`, formerly `gitops/stages/010-openshift-ai-platform-foundation/base/mlflow/` and its setup/readiness helpers. Historical strict-TLS tracking, artifact proxy roundtrip, independent S3 readback and PostgreSQL persistence passed on live f38. Those results do not qualify the new Stage 050 deployment.
+
+## Acceptance
+
+Static acceptance covers native schema fields, rendered identities, narrow RBAC, shared delegation, fail-closed preflight, bounded setup and local mock failure cases. No live benchmark or costly migration run belongs to this source refactor.
+
+Later live acceptance must prove component and operand readiness at served current generations; database/PVC and artifact-bucket continuity; strict-TLS authenticated API health and nonempty providers/collections; intended tenant permissions and ordinary-user denials; and a bounded explicitly started evaluation whose retained job result and MLflow tracking/artifacts are retrievable. `validate.sh` performs authenticated readiness/providers/collections checks and exits 2 when completed evaluation evidence is pending. `validate.sh --job-id <recorded-id> --mlflow-run-id <32hex-run-id>` reads a completed job and requires metrics/experiment plus the native benchmark result’s returned `mlflow_run_id` matching the supplied run ID. It never submits a job. Start at most one bounded benchmark with 1–5 samples as an explicit authorized native API/SDK action; missing or mismatched native run correlation fails closed and remains a live acceptance gate. Readiness is not a completed job. Real persona login, dashboard discovery, endpoint/provider configuration and actual evaluation/result persistence remain separate exits. Record source revision, job/model/dataset identity and evidence limits rather than a blanket stage PASS.
+
+The shipped EvalHub API source is pinned at `red-hat-data-services/eval-hub` commit `90648741f29f5421f24601d8b2c32909852bc365`. Its benchmark request uses `id`, while the guide example uses `benchmark_id`; explicit requests must follow the shipped schema. Native `results.benchmarks[].mlflow_run_id` supplies direct job-to-run correlation. Validation matches it to the requested run and native tracking `info.run_id`, then checks finished state, experiment and metrics; it does not guess correlation tags. This is source-backed contract validation, not an executed evaluation on the current cluster.

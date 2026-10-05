@@ -1,6 +1,6 @@
 # Scaffold Repos
 
-Source-of-truth staging for the GitHub scaffold repositories that the golden-path templates (registered by stage 050's RHDH component) copy from. Each staging folder lives with its consuming stage. The templates never mutate these repos: every template run copies a golden repo into a fresh per-run repository (topic `rhoai3-golden-path`), so demo runs are isolated and reset is cheap.
+Source-of-truth staging for the GitHub scaffold repositories that the golden-path templates (registered by stage 060's RHDH component) copy from. Each staging folder lives with its consuming stage. The templates never mutate these repos: every template run copies a golden repo into a fresh per-run repository (topic `rhoai3-golden-path`), so demo runs are isolated and reset is cheap.
 
 | Scaffold repo (github.com/adnan-drina) | Consumed by template | Source of truth |
 |---------------------------------------|----------------------|-----------------|

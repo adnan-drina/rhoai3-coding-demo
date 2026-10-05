@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enable-model-evaluation
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-model-evaluation
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: enable-model-evaluation
+        app.kubernetes.io/part-of: rhoai-platform
+        app.kubernetes.io/component: platform-configuration
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      serviceAccountName: enable-model-evaluation
+      restartPolicy: Never
+      containers:
+        - name: enable
+          # Same reviewed OpenShift CLI image as Stage 030.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [/bin/bash, -ceu]
+          args:
+            - |
+              [[ $(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.spec.components.kserve.managementState}') == Managed ]] || { echo 'Stage 030 KServe must be enabled first' >&2; exit 1; }
+              oc patch datasciencecluster default-dsc --request-timeout=10s --type=merge -p '{"spec":{"components":{"trustyai":{"managementState":"Managed"},"mlflowoperator":{"managementState":"Managed"}}}}'
+              oc patch namespace demo-sandbox --request-timeout=10s --type=merge -p '{"metadata":{"labels":{"evalhub.trustyai.opendatahub.io/tenant":""}}}'
+              deadline=$((SECONDS + 840))
+              for api in evalhubs.trustyai.opendatahub.io mlflows.mlflow.opendatahub.io; do
+                until [[ $(oc get crd "$api" --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true) == True ]]; do
+                  (( SECONDS < deadline )) || { echo 'Evaluation API initialization timed out' >&2; exit 1; }
+                  sleep 5
+                done
+              done

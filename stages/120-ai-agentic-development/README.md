@@ -353,3 +353,8 @@ It removes the workspace, catalog entries, Argo app and namespace, SonarQube his
 | OpenCode for OpenShift Dev Spaces | https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces |
 | Quarkus Insights #249 — Coding Agents | https://quarkus.io/blog/quarkus-insights-249-coding-agents/ |
 | agentic-quarkus-scaffold golden repo | https://github.com/adnan-drina/agentic-quarkus-scaffold |
+
+
+## Next Stage
+
+[Stage 130: AI-Autonomous Migration](../130-ai-autonomous-migration/README.md) continues the developer workflow ladder.

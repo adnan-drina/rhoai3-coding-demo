@@ -47,6 +47,8 @@ spec:
         - /spec/components/kserve
         - /spec/components/modelregistry
         - /spec/components/llamastackoperator
+        - /spec/components/trustyai
+        - /spec/components/mlflowoperator
         - /spec/components/aipipelines
     # Stage 030 owns only these discovery visibility fields; the shared CR stays here.
     - group: opendatahub.io
@@ -63,3 +65,9 @@ spec:
       name: rhoai-developers
       jsonPointers:
         - /users
+    # Stage 050 enables tenant authorization on the existing sandbox.
+    - group: ""
+      kind: Namespace
+      name: demo-sandbox
+      jsonPointers:
+        - /metadata/labels/evalhub.trustyai.opendatahub.io~1tenant

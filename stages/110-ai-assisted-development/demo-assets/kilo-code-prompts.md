@@ -54,4 +54,4 @@ Verify with hot reload: `curl localhost:8080/api/inventory/stats` answers immedi
 
 **Expected result:** `System.out.println` replaced by `org.jboss.logging.Logger` calls, the repository injected via constructor, and the catch block logging the error instead of hiding it.
 
-**Talk track note:** the fix loop stays in Kilo Code at this stage — one-shot in, gate out. Stage 070 is where the agent (OpenCode + skills) internalizes the standards so the smells never ship in the first place.
+**Talk track note:** the fix loop stays in Kilo Code at this stage — one-shot in, gate out. Stage 120 is where the agent (OpenCode + skills) internalizes the standards so the smells never ship in the first place.

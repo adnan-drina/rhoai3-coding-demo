@@ -189,7 +189,7 @@ COMPONENT_CHECK=$(oc get datasciencecluster default-dsc -o json | python3 -c '
 import json,sys
 c=json.load(sys.stdin)["spec"]["components"]
 managed=["dashboard","workbenches"]
-removed=["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer","trustyai","mlflowoperator"]
+removed=["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer"]
 print("pass" if all(c.get(k,{}).get("managementState")=="Managed" for k in managed) and all(c.get(k,{}).get("managementState")=="Removed" for k in removed) else "component ownership mismatch")
 ' 2>/dev/null || echo "component inspection failed")
 check "Foundation component ownership" "$COMPONENT_CHECK"

@@ -1,0 +1,33 @@
+apiVersion: trustyai.opendatahub.io/v1
+kind: EvalHub
+metadata:
+  name: evalhub
+  namespace: evalhub
+  labels:
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/name: evalhub
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  replicas: 1
+  tenancy: multi
+  database:
+    type: postgresql
+    secret: evalhub-db-credentials
+  providers:
+    - lm-evaluation-harness
+    - garak
+    - guidellm
+  collections:
+    - safety-and-fairness-v1
+  env:
+    # The deployment helper discovers the native HTTPS address only after
+    # MLflow is Available. The operator owns TLS trust and projected tokens.
+    - name: MLFLOW_TRACKING_URI
+      valueFrom:
+        configMapKeyRef:
+          name: evalhub-mlflow-connection
+          key: tracking-uri

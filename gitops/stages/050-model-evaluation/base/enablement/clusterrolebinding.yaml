@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: enable-model-evaluation
+  labels:
+    app.kubernetes.io/name: enable-model-evaluation
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+subjects:
+  - kind: ServiceAccount
+    name: enable-model-evaluation
+    namespace: redhat-ods-applications
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: enable-model-evaluation
