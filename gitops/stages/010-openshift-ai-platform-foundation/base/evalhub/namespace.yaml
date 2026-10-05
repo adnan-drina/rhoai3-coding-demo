@@ -1,0 +1,13 @@
+# Follow the installation guide's dedicated service namespace. Dashboard
+# discovery is a separate check because RHOAIENG-66068 has conflicting wording.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: evalhub
+  labels:
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/name: evalhub
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"

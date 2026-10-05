@@ -9,26 +9,13 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PASS=0
 FAIL=0
 
-# ── Load local environment ────────────────────────────────────────────────────
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  # set -a so values like KUBECONFIG are exported to oc child processes,
-  # not just set as local shell variables.
-  set -a
-  # shellcheck source=/dev/null
-  source "$ROOT_DIR/.env"
-  set +a
-fi
+# Shared fail-closed environment and cluster identity guard.
+REPO_ROOT="$ROOT_DIR"
+# shellcheck source=../../scripts/shared/lib.sh
+source "$ROOT_DIR/scripts/shared/lib.sh"
+load_env
+check_oc_logged_in
 
-# ── OpenShift safety guard ────────────────────────────────────────────────────
-if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
-  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set. Set it in .env." >&2
-  exit 1
-fi
-ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
-if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
-  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match guard." >&2
-  exit 1
-fi
 
 check() {
   local label="$1"
@@ -93,20 +80,15 @@ RHOAI_CSV=$(csv_phase_from_subscription redhat-ods-operator rhods-operator)
 check "RHOAI operator CSV Succeeded" "$R"
 
 # ── 7. RHOAI observability prerequisite operators ────────────────────────────
-EXPECTED_COO_CSV="cluster-observability-operator.v1.4.0"
+EXPECTED_COO_CSV="${RHOAI_EXPECTED_COO_CSV:-cluster-observability-operator.v1.5.3}"
 COO_INSTALLED_CSV=$(oc get subscription cluster-observability-operator -n openshift-cluster-observability-operator \
   -o jsonpath='{.status.installedCSV}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 [[ "$COO_INSTALLED_CSV" == "$EXPECTED_COO_CSV" ]] && R="pass" || R="installedCSV=${COO_INSTALLED_CSV:-not found} expected=${EXPECTED_COO_CSV}"
-check "Cluster Observability Operator CSV matches RHOAI 3.4 compatibility policy" "$R"
+check "Cluster Observability Operator CSV matches reviewed catalog selection" "$R"
 
 COO_CSV=$(csv_phase_from_subscription openshift-cluster-observability-operator cluster-observability-operator)
 [[ "$COO_CSV" == "Succeeded" ]] && R="pass" || R="phase=${COO_CSV:-not found}"
 check "Cluster Observability Operator CSV Succeeded" "$R"
-
-COO_MEMORY_LIMIT=$(oc get subscription cluster-observability-operator -n openshift-cluster-observability-operator \
-  -o jsonpath='{.spec.config.resources.limits.memory}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$COO_MEMORY_LIMIT" == "1Gi" ]] && R="pass" || R="memoryLimit=${COO_MEMORY_LIMIT:-missing}"
-check "Cluster Observability Operator resource policy protects Perses operator" "$R"
 
 OTEL_CSV=$(csv_phase_from_subscription openshift-opentelemetry-operator opentelemetry-product)
 [[ "$OTEL_CSV" == "Succeeded" ]] && R="pass" || R="phase=${OTEL_CSV:-not found}"
@@ -151,64 +133,26 @@ OBS_DASHBOARD=$(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-app
 [[ "$OBS_DASHBOARD" == "true" ]] && R="pass" || R="observabilityDashboard=${OBS_DASHBOARD:-missing}"
 check "RHOAI Observability dashboard menu enabled" "$R"
 
-OBS_TLS_SECRET=$(oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring \
-  -o jsonpath='{.data.service-ca\.crt}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ -n "$OBS_TLS_SECRET" ]] && R="pass" || R="secret=missing"
-check "RHOAI observability Prometheus web TLS CA Secret present" "$R"
-
-OBS_PERSES_NETPOL=$(oc get networkpolicy perses-backend-operator-access -n redhat-ods-monitoring \
-  -o jsonpath='{.metadata.name}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$OBS_PERSES_NETPOL" == "perses-backend-operator-access" ]] && R="pass" || R="networkpolicy=${OBS_PERSES_NETPOL:-missing}"
-check "Perses backend operator access NetworkPolicy present" "$R"
-
-ADMIN_PERSES_DASHBOARDS=$(oc auth can-i list persesdashboards.perses.dev \
-  --as=ai-admin --as-group=rhods-admins --all-namespaces \
-  --insecure-skip-tls-verify=true 2>/dev/null || echo "no")
-[[ "$ADMIN_PERSES_DASHBOARDS" == "yes" ]] && R="pass" || R="can-i=${ADMIN_PERSES_DASHBOARDS:-no}"
-check "ai-admin can discover Perses dashboards" "$R"
-
-ADMIN_PERSES_DATASOURCES=$(oc auth can-i list persesdatasources.perses.dev \
-  --as=ai-admin --as-group=rhods-admins --all-namespaces \
-  --insecure-skip-tls-verify=true 2>/dev/null || echo "no")
-[[ "$ADMIN_PERSES_DATASOURCES" == "yes" ]] && R="pass" || R="can-i=${ADMIN_PERSES_DATASOURCES:-no}"
-check "ai-admin can discover Perses datasources" "$R"
-
-ADMIN_PROMETHEUS_API=$(oc auth can-i create prometheuses/k8s --subresource=api \
-  --as=ai-admin --as-group=rhods-admins -n openshift-monitoring \
-  --insecure-skip-tls-verify=true 2>/dev/null || echo "no")
-[[ "$ADMIN_PROMETHEUS_API" == "yes" ]] && R="pass" || R="can-i=${ADMIN_PROMETHEUS_API:-no}"
-check "ai-admin can query OpenShift monitoring Prometheus API" "$R"
-
-OBS_READY=$(oc get monitoring.services.platform.opendatahub.io default-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-OBS_STACK_READY=$(oc get monitoring.services.platform.opendatahub.io default-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="MonitoringStackAvailable")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-OBS_OTEL_READY=$(oc get monitoring.services.platform.opendatahub.io default-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="OpenTelemetryCollectorAvailable")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-OBS_PERSES_READY=$(oc get monitoring.services.platform.opendatahub.io default-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="PersesAvailable")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-OBS_TEMPO_READY=$(oc get monitoring.services.platform.opendatahub.io default-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="TempoAvailable")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$OBS_READY" == "True" && "$OBS_STACK_READY" == "True" && "$OBS_OTEL_READY" == "True" && "$OBS_PERSES_READY" == "True" && "$OBS_TEMPO_READY" == "True" ]] \
-  && R="pass" || R="Ready=${OBS_READY:-missing} MonitoringStack=${OBS_STACK_READY:-missing} OpenTelemetryCollector=${OBS_OTEL_READY:-missing} Perses=${OBS_PERSES_READY:-missing} Tempo=${OBS_TEMPO_READY:-missing}"
-check "RHOAI observability service Ready with metrics, traces, and Perses" "$R"
-
-OBS_CLUSTER_DASHBOARD=$(oc get persesdashboard dashboard-0-cluster-admin -n redhat-ods-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$OBS_CLUSTER_DASHBOARD" == "True" ]] && R="pass" || R="available=${OBS_CLUSTER_DASHBOARD:-missing}"
-check "RHOAI Cluster Perses dashboard available" "$R"
-
-OBS_MODEL_DASHBOARD=$(oc get persesdashboard dashboard-1-model -n redhat-ods-monitoring \
-  -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$OBS_MODEL_DASHBOARD" == "True" ]] && R="pass" || R="available=${OBS_MODEL_DASHBOARD:-missing}"
-check "RHOAI Model Perses dashboard available" "$R"
-
-OBS_PODS=$(oc get pods -n redhat-ods-monitoring --no-headers \
-  --insecure-skip-tls-verify=true 2>/dev/null \
-  | grep -E 'alertmanager-data-science-monitoringstack|data-science-collector|prometheus-data-science-monitoringstack|tempo-data-science|thanos-querier-data-science' \
-  | wc -l | tr -d ' ')
-[[ "${OBS_PODS:-0}" -ge 3 ]] && R="pass" || R="matchingPods=${OBS_PODS:-0}"
-check "RHOAI observability stack pods present" "$R"
+# Native observability functional acceptance replaces legacy workaround-presence checks.
+validate_persona() {
+  local label="$1" kubeconfig="$2" expected_user="$3" actual_user server permission guarded_server
+  if [[ -z "$kubeconfig" || ! -f "$kubeconfig" ]]; then
+    check "$label real authenticated session" "persona kubeconfig missing"
+    return
+  fi
+  server=$(oc --kubeconfig="$kubeconfig" --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" whoami --show-server 2>/dev/null || true)
+  actual_user=$(oc --kubeconfig="$kubeconfig" --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" whoami 2>/dev/null || true)
+  guarded_server=$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" whoami --show-server)
+  if [[ "$server" != "$guarded_server" || "$actual_user" != "$expected_user" ]]; then
+    check "$label real authenticated session" "identity or cluster mismatch"
+    return
+  fi
+  permission=$(oc --kubeconfig="$kubeconfig" --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" auth can-i update deployments.apps -n demo-sandbox 2>/dev/null || true)
+  [[ "$permission" == yes ]] && R="pass" || R="project permission denied"
+  check "$label real session project access" "$R"
+}
+validate_persona administrator "${RHOAI_ADMIN_KUBECONFIG:-}" "${RHOAI_ADMIN_USER:-}"
+validate_persona developer "${RHOAI_DEVELOPER_KUBECONFIG:-}" "${RHOAI_DEVELOPER_USER:-}"
 
 # ── 10. DataScienceCluster Ready ──────────────────────────────────────────────
 DSC_PHASE=$(oc get datasciencecluster default-dsc \
@@ -234,17 +178,31 @@ else
   check "RHOAI Dashboard route reachable" "route not found"
 fi
 
-# ── 13. htpasswd identity provider configured ────────────────────────────────
-IDP=$(oc get oauth cluster \
-  -o jsonpath='{.spec.identityProviders[*].name}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$IDP" == *"demo-htpasswd"* ]] && R="pass" || R="idps=${IDP:-none}"
-check "htpasswd identity provider configured" "$R"
+# Native Auth and foundation component ownership.
+AUTH_READY=$(oc get auth.services.platform.opendatahub.io auth -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+[[ "$AUTH_READY" == True ]] && R="pass" || R="Auth not Ready"
+check "Native Auth Ready" "$R"
+COMPONENT_CHECK=$(oc get datasciencecluster default-dsc -o json | python3 -c '
+import json,sys
+c=json.load(sys.stdin)["spec"]["components"]
+managed=["dashboard","workbenches","modelregistry","mlflowoperator","trustyai"]
+removed=["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer"]
+print("pass" if all(c.get(k,{}).get("managementState")=="Managed" for k in managed) and all(c.get(k,{}).get("managementState")=="Removed" for k in removed) else "component ownership mismatch")
+' 2>/dev/null || echo "component inspection failed")
+check "Foundation component ownership" "$COMPONENT_CHECK"
 
-# ── 14. ai-admin is a RHOAI administrator ────────────────────────────────────
-ADMINS=$(oc get group rhods-admins \
-  -o jsonpath='{.users}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$ADMINS" == *"ai-admin"* ]] && R="pass" || R="rhods-admins=${ADMINS:-empty}"
-check "ai-admin in rhods-admins (RHOAI admin)" "$R"
+# Existing provider authentication and explicit group membership.
+IDP=$(oc get oauth cluster -o jsonpath='{.spec.identityProviders[*].name}' 2>/dev/null || true)
+[[ -n "$IDP" ]] && R="pass" || R="no identity provider"
+check "Existing identity provider configured" "$R"
+: "${RHOAI_ADMIN_USER:?Set existing RHOAI_ADMIN_USER for access validation}"
+: "${RHOAI_DEVELOPER_USER:?Set existing RHOAI_DEVELOPER_USER for access validation}"
+for mapping in "rhods-admins:$RHOAI_ADMIN_USER" "rhoai-developers:$RHOAI_DEVELOPER_USER"; do
+  group="${mapping%%:*}"; user="${mapping#*:}"
+  members=$(oc get group "$group" -o jsonpath='{.users[*]}' 2>/dev/null || true)
+  if printf '%s\n' "$members" | tr ' ' '\n' | grep -Fxq "$user"; then R="pass"; else R="membership missing"; fi
+  check "Configured persona in $group" "$R"
+done
 
 # ── 15. demo-sandbox data science project exists ─────────────────────────────
 DS_LABEL=$(oc get namespace demo-sandbox \
@@ -269,6 +227,17 @@ ADMIN_RB=$(oc get rolebinding rhods-admins-admin -n demo-sandbox \
   -o jsonpath='{.roleRef.name}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 [[ "$ADMIN_RB" == "admin" ]] && R="pass" || R="rolebinding=${ADMIN_RB:-missing}"
 check "rhods-admins admin on demo-sandbox" "$R"
+
+if "$SCRIPT_DIR/validate-ai-services.sh"; then
+  check "MLflow and EvalHub platform readiness" pass
+else
+  check "MLflow and EvalHub platform readiness" "service readiness failed"
+fi
+if "$SCRIPT_DIR/validate-foundation-services.sh"; then
+  check "Native foundation services" pass
+else
+  check "Native foundation services" "functional checks failed"
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""

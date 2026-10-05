@@ -1,0 +1,13 @@
+apiVersion: services.platform.opendatahub.io/v1alpha1
+kind: Auth
+metadata:
+  name: auth
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  adminGroups:
+    - rhods-admins
+  allowedGroups:
+    - rhods-admins
+    - rhoai-developers

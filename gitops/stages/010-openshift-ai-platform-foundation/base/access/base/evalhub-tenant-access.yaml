@@ -1,0 +1,30 @@
+# Native EvalHub tenant permissions; operator provisions job identities and CA.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-evaluator
+  namespace: demo-sandbox
+rules:
+  - apiGroups: [trustyai.opendatahub.io]
+    resources: [evaluations, collections, providers]
+    verbs: [get, list, create, update, delete]
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [create, get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: demo-evalhub-access
+  namespace: demo-sandbox
+subjects:
+  - kind: Group
+    name: rhods-admins
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: rhoai-developers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: evalhub-evaluator
+  apiGroup: rbac.authorization.k8s.io

@@ -6,30 +6,36 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# ── Load local environment ────────────────────────────────────────────────────
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  # set -a so values like KUBECONFIG are exported to oc child processes,
-  # not just set as local shell variables.
-  set -a
-  # shellcheck source=/dev/null
-  source "$ROOT_DIR/.env"
-  set +a
+# Shared fail-closed environment and cluster identity guard.
+REPO_ROOT="$ROOT_DIR"
+# shellcheck source=../../scripts/shared/lib.sh
+source "$ROOT_DIR/scripts/shared/lib.sh"
+load_env
+check_oc_logged_in
+# Use a reviewed published revision; never silently deploy old main content.
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
+  GIT_REPO_BRANCH="$2"
+elif [[ $# -ne 0 ]]; then
+  echo "Usage: $0 [--revision <published commit or ref>]" >&2; exit 1
 fi
-
-# ── OpenShift safety guard ────────────────────────────────────────────────────
-if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
-  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set." >&2
-  echo "       Set it in .env to a unique substring of the target cluster API URL." >&2
+require_env GIT_REPO_URL "repository URL containing the reviewed Stage 010 source"
+require_env GIT_REPO_BRANCH "reviewed published branch or commit for Argo CD"
+assert_required_env
+selected_commit=$(git -C "$ROOT_DIR" rev-parse --verify "${GIT_REPO_BRANCH}^{commit}")
+source_paths=(gitops/bootstrap gitops/stages/010-openshift-ai-platform-foundation gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml stages/010-openshift-ai-platform-foundation scripts/shared scripts/platform/require-node-sizing.sh)
+if ! git -C "$ROOT_DIR" diff --quiet "$selected_commit" -- "${source_paths[@]}" ||
+   [[ -n "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- "${source_paths[@]}")" ]]; then
+  echo "ERROR: Selected revision does not contain the local reviewed Stage 010 source." >&2
   exit 1
 fi
-
-ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
-if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
-  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match RHOAI_EXPECTED_API_SERVER." >&2
+if ! git ls-remote "$GIT_REPO_URL" | awk '{print $1}' | grep -Fx "$selected_commit" >/dev/null; then
+  echo "ERROR: Selected commit is not an advertised published repository revision." >&2
   exit 1
 fi
+# Pin the Application to immutable reviewed content even when input was a branch.
+GIT_REPO_BRANCH="$selected_commit"
+command -v python3 >/dev/null || { echo "ERROR: python3 is required for exact InstallPlan checks" >&2; exit 1; }
 
-echo "✓ Cluster guard passed: $ACTUAL_SERVER"
 
 # Fail fast if the nodes are too small for the demo stack, before any changes.
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
@@ -96,7 +102,7 @@ echo ""
 echo "── Step 4: Applying stage-010 Argo CD Application ──"
 
 GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}"
-GIT_REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
+
 
 APP_MANIFEST=$(mktemp)
 sed \
@@ -110,6 +116,41 @@ rm -f "$APP_MANIFEST"
 
 echo "✓ Application 010-openshift-ai-platform-foundation created"
 echo "  Argo CD will now sync ODF and RHOAI. This takes 10–20 minutes."
+
+# Approve only the exact reviewed CSV for each unbounded observability stream.
+# The InstallPlan must belong to this Subscription and contain no other CSV.
+approve_reviewed_plan() {
+  local namespace="$1" subscription="$2" expected="$3" plan payload
+  plan=$(oc get subscription "$subscription" -n "$namespace" -o jsonpath='{.status.installPlanRef.name}' 2>/dev/null || true)
+  [[ -n "$plan" ]] || return 1
+  payload=$(oc get installplan "$plan" -n "$namespace" -o json)
+  if ! printf '%s' "$payload" | python3 -c '
+import json,sys
+p=json.load(sys.stdin); sub,expected=sys.argv[1:]
+owned=any(x.get("kind")=="Subscription" and x.get("name")==sub for x in p.get("metadata",{}).get("ownerReferences",[]))
+sys.exit(0 if owned and p.get("spec",{}).get("clusterServiceVersionNames")==[expected] else 1)
+' "$subscription" "$expected"; then
+    echo "ERROR: InstallPlan ownership or CSV contents differ from reviewed selection." >&2
+    return 2
+  fi
+  oc patch installplan "$plan" -n "$namespace" --type merge -p '{"spec":{"approved":true}}'
+}
+for selection in \
+  'openshift-cluster-observability-operator cluster-observability-operator cluster-observability-operator.v1.5.3' \
+  'openshift-opentelemetry-operator opentelemetry-product opentelemetry-operator.v0.158.0-2' \
+  'openshift-tempo-operator tempo-product tempo-operator.v0.22.0-2'; do
+  read -r namespace subscription expected <<< "$selection"
+  deadline=$((SECONDS + 600))
+  while true; do
+    if approve_reviewed_plan "$namespace" "$subscription" "$expected"; then break; else approval_status=$?; fi
+    [[ "$approval_status" -ne 2 ]] || exit 1
+    (( SECONDS < deadline )) || { echo "ERROR: reviewed InstallPlan unavailable" >&2; exit 1; }
+    sleep 10
+  done
+done
+
+# Runtime credentials are local/live inputs, while operators own service workloads.
+"$SCRIPT_DIR/setup-ai-services.sh"
 
 # ── Step 5: Report Argo CD console URL ───────────────────────────────────────
 ARGOCD_URL=$(oc get route openshift-gitops-server -n openshift-gitops \

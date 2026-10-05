@@ -1,7 +1,3 @@
-# v2 is the current served+storage version in RHOAI 3.4. The component schema
-# (e.g. spec.components.aipipelines) exists only in v2; v1 is retained for
-# compatibility but rejects v2-only fields when a v1 manifest is submitted.
-# Verified live: oc get crd datascienceclusters.datasciencecluster.opendatahub.io
 apiVersion: datasciencecluster.opendatahub.io/v2
 kind: DataScienceCluster
 metadata:
@@ -42,4 +38,17 @@ spec:
     trainingoperator:
       managementState: Removed
     trustyai:
+      managementState: Managed
+    mlflowoperator:
+      managementState: Managed
+    # New 3.5 components remain outside foundation scope.
+    ogx:
+      managementState: Removed
+    aigateway:
+      managementState: Removed
+    mcplifecycleoperator:
+      managementState: Removed
+    sparkoperator:
+      managementState: Removed
+    trainer:
       managementState: Removed

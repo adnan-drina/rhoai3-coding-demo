@@ -12,7 +12,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   channel: patch-me-see-overlays-dir
-  installPlanApproval: Automatic
+  installPlanApproval: Manual
+  startingCSV: cluster-observability-operator.v1.5.3
   name: cluster-observability-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace

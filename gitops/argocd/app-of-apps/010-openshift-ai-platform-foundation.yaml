@@ -47,5 +47,9 @@ spec:
         - /spec/components/kserve
         - /spec/components/llamastackoperator
         - /spec/components/aipipelines
-        - /spec/components/trustyai
-        - /spec/components/mlflowoperator
+    # Membership is assigned from provider identities by setup-access.sh.
+    - group: user.openshift.io
+      kind: Group
+      name: rhoai-developers
+      jsonPointers:
+        - /users

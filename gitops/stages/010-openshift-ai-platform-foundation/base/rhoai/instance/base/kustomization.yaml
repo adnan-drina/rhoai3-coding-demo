@@ -5,7 +5,5 @@ resources:
   - monitoring-namespace.yaml
   - dsc-init.yaml
   - datasciencecluster.yaml
+  - auth.yaml
   - odhdashboardconfig.yaml
-  - observability/prometheus-web-tls-ca-sync.yaml
-  - observability/perses-backend-operator-access.yaml
-  - observability/perses-dashboard-rbac.yaml

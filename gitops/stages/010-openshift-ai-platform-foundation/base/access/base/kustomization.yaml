@@ -10,3 +10,4 @@ resources:
   - rolebinding-developer-edit.yaml
   - rolebinding-admins-admin.yaml
   - obc-demo-sandbox.yaml
+  - evalhub-tenant-access.yaml

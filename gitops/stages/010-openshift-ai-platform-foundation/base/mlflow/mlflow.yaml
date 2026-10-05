@@ -1,0 +1,41 @@
+# MLflow is cluster-scoped: Secret and ConfigMap references resolve in the
+# operator's applications namespace, redhat-ods-applications.
+apiVersion: mlflow.opendatahub.io/v1
+kind: MLflow
+metadata:
+  name: mlflow
+  labels:
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/name: mlflow
+    app.kubernetes.io/component: experiment-tracking
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  replicas: 1
+  backendStoreUriFrom:
+    name: mlflow-db-credentials
+    key: backend-store-uri
+  artifactsDestination: s3://rhoai-mlflow-artifacts/artifacts
+  serveArtifacts: true
+  caBundleConfigMap:
+    name: mlflow-service-ca
+  envFrom:
+    - secretRef:
+        name: rhoai-mlflow-artifacts
+  env:
+    - name: BUCKET_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: rhoai-mlflow-artifacts
+          key: BUCKET_HOST
+    - name: BUCKET_PORT
+      valueFrom:
+        configMapKeyRef:
+          name: rhoai-mlflow-artifacts
+          key: BUCKET_PORT
+    - name: MLFLOW_S3_ENDPOINT_URL
+      value: https://$(BUCKET_HOST):$(BUCKET_PORT)
+    - name: AWS_DEFAULT_REGION
+      value: us-east-1

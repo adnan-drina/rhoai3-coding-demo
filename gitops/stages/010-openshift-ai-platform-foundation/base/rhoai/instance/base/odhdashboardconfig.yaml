@@ -11,11 +11,12 @@ metadata:
     argocd.argoproj.io/sync-wave: "4"
 spec:
   dashboardConfig:
-    autorag: true
+    autorag: false
+    automl: false
+    agentsCatalog: true
     disableKueue: false
     disableTracking: false
     genAiStudio: true
-    maasAuthPolicies: true
     modelAsService: true
     observabilityDashboard: true
     vLLMDeploymentOnMaaS: true

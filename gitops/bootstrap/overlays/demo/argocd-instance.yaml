@@ -107,6 +107,24 @@ spec:
       hs.status = "Healthy"
       hs.message = "Subscription status not reported by OLM; version pins + approval guards apply"
       return hs
+    # EvalHub runs in a later wave only after the current MLflow generation is Available.
+    resource.customizations.health.mlflow.opendatahub.io_MLflow: |
+      hs = {status = "Progressing", message = "Waiting for current MLflow Available condition"}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for _, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Available" then
+            local observed = condition.observedGeneration or obj.status.observedGeneration or 0
+            if condition.status == "True" and observed >= obj.metadata.generation then
+              hs.status = "Healthy"
+              hs.message = "Current MLflow generation Available"
+            elseif condition.status == "False" then
+              hs.message = condition.message or "MLflow not Available"
+            end
+            return hs
+          end
+        end
+      end
+      return hs
   rbac:
     policy: |
       g, system:cluster-admins, role:admin

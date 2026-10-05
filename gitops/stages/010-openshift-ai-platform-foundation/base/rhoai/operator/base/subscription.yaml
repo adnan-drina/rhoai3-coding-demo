@@ -9,3 +9,9 @@ spec:
   name: rhods-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  # Suppress operator bootstrap of the default DSCI; GitOps creates it.
+  # Self-managed RHOAI does not auto-create a DSC in this bootstrap path.
+  config:
+    env:
+      - name: DISABLE_DSC_CONFIG
+        value: "true"

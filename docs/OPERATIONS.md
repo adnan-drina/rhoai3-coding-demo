@@ -563,6 +563,15 @@ Do not merge a feature branch to `main` only to validate developer workflow cata
 
 Stage 010 installs OpenShift AI and platform dependencies. Operator reconciliation can take several minutes.
 
+The new source uses GitOps `gitops-1.21`, RHOAI `stable-3.5`, ODF `stable-4.22` and reviewed Manual observability subscriptions. Deployment requires an explicit published revision matching local Stage 010 manifests and scripts; `deploy.sh --revision <reviewed-published-sha>` pins the Application to that immutable commit. Do not point Argo at older `main` content. Exact InstallPlan owner and sole-CSV checks precede approval.
+
+Use the existing OpenID accounts `ai-admin` and `ai-developer`; authenticate each through the provider for final acceptance. Group membership can be configured before first login; missing User objects remain unverified identities. Set `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER`, then run `setup-access.sh` after platform/OBC readiness. It assigns groups and the S3 connection without changing OAuth, passwords or provider Keycloak. Group membership remains external to GitOps self-heal. Supply separate private `RHOAI_ADMIN_KUBECONFIG` and `RHOAI_DEVELOPER_KUBECONFIG` files for actual persona checks; impersonated groups are not acceptance evidence.
+
+MLflow and EvalHub use separate single-instance PostgreSQL 16 workloads with retained gp3 PVCs and namespace NetworkPolicies. Database connections are plaintext within their respective namespaces (`sslmode=disable`); this is a durable demo setup without HA or a production database claim. Provider Keycloak storage is not reused. Runtime helpers create missing credentials, reuse existing secrets without rotation, use NooBaa-generated S3 inputs and service CA trust, and derive EvalHub's MLflow URI only after MLflow is Available at its current generation.
+
+Stage 010 owns native Auth, MLflow and TrustyAI. New unused DSC components are explicitly Removed. Native metrics/tracing acceptance replaces legacy workaround-presence checks; excluded legacy files remain pending removal evidence. MLflow must be Ready before EvalHub creation. Platform readiness does not demonstrate an actual model evaluation: that requires a Stage 030/040 endpoint. Design and unresolved gates are in [the migration plan](migration/010-foundation-plan.md).
+
+
 Useful checks:
 
 ```bash

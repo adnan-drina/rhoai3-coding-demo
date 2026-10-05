@@ -2,7 +2,7 @@
 
 This file is the canonical platform target for the demo and shared skills. Update it first when preparing an upgrade.
 
-READMEs explain capabilities for end users and state current product versions. Upgrade plans, environment migration history, readiness findings and technical migration commentary belong in `docs/`.
+READMEs explain capabilities for end users and state current product versions. Upgrade plans, environment migration history and technical migration commentary belong in `docs/migration/`. Reusable environment inventories, readiness findings and operational runbooks remain in the existing documents under `docs/`.
 
 ## Default environment and planned migration (2026-10-05)
 
@@ -11,6 +11,10 @@ The new default environment is **observed OCP 4.22.14 / Kubernetes v1.35.6 on AW
 **RHOAI 3.5 is planned**, including EvalHub, MLflow and Agent Catalog/OpenShell with standalone Hermes per project. AutoRAG and AutoML are excluded from the intended migration scope. These capabilities are not observed installed; exact release posture and dependency choices must be verified at their stage gates. The [supported-configurations matrix](https://access.redhat.com/articles/rhoai-supported-configs-3.x), updated 2026-10-02, includes OCP 4.22 for x86_64 RHOAI 3.5; its version range differs from the installation guide's narrower platform list. Consult both as documented in OPERATIONS.
 
 Use version-matched 3.5/OCP 4.22 documentation for migration design and retain the following documented legacy references. The inventory verified the Stage 010 RHOAI 3.4 and ODF 4.20 manifest selections; other product entries and exact pins require per-stage source and runtime verification and can contain historical drift. Upgrade one stage's manifests, scripts, documentation and acceptance evidence together. Historical observations do not establish readiness on this environment.
+
+## Stage 010 source selections
+
+The isolated candidate source selects GitOps `gitops-1.21`, RHOAI `stable-3.5` and ODF `stable-4.22`, with reviewed Manual COO 1.5.3/OpenTelemetry 0.158.0-2/Tempo 0.22.0-2 subscriptions. Bundle CPE metadata maps the latter two to product 3.11; exact public support-table coverage remains a documented limit. Source preparation is distinct from runtime qualification. [The migration plan](migration/010-foundation-plan.md) records acceptance gates and remaining decisions; retain the historical table below for stage-by-stage reference.
 
 ## Documented legacy reference baseline
 

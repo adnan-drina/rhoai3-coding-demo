@@ -7,3 +7,5 @@ resources:
   - rhoai/aggregate/overlays/demo
   - access/base
   - console-plugins/base
+  - mlflow
+  - evalhub
