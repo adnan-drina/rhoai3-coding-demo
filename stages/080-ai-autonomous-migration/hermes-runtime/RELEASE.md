@@ -5,11 +5,21 @@ the ordered patch series in [patches/](patches/). This record names what was
 published, how it was qualified, and which image each run uses. A pin edit
 alone does not prove an image was built or deployed.
 
-## Pending (not built): patches 0018–0021
+## Current release (2026-10-05, patches 0018–0021: post-v32 package)
 
-Series 0001–0021 gives patched tree `9e5b79b9583d7aef515e8866eba993eb96679f4b` (verified from a fresh base);
-the recipe pins that tree and 21 patches. No image is built, pushed or pinned: the current release below and
-every run pin are unchanged. 0018 adds the same-result, same-call and repeat-read escalation triggers and the
+| Item | Identity |
+|---|---|
+| Source | branch `post-v32-integration` `bdf915bb` (hermes-0018 `ffa52762`, run-token-budget `4783fb2e`, planner split `77ccc7be`, brief-readable `4548dd92`, D-1 `b7a921d9`) |
+| Base | `NousResearch/hermes-agent` `fcbd1076a93841fa88855acce810e342a5b78101` (tag `v2026.8.19`, 0.20.5) |
+| Series | 0001–0021 |
+| Patched tree | `9e5b79b9583d7aef515e8866eba993eb96679f4b` (series re-verified from a fresh base by the recipe) |
+| Typed repair executor | unchanged, sha256 `768ba69f…` |
+| Image | `quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:5aab5558481fcbb69483122543b7bcb96b9c34daf44466eea6d375fd37c92029` (tag `080-runtime-9e5b79b9`; digest from `podman push --digestfile`) |
+| Image stamp | `/opt/rhoai3/080.pins`: `hermes.patched_tree=9e5b79b9…`, 21 patch checksums, `outcome_authority.code_sha256=c974f26d…` (unchanged), `typed_repair.jar_sha256=768ba69f…` |
+| Build context | identity `67c7ea2f93554bed1f7439cf1e94c6b2fee1315ac896f1323a37b1acb6c94b9a` over 771 files |
+| Pins | golden `.hermes/pins.json` (`hermes_agent.patched_tree`, `workspace_overlay.ws_080.digest`), `run-defaults.json`, scaffold `devfile.yaml`, app-migration skeleton devfile (both ws-080 components) |
+
+0018 adds the same-result, same-call and repeat-read escalation triggers and the
 restart bound (`same_result_count` 3, `same_call_count` 5, `repeat_read_count` 3 within `repeat_read_window` 8,
 `max_starts_per_signature` 2 on `qwen3-8-27b-int4` only; v32 t_2f2509aa, t_449a35e4 and t_56432803; one
 repeat-read signature per no-edit stretch), ends an escalation when the card's `typed-repair.py` runs
@@ -24,7 +34,15 @@ t_2a95f8c1 run 44), and refuses pruned tool-call stubs as write content. The Sta
 profile carries the 0018 keys and the 0021 `run_scoped` key; a 0017 image ignores them (identical-call trigger
 only, stock compaction).
 
-## Current release (2026-10-02, patch 0017: Qwen 3.8 loop escalation; v32 A/B package)
+Verification (evidence `tmp/next-migration-release/build/build-0021.log`, `build-0021-push.log`): recipe steps 0–6 rc=0
+and pushed; read-back in the built image: tree `9e5b79b9`, 21 checksums, authority and executor stamps unchanged.
+Hermes suites: every file that fails on 0001–0021 was rerun on 0001–0017 (`eaa713b9`) with junit; 0 failures are
+new with 0018–0021 (89 vs 90). Harness: 156/156 suites on `bdf915bb`. Qualification on three run-shaped trees
+(M1-shaped factory tree, the v32 Qwen 3.6 mid-M3 tree, the finished v31 lab: 41/41, 103/103, 33/33). Not established
+here: a live model-driven run (the next A/B measures it), the dispatch-tick hook in the gateway, HERMES_BIN reaching
+the dispatcher, and the 0021 ceiling against the real provider.
+
+## Previous release (2026-10-02, patch 0017: Qwen 3.8 loop escalation; v32 A/B package)
 
 | Item | Identity |
 |---|---|

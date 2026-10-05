@@ -4,7 +4,7 @@
     "hermes_agent": {
       "version": "v0.20.5",
       "build": "2026.8.19",
-      "patched_tree": "eaa713b9017a86ee217ed9d623f339da82603acc",
+      "patched_tree": "9e5b79b9583d7aef515e8866eba993eb96679f4b",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
       "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
@@ -42,8 +42,8 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:adda0aa36091b7cd15ce72eb735e875a3f630329843caf830ecc254d801acd5b",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-10-02 (tag 080-runtime-eaa713b9): Hermes runtime series 0001-0017 (/opt/rhoai3/080.pins hermes.patched_tree=eaa713b9017a86ee217ed9d623f339da82603acc; 0017 = loop escalation to a thinking profile, configured for qwen3-8-27b-int4 only), the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc, unchanged) and the typed repair executor unchanged (typed_repair.jar_sha256=768ba69f22b77de314b62cadaeee8620862f0616f2bf8f4ce284d58a9368a765). See hermes-runtime/RELEASE.md. Superseded: sha256:792fff3d6663bcc65c62d0efd10640c54837f54a14aebd03653986419604e4a8 (series 0001-0016, tree 37b147ba). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
+        "digest": "sha256:5aab5558481fcbb69483122543b7bcb96b9c34daf44466eea6d375fd37c92029",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-10-05 (tag 080-runtime-9e5b79b9): Hermes runtime series 0001-0021 (/opt/rhoai3/080.pins hermes.patched_tree=9e5b79b9583d7aef515e8866eba993eb96679f4b; 0018 = same-result, same-call and repeat-read escalation triggers, the restart bound and the retry start; 0019 = terminal foreground-limit message; 0020 = read_file reports a clipped line; 0021 = request ceiling, run-scoped compaction for qwen3-6-27b, pruned-stub refusal), the outcome-board authority baked from commit bb66b50e (outcome_authority.code_sha256=c974f26de54e3cb8048b069bca2aa7759ef2a217514d56d2b86064ad3d0d7fbc, unchanged) and the typed repair executor unchanged (typed_repair.jar_sha256=768ba69f22b77de314b62cadaeee8620862f0616f2bf8f4ce284d58a9368a765). Build context identity 67c7ea2f93554bed1f7439cf1e94c6b2fee1315ac896f1323a37b1acb6c94b9a. See hermes-runtime/RELEASE.md. Superseded: sha256:adda0aa36091b7cd15ce72eb735e875a3f630329843caf830ecc254d801acd5b (series 0001-0017, tree eaa713b9). Not a local image Id or unsigned Digest. Republish destfile + this key together on each overlay rebuild."
       }
     },
     "mta_cli": {
