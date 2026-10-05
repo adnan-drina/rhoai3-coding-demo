@@ -26,7 +26,7 @@ device plugin: 1 physical GPU → 1 schedulable nvidia.com/gpu unit (no time-sli
 Red Hat build of Kueue → ResourceFlavor → ClusterQueue → LocalQueue
    │
    ▼
-RHOAI Hardware Profiles → CPU Default / GPU Shared / GPU Priority / GPU Reserved
+RHOAI Hardware Profiles → CPU Default / GPU Reserved
    │
    ▼
 Data scientist selects governed capacity from the RHOAI dashboard
@@ -40,13 +40,6 @@ Stage 030 uses this capacity to serve a private LLM. Stage 040 exposes validated
 
 The workbench creation form exposes GPU capacity as simple dropdown choices — no node taints or tolerations required.
 
-![Hardware Profiles Dropdown](images/02-hardware-profiles-dropdown.png)
-
-### GPU Shared Profile Selected
-
-Selecting "GPU Shared - 1x NVIDIA" shows the resource specifications: CPU, memory, and a requested NVIDIA GPU. This profile currently has zero GPU quota and cannot admit a GPU workload.
-
-![GPU Shared Selected](images/03-gpu-shared-selected.png)
 
 ### GPU MachineSet
 
@@ -56,9 +49,8 @@ The AWS g6e.2xlarge GPU MachineSet providing L40S capacity (two replicas), manag
 
 ### Kueue ClusterQueues
 
-Queue-based GPU governance with a shared cohort for `cq-gpu-priority` and `cq-gpu-shared` (both have zero GPU quota), plus isolated `cq-gpu-reserved-demo` capacity.
+The CPU queue supports workbenches; isolated `cq-gpu-reserved-demo` provides the two exclusive GPU units for model-serving consumers.
 
-![Kueue ClusterQueues](images/05-kueue-clusterqueues.png)
 
 ## What This Stage Adds
 
@@ -68,15 +60,12 @@ The GPU-as-a-Service layer on top of the Stage 010 base platform.
 - **Node Feature Discovery** — NFD Operator (`stable` channel, CSV `nfd.4.22.0-202609212027`) publishes hardware feature labels; GPU Feature Discovery within the GPU Operator adds NVIDIA-specific labels used for Kueue placement
 - **NVIDIA GPU Operator** — certified operator (`v26.7` channel, CSV `gpu-operator-certified.v26.7.1`) installs driver stack, container toolkit, GFD, DCGM exporter, and device plugin; each L40S is one schedulable `nvidia.com/gpu` unit with no time-slicing
 - **Red Hat build of Kueue** — standalone operator (`stable-v1.4` channel, CSV `kueue-operator.v1.4.2`); integration enabled by patching the shared DSC to `kueue.managementState: Unmanaged` via an Argo CD Sync hook Job; the existing Red Hat cert-manager installation is reused as a prerequisite
-- **Queue topology** — one CPU ResourceFlavor, one GPU ResourceFlavor (targets `nvidia.com/gpu.present: "true"` nodes, tolerates GPU taint); four ClusterQueues (cpu-default, gpu-shared, gpu-priority, gpu-reserved-demo); four LocalQueues in `demo-sandbox`; one WorkloadPriorityClass (`gpu-high-priority`)
-- **RHOAI Hardware Profiles** — CPU Default, GPU Shared, GPU Priority, GPU Reserved turn queue and resource choices into dashboard-friendly dropdown selections
+- **Queue topology** — one CPU ResourceFlavor, one GPU ResourceFlavor (targets `nvidia.com/gpu.present: "true"` nodes, tolerates GPU taint); two ClusterQueues (cpu-default and gpu-reserved-demo) and matching LocalQueues in `demo-sandbox`
+- **RHOAI Hardware Profiles** — CPU Default and GPU Reserved turn queue and resource choices into dashboard-friendly dropdown selections
 
 ## What To Notice And Why It Matters
 
 - **Two cards, one model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
-- **Non-preemptive queues** — RHOAI workbenches are not suspendable, so "GPU Priority" is a retained zero-quota lane, not a preemption demonstration
-- **Cohort topology** — `cq-gpu-shared` and `cq-gpu-priority` share a `gpu-pool` cohort for future borrowing; `cq-gpu-reserved-demo` has no cohort (true isolation)
-- **GPU quota currently zero on shared/priority** — both physical cards are reserved for the model-serving path; shared and priority profiles are not usable GPU self-service
 - **CPU queue sizing** — `cq-cpu-default` provides cpu: 40, memory: 128Gi, sized for the CPU model plane (reranker, embedding InferenceServices, workbenches)
 - **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `generate-gpu-machineset.sh`
 - **DSC patch mechanism** — Stage 020 does not own a second DataScienceCluster; it patches the Stage 010 shared owner through a dedicated ServiceAccount and ClusterRole

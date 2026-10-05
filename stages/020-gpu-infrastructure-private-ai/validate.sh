@@ -68,11 +68,11 @@ def kueue_ready():
  assert cond(k,'Available') and cond(k,'CertManagerAvailable') and not cond(k,'Degraded') and not cond(k,'Progressing')
  return native_workload('deployment','kueue-controller-manager','openshift-kueue-operator',k['metadata']['uid'])
 check('Native Kueue Available with fresh owned controller',kueue_ready)
-for suffix in ['cpu-default','gpu-shared','gpu-priority','gpu-reserved-demo']:
+for suffix in ['cpu-default','gpu-reserved-demo']:
  check('ClusterQueue '+suffix+' Active',lambda s=suffix:freshcond(get('clusterqueue','cq-'+s),'Active'))
  check('Sandbox LocalQueue '+suffix+' Active',lambda s=suffix:freshcond(get('localqueue','lq-'+s,'demo-sandbox'),'Active'))
  check('HardwareProfile '+suffix+' queue identity',lambda s=suffix:get('hardwareprofile',s,'redhat-ods-applications')['spec']['scheduling']['kueue']['localQueueName']=='lq-'+s)
-print('Shared/priority profiles retain zero GPU quota; they are not usable GPU self-service.')
+print('CPU and reserved GPU profiles are the supported topology; two exclusive GPUs remain reserved.')
 print('Global profiles require matching LocalQueues in every consuming project.')
 if sys.argv[1]=='--functional':
  pods=get('pods','','nvidia-gpu-operator')['items']

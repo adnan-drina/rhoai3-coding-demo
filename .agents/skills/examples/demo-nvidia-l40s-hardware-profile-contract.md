@@ -59,7 +59,7 @@ toleration:
 | GPU default/min/max | `1` / `1` / `1` |
 | Visibility | Visible everywhere unless a future step needs project-scoped profiles |
 | Allocation strategy | Kueue LocalQueue |
-| LocalQueue | stage-specific LocalQueue such as `lq-gpu-shared` or `lq-gpu-reserved-demo` |
+| LocalQueue | stage-specific LocalQueue `lq-gpu-reserved-demo` |
 
 Use this profile when Kueue is configured for the target project and the
 workload should consume GPU quota through the platform queue.
