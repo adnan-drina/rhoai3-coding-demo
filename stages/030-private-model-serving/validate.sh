@@ -1,302 +1,46 @@
 #!/usr/bin/env bash
-# validate.sh - Stage 030: Model Serving Foundation
-# Proves KServe, vLLM, the demo registry metadata, and the Qwen27B endpoint are
-# ready for model-serving baseline work.
+# Native serving/discovery infrastructure; no model deployment or metadata seed.
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+python3 - <<'PY'
+import json,subprocess
 
-
-PASS=0
-FAIL=0
-
-REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-rhoai-model-registries}"
-REGISTRY_NAME="${MODEL_REGISTRY_NAME:-demo-registry}"
-MODEL_NS="${RHOAI_MODEL_NAMESPACE:-demo-sandbox}"
-MODEL_DEPLOYMENT_NAME="${RHOAI_QWEN27B_DEPLOYMENT_NAME:-qwen3-6-27b-fp8}"
-MAAS_NS="${RHOAI_MAAS_NAMESPACE:-models-as-a-service}"
-MAAS_QWEN27B_MODEL_NAME="${RHOAI_MAAS_QWEN27B_MODEL_NAME:-qwen3-6-27b}"
-MODEL_DISPLAY_NAME="${RHOAI_QWEN27B_DISPLAY_NAME:-Qwen27B-3-Nano-30B-A3B-FP8}"
-# Must match deploy.sh's default (v3.0 = the modelcar :3.0 tag); a stale
-# "Version 1" default here made the version + artifact metadata checks fail
-# against a correctly-registered model version.
-MODEL_VERSION_NAME="${RHOAI_QWEN27B_VERSION_NAME:-v3.0}"
-MODEL_URI="${RHOAI_QWEN27B_MODEL_URI:-hf://RedHatAI/Qwen3.6-27B-FP8}"
-MODEL_CPU_REQUEST="${RHOAI_QWEN27B_CPU_REQUEST:-2}"
-MODEL_CPU_LIMIT="${RHOAI_QWEN27B_CPU_LIMIT:-4}"
-MODEL_MEMORY_REQUEST="${RHOAI_QWEN27B_MEMORY_REQUEST:-16Gi}"
-MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-24Gi}"
-MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-8192}"
-MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-8192}"
-
-
-
-REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-$REGISTRY_NS}"
-REGISTRY_NAME="${MODEL_REGISTRY_NAME:-$REGISTRY_NAME}"
-MODEL_NS="${RHOAI_MODEL_NAMESPACE:-$MODEL_NS}"
-MODEL_DEPLOYMENT_NAME="${RHOAI_QWEN27B_DEPLOYMENT_NAME:-$MODEL_DEPLOYMENT_NAME}"
-MAAS_NS="${RHOAI_MAAS_NAMESPACE:-$MAAS_NS}"
-MAAS_QWEN27B_MODEL_NAME="${RHOAI_MAAS_QWEN27B_MODEL_NAME:-$MAAS_QWEN27B_MODEL_NAME}"
-MODEL_DISPLAY_NAME="${RHOAI_QWEN27B_DISPLAY_NAME:-$MODEL_DISPLAY_NAME}"
-MODEL_VERSION_NAME="${RHOAI_QWEN27B_VERSION_NAME:-$MODEL_VERSION_NAME}"
-MODEL_URI="${RHOAI_QWEN27B_MODEL_URI:-$MODEL_URI}"
-MODEL_CPU_REQUEST="${RHOAI_QWEN27B_CPU_REQUEST:-$MODEL_CPU_REQUEST}"
-MODEL_CPU_LIMIT="${RHOAI_QWEN27B_CPU_LIMIT:-$MODEL_CPU_LIMIT}"
-MODEL_MEMORY_REQUEST="${RHOAI_QWEN27B_MEMORY_REQUEST:-$MODEL_MEMORY_REQUEST}"
-MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
-MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
-MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
-
-
-check() {
-  local label="$1"
-  local result="$2"
-  if [[ "$result" == "pass" ]]; then
-    echo "✓ $label"
-    (( PASS++ )) || true
-  else
-    echo "✗ $label  ($result)"
-    (( FAIL++ )) || true
-  fi
-}
-
-require_cmd() {
-  local cmd="$1"
-  if command -v "$cmd" >/dev/null 2>&1; then
-    return 0
-  fi
-  echo "ERROR: required command not found: $cmd" >&2
-  exit 1
-}
-
-crd_exists() {
-  local name="$1"
-  oc get crd "$name" --insecure-skip-tls-verify=true >/dev/null 2>&1
-}
-
-resource_exists() {
-  local resource="$1"
-  local namespace="$2"
-  if [[ -n "$namespace" ]]; then
-    oc get "$resource" -n "$namespace" --insecure-skip-tls-verify=true >/dev/null 2>&1
-  else
-    oc get "$resource" --insecure-skip-tls-verify=true >/dev/null 2>&1
-  fi
-}
-
-require_cmd curl
-require_cmd jq
-
-APP_SYNC=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops \
-  -o jsonpath='{.status.sync.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-APP_HEALTH=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops \
-  -o jsonpath='{.status.health.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${APP_SYNC:-not found}"
-check "Stage 010 shared owner Application Synced" "$R"
-[[ "$APP_HEALTH" == "Healthy" ]] && R="pass" || R="health=${APP_HEALTH:-not found}"
-check "Stage 010 shared owner Application Healthy" "$R"
-
-OBS_APP_SYNC=$(oc get applications.argoproj.io 030-private-model-serving -n openshift-gitops \
-  -o jsonpath='{.status.sync.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-OBS_APP_HEALTH=$(oc get applications.argoproj.io 030-private-model-serving -n openshift-gitops \
-  -o jsonpath='{.status.health.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$OBS_APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${OBS_APP_SYNC:-not found}"
-check "Stage 030 observability Application Synced" "$R"
-[[ "$OBS_APP_HEALTH" == "Healthy" ]] && R="pass" || R="health=${OBS_APP_HEALTH:-not found}"
-check "Stage 030 observability Application Healthy" "$R"
-
-DSC_PHASE=$(oc get datasciencecluster default-dsc \
-  -o jsonpath='{.status.phase}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$DSC_PHASE" == "Ready" ]] && R="pass" || R="phase=${DSC_PHASE:-not found}"
-check "DataScienceCluster Ready" "$R"
-
-DSC_KSERVE=$(oc get datasciencecluster default-dsc \
-  -o jsonpath='{.spec.components.kserve.managementState}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$DSC_KSERVE" == "Managed" ]] && R="pass" || R="kserve=${DSC_KSERVE:-not found}"
-check "DataScienceCluster KServe is Managed" "$R"
-
-UWM_ENABLED=$(oc get configmap cluster-monitoring-config -n openshift-monitoring \
-  -o jsonpath='{.data.config\.yaml}' --insecure-skip-tls-verify=true 2>/dev/null \
-  | grep -E 'enableUserWorkload:[[:space:]]*true' || true)
-[[ -n "$UWM_ENABLED" ]] && R="pass" || R="missing enableUserWorkload: true"
-check "OpenShift user workload monitoring enabled" "$R"
-
-if resource_exists "configmap/user-workload-monitoring-config" "openshift-user-workload-monitoring"; then
-  R="pass"
-else
-  R="missing"
-fi
-check "User workload monitoring config present" "$R"
-
-ALERT_WEBHOOK_READY=$(oc get deployment rhoai-demo-alert-webhook -n openshift-monitoring \
-  -o jsonpath='{.status.readyReplicas}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-if [[ "${ALERT_WEBHOOK_READY:-0}" -ge 1 ]]; then
-  R="pass"
-else
-  R="readyReplicas=${ALERT_WEBHOOK_READY:-0}"
-fi
-check "Alertmanager demo webhook receiver is Ready" "$R"
-
-if resource_exists "service/rhoai-demo-alert-webhook" "openshift-monitoring"; then
-  R="pass"
-else
-  R="missing"
-fi
-check "Alertmanager demo webhook Service present" "$R"
-
-ALERTMANAGER_CONFIG=$(oc get secret alertmanager-main -n openshift-monitoring \
-  -o jsonpath='{.data.alertmanager\.yaml}' --insecure-skip-tls-verify=true 2>/dev/null \
-  | base64 -d 2>/dev/null || true)
-if grep -q 'webhook_configs:' <<<"$ALERTMANAGER_CONFIG" \
-  && grep -q 'rhoai-demo-alert-webhook.openshift-monitoring.svc' <<<"$ALERTMANAGER_CONFIG"; then
-  R="pass"
-else
-  R="missing configured webhook receiver"
-fi
-check "Alertmanager notification receivers configured" "$R"
-
-ALERTMANAGER_INTEGRATIONS_QUERY=$(oc -n openshift-monitoring exec prometheus-k8s-0 -c prometheus \
-  --insecure-skip-tls-verify=true -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=cluster%3Aalertmanager_integrations%3Amax' \
-  2>/dev/null || echo "{}")
-ALERTMANAGER_INTEGRATIONS=$(jq -r '.data.result[0].value[1] // "0"' \
-  <<<"$ALERTMANAGER_INTEGRATIONS_QUERY" 2>/dev/null || echo "0")
-if awk "BEGIN {exit !(${ALERTMANAGER_INTEGRATIONS:-0} >= 1)}"; then
-  R="pass"
-else
-  R="integrations=${ALERTMANAGER_INTEGRATIONS:-0}"
-fi
-check "Alertmanager configured integrations metric is nonzero" "$R"
-
-ALERTMANAGER_RECEIVER_ALERTS=$(oc -n openshift-monitoring exec prometheus-k8s-0 -c prometheus \
-  --insecure-skip-tls-verify=true -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=ALERTS%7Balertname%3D%22AlertmanagerReceiversNotConfigured%22%2Calertstate%3D%22firing%22%7D' \
-  2>/dev/null | jq -r '.data.result | length' 2>/dev/null || echo "unknown")
-if [[ "$ALERTMANAGER_RECEIVER_ALERTS" == "0" ]]; then
-  R="pass"
-else
-  R="firing=${ALERTMANAGER_RECEIVER_ALERTS}"
-fi
-check "AlertmanagerReceiversNotConfigured is not firing" "$R"
-
-if crd_exists inferenceservices.serving.kserve.io; then
-  R="pass"
-else
-  R="missing"
-fi
-check "InferenceService CRD present" "$R"
-
-if crd_exists servingruntimes.serving.kserve.io; then
-  R="pass"
-else
-  R="missing"
-fi
-check "ServingRuntime CRD present" "$R"
-
-VLLM_RUNTIME=$(oc get servingruntime -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.metadata.annotations.openshift\.io/display-name}{"\n"}{end}' \
-  --insecure-skip-tls-verify=true 2>/dev/null | grep -Ei 'vllm|vLLM' | head -1 || true)
-[[ -n "$VLLM_RUNTIME" ]] && R="pass" || R="no vLLM runtime found"
-check "vLLM ServingRuntime discoverable" "$R"
-
-GPU_PROFILE=$(oc get hardwareprofile gpu-reserved-demo -n redhat-ods-applications \
-  -o jsonpath='{.metadata.name}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$GPU_PROFILE" == "gpu-reserved-demo" ]] && R="pass" || R="missing"
-check "Stage 020 GPU Reserved hardware profile present" "$R"
-
-GPU_ALLOCATABLE=$(oc get node -l nvidia.com/gpu.present=true \
-  -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' \
-  --insecure-skip-tls-verify=true 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
-[[ "$GPU_ALLOCATABLE" -ge 2 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
-check "GPU nodes advertise at least 2 full-card GPU units (no time-slicing)" "$R"
-
-REGISTRY_AVAILABLE=$(oc get modelregistries.modelregistry.opendatahub.io "$REGISTRY_NAME" -n "$REGISTRY_NS" \
-  -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$REGISTRY_AVAILABLE" == "True" ]] && R="pass" || R="available=${REGISTRY_AVAILABLE:-not found}"
-check "demo-registry Available" "$R"
-
-REGISTRY_HOST=$(oc get modelregistries.modelregistry.opendatahub.io "$REGISTRY_NAME" -n "$REGISTRY_NS" \
-  -o jsonpath='{.status.hosts[0]}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-if [[ -n "$REGISTRY_HOST" ]]; then
-  R="pass"
-else
-  R="missing route host"
-fi
-check "demo-registry route host present" "$R"
-
-if [[ -n "$REGISTRY_HOST" ]]; then
-  MR_BASE_URL="https://${REGISTRY_HOST}/api/model_registry/v1alpha3"
-  MR_TOKEN=$(oc whoami -t)
-  MR_MODELS=$(curl -sk -H "Authorization: Bearer ${MR_TOKEN}" \
-    "${MR_BASE_URL}/registered_models" 2>/dev/null || echo "{}")
-  MODEL_ID=$(jq -r --arg name "$MODEL_DISPLAY_NAME" \
-    '.items[]? | select(.name == $name and (.state // "LIVE") != "ARCHIVED") | .id' <<<"$MR_MODELS" | head -1)
-  [[ -n "$MODEL_ID" ]] && R="pass" || R="missing"
-  check "Qwen27B registered model metadata present" "$R"
-
-  if [[ -n "$MODEL_ID" ]]; then
-    MR_VERSIONS=$(curl -sk -H "Authorization: Bearer ${MR_TOKEN}" \
-      "${MR_BASE_URL}/registered_models/${MODEL_ID}/versions" 2>/dev/null || echo "{}")
-    MODEL_VERSION_ID=$(jq -r --arg name "$MODEL_VERSION_NAME" \
-      '.items[]? | select(.name == $name and (.state // "LIVE") != "ARCHIVED") | .id' <<<"$MR_VERSIONS" | head -1)
-    [[ -n "$MODEL_VERSION_ID" ]] && R="pass" || R="missing"
-    check "Qwen27B model version metadata present" "$R"
-  else
-    MODEL_VERSION_ID=""
-    check "Qwen27B model version metadata present" "registered model missing"
-  fi
-
-  if [[ -n "$MODEL_VERSION_ID" ]]; then
-    MR_ARTIFACTS=$(curl -sk -H "Authorization: Bearer ${MR_TOKEN}" \
-      "${MR_BASE_URL}/model_versions/${MODEL_VERSION_ID}/artifacts" 2>/dev/null || echo "{}")
-    MODEL_ARTIFACT_ID=$(jq -r --arg uri "$MODEL_URI" \
-      '.items[]? | select(.uri == $uri and (.state // "LIVE") != "DELETED") | .id' <<<"$MR_ARTIFACTS" | head -1)
-    [[ -n "$MODEL_ARTIFACT_ID" ]] && R="pass" || R="missing"
-    check "Qwen27B OCI model artifact metadata present" "$R"
-  else
-    check "Qwen27B OCI model artifact metadata present" "model version missing"
-  fi
-fi
-
-# Model catalog (rhoai-model-registries) — dashboard-facing but RHOAI-operator-managed,
-# so it lives OUTSIDE the demo's GitOps and stays invisible to every Argo app. Its
-# Postgres schema is created by a one-time migration at catalog startup; if Postgres
-# is later restarted (node drain, reschedule) the tables are lost and the catalog
-# serves HTTP 500 on every models query while deploy/model-catalog still reports
-# Available and all Argo apps stay green. Probe the same filter_options endpoint the
-# dashboard's Model Catalog page calls, so an empty-DB catalog FAILS validation
-# instead of silently rendering an empty catalog. Recovery: restart deploy/model-catalog
-# in rhoai-model-registries to re-run the migration.
-CATALOG_AVAILABLE=$(oc get deployment model-catalog -n "$REGISTRY_NS" \
-  -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$CATALOG_AVAILABLE" == "True" ]] && R="pass" || R="available=${CATALOG_AVAILABLE:-not found}"
-check "Model catalog deployment Available" "$R"
-
-CATALOG_HOST=$(oc get route model-catalog-https -n "$REGISTRY_NS" \
-  -o jsonpath='{.spec.host}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-if [[ -n "$CATALOG_HOST" ]]; then
-  CATALOG_TOKEN=$(oc whoami -t 2>/dev/null || echo "")
-  CATALOG_CODE=$(curl -sk -o /dev/null -w '%{http_code}' \
-    -H "Authorization: Bearer ${CATALOG_TOKEN}" \
-    "https://${CATALOG_HOST}/api/model_catalog/v1alpha1/models/filter_options" 2>/dev/null || echo "000")
-  [[ "$CATALOG_CODE" == "200" ]] && R="pass" \
-    || R="http=${CATALOG_CODE} (empty schema serves 500 — restart deploy/model-catalog to re-migrate)"
-  check "Model catalog API serves models (Postgres schema intact)" "$R"
-else
-  check "Model catalog API serves models (Postgres schema intact)" "route model-catalog-https missing"
-fi
-
-echo ""
-if "$SCRIPT_DIR/validate-model-discovery.sh"; then
-  check "Stage 030 registry, Model Catalog and Agent Catalog" pass
-else
-  check "Stage 030 registry, Model Catalog and Agent Catalog" "native discovery readiness failed"
-fi
-
-echo "Results: ${PASS} passed, ${FAIL} failed"
-[[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
+def get(kind,name,ns=None):
+ args=['oc','--request-timeout=10s','get',kind,name,'-o','json']
+ if ns:args+=['-n',ns]
+ p=subprocess.run(args,capture_output=True,text=True,timeout=15)
+ assert p.returncode==0,'Native prerequisite read failed'
+ return json.loads(p.stdout)
+app=get('application','030-private-model-serving','openshift-gitops');s=app['status'];revision=app['spec']['source']['targetRevision']
+assert len(revision)==40 and s['sync']['revision']==revision and s['sync']['status']=='Synced' and s['health']['status']=='Healthy','Stage 030 exact revision is not Synced/Healthy'
+operation=s.get('operationState',{});result=operation.get('syncResult',{})
+assert operation.get('phase')=='Succeeded' and result.get('revision')==revision and result.get('source',{}).get('path')==app['spec']['source']['path'],'Stage 030 operation source/path is stale'
+dsc=get('datasciencecluster','default-dsc');g=dsc['metadata']['generation'];status=dsc['status'];conditions={c['type']:c for c in status.get('conditions',[])}
+assert status.get('observedGeneration')==g,'DSC generation is stale'
+for t in ['Ready','KserveReady']:
+ assert conditions.get(t,{}).get('status')=='True','Native DSC condition not ready: '+t
+assert dsc['spec']['components']['kserve']['managementState']=='Managed','KServe is not Managed'
+assert dsc['spec']['components']['modelregistry']['managementState']=='Managed','Model Registry is not Managed'
+component=get('kserves.components.platform.opendatahub.io','default-kserve');cs=component['status'];cc={c['type']:c for c in cs.get('conditions',[])}
+assert cs.get('observedGeneration')==component['metadata']['generation'],'Native KServe generation is stale'
+for t in ['Ready','KServeReady','ModelControllerReady']:assert cc.get(t,{}).get('status')=='True','Native KServe condition not ready: '+t
+p=subprocess.run(['oc','--request-timeout=10s','get','deployments','-n','redhat-ods-applications','-o','json'],capture_output=True,text=True,timeout=15);assert p.returncode==0,'Native serving workload read failed'
+owned=[d for d in json.loads(p.stdout)['items'] if any(o.get('uid')==component['metadata']['uid'] and o.get('controller') for o in d['metadata'].get('ownerReferences',[]))]
+assert owned,'Native KServe-owned deployments missing'
+for d in owned:
+ st=d['status'];n=d['spec'].get('replicas',1);assert st.get('observedGeneration')==d['metadata']['generation'] and st.get('readyReplicas',0)>=n and st.get('updatedReplicas',0)>=n,'Native serving workload is not current'
+print('PASS Native DSC/KServe conditions and current owned serving workloads')
+for ns,name,size in [('openshift-monitoring','k8s','40Gi'),('openshift-user-workload-monitoring','user-workload','20Gi')]:
+ p=get('prometheus.monitoring.coreos.com',name,ns);spec=p['spec'];claim=spec['storage']['volumeClaimTemplate']['spec']
+ assert claim['storageClassName']=='gp3-csi' and claim['resources']['requests']['storage']==size,'Native monitoring persistence differs from reviewed intent'
+ sts=get('statefulset','prometheus-'+name,ns);n=sts['spec'].get('replicas',1);st=sts['status']
+ assert st.get('observedGeneration')==sts['metadata']['generation'] and st.get('readyReplicas',0)==n and st.get('updatedReplicas',0)==n and st.get('currentRevision')==st.get('updateRevision'),'Native Prometheus rollout is not current'
+ for i in range(n):assert get('pvc','prometheus-'+name+'-db-prometheus-'+name+'-'+str(i),ns)['status']['phase']=='Bound','Monitoring PVC not Bound'
+print('PASS Native persistent platform and user-workload monitoring')
+PY
+"$SCRIPT_DIR/validate-model-discovery.sh"
+echo 'Infrastructure/API acceptance only. No models are deployed; actual persona/browser UI acceptance remains separate.'

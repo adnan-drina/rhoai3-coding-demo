@@ -1,135 +1,74 @@
-# Stage 030: Private Model Serving
+# Stage 030 — Private Model Serving
 
 ## Why This Matters
 
-GPU capacity is useful only after the platform can turn it into a working model endpoint. For a regulated enterprise, this is the point where raw accelerator infrastructure becomes a controlled GenAI capability: model artifacts, runtime selection, endpoint exposure, and resource strategy all need to be explicit before teams can trust the service.
-
-This stage stands up the smallest useful slice of the Red Hat AI inference platform: it enables the standard KServe-based model-serving platform, provisions the vLLM ServingRuntime and the model registry, and wires user-workload monitoring — the foundation that Stage 040 serves the governed Qwen3.6 models on. Stage 030 itself deploys no model; models are deployed once and governed in Stage 040.
-
-The stage does not yet turn the model into a governed shared service. First we prove the platform can host a GPU-backed LLM endpoint; then Stage 040 publishes validated access through Models-as-a-Service.
+Private models need a dependable serving platform and a shared place to discover and manage model artifacts. This stage gives platform teams those foundations before Stage 040 deploys models and governs access through Models-as-a-Service.
 
 ## Architecture
 
-```
-Stage 010 shared DataScienceCluster (default-dsc)
-        │
-        │ Stage 030 hook Job patch
-        ▼
-  kserve.managementState: Managed
-        │
-        ▼
-KServe model serving platform
-        │
-        ▼
-vLLM NVIDIA GPU ServingRuntime (from live cluster template)
-        │
-        ▼
-Baseline InferenceService in demo-sandbox (OCI modelcar artifact)
-        │
-        ▼
-GPU Reserved hardware profile from Stage 020
-        │
-        ▼
-OpenAI-compatible /v1 inference endpoint (no auth)
-        │
-        ▼
-ServiceMonitor → user workload monitoring (7d retention)
-        │
-        ▼
-Grafana demo dashboards (LLM Performance, vLLM Baseline)
+```text
+OpenShift AI DataScienceCluster
+  ├── Native KServe control plane
+  └── Model Registry component
+        ├── demo-registry + native PostgreSQL
+        ├── Model Catalog
+        └── Agent Catalog (Developer Preview)
+OpenShift monitoring
+  ├── Persistent platform Prometheus
+  └── Persistent user-workload Prometheus
 ```
 
 ## Demo
 
-![Stage 030 walkthrough](images/stage-030-demo.gif)
-
-| Screenshot | What it shows |
-|------------|---------------|
-| ![Grafana folder](images/01-grafana-dashboards.png) | RHOAI Demo Grafana folder with LLM Performance and vLLM Baseline dashboards |
-| ![LLM Performance](images/02-llm-performance-dashboard.png) | Live LLM Inference Performance: TTFT (P50 ~67ms), ITL (P50 ~5ms), KV Cache metrics |
-| ![Model pods](images/03-nemotron-pods-running.png) | Baseline model pods running in `demo-sandbox` namespace |
-| ![Deployments](images/04-model-deployments.png) | RHOAI AI Hub Deployments tab showing active KServe model serving |
+Explore the Model Catalog and Agent Catalog, then open Model Registry to see how teams can organize model versions and artifact references. Agent Catalog discovers starter kits; it does not deploy or host agents. Stage 040 supplies the model deployments and registry records.
 
 ## What This Stage Adds
 
-The KServe model-serving **foundation** — the platform, runtime, registry, and monitoring that the governed models in Stage 040 build on. Stage 030 does not deploy a model itself; the model deployments are owned by Stage 040 as governed MaaS `LLMInferenceService`s.
-
-- **KServe enablement** — patches the shared DataScienceCluster to `kserve.managementState: Managed` via an Argo CD Sync hook Job
-- **vLLM ServingRuntime** — the RHOAI-managed vLLM runtime the Stage 040 models are served on
-- **Model Registry and catalogs** — enables the native registry/catalog component, Model Catalog and Agent Catalog discovery (Agent Catalog is Developer Preview); provisions the `demo-registry` instance plus the baseline model card (registered model, version, artifact pointer) created via REST API; the Stage 040 `MaaSModelRef` consumes this card
-- **User workload monitoring** — enables `prometheus.retention: 7d` for the user workload Prometheus instance (reduced from 15d to avoid disk pressure on the demo cluster); configures Alertmanager with three receivers routing to a demo-local webhook
+- Native KServe serving infrastructure managed by OpenShift AI.
+- The `demo-registry` instance with its operator-managed PostgreSQL database and access for the administrator and developer groups.
+- Native Model Catalog and Developer Preview Agent Catalog discovery.
+- Persistent OpenShift platform and user-workload monitoring for later model telemetry.
 
 ## What To Notice And Why It Matters
 
-- **Foundation, not the models** — Stage 030 proves the serving platform is ready (KServe + vLLM runtime + registry + monitoring); the models themselves are deployed and governed in Stage 040 as MaaS. Each model is deployed once.
-- **Deploy uses REST API, not dashboard workflow** — `deploy.sh` creates the registry metadata programmatically via `oc apply` and Model Registry REST calls, enabling repeatable GitOps-compatible deployment
-- **vLLM runtime from live cluster template** — the ServingRuntime image is not pinned in the repository; it comes from the RHOAI-managed template on the cluster
-- **Lifecycle handover** — the direct baseline InferenceService is a serving baseline; Stage 040's deploy retires it to free its GPU for MaaS-published models
-- **GuideLLM targets MaaS by default** — `benchmark-guidellm.sh` defaults to the `models-as-a-service` namespace (Stage 040 LLMInferenceService workload Service); for Stage 030 direct endpoint testing, override `RHOAI_MAAS_NAMESPACE=demo-sandbox`
-- **Benchmark uses synthetic data** — GuideLLM synthetic mode provides controlled, reproducible token shapes for capacity planning without external dependencies
-- **Legacy naming** — some ConfigMaps and Jobs reference `stage210` naming from a prior stage numbering scheme; this is tracked technical debt
-- **Grafana is a community operator** — not a Red Hat product dependency; used only for demo dashboard visualization
+Registry metadata and model-serving workloads have separate lifecycles. Enabling KServe does not allocate a model or consume a GPU. Model discovery also does not certify a model's performance or compatibility; teams still qualify each model in Stage 040.
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the KServe model serving platform as a managed component. KServe orchestrates per-model runtime pods with standard Kubernetes lifecycle management. vLLM delivers high-performance GPU inference with OpenAI-compatible endpoints, prefix caching, and batched-token scheduling. The OCI modelcar pattern brings software engineering rigor to model artifacts — versioned, reproducible, and registry-hosted. OpenShift user workload monitoring scrapes model-serving metrics through generated ServiceMonitors. GuideLLM enables workload-shaped benchmarking to measure real-world inference performance.
+OpenShift AI manages KServe and the registry/catalog components through the shared DataScienceCluster. Kubernetes Jobs configure the intended component fields; native operators create and reconcile the workloads. OpenShift monitoring stores platform and user-workload metrics on persistent volumes.
 
 ## Trust Boundaries
 
-| Boundary | Control |
-|----------|---------|
-| Model endpoint auth | Explicitly disabled (`enable-auth: false`) — unauthenticated within the cluster network; Stage 040 adds MaaS auth |
-| Model artifact source | Red Hat registry OCI modelcar; no external model downloads at runtime |
-| GPU isolation | Each local model claims a full L40S card from the `cq-gpu-reserved-demo` queue; no sharing with other workloads |
-| Monitoring access | Grafana uses a dedicated ServiceAccount with `cluster-monitoring-view` — read-only metrics access |
-| Benchmark scope | GuideLLM runs in-cluster against the workload Service directly, bypassing any gateway or rate limit |
+Registry access uses the existing OpenShift identities and project groups. The default PostgreSQL database is suitable for this demo; its single-instance, non-TLS database connection is not a production HA or backup design. Registry and namespace deletion require deliberate lifecycle review because they hold metadata and persistent data.
 
 ## Red Hat Products Used
 
-| Product | Version/Channel |
-|---------|-----------------|
-| Red Hat OpenShift AI Self-Managed | stable-3.5 (KServe, Model Registry and catalogs) |
-| Red Hat OpenShift Container Platform | 4.22 (user workload monitoring, Alertmanager) |
+| Product | Version | Role |
+|---|---|---|
+| Red Hat OpenShift Container Platform | 4.22 | Native monitoring and storage |
+| Red Hat OpenShift AI | 3.5 | KServe, Model Registry and Model Catalog |
+| Agent Catalog | Developer Preview in RHOAI 3.5 | Agent starter-kit discovery |
 
 ## Open Source Projects To Know
 
-| Project | Role |
-|---------|------|
-| vLLM | High-performance LLM inference engine |
-| KServe | Kubernetes model serving orchestration |
-| GuideLLM | LLM deployment benchmarking tool |
-| Grafana Operator (community) | Demo dashboard visualization |
-| Kubeflow Model Registry | Model metadata and versioning |
+KServe provides model-serving orchestration. Model Registry records models, versions and artifact references. Prometheus supplies the native metric storage and query path.
 
 ## Deploy And Validate
 
 ```bash
-# Deploy (enables KServe, creates registry metadata, deploys InferenceService)
-./stages/030-private-model-serving/deploy.sh
-
-# Validate
+./stages/030-private-model-serving/deploy.sh "$GIT_REPO_BRANCH"
 ./stages/030-private-model-serving/validate.sh
-
-# Optional: run GuideLLM benchmark (after Stage 040 for MaaS, or override namespace)
-RHOAI_MAAS_NAMESPACE=demo-sandbox \
-  ./stages/030-private-model-serving/benchmark-guidellm.sh
 ```
 
-The deploy script uses an idempotent discover-or-create flow: it checks for existing registry metadata and InferenceService before creating, and reconciles the endpoint to the curated vLLM configuration.
+Deployment uses a reviewed published revision. See [Operations](../../docs/OPERATIONS.md#stage-030) for prerequisites and the existing-cluster registry handoff. Validation checks native serving readiness, persistent monitoring and authenticated discovery APIs; actual persona and browser interaction are separate checks.
 
 ## References
 
-| Source | Role |
-|--------|------|
-| [RHOAI 3.5 - Configuring model-serving platform](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/configuring_your_model-serving_platform/index) | KServe, ServingRuntime platform enablement |
-| [RHOAI 3.5 - Deploying models](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index) | Model deployment and OCI modelcar pattern |
-| [RHOAI 3.5 - Managing model registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_model_registries/index) | Registry provisioning and access |
-| [Red Hat Developer - GuideLLM](https://developers.redhat.com/articles/2025/06/20/guidellm-evaluate-llm-deployments-real-world-inference) | Benchmark methodology and workload-shaped testing |
-| [Red Hat Developer - Why vLLM](https://developers.redhat.com/articles/2025/10/30/why-vllm-best-choice-ai-inference-today) | vLLM value and OpenShift AI integration |
-| [OCP 4.22 - Monitoring](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/monitoring/index) | User workload monitoring and Alertmanager |
+- [Installing OpenShift AI 3.5](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install)
+- [Enabling Model Registry and Model Catalog](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_model_registries/enabling-the-model-registry-component_managing-model-registries)
+- [Dashboard configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard)
+- [Developer Preview features](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/developer-preview-features_relnotes)
 
 ## Next Stage
 
-[Stage 040: Governed Models-as-a-Service](../040-governed-models-as-a-service/) publishes the validated local model endpoints (and an external GPT-4o-mini registration) through Red Hat OpenShift AI Models-as-a-Service with identity, API keys, rate limits, and tiered access policies.
-
-[OpenShift AI 3.5 registry enablement](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_model_registries/enabling-the-model-registry-component_managing-model-registries) provisions registry and catalog capabilities. [Dashboard configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard) controls their visibility and the Agent Catalog preview.
+[Stage 040 — Governed Models-as-a-Service](../040-governed-models-as-a-service/README.md)

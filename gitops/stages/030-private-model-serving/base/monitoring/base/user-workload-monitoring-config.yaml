@@ -4,6 +4,7 @@ metadata:
   name: user-workload-monitoring-config
   namespace: openshift-user-workload-monitoring
   labels:
+    app.kubernetes.io/managed-by: argocd
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: user-workload-monitoring
     app.kubernetes.io/component: monitoring

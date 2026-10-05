@@ -1,0 +1,7 @@
+---
+apiVersion: modelregistry.opendatahub.io/v1beta1
+kind: ModelRegistry
+metadata:
+  name: demo-registry
+  namespace: rhoai-model-registries
+"$patch": delete

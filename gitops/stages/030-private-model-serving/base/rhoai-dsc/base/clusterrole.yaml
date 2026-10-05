@@ -1,0 +1,22 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-enable-dsc-kserve
+  labels:
+    app.kubernetes.io/name: enable-dsc-kserve
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+rules:
+- apiGroups:
+  - datasciencecluster.opendatahub.io
+  resources:
+  - datascienceclusters
+  resourceNames:
+  - default-dsc
+  verbs:
+  - get
+  - patch

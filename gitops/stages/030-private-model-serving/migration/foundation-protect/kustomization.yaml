@@ -1,0 +1,10 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- https://github.com/adnan-drina/rhoai3-coding-demo.git//gitops/stages/010-openshift-ai-platform-foundation/base?ref=f38d84c072ee18c38fb21072a6442a1b07d468eb&timeout=60s
+patches:
+- path: protect-1.yaml
+- path: protect-2.yaml
+- path: protect-3.yaml
+- path: protect-4.yaml

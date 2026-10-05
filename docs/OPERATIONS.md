@@ -667,19 +667,22 @@ See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) fo
 
 ### Stage 030
 
-Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, an 8,192-token chunked-prefill scheduling budget for long developer prompts, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node, disaggregated prefill/decode inference, Gateway API Inference Extension `InferencePool` resources, or agentgateway body-based routing.
+Stage 030 owns the native KServe control plane, `demo-registry` with its operator-managed PostgreSQL database, Model Catalog and Developer Preview Agent Catalog. Stage 040 owns model selection, registry records, runtime/model deployment and MaaS; Stage 030 creates no model or runtime clone.
 
-The `vllm-metrics-alias` `PrometheusRule` exposes raw and derived runtime signals for operational analysis: request backlog, running requests, request success rate, prompt and generation token throughput, time-to-first-token average, time-per-output-token average, KV cache usage, and prefix-cache hit ratio. These are the private-runtime signals that Stage 040 load tests and future autoscaling work can use.
-
-Useful checks:
+Fresh deployments use the delegated foundation fields and the normal Stage 030 deploy entrypoint. The current cluster first needs the separately reviewed [registry handoff](migration/030-serving-foundation-plan.md): never repoint the core at the newer fresh Stage 010 base while its MLflow data remains retained. The explicit one-time helper uses immutable f38-based protect/omit overlays, checks both existing Bound OBCs and registry/database/credential identities, and preserves the rest of the core. No bucket is created or renamed. After publication/review, run each phase and inspect its private evidence before continuing:
 
 ```bash
-oc get llminferenceservice -n maas
-oc get pods -n maas
-oc get prometheusrule vllm-metrics-alias -n maas
-oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'
-oc get job model-registry-seed -n rhoai-model-registries
+./scripts/platform/handoff-model-registry.sh protect "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
+./scripts/platform/handoff-model-registry.sh omit "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
+./stages/030-private-model-serving/deploy.sh "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
+./stages/030-private-model-serving/validate.sh
 ```
+
+Protection adds `Prune=false,Delete=false` to the exact registry namespace, CR and two group bindings. Omission retains them until Stage 030 adopts the unchanged identities; the native registry CR retains its PostgreSQL PVC and credentials. Deliberate deletion requires a separate data/lifecycle review. The f38 bridge retains MLflow and existing operator approval policies; stop for unexpected CSV or InstallPlan advancement. The additive ODF console-plugin hook may replay, preserving the existing plugin list.
+
+Native monitoring configuration enables user-workload monitoring and requests gp3-csi storage: 40Gi platform Prometheus and 20Gi user-workload Prometheus, with 7-day retention and size limits. The current provider configuration was absent and platform metrics used ephemeral 15-day storage; this rollout changes those defaults and may reset historical ephemeral metrics. Deployment rechecks named ConfigMap ownership before its Application write and refuses unreviewed provider configuration. The provider Alertmanager Secret remains untouched; the unused fake webhook is removed from source.
+
+Validation requires exact Application reconciliation, native DSC/KServe conditions and current owned workloads, bound monitoring PVCs, native registry/database readiness and CA-verified authenticated registry/catalog APIs. Persona login and actual dashboard UI acceptance are separate; an installation-admin API probe cannot prove browser access.
 
 ### Stage 040
 

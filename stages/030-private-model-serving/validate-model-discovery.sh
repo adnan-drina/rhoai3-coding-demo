@@ -7,9 +7,10 @@ source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 python3 - <<'PY'
+from http.client import HTTPSConnection
 import json, socket, ssl, subprocess, time, urllib.request
 processes = []
-context = ssl._create_unverified_context()  # Repository demo certificate policy.
+context = ssl.create_default_context()  # Verify native ingress certificates.
 def need(value, message):
     if not value: raise RuntimeError(message)
 def oc(*args):
@@ -62,6 +63,7 @@ try:
     print('[PASS] Registry current generation, PostgreSQL readiness, Bound storage and authenticated list API')
     component = get('modelregistries.components.platform.opendatahub.io', 'default-modelregistry')
     need(component.get('status', {}).get('phase') == 'Ready', 'native catalog component is not Ready')
+    need(isinstance(component['metadata'].get('generation'), int) and component.get('status', {}).get('observedGeneration') == component['metadata']['generation'], 'native catalog component generation is stale')
     component_uid = component['metadata']['uid']
     catalogs = [d for d in get('deployments', namespace=regns)['items'] if any(o.get('uid') == component_uid for o in d['metadata'].get('ownerReferences', []))]
     need(any(d['metadata']['name'] == 'model-catalog' for d in catalogs) and any(d['metadata']['name'] == 'model-catalog-postgres' for d in catalogs), 'native catalog API/database workloads are absent')
@@ -70,8 +72,18 @@ try:
     flags = dashboard['spec']['dashboardConfig']
     need(flags.get('disableModelRegistry') is not True and flags.get('disableModelCatalog') is not True and flags.get('agentsCatalog') is True, 'model discovery dashboard navigation is not enabled')
     port = forward('odh-dashboard-model-registry-ui', 'redhat-ods-applications', 8043)
+    ca = get('configmap', 'service-ca', 'openshift-config-managed')['data']['ca-bundle.crt']
+    service_context = ssl.create_default_context(cadata=ca)
+    hostname = 'odh-dashboard-model-registry-ui.redhat-ods-applications.svc'
     for catalog in ['model_catalog/models', 'agent_catalog/agents']:
-        result = http(f'https://127.0.0.1:{port}/api/v1/{catalog}?namespace={regns}', headers={'X-Forwarded-Access-Token': token})
+        connection = HTTPSConnection(hostname, timeout=20, context=service_context)
+        connection.connect = lambda c=connection: setattr(c, 'sock', service_context.wrap_socket(socket.create_connection(('127.0.0.1', port), timeout=20), server_hostname=hostname))
+        try:
+            connection.request('GET', f'/api/v1/{catalog}?namespace={regns}', headers={'X-Forwarded-Access-Token': token, 'Accept':'application/json'})
+            response = connection.getresponse()
+            need(response.status == 200, 'authenticated catalog discovery HTTP failure')
+            result = json.loads(response.read(4*1024*1024))
+        finally: connection.close()
         items = result.get('data', {}).get('items')
         need(isinstance(items, list) and len(items) > 0, 'authenticated catalog discovery returned no items: ' + catalog)
         print('[PASS] Authenticated dashboard ' + catalog + ' discovery returned items')

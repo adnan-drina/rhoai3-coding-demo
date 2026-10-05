@@ -4,6 +4,7 @@ metadata:
   name: demo-registry-rhods-admins
   namespace: rhoai-model-registries
   annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
     # The registry operator creates this Role after the ModelRegistry exists.
     argocd.argoproj.io/sync-wave: "7"
   labels:

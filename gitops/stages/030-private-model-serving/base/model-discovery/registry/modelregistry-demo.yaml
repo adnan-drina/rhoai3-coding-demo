@@ -11,7 +11,7 @@ metadata:
     demo.rhoai.io/stage: "030"
   annotations:
     # The ModelRegistry CRD is installed by the modelregistry DSC component.
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false,Delete=false
     argocd.argoproj.io/sync-wave: "6"
     openshift.io/display-name: demo-registry
     openshift.io/description: "RHOAI demo model registry"

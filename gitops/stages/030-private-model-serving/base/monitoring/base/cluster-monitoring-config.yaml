@@ -4,6 +4,7 @@ metadata:
   name: cluster-monitoring-config
   namespace: openshift-monitoring
   labels:
+    app.kubernetes.io/managed-by: argocd
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: openshift-user-workload-monitoring
     app.kubernetes.io/component: monitoring
