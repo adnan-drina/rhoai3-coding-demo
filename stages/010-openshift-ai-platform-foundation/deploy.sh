@@ -192,6 +192,8 @@ for selection in \
 done
 
 
+"$SCRIPT_DIR/deploy-console-observability.sh" --revision "$selected_commit"
+
 # ── Step 5: Report Argo CD console URL ───────────────────────────────────────
 ARGOCD_URL=$(oc get route openshift-gitops-server -n openshift-gitops \
   -o jsonpath='{.spec.host}' 2>/dev/null || true)

@@ -598,6 +598,12 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 
 Point-in-time validation logs from 2026-05 and 2026-07 remain in Git history. The notes below are the current stage operating checks.
 
+### Stage 010 console observability component
+
+The permanent `010-console-observability` Application manages only `UIPlugin/monitoring`; COO manages the generated monitoring plugin and console Perses server. Fresh foundation deployment includes it; the current retained core bridge can add it independently with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>`. Validate with `validate-console-observability.sh`. These commands do not repoint the core or deploy held Lightspeed/storage drafts.
+
+The native Perses operator synchronizes the existing RHOAI dashboards/datasources into the console instance. No privileged global datasource or new metrics permission is configured. Native readiness and genuine proxy authorization tests are separate from user-owned browser checks. In the console, reload, open **Observe → Dashboards (Perses)** and select `redhat-ods-monitoring`; then open **Observe → Dashboards → NVIDIA DCGM Exporter Dashboard** for GPU metrics. Model-serving dashboards require later models/traffic. The existing trace dashboard backend error remains a separate issue.
+
 ### Stage 020
 
 Stage 020 source installs native NFD, NVIDIA GPU Operator and Red Hat build of Kueue, plus CPU and reserved GPU queue/profile identities. Reviewed Manual lifecycle selections are `nfd.4.22.0-202609212027` (`stable`), `gpu-operator-certified.v26.7.1` (`v26.7`) and `kueue-operator.v1.4.2` (`stable-v1.4`). `startingCSV` selects the initial version; subsequent InstallPlans need explicit review. No fixed Red Hat-tested RHOAI/operator tuple is claimed.

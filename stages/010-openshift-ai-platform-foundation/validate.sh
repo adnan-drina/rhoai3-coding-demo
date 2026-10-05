@@ -231,6 +231,11 @@ ADMIN_RB=$(oc get rolebinding rhods-admins-admin -n demo-sandbox \
 [[ "$ADMIN_RB" == "admin" ]] && R="pass" || R="rolebinding=${ADMIN_RB:-missing}"
 check "rhods-admins admin on demo-sandbox" "$R"
 
+if "$SCRIPT_DIR/validate-console-observability.sh"; then
+  check "Native Perses console integration" pass
+else
+  check "Native Perses console integration" "console component not ready"
+fi
 if "$SCRIPT_DIR/validate-foundation-services.sh"; then
   check "Native foundation services" pass
 else

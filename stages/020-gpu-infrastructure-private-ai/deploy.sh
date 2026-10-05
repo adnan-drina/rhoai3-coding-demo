@@ -44,6 +44,10 @@ for kind,name,ns in [('application',app,'openshift-gitops'),('namespace','opensh
   assert not x['metadata'].get('ownerReferences') and 'sources' not in x['spec'],'Unexpected Application ownership'
   assert x['spec']['source']['repoURL']==os.environ['GIT_REPO_URL'] and x['spec']['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application repository or destination'
   assert x['spec']['project']=='rhoai-demo' and x['spec']['source']['path']=='gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment','Unexpected existing Stage 020 Application'
+p=subprocess.run(['oc','--request-timeout=10s','get','configmap','nvidia-dcgm-exporter-dashboard','-n','openshift-config-managed','--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=15)
+assert p.returncode==0,'Dashboard ownership read failed'
+if p.stdout.strip():
+ x=json.loads(p.stdout);assert not x['metadata'].get('ownerReferences') and x['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith(app+':'),'Existing NVIDIA dashboard requires a reviewed adoption'
 PY_OWNERSHIP
 ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$overlay/machineset-gpu.yaml" | python3 -c '
 import json,subprocess,sys,copy

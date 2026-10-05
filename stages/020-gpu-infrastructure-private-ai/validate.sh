@@ -39,6 +39,15 @@ def metrics_access():
  assert any('monitoring.coreos.com' in r.get('apiGroups',[]) and 'prometheuses/api' in r.get('resources',[]) and 'k8s' in r.get('resourceNames',[]) and {'get','create','update'}.issubset(r.get('verbs',[])) for r in role.get('rules',[]))
  return True
 check('AI administrators use the scoped native monitoring metrics Role',metrics_access)
+def console_dashboard():
+ import hashlib
+ cm=get('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
+ assert cm['metadata'].get('labels',{}).get('console.openshift.io/dashboard')=='true'
+ assert cm['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('020-gpu-infrastructure-private-ai:')
+ body=cm['data']['dcgm-exporter-dashboard.json'];assert hashlib.sha256(body.encode()).hexdigest()=='7c2172e582524efb70d9f585502366f7fec22b2464c3b89f75418ca648353e71'
+ assert json.loads(body)['title']=='NVIDIA DCGM Exporter Dashboard'
+ return True
+check('Pinned native NVIDIA console dashboard configuration',console_dashboard)
 for ns,name,csv in [('openshift-nfd','nfd','nfd.4.22.0-202609212027'),('nvidia-gpu-operator','gpu-operator-certified','gpu-operator-certified.v26.7.1'),('openshift-kueue-operator','kueue-operator','kueue-operator.v1.4.2')]:
  def operator(ns=ns,name=name,csv=csv):
   s=get('subscription',name,ns);c=get('csv',csv,ns)

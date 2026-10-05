@@ -122,6 +122,8 @@ RHOAI_GPU_MACHINESET_REPLICAS=2 \
 
 Global hardware profiles require their named LocalQueue in each consuming project. This stage creates those queues in `demo-sandbox`; other projects need an explicit queue setup before selecting these profiles. See [Operations](../../docs/OPERATIONS.md#stage-020) for queue admission and GPU dashboard acceptance.
 
+Administrators can open **Observe → Dashboards** in the OpenShift console and select **NVIDIA DCGM Exporter Dashboard** to inspect GPU temperature, power, clocks, utilization, framebuffer memory and tensor activity. Use the AI administrator account for cluster GPU metrics. Idle GPUs may correctly report zero utilization; this stage does not generate load just to populate charts.
+
 ## References
 
 | Source | Role |

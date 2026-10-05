@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: openshift-config-managed
+# NVIDIA/dcgm-exporter fafd151148052628061a80450b4ee037a5fa0c3c, Apache-2.0.
+# Keep the reviewed dashboard bytes local; deployment never downloads mutable main.
+configMapGenerator:
+  - name: nvidia-dcgm-exporter-dashboard
+    files:
+      - dcgm-exporter-dashboard.json
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/name: nvidia-dcgm-exporter-dashboard
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: gpu-observability
+    app.kubernetes.io/managed-by: argocd
+    console.openshift.io/dashboard: "true"

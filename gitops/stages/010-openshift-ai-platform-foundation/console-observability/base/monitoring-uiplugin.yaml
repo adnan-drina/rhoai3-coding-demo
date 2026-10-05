@@ -1,0 +1,14 @@
+apiVersion: observability.openshift.io/v1alpha1
+kind: UIPlugin
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/name: monitoring
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: console-observability
+    app.kubernetes.io/managed-by: argocd
+spec:
+  type: Monitoring
+  monitoring:
+    perses:
+      enabled: true

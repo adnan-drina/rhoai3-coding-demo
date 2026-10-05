@@ -16,3 +16,4 @@ resources:
   - kueue-quota/base
   - hardware-profiles/base
   - rolebinding-gpu-metrics-admins.yaml
+  - console-dashboard

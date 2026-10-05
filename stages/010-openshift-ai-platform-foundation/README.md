@@ -8,6 +8,8 @@ This stage builds the durable, GitOps-managed demo base that every subsequent de
 
 Red Hat OpenShift AI 3.5 delivers this as a metal-to-agent platform that runs consistently across bare-metal, private cloud, managed Kubernetes, and edge footprints. Open models such as Llama, Qwen, Granite, and DeepSeek run locally with predictable costs. The same platform integrates governed access to proprietary endpoints when required. Object storage is the connective tissue — model artifacts, pipeline data, and evaluation evidence all flow through S3-compatible storage provided natively by OpenShift Data Foundation.
 
+The OpenShift console integrates Perses dashboards through the native monitoring plugin. In **Observe → Dashboards (Perses)**, select the AI monitoring project to explore the available platform and model-serving dashboards. Access follows the user's project permissions; model-specific measurements appear after models and traffic are introduced.
+
 ## Architecture
 
 ```
