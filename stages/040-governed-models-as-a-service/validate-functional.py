@@ -56,7 +56,8 @@ def request(url, context, token=None, body=None, method=None):
 
 def api(url, context, token, body=None, method=None, expected=200):
     with request(url, context, token, body, method) as response:
-        need(response.status == expected, "Authenticated native API returned unexpected status")
+        need(response.status == expected,
+             "Authenticated native API returned unexpected HTTP status " + str(response.status))
         return json.loads(response.read(2 * 1024 * 1024))
 
 
@@ -66,6 +67,24 @@ def completion_url(endpoint):
          "Native catalog endpoint is not verified HTTPS")
     base = endpoint.rstrip("/")
     return base + ("/chat/completions" if parsed.path.rstrip("/").endswith("/v1") else "/v1/chat/completions")
+
+
+def catalog_id(ref, desired):
+    model_ref = ref["spec"]["modelRef"]
+    if model_ref.get("kind") == "ExternalModel":
+        return model_ref["name"]
+    need(model_ref.get("kind", "llmisvc") in ("llmisvc", "LLMInferenceService"),
+         "Reviewed model reference kind is unsupported")
+    namespace = ref["metadata"]["namespace"]
+    models = [o for o in desired if o["kind"] == "LLMInferenceService" and
+              o["metadata"]["namespace"] == namespace and
+              o["metadata"]["name"] == model_ref["name"]]
+    need(len(models) == 1, "Reviewed local model reference is not unique")
+    expected = "publishers/" + namespace + "/models/" + models[0]["spec"]["model"]["name"]
+    current = native.get("maasmodelrefs.maas.opendatahub.io", ref["metadata"]["name"], namespace)
+    need(current.get("status", {}).get("resolvedModelAlias") == expected,
+         "Native local model alias differs from reviewed model and namespace")
+    return expected
 
 
 def read_sse(response, clock=time.monotonic):
@@ -175,7 +194,8 @@ def run():
         need(key and created.get("subscription") == subscription and created.get("ephemeral") is True,
              "Synthetic key contract is incomplete")
         evidence["synthetic_key_id"] = key_id  # Identifier only, never plaintext or prefix.
-        catalog = api(base + "/v1/models", context, key)
+        # Qualify persona discovery independently of the synthetic inference key.
+        catalog = api(base + "/v1/models", context, user_token)
         need(isinstance(catalog.get("data"), list), "Native model catalog response is invalid")
         indexed = {m["id"]: m for m in catalog["data"]}
         for ref in refs:
@@ -184,12 +204,13 @@ def run():
             if external and os.environ.get("RHOAI_STAGE040_TEST_EXTERNAL", "true").lower() != "true":
                 pending_external = True
                 continue
-            need(name in indexed and indexed[name].get("ready") is True, "Approved model is missing or not ready in persona catalog")
-            endpoint = indexed[name].get("url", "")
+            model_id = catalog_id(ref, desired)
+            need(model_id in indexed and indexed[model_id].get("ready") is True, "Approved model is missing or not ready in persona catalog")
+            endpoint = indexed[model_id].get("url", "")
             expected_host = listeners["api" if external else ("qwen3-6" if name == "qwen3-6-27b" else "qwen3-8")]["hostname"]
             need(urlsplit(endpoint).hostname == expected_host, "Native model discovery selects wrong listener hostname")
             url = completion_url(endpoint)
-            payload = {"model": name, "messages": [{"role": "user", "content": "Reply with exactly OK."}], "max_tokens": 8}
+            payload = {"model": model_id, "messages": [{"role": "user", "content": "Reply with exactly OK."}], "max_tokens": 8}
             if name == "gpt-6-luna":
                 payload.pop("max_tokens"); payload.update(max_completion_tokens=32, reasoning_effort="none")
             elif not external:
@@ -204,7 +225,7 @@ def run():
             response = api(url, context, key, payload)
             need(response.get("choices") and response["choices"][0].get("message", {}).get("content") and
                  response.get("usage", {}).get("total_tokens", 0) > 0, "Bounded completion or usage is absent")
-            result = {"model": name, "unauthenticated_denied": True, "invalid_key_denied": True, "completion_with_usage": True}
+            result = {"model": name, "catalog_id": model_id, "unauthenticated_denied": True, "invalid_key_denied": True, "completion_with_usage": True}
             evidence["models"].append(result)  # Preserve successes if a later stream/metric test fails.
             stream = dict(payload, stream=True, stream_options={"include_usage": True})
             stream["messages"] = [{"role": "user", "content": "Count from 1 to 20, separated by commas. Do not think."}]
