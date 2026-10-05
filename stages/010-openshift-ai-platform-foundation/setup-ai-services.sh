@@ -14,6 +14,7 @@ python3 - "$@" <<'PY'
 import argparse
 import base64
 import json
+import os
 import re
 import secrets
 import subprocess
@@ -29,10 +30,13 @@ if args.timeout <= 0 or args.namespace_timeout <= 0:
     parser.error("timeouts must be positive")
 
 managed_by = "stage010-ai-services-setup"
+request_timeout = os.environ.get("RHOAI_OC_REQUEST_TIMEOUT", "10s")
 
 
 def run(command, payload=None):
     # Never echo manifests or credential values, including on command failures.
+    if command and command[0] == "oc":
+        command = ["oc", "--request-timeout=" + request_timeout] + command[1:]
     return subprocess.run(command, input=json.dumps(payload) if payload else None,
                           capture_output=True, text=True)
 
@@ -137,6 +141,8 @@ def bucket_ready():
     if obc.get("spec", {}).get("bucketName") != name:
         raise RuntimeError("MLflow OBC bound to a different bucket; refusing mismatched artifact storage.")
     data = (get("configmap", name, namespace) or {}).get("data", {})
+    if not all(data.get(key) for key in ["BUCKET_NAME", "BUCKET_PORT", "BUCKET_HOST"]):
+        return False
     if (data.get("BUCKET_NAME") != name or data.get("BUCKET_PORT") != "443"
             or not data.get("BUCKET_HOST", "").endswith(
                 (".openshift-storage.svc", ".openshift-storage.svc.cluster.local"))):

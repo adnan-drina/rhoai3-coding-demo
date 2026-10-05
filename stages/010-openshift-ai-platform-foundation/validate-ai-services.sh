@@ -12,11 +12,13 @@ command -v python3 >/dev/null || { echo "[FAIL] python3 is required"; exit 1; }
 
 python3 - <<'PY'
 import json
+import os
 import subprocess
 import sys
 from urllib.parse import urlparse
 
 failures = 0
+request_timeout = os.environ.get("RHOAI_OC_REQUEST_TIMEOUT", "10s")
 
 
 def check(label, value):
@@ -29,7 +31,7 @@ def check(label, value):
 
 
 def get(kind, name=None, namespace=None):
-    args = ["oc", "get", kind]
+    args = ["oc", "--request-timeout=" + request_timeout, "get", kind]
     if name:
         args.append(name)
     if namespace:
@@ -45,7 +47,7 @@ def get(kind, name=None, namespace=None):
 def secret_keys(name, namespace):
     # Fetch only key names. Credential payloads are never retrieved or printed.
     template = '{{range $key,$value := .data}}{{$key}}{{"\n"}}{{end}}'
-    args = ["oc", "get", "secret", name, "-n", namespace,
+    args = ["oc", "--request-timeout=" + request_timeout, "get", "secret", name, "-n", namespace,
             "-o", "go-template=" + template]
     result = subprocess.run(args, capture_output=True, text=True)
     return set(result.stdout.splitlines()) if result.returncode == 0 else set()
@@ -98,6 +100,7 @@ for feature, namespace in [("mlflow", "redhat-ods-applications"), ("evalhub", "e
     workload = get("statefulset", database, namespace)
     check(f"{feature} PostgreSQL has current ready replicas",
           fresh_workload(workload)
+          and bool(workload.get("status", {}).get("currentRevision"))
           and workload.get("status", {}).get("currentRevision")
           == workload.get("status", {}).get("updateRevision"))
     pvc = get("pvc", database, namespace)
@@ -130,7 +133,8 @@ check("MLflow service CA bundle has been injected",
 mlflow = get("mlflows.mlflow.opendatahub.io", "mlflow")
 conditions = mlflow.get("status", {}).get("conditions", [])
 check("MLflow Available for current resource generation",
-      any(condition.get("type") == "Available" and condition.get("status") == "True"
+      mlflow.get("metadata", {}).get("generation") is not None
+      and any(condition.get("type") == "Available" and condition.get("status") == "True"
           and condition.get("observedGeneration")
           == mlflow.get("metadata", {}).get("generation")
           for condition in conditions))
@@ -191,6 +195,73 @@ native_uri = mlflow.get("status", {}).get("address", {}).get("url")
 check("EvalHub generated MLflow tracking URI matches native HTTPS endpoint",
       bool(native_uri) and urlparse(native_uri).scheme == "https"
       and tracking_uri == native_uri)
+
+
+# Native cross-namespace tenant resources have labels rather than invalid
+# cross-namespace owner references. Check the exact shipped operator contract.
+tenant = "demo-sandbox"
+tenant_namespace = get("namespace", tenant)
+check("EvalHub tenant label is present and server namespace is separate",
+      "evalhub.trustyai.opendatahub.io/tenant" in tenant_namespace.get("metadata", {}).get("labels", {})
+      and "evalhub.trustyai.opendatahub.io/tenant" not in
+      get("namespace", "evalhub").get("metadata", {}).get("labels", {}))
+discovery = get("configmap", "evalhub-discovery", tenant)
+check("Native EvalHub tenant discovery publishes the HTTPS service",
+      discovery.get("data", {}).get("evalhub.url") ==
+      "https://evalhub.evalhub.svc.cluster.local:8443")
+tenant_ca = get("configmap", "evalhub-service-ca", tenant)
+check("Native EvalHub tenant service CA is injected",
+      bool(tenant_ca.get("data", {}).get("service-ca.crt")))
+job_sa = get("serviceaccount", "evalhub-evalhub-job", tenant)
+check("Native EvalHub tenant job service account is reconciled",
+      job_sa.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/managed-by")
+      == "trustyai-service-operator")
+
+
+def binding_grants(binding, role_kind, role_name, subject_kind, subject_name, subject_namespace=None):
+    ref = binding.get("roleRef", {})
+    return (ref.get("kind") == role_kind and ref.get("name") == role_name
+            and ref.get("apiGroup") == "rbac.authorization.k8s.io"
+            and any(subject.get("kind") == subject_kind and subject.get("name") == subject_name
+                    and (subject_namespace is None or subject.get("namespace") == subject_namespace)
+                    for subject in binding.get("subjects", [])))
+
+
+for suffix, cluster_role, subject, namespace in [
+    ("evalhub-job-access-rb", None, "evalhub-evalhub-job", tenant),
+    ("evalhub-mlflow-job-rb", "mlflow-jobs-access", "evalhub-evalhub-job", tenant),
+    ("evalhub-mlflow-service-rb", "mlflow-access", "evalhub-service", "evalhub"),
+    (tenant + "-job-writer-rb", "jobs-writer", "evalhub-service", "evalhub"),
+    (tenant + "-job-config-rb", "job-config", "evalhub-service", "evalhub"),
+]:
+    name = "evalhub-" + suffix
+    role_kind = "ClusterRole" if cluster_role else "Role"
+    role_name = ("trustyai-service-operator-evalhub-" + cluster_role
+                 if cluster_role else "evalhub-evalhub-job-access-role")
+    binding = get("rolebinding", name, tenant)
+    check(f"Native EvalHub tenant binding {name} is reconciled",
+          binding_grants(binding, role_kind, role_name, "ServiceAccount", subject, namespace))
+
+
+def role_grants(role, group, resource, verbs):
+    return any(group in rule.get("apiGroups", [])
+               and resource in rule.get("resources", [])
+               and set(verbs) <= set(rule.get("verbs", []))
+               and not rule.get("resourceNames")
+               for rule in role.get("rules", []))
+
+
+evaluator_role = get("role", "evalhub-evaluator", tenant)
+check("Tenant evaluator role grants intended virtual resources",
+      all(role_grants(evaluator_role, "trustyai.opendatahub.io", resource,
+                      ["get", "list", "create", "update", "delete"])
+          for resource in ["evaluations", "providers", "collections"])
+      and role_grants(evaluator_role, "mlflow.kubeflow.org", "experiments", ["create", "get"]))
+evaluator_binding = get("rolebinding", "demo-evalhub-access", tenant)
+check("Tenant evaluator role is bound to intended demo groups",
+      all(binding_grants(evaluator_binding, "Role", "evalhub-evaluator", "Group", group)
+          for group in ["rhods-admins", "rhoai-developers"]))
+print("Tenant checks prove reconciled configuration; actual persona login/API authorization remains separate.")
 
 print("Scope: deployment readiness only. Dashboard discovery, artifact write/read,"
       " authenticated tenant access, and a completed evaluation remain separate checks.")
