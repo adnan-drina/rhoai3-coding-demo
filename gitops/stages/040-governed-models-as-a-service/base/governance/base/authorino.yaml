@@ -23,7 +23,7 @@ spec:
   volumes:
     items:
       - name: openshift-service-ca
-        mountPath: /etc/ssl/certs
+        mountPath: /etc/pki/tls/certs
         configMaps:
           - authorino-service-ca
         items:

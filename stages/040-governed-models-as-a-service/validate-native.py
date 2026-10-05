@@ -68,7 +68,10 @@ def workload(obj):
     need(replicas > 0 and s.get("readyReplicas", 0) >= replicas and
          s.get("updatedReplicas", 0) >= replicas, "Workload replicas are not current and ready")
     if obj["kind"] == "Deployment":
-        need(s.get("availableReplicas", 0) >= replicas, "Deployment replicas unavailable")
+        need(s.get("replicas") == replicas and
+             s.get("updatedReplicas") == replicas and
+             s.get("availableReplicas", 0) == replicas,
+             "Deployment rollout is incomplete or has unavailable replicas")
     if obj["kind"] == "StatefulSet":
         need(s.get("currentRevision") and s.get("currentRevision") == s.get("updateRevision"),
              "StatefulSet revision is not current")
@@ -224,7 +227,7 @@ def main():
     condition(authorino, "Ready")  # Selected CRD supplies no status.observedGeneration.
     need(contains_spec(authorino["spec"]["listener"]["tls"], {"enabled": True, "certSecretRef": {"name": "authorino-server-cert"}}), "Native Authorino TLS configuration differs")
     mounts = authorino["spec"].get("volumes", {}).get("items", [])
-    need(any(v.get("mountPath") == "/etc/ssl/certs" and "authorino-service-ca" in v.get("configMaps", []) and {"key": "service-ca.crt", "path": "openshift-service-ca.crt"} in v.get("items", []) for v in mounts), "Native Authorino outbound CA mount is absent")
+    need(any(v.get("mountPath") == "/etc/pki/tls/certs" and "authorino-service-ca" in v.get("configMaps", []) and {"key": "service-ca.crt", "path": "openshift-service-ca.crt"} in v.get("items", []) for v in mounts), "Native Authorino outbound CA mount is absent")
     ca = get("configmap", "authorino-service-ca", "kuadrant-system")
     need(ca["metadata"].get("annotations", {}).get("service.beta.openshift.io/inject-cabundle") == "true" and "BEGIN CERTIFICATE" in ca.get("data", {}).get("service-ca.crt", ""), "Native Authorino CA bundle is not populated")
     secret_keys(get("secret", "authorino-server-cert", "kuadrant-system"), ("tls.crt", "tls.key"))
@@ -235,7 +238,7 @@ def main():
         workload(d)
         podspec = d["spec"]["template"]["spec"]
         volumes = {v["name"] for v in podspec.get("volumes", []) if "authorino-service-ca" in json.dumps(v)}
-        need(any(m.get("name") in volumes and m.get("mountPath") == "/etc/ssl/certs" for c in podspec["containers"] for m in c.get("volumeMounts", [])), "Authorino owned workload does not project native CA")
+        need(any(m.get("name") in volumes and m.get("mountPath") == "/etc/pki/tls/certs" for c in podspec["containers"] for m in c.get("volumeMounts", [])), "Authorino owned workload does not project native CA")
     print("[PASS] Native Authorino TLS/CA configuration and current owned workload; live TLS requests pending")
     gateway = get("gateway", "maas-default-gateway", "openshift-ingress")
     gateway_class = get("gatewayclass", gateway["spec"]["gatewayClassName"])
