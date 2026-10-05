@@ -13,5 +13,3 @@ metadata:
 spec:
   generateBucketName: demo-sandbox
   storageClassName: openshift-storage.noobaa.io
-  additionalConfig:
-    bucketclass: rhoai-demo-bucket-class

@@ -3,12 +3,6 @@ kind: Kustomization
 
 resources:
   - storagecluster.yaml
-  - configure-noobaa-serviceaccount.yaml
-  - configure-noobaa-role.yaml
-  - configure-noobaa-rolebinding.yaml
-  - configure-noobaa-job.yaml
-  - demo-backingstore.yaml
-  - demo-bucketclass.yaml
   # OCSInitialization is an operator-owned singleton (ocs-operator auto-creates
   # and reconciles `ocsinit`); managing it here only causes perpetual OutOfSync.
   - console-plugin-rbac.yaml

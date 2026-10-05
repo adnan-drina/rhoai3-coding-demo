@@ -135,9 +135,12 @@ conditions = mlflow.get("status", {}).get("conditions", [])
 check("MLflow Available for current resource generation",
       mlflow.get("metadata", {}).get("generation") is not None
       and any(condition.get("type") == "Available" and condition.get("status") == "True"
-          and condition.get("observedGeneration")
-          == mlflow.get("metadata", {}).get("generation")
-          for condition in conditions))
+              for condition in conditions)
+      and all(any(condition.get("type") == kind and condition.get("status") == "True"
+                  and condition.get("observedGeneration")
+                  == mlflow.get("metadata", {}).get("generation")
+                  for condition in conditions)
+              for kind in ["MLflowOperatorReady", "Migration"]))
 spec = mlflow.get("spec", {})
 check("MLflow uses PostgreSQL Secret and proxied OBC artifacts",
       spec.get("backendStoreUriFrom") == {

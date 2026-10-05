@@ -41,8 +41,10 @@ def run(command, payload=None):
                           capture_output=True, text=True)
 
 
-def get(kind, name, namespace=None):
-    command = ["oc", "get", kind, name]
+def get(kind, name=None, namespace=None):
+    command = ["oc", "get", kind]
+    if name:
+        command.append(name)
     if namespace:
         command.extend(["-n", namespace])
     command.extend(["-o", "json", "--ignore-not-found"])
@@ -158,10 +160,34 @@ def bucket_ready():
 def available_mlflow():
     obj = get("mlflows.mlflow.opendatahub.io", "mlflow") or {}
     generation = obj.get("metadata", {}).get("generation")
-    ready = any(c.get("type") == "Available" and c.get("status") == "True"
-                and c.get("observedGeneration") == generation
-                for c in obj.get("status", {}).get("conditions", []))
-    if not ready or generation is None:
+    conditions = obj.get("status", {}).get("conditions", [])
+    # The shipped controller's Available condition omits observedGeneration.
+    # OperatorReady and Migration carry the CR generation; also gate the
+    # operator-owned deployment on its own current generation and replicas.
+    available = any(c.get("type") == "Available" and c.get("status") == "True"
+                    for c in conditions)
+    current = all(any(c.get("type") == kind and c.get("status") == "True"
+                      and c.get("observedGeneration") == generation
+                      for c in conditions)
+                  for kind in ["MLflowOperatorReady", "Migration"])
+    uid = obj.get("metadata", {}).get("uid")
+    if not available or not current or generation is None or not uid:
+        return False
+    deployments = (get("deployments", namespace="redhat-ods-applications") or {}).get("items", [])
+    owned = [deployment for deployment in deployments
+             if any(owner.get("kind") == "MLflow" and owner.get("uid") == uid
+                    and owner.get("controller") is True
+                    for owner in deployment.get("metadata", {}).get("ownerReferences", []))]
+    if len(owned) != 1:
+        return False
+    deployment = owned[0]
+    desired = deployment.get("spec", {}).get("replicas", 1)
+    status = deployment.get("status", {})
+    deployment_generation = deployment.get("metadata", {}).get("generation")
+    if (desired <= 0 or deployment_generation is None
+            or status.get("observedGeneration") != deployment_generation
+            or status.get("readyReplicas", 0) < desired
+            or status.get("updatedReplicas", 0) < desired):
         return False
     uri = obj.get("status", {}).get("address", {}).get("url", "")
     parsed = urlparse(uri)
