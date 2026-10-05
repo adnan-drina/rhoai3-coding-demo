@@ -34,8 +34,15 @@ bridge=spec['source']['path']=='gitops/stages/030-private-model-serving/migratio
 registry_crd=get('customresourcedefinition','modelregistries.modelregistry.opendatahub.io',optional=True)
 if status['sync']['status']!='Synced':
  assert bridge and status.get('operationState',{}).get('phase')=='Succeeded','Foundation transition is incomplete'
- drift={(r['kind'],r['name'],r.get('namespace','')) for r in status.get('resources',[]) if r.get('status')!='Synced'}
- assert drift<=registry and all(r.get('requiresPruning') for r in status.get('resources',[]) if r.get('status')!='Synced'),'Unexpected foundation drift'
+ def informational_project(r):
+  if r.get('group')!='project.openshift.io' or r.get('kind')!='Project' or r.get('name')!='rhoai-model-registries' or r.get('namespace') or r.get('status') is not None or r.get('requiresPruning') is not None:return False
+  project=get('projects.project.openshift.io','rhoai-model-registries')
+  namespace=get('namespace','rhoai-model-registries')
+  assert project['metadata']['uid']==namespace['metadata']['uid'],'Informational Project alias UID differs from retained Namespace'
+  return True
+ drift_resources=[r for r in status.get('resources',[]) if r.get('status')!='Synced' and not informational_project(r)]
+ drift={(r['kind'],r['name'],r.get('namespace','')) for r in drift_resources}
+ assert drift<=registry and all(r.get('requiresPruning') for r in drift_resources),'Unexpected foundation drift'
 assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Foundation must respect delegated fields'
 def paths(group,kind,name,ns=None):
  return {p for i in spec.get('ignoreDifferences',[]) if i.get('group')==group and i.get('kind')==kind and i.get('name')==name and (ns is None or i.get('namespace')==ns) for p in i.get('jsonPointers',[])}
