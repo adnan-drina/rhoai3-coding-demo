@@ -43,7 +43,8 @@ assert {'/spec/components/kserve','/spec/components/modelregistry'}<=paths('data
 assert {'/spec/dashboardConfig/agentsCatalog','/spec/dashboardConfig/disableModelCatalog','/spec/dashboardConfig/disableModelRegistry'}<=paths('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications'),'Foundation discovery visibility is not delegated'
 # Delegation alone cannot remove old Argo ownership: require the omission bridge.
 for kind,name,ns in registry:
- obj=None if kind=='ModelRegistry' and not registry_crd else get(kind,name,ns or None,True)
+ lookup={'Namespace':'namespace','ModelRegistry':'modelregistries.modelregistry.opendatahub.io','RoleBinding':'rolebinding'}[kind]
+ obj=None if kind=='ModelRegistry' and not registry_crd else get(lookup,name,ns or None,True)
  if not obj:
   assert not bridge,"Protected registry resource is missing; refusing recreation"
   continue
