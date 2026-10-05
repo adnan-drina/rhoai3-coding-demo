@@ -79,6 +79,15 @@ def owner(obj, uid):
                for o in obj["metadata"].get("ownerReferences", []))
 
 
+def csv_owner(obj, csv):
+    # OLM references its CSV with controller:false; component owners remain strict.
+    return any(o.get("uid") == csv["metadata"]["uid"] and
+               o.get("name") == csv["metadata"]["name"] and
+               o.get("kind") == "ClusterServiceVersion" and
+               o.get("apiVersion", "").split("/", 1)[0] == "operators.coreos.com"
+               for o in obj["metadata"].get("ownerReferences", []))
+
+
 def app_ready(app, expected=None):
     source = app["spec"]["source"]
     revision = source.get("targetRevision", "")
@@ -123,11 +132,16 @@ def reviewed_routes(listener, expected):
          "Gateway namespace selector differs from reviewed scope")
 
 
-def route_ready(route, section):
+def route_ready(route, section, controller):
+    need(controller, "Native GatewayClass controller is absent")
     matches = []
     for p in route.get("status", {}).get("parents", []):
         ref = p.get("parentRef", {})
-        if ref.get("name") == "maas-default-gateway" and ref.get("namespace", route["metadata"]["namespace"]) == "openshift-ingress":
+        if (p.get("controllerName") == controller and
+                ref.get("group", "gateway.networking.k8s.io") == "gateway.networking.k8s.io" and
+                ref.get("kind", "Gateway") == "Gateway" and
+                ref.get("name") == "maas-default-gateway" and
+                ref.get("namespace", route["metadata"]["namespace"]) == "openshift-ingress"):
             need(ref.get("sectionName") in (None, section), "Unexpected generated route listener")
             matches.append(p)
     need(matches, "Generated route has no current Gateway attachment")
@@ -183,7 +197,7 @@ def main():
         need(csv.get("status", {}).get("phase") == "Succeeded", "Selected operator CSV did not succeed")
         for dep in csv["spec"].get("install", {}).get("spec", {}).get("deployments", []):
             native = get("deployment", dep["name"], m["namespace"])
-            need(owner(native, csv["metadata"]["uid"]), "Operator workload has unexpected owner")
+            need(csv_owner(native, csv), "Operator workload has unexpected CSV owner")
             workload(native)
     print("[PASS] Six selected Manual operators and current workloads")
     dsc = get("datasciencecluster", "default-dsc")
@@ -224,6 +238,8 @@ def main():
         need(any(m.get("name") in volumes and m.get("mountPath") == "/etc/ssl/certs" for c in podspec["containers"] for m in c.get("volumeMounts", [])), "Authorino owned workload does not project native CA")
     print("[PASS] Native Authorino TLS/CA configuration and current owned workload; live TLS requests pending")
     gateway = get("gateway", "maas-default-gateway", "openshift-ingress")
+    gateway_class = get("gatewayclass", gateway["spec"]["gatewayClassName"])
+    gateway_controller = gateway_class["spec"].get("controllerName")
     condition(gateway, "Accepted", True); condition(gateway, "Programmed", True)
     listeners = {l["name"]: l for l in gateway["spec"].get("listeners", [])}
     expected_gateway = next(o for o in desired if o["kind"] == "Gateway")
@@ -250,7 +266,7 @@ def main():
         refs = route["spec"].get("parentRefs", [])
         if any(r.get("name") == "maas-default-gateway" for r in refs):
             need(all(r.get("sectionName") in (None, "api") for r in refs if r.get("name") == "maas-default-gateway"), "Non-model route targets inference listener")
-            route_ready(route, "api")
+            route_ready(route, "api", gateway_controller)
     need(any(any(r.get("name") == "maas-default-gateway" for r in x["spec"].get("parentRefs", [])) for x in api_routes), "Native MaaS API route is absent")
     models = [o for o in desired if o["kind"] == "LLMInferenceService"]
     need(len(models) == 2, "Reviewed two-model scope differs")
@@ -273,7 +289,7 @@ def main():
         need(len(selected) == 1, "Native LLMI route ownership is not unique")
         refs = selected[0]["spec"].get("parentRefs", [])
         need(len(refs) == 1 and refs[0].get("sectionName") == section, "Native LLMI route listener differs")
-        route_ready(selected[0], section)
+        route_ready(selected[0], section, gateway_controller)
     need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == 2, "Extra route would invalidate dedicated inference listeners")
     print("[PASS] Three-listener namespace isolation and two current native LLMI workloads/routes; EPP traffic proof pending")
     for d in [o for o in desired if o["kind"] in ("ExternalProvider", "ExternalModel", "MaaSModelRef")]:
@@ -294,7 +310,7 @@ def main():
             need(route_name, "Native external model route status is absent")
             r = get("httproute", route_name, ns)
             need(owner(r, obj["metadata"]["uid"]), "External route is not owned by native model")
-            route_ready(r, "api")
+            route_ready(r, "api", gateway_controller)
         if kind == "MaaSModelRef":
             for t in ("Ready", "GovernanceAttached", "RuntimeReady"):
                 condition(obj, t, True)
