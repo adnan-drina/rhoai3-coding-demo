@@ -19,7 +19,7 @@ try:
   r=subprocess.run(['oc','--request-timeout=10s','get','namespace',NS,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=15)
   if r.returncode:raise RuntimeError('Provider namespace read failed')
   if r.stdout.strip():
-   n=json.loads(r.stdout);assert n['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==APP+':/Namespace:/'+NS,'Provider namespace ownership differs';break
+   n=json.loads(r.stdout);assert n['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==APP+':/Namespace:openshift-gitops/'+NS,'Provider namespace ownership differs';break
   time.sleep(5)
  else:raise RuntimeError('Provider namespace did not reconcile')
  target=get(NS)

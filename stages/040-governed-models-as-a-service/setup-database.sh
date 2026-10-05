@@ -31,7 +31,7 @@ try:
  while True:
   n=get('namespace',ns)
   if n:
-   assert n['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith(app+':'),'Database namespace not owned by Stage040'
+   assert n['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','')==app+':/Namespace:openshift-gitops/'+ns,'Database namespace not owned by Stage040'
    break
   if time.monotonic()>=deadline:raise RuntimeError('Database namespace readiness timed out')
   time.sleep(5)

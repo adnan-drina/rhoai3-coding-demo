@@ -12,7 +12,10 @@ def reconciled(x):
  s=x.get('status',{});source=x['spec']['source'];op=s.get('operationState',{});result=op.get('syncResult',{})
  return s.get('sync',{}).get('status')=='Synced' and s['sync'].get('revision')==source['targetRevision'] and s.get('health',{}).get('status')=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==source['targetRevision'] and result.get('source',{}).get('path')==source['path']
 def tracked(x):
- return x['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith(APP+':')
+ group=x['apiVersion'].split('/')[0] if '/' in x['apiVersion'] else ''
+ m=x['metadata'];namespace=m.get('namespace') or 'openshift-gitops'
+ expected=APP+':'+group+'/'+x['kind']+':'+namespace+'/'+m['name']
+ return m.get('annotations',{}).get('argocd.argoproj.io/tracking-id','')==expected
 try:
  core=get('applications.argoproj.io','010-openshift-ai-platform-foundation','openshift-gitops')
  serving=get('applications.argoproj.io','030-private-model-serving','openshift-gitops')
@@ -47,7 +50,7 @@ try:
   if subscription:assert tracked(subscription) and not subscription['metadata'].get('deletionTimestamp'),'Existing operator Subscription requires reviewed native adoption'
  result=subprocess.run(['oc','--request-timeout=10s','get','secret','maas-gateway-tls','-n','openshift-ingress','--ignore-not-found','-o','jsonpath={.metadata}'],capture_output=True,text=True,timeout=15)
  assert result.returncode==0,'Gateway certificate metadata read failed'
- tls={'metadata':json.loads(result.stdout)} if result.stdout.strip() else None
+ tls={'apiVersion':'v1','kind':'Secret','metadata':json.loads(result.stdout)} if result.stdout.strip() else None
  if tls:assert tracked(tls) and not tls['metadata'].get('ownerReferences') and not tls['metadata'].get('deletionTimestamp'),'Existing gateway certificate requires reviewed adoption'
  database=get('statefulset','maas-postgres','models-as-a-service-db')
  db_namespace=get('namespace','models-as-a-service-db');storage=get('pvc',ns='models-as-a-service-db')
