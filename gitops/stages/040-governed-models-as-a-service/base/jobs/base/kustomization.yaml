@@ -27,3 +27,4 @@ resources:
 - wait-db-credentials-role.yaml
 - wait-db-credentials-binding.yaml
 - wait-db-credentials-job.yaml
+- prepare-gateway-tls-networkpolicy.yaml

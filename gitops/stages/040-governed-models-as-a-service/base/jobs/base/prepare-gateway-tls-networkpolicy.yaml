@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prepare-maas-gateway-tls-api
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls-api
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '8'
+spec:
+  podSelector:
+    matchLabels:
+      batch.kubernetes.io/job-name: job-prepare-maas-gateway-tls
+  policyTypes:
+  - Egress
+  # The API Service uses host-network control-plane endpoints. Avoid brittle
+  # cluster/node IP pins; the Job's named RBAC restricts its API access.
+  egress:
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
