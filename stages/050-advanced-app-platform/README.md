@@ -36,25 +36,25 @@ Operator co-tenancy note: both delivery operators install into `openshift-operat
 This stage adds the application-platform layer every dev-arc rung consumes, organized as seven components under [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/):
 
 - **identity** — the standalone platform Red Hat build of Keycloak (namespace `rhbk`, realm `platform`): RHBK Operator, PostgreSQL, edge Route, realm import, and the PostSync job that federates OpenShift OAuth (`openshift-v4` IdP + `platform-keycloak` OAuthClient) and pre-creates the demo users.
-- **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona namespaces, Che Code editor policy with Kilo Code, MaaS API key provisioning, and the Stage 060 `agentic-coolstore` catalog workspace.
+- **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona namespaces, Che Code editor policy with Kilo Code, MaaS API key provisioning, and the Stage 110 `agentic-coolstore` catalog workspace.
 - **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted Artifact Signer (channel `stable-v1.4`) operators, `pipelines-console-plugin` enablement (sync-wave 10) for pipeline execution statistics and approval tasks in the web console, the InstallPlan approval hook for Stage 040 co-tenancy, and the **per-project pipeline model**: every project namespace runs its own `app-push` pipeline (clone → Maven build → SonarQube gate → image build → `:latest` retag) instantiated from the `pipelines/project-pipeline` kustomize template. `app-platform-build` hosts only the webhook dispatcher (the GitHub App has a single endpoint) and the `project-provisioner` CronJob that reconciles build credentials into every namespace labeled `rhoai3.redhat.com/pipeline-project=true`.
 - **sonarqube** — SonarQube + PostgreSQL and a PostSync job that rotates the admin password, provisions the scanner token, and sets a custom default quality gate that fails on any new issue.
 - **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via the platform RHBK (`identity` component), runtime-generated catalog, TechDocs, ConsoleLink, and the OpenShift integration plugins (Kubernetes, Topology, Tekton CI tab, Argo CD) backed by the read-only `rhdh-kubernetes-reader` ServiceAccount.
-- **mta** — Migration Toolkit for Applications 8.2 (analysis + inventory; Developer Lightspeed/Kai disabled until the demo needs it). Stage 080 analysis runs in factory workspaces created from the `app-migration` template (MTA VS Code extension pack + hub wiring in that destfile), not from a standing `mca-coolstore` DevWorkspace.
+- **mta** — Migration Toolkit for Applications 8.2 (analysis + inventory; Developer Lightspeed/Kai disabled until the demo needs it). Stage 130 analysis runs in factory workspaces created from the `app-migration` template (MTA VS Code extension pack + hub wiring in that destfile), not from a standing `mca-coolstore` DevWorkspace.
 - **coolstore** — the deployed Coolstore dev environment (`coolstore-inventory-service` in `coolstore-dev`): the demo starts from a running brownfield system, not an empty cluster. The Deployment pins the `:latest` image that every successful pipeline run republishes (`tag-latest` task); `deploy.sh` seeds the first green run. The brownfield `mca-coolstore` monolith itself stays source-only — it is the MTA analysis target, not a workload this pipeline can build.
 
 The `overlays/slim` variant deploys the platform without MTA; RHDH sign-in works there because the `identity` component owns the platform realm.
 
 **Developer entry points per stage:**
 
-- **Stage 060** enters through the **catalog**, not a template: the `coolstore-inventory-service` component links straight into the governed Dev Spaces workspace; pushes to its repo run coolstore's own pipeline in `coolstore-dev`.
-- **Stage 070** enters through the one **golden-path template** (`agentic-quarkus-scaffold`, in `base/rhdh/templates/`): it scaffolds a fresh corporate-standard Quarkus app into a per-run GitHub repo (topic `rhoai3-golden-path`) with its own namespace and pipeline instance — verified against the Backstage GitHub scaffolder module (`publish:github` with `protectDefaultBranch: false` so the demo can push to `main`).
-- **Stage 080** enters through the **`app-migration` golden-path template** (in `base/rhdh/templates/`): it takes the Git URL of a legacy application plus a project name, publishes a per-run Quarkus **destination** repo (catalog-registered, with its own namespace and pipeline, exactly like stage 070), and its workspace clones the legacy code side by side as a read-only, workspace-only project — the legacy app is never cataloged; `migration.yaml` in the destination records the provenance.
+- **Stage 110** enters through the **catalog**, not a template: the `coolstore-inventory-service` component links straight into the governed Dev Spaces workspace; pushes to its repo run coolstore's own pipeline in `coolstore-dev`.
+- **Stage 120** enters through the one **golden-path template** (`agentic-quarkus-scaffold`, in `base/rhdh/templates/`): it scaffolds a fresh corporate-standard Quarkus app into a per-run GitHub repo (topic `rhoai3-golden-path`) with its own namespace and pipeline instance — verified against the Backstage GitHub scaffolder module (`publish:github` with `protectDefaultBranch: false` so the demo can push to `main`).
+- **Stage 130** enters through the **`app-migration` golden-path template** (in `base/rhdh/templates/`): it takes the Git URL of a legacy application plus a project name, publishes a per-run Quarkus **destination** repo (catalog-registered, with its own namespace and pipeline, exactly like stage 070), and its workspace clones the legacy code side by side as a read-only, workspace-only project — the legacy app is never cataloged; `migration.yaml` in the destination records the provenance.
 
 Webhooks are not created per repo: a GitHub App installed on all repositories delivers push events to the shared dispatcher EventListener, which routes each repository to its project's own pipeline.
 
 Factory links explicitly select the destination's `main` branch and existing
-workspace name. Stage 080 permits one workspace name per declared migration
+workspace name. Stage 130 permits one workspace name per declared migration
 run: a creation policy rejects suffixed copies that would otherwise share its
 database and worker identity. Existing workspaces remain startable. Interrupted
 workspace/editor creation is recovered under the original name; it does not
@@ -98,7 +98,7 @@ Red Hat OpenShift Pipelines brings Tekton with Pipelines-as-Code and Tekton Chai
 
 ## Trust Boundaries
 
-Developer Hub is a discovery and self-service surface: it links to approved platform paths rather than embedding provider secrets or kubeconfigs. The OIDC client secret and session secret are generated at deploy time and stored in the `rhdh-secrets` Kubernetes Secret — not committed to Git. Build pipelines execute in a controlled namespace with scoped RBAC. Signing identities are bound to the platform's OIDC issuer — no long-lived signing keys in the cluster; Rekor provides tamper-evident records. Production deployment policies should gate on attestation verification, not on pipeline success alone. Stage 080 migration workers receive a platform-provisioned per-run ServiceAccount; operator-owned DevWorkspace default RBAC is left in place, so existing legacy workspace accounts keep their broader permissions until those workspaces are removed.
+Developer Hub is a discovery and self-service surface: it links to approved platform paths rather than embedding provider secrets or kubeconfigs. The OIDC client secret and session secret are generated at deploy time and stored in the `rhdh-secrets` Kubernetes Secret — not committed to Git. Build pipelines execute in a controlled namespace with scoped RBAC. Signing identities are bound to the platform's OIDC issuer — no long-lived signing keys in the cluster; Rekor provides tamper-evident records. Production deployment policies should gate on attestation verification, not on pipeline success alone. Stage 130 migration workers receive a platform-provisioned per-run ServiceAccount; operator-owned DevWorkspace default RBAC is left in place, so existing legacy workspace accounts keep their broader permissions until those workspaces are removed.
 
 ## Red Hat Products Used
 
@@ -165,4 +165,4 @@ Validation notes: `validate.sh` treats a missing Securesign instance as a warnin
 
 ## Next Stage
 
-[Stage 060: AI-Assisted Development](../060-ai-assisted-development/README.md) starts the maturity ladder: one-shot prompts in a governed workspace, entering through this stage's portal and exiting through its pipelines.
+[Stage 110: AI-Assisted Development](../110-ai-assisted-development/README.md) starts the maturity ladder: one-shot prompts in a governed workspace, entering through this stage's portal and exiting through its pipelines.

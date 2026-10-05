@@ -2,7 +2,7 @@
 name: skill-path-declaration
 skill-group: Demo Environment
 applies-to:
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/SKILL.md
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/SKILL.md
   - gitops/stages/050-advanced-app-platform/base/devspaces/**
 ---
 

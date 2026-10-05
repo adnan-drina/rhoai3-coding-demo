@@ -43,7 +43,7 @@ PROFILES = HERE.parents[1] / "devspaces" / "model-profiles.json"
 # The golden reader. On main the scaffold subtree is not the golden source and
 # may predate run control; GOLDEN_LIB points the check at a golden checkout.
 GOLDEN_LIB = Path(os.environ.get("GOLDEN_LIB") or
-                  REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
+                  REPO / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
 READER = (GOLDEN_LIB / "planner/run_control.py").is_file()
 
 FAKE_OC = r'''#!/usr/bin/env python3

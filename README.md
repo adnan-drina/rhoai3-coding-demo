@@ -26,9 +26,9 @@ With the three platform pillars in place, this workshop demonstrates a progressi
 
 | Rung | Developer experience | Tooling |
 |------|----------------------|---------|
-| **Assisted** (060) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Kilo Code via MaaS |
-| **Agentic** (070) | Enterprise standards as reusable skills and specs that agents follow and improve | OpenCode + AGENTS.md + skills |
-| **Autonomous** (080) | Harness-governed legacy migration with human review gates | MTA + OpenCode |
+| **Assisted** (110) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Kilo Code via MaaS |
+| **Agentic** (120) | Enterprise standards as reusable skills and specs that agents follow and improve | OpenCode + AGENTS.md + skills |
+| **Autonomous** (130) | Harness-governed legacy migration with human review gates | MTA + OpenCode |
 
 Each rung deliberately exposes its own limits to motivate the next: one-shot prompting fails on project standards, which motivates skills and specs; skill-guided agents motivate autonomous multi-agent workflows — and every step lands on the same platform rails.
 
@@ -79,13 +79,13 @@ Stages 010–050 construct the three platform layers declaratively — every res
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
 
-Stages 060–080 are developer workflow exercises that consume the platform built above. Each enters through the developer portal, uses governed models from MaaS, and exits through the CI pipeline.
+Stages 110–130 are developer workflow exercises that consume the platform built above. Each enters through the developer portal, uses governed models from MaaS, and exits through the CI pipeline.
 
 | Stage | Intent |
 |-------|--------|
-| [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) | One-shot AI coding in the IDE — and its limits without project standards |
-| [070 - AI-Agentic Development](stages/070-ai-agentic-development/README.md) | Spec-driven development where agent-executable standards guide every change |
-| [080 - AI-Autonomous Migration](stages/080-ai-autonomous-migration/README.md) | Multi-agent legacy migration with human review gates ([stage architecture](stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)) |
+| [110 - AI-Assisted Development](stages/110-ai-assisted-development/README.md) | One-shot AI coding in the IDE — and its limits without project standards |
+| [120 - AI-Agentic Development](stages/120-ai-agentic-development/README.md) | Spec-driven development where agent-executable standards guide every change |
+| [130 - AI-Autonomous Migration](stages/130-ai-autonomous-migration/README.md) | Multi-agent legacy migration with human review gates ([stage architecture](stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)) |
 
 ## How Red Hat And Open Source Make It Work
 
@@ -127,12 +127,12 @@ oc login --token=<token> --server=<api>
 ./stages/050-advanced-app-platform/deploy.sh
 ```
 
-**Validate the developer workflow stages.** Stages 060–080 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MTA stack) is deployed by Stage 050. Each keeps a read-only `validate.sh` for its demo prerequisites:
+**Validate the developer workflow stages.** Stages 110–130 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MTA stack) is deployed by Stage 050. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
-./stages/060-ai-assisted-development/validate.sh
-./stages/070-ai-agentic-development/validate.sh
-./stages/080-ai-autonomous-migration/validate.sh
+./stages/110-ai-assisted-development/validate.sh
+./stages/120-ai-agentic-development/validate.sh
+./stages/130-ai-autonomous-migration/validate.sh
 ```
 
 For deployment detail, validation strategy, and recovery procedures, see:
@@ -151,7 +151,7 @@ rhoai3-coding-demo/
 |-- BACKLOG.md                       # Workarounds, limitations, and deferred work
 |-- CONTRIBUTING.md
 |-- env.example
-|-- scripts/                        # platform/, demo/ (stages 060–080), shared/
+|-- scripts/                        # platform/, demo/ (stages 110–130), shared/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
@@ -163,7 +163,7 @@ rhoai3-coding-demo/
 
 ## This Repository Practices What It Demonstrates
 
-Stage 070 teaches agentic development with `AGENTS.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
+Stage 120 teaches agentic development with `AGENTS.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
 
 ## Demo Personas
 

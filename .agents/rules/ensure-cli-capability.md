@@ -2,8 +2,8 @@
 name: ensure-cli-capability
 skill-group: Demo Environment
 applies-to:
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/mta-analyze-legacy.sh
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/assert-ensure-cli-path.sh
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/mta-analyze-legacy.sh
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/assert-ensure-cli-path.sh
   - gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml
 ---
 

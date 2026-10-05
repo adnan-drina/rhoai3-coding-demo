@@ -6,7 +6,7 @@ The DevWorkspace env is **not** the Stage 080 golden `devfile.yaml` that
 sanitized prior DevWorkspace CR. Factory inlines **dest git** `devfile.yaml`
 at **create** (Architect `E-20260817T123931Z`).
 
-Do **not** re-edit `stages/080-…/quarkus-migration-scaffold/devfile.yaml`
+Do **not** re-edit `stages/130-…/quarkus-migration-scaffold/devfile.yaml`
 for this env (`E-20260817T122644Z`). That file is already correct and is
 **not** the render path.
 

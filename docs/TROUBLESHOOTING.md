@@ -856,7 +856,7 @@ oc logs deployment/llm-proxy -n openshift-mta --tail=100
 **Recover:**
 
 - Re-run or re-sync Stage 080 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
-- Confirm `./stages/080-ai-autonomous-migration/validate.sh` reports the MaaS credential checks as passing.
+- Confirm `./stages/130-ai-autonomous-migration/validate.sh` reports the MaaS credential checks as passing.
 
 ## MTA OpenShift Login Does Not Appear
 
@@ -1368,7 +1368,7 @@ python3 -c 'from pathlib import Path; import sys; sys.path.insert(0,"/projects/m
 - Confirm golden yamlite parses `idFields: [id]` and quoted `valueMap` keys (`"9966": "8080"`) via `yamlite.test.py`, and the template skeleton uses block-form `idFields`.
 - Do not `pip install pyyaml` into the dest as the golden path. Do not hand-edit dest `migration.yaml` mid-run unless recreating from the template. Republish golden yamlite (`bootstrap-scaffold-repos.sh`); dest clones still carry the old parser until that lands.
 
-**Related docs:** `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/planner/yamlite.py`
+**Related docs:** `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/planner/yamlite.py`
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
@@ -1667,7 +1667,7 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
 - **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
 - **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
 
-**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
 
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 

@@ -2,7 +2,7 @@
 name: kanban-log-watch
 skill-group: Demo Environment
 applies-to:
-  - stages/080-ai-autonomous-migration/**
+  - stages/130-ai-autonomous-migration/**
   - harness-refactoring/**
 ---
 

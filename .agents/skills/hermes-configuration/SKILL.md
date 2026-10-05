@@ -14,7 +14,7 @@ description: >
   fallback chains, and profiles. Do NOT use for admin-tier pins or secrets
   (use hermes-managed-scope), event hooks (use hermes-hooks), memory config
   (unassigned — flag it), or the scaffold's in-workspace skill content under
-  stages/080-*/scaffold-repo/ (governed by its own .hermes rules).
+  stages/130-*/scaffold-repo/ (governed by its own .hermes rules).
 ---
 
 # Hermes Configuration

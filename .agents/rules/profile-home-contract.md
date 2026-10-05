@@ -3,7 +3,7 @@ name: profile-home-contract
 skill-group: Demo Environment
 applies-to:
   - gitops/stages/050-advanced-app-platform/base/devspaces/**
-  - stages/080-ai-autonomous-migration/scaffold-repo/**
+  - stages/130-ai-autonomous-migration/scaffold-repo/**
 ---
 
 # Profile workers have three homes; dest-init must name each

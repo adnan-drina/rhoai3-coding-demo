@@ -2,7 +2,7 @@
 name: native-kanban-alignment
 skill-group: Demo Environment
 applies-to:
-  - stages/080-ai-autonomous-migration/scaffold-repo/**
+  - stages/130-ai-autonomous-migration/scaffold-repo/**
 ---
 
 # Native review, attachments, and K4 translation — do not retire G1–G4
@@ -230,7 +230,7 @@ parallel workers + verifier + synthesizer.
     completes; delivery stays refused until the continuation grants M5.
     Publication is still K4 (`k4_mint.py` → `k4_graph.py`). No second
     scheduler, no polling agent and no parallel M3. Contract:
-    `stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md`.
+    `stages/130-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md`.
     **Amended 2026-09-27 (architect native review, user confirmation):** new
     runs select `outcome-board/v2`, native cooperative control. F1 (a
     protected writer) is repealed as a v2 prerequisite; `enabled` needs only

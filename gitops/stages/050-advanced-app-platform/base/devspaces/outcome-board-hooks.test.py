@@ -33,9 +33,9 @@ from pathlib import Path
 
 PRODUCER = Path(__file__).resolve().parent / "maas-api-key-provisioning.yaml"
 REPO = Path(__file__).resolve().parents[5]
-SCAFFOLD_LIB = REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
+SCAFFOLD_LIB = REPO / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
 GOLDEN_LIB = Path(__import__("os").environ.get("GOLDEN_LIB") or
-                  REPO / "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
+                  REPO / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
 OUTCOME, SERIAL, NATIVE = "outcome-board/v1", "serial-loop/v1", "outcome-board/v2"
 NATIVE_TOOLS = ("kanban_block", "kanban_request_review", "request_review", "kanban_comment", "kanban_attach",
                 "kanban_create", "kanban_link")

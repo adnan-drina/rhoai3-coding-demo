@@ -25,7 +25,7 @@ from pathlib import Path
 
 PRODUCER = Path(__file__).resolve().parent / "maas-api-key-provisioning.yaml"
 PROFILES = Path(__file__).resolve().parent / "model-profiles.json"
-KERNEL = Path(__file__).resolve().parents[5] / ("stages/080-ai-autonomous-migration/scaffold-repo/"
+KERNEL = Path(__file__).resolve().parents[5] / ("stages/130-ai-autonomous-migration/scaffold-repo/"
                                                  "quarkus-migration-scaffold/.hermes/kernel")
 K2 = {"matcher": "write|terminal|kanban_complete", "command": "/m/agent-hooks/pre_tool_call.sh", "timeout": 5,
       "fail_closed": True}

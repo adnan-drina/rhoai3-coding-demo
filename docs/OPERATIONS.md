@@ -134,7 +134,7 @@ The deploy scripts do not imperatively install every component themselves. They 
 ## Stage 080 golden
 
 Stage 080 authoring lives in
-`stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/`
+`stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/`
 on `main`. The Stage 050 `app-migration` template fetches GitHub
 `quarkus-migration-scaffold-v2`. Publish both workshop goldens with
 `scripts/demo/bootstrap-scaffold-repos.sh` (force-push reset). A Stage 080 release
@@ -142,7 +142,7 @@ publishes only its own golden: `SCAFFOLD_REPOS=migration` (or `agentic` for
 Stage 070 only; the default `all` is the demo reset). Do not
 GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
 Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
-[SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
+[SOLUTION-ARCHITECTURE.md](../stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
 
 ### Continuing M1 and recovering a pending unit
@@ -251,7 +251,7 @@ run-agnostic; the expected model and wall budget come from the golden checkout:
 ```bash
 WORKSPACE=<project-name> POD=<workspace-pod> GOLDEN_CHECKOUT=<clean golden clone> \
 GOLDEN_SHA=<full sha> PLATFORM_SHA=<full sha> \
-  bash stages/080-ai-autonomous-migration/run-preflight.sh
+  bash stages/130-ai-autonomous-migration/run-preflight.sh
 ```
 
 The version-specific v10/v11 preflight scripts are retired; their original
@@ -376,7 +376,7 @@ does is repair mechanisms, never edit product code or evidence by hand:
 | The loop refuses `RUN_CONTROL_MISSING`, `HARNESS_RELEASE_MISMATCH` or `MODEL_PROFILE_MISMATCH` (exit 2 from `run-verify.sh`, `advance.py` or `k4_mint.py`) | A v13+ run is governed by the platform's `<run>-run-control` ConfigMap (the migration-run provisioner writes it once from the scaffolding push, mounted read-only at `/etc/rhoai3/run-control`): the contract, the pinned model profile, and the harness release = the scaffolding commit. MISSING: the ConfigMap or its mount is absent; re-run provisioning for the run and restart the workspace. A mid-run harness change is an assisted continuation: commit it, then record `release-rebase.json` (`{"commit": "<sha>", "reason": "..."}`) in the ConfigMap with `oc` (platform authority, not the workspace); it applies at the next workspace start (mount-on-start). A profile change is a new run. |
 | `LOOP_ADMISSION` / `LOOP_NO_SUCCESSOR` after an ACCEPTED step (the card is blocked, not done) | `verification/loop/continuation.json` names the stage (`admission-refused`, `mint-failed`, `no-successor`) and the reason. Restore the named prerequisite, then unblock the card; its worker re-runs `advance.py` with the same arguments, which finishes admission and the mint without a second step. K2 refuses `kanban_complete` until the continuation is `minted`. |
 | Admission names `RUN_ACTIVATION_FOREIGN`, or the M1 binding is missing | The activation is the platform record plus the write-once M1 binding (`/projects/.platform/run-control-state/binding.json`, never `.hermes/pins.json`). FOREIGN: the record names another run or scaffolding commit; create the run again. A lost binding: re-run the M1 continuation (`autostart-migration.sh --after-m1`), which writes it once. |
-| A worker is stopped with `STOP WORKER_TOOL_LOOP` (5 identical successful tool calls) | Nothing to do on the first halt: the runtime records a failed run, the card is respawned once (`max_retries` 2), and the new run's brief carries `candidate_on_tree` (its unaccepted edits and the next action). A second halt blocks the card (`gave_up`, with the guard's metadata). That is a finding for the harness, not something to reclaim again. Requires the ws-080 image with `stages/080-ai-autonomous-migration/hermes-runtime` patches (`/opt/rhoai3/080.pins` `hermes.patched_tree`). |
+| A worker is stopped with `STOP WORKER_TOOL_LOOP` (5 identical successful tool calls) | Nothing to do on the first halt: the runtime records a failed run, the card is respawned once (`max_retries` 2), and the new run's brief carries `candidate_on_tree` (its unaccepted edits and the next action). A second halt blocks the card (`gave_up`, with the guard's metadata). That is a finding for the harness, not something to reclaim again. Requires the ws-080 image with `stages/130-ai-autonomous-migration/hermes-runtime` patches (`/opt/rhoai3/080.pins` `hermes.patched_tree`). |
 | A Qwen 3.8 worker is halted with `loop_escalation_restart_halt` | The same stall signature started a thinking-mode escalation twice and came back a third time (Hermes runtime patch 0018; the signature is tool plus argument hash, tool plus result hash, or for `repeat-read` one per stretch without an edit or `typed-repair.py` run). Nothing to do on the first halt: the run is recorded as failed and the card is respawned once; the launch shim sets `HERMES_START_ESCALATED_TURNS` so the retry starts on the thinking profile for `loop_escalation.retry_start_turns` turns. A second halt blocks the card. `grep '\[loop-escalation\]' <profile>/logs/agent.log` shows each start with its `trigger=`. |
 | A worker run ends `STOP WORKER_CONTEXT_CEILING` (`context_ceiling_unreachable`) | Hermes runtime patch 0021 projected the next request (last provider prompt figure plus the estimated additions) plus `max_tokens` over the profile's `context_length`, and forced compaction could not bring it under. The request was never sent. The run is recorded as failed and respawned once. A repeat on the same card means one card's working set does not fit the window: check the card's write set against the planner's split limit (`SPLIT_MAX_BYTES` in `compatibility_objectives.py`) and the size of the protected tail. Before 0021 the same condition showed as a request waiting out the 900 s stream stale timeout. |
 | A card is titled `… (part i of n: …)` | The planner split an objective whose write set passed 40 KiB on the M2 tree (bytes only, no file-count limit) into ordered parts of at most 40 KiB (`split-large-objectives/v1`). Earlier parts check only their own files; the last part keeps the objective id and verifies the whole objective. Everything that waited on the objective waits on every part, and progress counts the objective once. |
@@ -983,7 +983,7 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 | OpenCode coding worker | `qwen38/qwen3-8-27b-int4` | Same default; `qwen27b/qwen3-6-27b` stays in the picker | Separate MaaS base URL per model, same API key |
 | MiniMax M2 (exception) | Hermes `providers.minimax` / OpenCode `redhat/minimax-m2` | AD-008 exception only — typed escalation file required; **not** the default; **not** in `fallback_providers` | Direct Red Hat LiteMaaS until RHOAI 3.5 restores external-model streaming through the gateway. 196K window |
 
-**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main. Exception models follow the MiniMax gate. Full recipe: `stages/080-ai-autonomous-migration/README.md` (Applied Hermes model configuration) and AD-008 §11 in `harness-refactoring/architecture/SOLUTION-ARCHITECTURE.md`. Official schema: [Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models).
+**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main. Exception models follow the MiniMax gate. Full recipe: `stages/130-ai-autonomous-migration/README.md` (Applied Hermes model configuration) and AD-008 §11 in `harness-refactoring/architecture/SOLUTION-ARCHITECTURE.md`. Official schema: [Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models).
 
 **Workshop capacity overlay:** `qwen3-6-35b-a3b`
 (gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE

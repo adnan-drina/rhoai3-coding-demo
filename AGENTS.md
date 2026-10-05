@@ -35,11 +35,11 @@ Important paths:
 - `README.md` — main workshop overview and architecture narrative.
 - `BACKLOG.md` — known workarounds, limitations, planned work, and validated status.
 - `env.example` — non-secret environment variable template.
-- `scripts/` — `platform/` for platform setup/lifecycle and validation, `demo/` for Stage 060–080 use-case helpers, and `shared/` for common libraries.
+- `scripts/` — `platform/` for platform setup/lifecycle and validation, `demo/` for Stage 110–130 use-case helpers, and `shared/` for common libraries.
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `stages/` — ordered workshop path: stage READMEs and per-stage deploy/validate scripts. `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 080 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
+- `stages/` — ordered workshop path: stage READMEs and per-stage deploy/validate scripts. `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 130 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 - `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 
@@ -48,7 +48,7 @@ Important paths:
 The workshop has two parts:
 
 - Stages 010-070 build the trusted AI development platform for platform engineers.
-- Stages 060 and later show enterprise developer workflows that consume that platform.
+- Stages 110 and later show enterprise developer workflows that consume that platform.
 
 Current implemented stages:
 
@@ -57,18 +57,18 @@ Current implemented stages:
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
 5. 050 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
-6. 060 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
-7. 070 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
-8. 080 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
+6. 110 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
+7. 120 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
+8. 130 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
 
 The stages renumbered when stage 040 absorbed the former external-model and MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became 050/060/070/080.
 
-Developer workflow stages after 080 are deferred until each has a concrete implementation plan and validation path.
+Developer workflow stages after 130 are deferred until each has a concrete implementation plan and validation path.
 
 When changing one stage, check whether related changes are also needed in:
 
 - `README.md`
-- files in that stage directory (README, deploy/validate; Stage 080 keeps its solution architecture there)
+- files in that stage directory (README, deploy/validate; Stage 130 keeps its solution architecture there)
 - `docs/OPERATIONS.md`
 - `docs/TROUBLESHOOTING.md`
 - `BACKLOG.md`
@@ -83,17 +83,17 @@ For live demo environment deployment, secrets, certs, and cluster safety, read `
 
 For dest Hermes Kanban observation, read `.agents/rules/kanban-log-watch.md`. After every dest card spawn, read `hermes kanban log <id>` (or `$HERMES_HOME/kanban/logs/<id>.log`) in the same turn.
 
-For Stage 080 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensure-cli-capability.md`. Presence (`[ -x ]`) is not usability.
+For Stage 130 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensure-cli-capability.md`. Presence (`[ -x ]`) is not usability.
 
-For Stage 080 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
+For Stage 130 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
 
-For Stage 080 PVC Managed Scope vs `/etc/hermes` enforcement, read `.agents/rules/managed-scope-enforcement.md`. Tirith is retired (Operator `122315ZO`; AMEND `112249ZA` item 1): pin `security.tirith_enabled: false` before dropping dest-init PATH prepend; do not cite `112249ZA`; KEEP `assert-no-fence-evasion`.
+For Stage 130 PVC Managed Scope vs `/etc/hermes` enforcement, read `.agents/rules/managed-scope-enforcement.md`. Tirith is retired (Operator `122315ZO`; AMEND `112249ZA` item 1): pin `security.tirith_enabled: false` before dropping dest-init PATH prepend; do not cite `112249ZA`; KEEP `assert-no-fence-evasion`.
 
-For Stage 080 dest `external_dirs` home vs profile, M2 PLAN assignee, and M2→M3 native dispatch, read `.agents/rules/external-dirs-home-contract.md`, `.agents/rules/m2-plan-assignee-implementer.md`, and `.agents/rules/m2-m3-native-dispatch.md`.
+For Stage 130 dest `external_dirs` home vs profile, M2 PLAN assignee, and M2→M3 native dispatch, read `.agents/rules/external-dirs-home-contract.md`, `.agents/rules/m2-plan-assignee-implementer.md`, and `.agents/rules/m2-m3-native-dispatch.md`.
 
-For Stage 080 dest profile `HERMES_HOME` vs OS `HOME`, read `.agents/rules/profile-home-contract.md`.
+For Stage 130 dest profile `HERMES_HOME` vs OS `HOME`, read `.agents/rules/profile-home-contract.md`.
 
-For Stage 080 native Kanban review/attach vs custom M4 receipts and K4 mint translation, read `.agents/rules/native-kanban-alignment.md`. Mechanical M4 facts stay code; LLM judgement needs a deterministic check (same file).
+For Stage 130 native Kanban review/attach vs custom M4 receipts and K4 mint translation, read `.agents/rules/native-kanban-alignment.md`. Mechanical M4 facts stay code; LLM judgement needs a deterministic check (same file).
 
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
@@ -223,9 +223,9 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 | 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
 | 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |
 | 050 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
-| 060 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
-| 070 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
-| 080 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
+| 110 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
+| 120 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
+| 130 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
 
 Skill project-default sections were authored in rhoai3-demo; where this repo deliberately diverges (no GPU time-slicing, two GPU workers, two private models), the stage README is the source of truth and the skill defaults have been updated to match.
 
@@ -245,12 +245,12 @@ for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$sc
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
 ./stages/050-advanced-app-platform/validate.sh
-./stages/060-ai-assisted-development/validate.sh
-./stages/070-ai-agentic-development/validate.sh
-./stages/080-ai-autonomous-migration/validate.sh
+./stages/110-ai-assisted-development/validate.sh
+./stages/120-ai-agentic-development/validate.sh
+./stages/130-ai-autonomous-migration/validate.sh
 ```
 
-Stage 070 consumes the Stage 060 Dev Spaces platform and Stage 050 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 070 README when a live workspace and cluster are available.
+Stage 120 consumes the Stage 110 Dev Spaces platform and Stage 050 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 

@@ -3,7 +3,7 @@ name: managed-scope-enforcement
 skill-group: Demo Environment
 applies-to:
   - gitops/stages/050-advanced-app-platform/base/devspaces/**
-  - stages/080-ai-autonomous-migration/scaffold-repo/**
+  - stages/130-ai-autonomous-migration/scaffold-repo/**
 ---
 
 # PVC Managed Scope is precedence, not enforcement

@@ -59,9 +59,9 @@ kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
 | 030 | `./stages/030-private-model-serving/validate.sh` | KServe, local model serving, Grafana |
 | 040 | `./stages/040-governed-models-as-a-service/validate.sh` | MaaS API, models, gateway, governance policies |
 | 050 | `./stages/050-advanced-app-platform/validate.sh` | Dev Spaces, RHDH, pipelines, SonarQube, MTA |
-| 060 | `./stages/060-ai-assisted-development/validate.sh` | Workspace config, Kilo Code, MaaS keys (workflow-only) |
-| 070 | `./stages/070-ai-agentic-development/validate.sh` | Golden-path template, OpenCode readiness (workflow-only) |
-| 080 | `./stages/080-ai-autonomous-migration/validate.sh` | MTA operator, Tackle, Developer Lightspeed (workflow-only) |
+| 060 | `./stages/110-ai-assisted-development/validate.sh` | Workspace config, Kilo Code, MaaS keys (workflow-only) |
+| 070 | `./stages/120-ai-agentic-development/validate.sh` | Golden-path template, OpenCode readiness (workflow-only) |
+| 080 | `./stages/130-ai-autonomous-migration/validate.sh` | MTA operator, Tackle, Developer Lightspeed (workflow-only) |
 
 ### Phase 3: Cross-stage verification
 

@@ -3,8 +3,8 @@ name: external-dirs-home-contract
 skill-group: Demo Environment
 applies-to:
   - gitops/stages/050-advanced-app-platform/base/devspaces/**
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/check-external-dirs.py
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/check-external-dirs.test.py
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/check-external-dirs.py
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/check-external-dirs.test.py
 ---
 
 # dest-init lists dest-user skills; the checker must not reinvent home

@@ -20,7 +20,7 @@ Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform re
 ## Migration reliability package M-1..M-7 (2026-09-30, unpublished)
 
 Branch `feat/migration-reliability-m1-m7` (base `next/after-v28` `26bc9c2b`); status per ID in
-[MIGRATION-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
+[MIGRATION-IMPROVEMENTS.md](stages/130-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
 Local evidence: `tmp/reliability-evidence/` in that worktree. Not validated against a live cluster.
 
 - [x] Integrated with `next/after-v28` (`c9ab129d`) and architect commit `ee7bc6d6`; qualification PASS on
@@ -41,7 +41,7 @@ end-to-end one.
 **v26 is the reliability validation release:** M1→M5 without harness overlays or
 Operator rescues, with every acceptance gate preserved. Scope and per-item
 evidence status are in
-[MIGRATION-IMPROVEMENTS.md](stages/080-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
+[MIGRATION-IMPROVEMENTS.md](stages/130-ai-autonomous-migration/MIGRATION-IMPROVEMENTS.md).
 Status there is source-level (tests, model-free reproductions) unless marked live.
 
 In v26:
@@ -192,7 +192,7 @@ Next golden (branch `next/after-v28`, unpublished; v28 runs on golden `6bef18f5`
   pair):** exactly one pair of independent M3 repair outcomes runs concurrently in native
   worktrees; everything else stays serial. Requirements, implementation and evidence
   (synthetic, real-git, native-runtime) are in
-  [PARALLEL-M3-PILOT.md](stages/080-ai-autonomous-migration/PARALLEL-M3-PILOT.md). On
+  [PARALLEL-M3-PILOT.md](stages/130-ai-autonomous-migration/PARALLEL-M3-PILOT.md). On
   v28's real plan it selects RootRestController with `@Profile`. Live demonstration is
   owed by the next validation run: two overlapping workers and both changes verified
   after integration. Trade-off: in the pilot's chain, a blocked card holds back the cards
@@ -338,8 +338,8 @@ These results are not an autonomous success:
 - [ ] A packaging repair that exposes the next locatable cause should continue in the same card when that cause is a file of this tree. An unlocatable, set-wide or decision-shaped cause stays parked.
 - [ ] A loop card that blocks without a verdict must leave the product tree as it found it: revert unaccepted edits in the write set, and refuse a block while paths outside `verification/` differ from HEAD.
 - [ ] Automatic fragment-set handling is not implemented. The complete fragment-contract set must be derived and sealed from the type model, with one family identity, before automatic dispatch resumes. An incomplete type model yields unknown, never an invented set.
-- [ ] Specimen independence remains required ([SOLUTION-ARCHITECTURE.md §2.1](stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)). PetClinic is the proving application. Build/start/reset, corpus derivation, behavioural qualification, guidance and executable invariance checks are still open. A text scan for application names is not proof.
-- [ ] Measurement trust for outcome-board runs is `cooperative-receipts`: worker-produced build, test and parity evidence is trusted subject to binding checks. That is not independent verification. See [OUTCOME-BOARD-CONTRACT.md](stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md).
+- [ ] Specimen independence remains required ([SOLUTION-ARCHITECTURE.md §2.1](stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)). PetClinic is the proving application. Build/start/reset, corpus derivation, behavioural qualification, guidance and executable invariance checks are still open. A text scan for application names is not proof.
+- [ ] Measurement trust for outcome-board runs is `cooperative-receipts`: worker-produced build, test and parity evidence is trusted subject to binding checks. That is not independent verification. See [OUTCOME-BOARD-CONTRACT.md](stages/130-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md).
 
 Deferred from the v13 release, still not done: one bounded diagnostic action on an unproven handoff; attaching the source's own sort call (needs call-argument literals); upstream identical-cycle halt and a per-poller deadline; auto-generation when generated output is missing (`RESPONSE_TYPE_UNRESOLVED` today); producer regrouping.
 
@@ -424,4 +424,4 @@ Developer workflow topics 120–170 are not stages. Recreate one only with an im
 | `tmp/v21-run/m3-partition-comparison/{CASES-REPORT,IMPLEMENTATION-DESIGN,RELEASE-MAPPING}.md` | measured compatibility-objective cases |
 | `tmp/v21-run/v21-validation.md` | which image v21 actually ran |
 | `tmp/hermes-runtime-review-2026-09-28/REVIEW.md` and `tmp/v21-fixes/` | qualification of the current image `2ea8ebd6` |
-| `tmp/080-operator/build-080-runtime-image.sh` | rebuilds that image from `hermes-runtime/patches` |
+| `tmp/080-operator/build-130-runtime-image.sh` | rebuilds that image from `hermes-runtime/patches` |

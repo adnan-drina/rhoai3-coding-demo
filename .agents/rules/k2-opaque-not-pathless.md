@@ -2,8 +2,8 @@
 name: k2-opaque-not-pathless
 skill-group: Demo Environment
 applies-to:
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/pre_tool_call.sh
-  - stages/080-ai-autonomous-migration/validate.sh
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/pre_tool_call.sh
+  - stages/130-ai-autonomous-migration/validate.sh
   - gitops/stages/050-advanced-app-platform/base/devspaces/**
 ---
 

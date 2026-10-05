@@ -1635,7 +1635,7 @@ data:
         cfg["hooks"]["post_tool_call"] = [{"matcher": "terminal", "command": _post_dst, "timeout": 5}]
         print("POST-TOOL-CALL: terminal observer registered from .hermes/kernel/post_tool_call.py")
     # <<< post-tool-call observer
-    # >>> outcome-board hooks (stages/080-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md)
+    # >>> outcome-board hooks (stages/130-ai-autonomous-migration/OUTCOME-BOARD-CONTRACT.md)
     # ONLY for a run whose EFFECTIVE selection is an outcome board, decided by
     # the one rule every harness reader uses (outcome_protocol.select_protocol):
     # a governed run's request in its initial commit, agreed by the read-only
@@ -1690,7 +1690,7 @@ data:
     elif _ob_why:
         print("OUTCOME-BOARD: hooks NOT registered: %s" % _ob_why)
     # <<< outcome-board hooks
-    # >>> M3 execution policy (stages/080-ai-autonomous-migration/PARALLEL-M3-PILOT.md)
+    # >>> M3 execution policy (stages/130-ai-autonomous-migration/PARALLEL-M3-PILOT.md)
     # The dispatcher cap is the run's PINNED policy, read by the destination's own
     # harness from its initial commit: 2 only for a run created as the one-pair
     # pilot (its board chain admits the pair and nothing else at once), 1 for every
@@ -1709,7 +1709,7 @@ data:
     print("M3 EXECUTION POLICY: kanban.max_in_progress %d -- %s" % (_m3_cap, _m3_why))
     # <<< M3 execution policy
     # >>> run budgets
-    # v32 (stages/080-ai-autonomous-migration/README.md, "In-workspace stops"):
+    # v32 (stages/130-ai-autonomous-migration/README.md, "In-workspace stops"):
     # a destination whose harness ships .hermes/kernel/run_budget.py gets it
     # copied into Managed Scope (like the K2 hook) and run by THIS interpreter
     # (the Hermes venv: its native writes import hermes_cli.kanban_db):

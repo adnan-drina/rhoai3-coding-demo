@@ -50,9 +50,9 @@ For stage changes with a live cluster:
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
 ./stages/050-advanced-app-platform/validate.sh
-./stages/060-ai-assisted-development/validate.sh
-./stages/070-ai-agentic-development/validate.sh
-./stages/080-ai-autonomous-migration/validate.sh
+./stages/110-ai-assisted-development/validate.sh
+./stages/120-ai-agentic-development/validate.sh
+./stages/130-ai-autonomous-migration/validate.sh
 ```
 
 If live validation is not possible, say: "Not validated against a live OpenShift cluster. Static review only."

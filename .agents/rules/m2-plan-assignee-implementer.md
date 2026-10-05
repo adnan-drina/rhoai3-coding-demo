@@ -2,7 +2,7 @@
 name: m2-plan-assignee-implementer
 skill-group: Demo Environment
 applies-to:
-  - stages/080-ai-autonomous-migration/scaffold-repo/**/AGENTS.md
+  - stages/130-ai-autonomous-migration/scaffold-repo/**/AGENTS.md
   - gitops/stages/050-advanced-app-platform/base/devspaces/**
 ---
 
