@@ -192,11 +192,6 @@ for selection in \
 done
 
 
-"$SCRIPT_DIR/deploy-sandbox-storage.sh" --revision "$selected_commit"
-
-# Lightspeed reconciles independently; never repoint the core to repair it.
-"$SCRIPT_DIR/deploy-lightspeed.sh" --revision "$selected_commit"
-
 "$SCRIPT_DIR/deploy-console-observability.sh" --revision "$selected_commit"
 
 # ── Step 5: Report Argo CD console URL ───────────────────────────────────────
