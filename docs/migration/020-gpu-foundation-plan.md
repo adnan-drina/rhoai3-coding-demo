@@ -1,6 +1,6 @@
 # Stage 020 GPU foundation preparation plan
 
-Status: **implemented source under review; static checks passed; not deployed**, 2026-10-05. The original artifact audit at `eec0070033f898979c8c9e95994766722b8b0c93` remains below as the prior-source baseline. The current source replaces the unsafe provisioning hook, selects reviewed native operator versions and adds guarded deployment/readiness paths. No Stage 020 operators or GPU capacity have been installed or changed. Publication remains subject to the reviewed Stage 020-only diff; live qualification is separate.
+Status: **deployed at `85dbcee03d97969bd0a17afbdb01229229d4b342`; native readiness and per-node CUDA/DCGM passed; bounded queue acceptance recorded; actual dashboard UI pending**, 2026-10-05. The historical artifact audit below remains separate from current live qualification.
 
 ## Prerequisites and selected design
 
@@ -17,10 +17,10 @@ The deployed Stage 010 core remains pinned to `f38d84c0`, Synced/Healthy. Genuin
 
 ## Version selection and evidence gates
 
-| Component | Previous source selection | Reviewed implementation candidate (not installed) | Required gate |
+| Component | Previous source selection | Installed reviewed selection | Required gate |
 |---|---|---|---|
 | NFD | `stable`, comment `nfd.4.20.0`, Automatic | `nfd.4.22.0-202609212027` | Own/SingleNamespace catalog modes; use reviewed NFD v1 operand image below and verify served schema |
-| NVIDIA GPU Operator | `v26.3`, comment `26.3.2`, Automatic | `v26.7` / `26.7.1` | Official 26.7 matrix includes RHCOS 4.18–4.22/L40S; Own/SingleNamespace; full bundle schema extraction remains pending |
+| NVIDIA GPU Operator | `v26.3`, comment `26.3.2`, Automatic | `v26.7` / `26.7.1` | Official 26.7 matrix includes RHCOS 4.18–4.22/L40S; Own/SingleNamespace; installed CSV and served ClusterPolicy schema verified; no authored field/enum/required discrepancies |
 | Red Hat build of Kueue | `stable-v1.3`, comment `1.3.1`, Automatic | `stable-v1.4` / `1.4.2` | Official OCP 4.22 guide: 1.4.2 GA/OCP 4.18+/upstream 0.18; AllNamespaces only, v1beta2/cohortName examples; exact operand CRD gate |
 | cert-manager | Not authored in Stage 020 | Provider-installed RH 1.20.1 | Reuse current owner, native readiness; no duplicate Subscription |
 
@@ -145,8 +145,14 @@ Deploy first checks immutable published source, ownership, exact environment pro
 
 ## Outstanding decisions
 
-Verify the exact installed NVIDIA CSV and served ClusterPolicy schema before native qualification; local certified bundle extraction was unavailable. The selected native Driver Toolkit path does not invoke KMM, despite the RHOAI checklist discrepancy. AWS launch feasibility, CUDA/DCGM, queue admission and actual dashboard UI remain live exits. No Stage 020 deployment has occurred yet.
+The installed NVIDIA CSV and served ClusterPolicy schema are verified; two AWS GPU workers, native drivers, CUDA/DCGM and UID-bound queue admission succeeded. The native Driver Toolkit path does not invoke KMM; the differing RHOAI checklist remains documented rather than introducing an unnecessary operator. Only actual dashboard/profile browser acceptance remains pending because no browser connection is available.
 
 ## CPU + Reserved decision
 
-The user approved simplifying the supported profiles to CPU and Reserved GPU. Consumer searches found no Stage 030/040/runtime dependency on the zero-quota shared/priority profiles, queues or WorkloadPriorityClass. Those seven resources and the unused shared-profile screenshot are removed from current source; the prior audit remains historical. The global reserved profile and downstream queue identity are unchanged. Current source renders 23 base /24 environment resources. Live deployment and qualification remain pending review.
+The user approved simplifying the supported profiles to CPU and Reserved GPU. Consumer searches found no Stage 030/040/runtime dependency on the zero-quota shared/priority profiles, queues or WorkloadPriorityClass. Those seven resources and the unused shared-profile screenshot are removed from current source; the prior audit remains historical. The global reserved profile and downstream queue identity are unchanged. Current source renders 23 base /24 environment resources. Live readiness and per-node CUDA/DCGM passed; queue acceptance uses the enabled native Pod integration, with actual UI still pending.
+
+## Live qualification
+
+The exact three selected CSVs succeeded. Two GPU workers are Ready and each advertises one full L40S; native current drivers, CUDA vectorAdd and DCGM metrics passed. The installed NVIDIA 26.7.1 CSV and served ClusterPolicy schema resolve the local bundle-extraction gap; the selected DTK path has no KMM dependency. CPU pools remain 2/1/1, the core remains pinned to f38, and no buckets were created.
+
+The initial BatchJob probe remained suspended because BatchJob is absent from native integrations. A Pod probe demonstrated quota/admission but `hostUsers: false` hit the documented NVIDIA CDI sync-socket limitation. The nonroot `hostUsers: true` probe used existing restricted-v2 rights and completed CUDA after UID-bound admission and GPU scheduling. No SCC, operator or node configuration was changed. Private evidence is under `/private/tmp/stage020-*-admission-observations.json`; final minimal-consumer evidence excludes the management-only device environment override. Actual GPU dashboard/profile browser acceptance remains pending.

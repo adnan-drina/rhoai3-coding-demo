@@ -608,7 +608,7 @@ Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `
 
 `validate.sh --readiness` checks native readiness and labels that scope explicitly. `--functional` additionally inspects native per-node CUDA validator results and DCGM metrics through bounded local port-forwards. Neither command implicitly creates workloads or proves dashboard access. Full acceptance also requires a bounded queue-admission test and the intended administrator’s GPU Infrastructure dashboard showing current Kueue/DCGM data.
 
-For a one-time reserved queue test, run from the repository root. These preparation commands are read-only and derive the test image and command from a successful native CUDA probe:
+For a one-time reserved queue test, use the native **Pod** integration: the RHOAI-created Kueue configuration does not enable BatchJob. Derive the image and `vectorAdd` command from the successful native CUDA probe, request one GPU, and use the project-allocated nonroot UID with `restricted-v2`, `hostUsers: true`, dropped capabilities, disabled privilege escalation and RuntimeDefault seccomp. Do not add SCC grants or `NVIDIA_VISIBLE_DEVICES=all` to an ordinary allocated-GPU consumer. NVIDIA 26.7 documents that `hostUsers: false` is unsupported with CDI and can cause a sync-socket container-creation failure. [NVIDIA CDI known issues](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/26.7/cdi.html#known-issues).
 
 ```bash
 source scripts/shared/lib.sh
@@ -616,10 +616,12 @@ REPO_ROOT="$PWD"
 load_env
 check_oc_logged_in
 probe=$(mktemp)
+project_uid=$(oc --request-timeout=10s get namespace demo-sandbox -o jsonpath='{.metadata.annotations.openshift\.io/sa\.scc\.uid-range}')
+project_uid=${project_uid%%/*}
 policy_uid=$(oc --request-timeout=10s get clusterpolicy gpu-cluster-policy -o jsonpath='{.metadata.uid}')
 oc --request-timeout=10s get pods -n nvidia-gpu-operator \
   -l app=nvidia-cuda-validator -o json > "$probe"
-python3 - "$probe" "$policy_uid" > /private/tmp/gpu-reserved-admission-check.json <<'PY'
+python3 - "$probe" "$policy_uid" "$project_uid" > /private/tmp/gpu-reserved-admission-pod.json <<'PY'
 import json,sys
 pods=json.load(open(sys.argv[1]))['items']
 assert sys.argv[2], 'Native ClusterPolicy UID is required'
@@ -635,36 +637,33 @@ command=i.get('command',[]); args=i.get('args',[])
 assert isinstance(command,list) and command and all(isinstance(v,str) and v for v in command), 'Meaningful native command required'
 assert isinstance(args,list) and all(isinstance(v,str) for v in args), 'Invalid native arguments'
 container={'name':'cuda-check','image':i['image'],'command':command,
-           'args':args,'env':[{'name':'NVIDIA_VISIBLE_DEVICES','value':'all'}],
+           'args':['vectorAdd && sleep 20'],
+           'securityContext':{'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},
            'resources':{'requests':{'cpu':'1','memory':'1Gi','nvidia.com/gpu':'1'},
                         'limits':{'cpu':'1','memory':'1Gi','nvidia.com/gpu':'1'}}}
-job={'apiVersion':'batch/v1','kind':'Job',
-     'metadata':{'name':'gpu-reserved-admission-check','namespace':'demo-sandbox',
-                 'labels':{'kueue.x-k8s.io/queue-name':'lq-gpu-reserved-demo'}},
-     'spec':{'suspend':True,'backoffLimit':0,'activeDeadlineSeconds':180,
-             'template':{'spec':{'restartPolicy':'Never','containers':[container],
-              'tolerations':[{'key':'nvidia-gpu-only','operator':'Exists','effect':'NoSchedule'}]}}}}
-print(json.dumps(job,indent=2))
+assert command==['sh','-c'] and args==['vectorAdd'], 'Review a changed native command before proceeding'
+uid=int(sys.argv[3]); assert uid>=1000000000
+pod={'apiVersion':'v1','kind':'Pod',
+     'metadata':{'name':'gpu-reserved-admission-pod','namespace':'demo-sandbox',
+                 'labels':{'kueue.x-k8s.io/queue-name':'lq-gpu-reserved-demo',
+                           'kueue.x-k8s.io/managed':'true'}},
+     'spec':{'restartPolicy':'Never','activeDeadlineSeconds':180,'hostUsers':True,
+             'securityContext':{'runAsNonRoot':True,'runAsUser':uid,
+                                'seccompProfile':{'type':'RuntimeDefault'}},
+             'containers':[container],
+             'tolerations':[{'key':'nvidia-gpu-only','operator':'Exists','effect':'NoSchedule'}]}}
+print(json.dumps(pod,indent=2))
 PY
 rm "$probe"
 ```
 
-Review that private test file, confirm `validate.sh --functional` passed and check reserved queue usage. The fixed Job name must be unused: `oc create` fails on a collision; never replace, apply over or delete pre-existing work to run this test. The following **explicit opt-in** commands create only the test workload; default validation/resume never runs them:
+The explicit opt-in test must use a new Pod name, `kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo`, `kueue.x-k8s.io/managed: "true"`, the existing GPU taint toleration and an active deadline of 180 seconds. A short `vectorAdd && sleep 20` command allows observation of native quota/admission transitions. Default validation and resume never create this workload. Before creation, review the rendered Pod and refuse an existing name; never replace another workload. Run `oc create -f /private/tmp/gpu-reserved-admission-pod.json`; observe `oc get workloads.kueue.x-k8s.io -n demo-sandbox --watch -o yaml` while the Pod executes, and record `oc logs -n demo-sandbox gpu-reserved-admission-pod` plus the completed Pod JSON.
 
-```bash
-oc --request-timeout=10s get clusterqueue cq-gpu-reserved-demo -o yaml
-oc --request-timeout=10s create -f /private/tmp/gpu-reserved-admission-check.json
-oc --request-timeout=10s wait -n demo-sandbox --for=condition=complete \
-  job/gpu-reserved-admission-check --timeout=180s
-oc --request-timeout=10s get workloads.kueue.x-k8s.io -n demo-sandbox -o json
-oc --request-timeout=10s get pods -n demo-sandbox \
-  -l job-name=gpu-reserved-admission-check -o json
-```
+Record the Pod UID and its UID-owned Workload while running: `QuotaReserved=True`, `Admitted=True`, assignment of `nvidia.com/gpu` to `gpu-l40s`, scheduling to a Ready GPU node, successful CUDA output and Pod exit zero. Admission conditions may change after completion releases quota; retain the observed transitions rather than requiring them to stay true forever. Delete only the recorded test Pod with a UID precondition and confirm its Workload is removed. If both cards are occupied, report pending without evicting models, changing quota or adding capacity.
 
-Before recording PASS, match the Workload's Job owner UID, require `QuotaReserved=True` and `Admitted=True`, assignment to `gpu-l40s`, and a completed test Pod on a Ready GPU node. Record Job/Workload identities and output, then delete only this test Job and its matching completed Workload. If both cards are occupied or the test remains queued, record acceptance pending; do not evict models, change quota, grant privileged SCC or add capacity to force a pass. Any native-image permission/runtime incompatibility is a failed test to investigate, not grounds to copy the native validator's privileged security context.
 The native MachineSet has `Prune=false,Delete=false`; removing source or the Application is not an uninstall. Day-two cost control scales this exact Stage 020-owned pool to zero. Before deliberate removal, review active GPU workloads, node drain implications, Machine/PVC/data dependencies and AWS resource disposition; explicitly remove only the reviewed MachineSet after those gates. Never change native operator resources or CPU pools as part of this cleanup.
 
-See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) for artifact-by-artifact disposition and unresolved certified-bundle/KMM qualification.
+See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) for artifact disposition, installed-schema/native Driver Toolkit evidence and completed GPU/queue qualification. Actual dashboard/profile browser acceptance remains pending.
 
 ### Stage 030
 
