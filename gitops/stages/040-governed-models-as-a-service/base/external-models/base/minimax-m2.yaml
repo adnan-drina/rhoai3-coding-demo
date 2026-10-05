@@ -12,7 +12,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '16'
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    openshift.io/display-name: MiniMax M2 (qualification)
+    openshift.io/display-name: MiniMax M2
 spec:
   modelName: minimax-m2
   externalProviderRefs:

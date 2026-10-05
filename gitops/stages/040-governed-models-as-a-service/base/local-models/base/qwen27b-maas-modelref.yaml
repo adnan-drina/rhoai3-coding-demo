@@ -10,7 +10,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    # Models tab title. The model id and endpoint stay metadata.name.
+    # Models tab title; native catalog IDs use the resolved publisher/model alias.
     openshift.io/display-name: Qwen3.6 27B FP8
 spec:
   modelRef:

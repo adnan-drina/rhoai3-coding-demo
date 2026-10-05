@@ -4,5 +4,3 @@ kind: Kustomization
 resources:
   - devspaces-coding-models-access.yaml
   - personal-users-access.yaml
-  - minimax-qualification-subscription.yaml
-  - minimax-qualification-auth-policy.yaml
