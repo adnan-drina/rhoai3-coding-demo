@@ -4,7 +4,7 @@ import base64,json,os,subprocess,sys
 from urllib.parse import quote
 APP='040-governed-models-as-a-service'
 def get(kind,name=None,ns=None):
- command=['oc','--request-timeout=10s','get',kind]+([name] if name else [])+(['-n',ns] if ns else [])+['--ignore-not-found','-o','json']
+ command=['oc','--request-timeout=10s','get',kind]+([name] if name else [])+(['-n',ns] if ns else [])+(['--ignore-not-found'] if name else [])+['-o','json']
  r=subprocess.run(command,capture_output=True,text=True,timeout=15)
  if r.returncode:raise RuntimeError('Prerequisite API read failed')
  return json.loads(r.stdout) if r.stdout.strip() else None
@@ -53,7 +53,7 @@ try:
  tls={'apiVersion':'v1','kind':'Secret','metadata':json.loads(result.stdout)} if result.stdout.strip() else None
  if tls:assert tracked(tls) and not tls['metadata'].get('ownerReferences') and not tls['metadata'].get('deletionTimestamp'),'Existing gateway certificate requires reviewed adoption'
  database=get('statefulset','maas-postgres','models-as-a-service-db')
- db_namespace=get('namespace','models-as-a-service-db');storage=get('pvc',ns='models-as-a-service-db')
+ db_namespace=get('namespace','models-as-a-service-db');storage=get('pvc',ns='models-as-a-service-db') if db_namespace else {'items':[]}
  assert storage is not None or db_namespace is None,'Unexpected empty storage API response in existing namespace'
  pvcs=storage['items'] if storage is not None else []
  # Secret existence checks retrieve metadata only, never credential data.
