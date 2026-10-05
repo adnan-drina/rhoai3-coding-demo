@@ -7,3 +7,4 @@ resources:
 - networkpolicy-payload-processing-maas-gateway.yaml
 - service-maas-gateway-internal.yaml
 - tls-secret.yaml
+- networkpolicy-maas-gateway.yaml

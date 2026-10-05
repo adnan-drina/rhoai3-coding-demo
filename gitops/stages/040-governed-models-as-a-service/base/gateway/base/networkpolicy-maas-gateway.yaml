@@ -1,0 +1,86 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: maas-gateway-native-traffic
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: maas-gateway-native-traffic
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '9'
+spec:
+  podSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: maas-default-gateway
+  policyTypes: [Ingress, Egress]
+  ingress:
+  - ports:
+    - {protocol: TCP, port: 443}
+    - {protocol: TCP, port: 15021}
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [openshift-monitoring, openshift-user-workload-monitoring]
+    ports:
+    - {protocol: TCP, port: 15020}
+    - {protocol: TCP, port: 15090}
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: openshift-dns}
+      podSelector:
+        matchLabels: {dns.operator.openshift.io/daemonset-dns: default}
+    ports:
+    - {protocol: UDP, port: 53}
+    - {protocol: TCP, port: 53}
+    - {protocol: UDP, port: 5353}
+    - {protocol: TCP, port: 5353}
+  - to:
+    - podSelector:
+        matchLabels: {app: istiod, istio.io/rev: openshift-gateway}
+    ports:
+    - {protocol: TCP, port: 15012}
+  - to:
+    - podSelector:
+        matchLabels: {app: payload-processing}
+    ports:
+    - {protocol: TCP, port: 9004}
+  - to:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: kuadrant-system}
+      podSelector:
+        matchLabels: {authorino-resource: authorino, control-plane: controller-manager}
+    ports:
+    - {protocol: TCP, port: 50051}
+  - to:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: kuadrant-system}
+      podSelector:
+        matchLabels: {app: limitador, limitador-resource: limitador}
+    ports:
+    - {protocol: TCP, port: 8081}
+  - to:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: redhat-ai-gateway-infra}
+      podSelector:
+        matchLabels: {app.kubernetes.io/name: maas-api}
+    ports:
+    - {protocol: TCP, port: 8443}
+  - to:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: models-as-a-service}
+    ports:
+    - {protocol: TCP, port: 8000}
+    - {protocol: TCP, port: 9002}
+  # Explicitly approved public HTTPS boundary for native ExternalName providers.
+  # Ordinary NetworkPolicy cannot constrain provider FQDNs.
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8]
+    ports:
+    - {protocol: TCP, port: 443}
