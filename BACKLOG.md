@@ -425,3 +425,8 @@ Developer workflow topics 120–170 are not stages. Recreate one only with an im
 | `tmp/v21-run/v21-validation.md` | which image v21 actually ran |
 | `tmp/hermes-runtime-review-2026-09-28/REVIEW.md` and `tmp/v21-fixes/` | qualification of the current image `2ea8ebd6` |
 | `tmp/080-operator/build-130-runtime-image.sh` | rebuilds that image from `hermes-runtime/patches` |
+
+
+### Stage 040 remaining acceptance (2026-10-05)
+
+Native deployment, two private-model APIs/streaming, Red Hat MiniMax governed streaming, key lifecycle and isolated quota enforcement passed. The API-key-loading failure is repaired at the backend. Remaining: replenish GPT-6 Luna account credits (`credit_balance_exhausted`), qualify actual EPP execution (targeted counters remain absent), and user-check GenAI Studio key listing/project interaction. No browser pass or complete Stage 040 acceptance is claimed. Existing model quotas and workspace local-only access remain unchanged. [Evidence and boundaries](docs/migration/040-governed-serving-plan.md#final-bounded-runtime-evidence).

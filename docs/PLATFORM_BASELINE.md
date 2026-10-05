@@ -278,3 +278,8 @@ Official product documentation remains the source of truth for supported configu
 ## Skill Metadata Policy
 
 Shared skills should reference this repository baseline rather than repeating exact platform versions in every skill frontmatter. Use exact version-specific reference files only when a workflow genuinely differs across platform versions.
+
+
+### Stage 040 current runtime checkpoint (2026-10-05)
+
+Stage 040 at `6ab5e6f9ee35c89d189c6f48973f8bf40be620f1` reconciled successfully. Two pinned private Qwen models, Red Hat MiniMax streaming, genuine key lifecycle, isolated quota enforcement and the key-list backend repair passed. All 18 retained registry/MLflow/OBC metadata identities were independently preserved; core 010 stays on the retention bridge. GPT account credits, unqualified EPP execution and user-owned Studio visual checks prevent a full Stage 040 acceptance claim. [Technical evidence](migration/040-governed-serving-plan.md#final-bounded-runtime-evidence).

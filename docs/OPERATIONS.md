@@ -992,3 +992,10 @@ The factory sets the route at creation. For stale routing, preserve work and run
 
 
 The final canonical Stage 010 validator against deployed `f38d84c0` returned exit 1: **30 checks passed and 2 failed**. Both failures are missing real administrator/developer persona kubeconfigs. The 11 MLflow readiness checks and native registry/metrics/exact-trace functional probes passed. Configured group memberships and synthetic service authorization do not replace authenticated persona acceptance. No full-stage pass is claimed.
+
+
+### Stage 040 current acceptance (2026-10-05)
+
+Stage 040 is Synced/Healthy at `6ab5e6f9ee35c89d189c6f48973f8bf40be620f1`. Both private Qwen models and Red Hat MiniMax M2 passed governed completion/streaming; MiniMax is available through existing personal grants at unchanged limits, while workspace grants remain local-only. The isolated own-subscription quota test returned 200 then 429, revoked its key and UID-deleted its subscription; native policy restoration and retained resource identities were independently confirmed.
+
+The GenAI Studio API-key-loading incident is repaired at the backend: current native Authorino TLS rollout and genuine subscriptions/key-search JSON requests pass. Refresh Studio and check key listing and the native project playground yourself. GPT-6 Luna is registered but upstream account credits are exhausted; no further GPT calls or quota increases are warranted until credits are restored. EPP execution remains unqualified because the targeted counter series did not appear, despite successful authenticated Pod-targeted inference. Full Stage 040 acceptance is therefore incomplete. See [the current technical record](migration/040-governed-serving-plan.md#final-bounded-runtime-evidence) for evidence and limits.
