@@ -152,7 +152,7 @@ def bucket_ready():
     ca = (get("configmap", "mlflow-service-ca", namespace) or {}).get("data", {})
     if not ca.get("service-ca.crt"):
         return False
-    template = '{{range $key,$value := .data}}{{$key}}{{"\n"}}{{end}}'
+    template = r'{{range $key,$value := .data}}{{$key}}{{"\n"}}{{end}}'
     result = run(["oc", "get", "secret", name, "-n", namespace, "-o", "go-template=" + template])
     return result.returncode == 0 and {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} <= set(result.stdout.splitlines())
 

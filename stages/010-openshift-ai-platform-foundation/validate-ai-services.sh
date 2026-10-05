@@ -46,7 +46,7 @@ def get(kind, name=None, namespace=None):
 
 def secret_keys(name, namespace):
     # Fetch only key names. Credential payloads are never retrieved or printed.
-    template = '{{range $key,$value := .data}}{{$key}}{{"\n"}}{{end}}'
+    template = r'{{range $key,$value := .data}}{{$key}}{{"\n"}}{{end}}'
     args = ["oc", "--request-timeout=" + request_timeout, "get", "secret", name, "-n", namespace,
             "-o", "go-template=" + template]
     result = subprocess.run(args, capture_output=True, text=True)
