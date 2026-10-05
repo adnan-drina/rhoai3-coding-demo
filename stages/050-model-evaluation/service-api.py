@@ -74,7 +74,8 @@ def api(service, namespace, uri, ca, token, workspace):
 def discovery_items(response):
     # Pinned EvalHub OpenAPI ProviderResourceList/CollectionResourceList both use items[].
     items = response.get("items") if isinstance(response, dict) else None
-    if not isinstance(items, list) or not items or not all(isinstance(item, dict) for item in items):
+    if not isinstance(items, list) or not items or not all(isinstance(item, dict) and isinstance(item.get("resource"), dict)
+                                                                  and bool(item["resource"].get("id")) for item in items):
         raise RuntimeError("Native provider/collection discovery returned no actual resources.")
     return items
 
@@ -103,7 +104,8 @@ def main():
     ca = json.loads(oc("get", "configmap", "evalhub-service-ca", "-n", "demo-sandbox", "-o", "json"))["data"]["service-ca.crt"]
     token = oc("whoami", "--show-token").strip()  # Memory only, never output or process arguments.
     with api("evalhub", "evalhub", discovery["evalhub.url"], ca, token, "demo-sandbox") as request:
-        request("api/v1/health")
+        if request("api/v1/health").get("status") != "healthy":
+            raise RuntimeError("Native EvalHub health response is not healthy.")
         providers = request("api/v1/evaluations/providers?benchmarks=true")
         collections = request("api/v1/evaluations/collections")
         discovery_items(providers)
