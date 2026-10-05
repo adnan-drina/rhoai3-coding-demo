@@ -49,7 +49,10 @@ try:
  assert result.returncode==0,'Gateway certificate metadata read failed'
  tls={'metadata':json.loads(result.stdout)} if result.stdout.strip() else None
  if tls:assert tracked(tls) and not tls['metadata'].get('ownerReferences') and not tls['metadata'].get('deletionTimestamp'),'Existing gateway certificate requires reviewed adoption'
- database=get('statefulset','maas-postgres','models-as-a-service-db');pvcs=get('pvc',ns='models-as-a-service-db')['items']
+ database=get('statefulset','maas-postgres','models-as-a-service-db')
+ db_namespace=get('namespace','models-as-a-service-db');storage=get('pvc',ns='models-as-a-service-db')
+ assert storage is not None or db_namespace is None,'Unexpected empty storage API response in existing namespace'
+ pvcs=storage['items'] if storage is not None else []
  # Secret existence checks retrieve metadata only, never credential data.
  def secret_present(name,ns):
   r=subprocess.run(['oc','--request-timeout=10s','get','secret',name,'-n',ns,'--ignore-not-found','-o','jsonpath={.metadata.uid}'],capture_output=True,text=True,timeout=15)
@@ -80,5 +83,5 @@ try:
   assert database and all(o.get('uid')==database['metadata']['uid'] for o in pvc['metadata'].get('ownerReferences',[])),'Database PVC owner differs'
  sc=get('storageclass','gp3-csi');assert sc and sc['provisioner']=='ebs.csi.aws.com','Reviewed gp3 storage unavailable'
  print('fresh' if not(credential or database or pvcs or config) else 'retained')
-except (RuntimeError,AssertionError,KeyError,ValueError) as e:
+except (RuntimeError,AssertionError,KeyError,ValueError,TypeError) as e:
  print('ERROR: '+str(e),file=sys.stderr);sys.exit(1)
