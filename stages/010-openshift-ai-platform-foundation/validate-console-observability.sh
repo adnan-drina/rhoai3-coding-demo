@@ -21,10 +21,13 @@ servers=[p for p in get('perses',ns=ns)['items'] if any(o.get('uid')==x['metadat
 assert len(servers)==1,'Expected one console-owned Perses'
 p=servers[0];assert any(c['type']=='Available' and c['status']=='True' for c in p.get('status',{}).get('conditions',[])),'Console Perses unavailable'
 deployments=get('deployments',ns=ns)['items']
-for owner in [x['metadata']['uid'],p['metadata']['uid']]:
- owned=[d for d in deployments if any(o.get('uid')==owner for o in d['metadata'].get('ownerReferences',[]))]
- assert owned,'Native console/Perses deployment absent'
- for d in owned:
-  n=d['spec'].get('replicas',1);status=d.get('status',{});assert n>0 and status.get('observedGeneration')==d['metadata']['generation'] and status.get('updatedReplicas')==n and status.get('readyReplicas')==n and status.get('availableReplicas')==n,'Native deployment stale or unavailable'
+owned=[d for d in deployments if any(o.get('uid')==x['metadata']['uid'] for o in d['metadata'].get('ownerReferences',[]))]
+assert owned,'Native console deployment absent'
+for d in owned:
+ n=d['spec'].get('replicas',1);status=d.get('status',{});assert n>0 and status.get('observedGeneration')==d['metadata']['generation'] and status.get('updatedReplicas')==n and status.get('readyReplicas')==n and status.get('availableReplicas')==n,'Native console deployment stale or unavailable'
+owned=[d for d in get('statefulsets',ns=ns)['items'] if any(o.get('uid')==p['metadata']['uid'] for o in d['metadata'].get('ownerReferences',[]))]
+assert len(owned)==1,'Expected one native Perses StatefulSet'
+d=owned[0];n=d['spec'].get('replicas',1);status=d.get('status',{})
+assert n>0 and status.get('observedGeneration')==d['metadata']['generation'] and status.get('updatedReplicas')==n and status.get('readyReplicas')==n and status.get('currentRevision')==status.get('updateRevision') and status.get('currentRevision'),'Native Perses StatefulSet stale or unavailable'
 print('PASS Native console/Perses readiness; datasource persona permissions and user browser checks are separate')
 PY
