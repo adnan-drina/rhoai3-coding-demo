@@ -101,13 +101,18 @@ metadata={k:v for k,v in app['metadata'].items() if k in ['name','namespace','la
 metadata.get('annotations',{}).pop('kubectl.kubernetes.io/last-applied-configuration',None)
 body=json.dumps({'apiVersion':app['apiVersion'],'kind':'Application','metadata':metadata,'spec':spec})
 if not already:oc(['apply','-f','-'],body) # First modifying action: core Application only.
+def informational_project(r):
+ if r.get('group')!='project.openshift.io' or r.get('kind')!='Project' or r.get('name')!='rhoai-model-registries' or r.get('namespace') or r.get('status') is not None or r.get('requiresPruning') is not None:return False
+ project=get('projects.project.openshift.io','rhoai-model-registries');namespace=get('namespace','rhoai-model-registries')
+ assert project['metadata']['uid']==namespace['metadata']['uid'],'Informational Project alias UID differs from retained Namespace'
+ return True
 expected={('Namespace','rhoai-model-registries',''),('ModelRegistry','demo-registry','rhoai-model-registries'),('RoleBinding','demo-registry-rhods-admins','rhoai-model-registries'),('RoleBinding','demo-registry-rhoai-developers','rhoai-model-registries')}
 for _ in range(120):
  live=get('application',appname,'openshift-gitops');s=live.get('status',{});operation=s.get('operationState',{})
  if operation.get('phase')=='Failed':raise RuntimeError('Native bridge sync failed; preserve resources and diagnose')
  assert live['spec']['source']['path']==prefix+phase and live['spec']['source']['targetRevision']==sha,'Foundation source changed during handoff'
  if operation.get('phase')=='Succeeded' and operation.get('syncResult',{}).get('revision')==sha and operation.get('syncResult',{}).get('source',{}).get('path')==prefix+phase and s.get('sync',{}).get('revision')==sha and s.get('health',{}).get('status')=='Healthy':
-  drift=[r for r in s.get('resources',[]) if r.get('status')!='Synced']
+  drift=[r for r in s.get('resources',[]) if r.get('status')!='Synced' and not informational_project(r)]
   if phase=='protect':assert not drift,'Unexpected protection drift'
   else:assert {(r['kind'],r['name'],r.get('namespace','')) for r in drift}<=expected and all(r.get('requiresPruning') for r in drift),'Unexpected omitted-resource drift'
   for kind,name,ns in ids:
