@@ -6,3 +6,6 @@ resources:
 - openai-provider.yaml
 - gpt-6-luna.yaml
 - gpt-6-luna-modelref.yaml
+- redhat-provider.yaml
+- minimax-m2.yaml
+- minimax-m2-modelref.yaml

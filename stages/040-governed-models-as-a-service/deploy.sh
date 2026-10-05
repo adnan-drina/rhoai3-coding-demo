@@ -19,7 +19,7 @@ state=$(python3 "$SCRIPT_DIR/preflight.py")
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d);trap 'rm -rf "$work"' EXIT
 oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-operator -o json > "$work/ingress.json"
-ruby -ryaml -rjson -e '
+ruby -ryaml -rjson -ruri -e '
 a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1]
 domain=JSON.parse(File.read(ARGV[2])).dig("status","domain");abort "ERROR: native ingress domain is unavailable." unless domain && domain.match?(/\A[a-z0-9.-]+\z/)
 patches=[]
@@ -27,10 +27,13 @@ patches=[]
 a["spec"]["source"]["kustomize"]={"patches"=>[
  {"target"=>{"group"=>"gateway.networking.k8s.io","version"=>"v1","kind"=>"Gateway","name"=>"maas-default-gateway","namespace"=>"openshift-ingress"},"patch"=>JSON.generate(patches)},
  {"target"=>{"group"=>"maas.opendatahub.io","version"=>"v1alpha1","kind"=>"MaaSModelRef","name"=>"gpt-6-luna","namespace"=>"external-models"},"patch"=>JSON.generate([{ "op"=>"replace","path"=>"/spec/endpointOverride","value"=>"https://maas.#{domain}"}])}
-]};puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml" "$remote_sha" "$work/ingress.json" > "$work/application.yaml"
+]};provider=URI.parse(ENV.fetch("REDHAT_MODELS_BASE_URL"));abort "ERROR: approved Red Hat provider endpoint must be HTTPS." unless provider.scheme=="https" && provider.port==443 && ["","/","/v1","/v1/"].include?(provider.path) && provider.host && !provider.userinfo && !provider.query && !provider.fragment
+ a["spec"]["source"]["kustomize"]["patches"] << {"target"=>{"group"=>"inference.opendatahub.io","version"=>"v1alpha1","kind"=>"ExternalProvider","name"=>"redhat-models","namespace"=>"external-models"},"patch"=>JSON.generate([{"op"=>"replace","path"=>"/spec/endpoint","value"=>provider.host}])}
+ a["spec"]["source"]["kustomize"]["patches"] << {"target"=>{"group"=>"maas.opendatahub.io","version"=>"v1alpha1","kind"=>"MaaSModelRef","name"=>"minimax-m2","namespace"=>"external-models"},"patch"=>JSON.generate([{"op"=>"replace","path"=>"/spec/endpointOverride","value"=>"https://maas.#{domain}"}])};puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml" "$remote_sha" "$work/ingress.json" > "$work/application.yaml"
 # The first modifying action is this stage's own immutable Application.
 oc --request-timeout=10s apply -f "$work/application.yaml"
 "$SCRIPT_DIR/setup-provider-secret.sh"
+RHOAI_STAGE040_PROVIDER_SECRET=redhat-models-provider-api-key "$SCRIPT_DIR/setup-provider-secret.sh"
 "$SCRIPT_DIR/approve-operators.sh"
 if [[ "$state" == fresh ]]; then
  "$SCRIPT_DIR/setup-database.sh" --fresh-database

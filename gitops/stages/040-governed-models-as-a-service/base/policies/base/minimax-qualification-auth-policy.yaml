@@ -1,0 +1,27 @@
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: minimax-qualification
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: minimax-qualification
+    app.kubernetes.io/component: maas-auth-policy
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: '18'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  subjects:
+    users:
+    - ai-admin
+  modelRefs:
+  - name: minimax-m2
+    namespace: external-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: personal-access

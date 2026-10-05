@@ -29,6 +29,12 @@ class Pending(RuntimeError):
     pass
 
 
+class HTTPFailure(RuntimeError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__("Authenticated native API returned unexpected HTTP status " + str(status))
+
+
 def need(value, message):
     native.need(value, message)
 
@@ -56,8 +62,8 @@ def request(url, context, token=None, body=None, method=None):
 
 def api(url, context, token, body=None, method=None, expected=200):
     with request(url, context, token, body, method) as response:
-        need(response.status == expected,
-             "Authenticated native API returned unexpected HTTP status " + str(response.status))
+        if response.status != expected:
+            raise HTTPFailure(response.status)
         return json.loads(response.read(2 * 1024 * 1024))
 
 
@@ -171,6 +177,7 @@ def run():
     need(path.parent.is_dir() and Path("/private/tmp") in (path.parent.resolve(), *path.parent.resolve().parents) and not path.exists() and not path.is_symlink(), "Use a new private temporary evidence path")
     desired = native.rendered()
     refs = [o for o in desired if o["kind"] == "MaaSModelRef"]
+    refs.sort(key=lambda o: (o["metadata"]["namespace"] == "external-models", o["metadata"]["name"]))
     need(2 <= len(refs) <= 4, "Functional model count exceeds reviewed bounded scope")
     subscription = os.environ.get("RHOAI_STAGE040_SUBSCRIPTION", "personal-" + who)
     subscriptions = api(base + "/v1/subscriptions", context, user_token)
@@ -178,7 +185,7 @@ def run():
          "Persona cannot discover intended subscription")
     evidence = {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "persona": who,
                 "scope": "bounded authenticated API only; Studio browser and per-request EPP selection remain separate",
-                "models": [], "key_revoked": False,
+                "models": [], "model_http_failures": [], "key_revoked": False,
                 "not_qualified": ["quota enforcement", "per-request EPP invocation", "Studio visual acceptance"]}
     key_id = key = None
     revoke_probe = None
@@ -222,25 +229,37 @@ def run():
             if not external and revoke_probe is None:
                 revoke_probe = (url, dict(payload, max_tokens=1))
             before = counter(name) if not external else None
-            response = api(url, context, key, payload)
-            need(response.get("choices") and response["choices"][0].get("message", {}).get("content") and
-                 response.get("usage", {}).get("total_tokens", 0) > 0, "Bounded completion or usage is absent")
-            result = {"model": name, "catalog_id": model_id, "unauthenticated_denied": True, "invalid_key_denied": True, "completion_with_usage": True}
-            evidence["models"].append(result)  # Preserve successes if a later stream/metric test fails.
-            stream = dict(payload, stream=True, stream_options={"include_usage": True})
-            stream["messages"] = [{"role": "user", "content": "Count from 1 to 20, separated by commas. Do not think."}]
-            stream["max_completion_tokens" if name == "gpt-6-luna" else "max_tokens"] = 64
-            with request(url, context, key, stream) as response:
-                result.update(read_sse(response))
-            if name == "gpt-6-luna":
-                tools = dict(payload, max_completion_tokens=128,
-                             messages=[{"role": "user", "content": "Call report_status with status OK."}],
-                             tools=[{"type": "function", "function": {"name": "report_status", "description": "Return a status", "parameters": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"], "additionalProperties": False}}}],
-                             tool_choice={"type": "function", "function": {"name": "report_status"}})
-                reply = api(url, context, key, tools)
-                calls = reply.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
-                need(any(c.get("function", {}).get("name") == "report_status" and json.loads(c["function"]["arguments"]).get("status") == "OK" for c in calls), "Bounded GPT-6 Luna function call failed")
-                result["tool_call"] = True
+            phase = "completion"
+            try:
+                response = api(url, context, key, payload)
+                need(response.get("choices") and response["choices"][0].get("message", {}).get("content") and
+                     response.get("usage", {}).get("total_tokens", 0) > 0, "Bounded completion or usage is absent")
+                result = {"model": name, "catalog_id": model_id, "unauthenticated_denied": True, "invalid_key_denied": True, "completion_with_usage": True}
+                evidence["models"].append(result)  # Preserve successes if a later stream/metric test fails.
+                stream = dict(payload, stream=True, stream_options={"include_usage": True})
+                stream["messages"] = [{"role": "user", "content": "Count from 1 to 20, separated by commas. Do not think."}]
+                stream["max_completion_tokens" if name == "gpt-6-luna" else "max_tokens"] = 64
+                phase = "stream"
+                with request(url, context, key, stream) as response:
+                    if response.status != 200:
+                        raise HTTPFailure(response.status)
+                    result.update(read_sse(response))
+                if name == "gpt-6-luna":
+                    phase = "tool-call"
+                    tools = dict(payload, max_completion_tokens=128,
+                                 messages=[{"role": "user", "content": "Call report_status with status OK."}],
+                                 tools=[{"type": "function", "function": {"name": "report_status", "description": "Return a status", "parameters": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"], "additionalProperties": False}}}],
+                                 tool_choice={"type": "function", "function": {"name": "report_status"}})
+                    reply = api(url, context, key, tools)
+                    calls = reply.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+                    need(any(c.get("function", {}).get("name") == "report_status" and json.loads(c["function"]["arguments"]).get("status") == "OK" for c in calls), "Bounded GPT-6 Luna function call failed")
+                    result["tool_call"] = True
+            except HTTPFailure as error:
+                evidence["model_http_failures"].append({"model": name, "catalog_id": model_id,
+                                                       "phase": phase, "http_status": error.status})
+                failure = RuntimeError("One or more bounded model API checks failed; inspect sanitized per-model evidence")
+                print("[FAIL] Bounded " + name + " " + phase + " HTTP status " + str(error.status))
+                continue
             if not external:
                 deadline = time.monotonic() + 90
                 while counter(name) <= before:
