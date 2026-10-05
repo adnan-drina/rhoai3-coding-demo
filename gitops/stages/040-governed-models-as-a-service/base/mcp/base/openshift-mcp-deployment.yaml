@@ -1,4 +1,5 @@
-# Ref: https://github.com/openshift/openshift-mcp-server/tree/main/charts/kubernetes-mcp-server
+# Upstream v0.0.67, linux/amd64; read-only Streamable HTTP /mcp contract.
+# Ref: https://github.com/containers/kubernetes-mcp-server/tree/v0.0.67
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: openshift-mcp
-          image: quay.io/redhat-user-workloads/crt-nshift-lightspeed-tenant/openshift-mcp-server:latest
+          image: quay.io/containers/kubernetes_mcp_server@sha256:604fa25a8c823da42cb86b6030a6249500317466db94bb2031e099f337b6a7d9
           imagePullPolicy: IfNotPresent
           args:
             - --config

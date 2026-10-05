@@ -16,8 +16,6 @@ metadata:
     # register-model-cards.sh restamps these after a fresh registry, and
     # Argo CD ignores drift on the three modelregistry labels.
     modelregistry.opendatahub.io/name: demo-registry
-    modelregistry.opendatahub.io/registered-model-id: "6"
-    modelregistry.opendatahub.io/model-version-id: "8"
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -45,6 +43,7 @@ spec:
       refs:
         - name: maas-default-gateway
           namespace: openshift-ingress
+          sectionName: qwen3-8
     route: {}
     scheduler:
       # Same lean single-replica profile as qwen3-6-27b: prefix-cache scoring

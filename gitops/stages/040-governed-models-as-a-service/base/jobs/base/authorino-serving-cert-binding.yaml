@@ -1,0 +1,21 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: authorino-serving-cert
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: authorino-serving-cert
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+subjects:
+- kind: ServiceAccount
+  name: authorino-serving-cert
+  namespace: kuadrant-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: authorino-serving-cert

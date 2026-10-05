@@ -1,0 +1,56 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-enable-dsc-maas
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-dsc-maas
+    app.kubernetes.io/component: maas
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '14'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 1200
+  template:
+    spec:
+      serviceAccountName: job-enable-dsc-maas
+      restartPolicy: Never
+      containers:
+      - name: patch
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          oc --request-timeout=10s get datasciencecluster default-dsc >/dev/null
+          oc --request-timeout=10s patch datasciencecluster default-dsc --type=merge -p \
+            '{"spec":{"components":{"aigateway":{"managementState":"Managed","modelsAsAService":{"managementState":"Managed"},"batchGateway":{"managementState":"Removed"}},"ogx":{"managementState":"Managed"}}}}'
+          test "$(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.aigateway.modelsAsAService.managementState}')" = Managed
+          test "$(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.ogx.managementState}')" = Managed
+          oc --request-timeout=10s patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type=merge -p '{"spec":{"dashboardConfig":{"genAiStudio":true,"modelAsService":true,"vLLMDeploymentOnMaaS":true}}}'
+          for component in aigateways:default-aigateway ogxs:default-ogx; do
+           resource="${component%%:*}.components.platform.opendatahub.io";name="${component#*:}"
+           ready=false
+           for _ in $(seq 1 100); do
+            status="$(oc --request-timeout=10s get "$resource" "$name" --ignore-not-found -o go-template='{{.metadata.generation}}|{{.status.observedGeneration}}|{{.status.phase}}|{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}')"
+            if [[ -n "$status" ]]; then
+             IFS='|' read -r generation observed phase condition <<< "$status"
+             if [[ "$generation" =~ ^[1-9][0-9]*$ && "$observed" == "$generation" && "$phase" == Ready && "$condition" == True ]]; then ready=true;break;fi
+            fi
+            sleep 5
+           done
+           [[ "$ready" == true ]] || { echo 'ERROR: native AIGateway/OGX current readiness timed out; inspect native component conditions.' >&2;exit 1; }
+          done
+          echo 'PASS Current native AIGateway and OGX controllers; project playground and functional inference remain separate.'
+    metadata:
+      labels:
+        app.kubernetes.io/name: enable-dsc-maas
+        app.kubernetes.io/component: maas
+        app.kubernetes.io/part-of: rhoai3-coding-demo
+        app.kubernetes.io/managed-by: argocd

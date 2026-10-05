@@ -9,5 +9,6 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
     openshift.io/display-name: Models-as-a-Service Database
     openshift.io/description: Demo-local PostgreSQL database namespace for MaaS API key lifecycle data.

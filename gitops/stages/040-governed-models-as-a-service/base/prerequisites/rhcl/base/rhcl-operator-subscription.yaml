@@ -1,0 +1,31 @@
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: rhcl-operator
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: rhcl-operator
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+spec:
+  channel: stable
+  installPlanApproval: Manual
+  name: rhcl-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  startingCSV: rhcl-operator.v1.4.3
+  config:
+    env:
+    - name: AUTH_SERVICE_TIMEOUT
+      value: 2s
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: '2'
+        memory: 1Gi

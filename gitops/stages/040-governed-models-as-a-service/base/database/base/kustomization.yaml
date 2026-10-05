@@ -6,3 +6,4 @@ resources:
   - database-namespace.yaml
   - service.yaml
   - statefulset.yaml
+  - networkpolicy.yaml

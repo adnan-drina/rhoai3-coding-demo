@@ -1,3 +1,4 @@
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -6,14 +7,17 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/instance: openshift-gitops
-    demo.rhoai.io/stage: "040"
+    app.kubernetes.io/name: governed-models-as-a-service
+    app.kubernetes.io/component: application
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
-    argocd.argoproj.io/manifest-generate-paths: .
+    argocd.argoproj.io/sync-wave: '4'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/040-governed-models-as-a-service"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: rhoai-demo
   source:
-    # repoURL and targetRevision are set by deploy.sh from .env (GIT_REPO_URL, GIT_REPO_BRANCH)
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
     path: gitops/stages/040-governed-models-as-a-service/base
@@ -25,46 +29,56 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
-      - SkipDryRunOnMissingResource=true
-      - ServerSideDiff=true
-      - RespectIgnoreDifferences=true
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    - ServerSideDiff=true
+    - RespectIgnoreDifferences=true
     retry:
-      limit: 20
+      limit: 10
       backoff:
-        duration: 10s
+        duration: 5s
         factor: 2
-        maxDuration: 5m
+        maxDuration: 3m
   ignoreDifferences:
-    - group: ""
-      kind: Secret
-      name: maas-postgres-credentials
-      namespace: models-as-a-service-db
-      jsonPointers:
-        - /data
-    - group: ""
-      kind: Secret
-      name: maas-db-config
-      namespace: redhat-ods-applications
-      jsonPointers:
-        - /data
-    # Intentional scale operations (cost shutdown per env-manage-resources)
-    # set spec.replicas live; selfHeal must not restart the GPU model.
-    - group: serving.kserve.io
-      kind: LLMInferenceService
-      name: qwen3-6-27b
-      namespace: models-as-a-service
-      jsonPointers:
-        - /spec/replicas
-        - /metadata/labels/modelregistry.opendatahub.io~1name
-        - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
-        - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
-    - group: serving.kserve.io
-      kind: LLMInferenceService
-      name: qwen3-8-27b-int4
-      namespace: models-as-a-service
-      jsonPointers:
-        - /spec/replicas
-        - /metadata/labels/modelregistry.opendatahub.io~1name
-        - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
-        - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
+  - group: ''
+    kind: Secret
+    name: maas-postgres-credentials
+    namespace: models-as-a-service-db
+    jsonPointers:
+    - "/data"
+  - group: ''
+    kind: Secret
+    name: maas-db-config
+    namespace: redhat-ai-gateway-infra
+    jsonPointers:
+    - "/data"
+  - group: serving.kserve.io
+    kind: LLMInferenceService
+    name: qwen3-6-27b
+    namespace: models-as-a-service
+    jsonPointers:
+    - "/spec/replicas"
+    - "/metadata/labels/modelregistry.opendatahub.io~1name"
+    - "/metadata/labels/modelregistry.opendatahub.io~1registered-model-id"
+    - "/metadata/labels/modelregistry.opendatahub.io~1model-version-id"
+  - group: serving.kserve.io
+    kind: LLMInferenceService
+    name: qwen3-8-27b-int4
+    namespace: models-as-a-service
+    jsonPointers:
+    - "/spec/replicas"
+    - "/metadata/labels/modelregistry.opendatahub.io~1name"
+    - "/metadata/labels/modelregistry.opendatahub.io~1registered-model-id"
+    - "/metadata/labels/modelregistry.opendatahub.io~1model-version-id"
+  - group: ''
+    kind: Secret
+    name: maas-gateway-tls
+    namespace: openshift-ingress
+    jsonPointers:
+    - "/data"
+  - group: ''
+    kind: ConfigMap
+    name: authorino-service-ca
+    namespace: kuadrant-system
+    jsonPointers:
+    - "/data/service-ca.crt"

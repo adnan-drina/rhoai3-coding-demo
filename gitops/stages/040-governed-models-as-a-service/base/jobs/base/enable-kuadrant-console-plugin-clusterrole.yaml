@@ -1,0 +1,22 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: enable-kuadrant-console-plugin
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '14'
+rules:
+- apiGroups:
+  - operator.openshift.io
+  resources:
+  - consoles
+  verbs:
+  - get
+  - patch
+  resourceNames:
+  - cluster

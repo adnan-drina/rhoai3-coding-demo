@@ -1,0 +1,31 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-prepare-maas-gateway-tls
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '8'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - cert-manager-ingress-cert
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - maas-gateway-tls
+  verbs:
+  - get
+  - patch

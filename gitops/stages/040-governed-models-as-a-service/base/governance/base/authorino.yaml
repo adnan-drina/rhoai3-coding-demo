@@ -20,3 +20,12 @@ spec:
   oidcServer:
     tls:
       enabled: false
+  volumes:
+    items:
+      - name: openshift-service-ca
+        mountPath: /etc/ssl/certs
+        configMaps:
+          - authorino-service-ca
+        items:
+          - key: service-ca.crt
+            path: openshift-service-ca.crt

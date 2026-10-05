@@ -1,10 +1,9 @@
+---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 resources:
-  # The kuadrant family (rhcl/authorino/dns/limitador) is installed, pinned to
-  # 1.3.x, and then UNSUBSCRIBED by this Job - so OLM stops perpetually pending
-  # the incompatible 1.4.x upgrade that would otherwise poison the shared
-  # openshift-operators InstallPlan for the Stage 050 pipelines/rhtas operators.
-  # See the header in provision-kuadrant.yaml for the full rationale.
-  - provision-kuadrant.yaml
+- rhcl-operator-subscription.yaml
+- authorino-operator-subscription.yaml
+- dns-operator-subscription.yaml
+- limitador-operator-subscription.yaml
+- servicemeshoperator3-subscription.yaml

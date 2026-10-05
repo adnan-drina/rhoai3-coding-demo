@@ -1,0 +1,47 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-prepare-maas-gateway-tls
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '9'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: job-prepare-maas-gateway-tls
+      restartPolicy: Never
+      containers:
+      - name: prepare
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          cert_name="$(oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')"
+          [[ "$cert_name" == cert-manager-ingress-cert ]] || { echo 'ERROR: ingress certificate source requires review.' >&2; exit 1; }
+          source_data="$(oc --request-timeout=10s get secret "$cert_name" -n openshift-ingress -o go-template='{{index .data "tls.crt"}}|{{index .data "tls.key"}}')"
+          IFS='|' read -r crt key <<< "$source_data"
+          [[ -n "$crt" && -n "$key" ]] || { echo 'ERROR: native ingress certificate is incomplete.' >&2; exit 1; }
+          metadata="$(oc --request-timeout=10s get secret maas-gateway-tls -n openshift-ingress -o go-template='{{.metadata.uid}}|{{.metadata.resourceVersion}}|{{index .metadata.annotations "argocd.argoproj.io/tracking-id"}}|{{len .metadata.ownerReferences}}|{{if .metadata.deletionTimestamp}}terminating{{end}}')"
+          IFS='|' read -r uid rv tracking owners terminating <<< "$metadata"
+          [[ -n "$uid" && -n "$rv" && "$tracking" == '040-governed-models-as-a-service:/Secret:openshift-ingress/maas-gateway-tls' && "$owners" == 0 && -z "$terminating" ]] || { echo 'ERROR: gateway TLS target ownership differs.' >&2; exit 1; }
+          printf '[{"op":"test","path":"/metadata/uid","value":"%s"},{"op":"test","path":"/metadata/resourceVersion","value":"%s"},{"op":"test","path":"/metadata/annotations/argocd.argoproj.io~1tracking-id","value":"%s"},{"op":"replace","path":"/data","value":{"tls.crt":"%s","tls.key":"%s"}}]' "$uid" "$rv" "$tracking" "$crt" "$key" | oc --request-timeout=10s patch secret maas-gateway-tls -n openshift-ingress --type=json --patch-file=/dev/stdin >/dev/null
+          unset crt key
+          echo 'PASS Gateway TLS synchronized from reviewed native ingress certificate.'
+    metadata:
+      labels:
+        app.kubernetes.io/name: prepare-maas-gateway-tls
+        app.kubernetes.io/component: maas-gateway
+        app.kubernetes.io/part-of: rhoai3-coding-demo
+        app.kubernetes.io/managed-by: argocd

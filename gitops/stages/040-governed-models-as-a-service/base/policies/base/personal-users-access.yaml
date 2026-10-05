@@ -29,8 +29,8 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: gpt-4o-mini
-      namespace: models-as-a-service
+    - name: gpt-6-luna
+      namespace: external-models
       tokenRateLimits:
         - limit: 100000
           window: 1h
@@ -64,8 +64,8 @@ spec:
       namespace: models-as-a-service
     - name: qwen3-8-27b-int4
       namespace: models-as-a-service
-    - name: gpt-4o-mini
-      namespace: models-as-a-service
+    - name: gpt-6-luna
+      namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform
@@ -101,8 +101,8 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: gpt-4o-mini
-      namespace: models-as-a-service
+    - name: gpt-6-luna
+      namespace: external-models
       tokenRateLimits:
         - limit: 100000
           window: 1h
@@ -136,8 +136,8 @@ spec:
       namespace: models-as-a-service
     - name: qwen3-8-27b-int4
       namespace: models-as-a-service
-    - name: gpt-4o-mini
-      namespace: models-as-a-service
+    - name: gpt-6-luna
+      namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform
@@ -173,8 +173,8 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: gpt-4o-mini
-      namespace: models-as-a-service
+    - name: gpt-6-luna
+      namespace: external-models
       tokenRateLimits:
         - limit: 100000
           window: 1h
@@ -208,8 +208,8 @@ spec:
       namespace: models-as-a-service
     - name: qwen3-8-27b-int4
       namespace: models-as-a-service
-    - name: gpt-4o-mini
-      namespace: models-as-a-service
+    - name: gpt-6-luna
+      namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform

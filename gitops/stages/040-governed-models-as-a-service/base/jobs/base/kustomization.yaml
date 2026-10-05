@@ -1,9 +1,29 @@
+---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 resources:
-  - patch-gateway-hostname.yaml
-  - configure-kuadrant.yaml
-  - patch-dsc-maas.yaml
-  - restart-kserve-controllers.yaml
-  - enable-kuadrant-console-plugin.yaml
+- job-prepare-maas-gateway-tls-serviceaccount.yaml
+- job-prepare-maas-gateway-tls-role.yaml
+- job-prepare-maas-gateway-tls-clusterrole.yaml
+- job-prepare-maas-gateway-tls-rolebinding.yaml
+- job-prepare-maas-gateway-tls-clusterrolebinding.yaml
+- job-prepare-maas-gateway-tls-job.yaml
+- enable-maas-serviceaccount.yaml
+- enable-maas-role.yaml
+- enable-maas-binding.yaml
+- enable-maas-job.yaml
+- enable-kuadrant-console-plugin-serviceaccount.yaml
+- enable-kuadrant-console-plugin-clusterrole.yaml
+- enable-kuadrant-console-plugin-clusterrolebinding.yaml
+- enable-kuadrant-console-plugin-configmap.yaml
+- enable-kuadrant-console-plugin-job.yaml
+- enable-maas-dashboard-role.yaml
+- enable-maas-dashboard-binding.yaml
+- authorino-serving-cert-serviceaccount.yaml
+- authorino-serving-cert-role.yaml
+- authorino-serving-cert-binding.yaml
+- authorino-serving-cert-job.yaml
+- wait-db-credentials-serviceaccount.yaml
+- wait-db-credentials-role.yaml
+- wait-db-credentials-binding.yaml
+- wait-db-credentials-job.yaml

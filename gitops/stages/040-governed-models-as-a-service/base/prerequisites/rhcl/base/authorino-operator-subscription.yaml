@@ -1,0 +1,20 @@
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: authorino-operator
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: authorino-operator
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+spec:
+  channel: stable
+  installPlanApproval: Manual
+  name: authorino-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  startingCSV: authorino-operator.v1.4.3

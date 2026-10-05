@@ -1,0 +1,55 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: authorino-serving-cert
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: authorino-serving-cert
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '11'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: authorino-serving-cert
+        app.kubernetes.io/component: authorization
+        app.kubernetes.io/part-of: rhoai3-coding-demo
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      serviceAccountName: authorino-serving-cert
+      restartPolicy: Never
+      containers:
+      - name: configure
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          uid="$(oc --request-timeout=10s get authorinos.operator.authorino.kuadrant.io authorino -n kuadrant-system -o jsonpath='{.metadata.uid}')"
+          [[ -n "$uid" ]] || { echo 'ERROR: native Authorino identity unavailable.' >&2; exit 1; }
+          for _ in $(seq 1 50); do
+           metadata="$(oc --request-timeout=10s get service authorino-authorino-authorization -n kuadrant-system --ignore-not-found -o go-template='{{.metadata.uid}}|{{.metadata.resourceVersion}}|{{range .metadata.ownerReferences}}{{if .controller}}{{.uid}}{{end}}{{end}}|{{if .metadata.deletionTimestamp}}terminating{{end}}|{{if .metadata.annotations}}present{{end}}')"
+           if [[ -n "$metadata" ]]; then
+            IFS='|' read -r service_uid rv owner terminating annotations <<< "$metadata"
+            [[ "$owner" == "$uid" && -n "$service_uid" && -n "$rv" && -z "$terminating" ]] || { echo 'ERROR: native Authorino Service ownership differs.' >&2; exit 1; }
+          annotation_path='/metadata/annotations/service.beta.openshift.io~1serving-cert-secret-name'
+          annotation_value='"authorino-server-cert"'
+          if [[ "$annotations" != present ]]; then
+           annotation_path='/metadata/annotations'
+           annotation_value='{"service.beta.openshift.io/serving-cert-secret-name":"authorino-server-cert"}'
+          fi
+          printf '[{"op":"test","path":"/metadata/uid","value":"%s"},{"op":"test","path":"/metadata/resourceVersion","value":"%s"},{"op":"add","path":"%s","value":%s}]' "$service_uid" "$rv" "$annotation_path" "$annotation_value" | oc --request-timeout=10s patch service authorino-authorino-authorization -n kuadrant-system --type=json --patch-file=/dev/stdin >/dev/null
+            echo 'PASS Native Authorino serving certificate requested.';exit 0
+           fi
+           sleep 5
+          done
+          echo 'ERROR: native Authorino Service did not appear.' >&2;exit 1

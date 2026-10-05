@@ -11,13 +11,8 @@ metadata:
     llm-d.ai/deployment-mode: single-gpu-per-replica
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
-    # Deployments tab on the model card. Ids are assigned by demo-registry.
-    # This cluster: Qwen3.6-27B-FP8 is registered model 1, version v3.0 is 2.
-    # register-model-cards.sh restamps these after a fresh registry, and
-    # Argo CD ignores drift on the three modelregistry labels.
+    # Registry IDs are assigned by the authenticated Stage040 registration step.
     modelregistry.opendatahub.io/name: demo-registry
-    modelregistry.opendatahub.io/registered-model-id: "1"
-    modelregistry.opendatahub.io/model-version-id: "2"
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -32,13 +27,14 @@ metadata:
 spec:
   model:
     name: qwen3-6-27b
-    uri: hf://RedHatAI/Qwen3.6-27B-FP8
+    uri: hf://RedHatAI/Qwen3.6-27B-FP8:57d986c3ab0397a811e5150190eff67f76fab6e0
   replicas: 1
   router:
     gateway:
       refs:
         - name: maas-default-gateway
           namespace: openshift-ingress
+          sectionName: qwen3-6
     route: {}
     scheduler:
       # Lean scheduler profile (2026-07-14): prefix-cache scoring picks among

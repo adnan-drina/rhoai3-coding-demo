@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/component: database
   annotations:
     argocd.argoproj.io/sync-wave: "8"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   serviceName: maas-postgres
   replicas: 1
@@ -22,7 +23,7 @@ spec:
     spec:
       containers:
         - name: postgresql
-          image: registry.redhat.io/rhel9/postgresql-16:latest
+          image: registry.redhat.io/rhel9/postgresql-16@sha256:510ac645787b2ba27f6ab8bb8488656d025d8c2ddcbf8cc5b15447dac941687b
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
@@ -68,6 +69,7 @@ spec:
           app.kubernetes.io/name: maas-postgres
           app.kubernetes.io/component: database
       spec:
+        storageClassName: gp3-csi
         accessModes:
           - ReadWriteOnce
         resources:

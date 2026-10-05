@@ -1,0 +1,21 @@
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: gpt-6-luna
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: gpt-6-luna
+    app.kubernetes.io/component: maas-model-ref
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '17'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: GPT-6 Luna
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: gpt-6-luna
+  tenantRef: models-as-a-service
+  endpointOverride: https://maas.placeholder.example.com

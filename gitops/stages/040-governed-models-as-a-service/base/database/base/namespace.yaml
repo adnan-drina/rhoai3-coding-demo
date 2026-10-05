@@ -6,10 +6,12 @@ metadata:
     app.kubernetes.io/name: models-as-a-service
     app.kubernetes.io/component: maas
     kueue.openshift.io/managed: "true"
+    demo.rhoai.io/maas-route-access: "true"
     opendatahub.io/dashboard: "true"
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
     openshift.io/display-name: Models-as-a-Service
     openshift.io/description: MaaS tenant, model backends, and governance resources for the RHOAI demo.

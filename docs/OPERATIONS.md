@@ -696,125 +696,29 @@ Canonical validation passed exact Application reconciliation, current native DSC
 
 ### Stage 040
 
-Stage 040 deploys the governed Models-as-a-Service control point around the Red Hat OpenShift AI 3.4 MaaS controller and API: Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, the shared demo consumer subscription, token limits, and tenant telemetry.
+Stage 040 source targets native OpenShift AI 3.5 AIGateway/MaaS and GenAI Studio. It preserves the retained Stage 010 bridge and Stage 030 registry/serving foundation. The ordinary deployment's first write is its own immutable Application; run the reviewed `scripts/platform/delegate-maas-fields.sh` separately before the first existing-cluster deployment. This merges only exact component/dashboard delegation paths and does not repoint the core Application.
 
-RHOAI 3.4 owns the MaaS controller and `maas-api` deployments. Do not reintroduce the previous upstream `maas-controller` deployment or `maas-api` image override: those pre-3.4 workarounds conflict with the operator-owned selectors, RBAC, CRDs, and images. GitOps should manage only demo MaaS model references, access policies, subscriptions, gateway policy, observability helpers, and validation jobs unless product documentation and live schema checks require otherwise.
+Persistent Manual OLM subscriptions select RHCL 1.4.3, Authorino 1.4.3, DNS 0.6.0, Limitador 1.4.2, Service Mesh 3.4.2 and LWS 1.0.1. The native OpenShift Gateway controller supplies the existing accepted GatewayClass; installing the Mesh operator is not proof of an initialized Istio instance. Native operators own generated workloads. Do not patch their CSVs, Deployments or monitoring operands.
 
-RHOAI 3.4 uses MaaS subscriptions instead of the 3.3 tier model. The active GitOps path no longer creates `tier-to-group-mapping`, `tier-*` groups, tier ServiceAccount RBAC, or tier-shaped dashboard metrics. Access is granted to the demo OpenShift groups through `MaaSAuthPolicy`, quota and token limits are set through `MaaSSubscription`, and telemetry is enabled on `Tenant/default-tenant`.
+The one Gateway uses distinct API/external, Qwen 3.6 and Qwen 3.8 HTTPS hosts. Namespace restrictions and LLMI listener references separate routing. The layout is a project qualification candidate for scheduler issue INFERENG-6962; actual EPP provenance remains a required independent proof. The gateway resources ConfigMap retains a 1Gi proxy memory reservation and 2Gi limit; change that native source rather than the generated proxy.
 
-Stage 040 validation runs a short GuideLLM load test when a MaaS API key is available. Red Hat OpenShift AI 3.4 lists GuideLLM support through the Evaluation Stack control plane as a Developer Preview capability; this demo currently uses the upstream GuideLLM container directly to generate repeatable load against the MaaS OpenAI-compatible endpoint. Results are stored as `ConfigMap` objects in the `maas` namespace with names beginning `guidellm-`.
+The durable PostgreSQL database remains in `models-as-a-service-db`. Runtime credentials are reused, never rotated by deployment. A metadata-only wave-7 credential barrier blocks database/storage wave 8 until the private setup helper supplies them. Native AIGateway creates `redhat-ai-gateway-infra`, where the runtime helper creates or reuses `maas-db-config`. Missing credentials with retained storage/configuration stop deployment. PostgreSQL plaintext transport is constrained by a namespace-scoped NetworkPolicy.
 
-The Gen AI Playground token path uses the dashboard BFF to request a MaaS token, then passes that token to Llama Stack as request provider data. Llama Stack's `remote::vllm` provider gives that request token precedence over provider-specific environment tokens. To keep one Playground usable with private and approved external MaaS models, the demo uses one consumer subscription named `demo-models-subscription`. Stage 040 creates it with private model refs and expands it after the approved external `MaaSModelRef` resources are Ready. Product MaaS API key creation is validated through `/maas-api/v1/api-keys`.
-
-To compare the two private models with the same governed MaaS traffic shape, run:
+The project-owned `external-models` namespace contains the native ExternalProvider, ExternalModel and MaaSModelRef. `setup-provider-secret.sh` reuses the approved OpenAI credential or supplies approved local input through stdin. Git contains no provider key; the native Secret uses `inference.llm-d.ai/ipp-managed=true`. GPT-6 Luna uses `openai-chat`; function calls require `reasoning_effort=none`, and Responses built-in tools are outside this protocol. Red Hat-hosted MiniMax remains conditional on actual governed incremental streaming and final usage proof.
 
 ```bash
-./stages/040-governed-models-as-a-service/compare-private-models.sh
-./stages/040-governed-models-as-a-service/summarize-guidellm-results.sh
+./stages/040-governed-models-as-a-service/deploy.sh
+./stages/040-governed-models-as-a-service/validate.sh --readiness
+RHOAI_STAGE040_PERSONA_KUBECONFIG=/private/path/persona-kubeconfig \
+./stages/040-governed-models-as-a-service/validate.sh --functional
+./stages/040-governed-models-as-a-service/register-model-cards.sh
 ```
 
-The MaaS gateway's generated proxy Deployment takes its resource settings from
-`maas-gateway-resources`, referenced by the Gateway's `infrastructure.parametersRef`.
-Stage 040 owns a 1 GiB memory reservation and 2 GiB limit. This adds headroom above
-the observed near-1 GiB working set; it does not establish the cause of continued
-memory growth. Sync Stage 040 first, read back the generated Deployment resources,
-then verify readiness, restart counts and memory before starting a migration.
-Do not edit the generated Deployment directly. Roll back by reverting the
-ConfigMap and Gateway reference together through GitOps.
+Functional validation creates and revokes only its own expiring synthetic key, with bounded chat/stream/tool-call/authorization/traffic checks. Quota enforcement, per-request EPP proof and user Studio interaction are recorded separately; an API response does not establish all stage acceptance. No GuideLLM benchmark runs implicitly.
 
-Useful checks:
+GenAI Studio enablement is native OGX. The user creates a project playground through the dashboard and selects an available governed endpoint. Its generated pgvector resources remain native service-owned; do not pre-author them or patch generated workloads. Basic remote inference needs no new GPU or bucket; RAG, AutoRAG and AutoML are excluded.
 
-```bash
-oc get maasmodelref -n maas
-oc get maasauthpolicy,maassubscription -n models-as-a-service
-oc get maassubscription demo-models-subscription -n models-as-a-service -o yaml
-oc get gateway maas-default-gateway -n openshift-ingress
-oc get deployment maas-controller maas-api -n redhat-ods-applications
-oc get tenant default-tenant -n models-as-a-service -o yaml
-oc get configmap -n maas -l app.kubernetes.io/name=guidellm-load-test
-```
-
-Useful GuideLLM overrides:
-
-```bash
-GUIDELLM_MODEL=qwen3-6-35b-a3b \
-GUIDELLM_PROFILE=constant \
-GUIDELLM_RATE=1 \
-GUIDELLM_MAX_SECONDS=20 \
-GUIDELLM_REQUESTS=5 \
-GUIDELLM_OUTPUT_TOKENS=64 \
-GUIDELLM_PROMPT="Explain why governed model access matters for enterprise software teams." \
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
-```
-
-### Stage 040 — approved external model access
-
-Stage 040 owns approved external model access through MaaS (folded in from the former external-models stage by the 2026-07-06 restructure).
-
-External models share MaaS governance, subscription, API-key, rate-limit, token-limit, and gateway telemetry controls with private models. They do not share the same runtime observability boundary. OpenShift can observe local vLLM/GPU/Kueue signals for Stage 030 models, but external providers expose only gateway-visible request behavior and provider API success/failure from the demo platform perspective.
-
-**Credential provisioning:** `deploy.sh` reads `.env` and provisions secrets before applying the Argo CD Application:
-
-| `.env` variable | Secret created | Namespace | Purpose |
-|----------------|----------------|-----------|---------|
-| `OPENAI_API_KEY` | `openai-api-key` | `maas` | Credential injection for external models (gpt-4o, gpt-4o-mini) |
-
-The Argo CD Application has `ignoreDifferences` configured for these Secrets so `selfHeal` does not revert provisioned values to the GitOps placeholder.
-
-If you need to update a credential after initial deployment:
-
-```bash
-oc create secret generic openai-api-key -n maas \
-    --from-literal=api-key="sk-proj-YOUR-KEY" \
-    --dry-run=client -o yaml | oc apply -f -
-oc label secret openai-api-key -n maas inference.networking.k8s.io/bbr-managed=true --overwrite
-```
-
-Useful checks:
-
-```bash
-oc get externalmodel -n maas
-oc get maasmodelref gpt-4o gpt-4o-mini -n maas
-oc get maasauthpolicy external-models-access -n models-as-a-service
-oc get maassubscription demo-models-subscription -n models-as-a-service
-oc get secret openai-api-key -n maas -o jsonpath='{.data.api-key}' | base64 -d | head -c10
-```
-
-External inference validation is opt-in because it spends provider tokens:
-
-```bash
-GUIDELLM_EXTERNAL_SMOKE_TEST=true \
-GUIDELLM_REQUESTS=1 \
-GUIDELLM_OUTPUT_TOKENS=32 \
-./stages/050-approved-external-model-access/validate.sh
-```
-
-The opt-in check creates a MaaS API key for `demo-models-subscription` at runtime and passes it to the GuideLLM Job without printing or committing it. The external-model validation disables GuideLLM's default `/health` backend probe for this path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
-
-To validate the same dashboard path used by the Gen AI Playground, set:
-
-```bash
-GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
-./stages/050-approved-external-model-access/validate.sh
-```
-
-That check sends small non-streaming requests through the dashboard BFF to all four Playground MaaS model entries. It is intentionally opt-in because it can exercise approved external provider credentials.
-
-### Stage 040 — MCP context integrations
-
-Stage 040 owns the MCP context integrations (folded in from the former MCP stage by the 2026-07-06 restructure).
-
-| `.env` variable | Secret created | Namespace | Purpose |
-|----------------|----------------|-----------|---------|
-| `SLACK_BOT_TOKEN` | `slack-mcp-credentials` | `coding-assistant` | Slack MCP server authentication |
-| `BRIGHTDATA_API_TOKEN` | `brightdata-mcp-credentials` | `coding-assistant` | BrightData MCP server authentication |
-
-Useful checks:
-
-```bash
-oc get pods -n coding-assistant
-oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
-```
+Required read-only OpenShift MCP remains at `openshift-mcp.rhoai-mcp.svc:8080/mcp`, with pinned upstream v0.0.67 and existing Kubernetes RBAC. Slack/BrightData are inactive optional integrations. Upstream image origin does not establish Red Hat product support. See the [Stage 040 technical plan](migration/040-governed-serving-plan.md) for dispositions, sources and live qualification boundaries.
 
 ### Stage 060 — Dev Spaces (devspaces component)
 

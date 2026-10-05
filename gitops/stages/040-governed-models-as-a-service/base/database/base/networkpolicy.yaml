@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: maas-postgres
+  namespace: models-as-a-service-db
+  labels:
+    app.kubernetes.io/name: maas-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: maas-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ai-gateway-infra
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ods-applications
+      ports:
+        - protocol: TCP
+          port: 5432

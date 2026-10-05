@@ -18,7 +18,7 @@ spec:
     disableModelRegistry: true
     disableKueue: false
     disableTracking: false
-    genAiStudio: true
-    modelAsService: true
+    genAiStudio: false
+    modelAsService: false
     observabilityDashboard: true
-    vLLMDeploymentOnMaaS: true
+    vLLMDeploymentOnMaaS: false

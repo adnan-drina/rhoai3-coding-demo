@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-models
+  labels:
+    app.kubernetes.io/name: external-models
+    app.kubernetes.io/component: external-models
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    openshift.io/display-name: Governed External Models

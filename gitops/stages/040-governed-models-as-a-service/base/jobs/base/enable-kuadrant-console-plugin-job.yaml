@@ -1,0 +1,46 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enable-kuadrant-console-plugin
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '14'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: enable-kuadrant-console-plugin
+      containers:
+      - name: enable-plugin
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        env:
+        - name: PLUGIN_NAME
+          value: kuadrant-console-plugin
+        command:
+        - "/bin/bash"
+        args:
+        - "/app/enable-console-plugin.sh"
+        volumeMounts:
+        - name: enable-plugin
+          mountPath: "/app"
+      volumes:
+      - name: enable-plugin
+        configMap:
+          name: enable-kuadrant-console-plugin
+          defaultMode: 493
+    metadata:
+      labels:
+        app.kubernetes.io/name: enable-kuadrant-console-plugin
+        app.kubernetes.io/component: api-gateway-governance
+        app.kubernetes.io/part-of: rhoai3-coding-demo
+        app.kubernetes.io/managed-by: argocd
+  backoffLimit: 1
+  activeDeadlineSeconds: 300

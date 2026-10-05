@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enable-kuadrant-console-plugin
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '14'
+data:
+  enable-console-plugin.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    snapshot="$(oc --request-timeout=10s get consoles.operator.openshift.io cluster -o jsonpath='{.metadata.resourceVersion}{"\n"}{range .spec.plugins[*]}{.}{"\n"}{end}')"
+    rv="${snapshot%%$'\n'*}"
+    [[ -n "$rv" ]] || { echo 'ERROR: Console snapshot is incomplete.' >&2; exit 1; }
+    plugins="${snapshot#*$'\n'}"
+    if [[ "$snapshot" == "$rv" ]]; then plugins=''; fi
+    while IFS= read -r plugin; do
+     if [[ "$plugin" == kuadrant-console-plugin ]]; then echo 'PASS Native Kuadrant console plugin already enabled.';exit 0; fi
+    done <<< "$plugins"
+    if [[ -z "$plugins" ]]; then
+     value='["kuadrant-console-plugin"]';path='/spec/plugins'
+    else
+     value='"kuadrant-console-plugin"';path='/spec/plugins/-'
+    fi
+    printf '[{"op":"test","path":"/metadata/resourceVersion","value":"%s"},{"op":"add","path":"%s","value":%s}]' "$rv" "$path" "$value" | oc --request-timeout=10s patch consoles.operator.openshift.io cluster --type=json --patch-file=/dev/stdin >/dev/null
+    echo 'PASS Native Kuadrant console plugin appended without replacing existing entries.'
