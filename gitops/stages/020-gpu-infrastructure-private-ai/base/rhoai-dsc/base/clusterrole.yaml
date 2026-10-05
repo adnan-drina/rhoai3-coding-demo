@@ -1,0 +1,37 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-enable-dsc-kueue
+  labels:
+    app.kubernetes.io/name: enable-dsc-kueue
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+rules:
+- apiGroups:
+  - datasciencecluster.opendatahub.io
+  resources:
+  - datascienceclusters
+  verbs:
+  - get
+  - patch
+  resourceNames:
+  - default-dsc
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  resourceNames:
+  - kueues.kueue.openshift.io
+  verbs:
+  - get
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - clusterserviceversions
+  resourceNames:
+  - kueue-operator.v1.4.2
+  verbs:
+  - get

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-kueue-operator
+  labels:
+    app.kubernetes.io/name: openshift-kueue-operator
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: argocd
+    openshift.io/cluster-monitoring: 'true'

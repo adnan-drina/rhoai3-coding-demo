@@ -1,0 +1,32 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-gpu-reserved-demo
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '4'
+  labels:
+    app.kubernetes.io/name: cq-gpu-reserved-demo
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: workload-admission
+    app.kubernetes.io/managed-by: argocd
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+  - coveredResources:
+    - cpu
+    - memory
+    flavors:
+    - name: default-flavor
+      resources:
+      - name: cpu
+        nominalQuota: '12'
+      - name: memory
+        nominalQuota: 48Gi
+  - coveredResources:
+    - nvidia.com/gpu
+    flavors:
+    - name: gpu-l40s
+      resources:
+      - name: nvidia.com/gpu
+        nominalQuota: '2'

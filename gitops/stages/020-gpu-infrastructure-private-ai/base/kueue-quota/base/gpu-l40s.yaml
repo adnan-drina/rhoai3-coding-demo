@@ -1,0 +1,19 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-l40s
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '4'
+  labels:
+    app.kubernetes.io/name: gpu-l40s
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: workload-admission
+    app.kubernetes.io/managed-by: argocd
+spec:
+  nodeLabels:
+    nvidia.com/gpu.present: 'true'
+  tolerations:
+  - key: nvidia-gpu-only
+    operator: Exists
+    effect: NoSchedule

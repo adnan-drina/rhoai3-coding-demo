@@ -143,7 +143,7 @@ for stage_dir in stage_dirs:
         fail(f"stage {stage_id} validate.sh is not executable: {validate_path.relative_to(repo)}")
 
     app_path = app_root / f"{name}.yaml"
-    gitops_path = gitops_stages_root / name / "base"
+    gitops_path = gitops_stages_root / name / ("overlays/environment" if stage_id == "020" else "base")
 
     if not deploy_path.exists():
         continue
@@ -172,7 +172,7 @@ for stage_dir in stage_dirs:
     source = spec.get("source") or {}
     labels = metadata.get("labels") or {}
     annotations = metadata.get("annotations") or {}
-    expected_path = f"gitops/stages/{name}/base"
+    expected_path = f"gitops/stages/{name}/" + ("overlays/environment" if stage_id == "020" else "base")
 
     if metadata.get("name") != name:
         fail(f"stage {stage_id} Argo CD app metadata.name must match {name}")

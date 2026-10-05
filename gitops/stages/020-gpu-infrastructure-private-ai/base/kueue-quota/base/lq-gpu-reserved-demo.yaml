@@ -1,0 +1,15 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-gpu-reserved-demo
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '5'
+  labels:
+    app.kubernetes.io/name: lq-gpu-reserved-demo
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: workload-admission
+    app.kubernetes.io/managed-by: argocd
+spec:
+  clusterQueue: cq-gpu-reserved-demo

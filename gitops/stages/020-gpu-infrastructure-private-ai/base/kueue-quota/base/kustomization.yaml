@@ -1,12 +1,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Kueue quota objects require the kueue.x-k8s.io CRDs, which exist after RHOAI
-# reconciles kueue: Unmanaged. SkipDryRunOnMissingResource handles first-sync timing.
-commonAnnotations:
-  argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-  argocd.argoproj.io/sync-wave: "4"
 resources:
-  - resource-flavors.yaml
-  - cluster-queues.yaml
-  - local-queues.yaml
-  - priority-class.yaml
+  - cq-cpu-default.yaml
+  - cq-gpu-shared.yaml
+  - cq-gpu-priority.yaml
+  - cq-gpu-reserved-demo.yaml
+  - default-flavor.yaml
+  - gpu-l40s.yaml
+  - lq-cpu-default.yaml
+  - lq-gpu-shared.yaml
+  - lq-gpu-priority.yaml
+  - lq-gpu-reserved-demo.yaml
+  - gpu-high-priority.yaml

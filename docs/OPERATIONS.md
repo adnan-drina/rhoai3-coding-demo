@@ -96,7 +96,7 @@ Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and
 | RHOAI / DSCI / DSC / model registry | Project [Stage 010 RHOAI aggregate](../gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/aggregate/overlays/demo/kustomization.yaml); RHOAI owns generated components | Selected `stable-3.5`; Dashboard and Workbenches are foundation-owned; MLflow is deferred in fresh source and preserved on live f38; revised source delegates the modelregistry component and both catalogs to Stage 030, while the live f38 registry remains preserved; KServe remains Stage 030-owned, while TrustyAI/evaluation belongs to a later stage |
 | COO / OpenTelemetry / Tempo | Project [Stage 010 observability aggregate](../gitops/stages/010-openshift-ai-platform-foundation/base/observability/aggregate/overlays/demo/kustomization.yaml) | Reviewed Manual InstallPlans select exact catalog CSVs; native operators own operands, with narrow project tenant access grants |
 | Demo identity and S3 connection | Project [setup-access.sh](../stages/010-openshift-ai-platform-foundation/setup-access.sh) plus GitOps groups/RBAC/OBC | Separate mutating step after deployment; `deploy.sh` does not call it. Private authenticated persona kubeconfigs remain outside Git |
-| GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | `stable-v1.3` Kueue choice needs OCP 4.22 catalog/lifecycle review before Stage 020; no GPU capacity is implied by CPU worker settings |
+| GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | Reviewed Stage 020 source selects NFD 4.22, NVIDIA 26.7.1 and Kueue 1.4.2; live qualification remains pending; no GPU capacity is implied by CPU worker settings |
 | Model serving / MaaS / developer services | Stages 030 / 040 / 050 | Inventory any existing installations without promoting catalog entries into installed/compatible evidence |
 
 MLflow, EvalHub and TrustyAI belong together in Stage 050 source; the current MLflow service remains Stage 010-owned on live f38; registry and both catalogs are Stage 030-owned in source, while the current cluster retains their previous Stage 010 ownership pending a safe handoff; OpenShell with standalone Hermes per project remains later-stage design. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
@@ -404,7 +404,7 @@ part of this repository. Demo users do not build those images.
 Before deploying the workshop, confirm:
 
 - You are logged into the target OpenShift cluster with sufficient privileges.
-- The cluster has enough capacity for GPU nodes and model-serving workloads. Specifically (AWS/RHPDS baseline): Stage 020's PreSync hook derives the GPU MachineSet from an existing **worker** MachineSet — so the cluster must have a worker pool whose region/AZ offers **`g6e.2xlarge` (NVIDIA L40S)** instances (the hook inherits the worker's AZ). The hook scales the worker pool to **4** (`m6a.4xlarge` or equivalent, ~16 vCPU / 64 GiB) and provisions **2** GPU nodes; a smaller cluster will not fit RHOAI + model-serving + RHDH + pipelines + Dev Spaces workspaces. On a non-AWS platform the derivation's GPU instance type must be adjusted in `provision-gpu-machineset.yaml`.
+- Stage 020 requires AWS capacity for two `g6e.2xlarge` L40S workers in the explicitly selected active CPU worker pool’s availability zone. Generate and review the native environment MachineSet before publishing it. The stage never scales CPU pools; the observed four CPU workers are distributed 2/1/1 across three pools. Confirm AMI architecture, region/AZ, instance quota and scoped Machine API credentials separately from API dry-run admission.
 - `oc`, `git`, `bash`, `curl`, and `jq` are available locally.
 - You are using the intended branch and remote for the GitOps source.
 - `env.example` has been copied to `.env` and configured with required credentials.
@@ -600,31 +600,71 @@ Point-in-time validation logs from 2026-05 and 2026-07 remain in Git history. Th
 
 ### Stage 020
 
-Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
+Stage 020 source installs native NFD, NVIDIA GPU Operator and Red Hat build of Kueue, plus four queue/profile identities. Reviewed Manual lifecycle selections are `nfd.4.22.0-202609212027` (`stable`), `gpu-operator-certified.v26.7.1` (`v26.7`) and `kueue-operator.v1.4.2` (`stable-v1.4`). `startingCSV` selects the initial version; subsequent InstallPlans need explicit review. No fixed Red Hat-tested RHOAI/operator tuple is claimed.
 
-The GPU Operator Subscription does not pin a channel. OLM uses the certified catalog default channel available in the target cluster. This avoids carrying an unexplained demo-specific version pin while still installing from the certified operator catalog.
+Generate the environment overlay from one explicitly selected active AWS CPU worker MachineSet. Review its native provider references and two exclusive L40S workers with 200Gi encrypted gp3 disks, then publish it. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 Application. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
 
-The Red Hat build of Kueue Subscription uses the `stable-v1.3` channel from `redhat-operators` on the current OpenShift 4.20 demo cluster. Earlier planning referenced `stable-v1.0`, but live package discovery on this cluster showed only `stable-v1.1`, `stable-v1.2`, and `stable-v1.3`; the implementation follows the available Red Hat catalog channel. OpenShift AI is integrated with this external Kueue installation by Stage 020 after the operator is present: the stage patches `DataScienceCluster.spec.components.kueue.managementState` to `Unmanaged`, enables dashboard Kueue support with `OdhDashboardConfig.spec.dashboardConfig.disableKueue=false`, and creates the `maas` namespace with `kueue.openshift.io/managed=true` and `opendatahub.io/dashboard=true`.
+Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `autoCreateQueues: false`. The native integration creates the Kueue singleton; GitOps owns ClusterQueues, LocalQueues and profiles. The CPU and reserved queues are usable intentions; shared/priority GPU quota remains zero. Global profiles require matching LocalQueues in every consuming project; this stage provisions them only in `demo-sandbox`.
 
-The `private-model-serving-gpu` `ClusterQueue` is intentionally small: two NVIDIA L4 GPUs plus CPU, memory, and pod quota for the current private model-serving path. This demonstrates the GPUaaS operating model without pretending the disposable demo environment represents a large multi-tenant GPU fleet.
+`validate.sh --readiness` checks native readiness and labels that scope explicitly. `--functional` additionally inspects native per-node CUDA validator results and DCGM metrics through bounded local port-forwards. Neither command implicitly creates workloads or proves dashboard access. Full acceptance also requires a bounded queue-admission test and the intended administrator’s GPU Infrastructure dashboard showing current Kueue/DCGM data.
 
-OpenShift Custom Metrics Autoscaler/KEDA is installed as a building block only. The stage does not attach `ScaledObject` resources to the private model deployments in the first pass. Production patterns should base scaling on validated Prometheus, Kueue backlog, or idle workload metrics.
-
-Stage 010 still owns the base `DataScienceCluster` and dashboard resources. Its Argo CD Application ignores only the Kueue handoff fields so Stage 020 can enable the Red Hat OpenShift AI 3.4 external Kueue integration without making Stage 010 depend on Kueue being installed first. Stage 020 also owns the `maas` namespace now because the `LocalQueue` must exist before Stage 030 creates model-serving resources in that project.
-
-Useful checks:
+For a one-time reserved queue test, run from the repository root. These preparation commands are read-only and derive the test image and command from a successful native CUDA probe:
 
 ```bash
-oc get subscription,csv -n openshift-kueue-operator
-oc get kueue cluster -n openshift-kueue-operator
-oc get resourceflavor,clusterqueue
-oc get localqueue -n maas
-oc get hardwareprofile -n redhat-ods-applications | grep -i queued
-oc get kedacontroller -n openshift-keda
-oc get machineset -n openshift-machine-api | grep -i gpu
-oc get nodes -l node-role.kubernetes.io/gpu
-oc get clusterpolicy -A
+source scripts/shared/lib.sh
+REPO_ROOT="$PWD"
+load_env
+check_oc_logged_in
+probe=$(mktemp)
+policy_uid=$(oc --request-timeout=10s get clusterpolicy gpu-cluster-policy -o jsonpath='{.metadata.uid}')
+oc --request-timeout=10s get pods -n nvidia-gpu-operator \
+  -l app=nvidia-cuda-validator -o json > "$probe"
+python3 - "$probe" "$policy_uid" > /private/tmp/gpu-reserved-admission-check.json <<'PY'
+import json,sys
+pods=json.load(open(sys.argv[1]))['items']
+assert sys.argv[2], 'Native ClusterPolicy UID is required'
+ready=[p for p in pods if p['status']['phase']=='Succeeded'
+       and any(o.get('uid')==sys.argv[2] for o in p['metadata'].get('ownerReferences',[]))
+       and any(i['name']=='cuda-validation' and
+               i.get('state',{}).get('terminated',{}).get('exitCode')==0
+               for i in p['status'].get('initContainerStatuses',[]))]
+assert ready, 'Run native CUDA functional validation first'
+p=max(ready,key=lambda p:p['metadata']['creationTimestamp'])
+i=next(i for i in p['spec']['initContainers'] if i['name']=='cuda-validation')
+command=i.get('command',[]); args=i.get('args',[])
+assert isinstance(command,list) and command and all(isinstance(v,str) and v for v in command), 'Meaningful native command required'
+assert isinstance(args,list) and all(isinstance(v,str) for v in args), 'Invalid native arguments'
+container={'name':'cuda-check','image':i['image'],'command':command,
+           'args':args,'env':[{'name':'NVIDIA_VISIBLE_DEVICES','value':'all'}],
+           'resources':{'requests':{'cpu':'1','memory':'1Gi','nvidia.com/gpu':'1'},
+                        'limits':{'cpu':'1','memory':'1Gi','nvidia.com/gpu':'1'}}}
+job={'apiVersion':'batch/v1','kind':'Job',
+     'metadata':{'name':'gpu-reserved-admission-check','namespace':'demo-sandbox',
+                 'labels':{'kueue.x-k8s.io/queue-name':'lq-gpu-reserved-demo'}},
+     'spec':{'suspend':True,'backoffLimit':0,'activeDeadlineSeconds':180,
+             'template':{'spec':{'restartPolicy':'Never','containers':[container],
+              'tolerations':[{'key':'nvidia-gpu-only','operator':'Exists','effect':'NoSchedule'}]}}}}
+print(json.dumps(job,indent=2))
+PY
+rm "$probe"
 ```
+
+Review that private test file, confirm `validate.sh --functional` passed and check reserved queue usage. The fixed Job name must be unused: `oc create` fails on a collision; never replace, apply over or delete pre-existing work to run this test. The following **explicit opt-in** commands create only the test workload; default validation/resume never runs them:
+
+```bash
+oc --request-timeout=10s get clusterqueue cq-gpu-reserved-demo -o yaml
+oc --request-timeout=10s create -f /private/tmp/gpu-reserved-admission-check.json
+oc --request-timeout=10s wait -n demo-sandbox --for=condition=complete \
+  job/gpu-reserved-admission-check --timeout=180s
+oc --request-timeout=10s get workloads.kueue.x-k8s.io -n demo-sandbox -o json
+oc --request-timeout=10s get pods -n demo-sandbox \
+  -l job-name=gpu-reserved-admission-check -o json
+```
+
+Before recording PASS, match the Workload's Job owner UID, require `QuotaReserved=True` and `Admitted=True`, assignment to `gpu-l40s`, and a completed test Pod on a Ready GPU node. Record Job/Workload identities and output, then delete only this test Job and its matching completed Workload. If both cards are occupied or the test remains queued, record acceptance pending; do not evict models, change quota, grant privileged SCC or add capacity to force a pass. Any native-image permission/runtime incompatibility is a failed test to investigate, not grounds to copy the native validator's privileged security context.
+The native MachineSet has `Prune=false,Delete=false`; removing source or the Application is not an uninstall. Day-two cost control scales this exact Stage 020-owned pool to zero. Before deliberate removal, review active GPU workloads, node drain implications, Machine/PVC/data dependencies and AWS resource disposition; explicitly remove only the reviewed MachineSet after those gates. Never change native operator resources or CPU pools as part of this cleanup.
+
+See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) for artifact-by-artifact disposition and unresolved certified-bundle/KMM qualification.
 
 ### Stage 030
 
@@ -872,7 +912,7 @@ Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workf
 ./scripts/platform/resume-gpu-demo.sh resume
 ```
 
-The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, repairs stopped provider instances when Machine API still has stale GPU Machine objects, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
+The `resume` command requests a sync of the existing Stage 020 revision, scales only its verified GPU MachineSet back to two replicas, waits for native GPU/operator readiness and runs readiness validation. It does not delete Machines, patch node labels, sync model stages or repair generated ReplicaSets. Model and functional acceptance remain separate; scale-to-zero is intentional cost control, not a passing GPU-capacity check.
 
 To scale GPU capacity down for shutdown:
 

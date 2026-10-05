@@ -1,0 +1,13 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: nvidia-gpu-operator
+  namespace: nvidia-gpu-operator
+  labels:
+    app.kubernetes.io/name: nvidia-gpu-operator
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: argocd
+spec:
+  targetNamespaces:
+  - nvidia-gpu-operator

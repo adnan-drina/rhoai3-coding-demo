@@ -1,0 +1,14 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 020-gpu-infrastructure-private-ai
+  namespace: openshift-gitops
+spec:
+  ignoreDifferences:
+  - group: machine.openshift.io
+    kind: MachineSet
+    name: ocp-wzxl7-gpu-us-east-2a
+    namespace: openshift-machine-api
+    jsonPointers:
+    - "/spec/replicas"

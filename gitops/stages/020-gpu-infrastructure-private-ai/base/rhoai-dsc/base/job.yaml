@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-enable-dsc-kueue
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-dsc-kueue
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: job-enable-dsc-kueue
+      restartPolicy: Never
+      containers:
+      - name: patch
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            phase=$(oc --request-timeout=10s get csv kueue-operator.v1.4.2 -n openshift-kueue-operator -o jsonpath='{.status.phase}' 2>/dev/null || true)
+            established=$(oc --request-timeout=10s get crd kueues.kueue.openshift.io -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true)
+            [[ "$phase" == Succeeded && "$established" == True ]] && break
+            [[ "$attempt" != 90 ]] || { echo "Native Kueue prerequisites not ready" >&2; exit 1; }
+            sleep 3
+          done
+          # The deployment preflight verifies Stage 010 delegates this exact DSC field.
+          for attempt in $(seq 1 60); do
+            if oc --request-timeout=10s get datasciencecluster default-dsc >/dev/null 2>&1; then break; fi
+            if [[ "$attempt" == 60 ]]; then echo "DSC prerequisite unavailable" >&2; exit 1; fi
+            sleep 3
+          done
+          oc --request-timeout=10s patch datasciencecluster default-dsc --type=merge -p '{"spec":{"components":{"kueue":{"managementState":"Unmanaged","autoCreateQueues":false}}}}'
+          [[ $(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue.managementState}') == Unmanaged ]]
+          [[ $(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue.autoCreateQueues}') == false ]]
+    metadata:
+      labels:
+        app.kubernetes.io/name: enable-dsc-kueue
+        app.kubernetes.io/component: platform-configuration
+        app.kubernetes.io/part-of: gpu-infra
+        app.kubernetes.io/managed-by: argocd

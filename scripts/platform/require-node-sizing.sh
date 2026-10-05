@@ -19,19 +19,26 @@
 # lower. Thresholds are overridable via REQUIRED_NODE_VCPU / REQUIRED_NODE_MEM_GIB.
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/lib.sh"
+load_env
+check_oc_logged_in
+
 REQUIRED_NODE_VCPU="${REQUIRED_NODE_VCPU:-16}"
 REQUIRED_NODE_MEM_GIB="${REQUIRED_NODE_MEM_GIB:-60}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; NC='\033[0m'
 
-undersized=$(oc get nodes -o json 2>/dev/null | \
+if ! undersized=$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -o json 2>/dev/null | \
   REQ_CPU="$REQUIRED_NODE_VCPU" REQ_MEM="$REQUIRED_NODE_MEM_GIB" python3 -c '
 import json, os, re, sys
 req_cpu = int(os.environ["REQ_CPU"]); req_mem = int(os.environ["REQ_MEM"])
 try:
     data = json.load(sys.stdin)
 except Exception:
-    sys.exit(0)  # cannot read nodes -> do not block here; the cluster guard handles auth
+    sys.exit("ERROR: node sizing response is invalid JSON")
+if not isinstance(data.get("items"), list) or not data["items"]:
+    sys.exit("ERROR: node sizing requires a nonempty node inventory")
 for n in data.get("items", []):
     labels = n["metadata"].get("labels", {})
     itype = labels.get("node.kubernetes.io/instance-type", "?")
@@ -56,7 +63,10 @@ for n in data.get("items", []):
     if cpu < req_cpu or gib < req_mem:
         print("%-14s %-45s %-14s %2d vCPU / %d GiB" %
               (role, n["metadata"]["name"], itype, cpu, int(gib)))
-' || true)
+'); then
+  echo 'ERROR: unable to verify node sizing; stopping before changes.' >&2
+  exit 46
+fi
 
 if [[ -n "$undersized" ]]; then
   echo -e "${RED}[ERROR]${NC} Cluster nodes are too small to run the demo — stopping before any changes." >&2

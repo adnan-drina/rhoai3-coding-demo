@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-openshift-gitops}"
-MODEL_NAMESPACE="${MODEL_NAMESPACE:-maas}"
+MODEL_NAMESPACE="${MODEL_NAMESPACE:-models-as-a-service}"
 GPU_MACHINESET_REPLICAS="${GPU_MACHINESET_REPLICAS:-2}"
 GPU_RESUME_TIMEOUT_SECONDS="${GPU_RESUME_TIMEOUT_SECONDS:-1800}"
 GPU_RESUME_POLL_SECONDS="${GPU_RESUME_POLL_SECONDS:-15}"
@@ -27,7 +27,7 @@ Commands:
   down     Scale GPU MachineSet to zero. Model pods become unavailable.
   resume   First-class recovery path after shutdown:
            sync Stage 020, scale GPU capacity up, validate Stage 020,
-           sync Stage 030, clear stale model ReplicaSets, and validate Stage 030.
+           leave existing model resources unchanged; validate model stages separately.
 
 Environment overrides:
   GPU_MACHINESET_NAME            Explicit GPU MachineSet name.
@@ -35,7 +35,7 @@ Environment overrides:
   GPU_RESUME_TIMEOUT_SECONDS     Wait timeout for GPU/model recovery. Default: 1800.
   GPU_RESUME_POLL_SECONDS        Poll interval. Default: 15.
   ARGOCD_NAMESPACE               Argo CD namespace. Default: openshift-gitops.
-  MODEL_NAMESPACE                Private model namespace. Default: maas.
+  MODEL_NAMESPACE                Private model namespace. Default: models-as-a-service.
 EOF
 }
 
@@ -45,16 +45,12 @@ require_tools() {
 }
 
 discover_gpu_machineset() {
-    if [[ -n "${GPU_MACHINESET_NAME:-}" ]]; then
-        echo "$GPU_MACHINESET_NAME"
-        return 0
-    fi
-
-    oc get machineset -n openshift-machine-api -o json 2>/dev/null \
-        | jq -r '.items[]
-            | select((.spec.template.spec.providerSpec.value.instanceType // "") | test("^g[0-9]"))
-            | .metadata.name' \
-        | head -n 1
+    local matches
+    matches="$(oc --request-timeout=10s get machineset -n openshift-machine-api -o json | jq -r '.items[] | select(.metadata.labels["cluster-api/accelerator"] == "nvidia-gpu" and .spec.template.spec.providerSpec.value.instanceType == "g6e.2xlarge") | .metadata.name')"
+    [[ $(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ') == 1 ]] || { log_error "Select one unambiguous reviewed GPU MachineSet"; return 1; }
+    [[ -z "${GPU_MACHINESET_NAME:-}" || "$GPU_MACHINESET_NAME" == "$matches" ]] || { log_error "Explicit MachineSet differs from reviewed GPU pool"; return 1; }
+    oc --request-timeout=10s get machineset "$matches" -n openshift-machine-api -o json | jq -e '.metadata.ownerReferences == null and (.metadata.annotations["argocd.argoproj.io/tracking-id"] | startswith("020-gpu-infrastructure-private-ai:"))' >/dev/null || { log_error "GPU pool ownership is not Stage 020"; return 1; }
+    printf '%s\n' "$matches"
 }
 
 gpu_machineset_or_fail() {
@@ -69,13 +65,13 @@ gpu_machineset_or_fail() {
 
 sync_app() {
     local app="$1"
-    if ! oc get application "$app" -n "$ARGOCD_NAMESPACE" >/dev/null 2>&1; then
+    if ! oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get application "$app" -n "$ARGOCD_NAMESPACE" >/dev/null 2>&1; then
         log_warn "Argo CD Application '$app' was not found in $ARGOCD_NAMESPACE"
         return 0
     fi
 
     log_info "Requesting Argo CD sync for $app"
-    oc patch application "$app" -n "$ARGOCD_NAMESPACE" \
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" patch application "$app" -n "$ARGOCD_NAMESPACE" \
         --type=merge -p '{"operation":{"sync":{}}}' >/dev/null 2>&1 || \
         log_warn "Could not request sync for $app; an operation may already be running"
 }
@@ -85,14 +81,14 @@ wait_for_app() {
     local timeout="${2:-$GPU_RESUME_TIMEOUT_SECONDS}"
     local elapsed=0 sync health
 
-    if ! oc get application "$app" -n "$ARGOCD_NAMESPACE" >/dev/null 2>&1; then
+    if ! oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get application "$app" -n "$ARGOCD_NAMESPACE" >/dev/null 2>&1; then
         return 0
     fi
 
     log_info "Waiting for $app to become Synced/Healthy"
     while (( elapsed < timeout )); do
-        sync="$(oc get application "$app" -n "$ARGOCD_NAMESPACE" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
-        health="$(oc get application "$app" -n "$ARGOCD_NAMESPACE" -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+        sync="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get application "$app" -n "$ARGOCD_NAMESPACE" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+        health="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get application "$app" -n "$ARGOCD_NAMESPACE" -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
         if [[ "$sync" == "Synced" && "$health" == "Healthy" ]]; then
             log_success "$app is Synced/Healthy"
             return 0
@@ -106,20 +102,6 @@ wait_for_app() {
     return 1
 }
 
-repair_gpu_node_labels() {
-    local nodes
-    nodes="$(oc get nodes -l nvidia.com/gpu.present=true -o name 2>/dev/null || true)"
-    if [[ -z "$nodes" ]]; then
-        return 0
-    fi
-
-    while IFS= read -r node; do
-        [[ -z "$node" ]] && continue
-        oc label "$node" node-role.kubernetes.io/gpu= --overwrite >/dev/null
-        oc adm taint "$node" nvidia.com/gpu=true:NoSchedule --overwrite >/dev/null 2>&1 || true
-    done <<< "$nodes"
-}
-
 wait_for_gpu_capacity() {
     local expected="$1"
     local timeout="${2:-$GPU_RESUME_TIMEOUT_SECONDS}"
@@ -127,9 +109,8 @@ wait_for_gpu_capacity() {
 
     log_info "Waiting for $expected GPU node(s) with allocatable nvidia.com/gpu"
     while (( elapsed < timeout )); do
-        repair_gpu_node_labels
-        ready_nodes="$(oc get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | grep -c ' Ready ' || true)"
-        alloc_nodes="$(oc get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
+        ready_nodes="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | grep -c ' Ready ' || true)"
+        alloc_nodes="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
             | jq '[.items[] | select(((.status.allocatable["nvidia.com/gpu"] // "0") | tonumber) >= 1)] | length' 2>/dev/null || echo 0)"
 
         if [[ "$ready_nodes" -ge "$expected" && "$alloc_nodes" -ge "$expected" ]]; then
@@ -150,98 +131,26 @@ wait_for_gpu_operator_ready() {
     local timeout="${1:-$GPU_RESUME_TIMEOUT_SECONDS}"
     local elapsed=0 state ready
 
-    if ! oc get clusterpolicy gpu-cluster-policy >/dev/null 2>&1; then
+    if ! oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get clusterpolicy gpu-cluster-policy >/dev/null 2>&1; then
         log_warn "NVIDIA ClusterPolicy was not found; Stage 020 validation will report details"
         return 0
     fi
 
     log_info "Waiting for NVIDIA ClusterPolicy to return to ready"
     while (( elapsed < timeout )); do
-        state="$(oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.state}' 2>/dev/null || true)"
-        ready="$(oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
-        if [[ "$state" == "ready" && "$ready" == "True" ]]; then
+        state="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.state}' 2>/dev/null || true)"
+        if [[ "$state" == "ready" ]]; then
             log_success "NVIDIA ClusterPolicy is ready"
             return 0
         fi
 
-        log_info "NVIDIA ClusterPolicy not ready yet: state=${state:-Unknown} ready=${ready:-Unknown}"
+        log_info "NVIDIA ClusterPolicy not ready yet: state=${state:-Unknown}"
         sleep "$GPU_RESUME_POLL_SECONDS"
         elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
     done
 
-    log_warn "Timed out waiting for NVIDIA ClusterPolicy; Stage 020 validation will report details"
-}
-
-gpu_machines_for_machineset() {
-    local ms="$1"
-    oc get machines -n openshift-machine-api -o json 2>/dev/null \
-        | jq -r --arg ms "$ms" '
-            .items[]
-            | select(any(.metadata.ownerReferences[]?; .kind == "MachineSet" and .name == $ms))
-            | .metadata.name'
-}
-
-stopped_gpu_machines_for_machineset() {
-    local ms="$1"
-    oc get machines -n openshift-machine-api -o json 2>/dev/null \
-        | jq -r --arg ms "$ms" '
-            .items[]
-            | select(any(.metadata.ownerReferences[]?; .kind == "MachineSet" and .name == $ms))
-            | select((.status.providerStatus.instanceState // "") == "stopped")
-            | .metadata.name'
-}
-
-wait_for_machineset_machine_count() {
-    local ms="$1"
-    local expected="$2"
-    local timeout="${3:-600}"
-    local elapsed=0 count
-
-    while (( elapsed < timeout )); do
-        count="$(gpu_machines_for_machineset "$ms" | grep -c . || true)"
-        if [[ "$count" -eq "$expected" ]]; then
-            return 0
-        fi
-
-        log_info "Waiting for MachineSet $ms machine count: current=$count expected=$expected"
-        sleep "$GPU_RESUME_POLL_SECONDS"
-        elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
-    done
-
-    log_error "Timed out waiting for MachineSet $ms machine count to become $expected"
+    log_error "Timed out waiting for native NVIDIA ClusterPolicy ready state"
     return 1
-}
-
-recreate_stopped_gpu_machines() {
-    local ms="$1"
-    local replicas="$2"
-    local stopped total_count stopped_count
-    stopped="$(stopped_gpu_machines_for_machineset "$ms")"
-
-    if [[ -z "$stopped" ]]; then
-        return 0
-    fi
-
-    total_count="$(gpu_machines_for_machineset "$ms" | grep -c . || true)"
-    stopped_count="$(printf '%s\n' "$stopped" | grep -c . || true)"
-
-    log_warn "GPU MachineSet $ms has stopped provider instances; recreating Machine objects"
-    if [[ "$stopped_count" -eq "$total_count" ]]; then
-        oc scale machineset "$ms" -n openshift-machine-api --replicas=0
-    fi
-
-    while IFS= read -r machine; do
-        [[ -z "$machine" ]] && continue
-        log_warn "Deleting stopped Machine openshift-machine-api/$machine so the MachineSet can replace it"
-        oc delete machine "$machine" -n openshift-machine-api --wait=false
-    done <<< "$stopped"
-
-    if [[ "$stopped_count" -eq "$total_count" ]]; then
-        wait_for_machineset_machine_count "$ms" 0 900
-    fi
-
-    log_info "Scaling GPU MachineSet $ms back to $replicas after stopped instance cleanup"
-    oc scale machineset "$ms" -n openshift-machine-api --replicas="$replicas"
 }
 
 scale_gpu_up() {
@@ -249,9 +158,9 @@ scale_gpu_up() {
     local ms
     ms="$(gpu_machineset_or_fail)"
 
+    [[ "$replicas" == 2 ]] || { log_error "Reviewed topology requires two GPU workers"; return 1; }
     log_info "Scaling GPU MachineSet $ms to $replicas"
-    oc scale machineset "$ms" -n openshift-machine-api --replicas="$replicas"
-    recreate_stopped_gpu_machines "$ms" "$replicas"
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" scale machineset "$ms" -n openshift-machine-api --replicas="$replicas"
     wait_for_gpu_capacity "$replicas"
     wait_for_gpu_operator_ready
 }
@@ -261,7 +170,7 @@ scale_gpu_down() {
     ms="$(gpu_machineset_or_fail)"
 
     log_warn "Scaling GPU MachineSet $ms to 0. Private model pods will become unavailable."
-    oc scale machineset "$ms" -n openshift-machine-api --replicas=0
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" scale machineset "$ms" -n openshift-machine-api --replicas=0
 }
 
 run_validation() {
@@ -288,84 +197,14 @@ run_validation() {
     esac
 }
 
-cleanup_stale_model_replicasets() {
-    if ! oc get namespace "$MODEL_NAMESPACE" >/dev/null 2>&1; then
-        log_warn "Namespace $MODEL_NAMESPACE does not exist; skipping stale ReplicaSet cleanup"
-        return 0
-    fi
-
-    local deployments
-    deployments="$(oc get deployment -n "$MODEL_NAMESPACE" -o json 2>/dev/null \
-        | jq -r '.items[]
-            | select(.metadata.name | test("^qwen3-6-27b-kserve$"))
-            | .metadata.name')"
-
-    if [[ -z "$deployments" ]]; then
-        log_warn "No generated private model Deployments found; skipping stale ReplicaSet cleanup"
-        return 0
-    fi
-
-    while IFS= read -r deployment; do
-        [[ -z "$deployment" ]] && continue
-        local stale
-        stale="$(oc get replicaset -n "$MODEL_NAMESPACE" -o json \
-            | jq -r --arg dep "$deployment" '
-                [ .items[]
-                  | select(any(.metadata.ownerReferences[]?; .kind == "Deployment" and .name == $dep))
-                  | {
-                      name: .metadata.name,
-                      replicas: (.spec.replicas // 0),
-                      revision: ((.metadata.annotations["deployment.kubernetes.io/revision"] // "0") | tonumber)
-                    }
-                ] as $sets
-                | ($sets | map(.revision) | max // 0) as $current
-                | $sets[]
-                | select(.revision < $current and .replicas > 0)
-                | .name')"
-
-        if [[ -z "$stale" ]]; then
-            log_info "No stale ReplicaSets with replicas found for $deployment"
-            continue
-        fi
-
-        while IFS= read -r rs; do
-            [[ -z "$rs" ]] && continue
-            log_warn "Scaling stale ReplicaSet $MODEL_NAMESPACE/$rs to 0 to release Kueue quota"
-            oc scale replicaset "$rs" -n "$MODEL_NAMESPACE" --replicas=0
-        done <<< "$stale"
-    done <<< "$deployments"
-}
-
-wait_for_private_models() {
-    local timeout="${1:-$GPU_RESUME_TIMEOUT_SECONDS}"
-    local elapsed=0 qwen27b
-
-    log_info "Waiting for private LLMInferenceService resources to become Ready"
-    while (( elapsed < timeout )); do
-        cleanup_stale_model_replicasets
-                qwen27b="$(oc get llminferenceservice qwen3-6-27b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
-
-        if [[ "$qwen27b" == "True" ]]; then
-            log_success "Private models are Ready"
-            return 0
-        fi
-
-        log_info "Model readiness: qwen3-6-27b=${qwen27b:-Unknown}"
-        sleep "$GPU_RESUME_POLL_SECONDS"
-        elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
-    done
-
-    log_warn "Timed out waiting for both private models to become Ready; validation will report details"
-}
-
 print_status() {
     log_step "GPU MachineSets"
-    oc get machineset -n openshift-machine-api \
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get machineset -n openshift-machine-api \
         -o custom-columns='NAME:.metadata.name,INSTANCE:.spec.template.spec.providerSpec.value.instanceType,DESIRED:.spec.replicas,READY:.status.readyReplicas' \
         | awk 'NR == 1 || $2 ~ /^g[0-9]/'
 
     log_step "GPU Nodes"
-    oc get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
         | jq -r '
             (["NAME", "READY", "GPU", "GPU_ROLE_LABEL", "GPU_TAINT"] | @tsv),
             (.items[] | [
@@ -373,19 +212,19 @@ print_status() {
                 (.status.conditions[] | select(.type == "Ready") | .status),
                 (.status.allocatable["nvidia.com/gpu"] // "0"),
                 ((.metadata.labels // {}) | has("node-role.kubernetes.io/gpu")),
-                (any(.spec.taints[]?; .key == "nvidia.com/gpu" and .value == "true" and .effect == "NoSchedule"))
+                (any(.spec.taints[]?; .key == "nvidia-gpu-only" and .effect == "NoSchedule"))
             ] | @tsv)' \
         | column -t || true
 
     log_step "Kueue Queues"
-    oc get resourceflavor nvidia-l4-gpu 2>/dev/null || true
-    oc get clusterqueue private-model-serving-gpu 2>/dev/null || true
-    oc get localqueue private-model-serving -n "$MODEL_NAMESPACE" 2>/dev/null || true
-    oc get workloads.kueue.x-k8s.io -n "$MODEL_NAMESPACE" 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get resourceflavor gpu-l40s 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get clusterqueue cq-gpu-reserved-demo 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get localqueue lq-gpu-reserved-demo -n demo-sandbox 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get workloads.kueue.x-k8s.io -n "$MODEL_NAMESPACE" 2>/dev/null || true
 
     log_step "Private Models"
-    oc get llminferenceservice -n "$MODEL_NAMESPACE" 2>/dev/null || true
-    oc get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|qwen3-6-27b|router-scheduler' || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get llminferenceservice -n "$MODEL_NAMESPACE" 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|qwen3-6-27b|router-scheduler' || true
 }
 
 resume_from_zero() {
@@ -394,13 +233,10 @@ resume_from_zero() {
     sync_app "020-gpu-infrastructure-private-ai"
     wait_for_app "020-gpu-infrastructure-private-ai" 600
     scale_gpu_up "$replicas"
-    run_validation "Stage 020 validation" "$REPO_ROOT/stages/020-gpu-infrastructure-private-ai/validate.sh"
+    run_validation "Stage 020 readiness only" "$REPO_ROOT/stages/020-gpu-infrastructure-private-ai/validate.sh"
 
-    sync_app "030-private-model-serving"
-    wait_for_app "030-private-model-serving" 600
-    cleanup_stale_model_replicasets
-    wait_for_private_models "$GPU_RESUME_TIMEOUT_SECONDS"
-    run_validation "Stage 030 validation" "$REPO_ROOT/stages/030-private-model-serving/validate.sh"
+    log_info "GPU infrastructure readiness resumed; CUDA/DCGM, admission, dashboard and model-stage acceptance remain separate. No model workloads were changed."
+
 }
 
 main() {

@@ -13,6 +13,5 @@ resources:
   - nfd/instance/base
   - gpu-operator/operator
   - gpu-operator/instance/base
-  - machineset/base
   - kueue-quota/base
   - hardware-profiles/base

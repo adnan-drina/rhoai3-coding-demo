@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-kueue-operator
+  namespace: openshift-kueue-operator
+  labels:
+    app.kubernetes.io/name: openshift-kueue-operator
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: argocd
+spec:
+  upgradeStrategy: Default

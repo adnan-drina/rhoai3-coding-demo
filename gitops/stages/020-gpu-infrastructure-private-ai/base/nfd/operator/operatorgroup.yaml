@@ -1,0 +1,13 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-nfd
+  namespace: openshift-nfd
+  labels:
+    app.kubernetes.io/name: openshift-nfd
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: argocd
+spec:
+  targetNamespaces:
+  - openshift-nfd

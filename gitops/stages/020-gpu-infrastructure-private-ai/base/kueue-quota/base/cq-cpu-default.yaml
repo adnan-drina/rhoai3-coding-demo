@@ -1,0 +1,25 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-cpu-default
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '4'
+  labels:
+    app.kubernetes.io/name: cq-cpu-default
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: workload-admission
+    app.kubernetes.io/managed-by: argocd
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+  - coveredResources:
+    - cpu
+    - memory
+    flavors:
+    - name: default-flavor
+      resources:
+      - name: cpu
+        nominalQuota: '40'
+      - name: memory
+        nominalQuota: 128Gi
