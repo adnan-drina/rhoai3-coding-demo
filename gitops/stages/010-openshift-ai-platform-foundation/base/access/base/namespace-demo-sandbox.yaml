@@ -3,7 +3,6 @@ kind: Namespace
 metadata:
   name: demo-sandbox
   labels:
-    evalhub.trustyai.opendatahub.io/tenant: ""
     # Marks the namespace as a Red Hat OpenShift AI data science project so it
     # appears in the dashboard project list.
     opendatahub.io/dashboard: "true"

@@ -38,7 +38,7 @@ spec:
     trainingoperator:
       managementState: Removed
     trustyai:
-      managementState: Managed
+      managementState: Removed
     mlflowoperator:
       managementState: Managed
     # New 3.5 components remain outside foundation scope.

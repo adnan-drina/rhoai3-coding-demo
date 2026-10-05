@@ -78,12 +78,13 @@ A durable demo AI platform foundation that all subsequent stages build on.
 
 - **OpenShift GitOps** — Argo CD (channel `gitops-1.21`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled via sync-wave Job for Argo CD visibility in the OpenShift web console
 - **OpenShift Data Foundation MCG** — standalone Multicloud Object Gateway (NooBaa) providing S3-compatible object storage via `ObjectBucketClaim`; StorageCluster uses `dbStorageClassName: gp3-csi`
-- **Red Hat OpenShift AI 3.5** — operator on `stable-3.5`; Dashboard, Workbenches, Model Registry, MLflow and TrustyAI-managed evaluation services; Agent Catalog discovery; model serving and MaaS are added by later stages
+- **Red Hat OpenShift AI 3.5** — operator on `stable-3.5`; Dashboard, Workbenches, Model Registry and MLflow experiment tracking; Agent Catalog discovery; model serving and MaaS are added by later stages
 - **Model Registry** — `demo-registry` CR in `rhoai-model-registries` namespace with embedded PostgreSQL; RBAC grants `rhods-admins` and `rhoai-developers` the operator-generated `registry-user-demo-registry` Role
 - **Observability stack** — Cluster Observability Operator, Red Hat build of OpenTelemetry and Tempo through native RHOAI monitoring; metrics dashboards and PV-backed tracing
 - **Dashboard capabilities** — native metrics dashboards and Agent Catalog discovery; AutoRAG and AutoML are disabled
 - **Platform access** — existing provider identities mapped to explicit `rhods-admins` and `rhoai-developers` groups; administrators and developers receive separate project permissions
-- **MLflow and EvalHub** — shared experiment tracking with S3 artifacts and PostgreSQL-backed evaluation records; first model evaluation follows model serving in later stages
+- **MLflow** — shared experiment tracking with S3 artifacts and PostgreSQL-backed records
+- **Demo storage** — native NooBaa local object storage and separate persistent PostgreSQL databases; finite capacity and single-instance databases suit the workshop rather than an HA production deployment
 - **S3 connection** — project-scoped `ObjectBucketClaim` exposed as `demo-sandbox-s3` using the dashboard's pre-installed S3 connection type
 
 ## What To Notice And Why It Matters

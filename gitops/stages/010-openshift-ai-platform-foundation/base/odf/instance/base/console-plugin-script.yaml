@@ -6,6 +6,7 @@ metadata:
 data:
   enable-console-plugin.sh: |
     #!/bin/bash
+    set -euo pipefail
 
     function noisy {
         set -x
@@ -17,13 +18,18 @@ data:
     echo "Ensuring ${PLUGIN_NAME} plugin is enabled"
     echo ""
 
-    # Create the plugins section on the object if it doesn't exist
-    if [ -z "$(oc get consoles.operator.openshift.io cluster -o=jsonpath='{.spec.plugins}' 2>/dev/null)" ]; then
-        echo "Creating plugins object"
-        noisy oc patch consoles.operator.openshift.io cluster --patch '{ "spec": { "plugins": [] } }' --type=merge
+    # A failed read must never be interpreted as an absent plugin list.
+    snapshot=$(oc get consoles.operator.openshift.io cluster --request-timeout=10s -o=jsonpath='{.metadata.resourceVersion}{"\n"}{.spec.plugins}')
+    resource_version=${snapshot%%$'\n'*}
+    installed_plugins=${snapshot#*$'\n'}
+    if [[ "$snapshot" != *$'\n'* ]]; then installed_plugins=""; fi
+    [[ -n "$resource_version" ]] || { echo "Console resource version missing" >&2; exit 1; }
+    if [[ -z "$installed_plugins" ]]; then
+        # The version test refuses a concurrent change; never replace an existing list.
+        noisy oc patch consoles.operator.openshift.io cluster --request-timeout=10s --type=json --patch '[{"op":"test","path":"/metadata/resourceVersion","value":"'"$resource_version"'"},{"op":"add","path":"/spec/plugins","value":[]}]'
+        installed_plugins=$(oc get consoles.operator.openshift.io cluster --request-timeout=10s -o=jsonpath='{.spec.plugins}')
     fi
 
-    installed_plugins=$(oc get consoles.operator.openshift.io cluster -o=jsonpath='{.spec.plugins}')
     echo "Current plugins:"
     echo "${installed_plugins}"
 

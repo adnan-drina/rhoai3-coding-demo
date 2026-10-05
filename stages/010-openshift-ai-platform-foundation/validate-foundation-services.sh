@@ -47,12 +47,16 @@ try:
     monitor = monitors[0]
     need(monitor.get('status', {}).get('phase') == 'Ready' and monitor['status'].get('observedGeneration') == monitor['metadata']['generation'] and any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in monitor['status'].get('conditions', [])), 'Monitoring phase, Ready condition or current generation is not ready')
     regns = 'rhoai-model-registries'
-    registry = get('modelregistry', 'demo-registry', regns)
-    condition = next((c for c in registry.get('status', {}).get('conditions', []) if c['type'] == 'Available'), {})
-    need(condition.get('status') == 'True' and condition.get('observedGeneration') == registry['metadata']['generation'], 'ModelRegistry Available condition is stale or absent')
+    registry = get('modelregistries.modelregistry.opendatahub.io', 'demo-registry', regns)
+    conditions = {c['type']: c.get('status') for c in registry.get('status', {}).get('conditions', [])}
+    need(all(conditions.get(t) == 'True' for t in ['Available', 'KubeRBACProxyAvailable']), 'ModelRegistry native availability conditions are absent or false')
     uid = registry['metadata']['uid']
     def owned(obj): return any(o.get('uid') == uid and o.get('controller') is True for o in obj['metadata'].get('ownerReferences', []))
-    databases = [d for d in get('deployments', namespace=regns)['items'] if owned(d) and any('postgresql' in c.get('image', '') for c in d['spec']['template']['spec']['containers'])]
+    workloads = [d for d in get('deployments', namespace=regns)['items'] if owned(d)]
+    databases = [d for d in workloads if any('postgresql' in c.get('image', '') for c in d['spec']['template']['spec']['containers'])]
+    apis = [d for d in workloads if d not in databases]
+    need(len(apis) == 1, 'generated registry API deployment is not uniquely discoverable')
+    fresh(apis[0])
     need(len(databases) == 1, 'generated registry PostgreSQL deployment is not uniquely discoverable')
     fresh(databases[0])
     claims = [v['persistentVolumeClaim']['claimName'] for v in databases[0]['spec']['template']['spec'].get('volumes', []) if 'persistentVolumeClaim' in v]
@@ -77,8 +81,11 @@ try:
     need('http' in config['receivers']['otlp']['protocols'] and 'otlp' in config['service']['pipelines']['traces']['receivers'], 'collector OTLP/HTTP trace receiver is absent')
     collector_workload = get('statefulset', 'data-science-collector-collector', namespace)
     service_account = collector_workload['spec']['template']['spec']['serviceAccountName']
-    permission = subprocess.run(['oc', '--request-timeout=20s', 'auth', 'can-i', 'create', namespace + '.tempo.grafana.com/traces', '--as=system:serviceaccount:' + namespace + ':' + service_account], capture_output=True, text=True)
-    need(permission.returncode == 0 and permission.stdout.strip() == 'yes', 'collector service account cannot write the native Tempo tenant')
+    # Tempo authorizes a virtual resource, which oc can-i can mis-map via discovery.
+    # SubjectAccessReview is nonpersistent and checks the exact gateway attributes.
+    review = {'apiVersion': 'authorization.k8s.io/v1', 'kind': 'SubjectAccessReview', 'spec': {'user': 'system:serviceaccount:' + namespace + ':' + service_account, 'resourceAttributes': {'group': 'tempo.grafana.com', 'resource': namespace, 'name': 'traces', 'verb': 'create'}}}
+    permission = subprocess.run(['oc', '--request-timeout=20s', 'create', '--raw', '/apis/authorization.k8s.io/v1/subjectaccessreviews', '-f', '-'], input=json.dumps(review), capture_output=True, text=True)
+    need(permission.returncode == 0 and json.loads(permission.stdout).get('status', {}).get('allowed') is True, 'collector service account cannot write the native Tempo tenant')
     port = forward('data-science-collector-collector', namespace, 4318)
     trace_id, span_id, start = uuid.uuid4().hex, uuid.uuid4().hex[:16], time.time_ns()
     print('[INFO] Synthetic trace ID ' + trace_id, flush=True)

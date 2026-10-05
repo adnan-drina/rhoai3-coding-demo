@@ -514,8 +514,7 @@ oc auth can-i create prometheuses/k8s --subresource=api \
 **Recover:**
 
 ```bash
-oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/observability-operators/perses-backend-operator-access.yaml
-oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/observability-operators/perses-dashboard-rbac.yaml
+oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/instance/base/observability/perses-dashboard-rbac.yaml
 oc apply -f gitops/stages/040-governed-models-as-a-service/base/models-maas-crds/tenant.yaml
 oc apply -f gitops/stages/040-governed-models-as-a-service/base/jobs/label-observability-dashboard-tabs.yaml
 

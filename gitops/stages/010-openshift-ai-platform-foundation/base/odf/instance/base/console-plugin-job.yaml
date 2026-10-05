@@ -4,9 +4,13 @@ metadata:
   name: enable-odf-console-plugin
   namespace: openshift-storage
   annotations:
-    # Run after ODF operator and StorageCluster are reconciled (wave 2)
+    # Idempotent registration runs after ODF reconciliation and may be repeated.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: "3"
 spec:
+  activeDeadlineSeconds: 180
+  backoffLimit: 1
   template:
     spec:
       restartPolicy: Never

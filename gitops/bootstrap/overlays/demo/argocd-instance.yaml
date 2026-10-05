@@ -107,7 +107,7 @@ spec:
       hs.status = "Healthy"
       hs.message = "Subscription status not reported by OLM; version pins + approval guards apply"
       return hs
-    # EvalHub runs in a later wave only after the current MLflow generation is Available.
+    # Native MLflow health requires availability and current operator/migration reconciliation.
     resource.customizations.health.mlflow.opendatahub.io_MLflow: |
       hs = {status = "Progressing", message = "Waiting for Available and current MLflowOperatorReady conditions"}
       local available = false

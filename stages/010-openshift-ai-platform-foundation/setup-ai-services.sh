@@ -22,7 +22,7 @@ import sys
 import time
 from urllib.parse import quote, urlparse
 
-parser = argparse.ArgumentParser(description="Create runtime MLflow/EvalHub connection data.")
+parser = argparse.ArgumentParser(description="Create runtime MLflow database credentials and verify readiness.")
 parser.add_argument("--timeout", type=int, default=900, help="Seconds per service readiness gate.")
 parser.add_argument("--namespace-timeout", type=int, default=300)
 args = parser.parse_args()
@@ -88,7 +88,7 @@ def decode(secret, key):
 
 
 def database_uri(feature, namespace, user, password, database):
-    scheme = "postgresql" if feature == "mlflow" else "postgres"
+    scheme = "postgresql"
     host = f"{feature}-postgresql.{namespace}.svc.cluster.local"
     # Explicit demo boundary: private same-namespace DB transport is plaintext.
     # URI mode overrides the MLflow chart's PGSSLMODE=verify-full for S3 CA setup.
@@ -104,7 +104,7 @@ def validate_database_secret(feature, namespace, secret):
     database = decode(secret, "database-name")
     if not password or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", user) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database):
         raise RuntimeError(f"{feature} database Secret has invalid user, password, or database.")
-    uri_key = "backend-store-uri" if feature == "mlflow" else "db-url"
+    uri_key = "backend-store-uri"
     if decode(secret, uri_key) != database_uri(feature, namespace, user, password, database):
         raise RuntimeError(f"{feature} database URI does not match its credentials and demo endpoint; no values changed.")
 
@@ -119,7 +119,7 @@ def ensure_database_secret(feature, namespace):
         print(f"Reusing {feature} database credentials.", flush=True)
         return
     password = secrets.token_hex(24)
-    uri_key = "backend-store-uri" if feature == "mlflow" else "db-url"
+    uri_key = "backend-store-uri"
     values = {
         "database-user": feature,
         "database-password": password,
@@ -196,38 +196,17 @@ def available_mlflow():
     return uri
 
 
-def ensure_tracking_config(uri):
-    namespace, name = "evalhub", "evalhub-mlflow-connection"
-    existing = get("configmap", name, namespace)
-    if existing is None:
-        raise RuntimeError("Cannot inspect the EvalHub MLflow connection ConfigMap.")
-    if existing:
-        meta = existing.get("metadata", {})
-        if (meta.get("ownerReferences") or meta.get("annotations", {}).get("argocd.argoproj.io/tracking-id")
-                or meta.get("labels", {}).get("app.kubernetes.io/managed-by") != managed_by):
-            raise RuntimeError("The EvalHub connection ConfigMap has another owner; refusing takeover.")
-        if existing.get("data", {}).get("tracking-uri") == uri:
-            print("Reusing discovered EvalHub MLflow connection.", flush=True)
-            return
-    payload = {"apiVersion": "v1", "kind": "ConfigMap", "metadata": metadata(name, namespace),
-               "data": {"tracking-uri": uri}}
-    if run(["oc", "apply", "-f", "-"], payload).returncode:
-        raise RuntimeError("Could not publish the discovered EvalHub MLflow connection.")
-    print("Published the native MLflow HTTPS address for EvalHub.", flush=True)
-
-
 try:
-    for namespace in ["redhat-ods-applications", "evalhub"]:
+    for namespace in ["redhat-ods-applications"]:
         wait_for(f"namespace {namespace}",
                  lambda namespace=namespace: (get("namespace", namespace) or {}).get("status", {}).get("phase") == "Active",
                  args.namespace_timeout)
-    for feature, namespace in [("mlflow", "redhat-ods-applications"), ("evalhub", "evalhub")]:
+    for feature, namespace in [("mlflow", "redhat-ods-applications")]:
         ensure_database_secret(feature, namespace)
     wait_for("bound MLflow artifact bucket and trusted S3 endpoint", bucket_ready, args.timeout)
-    uri = wait_for("MLflow Available at its current generation", available_mlflow, args.timeout)
-    ensure_tracking_config(uri)
+    wait_for("MLflow Available at its current generation", available_mlflow, args.timeout)
 except (RuntimeError, OSError) as error:
     print(f"[FAIL] {error}", file=sys.stderr)
     sys.exit(1)
-print("Runtime connections ready. Argo CD and the native operators continue reconciliation.")
+print("MLflow credentials and native readiness verified.")
 PY

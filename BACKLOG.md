@@ -8,7 +8,7 @@ evidence, excluded from Git.
 
 The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-05) is read-only evidence on OCP 4.22.14, not a deployed stage verdict.
 
-- [ ] Stage 010: qualify RHOAI 3.5, ODF version/channel, COO hold and DSC/DSCI schemas; remove the legacy AutoRAG dashboard flag when implementing the excluded scope. Keep old overlays/holds until their replacement is validated.
+- [ ] Stage 010: finish real OpenID persona/dashboard acceptance and MLflow artifact persistence. RHOAI 3.5.1/ODF 4.22.5 installed; native registry, metrics, Perses transport and exact trace retrieval passed. The old COO hold and monitoring transport workarounds are retired; AutoRAG/AutoML remain disabled.
 - [ ] Provisioner follow-up: Lightspeed 1.1.4 installed but API NotReady; cloud-credential missing parent credentials prevents future OCP minor/major upgrades. Preserve add-on/operator ownership; no credentials or resources were changed during inventory.
 - [ ] Stage 020: revalidate `stable-v1.3` Kueue against the OCP 4.22 catalog and current lifecycle/known-issue discrepancy before choosing the replacement. Trainer remains disabled; this inventory does not establish a full-stack compatibility failure.
 - [ ] Stage 050: resolve integration with the preinstalled OpenID/Keycloak (`keycloak`, namespace-scoped operator) before applying the separate project `rhbk` identity installation.
@@ -360,12 +360,12 @@ Compatibility objectives (`loop.compatibility_objectives: v1`) and plan semantic
 - [ ] **Authorino SSL env vars** on the same job, so Authorino trusts the OpenShift service CA.
 - [ ] **Gateway hostname patch** (`jobs/patch-gateway-hostname.yaml`).
 - [ ] **Model Registry NetworkPolicy** allowing `redhat-ods-applications` to port 8080.
-- [ ] **Perses backend NetworkPolicy, demo dashboard RBAC, Prometheus API gate, and MaaS tab labels.** Revert when the product opens the real Perses namespace and discovers the Cluster, Models and Usage tabs without demo labels.
+- [ ] **Perses demo dashboard RBAC, Prometheus API gate, and MaaS tab labels.** Revert when the product opens the real Perses namespace and discovers the Cluster, Models and Usage tabs without demo labels.
 - [ ] **`models-as-a-service` namespace** for `MaaSAuthPolicy` and `MaaSSubscription` until the operator-owned layout is confirmed.
 - [ ] **Dashboard Route** via the `rh-ai.*` hostname through `data-science-gateway`.
 - [ ] **ExternalModel credential Secret label** `inference.networking.k8s.io/bbr-managed=true`.
 - [ ] **Community Grafana CRDs** may remain after the custom Grafana stack was removed. They are not active MaaS architecture unless Grafana custom resources reappear.
-- [ ] **RHOAI monitoring service-ca Secret sync.** Stage 010 copies `ConfigMap/prometheus-web-tls-ca` into the Secret the generated `MonitoringStack` references. Remove the sync if a later build creates the Secret or points at the ConfigMap.
+- [x] **Stage 010 monitoring transport cleanup.** Retired the COO 1.4 compatibility approval overlay, service-CA copy Job and Perses backend ingress workaround after native COO 1.5.3 installation, current Monitoring readiness, real metrics queries, native Perses backend queries and exact trace retrieval passed on RHOAI 3.5.1. Persona-dependent dashboard RBAC remains pending actual UI/access evidence.
 
 Stage 040 validation must keep asserting that `maas-api` uses `registry.redhat.io/rhoai/odh-maas-api-rhel9`. Do not restore the tokens bridge, tier groups, or the upstream `maas-controller` image override.
 

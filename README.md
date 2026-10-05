@@ -99,7 +99,7 @@ Red Hat's role in this architecture is integration, lifecycle, support posture, 
 
 The READMEs explain the architecture. Use the commands below only in a prepared OpenShift environment.
 
-The workshop uses an AWS multinode OpenShift Container Platform 4.22 foundation. See the [Operations Guide](docs/OPERATIONS.md) for environment requirements and deployment preparation.
+The workshop uses an AWS multinode OpenShift Container Platform 4.22 foundation with OpenShift AI 3.5, shared MLflow experiment tracking. See the [Operations Guide](docs/OPERATIONS.md) for environment requirements and deployment preparation.
 
 **Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (e.g. `g6e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `scripts/platform/require-node-sizing.sh` first and refuses to start on undersized nodes.
 

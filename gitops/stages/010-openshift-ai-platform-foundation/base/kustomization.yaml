@@ -12,4 +12,3 @@ resources:
   - access/base
   - console-plugins/base
   - mlflow
-  - evalhub
