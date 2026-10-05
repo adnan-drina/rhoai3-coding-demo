@@ -61,9 +61,9 @@ Stages that patch shared platform resources (e.g., RHOAI DataScienceCluster, Ope
 
 ### Workflow-Only Stage Pattern
 
-Stages 060, 070, and 080 are workflow-only stages. They have only `validate.sh` and `README.md` — no `deploy.sh` and no Argo CD Application. Their platform infrastructure (Dev Spaces workspaces, RHDH templates, MTA operator) is owned by Stage 050 (`050-advanced-app-platform`). These stages validate that the platform capabilities they depend on are healthy, and their READMEs describe developer workflows that consume those capabilities.
+Stages 060, 070, and 080 are workflow-only stages. They have only `validate.sh` and `README.md` — no `deploy.sh` and no Argo CD Application. Their platform infrastructure (Dev Spaces workspaces, RHDH templates, MTA operator) is owned by Stage 060 (`060-advanced-app-platform`). These stages validate that the platform capabilities they depend on are healthy, and their READMEs describe developer workflows that consume those capabilities.
 
-Note: Stage 050 absorbed the former Stage 090 (RHDH portal). All developer portal resources are now part of Stage 050's GitOps ownership.
+Note: Stage 060 absorbed the former Stage 090 (RHDH portal). All developer portal resources are now part of Stage 060's GitOps ownership.
 
 ## Workflow
 

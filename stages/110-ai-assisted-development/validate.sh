@@ -12,7 +12,7 @@ echo "╚═══════════════════════�
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-check_argocd_app "050-advanced-app-platform"
+check_argocd_app "060-advanced-app-platform"
 
 log_step "Dev Spaces Operator"
 check_csv_succeeded "openshift-devspaces" "devspaces"

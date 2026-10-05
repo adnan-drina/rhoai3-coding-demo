@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE))
 import run_budget as RB  # noqa: E402
 
 REPO = HERE.parents[5]
-PROFILES = REPO / "gitops/stages/050-advanced-app-platform/base/devspaces/model-profiles.json"
+PROFILES = REPO / "gitops/stages/060-advanced-app-platform/base/devspaces/model-profiles.json"
 DEFAULTS = HERE.parents[1] / "run-defaults.json"
 T0 = 1_790_000_000.0
 

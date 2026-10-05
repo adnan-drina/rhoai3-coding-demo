@@ -19,7 +19,7 @@ POLICY = "migration-workspace-run-name"
 
 
 def check_links() -> None:
-    templates = ROOT / "gitops/stages/050-advanced-app-platform/base/rhdh/templates"
+    templates = ROOT / "gitops/stages/060-advanced-app-platform/base/rhdh/templates"
     for name in ("app-migration", "agentic-quarkus-scaffold"):
         text = (templates / name / "template.yaml").read_text()
         link = re.search(r"(?m)^\s+devspacesUrl: (.+)$", text).group(1)

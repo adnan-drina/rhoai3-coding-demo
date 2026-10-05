@@ -67,7 +67,7 @@ The demo follows an eight-stage flow organized in two parts.
 
 **Part 1: Building the platform (GitOps-driven)**
 
-Stages 010–050 construct the three platform layers declaratively — every resource reconciled from Git by Argo CD.
+Stages 010–060 construct the three platform layers declaratively — every resource reconciled from Git by Argo CD.
 
 | Stage | Intent |
 |-------|--------|
@@ -75,7 +75,7 @@ Stages 010–050 construct the three platform layers declaratively — every res
 | [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | Provision GPU workers and quota-controlled scheduling for model workloads |
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Provide Model Registry, Model Catalog and Agent Catalog discovery alongside private model serving |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | Expose private and external models through a governed MaaS gateway with API keys, rate limits, and telemetry |
-| [050 - Advanced Application Platform](stages/050-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
+| [060 - Advanced Application Platform](stages/060-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
 
@@ -108,7 +108,7 @@ git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
 cd rhoai3-coding-demo
 ```
 
-**Environment configuration (required).** Before deploying any stage, copy the environment template and fill in the values for your target cluster. The `.env` file drives Git source references for Argo CD, cluster safety guards, demo persona credentials, external model API keys, and Stage 050 delivery-chain integrations (GitHub App, PAT, Quay robot account). Deploy scripts source this file automatically — deployment will fail or produce incomplete results without it.
+**Environment configuration (required).** Before deploying any stage, copy the environment template and fill in the values for your target cluster. The `.env` file drives Git source references for Argo CD, cluster safety guards, demo persona credentials, external model API keys, and Stage 060 delivery-chain integrations (GitHub App, PAT, Quay robot account). Deploy scripts source this file automatically — deployment will fail or produce incomplete results without it.
 
 ```bash
 cp env.example .env
@@ -124,10 +124,10 @@ oc login --token=<token> --server=<api>
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/050-advanced-app-platform/deploy.sh
+./stages/060-advanced-app-platform/deploy.sh
 ```
 
-**Validate the developer workflow stages.** Stages 110–130 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MTA stack) is deployed by Stage 050. Each keeps a read-only `validate.sh` for its demo prerequisites:
+**Validate the developer workflow stages.** Stages 110–130 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MTA stack) is deployed by Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
 ./stages/110-ai-assisted-development/validate.sh

@@ -51,7 +51,7 @@ parent/child lineage (`parent_session_id`); deleting a parent cascades to
 its delegate sessions. `/handoff` preserves the session id across
 platforms.
 
-### Stage 080 provenance — the honest ground truth
+### Stage 130 provenance — the honest ground truth
 
 `worker_session_id` in kanban completion metadata is a **stage 080 project
 convention, not documented product behavior**. Verified against docs and

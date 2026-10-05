@@ -465,7 +465,7 @@ Deploy stages in order:
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/050-advanced-app-platform/deploy.sh
+./stages/060-advanced-app-platform/deploy.sh
 ```
 
 Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
@@ -478,7 +478,7 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. GitOps stages ar
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
-| 050 | `050-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
+| 050 | `060-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MTA stack |
@@ -552,15 +552,15 @@ Deferred developer-workflow topics `100-170` are not `stages/` directories yet. 
 For Stage 060 vibe-coding changes, patch Stage 050 (it owns Dev Spaces and the developer portal) to the feature branch being validated:
 
 ```bash
-oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 060-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc annotate application 060-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Rollback to the stable platform branch:
 
 ```bash
-oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 060-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc annotate application 060-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Do not merge a feature branch to `main` only to validate developer workflow catalog or workspace changes. Do not create Stage `100-170` directories or Argo CD applications until a workflow owns executable artifacts or dedicated cluster resources.
@@ -814,7 +814,7 @@ oc get deployment -n openshift-mta
 
 ### Stage 050 — Coolstore dev environment (coolstore component)
 
-The `coolstore` component keeps a running `coolstore-inventory-service` in `coolstore-dev` so the demo starts from a deployed brownfield system. The Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared pipeline's `tag-latest` task republishes that tag on every green run. `deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions `quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on a fresh cluster, the seed run has not completed yet — re-run `stages/050-advanced-app-platform/deploy.sh`.
+The `coolstore` component keeps a running `coolstore-inventory-service` in `coolstore-dev` so the demo starts from a deployed brownfield system. The Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared pipeline's `tag-latest` task republishes that tag on every green run. `deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions `quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on a fresh cluster, the seed run has not completed yet — re-run `stages/060-advanced-app-platform/deploy.sh`.
 
 Useful checks:
 
@@ -939,7 +939,7 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift GitOps UI or CLI:
 
 ```bash
-argocd app delete 050-advanced-app-platform --cascade
+argocd app delete 060-advanced-app-platform --cascade
 argocd app delete 040-governed-models-as-a-service --cascade
 argocd app delete 030-private-model-serving --cascade
 argocd app delete 020-gpu-infrastructure-private-ai --cascade

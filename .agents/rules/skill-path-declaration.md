@@ -3,7 +3,7 @@ name: skill-path-declaration
 skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/SKILL.md
-  - gitops/stages/050-advanced-app-platform/base/devspaces/**
+  - gitops/stages/060-advanced-app-platform/base/devspaces/**
 ---
 
 # Skills declare paths they touch; dest-init fail-closes, not mid-run

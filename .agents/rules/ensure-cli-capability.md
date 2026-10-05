@@ -4,12 +4,12 @@ skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/mta-analyze-legacy.sh
   - stages/130-ai-autonomous-migration/scaffold-repo/**/assert-ensure-cli-path.sh
-  - gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml
+  - gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml
 ---
 
 # ensure_cli is a capability probe, not a presence probe
 
-`ensure_cli` in the Stage 080 golden analyzer must not `return 0` on the first
+`ensure_cli` in the Stage 130 golden analyzer must not `return 0` on the first
 path that `[ -x ]` / `command -v` finds. A present `kantra` next to a
 non-executable `java-external-provider` (or jdtls launcher) is unusable: M1
 dies three layers later, and dest-3 showed a worker encoding paths to `chmod`
@@ -53,5 +53,5 @@ in gid 0). Do not dest-push dest-3’s worker-patched analyzer as golden.
    MATCH.
 
 Campaign law: nested AD-019 lesson 17. Checker source:
-`gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
+`gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
 (`kantra-assert-exec`).

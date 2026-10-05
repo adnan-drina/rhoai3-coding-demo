@@ -90,4 +90,4 @@ Do NOT add `opendatahub.io/managed: "true"` to secrets in GitOps manifests. The 
   context: `oc whoami` and `oc project`
 - Before modifying a stage, read its README first
 - Every implemented stage has at least three deliverables: `deploy.sh`,
-  `validate.sh`, and `README.md`. Workflow-only stages (060, 070, 080) have only `validate.sh` and README — their platform resources are owned by Stage 050.
+  `validate.sh`, and `README.md`. Workflow-only stages (060, 070, 080) have only `validate.sh` and README — their platform resources are owned by Stage 060.

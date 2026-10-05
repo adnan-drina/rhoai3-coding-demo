@@ -20,12 +20,12 @@ The implemented flow is the ordered directories under [`../stages/`](../stages/)
 3. [Stage 020: GPU Infrastructure for Private AI](../stages/020-gpu-infrastructure-private-ai/README.md)
 4. [Stage 030: Private Model Serving](../stages/030-private-model-serving/README.md)
 5. [Stage 040: Governed Models-as-a-Service](../stages/040-governed-models-as-a-service/README.md)
-6. [Stage 050: Advanced Application Platform](../stages/050-advanced-app-platform/README.md)
+6. [Stage 060: Advanced Application Platform](../stages/060-advanced-app-platform/README.md)
 7. [Stage 110: AI-Assisted Development](../stages/110-ai-assisted-development/README.md)
 8. [Stage 120: AI-Agentic Development](../stages/120-ai-agentic-development/README.md)
 9. [Stage 130: AI-Autonomous Migration](../stages/130-ai-autonomous-migration/README.md)
 
-[Stage 110](../stages/110-ai-assisted-development/README.md) starts the developer-facing part of the workshop. It uses the Stage 110 workspace and Stage 050 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 110. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
+[Stage 110](../stages/110-ai-assisted-development/README.md) starts the developer-facing part of the workshop. It uses the Stage 110 workspace and Stage 060 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 110. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
 
 ## AI Collaboration Rules
 

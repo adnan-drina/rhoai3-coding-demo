@@ -2,7 +2,7 @@
 name: external-dirs-home-contract
 skill-group: Demo Environment
 applies-to:
-  - gitops/stages/050-advanced-app-platform/base/devspaces/**
+  - gitops/stages/060-advanced-app-platform/base/devspaces/**
   - stages/130-ai-autonomous-migration/scaffold-repo/**/check-external-dirs.py
   - stages/130-ai-autonomous-migration/scaffold-repo/**/check-external-dirs.test.py
 ---
@@ -17,7 +17,7 @@ worker (Operator `104946ZO`). The worker then completed anyway.
 **Canonical skills home slot = dest-init’s dest-user path**
 `/home/user/.hermes/skills` (postStart `HOME`, `HERMES_GLOBAL_SKILLS_DIR`).
 That is a dest-user skills **read** root after `HERMES_HOME` relocation.
-It is not a Spec Kit dump (Spec Kit is removed from Stage 080; no shim).
+It is not a Spec Kit dump (Spec Kit is removed from Stage 130; no shim).
 
 That is **not** the profile process home
 (`$HERMES_HOME/profiles/<name>/home/.hermes/skills`). AMEND any reading

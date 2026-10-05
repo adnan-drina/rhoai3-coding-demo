@@ -47,7 +47,7 @@ Important paths:
 
 The workshop has two parts:
 
-- Stages 010-070 build the trusted AI development platform for platform engineers.
+- Stages 010–060 build the trusted AI development platform for platform engineers.
 - Stages 110 and later show enterprise developer workflows that consume that platform.
 
 Current implemented stages:
@@ -56,7 +56,7 @@ Current implemented stages:
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 050 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
+5. 060 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
 6. 110 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
 7. 120 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
 8. 130 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
@@ -222,7 +222,7 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 | 020 GPU infra | `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-kueue-workload-management`, `rhoai-distributed-workloads`, `ocp-machine-management`, `ocp-node-feature-discovery` |
 | 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
 | 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |
-| 050 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
+| 060 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
 | 110 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
 | 120 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
 | 130 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
@@ -244,13 +244,13 @@ for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$sc
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
-./stages/050-advanced-app-platform/validate.sh
+./stages/060-advanced-app-platform/validate.sh
 ./stages/110-ai-assisted-development/validate.sh
 ./stages/120-ai-agentic-development/validate.sh
 ./stages/130-ai-autonomous-migration/validate.sh
 ```
 
-Stage 120 consumes the Stage 110 Dev Spaces platform and Stage 050 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
+Stage 120 consumes the Stage 110 Dev Spaces platform and Stage 060 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 

@@ -49,7 +49,7 @@ For stage changes with a live cluster:
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
-./stages/050-advanced-app-platform/validate.sh
+./stages/060-advanced-app-platform/validate.sh
 ./stages/110-ai-assisted-development/validate.sh
 ./stages/120-ai-agentic-development/validate.sh
 ./stages/130-ai-autonomous-migration/validate.sh

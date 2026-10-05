@@ -174,9 +174,9 @@ When creating or modifying manifests, verify:
 
 ## Workflow-Only Stages
 
-Stages 060, 070, and 080 are workflow-only: they have no Argo CD Application and no `deploy.sh`. Their `validate.sh` scripts validate against resources owned by the `050-advanced-app-platform` Argo CD Application.
+Stages 060, 070, and 080 are workflow-only: they have no Argo CD Application and no `deploy.sh`. Their `validate.sh` scripts validate against resources owned by the `060-advanced-app-platform` Argo CD Application.
 
-Stage 050 is a multi-component owner managing: identity (platform RHBK), devspaces, pipelines, sonarqube, rhdh, mta, and coolstore resources.
+Stage 060 is a multi-component owner managing: identity (platform RHBK), devspaces, pipelines, sonarqube, rhdh, mta, and coolstore resources.
 
 ## MaaS and Model Access
 

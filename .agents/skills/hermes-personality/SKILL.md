@@ -18,7 +18,7 @@ description: >
 
 # Hermes Personality & SOUL.md
 
-Use this skill when touching agent identity. Stage 080 authors four
+Use this skill when touching agent identity. Stage 130 authors four
 SOUL.md files: dest-user `.hermes/SOUL.md` (base `HERMES_HOME`) and
 `.hermes/config/profiles/{orchestrator,implementer,reviewer}.SOUL.md`
 (placed into each profile home). Official: one SOUL.md per profile.
@@ -50,7 +50,7 @@ not enforce a workspace boundary" (identity, not access control).
   should follow you everywhere, it belongs in SOUL.md".
 - **AGENTS.md** — "project architecture, coding conventions, tool
   preferences, repo-specific workflows, commands, ports, paths": "if it
-  belongs to a project, it belongs in AGENTS.md". (Stage 080 enforces
+  belongs to a project, it belongs in AGENTS.md". (Stage 130 enforces
   this split: the scaffold's AGENTS.md is the sole standing-convention
   surface; SOUL.md carries identity only.)
 - **`/personality`** — "a session-level overlay… temporary mode switch";

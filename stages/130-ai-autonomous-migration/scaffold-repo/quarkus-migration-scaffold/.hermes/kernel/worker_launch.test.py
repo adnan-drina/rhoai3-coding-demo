@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import worker_launch as WL  # noqa: E402
 
-PROFILES = HERE.parents[5] / "gitops/stages/050-advanced-app-platform/base/devspaces/model-profiles.json"
+PROFILES = HERE.parents[5] / "gitops/stages/060-advanced-app-platform/base/devspaces/model-profiles.json"
 TASK = "t_9c1e"
 HALT = ("STOP WORKER_TOOL_LOOP: tool terminal, guardrail identical_call_streak_halt, count 5, args_sha256 0f3a -- "
         "the worker was halted before another model request")

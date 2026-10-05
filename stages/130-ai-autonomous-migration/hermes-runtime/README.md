@@ -106,7 +106,7 @@ protocol uses native cooperative control without that service; see
 
 ## Configuration and evidence
 
-The Stage 050 producer and its `model-profiles.json` supply the runtime's
+The Stage 060 producer and its `model-profiles.json` supply the runtime's
 model configuration and request/token budgets. The golden scaffold supplies
 migration policy and worker recovery. Those are separate from this patch set.
 

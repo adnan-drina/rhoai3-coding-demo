@@ -13,7 +13,7 @@ To enable (before a workshop):
 2. Add `- ../optional/qwen35b-workshop` to `../base/kustomization.yaml`
    resources and re-add `qwen3-6-35b-a3b` to the Stage 040 access
    policies (devspaces-coding-models, personal-*); commit and sync.
-3. Re-run the key-provisioning job (Stage 050 devspaces) so
+3. Re-run the key-provisioning job (Stage 060 devspaces) so
    MAAS_API_KEY_QWEN is minted; restart workspaces to pick up the
    provider.
 

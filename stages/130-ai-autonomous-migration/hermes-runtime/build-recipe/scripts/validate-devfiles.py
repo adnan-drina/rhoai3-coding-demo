@@ -8,9 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FILES = [
     ROOT
-    / "gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml",
+    / "gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml",
     ROOT
-    / "gitops/stages/050-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml",
+    / "gitops/stages/060-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml",
     ROOT
     / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/devfile.yaml",
     ROOT

@@ -3,7 +3,7 @@ name: m2-plan-assignee-implementer
 skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/AGENTS.md
-  - gitops/stages/050-advanced-app-platform/base/devspaces/**
+  - gitops/stages/060-advanced-app-platform/base/devspaces/**
 ---
 
 # M2 PLAN is implementer; dest AGENTS.md must not say orchestrator

@@ -1,0 +1,7 @@
+# Stage reorganization
+
+Developer workflows move from 060/070/080 to 110/120/130. The former 050 application platform moves to 060 with its existing service, namespace and storage identities preserved. Stage 050 is reserved for model evaluation. These source changes do not deploy or repoint any live Application; Stage 010 remains pinned to its verified f38 revision and retains MLflow and registry data pending reviewed adoption.
+
+Current source paths and runtime build inputs use the new layout. The stage-numbered build entrypoint is now `stages/130-ai-autonomous-migration/hermes-runtime/build-recipe/build-130-runtime-image.sh`. Immutable image tags/digests, `/opt/rhoai3/080.pins`, outcome wire schemas and historical evidence retain their original identities. Renamed source paths in pinned build inputs do not prove that existing images contain the revised paths. Before deployment of Stage 060/130, render and validate the generated catalog/workspace inputs, audit copied runtime paths and rebuild/re-pin only where required. Existing runtime code-identity and tree checks must remain enforced; no image compatibility claim follows from this source refactor.
+
+New Stage 060 Application identity must not be used to prune or recreate deployed application-platform services during any later adoption. Only Stage 010 exists on the current cluster, so this refactor performs no Application handoff. Historical records and upstream source captures remain evidence for their original versions rather than current navigation.

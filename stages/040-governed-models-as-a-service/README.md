@@ -66,7 +66,7 @@ Stage 040 is the governance control point for all model consumption that follows
 
 Retired: `rhoai-developers-coding-models`, `enterprise-rag-autorag`, `developer-hub-models`, `model-evaluation`, `ai-safety-guardrails`. The last three had no API keys and no running consumer. `ai-admin` and `ai-developer` keep access through their personal subscriptions.
 
-- **Cross-stage wiring.** Stage 050 (`devspace-maas-key-provisioner`) service account uses the `devspaces-coding-models` subscription. (The former `mta-migration-models` subscription was removed with Developer Lightspeed — MTA currently consumes no models; see BACKLOG "Developer Lightspeed re-enable".)
+- **Cross-stage wiring.** Stage 060 (`devspace-maas-key-provisioner`) service account uses the `devspaces-coding-models` subscription. (The former `mta-migration-models` subscription was removed with Developer Lightspeed — MTA currently consumes no models; see BACKLOG "Developer Lightspeed re-enable".)
 - **Operator version pinning.** The RHCL Subscription declares `startingCSV: rhcl-operator.v1.3.5` directly in the manifest with manual InstallPlan approval; a hook Job (`approve-rhcl-installplan`) guards against accidental upgrades past `v1.3.5`. This is deliberate because RHCL 1.4.0 is deprecated and Red Hat directs customers to pin to the latest 1.3.z release.
 - **Generated resources stay operator-managed.** AuthPolicy, TokenRateLimitPolicy, EnvoyFilter, and HTTPRoutes are created by the MaaS/RHCL/Kuadrant operators from the declared subscriptions and model refs — they are NOT authored in GitOps.
 - **Serving-health monitoring.** The `vllm-serving-health` PrometheusRule fires: high TTFT (>2s for 10m), request queue backlog (>8 for 10m), KV-cache pressure (>90% for 10m), and a parked-model info alert when no metrics flow for 15m. These match the Stage 030 GuideLLM benchmark breakpoints.
@@ -189,4 +189,4 @@ Prerequisites: cert-manager must be installed before deploy.sh runs (the script 
 
 ## Next Stage
 
-[Stage 050: AI-Assisted Development](../110-ai-assisted-development/README.md) moves governed model access into developer workspaces with IDE-integrated AI coding tools that consume MaaS endpoints instead of personal provider keys.
+[Stage 060: AI-Assisted Development](../110-ai-assisted-development/README.md) moves governed model access into developer workspaces with IDE-integrated AI coding tools that consume MaaS endpoints instead of personal provider keys.

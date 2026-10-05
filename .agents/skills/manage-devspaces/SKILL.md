@@ -27,11 +27,11 @@ description: >-
 - **Retired standing seats** (do not recreate): `getting-started-ai-coding`, `coolstore-inventory-service`, `mca-coolstore`.
 - **Cloned repos**:
   - `https://github.com/adnan-drina/coolstore-inventory-service.git` — Stage 060 `agentic-coolstore` project
-  - Stage 070/080 factory repos are published per run; Stage 080 also clones the legacy URL as `/projects/legacy`
-- **Extensions**: Kilo Code 7.4.8 via `DEFAULT_EXTENSIONS` on `agentic-coolstore`. MTA 8.2.0 (pack + core + java + redhat.java) via the Stage 080 factory destfile.
-- **GitOps**: Managed by Argo CD `050-advanced-app-platform` with a repair hook (no Replace on DevWorkspaces)
+  - Stage 120/080 factory repos are published per run; Stage 130 also clones the legacy URL as `/projects/legacy`
+- **Extensions**: Kilo Code 7.4.8 via `DEFAULT_EXTENSIONS` on `agentic-coolstore`. MTA 8.2.0 (pack + core + java + redhat.java) via the Stage 130 factory destfile.
+- **GitOps**: Managed by Argo CD `060-advanced-app-platform` with a repair hook (no Replace on DevWorkspaces)
 - **AI tool selection**: Stage 060 `agentic-coolstore` is Kilo Code. Factory 070/080 destfiles select the agentic/harness tooling for that stage.
-- **Manifests**: `gitops/stages/050-advanced-app-platform/base/devspaces/workspaces.yaml` (namespaces + RBAC), `agentic-workspace.yaml` (Stage 060 seats)
+- **Manifests**: `gitops/stages/060-advanced-app-platform/base/devspaces/workspaces.yaml` (namespaces + RBAC), `agentic-workspace.yaml` (Stage 060 seats)
 
 ## Key Behaviors Learned
 
@@ -71,14 +71,14 @@ The MTA extension pack (`mta-vscode-extension`) does not reliably resolve its de
 
 ### Project Order Matters for MTA
 
-The MTA Konveyor Core extension warns "Multi-root workspaces are not supported! Only the first workspace folder will be analyzed." Stage 080 factory destfiles put `legacy` first so analysis targets the migration source.
+The MTA Konveyor Core extension warns "Multi-root workspaces are not supported! Only the first workspace folder will be analyzed." Stage 130 factory destfiles put `legacy` first so analysis targets the migration source.
 
 ### Memory Requirements
 
 The default tooling container memory (~1152Mi) is insufficient for VS Code + Kilo Code + MTA + Java/Maven. Current seats:
 
 - **agentic-coolstore**: 6Gi limit / 2Gi request
-- **Stage 080 factory destfile**: 12Gi limit / 2Gi request for MTA analysis and the harness
+- **Stage 130 factory destfile**: 12Gi limit / 2Gi request for MTA analysis and the harness
 
 ```yaml
 components:
@@ -116,7 +116,7 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 
 ```bash
 NS=wksp-ai-developer
-oc patch application 050-advanced-app-platform -n openshift-gitops --type=json \
+oc patch application 060-advanced-app-platform -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 oc patch devworkspace agentic-coolstore -n $NS --type=merge -p '{"spec":{"started":false}}'
 sleep 10
@@ -124,8 +124,8 @@ oc delete devworkspace agentic-coolstore -n $NS --force --grace-period=0
 # Only delete the per-user claim when no other DevWorkspace in $NS still needs it.
 oc delete pvc claim-devworkspace -n $NS --force --grace-period=0
 sleep 5
-oc apply -f gitops/stages/050-advanced-app-platform/base/devspaces/agentic-workspace.yaml
-oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge \
+oc apply -f gitops/stages/060-advanced-app-platform/base/devspaces/agentic-workspace.yaml
+oc patch application 060-advanced-app-platform -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
 ```
 
@@ -192,7 +192,7 @@ subjects:
 
 ## Agentic Workspace
 
-The `agentic-coolstore` DevWorkspace is the Stage 060 catalog entry point. It clones `adnan-drina/coolstore-inventory-service` and selects Kilo Code. Open it from Developer Hub → Coolstore Inventory Service → **Dev Spaces**, not from a factory URL. Stage 070/080 seats are separate factory workspaces.
+The `agentic-coolstore` DevWorkspace is the Stage 060 catalog entry point. It clones `adnan-drina/coolstore-inventory-service` and selects Kilo Code. Open it from Developer Hub → Coolstore Inventory Service → **Dev Spaces**, not from a factory URL. Stage 120/080 seats are separate factory workspaces.
 
 ## Users
 
