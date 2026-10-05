@@ -324,7 +324,7 @@ For presenters with time: [`demo-assets/003-catalog-ai-search.md`](demo-assets/0
 Teardown is an operator action from the platform repository:
 
 ```
-./scripts/delete-scaffolded-project.sh coolstore-catalog --yes
+./scripts/demo/delete-scaffolded-project.sh coolstore-catalog --yes
 ```
 
 It removes the workspace, catalog entries, Argo app and namespace, SonarQube history, and the GitHub and Quay repositories (see the script header for credential requirements). Scaffold again anytime; the template recreates everything in seconds.

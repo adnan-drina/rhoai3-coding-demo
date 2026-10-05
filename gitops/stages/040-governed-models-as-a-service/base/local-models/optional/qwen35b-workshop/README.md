@@ -8,7 +8,7 @@ overlay restores the 35B coding worker for multi-user hands-on sessions
 concurrent load).
 
 To enable (before a workshop):
-1. Scale the GPU machineset to 2 (see `scripts/resume-gpu-demo.sh` for
+1. Scale the GPU machineset to 2 (see `scripts/platform/resume-gpu-demo.sh` for
    the machineset name) and wait for the node.
 2. Add `- ../optional/qwen35b-workshop` to `../base/kustomization.yaml`
    resources and re-add `qwen3-6-35b-a3b` to the Stage 040 access

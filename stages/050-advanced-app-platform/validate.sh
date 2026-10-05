@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/validate-lib.sh"
+source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║  Stage 050: Advanced Application Platform                         ║"
@@ -74,7 +74,7 @@ check "migration workspace MaaS egress NetworkPolicy" \
   "oc get networkpolicy migration-workspace-maas-egress -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "migration-workspace-maas-egress"
 check "factory reuse links and migration duplicate admission (server dry runs)" \
-  "python3 '${REPO_ROOT}/scripts/check-workspace-creation.py' --live && echo WORKSPACE_CREATION_OK" \
+  "python3 '${REPO_ROOT}/scripts/demo/check-workspace-creation.py' --live && echo WORKSPACE_CREATION_OK" \
   "WORKSPACE_CREATION_OK"
 
 log_step "Identity (identity component)"
@@ -263,12 +263,6 @@ check "050 live runtime catalog carries its bundle id and a pinned revision" \
 check "050 live catalog publishes the validated in-cluster MaaS route on the platform entity" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null | contains -E 'rhoai3.redhat.com/maas-internal-ip: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && echo LIVE_CATALOG_HAS_MAAS_ROUTE || echo LIVE_CATALOG_MISSING_MAAS_ROUTE" \
   "LIVE_CATALOG_HAS_MAAS_ROUTE"
-check "050 Operator script still routes a pre-existing workspace to the in-cluster gateway with a validated host and IP" \
-  "test -x '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' && grep -c 'RFC 1123 subdomain' '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' | head -1 || echo 0" \
-  "2"
-check "050 skeleton devfile points at that script for the in-cluster route" \
-  "grep -c 'patch-workspace-maas-route.sh' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
-  "1"
 
 # B2: template Locations are pinned to the ONE revision the bundle was
 # published at (superseded revisions are pruned by the generator), so every

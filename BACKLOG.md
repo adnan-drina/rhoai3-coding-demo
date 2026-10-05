@@ -4,6 +4,19 @@ Open limitations, unfinished work, and the evidence needed to understand them.
 Completed run narratives remain in Git history. Paths under `tmp/` are local
 evidence, excluded from Git.
 
+## Fresh-environment migration gates (2026-10-05)
+
+The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-05) is read-only evidence on OCP 4.22.14, not a deployed stage verdict.
+
+- [ ] Stage 010: qualify RHOAI 3.5, ODF version/channel, COO hold and DSC/DSCI schemas; remove the legacy AutoRAG dashboard flag when implementing the excluded scope. Keep old overlays/holds until their replacement is validated.
+- [ ] Provisioner follow-up: Lightspeed 1.1.4 installed but API NotReady; cloud-credential missing parent credentials prevents future OCP minor/major upgrades. Preserve add-on/operator ownership; no credentials or resources were changed during inventory.
+- [ ] Stage 020: revalidate `stable-v1.3` Kueue against the OCP 4.22 catalog and current lifecycle/known-issue discrepancy before choosing the replacement. Trainer remains disabled; this inventory does not establish a full-stack compatibility failure.
+- [ ] Stage 050: resolve integration with the preinstalled OpenID/Keycloak (`keycloak`, namespace-scoped operator) before applying the separate project `rhbk` identity installation.
+- [ ] Later stage gates: qualify EvalHub, MLflow and Agent Catalog/OpenShell with standalone per-project Hermes; AutoRAG/AutoML excluded. No new capability is installed by this documentation change.
+
+Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform revision pods are not project cleanup candidates. Historical validation stays historical; obsolete project resources need purpose, owner, replacement behavior and a validated removal condition before deletion.
+
+
 ## Migration reliability package M-1..M-7 (2026-09-30, unpublished)
 
 Branch `feat/migration-reliability-m1-m7` (base `next/after-v28` `26bc9c2b`); status per ID in

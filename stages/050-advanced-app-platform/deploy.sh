@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib.sh"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 
 STAGE_NAME="050-advanced-app-platform"
 
@@ -12,7 +12,7 @@ load_env
 check_oc_logged_in
 
 # Fail fast if the nodes are too small for the demo stack, before any changes.
-"$REPO_ROOT/scripts/require-node-sizing.sh"
+"$REPO_ROOT/scripts/platform/require-node-sizing.sh"
 
 # Pre-flight: these values have no safe default — the stage deploys broken
 # without them (Developer Hub crashes, pipelines never trigger). Fail here,

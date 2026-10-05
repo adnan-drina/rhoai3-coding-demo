@@ -48,7 +48,7 @@ in gid 0). Do not dest-push dest-3’s worker-patched analyzer as golden.
    non-executable sibling is **not** accepted, and a pinned MTA CLI tree
    with a non-executable ruleset fixture shebang **is** accepted.
 5. Land in golden `mta-analyze-legacy.sh` + `scan-with-mta/SKILL.md` procedure
-   step 1, then `scripts/bootstrap-scaffold-repos.sh`. Not a dest-4 cut
+   step 1, then `scripts/demo/bootstrap-scaffold-repos.sh`. Not a dest-4 cut
    blocker. Do not dest-exec `kantra-assert-exec` on dest-3 `/opt/kantra` as
    MATCH.
 

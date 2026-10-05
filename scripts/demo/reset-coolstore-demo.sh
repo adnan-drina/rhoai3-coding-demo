@@ -23,13 +23,13 @@
 #   Or: git push origin main:golden --force
 #
 # Usage:
-#   ./scripts/reset-coolstore-demo.sh [--yes] [--keep-sonar] [--skip-workspace] [--wait-pipeline]
+#   ./scripts/demo/reset-coolstore-demo.sh [--yes] [--keep-sonar] [--skip-workspace] [--wait-pipeline]
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-source "$REPO_ROOT/scripts/lib.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 
 REPO_OWNER="${REPO_OWNER:-adnan-drina}"
 REPO_NAME="${REPO_NAME:-coolstore-inventory-service}"

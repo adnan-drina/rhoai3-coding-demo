@@ -11,9 +11,107 @@ The executable source of truth remains the scripts:
 
 - `stages/NNN-*/deploy.sh`
 - `stages/NNN-*/validate.sh`
-- `scripts/bootstrap-scaffold-repos.sh` (golden GitHub reset for stages 070/080)
+- `scripts/demo/bootstrap-scaffold-repos.sh` (golden GitHub reset for stages 070/080)
 
 Use this guide to understand when to run those scripts, what they do, and how to interpret the results.
+
+## Fresh environment baseline (2026-10-05)
+
+This section records the environment used for the staged OCP 4.22 / RHOAI 3.5 migration. An environment inventory establishes prerequisites; it does not prove a deployed demo stage. The existing manifests, stage validators, screenshots and historical records retain their implemented legacy versions until their individual stage upgrades are reviewed and validated.
+
+### Provisioning contract
+
+| Input | Requested default | Evidence required on every fresh cluster |
+|---|---|---|
+| Provider / topology | AWS / multinode | Infrastructure platform and actual node roles |
+| OCP minor | 4.22 | ClusterVersion desired/history, Kubernetes version, update channel and conditions |
+| CPU workers | Four `m5a.8xlarge` workers | Node instance labels, capacity/allocatable CPU/memory, readiness, taints and MachineSets |
+| Control plane | Reproduce the observed three `m6a.4xlarge` nodes; screenshot did not specify sizing | Confirm three control-plane nodes and at least the project 16 CPU / 60 GiB capacity rule independently; observed provider default is dual-role/schedulable, with later placement decisions reviewed per stage |
+| OpenShift Lightspeed | Enabled | Owning Subscription/CSV, OLSConfig and operand health; selection alone is not installation evidence |
+| Create users / OPEN Environment | Both unchecked | Inventory actual authentication configuration; do not infer that these settings remove ordinary provider add-ons |
+
+The project guard in [require-node-sizing.sh](../scripts/platform/require-node-sizing.sh) requires at least 16 vCPU and 60 GiB **capacity** for every non-GPU control-plane and CPU worker node. It exempts accelerator nodes. This is a project rule for the complete demo, not a Red Hat minimum or a measured workload guarantee. Allocatable resources must also be recorded.
+
+The [RHOAI 3.5 installation requirements](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install) separately require at least two workers with 8 CPUs / 32 GiB each, default dynamically provisioned storage and an identity provider. RHOAI installation and administrative setup require an appropriately privileged non-`kubeadmin` account; ordinary user access is governed separately by project/group permissions. Discovery using a provisioning administrator does not establish that application access is ready.
+
+The [supported-configurations matrix](https://access.redhat.com/articles/rhoai-supported-configs-3.x), updated 2026-10-02, lists RHOAI 3.5 on x86_64 with OCP 4.19.9+, 4.20, 4.21 and 4.22. The 3.5 installation page still lists 4.19–4.20 in its platform requirements; use the newer matrix for the compatibility claim and validate exact dependency versions separately.
+
+### Observed inventory and evidence
+
+Guarded API reads completed on **2026-10-05 at 06:50–06:55 UTC**, from clean `main` at `59169d28ce661209eca52680e5621b8150043230` (19 commits behind cached `origin/main` at the start of discovery). No refs were changed. Login used an isolated private kubeconfig; the global context was untouched. The user confirmed the new API/console pair, and only the gitignored local `RHOAI_EXPECTED_API_SERVER` was aligned to that confirmed target. Private inventory is retained locally; addresses, credentials, account IDs and node identities are omitted here.
+
+| Area | Observed state | Consequence |
+|---|---|---|
+| OCP / Kubernetes | OCP **4.22.14**, `stable-4.22`; kubelets **v1.35.6**; AWS, HighlyAvailable control-plane/infrastructure topology | Requested provider/minor/topology match; this is a fresh deployment baseline, not an in-place OCP upgrade |
+| Core health | ClusterVersion Available=True, Failing=False, Progressing=False; all ClusterOperators Available and not Degraded; master/worker MachineConfigPools Updated and not Degraded | Core platform is available; this does not establish add-on health |
+| Upgrade constraint | ClusterVersion Upgradeable=False, reason `MissingRootCredential`; cloud-credential reports missing parent `kube-system/aws-creds` | Provisioner must resolve before a future minor/major OCP upgrade; credential contents were not inspected or restored |
+| Dedicated CPU workers | Four `m5a.8xlarge`, each 32 CPU / 123.666 GiB capacity, 31.5 CPU / 115.568 GiB allocatable | Requested worker count/type match; all Ready, no pressure conditions |
+| Control plane | Three `m6a.4xlarge`, each 16 CPU / 61.461 GiB capacity, 15.5 CPU / 60.363 GiB allocatable | Control-plane size independently observed; all Ready and pass project capacity rule |
+| Scheduling / GPUs | All seven nodes untainted; control planes also worker-labeled; `mastersSchedulable: true`; no GPU instance/role/advertised NVIDIA GPU capacity | Three dual-role control planes plus four dedicated workers; do not count seven dedicated workers or infer GPU readiness |
+| Machines / scaling | Seven Machines; six worker MachineSets: three active `m5a.8xlarge` sets with replicas 2/1/1, three `m5a.4xlarge` sets at zero; no ClusterAutoscaler or MachineAutoscaler objects | Zero-replica sets are provisioner inventory, not demonstrated project debris |
+| Node local storage | Each node advertises about 99.44 GiB ephemeral capacity / 88.49 GiB allocatable | Node-local capacity is not dynamically provisioned PVC capacity or an AWS EBS quota |
+| Block / object storage | `gp3-csi` default and `gp2-csi`, both AWS EBS CSI, WaitForFirstConsumer, expansion enabled; one Bound 50Gi `gp3-csi` PVC/PV in `keycloak` | Dynamic storage configuration is present; provisioning/expansion not actively tested. No ODF/NooBaa or project object-store installation observed |
+| Network / ingress / registry | OVNKubernetes; default ingress LoadBalancerService with two available replicas; internal registry Managed with S3 storage and Available=True | Provider/platform infrastructure; registry S3 is not a project S3 model-artifact service |
+| Gateway API | Standard bundle **v1.4.1** CRDs present; zero GatewayClass, Gateway or HTTPRoute objects | API presence does not establish a MaaS gateway or gateway controller installation |
+| Proxy / trust | No HTTP/HTTPS proxy configured; trustedCA reference configured; ingress/config certificates report Ready | Trust reference/certificate readiness observed; trust contents and external connectivity were not tested |
+| Authentication | One OpenID identity provider; preinstalled Keycloak CR Ready, one instance; PostgreSQL deployment Ready and its 50Gi PVC Bound | Provider identity is present despite unchecked user-creation option; actual persona login and non-kubeadmin RHOAI admin access remain untested |
+| Cleanliness | No demo stage namespaces or project Applications/workloads/PVCs observed; Application API unavailable. Five Failed platform revision pods created 2026-09-28 remain in kube-controller-manager/scheduler namespaces | Provisioner add-ons and platform revision history are not demo leftovers; do not delete them as cleanup |
+
+All queried core inventory APIs responded; Argo CD Application API was unavailable. RHOAI, ODF/NooBaa, GPU/NFD, COO, Tempo, Dev Spaces, Pipelines and RHDH installations were not observed in Subscriptions/CSV/CRD/namespace inventory. Built-in OCP monitoring is present; Lightspeed's own OTel collector does not establish a separately installed Red Hat OpenTelemetry Operator. Three catalog sources reported READY; catalog availability is not installation or compatibility evidence.
+
+| Preinstalled operator | Channel / approval / installed version | Primary CR / health / scope | Owner and consequence |
+|---|---|---|---|
+| cert-manager | `stable-v1` / Automatic / **1.20.1** | Operator and three cert-manager deployments Ready; OperatorGroup targets `cert-manager-operator` | Existing environment add-on; preserve its ownership when reviewing prerequisite overlap |
+| Red Hat build of Keycloak | `stable-v26.4` / Automatic / **26.4.16-opr.1** | CSV Succeeded; Keycloak Ready; OperatorGroup watches only `keycloak` | Preinstalled; Stage 050 independently declares `rhbk` / `stable-v26`. Namespace/watch scope are distinct; reuse vs separate installation needs an explicit integration decision |
+| OpenShift Lightspeed | `stable` / Automatic / **1.1.4** | CSV Succeeded; OLSConfig **NotReady**, ApiReady=False; two API containers running but unready, deployment has zero Ready replicas. Console/cache/collector/MCP/RHOKP Ready; optional agentic plugin/alerts adapter disabled | Selected provisioning add-on exists but is not fully healthy. Bounded API logs show `azure.core.exceptions.ClientAuthenticationError` and readiness requests returning 500; credential/provider configuration and user-facing service were not validated; provisioner follow-up required |
+
+The CloudCredential CR has an empty `spec.credentialsMode` and no populated status; effective mode was not established without credential metadata. [OCP 4.22 cloud credential guidance](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/postinstallation_configuration/changing-cloud-credentials-configuration) permits root-credential removal in supported configurations. The observed upgrade condition is not, by itself, evidence of an improperly provisioned or unhealthy running cluster. Provider action is needed when an upgrade or new/changed CredentialsRequests require parent credentials.
+
+These add-ons predate project deployment in this environment. Their provisioning source/automation was not inspected, so ownership is classified as **pre-existing environment state**, not a verified external GitOps repository. Operators own their generated workloads. CSV Succeeded alone is insufficient for an add-on readiness verdict.
+
+### Stage 010 readiness and deferred cleanup
+
+**Baseline discovered; Stage 010 deployment not qualified.** The node capacity gate passes, default storage/identity configuration exist, and core OCP is available. Remaining Stage 010 decisions are the RHOAI 3.5/ODF minor/operator compatibility choices, legacy COO hold and generated schemas, preservation of existing identity/add-on ownership, and a non-kubeadmin administration/access plan. No deploy/setup-access/validate script was executed. Lightspeed NotReady is an add-on exception; the missing cloud parent credential limits future OCP upgrades, not proof that every project installation is blocked.
+
+The next implementation task is Stage 010 only. Review its overlays, DSC/DSCI fields, dashboard flags and validator expectations together; then deploy and produce a stage verdict before progressing. `setup-access.sh` appends `demo-htpasswd` while preserving existing IdPs, but remains a separate identity mutation requiring reviewed deployment context.
+
+Cleanup candidates stay stage-scoped: Stage 010's `stable-3.4`/`stable-4.20` references, COO v1.4.0 compatibility hold and `autorag: true` dashboard flag have active legacy purposes. Remove/replace only after the replacement operator/configuration is reviewed and live validated. Stage 020's `stable-v1.3` Kueue choice requires an OCP 4.22 catalog/lifecycle check; official lifecycle and RHOAI known-issue statements differ. Stages 030–050 require later version/ownership review; Stage 050 identity must account for existing `keycloak`. Preserve historical evidence and provider zero-replica MachineSets/platform revision pods; no deletion is authorized by this inventory.
+
+### Ownership and stage boundaries
+
+| Component | Expected owner / source | Stage consequence |
+|---|---|---|
+| OCP control plane, workers, machine lifecycle, platform network/ingress, CSI/default storage, registry, catalog sources | Environment provisioner and OCP operators; actual add-on ownership must be inspected | Fresh-cluster prerequisites; project stages must not adopt or remove them without evidence |
+| Lightspeed selected at provisioning | Provisioner / its installed operator, if observed | Record actual version/configuration/health; do not duplicate its installation in a project stage |
+| GitOps operator and demo Argo CD configuration | Project [bootstrap overlays](../gitops/bootstrap/overlays/); GitOps operator generates operands | Stage 010 uses `gitops-1.20` Automatic, annotation tracking, `rhoai-demo` AppProject and demo controller RBAC; reconcile preinstalled ownership before applying |
+| ODF / NooBaa standalone MCG | Project [Stage 010 ODF aggregate](../gitops/stages/010-openshift-ai-platform-foundation/base/odf/aggregate/overlays/demo/kustomization.yaml); operators generate operands | Current `stable-4.20` overlay and hard-coded `gp3-csi` require review for the new OCP minor; MCG supplies object storage, not Ceph block/file |
+| RHOAI / DSCI / DSC / model registry | Project [Stage 010 RHOAI aggregate](../gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/aggregate/overlays/demo/kustomization.yaml); RHOAI owns generated components | Current `stable-3.4` overlay; only Dashboard, Workbenches and Model Registry are Managed |
+| COO / OpenTelemetry / Tempo | Project [Stage 010 observability aggregate](../gitops/stages/010-openshift-ai-platform-foundation/base/observability/aggregate/overlays/demo/kustomization.yaml) | COO CSV v1.4.0 hold is a legacy RHOAI 3.4 policy; re-evaluate for 3.5, rather than copying generated operand images |
+| Demo identity and S3 connection | Project [setup-access.sh](../stages/010-openshift-ai-platform-foundation/setup-access.sh) plus GitOps groups/RBAC/OBC | Separate mutating step after deployment; `deploy.sh` does not call it. Local passwords remain outside Git |
+| GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | `stable-v1.3` Kueue choice needs OCP 4.22 catalog/lifecycle review before Stage 020; no GPU capacity is implied by CPU worker settings |
+| Model serving / MaaS / developer services | Stages 030 / 040 / 050 | Inventory any existing installations without promoting catalog entries into installed/compatible evidence |
+
+EvalHub, MLflow and Agent Catalog/OpenShell with a standalone Hermes instance per project are planned additions to the RHOAI 3.5 migration. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
+
+### Local inputs and read-only preflight
+
+Keep API/console addresses, login credentials and kubeconfigs only in local private inputs. `OPENSHIFT_API_URL`, `OPENSHIFT_CONSOLE_URL`, `OPENSHIFT_USER`, `OPENSHIFT_PASSWORD` and `RHOAI_EXPECTED_API_SERVER` must describe the same environment. The expected-server substring must be unique. Do not reuse an inherited endpoint silently: `load_env` preserves values already exported by a caller. Load access inputs in a fresh shell, use a private kubeconfig and call `load_env` plus `check_oc_logged_in` before discovery. The guard's normal output contains the private endpoint; keep its output private when producing evidence for publication.
+
+Before a later deployment, verify `GIT_REPO_URL`/`GIT_REPO_BRANCH` and only the local secret inputs required by that stage. Do not dump `.env`, kubeconfig or Secrets. Inspect scripts before running them. Baseline discovery uses only API reads: do not run deployment/access setup, create test workloads/PVCs, or repair platform state as part of inventory.
+
+Collect ClusterVersion/ClusterOperators, nodes/Machines/MachineSets/autoscalers, storage/CSI/PVs/PVCs, network/ingress/registry/proxy/authentication, Subscriptions/installed CSVs and owning CR health, plus namespace/workload/project leftovers. Discover optional APIs before querying their objects. Classify each result as observed healthy/unhealthy, absent object, unavailable API, forbidden, request failure or uninspected. Preserve names/versions of public products, but sanitize endpoints, account IDs, node IPs, infrastructure IDs and identity names. A Pending PVC with WaitForFirstConsumer is not sufficient evidence of failure.
+
+## Script groups
+
+| Directory | Purpose | Entry points |
+|---|---|---|
+| `scripts/platform/` | Platform sizing, GPU lifecycle and workshop layout validation | `require-node-sizing.sh`, `resume-gpu-demo.sh`, `validate-stage-flow.sh` |
+| `scripts/demo/` | Stage 060–080 golden publishing, demo reset/cleanup and consumer checks | `bootstrap-scaffold-repos.sh`, `reset-coolstore-demo.sh`, `delete-scaffolded-project.sh`, `check-kilo-provider.py`, `check-workspace-creation.py` |
+| `scripts/shared/` | Helpers used by both platform and developer workflow stages | `lib.sh`, `validate-lib.sh` |
+
+Tests remain beside their helpers. Run scripts from the repository root using their full grouped paths; source common helpers from `scripts/shared/`. Publishing, reset, cleanup and GPU lifecycle actions retain their existing effects and guards. Stage-local deploy/validate scripts remain in their stage directories.
+
+The obsolete manual workspace MaaS route repair helper `patch-workspace-maas-route.sh` and its companion test were removed: the current catalog/template validates and stamps routing at creation, and preflight/planner checks refuse missing or incorrect routes. The supported recovery path is to preserve work/evidence, refresh routing inputs and create a new workspace through the current template. Factory route injection and its acceptance tests remain active; historical workspaces are not patched by this cleanup.
 
 ## Operating Model
 
@@ -33,7 +131,7 @@ Stage 080 authoring lives in
 `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/`
 on `main`. The Stage 050 `app-migration` template fetches GitHub
 `quarkus-migration-scaffold-v2`. Publish both workshop goldens with
-`scripts/bootstrap-scaffold-repos.sh` (force-push reset). A Stage 080 release
+`scripts/demo/bootstrap-scaffold-repos.sh` (force-push reset). A Stage 080 release
 publishes only its own golden: `SCAFFOLD_REPOS=migration` (or `agentic` for
 Stage 070 only; the default `all` is the demo reset). Do not
 GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
@@ -210,14 +308,7 @@ a database client outside the harness.
 
 ### Stage 080: after creating a migration workspace
 
-Run `scripts/patch-workspace-maas-route.sh <workspace-name>` once. It points the
-workspace's MaaS hostname at the gateway's in-cluster Service (stage 040
-`service-maas-gateway-internal.yaml`) with a hostAlias, reading the host and IP
-from the cluster and validating both. Without it the workspace talks to the
-gateway through the AWS load balancer, which drops a model response that stays
-silent for ~8 minutes (a large tool call) and costs the worker its full stale
-timeout. The pod restarts once and dest-init re-runs; verify with
-`getent hosts <maas host>` inside the pod.
+The current app-migration factory stamps the MaaS hostAlias at creation using the Gateway hostname and internal Service IP validated by the catalog generator. Confirm the workspace resolves the MaaS hostname to that internal address; `run-preflight.sh` refuses the public load-balancer path. If routing inputs are stale, refresh the catalog, preserve existing work and run evidence, and create a new workspace through the current template. Do not manually repair the old workspace route.
 
 ### Stage 080: authorizing a run (the pilot seal)
 
@@ -275,7 +366,7 @@ does is repair mechanisms, never edit product code or evidence by hand:
 | A gate fails with a message that names no file of the tree (the work list says `unlocatable`) | `fix-until-green/scripts/diagnose.py --root . --list` names the failure and what has been spent on it; `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED\|ENVIRONMENT\|DECISION_REQUIRED\|INCONCLUSIVE --investigated … --finding … --proposed-action …` records it under `evidence/diagnosis/`. The tool grants no write authority — a product change while it runs refuses the close — and closing **discharges nothing**: the blocker stays blocking, and what changes is that the run now carries a conclusion someone can act on. A third attempt refuses: that is the finding that the failure needs a decision, not more looking. |
 | A card ended `blocked` although the loop record names its verdict | `hermes kanban complete <id> --summary "…"` from the workspace CLI (the daemon promotes the child only when every parent is done). |
 | A card sits in `triage` | Dashboard "→ ready" (the CLI has no triage verb). |
-| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. `DC` lines at 400–500 s with the pod socket still established mean the workspace is on the public path: `getent hosts maas.apps.<domain>` must print the internal ClusterIP 172.30.250.250. Since 2026-09-24 the app-migration factory stamps that hostAlias at creation (from the platform entity's validated `rhoai3.redhat.com/maas-host`/`maas-internal-ip`) and `run-preflight.sh` refuses a workspace without it; for a workspace created earlier, stop it and run `scripts/patch-workspace-maas-route.sh <workspace>`. |
+| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. `DC` lines at 400–500 s with the pod socket still established mean the workspace is on the public path: `getent hosts maas.apps.<domain>` must print the internal ClusterIP 172.30.250.250. Since 2026-09-24 the app-migration factory stamps that hostAlias at creation (from the platform entity's validated `rhoai3.redhat.com/maas-host`/`maas-internal-ip`) and `run-preflight.sh` refuses a workspace without it; for a stale workspace, refresh the routing inputs, preserve its work and evidence, and create a new workspace through the current template. |
 | The loop refuses `RUN_CONTROL_MISSING`, `HARNESS_RELEASE_MISMATCH` or `MODEL_PROFILE_MISMATCH` (exit 2 from `run-verify.sh`, `advance.py` or `k4_mint.py`) | A v13+ run is governed by the platform's `<run>-run-control` ConfigMap (the migration-run provisioner writes it once from the scaffolding push, mounted read-only at `/etc/rhoai3/run-control`): the contract, the pinned model profile, and the harness release = the scaffolding commit. MISSING: the ConfigMap or its mount is absent; re-run provisioning for the run and restart the workspace. A mid-run harness change is an assisted continuation: commit it, then record `release-rebase.json` (`{"commit": "<sha>", "reason": "..."}`) in the ConfigMap with `oc` (platform authority, not the workspace); it applies at the next workspace start (mount-on-start). A profile change is a new run. |
 | `LOOP_ADMISSION` / `LOOP_NO_SUCCESSOR` after an ACCEPTED step (the card is blocked, not done) | `verification/loop/continuation.json` names the stage (`admission-refused`, `mint-failed`, `no-successor`) and the reason. Restore the named prerequisite, then unblock the card; its worker re-runs `advance.py` with the same arguments, which finishes admission and the mint without a second step. K2 refuses `kanban_complete` until the continuation is `minted`. |
 | Admission names `RUN_ACTIVATION_FOREIGN`, or the M1 binding is missing | The activation is the platform record plus the write-once M1 binding (`/projects/.platform/run-control-state/binding.json`, never `.hermes/pins.json`). FOREIGN: the record names another run or scaffolding commit; create the run again. A lost binding: re-run the M1 continuation (`autostart-migration.sh --after-m1`), which writes it once. |
@@ -286,7 +377,7 @@ does is repair mechanisms, never edit product code or evidence by hand:
 | Auto-start refuses `HERMES_RUNTIME_UNPATCHED` | The workspace image's Hermes is not the tree the harness was qualified on: `/opt/rhoai3/080.pins` `hermes.patched_tree` must equal golden `pins.json` `hermes_agent.patched_tree`. An unpatched image runs without the loop halt, the truncation and quota stops, and the request pacer, while still reporting `hermes 0.20.5`. Repin the devfile to the baked ws-080 digest and create the run again. |
 | A worker run ends `STOP MODEL_REQUEST_BUDGET`, `STOP MODEL_QUOTA` or `STOP MODEL_OUTPUT_INCOMPLETE` | These are infrastructure stops, not repair verdicts. The run is recorded as failed, and the card is respawned once. REQUEST_BUDGET: the run spent its allowance (the profile's `quota`, 190 requests/h for Qwen 3.8, counted in `/projects/.platform/run-control-state/requests.log` across main, retry and auxiliary calls). The next free slot was more than 900 s away, so nothing was sent. Let the window roll, then unblock. MODEL_QUOTA: MaaS kept answering 429; check other consumers of the bucket before unblocking. OUTPUT_INCOMPLETE: a response hit the 32768 output cap; the card is too large for one response. |
 | A worker's `git checkout`/`restore`/`reset`/`stash`/`clean`/`add`/`commit` is refused by K2 | By design: the loop tools own the index and the tree (`advance.py` commits or reverts, `restore-pending.py` restores). Workers may read with `diff`/`status`/`log`/`show`. |
-| Auto-start refuses `STARTUP_MAAS_ROUTE` (no card is minted) | The workspace is not on the in-cluster MaaS route: the refusal names the expected gateway host and Service address and what the pod resolved. A factory-created v13 workspace carries `RHOAI3_MAAS_HOST`/`RHOAI3_MAAS_INTERNAL_IP` and the hostAlias. Refresh the catalog (stage 050 generator) and create the run again. `scripts/patch-workspace-maas-route.sh` is for pre-v13 workspaces only. |
+| Auto-start refuses `STARTUP_MAAS_ROUTE` (no card is minted) | The workspace is not on the in-cluster MaaS route: the refusal names the expected gateway host and Service address and what the pod resolved. A factory-created v13 workspace carries `RHOAI3_MAAS_HOST`/`RHOAI3_MAAS_INTERNAL_IP` and the hostAlias. Refresh the catalog (stage 050 generator) and create the run again. Preserve existing work and evidence before recreating a workspace through the current template. |
 | A workspace start fails with `FailedPostStartHook` | Press **Restart** promptly; do not wait for DWO. dest-init's log is on the volume at `/projects/.platform/poststart.log` (appended across attempts); the wrapper's `/tmp/poststart-std{out,err}.txt` die with the pod. A fully successful dest-init can still be killed when an earlier attempt's hook failure stops the workspace (kubelet restarts the container and runs dest-init again on the dying pod; the cards it minted survive). Applying `devspace-ai-tools-init` does not change a running workspace: dest-init regenerates the worker's Hermes config only at workspace start. On 2026-09-24 the applied ConfigMap left the running v12 workspace untouched until it was restarted by hand. From v13 on, a restarted run whose regenerated model profile differs from the one pinned at creation refuses `MODEL_PROFILE_MISMATCH` (see below), so apply such changes between runs. |
 
 ## Workspace overlay images
@@ -391,13 +482,13 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. GitOps stages ar
 Run static stage-layout validation before cluster work:
 
 ```bash
-./scripts/validate-stage-flow.sh
+./scripts/platform/validate-stage-flow.sh
 ```
 
 After stages are deployed, run every stage `validate.sh` in directory order:
 
 ```bash
-./scripts/validate-stage-flow.sh --live
+./scripts/platform/validate-stage-flow.sh --live
 ```
 
 Run the matching validation script after each stage:
@@ -673,7 +764,7 @@ or non-migration projects. It does not make Dashboard's separate workspace and
 editor creation requests atomic. An interrupted creation must be recovered
 under the original name; see the duplicate-workspace entry in troubleshooting.
 
-Run `python3 scripts/check-workspace-creation.py --live` after GitOps sync. It
+Run `python3 scripts/demo/check-workspace-creation.py --live` after GitOps sync. It
 checks generated links and uses server dry runs to exercise canonical,
 suffixed, generated-name, missing/empty/conflicting-run and non-migration
 requests without creating any workspace. Existing catalog entries retain
@@ -754,8 +845,8 @@ For documentation changes:
 Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workflow. Use this after the GPU MachineSet was scaled to zero for cost saving, or after the demo environment has been stopped and started again.
 
 ```bash
-./scripts/resume-gpu-demo.sh status
-./scripts/resume-gpu-demo.sh resume
+./scripts/platform/resume-gpu-demo.sh status
+./scripts/platform/resume-gpu-demo.sh resume
 ```
 
 The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, repairs stopped provider instances when Machine API still has stale GPU Machine objects, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
@@ -763,7 +854,7 @@ The `resume` command requests an Argo CD sync for Stage 020, scales the discover
 To scale GPU capacity down for shutdown:
 
 ```bash
-./scripts/resume-gpu-demo.sh down
+./scripts/platform/resume-gpu-demo.sh down
 ```
 
 Kueue queue resources survive normal cluster restarts because they are Kubernetes API objects. Kueue does not create cloud GPU nodes by itself; GPU node lifecycle remains a platform capacity action through the MachineSet.
@@ -775,7 +866,7 @@ After any cluster suspend/resume, also restart the Stage 050 Developer Hub deplo
 The stage 060 coding exercise pushes real commits to `coolstore-inventory-service` `main` (required — pipeline triggers listen only on `refs/heads/main`). To make demo runs repeatable, a `golden` branch in that repo pins the pristine baseline.
 
 ```bash
-./scripts/reset-coolstore-demo.sh
+./scripts/demo/reset-coolstore-demo.sh
 ```
 
 | Flag | Effect |
@@ -918,4 +1009,4 @@ Stage 050 provisions `<run>-worker` with only the init ConfigMap GET and named `
 
 Qualify isolation on a fresh disposable workspace with migration auto-start disabled, using `run-preflight.sh` and a receipt for the golden and platform under test. A standalone Job or a passing fixture is not that qualification.
 
-`scripts/patch-workspace-maas-route.sh` loads the cluster guard and refuses to change a started workspace. Stop it through Dev Spaces, apply the change, then start it again.
+The factory sets the route at creation. For stale routing, preserve work and run evidence, refresh the catalog inputs, and create a new workspace through the current template.

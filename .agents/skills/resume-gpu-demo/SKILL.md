@@ -33,7 +33,7 @@ This skill makes "resume from zero GPU nodes" a first-class workflow for the dem
 Run the scripted recovery path:
 
 ```bash
-./scripts/resume-gpu-demo.sh resume
+./scripts/platform/resume-gpu-demo.sh resume
 ```
 
 What it does:
@@ -54,25 +54,25 @@ What it does:
 Check state without changing anything:
 
 ```bash
-./scripts/resume-gpu-demo.sh status
+./scripts/platform/resume-gpu-demo.sh status
 ```
 
 Bring GPU capacity up only:
 
 ```bash
-./scripts/resume-gpu-demo.sh up
+./scripts/platform/resume-gpu-demo.sh up
 ```
 
 Scale GPU capacity down to save cost:
 
 ```bash
-./scripts/resume-gpu-demo.sh down
+./scripts/platform/resume-gpu-demo.sh down
 ```
 
 Use a non-default GPU node count:
 
 ```bash
-./scripts/resume-gpu-demo.sh resume 2
+./scripts/platform/resume-gpu-demo.sh resume 2
 ```
 
 ## Expected Evidence

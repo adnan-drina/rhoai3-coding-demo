@@ -90,7 +90,7 @@ SONARQUBE_HOST=$(oc get route sonarqube -n sonarqube \
 # In-cluster MaaS route for migration workspaces. The app-migration template
 # reads these two values from the platform entity and stamps a pod hostAlias
 # at creation, so no workspace starts on the public ELB path. Read from the
-# same objects scripts/patch-workspace-maas-route.sh reads; render refuses
+# platform Gateway and internal Service; render refuses
 # to publish without valid values.
 MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
   -o jsonpath='{.spec.listeners[?(@.name=="https")].hostname}' 2>/dev/null || true)
@@ -132,7 +132,7 @@ echo "Runtime catalog generated from bundle ${BUNDLE_ID:0:16} at revision ${APP_
 # re-stamp registers one new Location; the ones for any OTHER revision are
 # superseded and pruned here (Lead:catalog-location-must-not-accumulate).
 # No catalog API token is provisioned; same postgres path as
-# scripts/delete-scaffolded-project.sh. Best-effort: a missing postgres pod
+# scripts/demo/delete-scaffolded-project.sh. Best-effort: a missing postgres pod
 # must not fail catalog generate.
 PSQL_POD=$(oc get pods -n rhdh --no-headers 2>/dev/null \
   | awk '/psql|postgres/ {print $1; exit}' || true)

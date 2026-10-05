@@ -4,8 +4,8 @@
 # "missing"), absence is absence, and a FAILING producer still fails the pipeline even when its partial
 # output matched (contains must never hide a producer error).
 set -uo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$ROOT/scripts/validate-lib.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT/scripts/shared/validate-lib.sh"
 fails=0
 t() { if [[ "$2" == "$3" ]]; then echo "ok $1"; else echo "FAIL $1 (got $2, want $3)"; fails=$((fails + 1)); fi; }
 big() { echo "needle"; head -c 4000000 /dev/zero | tr '\0' 'x'; echo; }

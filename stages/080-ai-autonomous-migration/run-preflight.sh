@@ -12,7 +12,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-source "${SCRIPT_DIR}/../../scripts/lib.sh"
+source "${SCRIPT_DIR}/../../scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 export POD="${POD:?set POD}" GOLDEN_CHECKOUT="${GOLDEN_CHECKOUT:?set GOLDEN_CHECKOUT}"

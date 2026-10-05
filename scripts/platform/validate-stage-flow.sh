@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Validate the demo stage layout from the repository tree.
 #
-#   ./scripts/validate-stage-flow.sh
+#   ./scripts/platform/validate-stage-flow.sh
 #       Static: stages/*/ + matching Argo CD apps + kustomize build. No cluster.
-#   ./scripts/validate-stage-flow.sh --live
+#   ./scripts/platform/validate-stage-flow.sh --live
 #       Static, then each stage validate.sh in directory order (needs oc + .env).
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_ROOT/scripts/lib.sh"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 
 LIVE=0
 while [[ $# -gt 0 ]]; do
@@ -17,9 +17,9 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             cat <<'EOF'
 Usage:
-  ./scripts/validate-stage-flow.sh
+  ./scripts/platform/validate-stage-flow.sh
       Static: stages/*/ + matching Argo CD apps + kustomize build. No cluster.
-  ./scripts/validate-stage-flow.sh --live
+  ./scripts/platform/validate-stage-flow.sh --live
       Static, then each stage validate.sh in directory order (needs oc + .env).
 EOF
             exit 0

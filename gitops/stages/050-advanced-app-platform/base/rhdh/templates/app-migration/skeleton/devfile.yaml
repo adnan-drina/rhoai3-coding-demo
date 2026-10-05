@@ -20,9 +20,7 @@ attributes:
   # and the workspace deployment was rejected (v7, 2026-09-10). The catalog
   # generator reads both from the Gateway and its internal Service, validates
   # them (RFC 1123 host, IPv4) and refuses to publish the catalog otherwise; the
-  # template passes them through. From v7 to v12 this was a manual Operator
-  # step after creation (scripts/patch-workspace-maas-route.sh), and v12 started
-  # without it; that script remains only for workspaces created before this.
+  # template passes them through at workspace creation.
   # The alias renders only when both values are present and free of "_" (which
   # no valid host or IP contains, and every unreplaced placeholder does), so a
   # stale catalog yields the public path (which run-preflight.sh refuses),

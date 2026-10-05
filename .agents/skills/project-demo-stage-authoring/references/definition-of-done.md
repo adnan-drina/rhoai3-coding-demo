@@ -48,7 +48,7 @@ Use this checklist before declaring a stage ready.
 - `deploy.sh` applies the Argo CD Application or shared owner Application
   before waiting for resources.
 - `validate.sh` proves the user-visible outcome.
-- Live-cluster scripts use the OpenShift safety guard (`scripts/lib.sh`).
+- Live-cluster scripts use the OpenShift safety guard (`scripts/shared/lib.sh`).
 - Scripts are deterministic and safe to rerun.
 
 ## Reviews
@@ -59,7 +59,7 @@ Use this checklist before declaring a stage ready.
 ## Validation
 
 - Local render and static checks pass (`kustomize build`, `bash -n`).
-- `./scripts/validate-stage-flow.sh` passes.
+- `./scripts/platform/validate-stage-flow.sh` passes.
 - Live validation passes when a target environment is available.
 - If live validation is unavailable, the missing validation is documented.
 - Operations and troubleshooting docs are updated when reusable knowledge was

@@ -35,7 +35,7 @@ Important paths:
 - `README.md` — main workshop overview and architecture narrative.
 - `BACKLOG.md` — known workarounds, limitations, planned work, and validated status.
 - `env.example` — non-secret environment variable template.
-- `scripts/` — bootstrap, shared helper scripts, validation utilities.
+- `scripts/` — `platform/` for platform setup/lifecycle and validation, `demo/` for Stage 060–080 use-case helpers, and `shared/` for common libraries.
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
@@ -108,7 +108,7 @@ For OpenShift Data Foundation storage, object storage, NooBaa, and ODF storage c
 ## OpenShift Safety Guard
 
 - Open this repository as its own project; do not open `/Users/adrina/Sandbox` as the active project for live cluster work.
-- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/lib.sh`.
+- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/shared/lib.sh`.
 - Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target API-server substring before deploy, validate, bootstrap, or resource-management scripts run.
 - Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the user explicitly confirms the current cluster and the command is low risk.
 
@@ -236,10 +236,9 @@ Use the most specific validation possible.
 Examples:
 
 ```bash
-bash -n scripts/*.sh
-bash -n stages/*/*.sh
-./scripts/validate-stage-flow.sh
-./scripts/validate-stage-flow.sh --live
+for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$script" || exit; done
+./scripts/platform/validate-stage-flow.sh
+./scripts/platform/validate-stage-flow.sh --live
 
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
@@ -251,7 +250,7 @@ bash -n stages/*/*.sh
 ./stages/080-ai-autonomous-migration/validate.sh
 ```
 
-Stage 070 consumes the Stage 060 Dev Spaces platform and Stage 050 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/validate-stage-flow.sh` and any specific commands documented in the Stage 070 README when a live workspace and cluster are available.
+Stage 070 consumes the Stage 060 Dev Spaces platform and Stage 050 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 070 README when a live workspace and cluster are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 

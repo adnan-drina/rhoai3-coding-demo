@@ -27,6 +27,26 @@ Use this format for new entries:
 ```
 ````
 
+## A fresh cluster is available but the baseline has exceptions
+
+**Affected environment:** new default AWS/OCP 4.22.14 baseline, inspected 2026-10-05.
+
+**Observed symptoms:** `Upgradeable=False` with `MissingRootCredential` and Lightspeed `OLSConfig` NotReady / `ApiReady=False`, even though core ClusterOperators are Available and Lightspeed's CSV is Succeeded.
+
+**Diagnose:** after loading the correct local environment and passing `check_oc_logged_in`, inspect these public status fields without reading Secrets:
+
+```bash
+oc get clusterversion version -o jsonpath='{range .status.conditions[*]}{.type}{"="}{.status}{" reason="}{.reason}{"\n"}{end}'
+oc get clusteroperator cloud-credential
+oc get olsconfig -o jsonpath='{range .items[*]}{.status.overallStatus}{"\n"}{range .status.conditions[*]}{.type}{"="}{.status}{"\n"}{end}{end}'
+oc get deployment lightspeed-app-server -n openshift-lightspeed
+```
+
+**Recover:** the cloud-credential operator identifies a missing provider parent credential needed for future minor/major upgrades. Route recovery to the environment provisioner; do not recreate credentials from guesses or change project manifests to hide the condition. Bounded Lightspeed API logs showed `azure.core.exceptions.ClientAuthenticationError` and readiness HTTP 500; provider authentication needs a separate add-on investigation; operator success does not prove its service health. No recovery mutation was performed during baseline discovery.
+
+**Related docs:** [dated inventory and stage readiness](OPERATIONS.md#fresh-environment-baseline-2026-10-05).
+
+
 ## General Diagnostic Flow
 
 Start with the failing stage's validation script:
@@ -322,13 +342,13 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 **Diagnose:**
 
 ```bash
-./scripts/resume-gpu-demo.sh status
+./scripts/platform/resume-gpu-demo.sh status
 ```
 
 **Recover:**
 
 ```bash
-./scripts/resume-gpu-demo.sh resume
+./scripts/platform/resume-gpu-demo.sh resume
 ```
 
 The recovery script syncs Stage 020, scales GPU capacity back up, waits for allocatable GPUs, validates GPUaaS, syncs Stage 030, clears stale old model ReplicaSets if needed, waits for private models, and validates Stage 030.
@@ -1094,7 +1114,7 @@ before migration dispatch; changing their display name does not change the
 Kubernetes identity. The separate-request interruption remains an upstream
 Dashboard limitation; this fix prevents it from producing a second run seat.
 
-Validation: `python3 scripts/check-workspace-creation.py --live` checks the
+Validation: `python3 scripts/demo/check-workspace-creation.py --live` checks the
 installed policy using server dry runs. Roll back the two policy manifests
 and their Kustomize entries through GitOps if creation is unexpectedly blocked;
 that removes duplicate protection without changing existing workspaces.
@@ -1107,7 +1127,7 @@ reconnect; `run-preflight.sh` fails with "the workspace is on the public ELB
 path".
 
 **Cause (fixed 2026-09-24):** from v7 to v12 the in-cluster route was a manual
-Operator step after creation (`scripts/patch-workspace-maas-route.sh`), because
+Operator step after creation, because
 templating it from a URL had once produced an invalid hostAlias. v12 was created
 and preflighted without it. The factory now stamps the hostAlias at creation
 from two values the catalog generator reads from the Gateway and
@@ -1118,9 +1138,7 @@ workspace without it.
 `rhoai3.redhat.com/maas-internal-ip` on `coolstore-inventory-service` (the
 `refresh-rhdh-catalog` CronJob republishes within five minutes of a platform
 change; a generator failure naming the MaaS route means Stage 040's Gateway or
-internal Service is missing). For a workspace created before the fix, stop it
-through Dev Spaces, run `scripts/patch-workspace-maas-route.sh <workspace>`, and
-start it. Never template the host from a URL.
+internal Service is missing). For a stale workspace, preserve its work and run evidence, refresh the routing inputs, and create a new workspace through the current template. Never template the host from a URL.
 
 ## Migration Autostart Refuses With RUN_DECLARATION_*
 
@@ -1809,10 +1827,7 @@ TLS SNI, credential and model; do not bypass MaaS by calling vLLM directly.
 pod under its existing controller. Verify the replacement is ready and an
 authenticated request succeeds. In this incident, the internal request returned
 200 in 0.25 seconds while the public path still timed out. V10 lacked the
-documented hostAlias; apply `scripts/patch-workspace-maas-route.sh` as described
-in Operations, at an idle/blocked task boundary with candidate and run-state
-backups. Verify protected digests after the workspace restart, then unblock the
-same native task. Preserve migration attempts, acceptance gates and deadline.
+documented hostAlias; the historical recovery used manual route repair at an idle/blocked task boundary with candidate and run-state backups, preserving migration attempts, acceptance gates and deadline. The current factory stamps the route at creation; for stale workspaces, preserve work and evidence, refresh routing inputs and recreate through the current template as described in Operations.
 A recovered request establishes availability, not a permanent gateway fix;
 retain any recurrence as a platform issue.
 

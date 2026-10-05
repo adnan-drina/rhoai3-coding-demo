@@ -14,7 +14,7 @@ import re
 import subprocess
 from urllib.parse import parse_qs
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 POLICY = "migration-workspace-run-name"
 
 
@@ -38,7 +38,7 @@ def check_links() -> None:
 def oc(*args: str, body: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", "-c",
-         'source "$1/scripts/lib.sh"\nload_env\ncheck_oc_logged_in >&2\n'
+         'source "$1/scripts/shared/lib.sh"\nload_env\ncheck_oc_logged_in >&2\n'
          'shift\nexec oc --request-timeout=10s "$@"',
          "workspace-creation-check", str(ROOT), *args],
         input=json.dumps(body) if body is not None else None,

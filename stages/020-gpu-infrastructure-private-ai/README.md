@@ -99,7 +99,7 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 
 | Product | Version/Channel |
 |---------|-----------------|
-| Red Hat OpenShift Container Platform | 4.20 (Machine API) |
+| Red Hat OpenShift Container Platform | 4.22 (Machine API) |
 | Red Hat OpenShift AI Self-Managed | stable-3.4 (hardware profiles, Kueue integration) |
 | Node Feature Discovery Operator | stable (CSV nfd.4.20.0) |
 | NVIDIA GPU Operator (certified) | v26.3 (CSV gpu-operator-certified.v26.3.2) |
@@ -135,8 +135,8 @@ RHOAI_GPU_MACHINESET_REPLICAS=2 \
 | [RHOAI 3.4 - Working with accelerators](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_accelerators/index) | NVIDIA GPU enablement and hardware profiles |
 | [RHOAI 3.4 - Managing workloads with Kueue](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue) | Kueue integration posture |
 | [RHOAI 3.4 - Managing distributed workloads](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-distributed-workloads_managing-rhoai) | ResourceFlavor, ClusterQueue, LocalQueue concepts |
-| [OCP 4.20 - Machine management](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/machine_management/index) | AWS MachineSet management |
-| [OCP 4.20 - Node Feature Discovery](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/specialized_hardware_and_driver_enablement/index#psap-node-feature-discovery-operator) | NFD Operator and hardware feature labels |
+| [OCP 4.22 - Machine management](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/machine_management/index) | AWS MachineSet management |
+| [OCP 4.22 - Node Feature Discovery](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/specialized_hardware_and_driver_enablement/index) | NFD Operator and hardware feature labels |
 
 ## Next Stage
 

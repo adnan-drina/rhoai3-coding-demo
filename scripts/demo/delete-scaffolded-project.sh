@@ -12,12 +12,12 @@
 #   7. Quay repository (robot usually lacks admin; prints manual URL)
 #
 # Usage:
-#   ./scripts/delete-scaffolded-project.sh <name> [--yes] [--wipe-volume] [--keep-repo]
+#   ./scripts/demo/delete-scaffolded-project.sh <name> [--yes] [--wipe-volume] [--keep-repo]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-source "$REPO_ROOT/scripts/lib.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 
 REPO_OWNER="${REPO_OWNER:-adnan-drina}"
 WORKSPACE_NS="${WORKSPACE_NS:-wksp-ai-developer}"

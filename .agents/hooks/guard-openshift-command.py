@@ -18,7 +18,7 @@ MUTATING_OC = re.compile(
 MUTATING_SCRIPT = re.compile(
     r"(?:^|\s)(?:\./)?(?:"
     r"scripts/bootstrap\.sh|"
-    r"scripts/resume-gpu-demo\.sh|"
+    r"scripts/platform/resume-gpu-demo\.sh|"
     r"[^\s;]*deploy\.sh|"
     r"[^\s;]*upload-to-minio\.sh|"
     r"[^\s;]*run-guidellm-load-test\.sh"

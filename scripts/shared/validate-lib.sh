@@ -7,7 +7,7 @@
 #   Exit 2 = warnings only, no critical failures (PARTIAL)
 #
 # Usage:
-#   source "$REPO_ROOT/scripts/validate-lib.sh"
+#   source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 #   check "Label" "oc get ..." "expected-substring"
 #   check_warn "Label" "oc get ..." "expected-substring"
 #   validation_summary
@@ -21,8 +21,8 @@ VALIDATE_PASS=0
 VALIDATE_WARN=0
 VALIDATE_FAIL=0
 
-REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-source "$REPO_ROOT/scripts/lib.sh"
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 

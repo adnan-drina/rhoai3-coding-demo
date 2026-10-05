@@ -99,7 +99,9 @@ Red Hat's role in this architecture is integration, lifecycle, support posture, 
 
 The READMEs explain the architecture. Use the commands below only in a prepared OpenShift environment.
 
-**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (e.g. `g6e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `scripts/require-node-sizing.sh` first and refuses to start on undersized nodes.
+The workshop uses an AWS multinode OpenShift Container Platform 4.22 foundation. See the [Operations Guide](docs/OPERATIONS.md) for environment requirements and deployment preparation.
+
+**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (e.g. `g6e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `scripts/platform/require-node-sizing.sh` first and refuses to start on undersized nodes.
 
 ```bash
 git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
@@ -112,7 +114,7 @@ cd rhoai3-coding-demo
 cp env.example .env
 # Edit .env — fill in RHOAI_EXPECTED_API_SERVER, credentials, and API keys
 oc login --token=<token> --server=<api>
-./scripts/validate-stage-flow.sh
+./scripts/platform/validate-stage-flow.sh
 ```
 
 **Deploy the platform stages in order.** Stage 010 bootstraps OpenShift GitOps itself (declarative overlays in `gitops/bootstrap/`) before handing the platform to Argo CD.
@@ -149,7 +151,7 @@ rhoai3-coding-demo/
 |-- BACKLOG.md                       # Workarounds, limitations, and deferred work
 |-- CONTRIBUTING.md
 |-- env.example
-|-- scripts/                         # Shared helpers, validation, recovery
+|-- scripts/                        # platform/, demo/ (stages 060–080), shared/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)

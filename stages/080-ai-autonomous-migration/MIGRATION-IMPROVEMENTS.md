@@ -153,7 +153,7 @@ refused; that establishes the retrieval path, not that model looping is solved.
 
 | Component | Source identity | Required step | Owner |
 |---|---|---|---|
-| Harness (golden `.hermes`) | `5280670b` (scaffold content) | fast-forward the platform `main` (never force-pushed); then the distinct golden-export publication `scripts/bootstrap-scaffold-repos.sh`; record the returned golden commit and compare its scaffold content | release agent |
+| Harness (golden `.hermes`) | `5280670b` (scaffold content) | fast-forward the platform `main` (never force-pushed); then the distinct golden-export publication `scripts/demo/bootstrap-scaffold-repos.sh`; record the returned golden commit and compare its scaffold content | release agent |
 | Hermes runtime | tree `37b147ba` unchanged (patches 0001–0016) | none | — |
 | ws-080 image | new: adds typed-repair jar `66d1b6f4…` (17,684,782 bytes) | `build-080-runtime-image.sh 37b147baef0c2678507c52e59e3b9231ab6ab64f --push`; re-pin the new digest in `.hermes/pins.json`, `run-defaults.json`, scaffold `devfile.yaml`, Stage 050 `app-migration/skeleton/devfile.yaml` and `hermes-runtime/RELEASE.md`; confirm the `/opt/rhoai3/080.pins` stamp and `java -jar /opt/rhoai3/typed-repair/typed-repair.jar` as the worker | release agent |
 | Stage 040 MaaS gateway | `maas-gateway-resources` (ee7bc6d6): istio-proxy 1 GiB request / 2 GiB limit | apply first through GitOps; read back resources, readiness, restarts and memory under ordinary traffic; headroom is mitigation, not proof that growth is fixed | release agent |

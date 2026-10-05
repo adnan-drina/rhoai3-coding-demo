@@ -6,8 +6,8 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("k", ROOT / "scripts" / "check-kilo-provider.py")
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("k", ROOT / "scripts" / "demo" / "check-kilo-provider.py")
 K = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(K)
 docs = yaml.safe_load_all((ROOT / "gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml").read_text())

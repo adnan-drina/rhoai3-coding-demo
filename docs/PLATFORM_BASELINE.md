@@ -2,7 +2,17 @@
 
 This file is the canonical platform target for the demo and shared skills. Update it first when preparing an upgrade.
 
-## Current Baseline
+READMEs explain capabilities for end users and state current product versions. Upgrade plans, environment migration history, readiness findings and technical migration commentary belong in `docs/`.
+
+## Default environment and planned migration (2026-10-05)
+
+The new default environment is **observed OCP 4.22.14 / Kubernetes v1.35.6 on AWS**. Its inventory, preinstalled add-on ownership, exceptions and repeatable provisioning contract are maintained in [OPERATIONS](OPERATIONS.md#fresh-environment-baseline-2026-10-05). This environment is distinct from the implemented versions below; no manifests or validation logic have been upgraded by establishing this baseline.
+
+**RHOAI 3.5 is planned**, including EvalHub, MLflow and Agent Catalog/OpenShell with standalone Hermes per project. AutoRAG and AutoML are excluded from the intended migration scope. These capabilities are not observed installed; exact release posture and dependency choices must be verified at their stage gates. The [supported-configurations matrix](https://access.redhat.com/articles/rhoai-supported-configs-3.x), updated 2026-10-02, includes OCP 4.22 for x86_64 RHOAI 3.5; its version range differs from the installation guide's narrower platform list. Consult both as documented in OPERATIONS.
+
+Use version-matched 3.5/OCP 4.22 documentation for migration design and retain the following documented legacy references. The inventory verified the Stage 010 RHOAI 3.4 and ODF 4.20 manifest selections; other product entries and exact pins require per-stage source and runtime verification and can contain historical drift. Upgrade one stage's manifests, scripts, documentation and acceptance evidence together. Historical observations do not establish readiness on this environment.
+
+## Documented legacy reference baseline
 
 | Component | Version | Documentation |
 |-----------|---------|---------------|
@@ -25,81 +35,81 @@ This file is the canonical platform target for the demo and shared skills. Updat
 
 Project documentation, skills, and GitOps review notes must use the official Red Hat documentation version that matches the pinned baseline for each product family.
 
-For the current baseline, RHOAI product-documentation links should use:
+For the documented legacy reference baseline, RHOAI product-documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
 ```
 
-For the current baseline, OCP product-documentation links should use:
+For the documented legacy reference baseline, OCP product-documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/
 ```
 
-For the current baseline, ODF product-documentation links should use:
+For the documented legacy reference baseline, ODF product-documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/
 ```
 
-For the current baseline, Red Hat build of OpenTelemetry documentation links should use:
+For the documented legacy reference baseline, Red Hat build of OpenTelemetry documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.9/
 ```
 
-For the current baseline, Red Hat OpenShift distributed tracing platform documentation links should use:
+For the documented legacy reference baseline, Red Hat OpenShift distributed tracing platform documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9/
 ```
 
-For the current baseline, Red Hat OpenShift Pipelines documentation links should use:
+For the documented legacy reference baseline, Red Hat OpenShift Pipelines documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
 ```
 
-For the current baseline, Red Hat OpenShift Lightspeed documentation links should use:
+For the documented legacy reference baseline, Red Hat OpenShift Lightspeed documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/
 ```
 
-For the current baseline, Red Hat OpenShift Dev Spaces documentation links should use:
+For the documented legacy reference baseline, Red Hat OpenShift Dev Spaces documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/
 ```
 
-For the current baseline, Red Hat Developer Hub documentation links should use:
+For the documented legacy reference baseline, Red Hat Developer Hub documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/
 ```
 
-For the current baseline, Red Hat Trusted Profile Analyzer documentation links should use:
+For the documented legacy reference baseline, Red Hat Trusted Profile Analyzer documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/
 ```
 
-For the current baseline, Migration Toolkit for Applications documentation links should use:
+For the documented legacy reference baseline, Migration Toolkit for Applications documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/
 ```
 
-For the current baseline, Red Hat Advanced Developer Suite - software supply chain documentation links should use:
+For the documented legacy reference baseline, Red Hat Advanced Developer Suite - software supply chain documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/
 ```
 
-Do not use `latest` or another product version for product configuration unless the Red Hat documentation landing page intentionally links to an unversioned Customer Portal article or no version-specific document exists. Record that as an explicit exception in the relevant README, review note, or skill reference.
+Do not use `latest` or another product version for product configuration unless the Red Hat documentation landing page intentionally links to an unversioned Customer Portal article or no version-specific document exists. Record that as an explicit exception in the relevant document under `docs/`, review note, or skill reference.
 
-OpenShift Data Foundation is pinned to `4.20` because the demo OpenShift baseline is OCP `4.20`. Red Hat ODF update guidance says the ODF version should match the OCP minor version, and on OCP `4.20`, ODF `4.20` is the latest compatible ODF version that can be installed.
+In the Stage 010 legacy manifests, OpenShift Data Foundation is pinned to `4.20` because the demo OpenShift baseline is OCP `4.20`. Red Hat ODF update guidance says the ODF version should match the OCP minor version, and on OCP `4.20`, ODF `4.20` is the latest compatible ODF version that can be installed.
 
 The Cluster Observability Operator is held at `cluster-observability-operator.v1.4.0` for the RHOAI 3.4 observability dashboard. This is an OLM lifecycle compatibility hold, not an operand image pin: the operator still manages Perses, Prometheus, and related operand images. Remove the hold only after validating that the active RHOAI 3.4 build generates Perses resources compatible with the newer Cluster Observability Operator CRD schema and operand behavior.
 

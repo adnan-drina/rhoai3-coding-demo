@@ -347,7 +347,7 @@ Resetting is an **operator action**, not a workspace action: the script lives in
 
 ```bash
 cd rhoai3-coding-demo
-./scripts/reset-coolstore-demo.sh
+./scripts/demo/reset-coolstore-demo.sh
 ```
 
 The script rewinds `main` to the `golden` branch baseline via the GitHub API, recreates the `agentic-coolstore` DevWorkspace, and clears the SonarQube project so the rewound code becomes the fresh quality baseline. The force-push fires one expected pipeline run in `coolstore-dev` that re-validates the chain and re-tags `:latest`. The next workspace start clones pristine `main`.

@@ -38,9 +38,8 @@ Commits: conventional format `type(scope): description` — types are `feat`, `f
 Use the most specific validation available.
 
 ```bash
-bash -n scripts/*.sh
-bash -n stages/*/*.sh
-./scripts/validate-stage-flow.sh
+for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$script" || exit; done
+./scripts/platform/validate-stage-flow.sh
 ```
 
 For stage changes with a live cluster:

@@ -114,7 +114,7 @@ Each stage normally has:
 
 Scripts that touch a live cluster must:
 
-- source `scripts/lib.sh` for shared helpers
+- source `scripts/shared/lib.sh` for shared helpers
 - call `load_env` and `check_oc_logged_in`
 - verify `RHOAI_EXPECTED_API_SERVER`
 - fail closed if the target cluster cannot be confirmed
@@ -126,7 +126,7 @@ Run the narrowest useful checks before live deployment:
 
 - `kustomize build` for GitOps paths
 - `bash -n` for shell scripts
-- `./scripts/validate-stage-flow.sh` for `stages/*/` layout, Argo CD name matching, and Kustomize render
+- `./scripts/platform/validate-stage-flow.sh` for `stages/*/` layout, Argo CD name matching, and Kustomize render
 - Manifest review checklists
 
 Live validation should prove the user-visible stage outcome, not just resource existence.

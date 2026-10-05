@@ -12,7 +12,7 @@ Historical `quarkus-migration-scaffold` (v1) is not published from this tree. Do
 ## Usage
 
 ```bash
-./scripts/bootstrap-scaffold-repos.sh
+./scripts/demo/bootstrap-scaffold-repos.sh
 ```
 
-Re-running force-pushes the staged scaffold state — this is the reset mechanism for the golden sources. Per-run repos created by templates are cleaned up separately (delete repos carrying the `rhoai3-scaffolded` topic, or use `scripts/delete-scaffolded-project.sh`).
+Re-running force-pushes the staged scaffold state — this is the reset mechanism for the golden sources. Per-run repos created by templates are cleaned up separately (delete repos carrying the `rhoai3-scaffolded` topic, or use `scripts/demo/delete-scaffolded-project.sh`).

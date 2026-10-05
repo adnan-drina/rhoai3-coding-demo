@@ -14,7 +14,7 @@
 # Idempotent (runs on every Stage 020 sync):
 #   - worker pool: scaled UP to 4 only if currently below 4.
 #   - GPU MachineSet: created only if one does not already exist, so a manual
-#     GPU scale-down (scripts/resume-gpu-demo.sh) is never undone by a re-sync.
+#     GPU scale-down (scripts/platform/resume-gpu-demo.sh) is never undone by a re-sync.
 ---
 apiVersion: v1
 kind: ServiceAccount

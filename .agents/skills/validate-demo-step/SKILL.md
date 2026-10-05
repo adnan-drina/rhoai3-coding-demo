@@ -41,7 +41,7 @@ Use this skill after changing a demo stage to verify the change is correct and c
 # Script syntax check
 bash -n stages/NNN-name/deploy.sh
 bash -n stages/NNN-name/validate.sh
-./scripts/validate-stage-flow.sh
+./scripts/platform/validate-stage-flow.sh
 
 # Kustomize render check
 kustomize build gitops/stages/NNN-name/base/

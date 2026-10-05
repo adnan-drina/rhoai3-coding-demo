@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-source "$REPO_ROOT/scripts/lib.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-openshift-gitops}"
 MODEL_NAMESPACE="${MODEL_NAMESPACE:-maas}"
@@ -16,10 +16,10 @@ GPU_RESUME_POLL_SECONDS="${GPU_RESUME_POLL_SECONDS:-15}"
 usage() {
     cat <<'EOF'
 Usage:
-  scripts/resume-gpu-demo.sh status
-  scripts/resume-gpu-demo.sh up [replicas]
-  scripts/resume-gpu-demo.sh down
-  scripts/resume-gpu-demo.sh resume [replicas]
+  scripts/platform/resume-gpu-demo.sh status
+  scripts/platform/resume-gpu-demo.sh up [replicas]
+  scripts/platform/resume-gpu-demo.sh down
+  scripts/platform/resume-gpu-demo.sh resume [replicas]
 
 Commands:
   status   Show GPU MachineSet, GPU node, Kueue queue, and private model state.

@@ -35,7 +35,7 @@ Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 4. `stages/NNN-name/validate.sh` - verifies deployment
 5. `stages/NNN-name/README.md` - educational narrative
 
-Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and matches Applications by directory name.
+Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/platform/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and matches Applications by directory name.
 
 **Never** apply manifests directly with `oc apply -k` for ArgoCD-managed resources.
 

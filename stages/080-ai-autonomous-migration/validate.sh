@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/validate-lib.sh"
+source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║  Stage 080: Autonomous Application Migration (MTA 8.2)     ║"
@@ -104,7 +104,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold-v2 golden repo exists (${GOLDEN_SHA:0:12})"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (run scripts/bootstrap-scaffold-repos.sh)"
+        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (run scripts/demo/bootstrap-scaffold-repos.sh)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 else
@@ -1070,9 +1070,6 @@ check "080 run-report compares emitted pins and preserves missing-evidence disti
   "1"
 check "080 completion map keeps every missing oracle open and flags the v29 false green (M-1/M-6)" \
   "python3 '${SCAFFOLD_LIB}/completion_map.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
-  "1"
-check "080 MaaS route changes are guarded and require a stopped workspace" \
-  "python3 '${REPO_ROOT}/scripts/patch-workspace-maas-route.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 trusted platform code renders a run's resources, not the destination repository" \
   "test -f '${PIPELINES_BUILD}/task-provision-migration-run.yaml' && test -f '${PIPELINES_BUILD}/pipeline-provision-migration-run.yaml' && ! test -e '${APP_MIGRATION_TMPL}/skeleton/k8s-run' && ! test -e '${PIPELINES_BUILD}/appproject-migration-run.yaml' && echo 1 || echo 0" \

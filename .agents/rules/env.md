@@ -9,9 +9,9 @@ applies-to:
   - docs/OPERATIONS.md
   - docs/TROUBLESHOOTING.md
   - stages/010-openshift-ai-platform-foundation/deploy.sh
-  - scripts/lib.sh
-  - scripts/validate-lib.sh
-  - scripts/validate-stage-flow.sh
+  - scripts/shared/lib.sh
+  - scripts/shared/validate-lib.sh
+  - scripts/platform/validate-stage-flow.sh
   - stages/*/deploy.sh
   - stages/*/validate.sh
   - "**/deploy.sh"

@@ -12,7 +12,7 @@ Red Hat OpenShift AI 3.4 delivers this as a metal-to-agent platform that runs co
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  OpenShift Container Platform 4.20 (AWS)                        │
+│  OpenShift Container Platform 4.22 (AWS)                        │
 │                                                                 │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  OpenShift GitOps (openshift-gitops)                      │  │
@@ -114,7 +114,7 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 
 | Product | Version/Channel |
 |---------|-----------------|
-| Red Hat OpenShift Container Platform | 4.20 |
+| Red Hat OpenShift Container Platform | 4.22 |
 | Red Hat OpenShift AI Self-Managed | stable-3.4 |
 | Red Hat OpenShift Data Foundation | 4.20 (MCG-only) |
 | Red Hat OpenShift GitOps | gitops-1.20 |
@@ -156,8 +156,8 @@ The deploy script bootstraps OpenShift GitOps, then applies the Argo CD Applicat
 | [RHOAI 3.4 install guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install) | Operator, DSCI, DSC CR fields |
 | [ODF 4.20 on AWS](https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/html-single/deploying_openshift_data_foundation_using_amazon_web_services/index) | MCG standalone deployment |
 | [RHOAI 3.4 Managing observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai) | Observability stack prerequisites and dashboard flag |
-| [OCP 4.20 GitOps](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/gitops/index) | OpenShift GitOps operator |
-| [OCP 4.20 Observability](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/observability_overview/index) | OpenShift observability component boundary |
+| [OpenShift GitOps 1.20 installation](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.20/html/installing_gitops/index) | OpenShift GitOps operator |
+| [OCP 4.22 Observability](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/observability_overview/index) | OpenShift observability component boundary |
 | [Red Hat build of OpenTelemetry 3.9](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.9) | OpenTelemetry Operator |
 | [Red Hat OpenShift distributed tracing platform 3.9](https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9) | Tempo Operator |
 
