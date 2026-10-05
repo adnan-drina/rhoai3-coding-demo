@@ -1,6 +1,6 @@
 # Stage 030 serving foundation plan — OCP 4.22 / RHOAI 3.5.1
 
-Status: source implementation under review; not deployed, 2026-10-05. Implementation owner: environment_baseline. Stage 020 native readiness, CUDA/DCGM and bounded Pod queue admission passed; actual GPU UI remains separate. Stage 030 is not deployed. Scratch evidence: `/private/tmp/stage030-audit-20261005/`. Current live foundation is immutable `f38d84c072ee18c38fb21072a6442a1b07d468eb`; do not point it at the fresh HEAD foundation base while its MLflow storage remains retained.
+Status: **deployed at `147b6208a694f1cfb38c6d15c165c28e8b776025`; canonical native/API validation passed; independent preservation and genuine-persona API audit passed**, 2026-10-05. Core Stage 010 uses the f38-based omission bridge at `882f327fb25dd047ca7144058b6cca46e693df3a`; Stage 020 remains at metrics repair `797a270b760c921fc835b285d26aaa1854d0234d`. Actual browser acceptance remains separate. Scratch evidence: `/private/tmp/stage030-live-handoff/` and `/private/tmp/stage030-audit-20261005/`. Do not repoint the core at the fresh foundation base while retained MLflow data remains owned there.
 
 ## Intended stage contract
 
@@ -89,10 +89,18 @@ Acceptance states: source-aligned; bridge-protect complete; bridge-omit retained
 
 UI acceptance is separate from CR flags: actual ModelCatalog/AgentCatalog dashboard route/discovery and persona interaction remain untested. API/native readiness success alone cannot establish UI visibility.
 
-Remaining gates: actual Argo remote rendering; fresh bridge UID/modelID/OBC content baseline and protection readback; provider monitoring ownership merge; actual core KServe readiness before040; actual persona sessions. These are explicit implementation/live acceptance tasks, not reasons to broaden030.
+Completed native gates include actual remote rendering, protect/omit retention readback and identical full preservation snapshots, native KServe readiness and persistent monitoring rollout. Independent post-adoption identity/content and genuine-persona API checks passed; actual browser interaction remains separate. Stage 040 model selection and advanced serving dependencies are not deployed by this stage.
 
 ## Current implementation
 
 The explicit `scripts/platform/handoff-model-registry.sh` performs protect/omit separately from normal Stage 030 deployment. Exact source-path reconciliation distinguishes the two phases even when they share a commit. It can resume the same phase without overwriting its baseline. Metadata-only database credential checks, native PVC ownership, registry-content digest, both Bound bucket identities, retained MLflow/registry component state and operator/plugin snapshots guard preservation. Normal deployment supports fresh delegated foundations separately from the recorded omission bridge, and refuses to recreate a missing retained registry.
 
-The obsolete model seed/runtime clone, benchmark unit, historical stage PLAN, Grafana screenshots and unused webhook/Alertmanager resources are removed. Native monitoring and discovery are validated using current API-specific conditions and CA-verified connections. Publication and live bridge/adoption still require final source review, preservation checks and exact immutable revision.
+The obsolete model seed/runtime clone, benchmark unit, historical stage PLAN, Grafana screenshots and unused webhook/Alertmanager resources are removed. Native monitoring and discovery are validated using current API-specific conditions and CA-verified connections. Both bridge phases completed at `882f327f` with identical baseline/readback snapshots. Stage 030 reconciled at `147b6208`; canonical native and CA-verified API checks passed. A transient native KServe apply failure recovered without intervention; Ready, KServeReady and ModelControllerReady are true at the current generation. Missing RHCL/LWS are informational advanced-serving dependencies reserved for Stage 040.
+
+## Final independent runtime evidence
+
+The independent audit confirms core omission bridge `882f327f` and Stage 030 `147b6208` both Synced/Healthy with exact successful source/path operations. All four registry resource UIDs, the registry-owned database PVC and credential metadata, and the three empty registry API collection digests are unchanged. Four retained MLflow resource UIDs/owners, Bound storage and native availability remain preserved; this is not a new MLflow artifact round-trip. Both existing OBC UIDs and provisioning intents are unchanged; no buckets were created or renamed.
+
+Both genuine personas returned verified-TLS HTTP 200 for registry collections (unchanged empty content), Model Catalog (10 entries) and Agent Catalog (10 entries). After monitoring persistence rollout, genuine `ai-admin` still returned CA-verified GPU metrics HTTP 200, capacity 2 and utilization 0. Actual rendered dashboard/browser acceptance remains pending. Independent local evidence: `/private/tmp/stage030-independent-poststate.json`, `/private/tmp/stage030-independent-persona-API.json` and `/private/tmp/stage030-independent-gpu-metrics-postrollout.json`; writer phase snapshots: `/private/tmp/stage030-live-handoff/`. No bounded GPU probes remain.
+
+Rollback must preserve adopted registry and retained MLflow data. Do not restore a competing registry owner, remove retention annotations, or point the core at fresh foundation HEAD. Review a native, data-preserving ownership reversal before changing bridge/adoption state. Stage 040 model/MaaS migration and Stage 050 evaluation remain separate work.

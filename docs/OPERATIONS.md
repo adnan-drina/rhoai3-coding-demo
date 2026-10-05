@@ -663,13 +663,13 @@ Record the Pod UID and its UID-owned Workload while running: `QuotaReserved=True
 
 The native MachineSet has `Prune=false,Delete=false`; removing source or the Application is not an uninstall. Day-two cost control scales this exact Stage 020-owned pool to zero. Before deliberate removal, review active GPU workloads, node drain implications, Machine/PVC/data dependencies and AWS resource disposition; explicitly remove only the reviewed MachineSet after those gates. Never change native operator resources or CPU pools as part of this cleanup.
 
-See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) for artifact disposition, installed-schema/native Driver Toolkit evidence and completed GPU/queue qualification. Actual dashboard/profile browser acceptance remains pending.
+See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) for artifact disposition, installed-schema/native Driver Toolkit evidence and completed GPU/queue qualification. The scoped metrics repair at `797a270b` is Synced/Healthy: genuine `ai-admin` CA-verified native GPU queries return HTTP 200 with capacity 2, while `ai-developer` remains denied. Actual dashboard/profile browser reload remains pending.
 
 ### Stage 030
 
 Stage 030 owns the native KServe control plane, `demo-registry` with its operator-managed PostgreSQL database, Model Catalog and Developer Preview Agent Catalog. Stage 040 owns model selection, registry records, runtime/model deployment and MaaS; Stage 030 creates no model or runtime clone.
 
-Fresh deployments use the delegated foundation fields and the normal Stage 030 deploy entrypoint. The current cluster first needs the separately reviewed [registry handoff](migration/030-serving-foundation-plan.md): never repoint the core at the newer fresh Stage 010 base while its MLflow data remains retained. The explicit one-time helper uses immutable f38-based protect/omit overlays, checks both existing Bound OBCs and registry/database/credential identities, and preserves the rest of the core. No bucket is created or renamed. After publication/review, run each phase and inspect its private evidence before continuing:
+Fresh deployments use the delegated foundation fields and the normal Stage 030 deploy entrypoint. The current cluster completed the separately reviewed [registry handoff](migration/030-serving-foundation-plan.md) through the f38-based omission bridge at `882f327f`; Stage 030 reconciled at `147b6208`: never repoint the core at the newer fresh Stage 010 base while its MLflow data remains retained. The explicit one-time helper uses immutable f38-based protect/omit overlays, checks both existing Bound OBCs and registry/database/credential identities, and preserves the rest of the core. No bucket is created or renamed. For a future reviewed handoff, run each phase and inspect its private evidence before continuing:
 
 ```bash
 ./scripts/platform/handoff-model-registry.sh protect "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
@@ -682,7 +682,7 @@ Protection adds `Prune=false,Delete=false` to the exact registry namespace, CR a
 
 Native monitoring configuration enables user-workload monitoring and requests gp3-csi storage: 40Gi platform Prometheus and 20Gi user-workload Prometheus, with 7-day retention and size limits. The current provider configuration was absent and platform metrics used ephemeral 15-day storage; this rollout changes those defaults and may reset historical ephemeral metrics. Deployment rechecks named ConfigMap ownership before its Application write and refuses unreviewed provider configuration. The provider Alertmanager Secret remains untouched; the unused fake webhook is removed from source.
 
-Validation requires exact Application reconciliation, native DSC/KServe conditions and current owned workloads, bound monitoring PVCs, native registry/database readiness and CA-verified authenticated registry/catalog APIs. Persona login and actual dashboard UI acceptance are separate; an installation-admin API probe cannot prove browser access.
+Canonical validation passed exact Application reconciliation, current native DSC/KServe and owned workloads, four Bound native monitoring PVCs, registry/database readiness and CA-verified registry/catalog APIs. Native KServe recovered from its initial apply failure without intervention; optional RHCL/LWS advanced capabilities remain Stage 040 work. Independent preservation and genuine-persona API audit passed: registry/database/credential UIDs and empty API digests are unchanged, retained MLflow identity/availability and both bucket identities are preserved, and both personas returned verified-TLS Model Catalog/Agent Catalog responses (10 entries each). This does not repeat the historical MLflow artifact test. Actual dashboard UI acceptance remains separate. See [runtime evidence](migration/030-serving-foundation-plan.md#final-independent-runtime-evidence).
 
 ### Stage 040
 
