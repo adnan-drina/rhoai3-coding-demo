@@ -15,3 +15,4 @@ resources:
   - gpu-operator/instance/base
   - kueue-quota/base
   - hardware-profiles/base
+  - rolebinding-gpu-metrics-admins.yaml

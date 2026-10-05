@@ -1,0 +1,18 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rhoai-gpu-metrics-admins
+  namespace: openshift-monitoring
+  labels:
+    app.kubernetes.io/name: rhoai-gpu-metrics-admins
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: gpu-observability
+    app.kubernetes.io/managed-by: argocd
+subjects:
+  - kind: Group
+    name: rhods-admins
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: cluster-monitoring-metrics-api
+  apiGroup: rbac.authorization.k8s.io

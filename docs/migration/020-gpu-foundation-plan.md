@@ -1,6 +1,6 @@
 # Stage 020 GPU foundation preparation plan
 
-Status: **deployed at `85dbcee03d97969bd0a17afbdb01229229d4b342`; native readiness and per-node CUDA/DCGM passed; bounded queue acceptance recorded; actual dashboard UI pending**, 2026-10-05. The historical artifact audit below remains separate from current live qualification.
+Status: **deployed at `85dbcee03d97969bd0a17afbdb01229229d4b342`; native readiness and per-node CUDA/DCGM passed; bounded queue acceptance recorded; actual dashboard UI metrics fail with HTTP 403 for `ai-admin`; scoped native monitoring access repair prepared, not deployed**, 2026-10-05. The historical artifact audit below remains separate from current live qualification.
 
 ## Prerequisites and selected design
 
@@ -156,3 +156,7 @@ The user approved simplifying the supported profiles to CPU and Reserved GPU. Co
 The exact three selected CSVs succeeded. Two GPU workers are Ready and each advertises one full L40S; native current drivers, CUDA vectorAdd and DCGM metrics passed. The installed NVIDIA 26.7.1 CSV and served ClusterPolicy schema resolve the local bundle-extraction gap; the selected DTK path has no KMM dependency. CPU pools remain 2/1/1, the core remains pinned to f38, and no buckets were created.
 
 The initial BatchJob probe remained suspended because BatchJob is absent from native integrations. A Pod probe demonstrated quota/admission but `hostUsers: false` hit the documented NVIDIA CDI sync-socket limitation. The nonroot `hostUsers: true` probe used existing restricted-v2 rights and completed CUDA after UID-bound admission and GPU scheduling. No SCC, operator or node configuration was changed. Private evidence is under `/private/tmp/stage020-*-admission-observations.json`; final minimal-consumer evidence excludes the management-only device environment override. Actual GPU dashboard/profile browser acceptance remains pending.
+
+## GPU dashboard metrics access repair
+
+The genuine `ai-admin` session reached GPU Infrastructure but metrics requests returned HTTP 403. Native DCGM collection and installation-session Thanos queries were healthy; the administrator group lacked the scoped monitoring API permission. Stage 020 now declares `rhoai-gpu-metrics-admins` in `openshift-monitoring`, binding only `rhods-admins` to the existing native Role `cluster-monitoring-metrics-api`. It does not grant cluster administration or change monitoring collection. Publication, native reconciliation, genuine persona query checks and browser reload remain pending for this repair.

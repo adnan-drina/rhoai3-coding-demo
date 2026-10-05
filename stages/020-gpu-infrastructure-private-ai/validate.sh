@@ -31,6 +31,14 @@ def freshcond(x,t):
 def current(x):return isinstance(x['metadata'].get('generation'),int) and x.get('status',{}).get('observedGeneration')==x['metadata']['generation']
 app=get('applications.argoproj.io','020-gpu-infrastructure-private-ai','openshift-gitops')
 check('Application exact desired revision Synced/Healthy',lambda:app['status']['sync']['status']=='Synced' and app['status']['health']['status']=='Healthy' and app['status']['sync']['revision']==app['spec']['source']['targetRevision'] and len(app['spec']['source']['targetRevision'])==40)
+def metrics_access():
+ binding=get('rolebinding','rhoai-gpu-metrics-admins','openshift-monitoring')
+ assert binding['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'Role','name':'cluster-monitoring-metrics-api'}
+ assert binding.get('subjects')==[{'apiGroup':'rbac.authorization.k8s.io','kind':'Group','name':'rhods-admins'}]
+ role=get('role','cluster-monitoring-metrics-api','openshift-monitoring')
+ assert any('monitoring.coreos.com' in r.get('apiGroups',[]) and 'prometheuses/api' in r.get('resources',[]) and 'k8s' in r.get('resourceNames',[]) and {'get','create','update'}.issubset(r.get('verbs',[])) for r in role.get('rules',[]))
+ return True
+check('AI administrators use the scoped native monitoring metrics Role',metrics_access)
 for ns,name,csv in [('openshift-nfd','nfd','nfd.4.22.0-202609212027'),('nvidia-gpu-operator','gpu-operator-certified','gpu-operator-certified.v26.7.1'),('openshift-kueue-operator','kueue-operator','kueue-operator.v1.4.2')]:
  def operator(ns=ns,name=name,csv=csv):
   s=get('subscription',name,ns);c=get('csv',csv,ns)
