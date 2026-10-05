@@ -112,18 +112,18 @@ oc get application "$APP" -n openshift-gitops -o json \
 
 ## Model Shows "Starting" In The RHOAI Console But Its Pod Is Ready
 
-**Affected stage:** Stage 030 (until Stage 040 is deployed)
+**Affected stage:** Stage 040 model deployment
 
-**Likely cause:** The RHOAI console shows "Starting" for any `LLMInferenceService` whose CR-level `Ready` condition is not True. After Stage 030 the model workload itself is healthy (`MainWorkloadReady=True`, pod `2/2 Running`, in-cluster OpenAI API answering), but `RouterReady` and `HTTPRoutesReady` stay False with `GatewayPreconditionNotMet` because the maas-default-gateway and the Kuadrant AuthPolicy CRD only arrive with Stage 040 (Red Hat Connectivity Link).
+**Likely cause:** A deployed `LLMInferenceService` can show "Starting" while its model pod is ready if routing prerequisites are incomplete. Check whether `RouterReady` or `HTTPRoutesReady` reports `GatewayPreconditionNotMet`. Stage 040 owns the model workload, MaaS gateway and Red Hat Connectivity Link policies; Stage 030 supplies only the native serving control plane and discovery services.
 
 **Diagnose:**
 
 ```bash
-oc get llminferenceservice -n maas <model> \
+oc get llminferenceservice -n models-as-a-service <model> \
   -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
 ```
 
-**Recover:** Deploy Stage 040. The router conditions reconcile once the gateway and policy CRDs exist, and the console flips to green. No action is needed on the model itself.
+**Recover:** Reconcile the reviewed Stage 040 gateway and policy prerequisites, then verify the current service conditions and authenticated endpoint. Do not redeploy Stage 030 or modify a ready model pod to repair missing routing prerequisites.
 
 ## Large Hybrid-MoE Model Crash-Loops With CUDA OOM At Engine Init
 
@@ -311,16 +311,16 @@ oc describe machineset <gpu-machineset> -n openshift-machine-api
 
 **Affected stage:** Stage 020
 
-**Likely cause:** Red Hat build of Kueue Operator has not completed installation, the `Kueue` CR is not reconciled yet, the Stage 020 `maas` namespace or `LocalQueue` failed to sync, or the Kueue API version/channel differs in the target cluster.
+**Likely cause:** Red Hat build of Kueue Operator has not completed installation, the native `Kueue` CR is not reconciled yet, the Stage 020 `demo-sandbox` queues failed to sync, or the Kueue API version/channel differs in the target cluster.
 
 **Diagnose:**
 
 ```bash
 oc get subscription,csv,installplan -n openshift-kueue-operator
-oc get kueue cluster -n openshift-kueue-operator -o yaml
+oc get kueues.kueue.openshift.io cluster -o yaml
 oc get resourceflavor,clusterqueue
-oc get localqueue -n maas
-oc get namespace maas -o jsonpath='{.metadata.labels.kueue\.openshift\.io/managed}{"\n"}'
+oc get localqueue -n demo-sandbox
+oc get namespace demo-sandbox -o jsonpath='{.metadata.labels.kueue\.openshift\.io/managed}{"\n"}'
 oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue.managementState}{"\n"}'
 oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
   -o jsonpath='{.spec.dashboardConfig.disableKueue}{"\n"}'
@@ -329,13 +329,13 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 **Recover:**
 
 - Wait for the Kueue CSV to reach `Succeeded`.
-- Confirm the `kueue-operator` package and configured channel are available in `redhat-operators` for the cluster release. On the current OpenShift 4.20 demo cluster, Stage 020 uses `stable-v1.3`.
-- If the `maas` namespace or `LocalQueue` is missing, re-sync the `020-gpu-infrastructure-private-ai` Argo CD Application before deploying Stage 030.
+- Confirm the reviewed `kueue-operator.v1.4.2` CSV and `stable-v1.4` channel for the OpenShift 4.22 baseline. Stage 020 uses native `v1beta2` queue APIs and delegates DSC Kueue integration as `Unmanaged` with `autoCreateQueues=false`.
+- If `demo-sandbox` or its reviewed LocalQueues are missing, reconcile the existing Stage 020 Application and confirm `lq-cpu-default` and `lq-gpu-reserved-demo` before running workloads.
 - Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
 ## Demo Was Restarted With Zero GPU Nodes
 
-**Affected stage:** Stage 020 and Stage 030
+**Affected stage:** Stage 020 capacity; Stage 040 models that consume it
 
 **Likely cause:** The GPU MachineSet was intentionally scaled to zero for cost saving. Kueue queue resources persist, but private model pods cannot be admitted and run until GPU capacity returns. During model rollout, old ReplicaSets can also keep Kueue reservations in a two-GPU demo environment.
 
@@ -351,7 +351,7 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 ./scripts/platform/resume-gpu-demo.sh resume
 ```
 
-The recovery script syncs Stage 020, scales GPU capacity back up, waits for allocatable GPUs, validates GPUaaS, syncs Stage 030, clears stale old model ReplicaSets if needed, waits for private models, and validates Stage 030.
+The recovery script syncs the existing Stage 020 revision, restores its verified GPU MachineSet to two replicas, waits for allocatable GPUs and native ClusterPolicy readiness, and runs Stage 020 validation. It leaves model resources unchanged and does not sync Stage 030 or repair ReplicaSets. Functional CUDA/DCGM, admission, dashboard and Stage 040 model acceptance remain separate.
 
 ## Worker Nodes Evict Pods After A Cluster Resume (KubeNodeEviction)
 

@@ -101,9 +101,13 @@ Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and
 
 MLflow, EvalHub and TrustyAI belong together in Stage 050 source; the current MLflow service remains Stage 010-owned on live f38; registry and both catalogs are Stage 030-owned in source, while the current cluster retains their previous Stage 010 ownership pending a safe handoff; OpenShell with standalone Hermes per project remains later-stage design. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
 
-### Bucket naming review before creation
+### Object storage purposes and preservation
 
-Before creating any new project ObjectBucketClaim or S3 bucket, notify the user and propose the stage, namespace, claim name and intended S3 name for review. This checkpoint precedes the Application sync or other action that can create the bucket. An OBC name is not necessarily the S3 name: `generateBucketName` is a prefix, while `bucketName` requests an exact name; verify the resolved name after provisioning. Before changing an existing bucket, assess its data, retention and dependent connections, artifact URIs, credentials/configuration references and ownership. Naming review does not authorize renaming, deleting or recreating existing storage.
+The user removed the pre-creation naming review checkpoint on 2026-10-05. An OBC name is not necessarily the S3 name: `generateBucketName` is a prefix, while `bucketName` requests an exact name; verify the resolved name after provisioning. Before changing existing storage, assess its data, retention, dependent connections, artifact URIs and ownership; preserve existing consumers and data.
+
+The confirmed logical purposes are a **models bucket** for model artifacts and a **workbench bucket** for shared S3 file exchange between workbenches. No AI Pipelines bucket is planned because this demo does not use pipelines. The workbench bucket provides shared data exchange; persistent workspace PVCs remain the workspace/POSIX filesystem. Models and Workbench connections use native bucket-generated credentials; this observability change creates no storage.
+
+The existing `rhoai-mlflow-artifacts` bucket is separate MLflow component artifact storage associated with the Stage 050 ownership handoff. The user has accepted `rhoai-mlflow-artifacts` unchanged: preserve its existing bucket, name and data; this plan does not authorize creating a third bucket or deleting storage. Review the existing generic `demo-sandbox-bucket` claim's consumers and data before deciding whether to retain, reassign or remove it.
 
 ### Local inputs and read-only preflight
 
@@ -583,7 +587,7 @@ Use the existing OpenID accounts `ai-admin` and `ai-developer`; authenticate eac
 
 MLflow uses a dedicated single-instance PostgreSQL 16 workload with a retained gp3 PVC and namespace NetworkPolicy. Database connections are plaintext within its namespace (`sslmode=disable`); this is a durable demo setup without HA or a production database claim. Provider Keycloak storage is not reused. The historical runtime helpers create missing credentials, reuse existing secrets without rotation and use NooBaa-generated S3 inputs with service CA trust.
 
-Fresh Stage 010 owns native Auth; MLflow joins EvalHub/TrustyAI in Stage 050 source. The deployed f38 MLflow service remains preserved. TrustyAI and KServe are Removed; evaluation is a separate later stage after serving/MaaS prerequisites. Native metrics/tracing acceptance replaces legacy workaround-presence checks; persona-dependent dashboard permissions remain pending actual access evidence. Design and remaining gates are in [the migration plan](migration/010-foundation-plan.md).
+Fresh Stage 010 owns native Auth; MLflow joins EvalHub/TrustyAI in Stage 050 source. The deployed f38 MLflow service remains preserved. Fresh Stage 010 leaves KServe Removed for Stage 030 enablement; the current cluster has native KServe Managed and Ready under Stage 030. TrustyAI remains Removed, and evaluation belongs to Stage 050 after serving/MaaS prerequisites. Native metrics/tracing acceptance replaces legacy workaround-presence checks; persona-dependent dashboard permissions remain pending actual access evidence. Design and remaining gates are in [the migration plan](migration/010-foundation-plan.md).
 
 
 Useful checks:
@@ -602,7 +606,7 @@ Point-in-time validation logs from 2026-05 and 2026-07 remain in Git history. Th
 
 The permanent `010-console-observability` Application manages only `UIPlugin/monitoring`; COO manages the generated monitoring plugin and console Perses server. Fresh foundation deployment includes it; the current retained core bridge can add it independently with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>`. Validate with `validate-console-observability.sh`. These commands do not repoint the core or deploy held Lightspeed/storage drafts.
 
-The native Perses operator synchronizes the existing RHOAI dashboards/datasources into the console instance. No privileged global datasource or new metrics permission is configured. Native readiness and genuine proxy authorization tests are separate from user-owned browser checks. In the console, reload, open **Observe → Dashboards (Perses)** and select `redhat-ods-monitoring`; then open **Observe → Dashboards → NVIDIA DCGM Exporter Dashboard** for GPU metrics. Model-serving dashboards require later models/traffic. The existing trace dashboard backend error remains a separate issue.
+The native Perses operator synchronizes the existing RHOAI dashboards/datasources into the console instance. No privileged global datasource or new metrics permission is configured. Native readiness passed. The console Perses accelerator datasource is restricted to platform administrators: installation-administrator proxy queries returned nonempty HTTP 200; genuine `ai-admin` and `ai-developer` returned HTTP 403. The RHOAI `ai-admin` Infrastructure metrics access remains enabled. No additional RBAC is granted; browser checks are user-owned. In the console, reload, open **Observe → Dashboards (Perses)** and select `redhat-ods-monitoring`; then open **Observe → Dashboards → NVIDIA DCGM Exporter Dashboard** for GPU metrics. Model-serving dashboards require later models/traffic. The existing trace dashboard backend error remains a separate issue.
 
 ### Stage 020
 
@@ -913,7 +917,7 @@ For documentation changes:
 
 ## Resuming GPU-Backed Stages After Shutdown
 
-Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workflow. Use this after the GPU MachineSet was scaled to zero for cost saving, or after the demo environment has been stopped and started again.
+Stage 020 supplies the GPU-capacity resume workflow consumed by Stage 040 models. Use this after the GPU MachineSet was scaled to zero for cost saving, or after the demo environment has been stopped and started again.
 
 ```bash
 ./scripts/platform/resume-gpu-demo.sh status
