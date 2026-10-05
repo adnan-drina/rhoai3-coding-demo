@@ -17,4 +17,4 @@ spec:
   name: dns-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: dns-operator.v0.6.0
+  startingCSV: dns-operator.v1.4.2
