@@ -29,6 +29,13 @@ check() {
   fi
 }
 
+# Dex emits OpenShift Group membership; direct Kubernetes role bindings do not
+# grant Argo CD permissions. Verify the operator-reconciled policy, not just CR intent.
+GITOPS_ACCESS=$(oc --request-timeout=10s get group rhoai-gitops-admins -o json | python3 -c 'import json,sys; print("pass" if "admin" in (json.load(sys.stdin).get("users") or []) else "admin membership missing")' 2>/dev/null || echo "group inspection failed")
+check "GitOps SSO administrator group" "$GITOPS_ACCESS"
+GITOPS_POLICY=$(oc --request-timeout=10s get configmap argocd-rbac-cm -n openshift-gitops -o json | python3 -c 'import json,sys; d=json.load(sys.stdin).get("data",{}); lines={"".join(x.split()) for x in d.get("policy.csv","").splitlines()}; print("pass" if "g,rhoai-gitops-admins,role:admin" in lines and "groups" in d.get("scopes", "") and not d.get("policy.default","").strip() else "mapping missing or broad default policy")' 2>/dev/null || echo "policy inspection failed")
+check "GitOps reconciled group policy with empty default" "$GITOPS_POLICY"
+
 csv_phase_from_subscription() {
   local namespace="$1" subscription="$2"
   local installed_csv

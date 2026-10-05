@@ -2400,3 +2400,12 @@ repair only while the worker is stopped,
 restore the retained candidate through `restore-pending.py`, then unblock that
 same card for verification and advance. Do not broaden its write set, mint a new
 budget, waive the assessment, or repeat the product edits.
+
+
+## Argo CD applications missing after OpenShift SSO login
+
+OpenShift cluster-admin permission granted directly to a User does not automatically grant Argo CD access through Dex. Argo CD evaluates the group claims in its SSO token. The dedicated OpenShift Group `rhoai-gitops-admins` contains the intended `admin` user; the operator-owned ArgoCD CR maps this group to `role:admin`, with `groups` scope and an empty default policy. It grants no new Kubernetes cluster role and preserves existing Argo mappings.
+
+After membership changes, sign out of Argo CD and sign in again through OpenShift SSO to refresh the Dex token. An existing session may retain its previous group claims. Check the reconciled `argocd-rbac-cm` and use native Argo RBAC checks for the dedicated group; ordinary authenticated and developer groups must remain denied. Do not patch the generated ConfigMap, reset local admin credentials, or repoint the foundation Application to repair SSO visibility.
+
+The targeted 2026-10-05 repair reconciled successfully: the dedicated group passed native application get/sync checks, while `system:authenticated` and `rhoai-developers` were denied. The one deployed foundation Application remained Synced/Healthy at `f38d84c072ee18c38fb21072a6442a1b07d468eb`. These are live group/operator-policy checks; fresh browser-token/UI acceptance remains separate. The supported mapping is described in [Red Hat GitOps 1.21 Dex SSO documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html/access_control_and_user_management/configuring-sso-for-argo-cd-using-dex).

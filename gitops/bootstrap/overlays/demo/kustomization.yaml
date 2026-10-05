@@ -10,3 +10,4 @@ resources:
   - argocd-instance.yaml
   - argocd-project.yaml
   - argocd-cluster-admin.yaml
+  - argocd-admin-group.yaml

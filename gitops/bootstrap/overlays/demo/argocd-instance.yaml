@@ -111,6 +111,7 @@ spec:
     policy: |
       g, system:cluster-admins, role:admin
       g, cluster-admins, role:admin
+      g, rhoai-gitops-admins, role:admin
     scopes: '[groups]'
   server:
     route:

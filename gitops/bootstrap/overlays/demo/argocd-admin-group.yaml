@@ -1,0 +1,11 @@
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: rhoai-gitops-admins
+  labels:
+    app.kubernetes.io/name: rhoai-gitops-admins
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: access
+    app.kubernetes.io/managed-by: argocd
+users:
+  - admin
