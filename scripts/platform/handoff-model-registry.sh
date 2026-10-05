@@ -58,7 +58,7 @@ def snapshot():
   bucket=get('objectbucketclaim',name,namespace)
   assert bucket['spec'].get('storageClassName')=='openshift-storage.noobaa.io','Unreviewed existing bucket storage intent'
   assert bucket['spec'].get('generateBucketName')=='demo-sandbox' if name=='demo-sandbox-bucket' else bucket['spec'].get('bucketName')=='rhoai-mlflow-artifacts','Unreviewed existing bucket naming intent'
- mlflow=get('mlflows.mlflow.opendatahub.io','mlflow');assert any(c.get('type')=='Available' and c.get('status')=='True' for c in mlflow['status'].get('conditions',[])),'Retained MLflow unavailable' 
+ mlflow=get('mlflows.mlflow.opendatahub.io','mlflow');assert any(c.get('type')=='Available' and c.get('status')=='True' for c in mlflow['status'].get('conditions',[])),'Retained MLflow unavailable'
  registry=get('modelregistries.modelregistry.opendatahub.io','demo-registry','rhoai-model-registries');host=registry['status']['hosts'][0];token=oc(['whoami','-t']).strip();collections={}
  for collection in ['registered_models','model_versions','model_artifacts']:
   request=urllib.request.Request('https://'+host+'/api/model_registry/v1alpha3/'+collection,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
