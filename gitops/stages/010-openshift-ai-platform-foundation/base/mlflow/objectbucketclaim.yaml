@@ -15,3 +15,5 @@ metadata:
 spec:
   bucketName: rhoai-mlflow-artifacts
   storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: rhoai-demo-bucket-class

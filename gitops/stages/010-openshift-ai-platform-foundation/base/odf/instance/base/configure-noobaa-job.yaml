@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: configure-noobaa-local-storage
+  namespace: openshift-storage
+  labels:
+    app.kubernetes.io/name: rhoai-local-object-storage
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rhoai-local-object-storage
+        app.kubernetes.io/part-of: rhoai-platform
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      serviceAccountName: configure-noobaa-local-storage
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: image-registry.openshift-image-registry.svc:5000/openshift/tools:latest
+          command: [/bin/bash, -ceu]
+          args:
+            - |
+              deadline=$((SECONDS + 540))
+              while (( SECONDS < deadline )); do
+                uid=$(oc -n openshift-storage get storagecluster ocs-storagecluster --request-timeout=10s -o jsonpath='{.metadata.uid}' 2>/dev/null || true)
+                owners=$(oc -n openshift-storage get noobaa noobaa --request-timeout=10s -o jsonpath='{range .metadata.ownerReferences[?(@.controller==true)]}{.kind}:{.name}:{.uid}{"\n"}{end}' 2>/dev/null || true)
+                if [[ -n "$uid" && "$owners" == "StorageCluster:ocs-storagecluster:$uid" ]]; then
+                  configured=$(oc -n openshift-storage get noobaa noobaa --request-timeout=10s -o jsonpath='{.spec.manualDefaultBackingStore}')
+                  if [[ "$configured" != true ]]; then
+                    oc -n openshift-storage patch noobaa noobaa --request-timeout=10s --type=merge -p '{"spec":{"manualDefaultBackingStore":true}}'
+                  fi
+                  owners=$(oc -n openshift-storage get noobaa noobaa --request-timeout=10s -o jsonpath='{range .metadata.ownerReferences[?(@.controller==true)]}{.kind}:{.name}:{.uid}{"\n"}{end}')
+                  configured=$(oc -n openshift-storage get noobaa noobaa --request-timeout=10s -o jsonpath='{.spec.manualDefaultBackingStore}')
+                  [[ "$owners" == "StorageCluster:ocs-storagecluster:$uid" && "$configured" == true ]] || exit 1
+                  echo 'Native NooBaa local-storage setting verified; OCS ownership preserved.'
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo 'Timed out waiting for OCS-owned NooBaa; no resource was precreated.' >&2
+              exit 1

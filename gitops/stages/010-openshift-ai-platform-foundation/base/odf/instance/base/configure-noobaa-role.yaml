@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: configure-noobaa-local-storage
+  namespace: openshift-storage
+  labels:
+    app.kubernetes.io/name: rhoai-local-object-storage
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: [ocs.openshift.io]
+    resources: [storageclusters]
+    resourceNames: [ocs-storagecluster]
+    verbs: [get]
+  - apiGroups: [noobaa.io]
+    resources: [noobaas]
+    resourceNames: [noobaa]
+    verbs: [get, patch]

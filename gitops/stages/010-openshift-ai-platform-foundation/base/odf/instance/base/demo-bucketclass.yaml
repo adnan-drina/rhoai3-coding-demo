@@ -1,0 +1,18 @@
+apiVersion: noobaa.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: rhoai-demo-bucket-class
+  namespace: openshift-storage
+  labels:
+    app.kubernetes.io/name: rhoai-local-object-storage
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  placementPolicy:
+    tiers:
+      - backingStores: [rhoai-demo-pv-pool]
+        placement: Spread

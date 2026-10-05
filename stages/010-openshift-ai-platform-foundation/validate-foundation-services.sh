@@ -40,12 +40,12 @@ def forward(service, namespace, port):
 try:
     token = oc('whoami', '-t')  # Memory only; never emitted or passed as a process argument.
     dsci = get('dscinitialization', 'default-dsci')
-    need(dsci.get('status', {}).get('phase') == 'Ready', 'DSCI is not Ready')
+    need(dsci.get('status', {}).get('phase') == 'Ready' and any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in dsci.get('status', {}).get('conditions', [])), 'DSCI phase and Ready condition disagree or are not ready')
     namespace = dsci['spec']['monitoring']['namespace']
     monitors = get('monitorings.services.platform.opendatahub.io')['items']
     need(len(monitors) == 1, 'expected exactly one native Monitoring resource')
     monitor = monitors[0]
-    need(monitor.get('status', {}).get('phase') == 'Ready' and monitor['status'].get('observedGeneration') == monitor['metadata']['generation'], 'Monitoring is not Ready at its current generation')
+    need(monitor.get('status', {}).get('phase') == 'Ready' and monitor['status'].get('observedGeneration') == monitor['metadata']['generation'] and any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in monitor['status'].get('conditions', [])), 'Monitoring phase, Ready condition or current generation is not ready')
     regns = 'rhoai-model-registries'
     registry = get('modelregistry', 'demo-registry', regns)
     condition = next((c for c in registry.get('status', {}).get('conditions', []) if c['type'] == 'Available'), {})
@@ -75,8 +75,13 @@ try:
     config = collector['spec']['config']
     need(isinstance(config, dict), 'collector configuration is not the native structured API')
     need('http' in config['receivers']['otlp']['protocols'] and 'otlp' in config['service']['pipelines']['traces']['receivers'], 'collector OTLP/HTTP trace receiver is absent')
+    collector_workload = get('statefulset', 'data-science-collector-collector', namespace)
+    service_account = collector_workload['spec']['template']['spec']['serviceAccountName']
+    permission = subprocess.run(['oc', '--request-timeout=20s', 'auth', 'can-i', 'create', namespace + '.tempo.grafana.com/traces', '--as=system:serviceaccount:' + namespace + ':' + service_account], capture_output=True, text=True)
+    need(permission.returncode == 0 and permission.stdout.strip() == 'yes', 'collector service account cannot write the native Tempo tenant')
     port = forward('data-science-collector-collector', namespace, 4318)
     trace_id, span_id, start = uuid.uuid4().hex, uuid.uuid4().hex[:16], time.time_ns()
+    print('[INFO] Synthetic trace ID ' + trace_id, flush=True)
     payload = {'resourceSpans': [{'resource': {'attributes': [{'key': 'service.name', 'value': {'stringValue': 'foundation-validation'}}]}, 'scopeSpans': [{'scope': {'name': 'foundation-validation'}, 'spans': [{'traceId': trace_id, 'spanId': span_id, 'name': 'foundation-roundtrip', 'kind': 1, 'startTimeUnixNano': str(start), 'endTimeUnixNano': str(start + 1000000)}]}]}]}
     result = http(f'http://127.0.0.1:{port}/v1/traces', json.dumps(payload).encode(), {'Content-Type': 'application/json'})
     need(not result.get('partialSuccess', {}).get('rejectedSpans', 0), 'collector rejected the synthetic span')
