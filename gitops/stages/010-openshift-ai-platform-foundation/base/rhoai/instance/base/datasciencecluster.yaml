@@ -41,7 +41,7 @@ spec:
     trustyai:
       managementState: Removed
     mlflowoperator:
-      managementState: Managed
+      managementState: Removed
     # New 3.5 components remain outside foundation scope.
     ogx:
       managementState: Removed

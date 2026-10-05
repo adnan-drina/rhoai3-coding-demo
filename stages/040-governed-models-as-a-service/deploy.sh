@@ -7,12 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  set -a
-  # shellcheck source=/dev/null
-  source "$ROOT_DIR/.env"
-  set +a
-fi
+source "$ROOT_DIR/scripts/shared/lib.sh"
+load_env
 
 if [[ -n "${RHOAI_OPENAI_ENV_FILE:-}" ]]; then
   if [[ ! -f "$RHOAI_OPENAI_ENV_FILE" ]]; then
@@ -25,18 +21,44 @@ if [[ -n "${RHOAI_OPENAI_ENV_FILE:-}" ]]; then
   set +a
 fi
 
-if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
-  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set." >&2
-  exit 1
-fi
+check_oc_logged_in
 
-ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
-if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
-  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match RHOAI_EXPECTED_API_SERVER." >&2
-  exit 1
-fi
-
-echo "✓ Cluster guard passed: $ACTUAL_SERVER"
+# Foundation and serving are read-only prerequisites; never repoint Stage 010.
+python3 - <<'PY_PREREQUISITE'
+import json, subprocess, sys
+result = subprocess.run(["oc", "--request-timeout=10s", "get", "application", "010-openshift-ai-platform-foundation", "-n", "openshift-gitops", "-o", "json"], capture_output=True, text=True)
+try:
+    if result.returncode:
+        raise ValueError("cannot inspect the foundation Application")
+    app = json.loads(result.stdout)
+    status = app.get("status", {})
+    if status.get("sync", {}).get("status") != "Synced" or status.get("health", {}).get("status") != "Healthy":
+        raise ValueError("foundation must be Synced and Healthy")
+    spec = app["spec"]
+    if "RespectIgnoreDifferences=true" not in spec.get("syncPolicy", {}).get("syncOptions", []):
+        raise ValueError("foundation does not respect delegated field ownership")
+    ignores = spec.get("ignoreDifferences", [])
+    def paths(group, kind, name, namespace=None):
+        return {path for entry in ignores
+                if entry.get("group") == group and entry.get("kind") == kind
+                and entry.get("name") == name
+                and (namespace is None or entry.get("namespace") == namespace)
+                for path in entry.get("jsonPointers", [])}
+    if "/spec/components/modelregistry" not in paths("datasciencecluster.opendatahub.io", "DataScienceCluster", "default-dsc"):
+        raise ValueError("foundation has not delegated the modelregistry component")
+    required = {"/spec/dashboardConfig/agentsCatalog", "/spec/dashboardConfig/disableModelCatalog", "/spec/dashboardConfig/disableModelRegistry"}
+    if not required <= paths("opendatahub.io", "OdhDashboardConfig", "odh-dashboard-config", "redhat-ods-applications"):
+        raise ValueError("foundation has not delegated all three discovery visibility fields")
+    result = subprocess.run(["oc", "--request-timeout=10s", "get", "application", "030-private-model-serving", "-n", "openshift-gitops", "-o", "json"], capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError("cannot inspect Stage 030 prerequisite")
+    serving = json.loads(result.stdout).get("status", {})
+    if serving.get("sync", {}).get("status") != "Synced" or serving.get("health", {}).get("status") != "Healthy":
+        raise ValueError("Stage 030 must be Synced and Healthy")
+except (ValueError, KeyError) as error:
+    print("ERROR: " + str(error) + "; complete the reviewed non-destructive registry ownership handoff before Stage 040 deployment", file=sys.stderr)
+    sys.exit(1)
+PY_PREREQUISITE
 
 # Fail fast if the nodes are too small for the demo stack, before any changes.
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
@@ -492,19 +514,10 @@ ensure_optional_mcp_secrets
 "$SCRIPT_DIR/register-model-cards.sh"
 cleanup_demo_sandbox_nemotron
 
-echo "── Applying shared Stage 010 Argo CD Application ──"
-apply_argocd_application \
-  "010-openshift-ai-platform-foundation" \
-  "$ROOT_DIR/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml"
-
 echo "── Applying Stage 040 Argo CD Application ──"
 apply_argocd_application \
   "040-governed-models-as-a-service" \
   "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml"
-
-wait_for_jsonpath "Stage 010 shared owner Application sync" \
-  "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" \
-  "{.status.sync.status}" "Synced" 90
 
 wait_for_jsonpath "Stage 040 Application sync" \
   "applications.argoproj.io/040-governed-models-as-a-service" "openshift-gitops" \

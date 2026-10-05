@@ -51,6 +51,19 @@ def read(args):
 def tracked_by(obj, app):
     return obj.get("metadata", {}).get("annotations", {}).get("argocd.argoproj.io/tracking-id", "").startswith(app + ":")
 try:
+    # MLflow has no receiving stage yet. Never remove its live service or data.
+    apis = read(["api-resources", "-o", "name"]).splitlines()
+    if "mlflows.mlflow.opendatahub.io" in apis:
+        existing = json.loads(read(["get", "mlflows.mlflow.opendatahub.io", "-o", "json"]))
+        if existing.get("items"):
+            raise RuntimeError("Existing MLflow requires a reviewed evaluation-stage ownership handoff; keep the deployed foundation pinned")
+    for resource, names in [("persistentvolumeclaim", ["mlflow-postgresql"]), ("secret", ["mlflow-db-credentials", "rhoai-mlflow-artifacts"]), ("statefulset", ["mlflow-postgresql"]), ("service", ["mlflow-postgresql"]), ("networkpolicy", ["mlflow-postgresql"]), ("configmap", ["mlflow-service-ca"])]:
+        for name in names:
+            if read(["get", resource, name, "-n", "redhat-ods-applications", "--ignore-not-found", "-o", "jsonpath={.metadata.uid}"]):
+                raise RuntimeError("Retained MLflow data/configuration requires an explicit future-stage handoff")
+    if "objectbucketclaims.objectbucket.io" in apis:
+        if read(["get", "objectbucketclaims.objectbucket.io", "rhoai-mlflow-artifacts", "-n", "redhat-ods-applications", "--ignore-not-found", "-o", "jsonpath={.metadata.uid}"]):
+            raise RuntimeError("Retained MLflow artifact bucket requires an explicit future-stage handoff")
     text = read(["get", "namespace", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
     namespace = json.loads(text) if text else {}
     if tracked_by(namespace, old_app):
@@ -178,8 +191,6 @@ for selection in \
   done
 done
 
-# Runtime credentials are local/live inputs, while operators own service workloads.
-"$SCRIPT_DIR/setup-ai-services.sh"
 
 # ── Step 5: Report Argo CD console URL ───────────────────────────────────────
 ARGOCD_URL=$(oc get route openshift-gitops-server -n openshift-gitops \
