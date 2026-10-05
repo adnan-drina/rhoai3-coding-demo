@@ -80,7 +80,7 @@ The revised dependency sequence is guarded bootstrap → native operators and CR
 
 ## Remaining gates and implementation evidence
 
-The user authorized publication to `github.com/adnan-drina/rhoai3-coding-demo` on `codex/stage-010-foundation-35` and deployment without a PR. Remote SHA was verified and the Argo Application targets immutable `8cf15ab20c1813b4518ee5a7836c9ae4d7f0aa48`. GitOps/Argo and reviewed prerequisite operators are installed. Native Monitoring recovered to Ready/current generation after a transient webhook bootstrap race. DSCI briefly reported phase Ready with Ready=False; validators now require the Ready condition and generation where served rather than phase alone. No generated workload was patched.
+The user authorized publication to `github.com/adnan-drina/rhoai3-coding-demo` on `codex/stage-010-foundation-35` and deployment without a PR. Remote SHA was verified and the Argo Application targets immutable `f38d84c072ee18c38fb21072a6442a1b07d468eb`. GitOps/Argo and reviewed prerequisite operators are installed. Native Monitoring recovered to Ready/current generation after a transient webhook bootstrap race. DSCI briefly reported phase Ready with Ready=False; validators now require the Ready condition and generation where served rather than phase alone. No generated workload was patched.
 
 The user selected existing OpenID usernames `ai-admin` and `ai-developer`; no htpasswd or provider account changes are included. Group membership may precede first login, but final acceptance requires their private authenticated sessions. The non-kubeadmin installation account has bootstrap permissions and matches neither persona. Provider OAuth/Keycloak ownership remains intact.
 
