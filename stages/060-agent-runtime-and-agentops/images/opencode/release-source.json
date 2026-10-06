@@ -1,0 +1,7 @@
+{
+  "version": "1.18.16",
+  "sourceCommit": "a3647eb025c7615159d417dcc49fc39fdaeba65b",
+  "asset": "https://github.com/anomalyco/opencode/releases/download/v1.18.16/opencode-linux-x64-baseline.tar.gz",
+  "assetSha256": "b075251f373b45fa01cc41b7b1fd6eb2b61c9544383e3399a5e7f1447d1fb95f",
+  "baseImage": "registry.access.redhat.com/ubi9/ubi@sha256:dec374e05cc13ebbc0975c9f521f3db6942d27f8ccdf06b180160490eef8bdbc"
+}
