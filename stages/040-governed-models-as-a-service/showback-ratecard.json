@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "pricing_status": "unpriced",
+  "currency": null,
+  "rates": {},
+  "note": "No financial allocation is calculated until actual approved rates and their units are provided. Usage is not an invoice."
+}

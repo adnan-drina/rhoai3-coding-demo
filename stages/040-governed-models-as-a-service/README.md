@@ -48,6 +48,22 @@ Use the reviewed published branch configured in your private environment:
 
 Readiness checks do not establish inference, streaming or quota behavior. Bounded functional checks and user playground interaction complete acceptance. In the dashboard, create a playground in your project and select an available governed model endpoint. Do not use the playground to create a replacement serving deployment.
 
+## Usage And Showback
+
+Use the native MaaS usage dashboard to inspect governed usage by user, subscription and model. These counters measure authorized total tokens and calls; they do not expose a trustworthy input/output token split or an agent's internal tool trajectory.
+
+A platform administrator can export existing usage for an explicit UTC window:
+
+```bash
+./stages/040-governed-models-as-a-service/export-maas-usage.sh \
+  --from 2026-10-06T00:00:00Z --to 2026-10-06T12:00:00Z \
+  --output /private/tmp/maas-usage.csv
+```
+
+This original helper queries native RHOAI Thanos; it is not the dashboard's CSV format. The private CSV and coverage receipt contain identities and must stay outside Git. Missing categories remain unknown. Financial columns remain **unpriced**, with no currency, zero-cost assumption or invoice. Actual approved rates are required before any financial allocation. Prometheus sampling, counter resets and the configured 90-day retention limit reporting accuracy. Rows stay scoped to native limiter resources; do not sum overlapping policies. Duplicate underlying semantic-resource series cause a refusal instead of inflated usage. MCP/agent traces and GPU fixed costs are outside these token counters.
+
+This workflow is inspired by [demo-chargeback](https://github.com/suhasvkashyap/demo-chargeback); its code and sample prices are not copied.
+
 ## References
 
 - [OpenShift AI 3.5 Models-as-a-Service](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/index)

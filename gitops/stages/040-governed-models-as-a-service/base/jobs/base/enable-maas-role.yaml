@@ -30,3 +30,11 @@ rules:
   - default-ogx
   verbs:
   - get
+- apiGroups:
+  - maas.opendatahub.io
+  resources:
+  - configs
+  resourceNames:
+  - default
+  verbs:
+  - get

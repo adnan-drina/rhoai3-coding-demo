@@ -47,6 +47,20 @@ spec:
            done
            [[ "$ready" == true ]] || { echo 'ERROR: native AIGateway/OGX current readiness timed out; inspect native component conditions.' >&2;exit 1; }
           done
+          # Configure the customer CR; retain the native Config ownership and generated policies.
+          config_uid="$(oc --request-timeout=10s get configs.maas.opendatahub.io default -o jsonpath='{.metadata.uid}')"
+          [[ "$config_uid" =~ ^[a-f0-9-]{36}$ ]] || { echo 'ERROR: native MaaS Config identity missing' >&2;exit 1; }
+          tenant=''
+          for _ in $(seq 1 60); do
+            tenant="$(oc --request-timeout=10s get maastenantconfigs.maas.opendatahub.io default-tenant -n models-as-a-service --ignore-not-found -o go-template='{{.metadata.uid}}|{{.metadata.resourceVersion}}|{{.metadata.deletionTimestamp}}|{{index .metadata.annotations "argocd.argoproj.io/tracking-id"}}|{{len .metadata.ownerReferences}}|{{range .metadata.ownerReferences}}{{.apiVersion}}|{{.kind}}|{{.name}}|{{.uid}}{{end}}')"
+            [[ -n "$tenant" ]] && break
+            sleep 5
+          done
+          IFS='|' read -r uid rv deleting tracking owners owner_api owner_kind owner_name owner_uid <<< "$tenant"
+          [[ "$uid" =~ ^[a-f0-9-]{36}$ && "$rv" =~ ^[0-9]+$ && "$deleting" == '<no value>' && "$tracking" == '<no value>' && "$owners" == 1 && "$owner_api" == maas.opendatahub.io/v1alpha1 && "$owner_kind" == Config && "$owner_name" == default && "$owner_uid" == "$config_uid" ]] || { echo 'ERROR: unexpected native MaaS tenant ownership or lifecycle' >&2;exit 1; }
+          # UID is immutable; resourceVersion rejects concurrent replacement/configuration updates.
+          oc --request-timeout=10s patch maastenantconfigs.maas.opendatahub.io default-tenant -n models-as-a-service --type=merge -p "{\"metadata\":{\"uid\":\"$uid\",\"resourceVersion\":\"$rv\"},\"spec\":{\"telemetry\":{\"enabled\":true,\"metrics\":{\"captureOrganization\":true,\"captureUser\":true,\"captureGroup\":false,\"captureModelUsage\":true}}}}" >/dev/null
+          echo 'PASS Native MaaS attributed telemetry configured; usage samples require separately verified requests.'
           echo 'PASS Current native AIGateway and OGX controllers; project playground and functional inference remain separate.'
     metadata:
       labels:

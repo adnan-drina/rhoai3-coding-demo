@@ -11,6 +11,8 @@ resources:
 - enable-maas-serviceaccount.yaml
 - enable-maas-role.yaml
 - enable-maas-binding.yaml
+- enable-maas-telemetry-role.yaml
+- enable-maas-telemetry-binding.yaml
 - enable-maas-job.yaml
 - enable-kuadrant-console-plugin-serviceaccount.yaml
 - enable-kuadrant-console-plugin-clusterrole.yaml
