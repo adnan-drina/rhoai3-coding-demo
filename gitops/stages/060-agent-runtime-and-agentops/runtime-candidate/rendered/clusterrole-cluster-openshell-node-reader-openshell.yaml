@@ -48,6 +48,5 @@ rules:
   resources:
   - sandboxes
   verbs:
-  - get
   - list
   - watch

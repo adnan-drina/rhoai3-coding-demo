@@ -72,7 +72,6 @@
         "sandboxes"
       ],
       "verbs": [
-        "get",
         "list",
         "watch"
       ]
