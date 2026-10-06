@@ -217,3 +217,22 @@ Read-only inspection of the actual verified OpenCode release archive found embed
 All eight current nodes report RHCOS 9.8 and kernel `5.14.0-687.46.1.el9_8.x86_64`; no different existing kernel host was discovered. Only the previously qualified CPU-node profile has actual WAIT_KILLABLE_RECV=false evidence, so identical version strings do not substitute for qualification of every node. Next architecture choices are an approved supported kernel/backport with the required feature and requalification, or a separately qualified VM host with a compatible guest kernel. Neither host/kernel change is authorized or implemented by this diagnosis. The null-peer responder is only a diagnostic control, not a replacement application server.
 
 Native deletion removed the disposable `oc-http-check` Sandbox, Pods and test PVC; all local relays closed. No model/provider calls occurred. Receipts: `/private/tmp/stage060-auth/transport-discriminator-results.json` and `transport-host-options-results.json`. Runtime Applications remain at `18c40abaa927d184ee23685b20ae523014dc9491`; full Stage 060 acceptance remains pending.
+
+
+## Pinned PR 4150 offline qualification
+
+An isolated OpenShift test qualified the [upstream PR 4150 fix](https://github.com/NVIDIA/OpenShell/pull/4150) at merge commit `12cec59bf4c36c305032143eb90870bd16d8820b`. This coherent development build is experimental; it is not a supported release or a permanent platform upgrade.
+
+| Public artifact | Verified pin |
+| --- | --- |
+| Native chart | `0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b`; OCI `sha256:c96f4a2444a46679ca70b398308e97120834a70e71154a6c8a9ac208897ab8b8` |
+| Gateway amd64 | `sha256:437777e61c20707f9f06dc2b4b8a89b6c95a0b521dec9b00b3829d259fef163d` |
+| Supervisor amd64 | `sha256:0783c6e10a0ec6871af1698d861cc1542f6ac5c4dd2ed2e550bb66250d82cc02` |
+| Sandbox amd64 | `sha256:ecac6542c16de6849c0a279020edcae2390025c90344afb813f0793fc6932167` |
+| Matching CLI | `0.1.3-dev.99+g12cec59bf`; binary SHA-256 `6323f7749fd6291bb3c96d13a54274c01a84f3f9f509dba5800fa5d2e1424c42` |
+
+Image provenance binds all three immutable runtime images to the merge commit; matching client and chart checksums were verified. The native capability probe passed under restricted nonroot execution, RuntimeDefault seccomp and zero capabilities, including mandatory `socket_loopback_confinement`. Removed WAIT_KILLABLE and legacy-listener fields were not required.
+
+Offline OpenCode 1.18.16 passed direct and authenticated-relay HTTP health checks. Its SSE endpoint delivered a connected event before deliberate disconnection; this proves event-stream transport, not model-generated streaming. Filesystem, interface-binding and metadata-egress denials held. Native sandbox stop cancelled an active exec; this is not OpenCode LLM-task cancellation. Restart preserved a file marker and an empty application session. Invalid bearer denial passed; genuine human cross-workspace authorization was not repeated.
+
+All disposable test resources and tunnels were removed. No model/provider calls, external VM, worker/kernel update or persistent gateway upgrade were used. Promotion needs a separate review of the coherent pinned build, its development-build status and current persona checks. Full agent-runtime, catalog and selected-call tracing acceptance remains pending.
