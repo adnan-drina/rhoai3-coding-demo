@@ -50,6 +50,18 @@ until oc --request-timeout=10s get secret/stage060-openshell-credentials configm
   (( SECONDS < DEADLINE )) || { echo 'Runtime prerequisite creation timed out' >&2; exit 1; }
   sleep 5
 done
+# Async CLI submission precedes status population; wait only for the exact current operation.
+python3 - "$REVISION" <<'PYWAIT'
+import json,subprocess,sys,time
+end=time.monotonic()+60
+while time.monotonic()<end:
+ r=subprocess.run(['oc','--request-timeout=10s','get','application','060-agent-runtime-and-agentops-runtime','-n','openshift-gitops','-o','json'],capture_output=True,text=True)
+ assert r.returncode==0,'Operation read failed'
+ a=json.loads(r.stdout);o=a.get('status',{}).get('operationState',{});x=o.get('syncResult',{})
+ if o.get('phase') in ('Running','Succeeded') and x.get('revision')==sys.argv[1] and x.get('source')==a['spec']['source']:break
+ time.sleep(3)
+else:raise RuntimeError('Exact async operation did not start within60seconds')
+PYWAIT
 python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
 "$PYTHON" "$SCRIPT_DIR/approve-controller.py" --revision "$REVISION"
 echo 'Manual controller plan requires permission review. After explicit reviewed approval, rerun with --finish.'

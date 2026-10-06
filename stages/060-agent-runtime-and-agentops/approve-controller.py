@@ -158,7 +158,9 @@ def run(args):
             require(value.get('runAsUser') != 0, 'Unexpected root workload')
             for item in value.values():
                 inspect(item)
-    inspect(inventory)
+    # CRD OpenAPI property definitions describe fields; they are not deployed Pod settings.
+    # Their complete bytes remain in the reviewed digest.
+    inspect([r for r in inventory if r['kind'] != 'CustomResourceDefinition'])
     bindings = check_bindings(inventory)
     # Hash the complete native plan, not just a subset of permissions. Never print manifests:
     # ConfigMaps or Secret-bearing operands could carry private material.
