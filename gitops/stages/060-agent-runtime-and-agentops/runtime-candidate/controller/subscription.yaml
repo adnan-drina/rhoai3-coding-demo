@@ -1,0 +1,19 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: agent-sandbox-operator
+  namespace: stage060-agent-sandbox-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: agent-runtime
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  name: agent-sandbox-operator
+  channel: preview-0.9
+  startingCSV: agent-sandbox-operator.v0.9.0
+  installPlanApproval: Manual
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace

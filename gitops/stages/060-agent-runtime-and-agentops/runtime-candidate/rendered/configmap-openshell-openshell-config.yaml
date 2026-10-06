@@ -1,0 +1,116 @@
+apiVersion: v1
+data:
+  gateway.toml: '[openshell]
+
+    version = 2
+
+
+    [openshell.gateway]
+
+    name                  = "openshell"
+
+    bind_address          = "0.0.0.0:8080"
+
+    health_bind_address   = "0.0.0.0:8081"
+
+    metrics_bind_address  = "0.0.0.0:9090"
+
+    log_level             = "info"
+
+    compute_driver        = "kubernetes"
+
+    policy_validation_failure_mode = "fail_closed"
+
+    enable_loopback_service_http = true
+
+    enable_websocket_tunnel = false
+
+
+    [openshell.gateway.tls]
+
+    cert_path             = "/etc/openshell-tls/server/tls.crt"
+
+    key_path              = "/etc/openshell-tls/server/tls.key"
+
+    client_ca_path        = "/etc/openshell-tls/client-ca/ca.crt"
+
+
+    [openshell.gateway.gateway_jwt]
+
+    signing_key_path = "/etc/openshell-jwt/signing.pem"
+
+    public_key_path  = "/etc/openshell-jwt/public.pem"
+
+    kid_path         = "/etc/openshell-jwt/kid"
+
+    gateway_id       = "openshell"
+
+    ttl_secs         = 3600
+
+
+    [openshell.drivers.kubernetes]
+
+    allow_driver_config          = false
+
+    namespace                    = "openshell"
+
+    default_image                = "nvcr.io/nvidia/base/ubuntu:24.04"
+
+    sandbox_runtime_image        = "ghcr.io/nvidia/openshell/sandbox@sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f"
+
+    supervisor_image             = "ghcr.io/nvidia/openshell/supervisor@sha256:d7b5264bb6bc56f4796e6fa3617b8e4a8d785be0b7293542efd8cc250b0fb67a"
+
+    client_tls_secret_name       = "openshell-client-tls"
+
+    workspace_mode               = "operator"
+
+    gateway_id                   = "openshell"
+
+    grpc_endpoint                = "https://openshell.openshell.svc.cluster.local:8080"
+
+    service_account_name         = "openshell-sandbox"
+
+    operator_namespace_label     = "rhoai3.redhat.com/openshell-workspace=true"
+
+    sa_token_ttl_secs            = 3600
+
+    supervisor_image_pull_policy = "if_not_present"
+
+    sandbox_runtime_image_pull_policy = "if_not_present"
+
+
+    [openshell.drivers.kubernetes.resource_admission]
+
+    enabled = true
+
+
+    [openshell.drivers.kubernetes.managed_ssh_ingress]
+
+    enabled                       = true
+
+    gateway_namespace             = "openshell"
+
+    gateway_pod_selector          = { "app.kubernetes.io/name" = "openshell", "app.kubernetes.io/instance"
+    = "openshell" }
+
+
+    [openshell.drivers.kubernetes.sandbox_runtime]
+
+    boundary_port                = 5500
+
+
+    [openshell.gateway.credential_storage]
+
+    key_encryption_key_env = "OPENSHELL_GATEWAY_CREDENTIAL_KEY_ENCRYPTION_KEY"
+
+    '
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/version: 0.1.2
+    helm.sh/chart: helm-chart-0.1.2
+  name: openshell-config
+  namespace: openshell

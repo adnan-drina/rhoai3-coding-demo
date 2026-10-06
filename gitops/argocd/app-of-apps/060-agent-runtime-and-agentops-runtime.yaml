@@ -1,0 +1,73 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "name": "060-agent-runtime-and-agentops-runtime",
+    "namespace": "openshift-gitops",
+    "labels": {
+      "app.kubernetes.io/part-of": "rhoai3-coding-demo",
+      "demo.rhoai.io/stage": "060"
+    },
+    "annotations": {
+      "argocd.argoproj.io/manifest-generate-paths": "/gitops/stages/060-agent-runtime-and-agentops/runtime;/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate",
+      "argocd.argoproj.io/compare-options": "ServerSideDiff=true"
+    }
+  },
+  "spec": {
+    "project": "rhoai-demo",
+    "source": {
+      "repoURL": "https://github.com/adnan-drina/rhoai3-coding-demo.git",
+      "targetRevision": "main",
+      "path": "gitops/stages/060-agent-runtime-and-agentops/runtime"
+    },
+    "destination": {
+      "server": "https://kubernetes.default.svc",
+      "namespace": "openshell"
+    },
+    "syncPolicy": {
+      "syncOptions": [
+        "RespectIgnoreDifferences=true",
+        "ServerSideDiff=true"
+      ],
+      "retry": {
+        "limit": 10,
+        "backoff": {
+          "duration": "5s",
+          "factor": 2,
+          "maxDuration": "3m"
+        }
+      }
+    },
+    "ignoreDifferences": [
+      {
+        "group": "",
+        "kind": "Secret",
+        "name": "stage060-openshell-credentials",
+        "namespace": "openshell",
+        "jsonPointers": [
+          "/data/key-encryption-key"
+        ]
+      },
+      {
+        "group": "",
+        "kind": "ConfigMap",
+        "name": "stage060-openshell-identity",
+        "namespace": "openshell",
+        "jsonPointers": [
+          "/data/issuer"
+        ]
+      },
+      {
+        "group": "",
+        "kind": "ConfigMap",
+        "name": "stage060-runtime-ready",
+        "namespace": "openshell",
+        "jsonPointers": [
+          "/data/controller-ready",
+          "/data/source-revision",
+          "/data/controller-csv-uid"
+        ]
+      }
+    ]
+  }
+}

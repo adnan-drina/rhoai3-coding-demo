@@ -1,0 +1,49 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": {
+    "name": "openshell"
+  },
+  "spec": {
+    "persistentVolumeClaimRetentionPolicy": {
+      "whenDeleted": "Retain",
+      "whenScaled": "Retain"
+    },
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "openshell-gateway",
+            "env": [
+              {
+                "name": "OPENSHELL_OIDC_ISSUER",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "name": "stage060-openshell-identity",
+                    "key": "issuer"
+                  }
+                }
+              },
+              {
+                "name": "OPENSHELL_OIDC_AUDIENCE",
+                "value": "openshell-gateway"
+              },
+              {
+                "name": "OPENSHELL_OIDC_ROLES_CLAIM",
+                "value": "realm_access.roles"
+              },
+              {
+                "name": "OPENSHELL_OIDC_ADMIN_ROLE",
+                "value": "openshell-platform-admin"
+              },
+              {
+                "name": "OPENSHELL_OIDC_USER_ROLE",
+                "value": "openshell-user"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

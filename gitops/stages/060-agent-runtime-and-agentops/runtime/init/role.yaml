@@ -1,0 +1,47 @@
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "Role",
+  "metadata": {
+    "name": "stage060-runtime-init",
+    "namespace": "openshell",
+    "labels": {
+      "app.kubernetes.io/part-of": "rhoai3-coding-demo",
+      "demo.rhoai.io/stage": "060",
+      "app.kubernetes.io/name": "stage060-runtime-init"
+    },
+    "annotations": {
+      "argocd.argoproj.io/sync-wave": "-25"
+    }
+  },
+  "rules": [
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "configmaps"
+      ],
+      "resourceNames": [
+        "stage060-openshell-identity",
+        "stage060-runtime-ready"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "secrets"
+      ],
+      "resourceNames": [
+        "stage060-openshell-credentials"
+      ],
+      "verbs": [
+        "get"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+resources:
+  - namespace-openshell-admin.yaml
+  - namespace-openshell-developer.yaml
+  - namespace-openshell.yaml
+  - networkpolicy-openshell-admin.yaml
+  - networkpolicy-openshell-developer.yaml
+  - role-openshell-admin.yaml
+  - role-openshell-developer.yaml
+  - rolebinding-openshell-admin.yaml
+  - rolebinding-openshell-developer.yaml
+  - serviceaccount-openshell-admin.yaml
+  - serviceaccount-openshell-developer.yaml

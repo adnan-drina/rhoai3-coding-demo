@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/version: 0.1.2
+    helm.sh/chart: helm-chart-0.1.2
+  name: openshell-peer
+  namespace: openshell
+spec:
+  clusterIP: None
+  ports:
+  - appProtocol: grpc
+    name: grpc
+    port: 8080
+    protocol: TCP
+    targetPort: grpc
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/name: openshell

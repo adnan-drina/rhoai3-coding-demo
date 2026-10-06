@@ -1,0 +1,27 @@
+resources:
+- clusterrole-cluster-openshell-node-reader-openshell.yaml
+- clusterrolebinding-cluster-openshell-node-reader-openshell.yaml
+- configmap-openshell-openshell-config.yaml
+- job-openshell-openshell-certgen.yaml
+- namespace-cluster-openshell-admin.yaml
+- namespace-cluster-openshell-developer.yaml
+- namespace-cluster-openshell.yaml
+- networkpolicy-openshell-admin-openshell-sandbox-ssh.yaml
+- networkpolicy-openshell-developer-openshell-sandbox-ssh.yaml
+- role-openshell-admin-openshell-sandbox.yaml
+- role-openshell-developer-openshell-sandbox.yaml
+- role-openshell-openshell-certgen.yaml
+- role-openshell-openshell-peer.yaml
+- role-openshell-openshell-workspace-secret-source.yaml
+- rolebinding-openshell-admin-openshell-sandbox.yaml
+- rolebinding-openshell-developer-openshell-sandbox.yaml
+- rolebinding-openshell-openshell-certgen.yaml
+- rolebinding-openshell-openshell-peer.yaml
+- rolebinding-openshell-openshell-workspace-secret-source.yaml
+- service-openshell-openshell-peer.yaml
+- service-openshell-openshell.yaml
+- serviceaccount-openshell-admin-openshell-sandbox.yaml
+- serviceaccount-openshell-developer-openshell-sandbox.yaml
+- serviceaccount-openshell-openshell-certgen.yaml
+- serviceaccount-openshell-openshell.yaml
+- statefulset-openshell-openshell.yaml

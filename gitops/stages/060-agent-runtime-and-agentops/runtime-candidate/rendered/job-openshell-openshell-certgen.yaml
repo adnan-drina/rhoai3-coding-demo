@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '-10'
+  labels:
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/version: 0.1.2
+    helm.sh/chart: helm-chart-0.1.2
+  name: openshell-certgen
+  namespace: openshell
+spec:
+  activeDeadlineSeconds: 150
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: openshell
+        app.kubernetes.io/name: openshell
+    spec:
+      containers:
+      - args:
+        - generate-certs
+        - --server-secret-name=openshell-server-tls
+        - --client-secret-name=openshell-client-tls
+        - --jwt-secret-name=openshell-jwt-keys
+        - --server-san=openshell
+        - --server-san=openshell.openshell.svc
+        - --server-san=openshell.openshell.svc.cluster.local
+        - --server-san=localhost
+        - --server-san=openshell.localhost
+        - --server-san=*.openshell.localhost
+        - --server-san=host.docker.internal
+        - --server-san=host.containers.internal
+        - --server-san=127.0.0.1
+        command:
+        - /usr/local/bin/openshell-gateway
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: ghcr.io/nvidia/openshell/gateway@sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2
+        imagePullPolicy: IfNotPresent
+        name: certgen
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: openshell-certgen
+  ttlSecondsAfterFinished: 300

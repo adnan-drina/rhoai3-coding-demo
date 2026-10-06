@@ -1,0 +1,18 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/version: 0.1.2
+    helm.sh/chart: helm-chart-0.1.2
+  name: openshell-peer
+  namespace: openshell
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - get

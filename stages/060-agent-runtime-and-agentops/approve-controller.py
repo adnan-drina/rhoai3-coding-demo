@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Inventory the selected native OLM plan; approval requires its reviewed digest."""
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+from pathlib import Path
+
+CSV = 'agent-sandbox-operator.v0.9.0'
+NS = 'stage060-agent-sandbox-operator'
+APP = '060-agent-runtime-and-agentops-runtime'
+REPO = 'https://github.com/adnan-drina/rhoai3-coding-demo.git'
+SOURCE = 'gitops/stages/060-agent-runtime-and-agentops/runtime'
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def oc(*args):
+    result = subprocess.run(['oc', '--request-timeout=15s', *args], capture_output=True, text=True)
+    require(result.returncode == 0, 'Bounded Kubernetes request failed: ' + args[0])
+    return json.loads(result.stdout)
+
+
+def check_bindings(inventory):
+    roles = {(x['kind'], x['metadata'].get('namespace', NS) if x['kind'] == 'Role' else '', x['metadata']['name']): x for x in inventory if x['kind'] in ('Role', 'ClusterRole')}
+    bindings = []
+    for resource in inventory:
+        if resource['kind'] not in ('RoleBinding', 'ClusterRoleBinding'):
+            continue
+        namespace = resource['metadata'].get('namespace', NS)
+        reference = resource.get('roleRef', {})
+        require(reference.get('apiGroup') == 'rbac.authorization.k8s.io', 'Unexpected binding API group')
+        kind = reference.get('kind')
+        require(kind in ('Role', 'ClusterRole') and (resource['kind'] != 'ClusterRoleBinding' or kind == 'ClusterRole'), 'Unexpected binding role kind')
+        key = (kind, namespace if kind == 'Role' else '', reference.get('name'))
+        require(key in roles, 'Binding references an external/uninventoried role; approval blocked')
+        require(resource.get('subjects'), 'Binding subjects missing')
+        for subject in resource['subjects']:
+            require(subject.get('kind') == 'ServiceAccount' and subject.get('apiGroup', '') == '' and subject.get('namespace', namespace) == NS and subject.get('name'), 'Binding grants an unexpected principal')
+        bindings.append({'kind': resource['kind'], 'name': resource['metadata']['name'], 'roleRef': reference, 'subjects': resource['subjects']})
+    return bindings
+
+
+def run(args):
+    require(re.fullmatch('[0-9a-f]{40}', args.revision), 'Expected revision must be a published 40-character SHA')
+    guard = subprocess.run(['bash', '-c', 'REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; test -n "${RHOAI_EXPECTED_API_SERVER:-}"; check_oc_logged_in', 'stage060-controller-guard', str(ROOT)], capture_output=True, text=True)
+    require(guard.returncode == 0, 'Shared environment/login guard failed; expected cluster identifier is required')
+    published = subprocess.run(['git', '-C', str(ROOT), 'show', args.revision + ':' + str(Path(__file__).resolve().relative_to(ROOT))], capture_output=True)
+    require(published.returncode == 0 and published.stdout == Path(__file__).read_bytes(), 'Helper must match selected published revision')
+    remote = subprocess.run(['git', 'ls-remote', REPO, 'refs/heads/codex/stage-010-foundation-35'], capture_output=True, text=True, timeout=30)
+    require(remote.returncode == 0 and remote.stdout.split() == [args.revision, 'refs/heads/codex/stage-010-foundation-35'], 'Selected SHA is not the published reviewed branch head')
+    app = oc('get', 'application', APP, '-n', 'openshift-gitops', '-o', 'json')
+    spec = app['spec']
+    source = {'repoURL': REPO, 'path': SOURCE, 'targetRevision': args.revision}
+    require(not app['metadata'].get('deletionTimestamp') and not app['metadata'].get('ownerReferences') and not spec.get('sources'), 'Unexpected runtime Application lifecycle/source')
+    require(spec.get('project') == 'rhoai-demo' and all(spec.get('source', {}).get(k) == v for k, v in source.items()), 'Runtime Application source mismatch')
+    require(spec.get('destination') == {'server': 'https://kubernetes.default.svc', 'namespace': 'openshell'}, 'Runtime Application destination mismatch')
+    operation = app.get('status', {}).get('operationState', {})
+    sync = operation.get('syncResult', {})
+    require(operation.get('phase') in ('Running', 'Succeeded') and sync.get('revision') == args.revision, 'Runtime operation is not at selected revision')
+    require(all(sync.get('source', {}).get(k) == v for k, v in source.items()), 'Runtime operation source mismatch')
+    sub = oc('get', 'subscription', 'agent-sandbox-operator', '-n', NS, '-o', 'json')
+    require(all(sub['spec'].get(k) == v for k, v in {'name': 'agent-sandbox-operator', 'channel': 'preview-0.9', 'source': 'redhat-operators', 'sourceNamespace': 'openshift-marketplace', 'startingCSV': CSV, 'installPlanApproval': 'Manual'}.items()), 'Selected Subscription tuple mismatch')
+    require(not sub['metadata'].get('ownerReferences') and not sub['metadata'].get('deletionTimestamp') and sub['metadata'].get('annotations', {}).get('argocd.argoproj.io/tracking-id') == APP + ':operators.coreos.com/Subscription:' + NS + '/agent-sandbox-operator', 'Subscription is not owned by expected runtime Application')
+    ref = sub.get('status', {}).get('installPlanRef', {})
+    require(ref.get('name') and ref.get('namespace', NS) == NS, 'Selected InstallPlan reference missing/mismatched')
+    plan = oc('get', 'installplan', ref['name'], '-n', NS, '-o', 'json')
+    require(any(x.get('uid') == sub['metadata']['uid'] and x.get('kind') == 'Subscription' for x in plan['metadata'].get('ownerReferences', [])), 'InstallPlan owner mismatch')
+    require(plan['spec'].get('approval') == 'Manual' and plan['spec'].get('clusterServiceVersionNames') == [CSV], 'Unexpected InstallPlan family')
+    entries = plan.get('status', {}).get('plan', [])
+    require(entries, 'InstallPlan permission inventory is unavailable')
+    inventory = []
+    selected = []
+    for entry in entries:
+        resource = entry['resource']
+        require(entry.get('resolving') == CSV, 'InstallPlan contains an unexpected dependency')
+        try:
+            manifest = json.loads(resource['manifest'])
+        except (ValueError, KeyError):
+            raise RuntimeError('InstallPlan manifest must be inspectable JSON; no approval without complete inventory')
+        require(manifest.get('kind') == resource['kind'] and manifest.get('metadata', {}).get('name') == resource['name'], 'Plan resource identity mismatch')
+        inventory.append(manifest)
+        if resource['kind'] == 'ClusterServiceVersion':
+            require(resource['name'] == CSV and manifest['spec'].get('version') == '0.9.0', 'Unexpected CSV version')
+            selected.append(manifest)
+    require(len(selected) == 1, 'Exactly one selected CSV must be inventoried')
+    # Inspect every nested rule and pod security field, including the CSV install strategy.
+    def inspect(value):
+        if isinstance(value, list):
+            for item in value:
+                inspect(item)
+        elif isinstance(value, dict):
+            if 'verbs' in value:
+                require(not set(value['verbs']) & {'*', 'use', 'bind', 'escalate', 'impersonate'}, 'Unexpected privileged RBAC verb; native requirement needs explicit review')
+                require('*' not in value.get('apiGroups', []) and '*' not in value.get('resources', []) and not value.get('nonResourceURLs'), 'Unexpected wildcard/non-resource permission')
+                require('security.openshift.io' not in value.get('apiGroups', []) and 'securitycontextconstraints' not in value.get('resources', []), 'Unexpected SCC permission')
+            for key in ('privileged', 'hostNetwork', 'hostPID', 'hostIPC', 'allowPrivilegeEscalation'):
+                require(value.get(key) is not True, 'Unexpected privileged workload setting: ' + key)
+            require('hostPath' not in value and not value.get('capabilities', {}).get('add'), 'Unexpected host mount or added capability')
+            require(value.get('runAsUser') != 0, 'Unexpected root workload')
+            for item in value.values():
+                inspect(item)
+    inspect(inventory)
+    bindings = check_bindings(inventory)
+    # Hash the complete native plan, not just a subset of permissions. Never print manifests:
+    # ConfigMaps or Secret-bearing operands could carry private material.
+    encoded = json.dumps(sorted(inventory, key=lambda x: (x['kind'], x['metadata']['name'])), sort_keys=True, separators=(',', ':')).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
+    install = selected[0]['spec']['install']['spec']
+    images = sorted({container['image'] for deployment in install.get('deployments', []) for container in deployment['spec']['template']['spec'].get('containers', []) + deployment['spec']['template']['spec'].get('initContainers', [])})
+    print(json.dumps({'bindings': bindings, 'controller_images': images, 'related_images': selected[0]['spec'].get('relatedImages', []), 'csv': CSV, 'plan': plan['metadata']['name'], 'plan_sha256': digest, 'permissions': install.get('permissions', []), 'clusterPermissions': install.get('clusterPermissions', []), 'resource_kinds': sorted({x['kind'] for x in inventory}), 'approved': plan['spec'].get('approved', False)}, indent=2))
+    if args.approve:
+        require(args.reviewed_plan_sha256 == digest, 'Approval requires the exact independently reviewed plan digest')
+        if not plan['spec'].get('approved', False):
+            patch = [{'op': 'test', 'path': '/metadata/resourceVersion', 'value': plan['metadata']['resourceVersion']}, {'op': 'test', 'path': '/spec/approved', 'value': False}, {'op': 'replace', 'path': '/spec/approved', 'value': True}]
+            result = subprocess.run(['oc', '--request-timeout=15s', 'patch', 'installplan', plan['metadata']['name'], '-n', NS, '--type=json', '--patch-file=/dev/stdin', '-o', 'name'], input=json.dumps(patch), text=True, capture_output=True)
+            require(result.returncode == 0, 'InstallPlan approval failed; re-inventory before retrying')
+            print('Selected native InstallPlan approved')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--revision', required=True)
+    parser.add_argument('--approve', action='store_true')
+    parser.add_argument('--reviewed-plan-sha256')
+    try:
+        run(parser.parse_args())
+    except (RuntimeError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+        parser.exit(1, str(error) + '\n')

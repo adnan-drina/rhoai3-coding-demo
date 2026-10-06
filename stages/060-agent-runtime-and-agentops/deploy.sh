@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Initial identity slice; this does not install the runtime gateway or dispatch agents.
+# Configure identity, then prepare the separately owned runtime component.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -35,4 +35,5 @@ ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-agent-runtime-and-a
 ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-agent-runtime-and-agentops --app-namespace openshift-gitops --sync --operation --timeout 300
 oc --request-timeout=15s wait keycloakrealmimport/stage060-openshell -n keycloak --for=condition=Done --timeout=300s
 python3 "$SCRIPT_DIR/setup-identity.py" --revision "$REVISION"
-echo 'Identity foundation configured; runtime and genuine-persona handshake acceptance remain separate.'
+"$SCRIPT_DIR/deploy-runtime.sh"
+echo 'Identity configured; runtime controller permission approval and persona handshake remain explicit gates.'

@@ -1,0 +1,27 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openshell-certgen
+  namespace: openshell
+  annotations:
+    helm.sh/hook:
+    helm.sh/hook-weight:
+    helm.sh/hook-delete-policy:
+    argocd.argoproj.io/sync-wave: "-20"
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - openshell-server-tls
+  - openshell-client-tls
+  - openshell-jwt-keys
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - create

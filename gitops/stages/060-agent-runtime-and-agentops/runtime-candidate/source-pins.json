@@ -1,0 +1,13 @@
+{
+  "sourceRepository": "https://github.com/NVIDIA/OpenShell",
+  "sourceCommit": "6648bd0c290efbc41ba131ee9831ee45cd431f94",
+  "release": "v0.1.2",
+  "chartOCI": "oci://ghcr.io/nvidia/openshell/helm-chart",
+  "chartVersion": "0.1.2",
+  "chartOCIDigest": "sha256:7a714bbbbcef7b5ed8dac599e89e89df12eb623fa4454d22f89df41d6f047e2a",
+  "chartArchiveSha256": "b9250541d47c5ce4cfcfeb6a652ddcbd1f444a33e151ff43b16daec5d013ff04",
+  "sandboxControllerPackage": "agent-sandbox-operator",
+  "sandboxControllerChannel": "preview-0.9",
+  "sandboxControllerStartingCSV": "agent-sandbox-operator.v0.9.0",
+  "controllerQualification": "pending bundle image and live API qualification; manual approval required"
+}

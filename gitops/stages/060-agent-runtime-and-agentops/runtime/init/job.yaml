@@ -1,0 +1,91 @@
+{
+  "apiVersion": "v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "stage060-runtime-prerequisites",
+    "namespace": "openshell",
+    "labels": {
+      "app.kubernetes.io/part-of": "rhoai3-coding-demo",
+      "demo.rhoai.io/stage": "060",
+      "app.kubernetes.io/name": "stage060-runtime-init"
+    },
+    "annotations": {
+      "argocd.argoproj.io/sync-wave": "-5",
+      "argocd.argoproj.io/hook": "Sync",
+      "argocd.argoproj.io/hook-delete-policy": "BeforeHookCreation,HookSucceeded"
+    }
+  },
+  "spec": {
+    "backoffLimit": 0,
+    "activeDeadlineSeconds": 360,
+    "template": {
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/part-of": "rhoai3-coding-demo",
+          "demo.rhoai.io/stage": "060",
+          "app.kubernetes.io/name": "stage060-runtime-init"
+        }
+      },
+      "spec": {
+        "serviceAccountName": "stage060-runtime-init",
+        "restartPolicy": "Never",
+        "securityContext": {
+          "runAsNonRoot": true,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "containers": [
+          {
+            "name": "wait",
+            "image": "registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9",
+            "command": [
+              "/bin/bash",
+              "-c",
+              "set -euo pipefail\nend=$((SECONDS+300))\nwhile ((SECONDS<end)); do\n  revision=\"$(oc --request-timeout=10s get application 060-agent-runtime-and-agentops-runtime -n openshift-gitops -o jsonpath='{.spec.source.targetRevision}')\"\n  ready=\"$(oc --request-timeout=10s get configmap stage060-runtime-ready -n openshell -o jsonpath='{.data.controller-ready}')\"\n  qualified_revision=\"$(oc --request-timeout=10s get configmap stage060-runtime-ready -n openshell -o jsonpath='{.data.source-revision}')\"\n  issuer=\"$(oc --request-timeout=10s get configmap stage060-openshell-identity -n openshell -o jsonpath='{.data.issuer}')\"\n  key_present=\"$(oc --request-timeout=10s get secret stage060-openshell-credentials -n openshell -o go-template='{{if index .data \"key-encryption-key\"}}present{{end}}')\"\n  if [[ \"$ready\" == true && \"$qualified_revision\" == \"$revision\" && \"$issuer\" == https://* && \"$key_present\" == present ]]; then\n    echo 'Reviewed native controller and retained runtime credentials ready';exit 0\n  fi\n  sleep 5\ndone\necho 'Runtime prerequisites did not qualify before deadline' >&2;exit 1\n"
+            ],
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "resources": {
+              "requests": {
+                "cpu": "10m",
+                "memory": "32Mi"
+              },
+              "limits": {
+                "cpu": "100m",
+                "memory": "128Mi"
+              }
+            },
+            "env": [
+              {
+                "name": "HOME",
+                "value": "/tmp"
+              }
+            ],
+            "volumeMounts": [
+              {
+                "name": "tmp",
+                "mountPath": "/tmp"
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "name": "tmp",
+            "emptyDir": {
+              "sizeLimit": "8Mi"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

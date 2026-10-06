@@ -1,0 +1,10 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshell-certgen
+  namespace: openshell
+  annotations:
+    helm.sh/hook:
+    helm.sh/hook-weight:
+    helm.sh/hook-delete-policy:
+    argocd.argoproj.io/sync-wave: "-20"

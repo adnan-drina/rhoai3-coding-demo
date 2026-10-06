@@ -1,0 +1,95 @@
+{
+  "fullnameOverride": "openshell",
+  "replicaCount": 1,
+  "workload": {
+    "kind": "statefulset"
+  },
+  "workspaceResources": {
+    "enabled": false
+  },
+  "agentSandbox": {
+    "preflight": {
+      "enabled": false
+    }
+  },
+  "gateway": {
+    "image": {
+      "digest": "sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2"
+    }
+  },
+  "supervisor": {
+    "image": {
+      "digest": "sha256:d7b5264bb6bc56f4796e6fa3617b8e4a8d785be0b7293542efd8cc250b0fb67a"
+    }
+  },
+  "sandboxRuntime": {
+    "image": {
+      "digest": "sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f"
+    }
+  },
+  "podSecurityContext": {
+    "fsGroup": null,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
+  },
+  "securityContext": {
+    "runAsUser": null,
+    "runAsNonRoot": true,
+    "allowPrivilegeEscalation": false,
+    "capabilities": {
+      "drop": [
+        "ALL"
+      ]
+    }
+  },
+  "resources": {
+    "requests": {
+      "cpu": "100m",
+      "memory": "256Mi"
+    },
+    "limits": {
+      "cpu": "1",
+      "memory": "1Gi"
+    }
+  },
+  "server": {
+    "telemetryEnabled": false,
+    "disableTls": false,
+    "drivers": {
+      "kubernetes": {
+        "workspaceMode": "operator",
+        "operatorNamespaceLabel": "rhoai3.redhat.com/openshell-workspace=true",
+        "allowDriverConfig": false
+      }
+    },
+    "credentialStorage": {
+      "existingSecret": "stage060-openshell-credentials"
+    },
+    "sandboxJwt": {
+      "secretDefaultMode": "0440"
+    },
+    "oidc": {
+      "issuer": "",
+      "audience": "openshell-gateway",
+      "rolesClaim": "realm_access.roles",
+      "adminRole": "openshell-platform-admin",
+      "userRole": "openshell-user"
+    },
+    "auth": {
+      "allowUnauthenticatedUsers": false
+    }
+  },
+  "service": {
+    "type": "ClusterIP"
+  },
+  "pkiInitJob": {
+    "enabled": true
+  },
+  "openshiftRoute": {
+    "enabled": false
+  },
+  "grpcRoute": {
+    "enabled": false
+  }
+}

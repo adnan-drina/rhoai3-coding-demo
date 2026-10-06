@@ -1,0 +1,202 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/version: 0.1.2
+    helm.sh/chart: helm-chart-0.1.2
+  name: openshell
+  namespace: openshell
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: openshell
+      app.kubernetes.io/name: openshell
+  serviceName: openshell-peer
+  template:
+    metadata:
+      annotations:
+        checksum/gateway-config: 9b07c10008232e9575b2e64d2b474c866a8d8f355142b24ea838950cfff3dec0
+      labels:
+        app.kubernetes.io/instance: openshell
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: openshell
+        app.kubernetes.io/version: 0.1.2
+        helm.sh/chart: helm-chart-0.1.2
+    spec:
+      containers:
+      - args:
+        - --config
+        - /etc/openshell/gateway.toml
+        - --db-url
+        - sqlite:/var/openshell/openshell.db
+        env:
+        - name: OPENSHELL_OIDC_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              key: issuer
+              name: stage060-openshell-identity
+        - name: OPENSHELL_OIDC_AUDIENCE
+          value: openshell-gateway
+        - name: OPENSHELL_OIDC_ROLES_CLAIM
+          value: realm_access.roles
+        - name: OPENSHELL_OIDC_ADMIN_ROLE
+          value: openshell-platform-admin
+        - name: OPENSHELL_OIDC_USER_ROLE
+          value: openshell-user
+        - name: OPENSHELL_REPLICA_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: OPENSHELL_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: OPENSHELL_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: OPENSHELL_SERVICE_ACCOUNT_NAME
+          value: openshell
+        - name: OPENSHELL_PEER_SERVICE_NAME
+          value: openshell-peer
+        - name: OPENSHELL_PEER_TOKEN_AUDIENCE
+          value: openshell-gateway-peer
+        - name: OPENSHELL_PEER_SERVICE_ACCOUNT_TOKEN_FILE
+          value: /var/run/secrets/openshell-peer/token
+        - name: OPENSHELL_PEER_POD_LABELS
+          value: app.kubernetes.io/name=openshell,app.kubernetes.io/instance=openshell
+        - name: OPENSHELL_PEER_TLS_SERVER_NAME
+          value: openshell.openshell.svc.cluster.local
+        - name: OPENSHELL_PEER_TLS_CA_FILE
+          value: /etc/openshell-tls/server/ca.crt
+        - name: OPENSHELL_PEER_TLS_CERT_FILE
+          value: /etc/openshell-tls/peer-client/tls.crt
+        - name: OPENSHELL_PEER_TLS_KEY_FILE
+          value: /etc/openshell-tls/peer-client/tls.key
+        - name: OPENSHELL_GATEWAY_CREDENTIAL_KEY_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              key: key-encryption-key
+              name: stage060-openshell-credentials
+        - name: OPENSHELL_TELEMETRY_ENABLED
+          value: 'false'
+        image: ghcr.io/nvidia/openshell/gateway@sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 1
+        name: openshell-gateway
+        ports:
+        - containerPort: 8080
+          name: grpc
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 1
+          periodSeconds: 2
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+        startupProbe:
+          failureThreshold: 30
+          httpGet:
+            path: /healthz
+            port: health
+          periodSeconds: 2
+          timeoutSeconds: 1
+        volumeMounts:
+        - mountPath: /var/openshell
+          name: openshell-data
+        - mountPath: /etc/openshell/gateway.toml
+          name: gateway-config
+          readOnly: true
+          subPath: gateway.toml
+        - mountPath: /etc/openshell-jwt
+          name: sandbox-jwt
+          readOnly: true
+        - mountPath: /var/run/secrets/openshell-peer
+          name: gateway-peer-token
+          readOnly: true
+        - mountPath: /etc/openshell-tls/server
+          name: tls-cert
+          readOnly: true
+        - mountPath: /etc/openshell-tls/peer-client
+          name: peer-client-tls
+          readOnly: true
+        - mountPath: /etc/openshell-tls/client-ca
+          name: tls-client-ca
+          readOnly: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: openshell
+      terminationGracePeriodSeconds: 5
+      volumes:
+      - configMap:
+          name: openshell-config
+        name: gateway-config
+      - name: sandbox-jwt
+        secret:
+          defaultMode: 288
+          secretName: openshell-jwt-keys
+      - name: gateway-peer-token
+        projected:
+          defaultMode: 256
+          sources:
+          - serviceAccountToken:
+              audience: openshell-gateway-peer
+              expirationSeconds: 3600
+              path: token
+      - name: tls-cert
+        secret:
+          secretName: openshell-server-tls
+      - name: peer-client-tls
+        secret:
+          secretName: openshell-client-tls
+      - name: tls-client-ca
+        secret:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          secretName: openshell-server-tls
+  volumeClaimTemplates:
+  - metadata:
+      name: openshell-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
