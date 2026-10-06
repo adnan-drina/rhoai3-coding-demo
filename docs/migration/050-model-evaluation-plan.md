@@ -1,20 +1,20 @@
-# Stage 050 model evaluation design for review
+# Stage 050 model evaluation foundation
 
 ## Current state and recommendation
 
-Implementation prepared, 2026-10-06; not deployed. No component enablement, evaluation, model restart or storage change was performed. The historical audited base had **24 YAML files, 19 rendered resources**; the receiving implementation now has **28 YAML files, 23 rendered resources**, plus its Application and seven stage scripts/documents. All base resources are reachable; none is obsolete merely because it is not deployed.
+Service foundation deployed on 2026-10-06: Stage 050 is Synced/Healthy/Succeeded at `af39a8b7`; the core now uses the protected Stage 050 omission bridge at `eb75e665`. Native TrustyAI, EvalHub and MLflow are ready, with a separate Bound 10Gi EvalHub PostgreSQL volume. No evaluation, inference or model restart was performed. The read-only native database-projection validator correction is published at `542913f1` without a resource redeployment. The historical audited base had **24 YAML files, 19 rendered resources**; the receiving implementation now has **28 YAML files, 23 rendered resources**, plus its Application and seven stage scripts/documents. All base resources are reachable; none is obsolete merely because it is not deployed.
 
 Recommend native EvalHub for one small, chat-compatible evaluation through an existing governed Qwen endpoint, with results retained in the existing MLflow service. Enable the native TrustyAI component for EvalHub; do not install a separate operator or a `TrustyAIService` for this LLM scenario. Do not add LM-Eval CRs, Garak/judge workloads, GuideLLM load tests, AutoRAG or AutoML. The exact benchmark remains a qualification gate, not an invented task name.
 
-Read-only live evidence establishes RHOAI **3.5.1** CSV Succeeded, native MLflow **3.14.0** Available/current, TrustyAI Removed, no EvalHub namespace/Application and no EvalHub/TrustyAIService/LMEvalJob operand CRDs. Root component schemas and bundled images are not proof those operands are installed. The TrustyAI image is selected by the existing RHOAI bundle; do not invent a separate Subscription/version upgrade. Current release documentation identifies **EvalHub GA and MLflow GA**; the evaluation dashboard remains **Technology Preview**. The prior blanket EvalHub TP claim is retired. Installed schemas and selected image metadata must still be reconciled with documentation before authoring.
+Historical pre-implementation read-only evidence established RHOAI **3.5.1** CSV Succeeded, native MLflow **3.14.0** Available/current, TrustyAI Removed, no EvalHub namespace/Application and no EvalHub/TrustyAIService/LMEvalJob operand CRDs. Root component schemas and bundled images are not proof those operands are installed. The TrustyAI image is selected by the existing RHOAI bundle; do not invent a separate Subscription/version upgrade. Current release documentation identifies **EvalHub GA and MLflow GA**; the evaluation dashboard remains **Technology Preview**. The prior blanket EvalHub TP claim is retired. The installed EvalHub schema and native database Secret-volume projection were verified during reconciliation.
 
-Core Stage 010 remains at `882f327fb25dd047ca7144058b6cca46e693df3a`, source `gitops/stages/030-private-model-serving/migration/foundation-omit`. It owns the MLflow CR and six database/storage/configuration resources below. MLflow CR UID is `2f223387-8299-417f-b813-445bc347e011`; database PVC UID `c767ee46-13fc-46ab-a4ed-a043c5769f69`; artifact OBC UID `766e2b85-66d6-4225-b2e8-1c233863db68`. Preserve `rhoai-mlflow-artifacts`, its name/data and native generated credentials unchanged. The existing PostgreSQL credential Secret is runtime-owned; generated MLflow resources remain operator-owned.
+The seven existing MLflow customer resources were protected, omitted from the core and adopted by Stage 050. Preserve `rhoai-mlflow-artifacts`, its name/data, the retained database and native generated credentials unchanged. The runtime database credential Secret and operator-owned workloads were not rotated or recreated. The bridge comparison captured all 15 native workspaces: `demo-sandbox` contained one experiment, one run and one artifact listing; the others were empty. Exact records and artifact metadata matched before/after both phases.
 
 Stage 040 is deployed, with local/MiniMax bounded API and quota evidence. Registry API records exist and both personas can list them; registry visual verification remains separate. Studio model-source warnings were not reproduced through the exact public/backend request; Studio visual acceptance remains pending. GPT credits are exhausted and EPP execution is unqualified. Both Qwen services have replicas zero and GPU Machines/nodes are zero. These limits do not prevent planning or later CPU service setup, but a Qwen evaluation needs a separately approved GPU/model restore.
 
 ## Artifact-by-artifact disposition
 
-Paths below are relative to `gitops/stages/050-model-evaluation/base/`. Kustomizations compose resources; the eventual Stage 050 Application owns authored customer resources, not generated operands. The reviewed design is implemented in source; native deployment and preservation acceptance remain pending.
+Paths below are relative to `gitops/stages/050-model-evaluation/base/`. Kustomizations compose resources; the eventual Stage 050 Application owns authored customer resources, not generated operands. The reviewed design is implemented and deployed. The table retains the original audit dispositions; current runtime evidence below distinguishes service readiness from an evaluation.
 
 | File | Current resource, namespace and purpose | Proposed action and exit |
 |---|---|---|
@@ -38,11 +38,11 @@ Paths below are relative to `gitops/stages/050-model-evaluation/base/`. Kustomiz
 | `evalhub/postgresql-service.yaml` | New database Service | Retain exact namespace-local selector/5432 contract. |
 | `evalhub/postgresql-statefulset.yaml` | New separate pinned PG16 instance, single replica | Retain durable demo design; credentials must exist before storage/workload wave. No reuse of provider/MaaS/MLflow databases. |
 | `evalhub/postgresql-networkpolicy.yaml` | Allow only native EvalHub API pod labels to database | Retain candidate; qualify actual generated labels/port after operator reconciliation. |
-| `evalhub/evalhub.yaml` | Native `trustyai.opendatahub.io/v1` EvalHub `evalhub`; multi-tenancy, PG Secret and MLflow URI | Change: start with the one selected provider/collection only. Remove unused Garak/GuideLLM and default safety/fairness collection from this coding scenario after verifying no consumer. Verify installed CRD, readiness and optional tracking schema. |
+| `evalhub/evalhub.yaml` | Native `trustyai.opendatahub.io/v1` EvalHub `evalhub`; multi-tenancy, PG Secret and MLflow URI | Configure only `lm-evaluation-harness`; Garak and GuideLLM providers are absent. The native API defaults three collection catalogs when collections are omitted. Their presence is discovery metadata, not an executed benchmark or an installed Garak workload. Installed CRD, readiness and tracking projection are verified. |
 | `tenant/kustomization.yaml` | Composition of tenant access | Retain; native operator owns tenant job SA/bindings/discovery/CA, not this composition. |
 | `tenant/role.yaml` | `evalhub-evaluator`, `demo-sandbox`; virtual evaluations/providers/collections permissions | Retain needed tenant verbs; review mutation permissions against the selected scenario and official virtual-resource contract. No cluster-admin grant. |
 | `tenant/rolebinding.yaml` | `demo-evalhub-access`, sandbox, existing two intended groups | Retain group contract; prove genuine positive access and cross-tenant/unauthenticated denial. |
-| `gitops/argocd/app-of-apps/050-model-evaluation.yaml` | Customer Application, project `rhoai-demo`, currently not live | Change native compare annotation, immutable reviewed revision, exact runtime-data/CA ignores and scoped retention. Existing App repo/destination/owner/operation guards; first ordinary deployment write is this App. |
+| `gitops/argocd/app-of-apps/050-model-evaluation.yaml` | Customer Application, project `rhoai-demo`, now live at the immutable reviewed source | Change native compare annotation, immutable reviewed revision, exact runtime-data/CA ignores and scoped retention. Existing App repo/destination/owner/operation guards; first ordinary deployment write is this App. |
 
 No current manifest is an authored `TrustyAIService` or `LMEvalJob`; do not add those solely because the component is called TrustyAI. The PostgreSQL image and CLI image are already digest-pinned. Preserve the existing MLflow database image; qualify the selected EvalHub operator-generated images rather than copying operands.
 
@@ -72,20 +72,28 @@ Abort on any UID/spec/data/bucket/config drift or unexpected operator change. Be
 
 Recommended first slice: **one discovered `lm-evaluation-harness` chat/generation-compatible benchmark, ten approved samples, one governed Qwen endpoint, no judge or attacker model**. Use an existing project tenant and a narrowly scoped temporary MaaS key, with explicit timeout/output/sample caps supported by that exact adapter. Record source pin, quantization, prompt/dataset revision, adapter version and generation settings. This measures the chosen task; it does not prove full coding-agent quality or fair comparison between quantizations. CPU Jobs orchestrate inference; model compute is only the already-chosen GPU service.
 
-Decisions/gates before implementation:
+Remaining evaluation decisions/gates:
 
-- Approve native EvalHub + retained MLflow handoff and separate 10Gi single-instance EvalHub PostgreSQL (durable demo, not HA).
+- The user approved the native EvalHub/retained MLflow foundation and separate 10Gi PostgreSQL; implementation and service deployment are complete. This is a durable demo, not HA.
 - Confirm first model (recommend Qwen3.6 FP8) and ten-sample budget. GPU/model restoration is a separate explicit action; no activation during design.
 - **Exact task/adapter unresolved:** verify selected installed provider/benchmark discovery and source supports OpenAI chat generation rather than loglikelihood. Do not silently use a completion/loglikelihood task or write a bespoke adapter to force success. If no compatible native benchmark exists, return that concrete conflict for design review.
 - Keep MiniMax outside the first run until benchmark compatibility is established; streaming success alone is insufficient. GPT remains excluded while credits are exhausted. No external dataset/code-context routing occurs in the proposed local-model slice.
 
 ## Acceptance and evidence boundaries
 
-Static gates: full artifact render/schema/ownership review; protected core comparison; exact field delegation; no duplicate CR/workload/storage; credential-before-storage DAG; focused fault fixtures for API failure, foreign owner, stale operation, missing retained data and concurrent changes. Native APIs absent today require served-schema review after component initialization, before dependent CRs are accepted.
+Static gates: full artifact render/schema/ownership review; protected core comparison; exact field delegation; no duplicate CR/workload/storage; credential-before-storage DAG; focused fault fixtures for API failure, foreign owner, stale operation, missing retained data and concurrent changes. The installed native EvalHub schema and generated workload contract were checked after component initialization.
 
 Live service gates: same seven adopted UIDs and preserved MLflow records/artifact bucket; current native MLflow/TrustyAI/EvalHub workloads; exact successful own Application operation; PostgreSQL/CA/token/tracking configuration; nonempty provider/benchmark discovery; actual ai-admin/ai-developer access and unauthorized/cross-tenant denial. Zero GPU is valid for service-only acceptance.
 
 Evaluation gates: one bounded job reaches completed, exactly selected model/dataset/provider/task; returned `results.benchmarks[].mlflow_run_id` matches FINISHED tracking run and experiment with nonempty metrics; tenant run/artifacts retrievable over verified TLS after job Pod cleanup; temporary key revoked and only own probe cleaned up. Missing native run correlation/artifacts is failure or explicitly pending, not a blanket PASS. Prior synthetic MLflow persistence evidence is historical and does not qualify a new EvalHub run. Browser/UI acceptance remains user-owned and the evaluation UI TP status is explicit.
+
+## Independent foundation acceptance (2026-10-06)
+
+Independent post-adoption validation passed: all seven customer resource UIDs/specs are unchanged and now carry Stage 050 tracking; the 12 retained resource/credential snapshots and original 15 workspace payloads equal the baseline. Existing sandbox records remain one experiment, one run and one artifact listing. The newly introduced `evalhub` workspace is empty. Artifact evidence compares metadata; no new artifact upload or evaluation round-trip is claimed.
+
+Both genuine `ai-admin` and `ai-developer` sessions passed native health/provider/collection discovery with verified CA and service hostname. Foreign-tenant requests returned 403 and invalid tokens were denied. The server namespace has no tenant label. Own Stage 050 `af39a8b7` and core bridge `eb75e665` are Healthy/Synced with exact successful operations. All GPU pool and both Qwen desired replicas are zero. No evaluation, inference or browser check ran.
+
+Private local evidence: `/private/tmp/stage050-live-20261006/handoff/{baseline,protect-after,omit-after}.json`, `/private/tmp/stage050-independent-poststate.json`, and `/private/tmp/stage050-independent-native.log`. Source fixes are published at `542913f1`; resource deployment remains the reviewed `af39a8b7` manifest revision. Foundation acceptance is complete; the chat-compatible benchmark, model resume, actual results/MLflow correlation and user-owned evaluation UI remain pending.
 
 ## Evidence and primary references
 
