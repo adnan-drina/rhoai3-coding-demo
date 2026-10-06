@@ -436,4 +436,4 @@ Native deployment, two private-model APIs/streaming, Red Hat MiniMax governed st
 
 ### Planned Stage 060 Agent Runtime and AgentOps
 
-Stage 060 is a planned platform stage; Stage 070 retains developer services and requested Gitea integration. Qualify pinned OpenShell/runtime isolation, authenticated lifecycle, independent verifier and catalog ingestion before implementation. No AgentOps deployment or completed-agent claim follows from the numbering change. See [runtime design](docs/migration/060-agent-hosting-and-scm-plan.md) and [developer/SCM design](docs/migration/070-developer-platform-and-scm-plan.md).
+Stage 060 is a planned platform stage; Stage 070 retains developer services and requested Gitea integration. Qualify pinned OpenShell/runtime isolation, authenticated lifecycle, independent verifier and catalog ingestion before implementation. No AgentOps deployment or completed-agent claim follows from the numbering change. See [runtime design](docs/migration/060-agent-runtime-and-agentops-plan.md) and [developer/SCM design](docs/migration/070-developer-platform-and-scm-plan.md).

@@ -1,6 +1,23 @@
 # Stage 060 agent runtime and AgentOps design proposal
 
-**Status: researched proposal for review. No deployment or implementation is authorized by this document.** Stage 060 would host agent runtimes and AgentOps; Stage 070 supplies developer services, SCM and templates. Stages 110/120/130 consume these separate platform layers. Existing Stage 030 catalogs, Stage 040 MaaS and Stage 050 EvalHub/MLflow keep their ownership and data. Current model/GPU state is unchanged.
+**Status: scope and implementation plan for review. Documentation approved; runtime implementation and deployment have not started.** Stage 060 would host agent runtimes and AgentOps; Stage 070 supplies developer services, SCM and templates. Stages 110/120/130 consume these separate platform layers. Existing Stage 030 catalogs, Stage 040 MaaS and Stage 050 EvalHub/MLflow keep their ownership and data. Current model/GPU state is unchanged.
+
+## Required scope and reuse
+
+Full Stage 060 completion requires **both standalone OpenCode and Hermes**, workspace-independent access and durable state/lifecycle, qualified RHOAI Agent Catalog discoverability, and demonstrated MLflow integration for selected known agent calls. Technical gaps remain implementation blockers; they do not silently remove requirements. The initial bounded slice is OpenCode, followed by Hermes before stage acceptance.
+
+| Responsibility | Owner and scope |
+|---|---|
+| Kernel/runtime boundary | 060: pinned OpenShell/control plane and compatible Sandbox controller, Landlock/seccomp/network isolation proven on target runtime |
+| Deterministic access policy | 060: reviewed filesystem/process/endpoint/L7 rules, authenticated policy changes and approval audit; no agent self-approval |
+| Agent supply chain | 060: digest-pinned OpenCode and required Hermes images/toolchain, provenance and patch-obligation verification |
+| Agent discovery | 030 retains catalog service; 060 supplies qualified custom agent metadata/source and executable instructions through the served native contract |
+| Model/tool access | 040 retains MaaS, model access/keys/quotas/usage and existing MCP services; 060 constrains which agent processes/endpoints may use them |
+| Evaluation and trace evidence | 050 retains EvalHub/TrustyAI/MLflow; 060 adds explicit selected-call trace instrumentation and tenant-safe evidence integration |
+| Developer clients and SCM | 070 retains Dev Spaces/RHDH/Gitea/delivery; it later provisions an association through the Stage 060 interface |
+| Semantic rails and adversarial campaigns | existing Stage 050 evaluation capability reused where applicable; new NeMo rails/Garak campaigns require a later scope decision, not default extra deployments |
+
+The [Red Hat kernel-security article](https://www.redhat.com/en/blog/beyond-container-boundaries-kernel-level-agent-security-red-hat-openshift-ai-35) supplies the defense-in-depth framing. Its layer examples do not authorize deploying every named component. SPIRE, per-user VMs, SIEM forwarding and broad payload/trajectory collection remain extensions. Its OpenShell 0.0.85 examples are separate from the selected upstream 0.1.2 and older linked guide tuples.
 
 ## Recommendation
 
@@ -8,7 +25,7 @@ Start with **one persistent logical agent instance per provisioned workspace/pro
 
 A workspace-associated Hermes instance gives each project isolated state and scoped credentials, lets bounded work continue while the IDE is stopped, and preserves sessions for later resumption. A reproducible image/toolchain makes results easier to compare, while project-bound MaaS usage and MLflow evidence connect consumption to actual task outcomes.
 
-Developer Hub provisions the working set and links its IDE, agent and repository. Dev Spaces remains the editor/client. First qualify standalone OpenCode, for which a Red Hat starter kit exists; then qualify Hermes as a custom integration using the same project isolation and Git contract. Keep the existing Hermes verifier and task evidence rather than rebuilding a generic agent framework.
+Developer Hub provisions the working set and links its IDE, agent and repository. Dev Spaces remains the editor/client. Qualify standalone OpenCode first, then the required standalone Hermes integration using the same project isolation and Git contract. That is proof order, not optional Hermes scope. Keep the existing Hermes verifier and task evidence rather than rebuilding a generic agent framework.
 
 Use **separate Git checkouts and explicit commit/patch exchange**. Freeze a start commit, allow the agent to write only its task branch/checkout, and review its patch before merging. Do not share one writable working copy between IDE and agent: concurrent edits, Git locks, RWO scheduling and per-user workspace storage make that unsafe. Unsaved IDE edits require an explicit upload/commit workflow; HTTP prompting does not synchronize them.
 
@@ -66,16 +83,55 @@ Workspace stop must preserve the logical agent instance. An explicit project pol
 
 ## Trace and acceptance boundaries
 
-MaaS supplies governed model access and aggregate attribution, not internal shell/planning/file trajectories. OpenShell identity, policy and tool-access records do not automatically instrument Hermes internal planning, memory, Kanban semantics or every delegated tool trajectory. Hermes/OpenCode tracing requires explicit instrumentation and redaction; existing MLflow may record bounded pilot evidence through its established tenant contract. Catalog metadata and Studio's embedded trace viewer do not prove universal trace persistence. The independent verifier remains outside the agent's writable scope. Compile, actual tests, API parity, workflow completion and autonomous-agent success are separate results.
+MaaS supplies governed model access and aggregate attribution, not internal shell/planning/file trajectories. OpenShell identity, policy and tool-access records do not automatically instrument Hermes internal planning, memory, Kanban semantics or every delegated tool trajectory. Hermes/OpenCode tracing requires explicit instrumentation and redaction. Required acceptance records selected known model/tool calls in existing MLflow and retrieves them through the established tenant contract; this is not an automatic trace of every internal action. Catalog metadata and Studio's embedded trace viewer do not prove universal trace persistence. The independent verifier remains outside the agent's writable scope. Compile, actual tests, API parity, workflow completion and autonomous-agent success are separate results.
 
-## Minimum proof and implementation phases
+## Mandatory Stage 060 implementation phases
 
-1. **Resolve pins/security first:** selected Sandbox/OpenShell/chart/runtime tuple, nonroot enforcement, filesystem and network denies, TLS/authenticated ownership and no anonymous tool API.
-2. **One standalone OpenCode slice:** one owner/project/repo, frozen commit and separate checkout, existing governed Qwen3.8; prove foreign identity denial, scoped credentials, one bounded edit, actual cancellation, restart continuity and independent verifier results.
-3. **Hermes continuity:** qualify image/patch obligations (loop/output controls, pacing/budgets, lifecycle, preload receipts, escalation, context ceiling); prove native Kanban review/change semantics inside the sandbox before remote protocol integration. Keep planner activation gated until the real task oracle is ready.
-4. **Gitea qualification and transition:** qualify chart/module/webhook/bootstrap/backup before final template integration, then migrate workload-repo consumers coherently; never repoint platform Argo sources or overwrite existing repos. The early OpenCode proof may use an existing read-only source repository and a separate disposable checkout, avoiding an initial template rewrite.
-5. **RHDH/lifecycle integration:** integrate the qualified Gitea publisher and reviewed agent provisioner/association once, add catalog description and template links, and test workspace stop/start/delete with no orphan jobs/keys or lost results. No blind recreate-on-start.
+1. **Resolve pins/security:** inspect the selected Sandbox/OpenShell/chart/image tuple and supported native interfaces; prove nonroot enforcement, filesystem/network denies, authenticated handshake/tenant separation and no anonymous tool API.
+2. **Standalone OpenCode:** one owner/project/repo, frozen commit and separate checkout through existing Qwen3.8; one bounded task with an independently owned test, actual cancellation and restart continuity. No Dev Spaces or portal prerequisite.
+3. **Standalone Hermes:** qualify image/patch obligations, persistent state and workspace-independent access; prove the same bounded task/lifecycle controls and native board review/change semantics. OpenCode success alone does not complete Stage 060.
+4. **Native Agent Catalog integration:** qualify the installed custom-source/entry contract for both agent records and executable instructions, while Stage 030 retains the catalog service. A missing native contract is an explicit blocker, not a substitute RHDH link.
+5. **Selected-call MLflow integration:** explicitly instrument known model/tool calls from both agents, prove correlation/sanitized tenant-safe retrieval in existing Stage 050 MLflow, and report exact captured coverage. No universal trajectory claim.
+6. **Completion and lifecycle audit:** owner/foreign negatives, kernel/policy tests, no self-approved expansion, state continuity, owned cleanup and independent test receipts must pass for both agents. No orphan execution or key may be hidden by a successful wrapper exit.
+
+**Stage 070 handoff, separately owned:** qualify Gitea chart/module/webhook/bootstrap/backup before final RHDH template integration. The initial Stage 060 proof may use an existing read-only source and disposable checkout.Stage 070 then adds qualified SCM publishing, stable instance association and client links without recreating state on every IDE start. This is consumer integration, not a hard Stage 060 runtime dependency.
 
 **Catalog publication gate:** confirm the installed Agent Catalog custom-source/entry contract before authoring Hermes or OpenCode metadata. Link a versioned starter-kit/runtime source and state its actual support boundary; Hermes remains a project custom integration. Catalog registration describes the qualified runtime and launch instructions, and does not install or host it. An RHDH catalog entity/link is distinct from a RHOAI Agent Catalog entry and does not satisfy that prerequisite. The installed custom-source mechanism and served schema remain unresolved; no catalog CR fields are proposed here.
 
 Required review decisions: selected support/security tuple; retained instance/state lifecycle; Git exchange and merge authority; Gitea module/chart qualification. No deployment follows from this proposal. Detailed read-only audit: `/private/tmp/agent-platform-research/repository-runtime-lifecycle.md`.
+
+## Candidate implementation surfaces
+
+These are proposed locations, not files/resources that already exist. Use chart/native controller interfaces and inspect the exact release schema before authoring fields.
+
+| Surface | Candidate location and responsibility |
+|---|---|
+| Argo owner | `gitops/argocd/app-of-apps/060-agent-runtime-and-agentops.yaml`: immutable reviewed source, exact destination, retention rules; app-first deployment |
+| Runtime desired state | `gitops/stages/060-agent-runtime-and-agentops/base/`: namespace, reviewed chart/native Sandbox-controller installation, persistence, TLS/auth, policy and narrowly named RBAC/NetworkPolicy; no duplicate DSC or generated Deployment patches |
+| BYO agent images | `stages/060-agent-runtime-and-agentops/runtime-images/`: reproducible OpenCode/Hermes recipes, immutable source/tool/image stamps; reuse existing Stage 130 patch inputs without deleting rebuild authority |
+| Lifecycle entry points | `stages/060-agent-runtime-and-agentops/deploy.sh` and existing `scripts/platform/` conventions: guarded app-first install, owned create/pause/resume/cancel/archive; no arbitrary cluster-admin toolbox |
+| Acceptance | existing Stage 060 `validate.sh`: planned exit2 until implementation; readiness checks separate from opt-in bounded proof and actual trace/verifier acceptance |
+| Consumer association | later Stage 070 template/skeleton changes: stable instance ID and repository association; no hard dependency in Stage 060 on an IDE or portal |
+| Discovery and tracing | exact Stage 030 custom catalog source once established, plus Stage 060 agent configuration/instrumentation targeting existing Stage 050 MLflow; no new catalog or tracking store |
+
+## Bounded execution and acceptance
+
+Before any paid/agent action: pin release/chart/image/controller compatibility, verify serving and storage readiness, authenticate the control handshake, prove platform tenant separation, and record exact task/repo/toolchain identities. Kernel capabilities must fail closed if required controls are unavailable; `best_effort` is not accepted as demonstrated enforcement. Preserve current models/GPU and existing service identities.
+
+One project-owned OpenCode proof uses existing governed Qwen3.8 and a disposable checkout, capped provisionally at 20 minutes, explicit token/tool limits and no external provider. Hermes then proves the same access/lifecycle controls plus durable session/board continuity and native review/change semantics. The bounded task requires a real independently owned baseline/test that the agent cannot modify. Full business migration, broad API parity and comparative evaluation campaigns belong to Stages 130/050; they are not Stage 060 completion prerequisites. No broad campaign or extra model/GPU is part of this scope.
+
+Required checks:
+
+- Allowed file/action works; denied file write/process/network and cloud-metadata egress fail. Where supported by the pinned inspector, allow one HTTP method and deny another on the same host/path; test TLS inspection rather than assuming L7 rules work.
+- Agent cannot read real provider secrets or approve its own policy expansion; a scoped approved endpoint works, and each allowed/denied action has a matching sanitized audit record.
+- Owner handshake/API/stream works; foreign identity cannot list, access or cancel another instance. Runtime control credentials and downstream MaaS/SCM credentials remain distinct.
+- Stop/cancel actually ends owned execution; IDE stop leaves approved bounded background work intact; restart resumes logical state without duplicate dispatch. Delete/archive retains approved results and removes only owned resources/credentials.
+- Both agents are discoverable through the qualified native catalog contract. RHDH links alone do not pass this check.
+- Selected known model/tool calls produce correlated MLflow trace records under the correct project; sanitized retrieval succeeds for owner and fails for foreign tenant. Explicit instrumented coverage is recorded; unknown internal trajectories remain unknown.
+- One bounded task per agent has an independently executed verification receipt and explicit outcome, separate from runtime/workflow success. Preserve compile versus actual-test distinctions where relevant; full migration/API-parity evaluation belongs to Stages 130/050.
+
+## Cleanup and rollback
+
+Every proof owns its sandbox/run/key and temporary checkout by recorded identity. Finally cancel owned execution, revoke its key and archive required receipts/patch before deleting only disposable resources. Retain logical agent state and project data under explicit policy; never use namespace deletion as a generic reset.
+
+Rollback reverts only Stage 060 customer configuration to the last reviewed immutable revision, stops new dispatch and archives in-flight results. Do not downgrade/delete controller CRDs with active Sandboxes or rotate shared identities silently. Preserve runtime/state PVCs and backup compatibility before chart/controller changes.Stage 030 catalog/040 MaaS/050 MLflow/070 SCM services and existing replicas are not rollback targets. If the selected native contract cannot provide required isolation, catalog ingestion or selected-call tracing, stop at that concrete blocker and present the smallest supported alternative for review.

@@ -2,53 +2,76 @@
 
 ## Why This Matters
 
-Governed model access does not isolate an agent that can edit files, run tools and retain memory. This stage introduces a separate execution boundary so platform teams can control an agent’s identity, access, lifetime and evidence while developers keep their preferred editor.
+An AI coding agent does more than answer a prompt: it edits files, runs programs and calls services. Platform teams need a way to let developers bring useful agents without giving those agents unrestricted access to code, credentials or infrastructure.
+
+AgentOps provides that operating boundary: controlled execution, identity, policy, lifecycle and evidence. Red Hat's [kernel-level agent security story](https://www.redhat.com/en/blog/beyond-container-boundaries-kernel-level-agent-security-red-hat-openshift-ai-35) explains why runtime enforcement complements model guardrails. Here, a standalone agent can retain its work while the developer closes the IDE, with access and background execution governed by the platform.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Client[Developer client] --> Runtime[Planned AgentOps runtime]
-    Runtime --> Sandbox[Isolated agent Sandbox]
-    Sandbox --> MaaS[Existing governed MaaS]
-    Sandbox --> Repo[Scoped Git checkout]
-    Sandbox -. Explicit evidence integration .-> MLflow[Existing MLflow]
+    subgraph Runtime["Stage 060: planned AgentOps platform"]
+        Control[Authenticated OpenShell control plane] --> OpenCode[Isolated OpenCode instance]
+        Control --> Hermes[Isolated Hermes instance]
+        OpenCode --> OpenCodeState[OpenCode state and scoped checkout]
+        Hermes --> HermesState[Hermes state and separate checkout]
+    end
+    Client[Developer client] --> Control
+    OpenCode --> MaaS[Existing governed MaaS]
+    Hermes --> MaaS
+    Runtime -. Explicit selected-call instrumentation .-> MLflow[Existing MLflow]
+    Catalog[Existing Agent Catalog discovery] -. Verified runtime metadata .-> Runtime
 ```
 
-The proposed runtime uses a shared OpenShell control plane and isolated agent Sandboxes. A persistent logical agent instance survives IDE restarts; each task uses its own checkout and scoped credentials. Stage 070 supplies the developer portal, workspaces and SCM integration.
+- **New in this stage:** planned standalone agent hosting, policy-controlled execution and persistent lifecycle outside the IDE.
+- **Already available:** model/agent discovery, governed model access, existing MCP services, evaluation and tracking.
+- **Value of the integration:** a repeatable execution boundary for both OpenCode and Hermes, with project-scoped evidence and consumption.
 
 ## What This Stage Adds
 
-**Planned:** authenticated agent hosting, policy-controlled tool execution, durable state, bounded background work and explicit telemetry integration. OpenCode and Hermes workflows in Stages 120 and 130 consume this platform.
+The planned platform will provide:
 
-Agent Catalog remains Stage 030 discovery, MaaS and existing MCP services remain Stage 040, and evaluation/tracking remain Stage 050. Catalog registration does not host an agent, and gateway telemetry does not automatically capture its internal trajectory.
+- **Bring-your-own agents:** reproducible images and toolchains for standalone OpenCode and Hermes.
+- **Controlled access:** runtime filesystem, process and network policies, with authenticated changes and approvals.
+- **Persistent work:** logical agent state survives IDE restarts; approved background jobs remain bounded and cancellable.
+- **Project isolation:** separate credentials, state and Git checkouts, with reviewed changes exchanged through Git.
+- **Operational evidence:** security audit events and explicit selected-call MLflow tracing alongside existing MaaS usage.
+
+OpenCode is the first proof slice; Hermes is also required before this stage is complete.
 
 ## What To Notice And Why It Matters
 
-Separate an agent’s durable identity from its running process. Stopping an IDE can preserve approved bounded background work; deleting a workspace requires an explicit result and credential retention policy. Independent tests assess the resulting code outside the agent’s writable boundary.
+A policy written in a prompt is different from a denied operation enforced by the runtime. Demonstrate both allowed and denied actions, and connect them to their audit evidence. A stopped IDE is also different from a stopped agent: background work needs an explicit lifetime and cancellation policy.
+
+Agent discovery does not host an agent, and aggregate model usage does not reveal every tool or planning step. Keep those responsibilities distinct when assessing safety and task success.
 
 ## How Red Hat And Open Source Make It Work
 
-RHOAI 3.5 Agent Catalog and OpenShell integration are Developer Preview. The proposal targets a pinned upstream OpenShell 0.1 release with Kubernetes isolation and existing OpenShift identity and MaaS access. Hermes hosting is a project integration, and its current local fork requires qualification.
+OpenShift supplies the execution and identity platform. NVIDIA OpenShell supplies sandbox controls and policy interfaces, while OpenCode and Hermes supply the agent workflows. Existing Models-as-a-Service governs inference, and existing MLflow retains explicitly instrumented evidence.
+
+RHOAI 3.5 Agent Catalog and OpenShell integration are Developer Preview. This design targets pinned upstream OpenShell 0.1.2; that choice does not make the project integration a production-supported RHOAI feature. Broader semantic guardrails, red-team campaigns and VM isolation are separate extensions.
 
 ## Trust Boundaries
 
-Runtime implementation must prove authenticated tenant isolation, nonroot execution, filesystem and network controls, scoped credentials and real cancellation. No anonymous tool API or automatic full-content tracing is implied.
+The runtime must restrict each agent to its approved checkout, tools and service access. Validation must prove that an agent cannot approve its own permission expansion or read provider credentials from its runtime context. Independent verification remains outside its writable boundary. Traces require scoped access and redaction; no automatic capture of every MaaS, MCP or internal agent interaction is implied.
 
 ## Red Hat Products Used
 
-Existing OpenShift and OpenShift AI supply identity, governed inference, discovery and evidence services. The runtime and its exact support boundaries remain under design review.
+- **Red Hat OpenShift Container Platform** provides the execution, identity and network foundations.
+- **Red Hat OpenShift AI** supplies existing catalog discovery, governed inference, evaluation and tracking.
+- **Red Hat OpenShift GitOps** will reconcile the reviewed runtime configuration.
 
 ## Open Source Projects To Know
 
-OpenShell provides runtime controls; OpenCode and Hermes supply agent workflows. Their selected image, protocol and sandbox compatibility must be verified before use.
+OpenShell controls sandbox execution and access. OpenCode and Hermes run the development workflows; MLflow records selected instrumented evidence. These components have separate version and support boundaries.
 
 ## Deploy And Validate
 
-This stage is **planned and not deployed**. It has no deployment script, Argo CD Application or runtime manifests. Validation reports pending rather than installed readiness. See the [runtime design proposal](../../docs/migration/060-agent-hosting-and-scm-plan.md) for implementation gates.
+This stage is **planned and not deployed**. There is no deployment script, Argo CD Application or runtime manifest yet. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
 
 ## References
 
+- [Red Hat: kernel-level agent security](https://www.redhat.com/en/blog/beyond-container-boundaries-kernel-level-agent-security-red-hat-openshift-ai-35)
 - [RHOAI 3.5 Developer Preview features](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/developer-preview-features_relnotes)
 - [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)
 - [OpenCode server](https://opencode.ai/docs/server/)
@@ -56,4 +79,4 @@ This stage is **planned and not deployed**. It has no deployment script, Argo CD
 
 ## Next Stage
 
-[Stage 070: Advanced Application Platform](../070-advanced-app-platform/README.md) provides developer workspaces, portal, SCM and delivery services that integrate with the agent runtime.
+[Stage 070: Advanced Application Platform](../070-advanced-app-platform/README.md) will provide developer workspaces, portal and delivery services, including planned Gitea integration. The AgentOps runtime can be qualified independently, then integrated with these developer clients.

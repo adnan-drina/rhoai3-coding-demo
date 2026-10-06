@@ -33,4 +33,4 @@ Shared rules, skills, and agent definitions live under [`../.agents/`](../.agent
 
 Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.
 
-Agent platform design: [Stage 060 runtime and AgentOps](migration/060-agent-hosting-and-scm-plan.md) and [Stage 070 developer platform and SCM](migration/070-developer-platform-and-scm-plan.md). Both proposals require qualification before deployment.
+Agent platform design: [Stage 060 runtime and AgentOps](migration/060-agent-runtime-and-agentops-plan.md) and [Stage 070 developer platform and SCM](migration/070-developer-platform-and-scm-plan.md). Both proposals require qualification before deployment.

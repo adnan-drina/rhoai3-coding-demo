@@ -18,4 +18,4 @@ Qualify Gitea chart, restricted OpenShift admission, community RHDH module, scop
 
 RHDH provisions a stable project/workspace-to-agent association using the independently qualified Stage 060 runtime interface. Dev Spaces is a client; workspace stop/start does not blindly recreate an agent or reset its board. Repository exchange uses separate checkouts, scoped branches and reviewed commits/patches rather than concurrent writes to one worktree. Background work remains explicitly bounded; cleanup preserves approved records/data and revokes only owned credentials.
 
-See the [Stage 060 AgentOps proposal](060-agent-hosting-and-scm-plan.md) for version/security gates, runtime topology alternatives and independent verification boundaries. No manifests, deployments, data migration or universal tracing integration follow from this document.
+See the [Stage 060 AgentOps proposal](060-agent-runtime-and-agentops-plan.md) for version/security gates, runtime topology alternatives and independent verification boundaries. No manifests, deployments, data migration or universal tracing integration follow from this document.
