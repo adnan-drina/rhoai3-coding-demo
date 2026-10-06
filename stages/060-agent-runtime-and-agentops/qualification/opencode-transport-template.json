@@ -10,9 +10,13 @@
     "XDG_CONFIG_HOME": "/sandbox/state/config",
     "XDG_CACHE_HOME": "/sandbox/state/cache",
     "XDG_STATE_HOME": "/sandbox/state/state",
-    "TMPDIR": "/sandbox/tmp"
+    "TMPDIR": "/tmp"
   },
-  "command": ["/bin/bash", "-c", "mkdir -p /sandbox/state /sandbox/tmp /sandbox/workspace && cd /sandbox/workspace && exec opencode serve --hostname 127.0.0.1 --port 4096"],
+  "command": [
+    "/bin/bash",
+    "-c",
+    "mkdir -p /sandbox/state /sandbox/tmp /sandbox/workspace && cd /sandbox/workspace && exec opencode serve --hostname 127.0.0.1 --port 4096"
+  ],
   "qualificationDeadlineSeconds": 300,
   "providers": [],
   "approvalMode": "manual",
