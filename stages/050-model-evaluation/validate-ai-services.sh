@@ -175,7 +175,11 @@ hub = get("evalhubs.trustyai.opendatahub.io", "evalhub", namespace)
 check("Native EvalHub multi-tenant PostgreSQL ready", hub.get("status", {}).get("ready") == "True"
       and hub.get("status", {}).get("phase") == "Ready"
       and hub.get("spec", {}).get("tenancy") == "multi"
-      and hub.get("spec", {}).get("database") == {"type": "postgresql", "secret": "evalhub-db-credentials"})
+      and hub.get("spec", {}).get("database", {}).get("type") == "postgresql"
+      and hub.get("spec", {}).get("database", {}).get("secret") == "evalhub-db-credentials"
+      and set(hub.get("spec", {}).get("database", {})) <= {"type", "secret", "maxIdleConns", "maxOpenConns"}
+      and hub.get("spec", {}).get("database", {}).get("maxIdleConns", 5) == 5
+      and hub.get("spec", {}).get("database", {}).get("maxOpenConns", 25) == 25)
 deployment = owned_deployment("EvalHub", hub, namespace)
 podspec = deployment.get("spec", {}).get("template", {}).get("spec", {})
 service_account = podspec.get("serviceAccountName", "")
@@ -187,7 +191,14 @@ check("Native EvalHub tracks the ready MLflow address",
       and any(e.get("name") == "MLFLOW_TRACKING_URI" and e.get("valueFrom", {}).get("configMapKeyRef")
               == {"name": "evalhub-mlflow-connection", "key": "tracking-uri"}
               for c in containers(deployment) for e in c.get("env", [])))
-check("Native EvalHub database Secret binding", has_secret_binding(deployment, "evalhub-db-credentials", "db-url"))
+db_volumes = {v["name"] for v in podspec.get("volumes", [])
+              if v.get("secret", {}).get("secretName") == "evalhub-db-credentials"
+              and any(i.get("key") == "db-url" and i.get("path") == "db-url"
+                      for i in v.get("secret", {}).get("items", []))}
+check("Native EvalHub database Secret binding",
+      any(c.get("name") == "evalhub" and any(m.get("name") in db_volumes
+          and m.get("mountPath") == "/etc/evalhub/secrets" and m.get("readOnly") is True
+          for m in c.get("volumeMounts", [])) for c in containers(deployment)))
 volumes = podspec.get("volumes", [])
 mounts = [m for c in containers(deployment) for m in c.get("volumeMounts", [])]
 check("Native MLflow service CA and projected token mounted",
