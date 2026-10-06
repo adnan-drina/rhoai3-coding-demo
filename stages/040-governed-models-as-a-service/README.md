@@ -38,7 +38,7 @@ Red Hat OpenShift AI 3.5, OpenShift Container Platform 4.22, Red Hat Connectivit
 
 ## Deploy And Validate
 
-Use the reviewed published branch configured in your private environment:
+Use the reviewed published branch configured in your private environment. Keep the Argo CD CLI compatible with the installed GitOps version: the deploy helper uses its native nonselective hook sync once if selective reconciliation leaves the tracing capability unset.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
@@ -54,7 +54,7 @@ GenAI Studio exposes the Technology Preview tracing capability. Enable tracing e
 
 ## Usage And Showback
 
-Use the native MaaS usage dashboard to inspect governed usage by user, subscription and model. These counters measure authorized total tokens and calls; they do not expose a trustworthy input/output token split or an agent's internal tool trajectory.
+As a platform administrator, open **Observe & monitor → Dashboard → Usage** to inspect governed usage by user, subscription and model. Choose a Time period, then use the User, Subscription and Model filters. The native table offers Export as CSV; its format is distinct from the project helper below. These counters measure authorized total tokens and calls; they do not expose a trustworthy input/output token split or an agent's internal tool trajectory.
 
 A platform administrator can export existing usage for an explicit UTC window:
 
@@ -64,7 +64,7 @@ A platform administrator can export existing usage for an explicit UTC window:
   --output /private/tmp/maas-usage.csv
 ```
 
-This original helper queries native RHOAI Thanos; it is not the dashboard's CSV format. The private CSV and coverage receipt contain identities and must stay outside Git. Missing categories remain unknown. Financial columns remain **unpriced**, with no currency, zero-cost assumption or invoice. Actual approved rates are required before any financial allocation. Prometheus sampling, counter resets and the configured 90-day retention limit reporting accuracy. Rows stay scoped to native limiter resources; do not sum overlapping policies. Duplicate underlying semantic-resource series cause a refusal instead of inflated usage. MCP/agent traces and GPU fixed costs are outside these token counters.
+This original helper queries native RHOAI Thanos; it is not the dashboard's CSV format. The private CSV and coverage receipt contain identities and must stay outside Git. Missing categories remain unknown. If no counter baseline exists at the window start, period usage stays unknown: the observed increase and latest cumulative counter are shown separately, without adding the first sample to the period. Financial columns remain **unpriced**, with no currency, zero-cost assumption or invoice. Actual approved rates are required before any financial allocation. Prometheus sampling, counter resets and the configured 90-day retention limit reporting accuracy. Rows stay scoped to native limiter resources; do not sum overlapping policies. Duplicate underlying semantic-resource series cause a refusal instead of inflated usage. MCP/agent traces and GPU fixed costs are outside these token counters.
 
 This workflow is inspired by [demo-chargeback](https://github.com/suhasvkashyap/demo-chargeback); its code and sample prices are not copied.
 

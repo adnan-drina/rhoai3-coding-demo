@@ -36,23 +36,31 @@ try:
         except OSError:time.sleep(.1)
     else:raise RuntimeError('Native monitoring tunnel timed out')
     dimensions='user,subscription,model,cost_center,organization_id,limitador_namespace'
-    for metric,category in [('authorized_hits_total','governed_total_tokens'),('authorized_calls_total','authorized_calls'),('limited_calls_total','limited_calls')]:
-        # Read underlying resource series before aggregation; never join calls to multiple models.
-        query=f'increase({metric}{{user!="",subscription!=""}}[{seconds}s] @ {int(end)})'
+    def query_data(query):
         url=f'http://127.0.0.1:{port}/api/v1/query?'+urllib.parse.urlencode({'query':query,'dedup':'true'})
         with opener.open(url,timeout=20) as response:data=json.loads(response.read(4*1024*1024))
         if data.get('status')!='success':raise RuntimeError('Native usage query failed')
-        values=data.get('data',{}).get('result',[]);coverage[category]='observed' if values else 'unknown/no attributed series'
-        seen=set()
+        return data.get('data',{}).get('result',[])
+    def indexed(values):
+        result={}
         for value in values:
+            labels=value.get('metric',{});key=tuple(labels.get(k,'') for k in dimensions.split(','))
             n=float(value['value'][1])
-            if not math.isfinite(n) or n<0:raise RuntimeError('Invalid native usage value')
-            labels=value.get('metric',{})
-            key=tuple(labels.get(k,'') for k in dimensions.split(','))
-            if not labels.get('user') or not labels.get('subscription') or key in seen:raise RuntimeError('Missing attribution or duplicate aggregate series')
-            seen.add(key)
-            rows.append({'window_start_utc':a.start,'window_end_utc':a.end,'category':category,'user':labels.get('user',''),'subscription':labels.get('subscription',''),'model':labels.get('model',''),'cost_center':labels.get('cost_center',''),'organization_id':labels.get('organization_id',''),'limiter_resource':labels.get('limitador_namespace',''),'measured_quantity':n,'input_tokens':'unknown','output_tokens':'unknown','pricing_status':'unpriced','currency':'','estimated_cost':'','coverage':'observed series; Prometheus increase estimate'})
-    fields=['window_start_utc','window_end_utc','category','user','subscription','model','cost_center','organization_id','limiter_resource','measured_quantity','input_tokens','output_tokens','pricing_status','currency','estimated_cost','coverage']
+            if not math.isfinite(n) or n<0 or not labels.get('user') or not labels.get('subscription') or key in result:raise RuntimeError('Invalid attribution or duplicate underlying semantic resource series')
+            result[key]=(labels,n)
+        return result
+    for metric,category in [('authorized_hits_total','governed_total_tokens'),('authorized_calls_total','authorized_calls'),('limited_calls_total','limited_calls')]:
+        # First-observed cumulative values are never added to a requested period.
+        selector=f'{metric}{{user!="",subscription!=""}}'
+        increases=indexed(query_data(f'increase({selector}[{seconds}s] @ {int(end)})'))
+        baseline=indexed(query_data(f'{selector} @ {int(start)}'))
+        latest=indexed(query_data(f'{selector} @ {int(end)}'))
+        coverage[category]='observed delta with window-start baseline' if increases else 'unknown/no attributed increase series'
+        for key,(labels,cumulative) in latest.items():
+            n=increases.get(key,(None,None))[1];complete=key in baseline and n is not None
+            if not complete:coverage[category]='partial/no baseline or increase samples for requested window'
+            rows.append({'window_start_utc':a.start,'window_end_utc':a.end,'category':category,'user':labels.get('user',''),'subscription':labels.get('subscription',''),'model':labels.get('model',''),'cost_center':labels.get('cost_center',''),'organization_id':labels.get('organization_id',''),'limiter_resource':labels.get('limitador_namespace',''),'measured_quantity':n if complete else '', 'observed_counter_increase':n if n is not None else '', 'latest_cumulative_counter':cumulative,'input_tokens':'unknown','output_tokens':'unknown','pricing_status':'unpriced','currency':'','estimated_cost':'','coverage':coverage[category]})
+    fields=['window_start_utc','window_end_utc','category','user','subscription','model','cost_center','organization_id','limiter_resource','measured_quantity','observed_counter_increase','latest_cumulative_counter','input_tokens','output_tokens','pricing_status','currency','estimated_cost','coverage']
     output.parent.mkdir(parents=True,exist_ok=True)
     fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,'w',newline='') as f:
@@ -60,7 +68,7 @@ try:
     receipt=output.with_suffix(output.suffix+'.json')
     if receipt.exists():raise ValueError('Receipt already exists')
     with os.fdopen(os.open(receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'w') as f:
-        json.dump({'source':'native RHOAI Thanos via authorized local tunnel','window':{'from':a.start,'to':a.end},'coverage':coverage,'rows':len(rows),'pricing_status':'unpriced','limitations':['No input/output token split','No MCP/agent trajectory accounting','No GPU fixed-cost allocation','Counter sampling/reset/retention can affect estimates','Rows remain scoped to native limiter resources; overlapping policies must not be summed','Duplicate underlying semantic resource series are rejected before aggregation','Absent categories are unknown, not zero','Not billing-grade or provider invoice reconciliation']},f,indent=2)
+        json.dump({'source':'native RHOAI Thanos via authorized local tunnel','window':{'from':a.start,'to':a.end},'coverage':coverage,'rows':len(rows),'pricing_status':'unpriced','limitations':['No input/output token split','No MCP/agent trajectory accounting','No GPU fixed-cost allocation','Counter sampling/reset/retention can affect estimates','Rows remain scoped to native limiter resources; overlapping policies must not be summed','Duplicate underlying semantic resource series are rejected before aggregation','Absent categories are unknown, not zero','Missing window-start baseline leaves measured_quantity unknown; cumulative counters are not period usage','Not billing-grade or provider invoice reconciliation']},f,indent=2)
     print(f'Exported {len(rows)} measured usage rows; financial amounts remain unpriced. Coverage receipt: {receipt}')
 finally:
     p.terminate()

@@ -40,7 +40,22 @@ if [[ "$state" == fresh ]]; then
 else
  "$SCRIPT_DIR/setup-database.sh"
 fi
+hook_sync_requested=false
 for _ in $(seq 1 240); do
+ # Selective autosync can skip Sync hooks. Use the supported native full-hook path once.
+ native_operation="$(oc --request-timeout=10s get applications.argoproj.io 040-governed-models-as-a-service -n openshift-gitops -o go-template='{{.status.operationState.phase}}|{{.status.operationState.syncResult.revision}}|{{.status.operationState.syncResult.source.path}}')"
+ if [[ "$hook_sync_requested" == false && ( "$native_operation" != "Succeeded|$remote_sha|gitops/stages/040-governed-models-as-a-service/base" || "$(oc --request-timeout=10s get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.genAiTracing}')" != true ) && -z "$(oc --request-timeout=10s get applications.argoproj.io 040-governed-models-as-a-service -n openshift-gitops -o go-template='{{if .operation}}pending{{end}}')" ]]; then
+  command -v argocd >/dev/null || { echo 'ERROR: current Argo CLI required to execute native Sync hooks.' >&2;exit 1; }
+  RHOAI_STAGE040_SYNC_REVISION="$remote_sha" python3 - <<'PY_GUARD'
+import json,os,subprocess
+x=json.loads(subprocess.check_output(['oc','--request-timeout=10s','get','applications.argoproj.io','040-governed-models-as-a-service','-n','openshift-gitops','-o','json'],text=True));s=x['spec']
+assert 'RespectIgnoreDifferences=true' in s['syncPolicy']['syncOptions']
+for name in ['qwen3-6-27b','qwen3-8-27b-int4']:assert any(i.get('kind')=='LLMInferenceService' and i.get('name')==name and i.get('namespace')=='models-as-a-service' and '/spec/replicas' in i.get('jsonPointers',[]) for i in s['ignoreDifferences']),'Model lifecycle delegation missing'
+assert s['source']['targetRevision']==os.environ['RHOAI_STAGE040_SYNC_REVISION'] and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/040-governed-models-as-a-service/base' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and not s.get('sources') and not x['metadata'].get('ownerReferences') and not x['metadata'].get('deletionTimestamp') and not x.get('operation'),'Unexpected own Application identity or active operation'
+PY_GUARD
+  ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 040-governed-models-as-a-service --app-namespace openshift-gitops --strategy hook --revision "$remote_sha" --async --timeout 300
+  hook_sync_requested=true
+ fi
  if "$SCRIPT_DIR/validate.sh" --readiness; then
   echo 'PASS Native Stage040 readiness. Bounded real inference/stream/auth/metrics and user Studio visual acceptance are separate.'
   exit 0
