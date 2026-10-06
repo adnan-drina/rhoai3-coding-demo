@@ -6,6 +6,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+# Core-mode Argo CD reads its settings from the kube-context namespace; refuse before any write.
+argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client with --core support is required' >&2; exit 1; }
+[[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'Set the kube-context namespace to openshift-gitops for argocd --core' >&2; exit 1; }
 REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Immutable revision required' >&2; exit 1; }
 # Bind immutable remote source and the exact task-owned local content before writing.

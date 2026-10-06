@@ -9,6 +9,9 @@ check_oc_logged_in
 # Use a caller-selected interpreter with the native bundle YAML parser installed.
 PYTHON="${RHOAI_STAGE060_PYTHON:-python3}"
 "$PYTHON" -c 'import yaml' || { echo 'PyYAML is required for exact native bundle inventory; set RHOAI_STAGE060_PYTHON' >&2; exit 1; }
+# Core-mode Argo CD reads its settings from the kube-context namespace; refuse before any write.
+argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client with --core support is required' >&2; exit 1; }
+[[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'Set the kube-context namespace to openshift-gitops for argocd --core' >&2; exit 1; }
 REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
 [[ "$(git -C "$REPO_ROOT" ls-remote origin refs/heads/codex/stage-010-foundation-35 | awk '{print $1}')" == "$REVISION" ]] || { echo 'Published revision mismatch' >&2; exit 1; }
