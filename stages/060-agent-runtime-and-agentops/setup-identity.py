@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Guarded, idempotent native Keycloak broker setup; credentials never leave memory/API stdin."""
-import argparse, base64, json, os, pathlib, secrets, subprocess, urllib.error, urllib.parse, urllib.request
+import argparse, base64, json, os, pathlib, secrets, subprocess, tempfile, urllib.error, urllib.parse, urllib.request
 P=argparse.ArgumentParser();P.add_argument('--revision',required=True);P.add_argument('--preflight',action='store_true');args=P.parse_args()
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 # Standalone entry uses the same canonical guard as deployment, before every API read.
@@ -40,7 +40,11 @@ def request(path,method='GET',data=None,token=None,optional=False):
     if data is not None: body=json.dumps(data).encode();headers['Content-Type']='application/json'
     try:
         with http.open(urllib.request.Request(base+path,data=body,headers=headers,method=method),timeout=15) as r:
-            raw=r.read(2*1024*1024);return json.loads(raw) if raw else None
+            raw=r.read(2*1024*1024)
+            if method=='POST' and path.endswith('/users') and r.status==201:
+                location=urllib.parse.urlparse(r.headers['Location']);assert location.path.startswith(path+'/')
+                return {'created_id':location.path.rsplit('/',1)[1]}
+            return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
         if optional and e.code==404:return None
         raise IdentityFailure(e.code) from None
@@ -118,6 +122,17 @@ realm=api('');assert realm.get('attributes',{}).get('stage060-managed')==MARKER,
 assert realm['registrationAllowed'] is False and realm['editUsernameAllowed'] is False
 flow=next(x for x in api('/authentication/flows') if x['alias']=='openshell-prelinked-only')
 executions=api('/authentication/flows/openshell-prelinked-only/executions');assert len(executions)==1 and executions[0]['providerId']=='deny-access-authenticator' and executions[0]['requirement']=='REQUIRED'
+# Native User Profile discards undeclared attributes; declare only our two admin-owned fields.
+profile=api('/users/profile')
+expected_attributes=[{'name':'stage060-managed','permissions':{'view':['admin'],'edit':['admin']},'multivalued':False},{'name':'openshift-uid','permissions':{'view':['admin'],'edit':['admin']},'multivalued':False}]
+changed=False
+for desired in expected_attributes:
+    existing=[x for x in profile['attributes'] if x['name']==desired['name']];assert len(existing)<=1
+    if existing:assert all(existing[0].get(k)==v for k,v in desired.items()),'Foreign ownership profile field'
+    else:profile['attributes'].append(desired);changed=True
+if changed:api('/users/profile','PUT',profile)
+confirmed=api('/users/profile')
+assert all(any(all(x.get(k)==v for k,v in desired.items()) for x in confirmed['attributes']) for desired in expected_attributes)
 import_cr=oc('get','keycloakrealmimport','stage060-openshell','-n',NS,'-o','json');import_uid=import_cr['metadata']['uid']
 # Fail before credential/OAuth writes if an existing curated account is foreign.
 for name in ('ai-admin','ai-developer'):
@@ -175,8 +190,13 @@ for name in ('ai-admin','ai-developer'):
     user=oc('get','user',name,'-o','json');external_id=user['metadata']['uid'];assert external_id
     users=api('/users?username='+name+'&exact=true');assert len(users)<=1
     if not users:
-        api('/users','POST',{'username':name,'enabled':True,'emailVerified':False,'attributes':{'stage060-managed':[MARKER],'openshift-uid':[external_id]}})
+        created=api('/users','POST',{'username':name,'enabled':True,'emailVerified':False,'attributes':{'stage060-managed':[MARKER],'openshift-uid':[external_id]}})
+        evidence=pathlib.Path(tempfile.mkdtemp(prefix='stage060-identity-'))
+        receipt=evidence/'user-created.json'
+        fd=os.open(receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,'w') as output:json.dump({'user_id':created['created_id'],'username':name,'source_revision':args.revision,'realm_import_uid':import_uid},output)
         users=api('/users?username='+name+'&exact=true')
+        assert len(users)==1 and users[0]['id']==created['created_id'],'Creation identity mismatch'
     u=users[0];assert u.get('attributes',{}).get('stage060-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external_id],'Foreign user'
     links=api('/users/'+u['id']+'/federated-identity');expected_link={'identityProvider':'openshift-v4','userId':external_id,'userName':name}
     if links:assert links==[expected_link],'Foreign federation link'
