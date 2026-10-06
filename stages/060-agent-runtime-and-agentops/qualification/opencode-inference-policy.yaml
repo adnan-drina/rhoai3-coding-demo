@@ -1,0 +1,26 @@
+# Temporary gateway-global policy for the bounded inference qualification
+# (qualify-inference.py). It is opencode-transport-policy.yaml plus one governed
+# MaaS destination for the OpenCode binary. The helper restores the no-network
+# policy afterwards. __MAAS_QWEN38_HOST__ is rendered from the live MaaS gateway
+# listener at run time; no cluster hostname is committed.
+version: 1
+filesystem_policy:
+  include_workdir: false
+  read_only: [/usr, /bin, /lib, /lib64, /etc, /proc, /dev/urandom, /dev/random]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: hard_requirement
+network_policies:
+  maas_qwen38:
+    name: maas-qwen38
+    endpoints:
+      - host: __MAAS_QWEN38_HOST__
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: POST
+              path: /models-as-a-service/qwen3-8-27b-int4/v1/chat/completions
+    binaries:
+      - path: /usr/local/bin/opencode

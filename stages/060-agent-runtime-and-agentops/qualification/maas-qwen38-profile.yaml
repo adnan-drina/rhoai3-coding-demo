@@ -1,0 +1,31 @@
+# Provider profile for the bounded inference qualification (qualify-inference.py).
+# __MAAS_QWEN38_HOST__ is rendered from the live MaaS gateway listener at run time;
+# no cluster hostname is committed. Do not import this file unrendered.
+#
+# Client binary:     /usr/local/bin/opencode in the opencode-runtime image.
+# Credential scope:  MAAS_API_KEY, sent as a bearer authorization header to the
+#                    Qwen3.8 chat-completions path on the MaaS listener and nowhere else.
+# Endpoint access:   POST chat completions only, L7 enforced.
+id: maas-qwen38
+display_name: MaaS Qwen3.8
+description: Governed OpenAI-compatible chat completions for qwen3-8-27b-int4 on Models-as-a-Service
+category: inference
+inference_capable: true
+credentials:
+  - name: api_key
+    description: MaaS API key bound to one subscription
+    env_vars: [MAAS_API_KEY]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+endpoints:
+  - host: __MAAS_QWEN38_HOST__
+    port: 443
+    path: /models-as-a-service/qwen3-8-27b-int4/v1/**
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: POST
+          path: /models-as-a-service/qwen3-8-27b-int4/v1/chat/completions
+binaries: [/usr/local/bin/opencode]
