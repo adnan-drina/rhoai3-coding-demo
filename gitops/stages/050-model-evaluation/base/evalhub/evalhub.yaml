@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "30"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false,Delete=false
 spec:
   replicas: 1
   tenancy: multi
@@ -19,10 +19,6 @@ spec:
     secret: evalhub-db-credentials
   providers:
     - lm-evaluation-harness
-    - garak
-    - guidellm
-  collections:
-    - safety-and-fairness-v1
   env:
     # The deployment helper discovers the native HTTPS address only after
     # MLflow is Available. The operator owns TLS trust and projected tokens.

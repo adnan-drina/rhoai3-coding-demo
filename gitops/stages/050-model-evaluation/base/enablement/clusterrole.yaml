@@ -22,3 +22,7 @@ rules:
     resources: [namespaces]
     resourceNames: [demo-sandbox]
     verbs: [get, patch]
+  - apiGroups: [components.platform.opendatahub.io]
+    resources: [trustyais]
+    resourceNames: [default-trustyai]
+    verbs: [get]

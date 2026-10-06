@@ -10,6 +10,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     app.openshift.io/runtime: postgresql
   annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
     argocd.argoproj.io/sync-wave: "12"
 spec:
   selector:

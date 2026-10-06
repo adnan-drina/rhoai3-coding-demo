@@ -55,7 +55,9 @@ def api(service, namespace, uri, ca, token, workspace):
                                    address.path.rstrip("/") + "/" + path.lstrip("/"),
                                    json.dumps(body) if body is not None else None, headers)
                 response = connection.getresponse()
-                data = response.read()
+                data = response.read(2 * 1024 * 1024 + 1)
+                if len(data) > 2 * 1024 * 1024:
+                    raise RuntimeError("Native API response exceeds bounded size.")
                 if response.status != 200:
                     raise RuntimeError(f"Authenticated native API returned HTTP {response.status}.")
                 return json.loads(data)

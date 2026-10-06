@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../foundation-protect
+patches:
+- path: omit-1.yaml
+- path: omit-2.yaml
+- path: omit-3.yaml
+- path: omit-4.yaml
+- path: omit-5.yaml
+- path: omit-6.yaml
+- path: omit-7.yaml

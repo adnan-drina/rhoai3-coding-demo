@@ -26,7 +26,7 @@ The database design is a durable demo setup: single-instance PostgreSQL, retaine
 - **TrustyAI** supplies the native EvalHub operator and tenant authorization integration.
 - **Project access** separates the evaluation server from the `demo-sandbox` tenant where authorized users work.
 
-The RHOAI 3.5 support matrix identifies MLflow 3.14 and TrustyAI 1.37 as generally available, and EvalHub 0.3 as Technology Preview. An evaluation result is evidence for the selected task, dataset and model configuration; it is not a universal quality or safety guarantee.
+RHOAI 3.5 release documentation identifies MLflow and EvalHub as generally available. The evaluation dashboard remains Technology Preview. An evaluation result is evidence for the selected task, dataset and model configuration; it is not a universal quality or safety guarantee.
 
 ## What To Notice And Why It Matters
 
@@ -52,7 +52,7 @@ MLflow supplies experiment tracking; EvalHub coordinates evaluations; PostgreSQL
 
 ## Deploy And Validate
 
-Complete Stage 010, Stage 030 and Stage 040. KServe RawDeployment is an EvalHub prerequisite; the evaluation stage does not deploy another model or GPU workload. Configure the repository environment guard and the published source revision before deployment. Use existing OpenShift identities and project permissions; no new identity provider is required.
+Use the Stage 010 foundation and Stage 030/040 native serving and governed access services. The service foundation can be installed while private models and GPU nodes are stopped; an actual evaluation needs its selected model available. KServe RawDeployment is an EvalHub prerequisite; the evaluation stage does not deploy another model or GPU workload. Configure the repository environment guard and the published source revision before deployment. Use existing OpenShift identities and project permissions; no new identity provider is required.
 
 ```bash
 ./stages/050-model-evaluation/deploy.sh

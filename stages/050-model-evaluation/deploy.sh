@@ -28,9 +28,34 @@ if result.returncode:
 print("Stage 050 Application created at reviewed immutable revision.")
 PY
 "$SCRIPT_DIR/setup-ai-services.sh" --fresh-databases "$fresh_databases"
+export RHOAI_STAGE050_EXPECTED_REVISION="$revision"
+deadline=$((SECONDS + 1200))
+while :; do
+  if python3 - "$revision" <<'PY_APP'
+import json,subprocess,sys
+p=subprocess.run(['oc','--request-timeout=10s','get','application','050-model-evaluation','-n','openshift-gitops','-o','json'],capture_output=True,text=True,timeout=15)
+if p.returncode:raise SystemExit(1)
+a=json.loads(p.stdout);s=a.get('status',{});o=s.get('operationState',{});r=o.get('syncResult',{})
+raise SystemExit(0 if s.get('sync',{}).get('status')=='Synced' and s.get('health',{}).get('status')=='Healthy' and o.get('phase')=='Succeeded' and r.get('revision')==sys.argv[1] and r.get('source',{}).get('path')=='gitops/stages/050-model-evaluation/base' else 1)
+PY_APP
+  then break; fi
+  (( SECONDS < deadline )) || { echo '[FAIL] Exact native Stage050 operation did not complete'; exit 1; }
+  sleep 5
+done
 deadline=$((SECONDS + 900))
 until [[ $(oc --request-timeout=10s get evalhub evalhub -n evalhub -o jsonpath='{.status.ready}' 2>/dev/null || true) == True ]]; do
   (( SECONDS < deadline )) || { echo '[FAIL] Native EvalHub readiness timed out'; exit 1; }
   sleep 5
 done
+deadline=$((SECONDS + 900))
+until "$SCRIPT_DIR/validate-ai-services.sh"; do
+  (( SECONDS < deadline )) || { echo '[FAIL] Native service reconciliation timed out'; exit 1; }
+  sleep 10
+done
+# Service foundation is complete; a benchmark remains separately authorized.
+set +e
 "$SCRIPT_DIR/validate.sh"
+result=$?
+set -e
+[[ "$result" == 0 || "$result" == 2 ]] || exit "$result"
+echo 'Stage050 service foundation reconciled; evaluation execution remains pending.'

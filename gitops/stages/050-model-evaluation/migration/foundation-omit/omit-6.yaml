@@ -1,0 +1,6 @@
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: rhoai-mlflow-artifacts
+  namespace: redhat-ods-applications
+$patch: delete

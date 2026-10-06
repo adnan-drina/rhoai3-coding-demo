@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/instance: openshift-gitops
     demo.rhoai.io/stage: "050"
   annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
     argocd.argoproj.io/sync-wave: "5"
     argocd.argoproj.io/manifest-generate-paths: /gitops/stages/050-model-evaluation
 spec:
@@ -34,3 +35,10 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+  ignoreDifferences:
+  - group: ''
+    kind: ConfigMap
+    name: mlflow-service-ca
+    namespace: redhat-ods-applications
+    jsonPointers:
+    - /data/service-ca.crt

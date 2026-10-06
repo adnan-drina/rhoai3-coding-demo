@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- https://github.com/adnan-drina/rhoai3-coding-demo.git//gitops/stages/030-private-model-serving/migration/foundation-omit?ref=882f327fb25dd047ca7144058b6cca46e693df3a&timeout=60s
+patches:
+- path: protect-1.yaml
+- path: protect-2.yaml
+- path: protect-3.yaml
+- path: protect-4.yaml
+- path: protect-5.yaml
+- path: protect-6.yaml
+- path: protect-7.yaml

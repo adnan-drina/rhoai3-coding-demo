@@ -42,7 +42,7 @@ def run(command, payload=None):
     if command and command[0] == "oc":
         command = ["oc", "--request-timeout=" + request_timeout] + command[1:]
     return subprocess.run(command, input=json.dumps(payload) if payload else None,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, timeout=20)
 
 
 def get(kind, name=None, namespace=None):
@@ -51,7 +51,9 @@ def get(kind, name=None, namespace=None):
         command.append(name)
     if namespace:
         command.extend(["-n", namespace])
-    command.extend(["-o", "json", "--ignore-not-found"])
+    command.extend(["-o", "json"])
+    if name:
+        command.append("--ignore-not-found")
     result = run(command)
     if result.returncode != 0:
         return None
@@ -119,6 +121,15 @@ def ensure_database_secret(feature, namespace):
     if existing is None:
         raise RuntimeError(f"Cannot inspect {feature} database Secret; refusing to overwrite.")
     if existing:
+        meta=existing.get("metadata", {})
+        if meta.get("ownerReferences") or meta.get("deletionTimestamp") or meta.get("annotations", {}).get("argocd.argoproj.io/tracking-id"):
+            raise RuntimeError("Runtime database Secret has foreign ownership; refusing reuse or rotation.")
+        evidence=os.environ.get("RHOAI_STAGE050_HANDOFF_EVIDENCE")
+        if feature=="mlflow" and evidence:
+            from pathlib import Path
+            baseline=json.loads((Path(evidence)/"baseline.json").read_text())
+            if meta.get("uid")!=baseline["resources"]["secret/mlflow-db-credentials"]["uid"]:
+                raise RuntimeError("Retained MLflow credential identity changed.")
         validate_database_secret(feature, namespace, existing)
         print(f"Reusing {feature} database credentials.", flush=True)
         return
@@ -126,7 +137,7 @@ def ensure_database_secret(feature, namespace):
     database = get("statefulset", feature + "-postgresql", namespace)
     if storage is None or database is None:
         raise RuntimeError("Cannot inspect retained PostgreSQL resources; refusing credential generation.")
-    if (storage or database) and feature not in fresh_databases:
+    if storage or database:
         raise RuntimeError("Existing PostgreSQL storage/workload lacks its Secret; restore original credentials instead of generating a password.")
     password = secrets.token_hex(24)
     uri_key = "backend-store-uri" if feature == "mlflow" else "db-url"
@@ -197,7 +208,9 @@ def available_mlflow():
     if (desired <= 0 or deployment_generation is None
             or status.get("observedGeneration") != deployment_generation
             or status.get("readyReplicas", 0) < desired
-            or status.get("updatedReplicas", 0) < desired):
+            or status.get("updatedReplicas", 0) != desired
+            or status.get("replicas", 0) != desired
+            or status.get("availableReplicas", 0) != desired):
         return False
     uri = obj.get("status", {}).get("address", {}).get("url", "")
     parsed = urlparse(uri)

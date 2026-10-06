@@ -9,5 +9,6 @@ metadata:
     app.kubernetes.io/component: configuration
     app.kubernetes.io/managed-by: argocd
   annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
     argocd.argoproj.io/sync-wave: "12"
     service.beta.openshift.io/inject-cabundle: "true"

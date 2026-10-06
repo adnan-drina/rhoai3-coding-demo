@@ -38,9 +38,9 @@ def guard():
 def main():
     guard()
     foundation = get("application", "010-openshift-ai-platform-foundation", "openshift-gitops")
-    require(foundation.get("status", {}).get("sync", {}).get("status") == "Synced"
+    require(foundation.get("status", {}).get("sync", {}).get("status") in ["Synced", "OutOfSync"]
             and foundation.get("status", {}).get("health", {}).get("status") == "Healthy",
-            "Foundation must be Synced/Healthy before evaluation deployment.")
+            "Foundation must have completed the reviewed handoff before evaluation deployment.")
     require("RespectIgnoreDifferences=true" in foundation.get("spec", {}).get("syncPolicy", {}).get("syncOptions", []),
             "Foundation must respect delegated shared-field ownership.")
     ignores = foundation.get("spec", {}).get("ignoreDifferences", [])
@@ -56,9 +56,7 @@ def main():
     require(tenant_ignored, "Foundation has not delegated the EvalHub tenant namespace label.")
     for dependency in ["030-private-model-serving", "040-governed-models-as-a-service"]:
         app = get("application", dependency, "openshift-gitops")
-        require(app.get("status", {}).get("sync", {}).get("status") == "Synced"
-                and app.get("status", {}).get("health", {}).get("status") == "Healthy",
-                "Serving and MaaS must be Synced/Healthy before evaluation deployment.")
+        require(app.get("status", {}).get("sync", {}).get("status") == "Synced", "Serving/MaaS source must remain reconciled; stopped model compute is allowed.")
     dsc = get("datasciencecluster", "default-dsc")
     require(dsc.get("spec", {}).get("components", {}).get("kserve", {}).get("managementState") == "Managed",
             "Stage 030 KServe must be installed first.")
@@ -78,32 +76,77 @@ def main():
     health = argocd.get("spec", {}).get("extraConfig", {}).get("resource.customizations.health.mlflow.opendatahub.io_MLflow", "")
     require(all(word in health for word in ["Available", "MLflowOperatorReady", "Migration", "observedGeneration"]),
             "Install the reviewed native MLflow health gate before Stage 050.")
-    resources = [("mlflows.mlflow.opendatahub.io", "mlflow", None),
-                 ("statefulset", "mlflow-postgresql", NAMESPACE),
-                 ("pvc", "mlflow-postgresql", NAMESPACE),
-                 ("objectbucketclaim", "rhoai-mlflow-artifacts", NAMESPACE),
-                 ("service", "mlflow-postgresql", NAMESPACE),
-                 ("networkpolicy", "mlflow-postgresql", NAMESPACE),
-                 ("configmap", "mlflow-service-ca", NAMESPACE),
-                 ("namespace", "evalhub", None),
-                 ("statefulset", "evalhub-postgresql", "evalhub"),
-                 ("pvc", "evalhub-postgresql", "evalhub"),
-                 ("service", "evalhub-postgresql", "evalhub"),
-                 ("networkpolicy", "evalhub-postgresql", "evalhub")]
-    if get("crd", "evalhubs.trustyai.opendatahub.io"):
-        resources.append(("evalhubs.trustyai.opendatahub.io", "evalhub", "evalhub"))
-    # The API itself may not exist in a clean environment. Inspect MLflow only
-    # after its CRD exists, without swallowing real authorization failures.
-    mlflow_api = bool(get("crd", "mlflows.mlflow.opendatahub.io"))
-    for kind, name, namespace in resources:
-        if kind.startswith("mlflows") and not mlflow_api:
-            continue
-        obj = get(kind, name, namespace)
+    source = foundation.get("spec", {}).get("source", {})
+    status = foundation.get("status", {})
+    result = status.get("operationState", {}).get("syncResult", {})
+    bridge = source.get("path") == "gitops/stages/050-model-evaluation/migration/foundation-omit"
+    require(status.get("operationState", {}).get("phase") == "Succeeded"
+            and result.get("revision") == source.get("targetRevision")
+            and result.get("source", {}).get("path") == source.get("path")
+            and status.get("sync", {}).get("revision") == source.get("targetRevision"), "Foundation source/operation is stale.")
+    require(source.get("repoURL") == os.environ["GIT_REPO_URL"]
+            and foundation["spec"].get("project") == "rhoai-demo"
+            and foundation["spec"].get("destination") == {"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
+            and not foundation["spec"].get("sources") and not foundation["metadata"].get("deletionTimestamp"), "Foundation identity differs.")
+    own = get("application", APP, "openshift-gitops")
+    if own:
+        require(own["spec"].get("project") == "rhoai-demo" and own["spec"].get("source", {}).get("repoURL") == os.environ["GIT_REPO_URL"]
+                and own["spec"].get("source", {}).get("path") == "gitops/stages/050-model-evaluation/base"
+                and own["spec"].get("destination") == {"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
+                and not own["spec"].get("sources") and not own["metadata"].get("ownerReferences") and not own["metadata"].get("deletionTimestamp"), "Existing Stage050 Application identity differs.")
+    resources = [("mlflows.mlflow.opendatahub.io", "MLflow", "mlflow", None),
+                 ("statefulset", "StatefulSet", "mlflow-postgresql", NAMESPACE),
+                 ("pvc", "PersistentVolumeClaim", "mlflow-postgresql", NAMESPACE),
+                 ("objectbucketclaim", "ObjectBucketClaim", "rhoai-mlflow-artifacts", NAMESPACE),
+                 ("service", "Service", "mlflow-postgresql", NAMESPACE),
+                 ("networkpolicy", "NetworkPolicy", "mlflow-postgresql", NAMESPACE),
+                 ("configmap", "ConfigMap", "mlflow-service-ca", NAMESPACE)]
+    api_present = bool(get("crd", "mlflows.mlflow.opendatahub.io"))
+    evidence = os.environ.get("RHOAI_STAGE050_HANDOFF_EVIDENCE")
+    baseline = json.loads((Path(evidence)/"baseline.json").read_text()) if bridge and evidence else None
+    if bridge:
+        require(baseline is not None, "Protected adoption requires the original private handoff baseline.")
+        proof=Path(evidence)/"omit-after.json"
+        require(proof.is_file() and json.loads(proof.read_text()) == baseline, "Successful omission preservation proof is missing or differs.")
+        for name in ["mlflow-db-credentials","rhoai-mlflow-artifacts"]:
+            result=subprocess.run(["oc","--request-timeout=10s","get","secret",name,"-n",NAMESPACE,"-o","jsonpath={.metadata}"],capture_output=True,text=True,timeout=15)
+            require(result.returncode==0 and bool(result.stdout.strip()), "Retained credential metadata unavailable.")
+            meta=json.loads(result.stdout);saved=baseline["resources"]["secret/"+name]
+            require(meta.get("uid")==saved["uid"] and meta.get("ownerReferences",[])==saved["owners"] and not meta.get("deletionTimestamp"), "Retained credential UID/native owner changed before adoption.")
+    for kind, typename, name, namespace in resources:
+        obj = get(kind, name, namespace) if not kind.startswith("mlflows") or api_present else {}
         if not obj:
+            require(not bridge, "A retained MLflow resource is missing; refusing replacement.")
             continue
-        tracking = obj.get("metadata", {}).get("annotations", {}).get("argocd.argoproj.io/tracking-id", "")
-        require(tracking.startswith(APP + ":"),
-                "Existing evaluation/MLflow resource belongs to another owner; refusing automatic handoff. Preserve its data and review adoption separately.")
+        meta=obj["metadata"];tracking=meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id", "")
+        group=obj["apiVersion"].split("/")[0] if "/" in obj["apiVersion"] else ""
+        suffix=group+"/"+typename+":"+(namespace or "openshift-gitops")+"/"+name
+        require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp"), "Retained authored resource has a foreign owner or is terminating.")
+        require(tracking == APP+":"+suffix or (bridge and tracking == "010-openshift-ai-platform-foundation:"+suffix), "Existing retained resource has another GitOps owner.")
+        if bridge:
+            saved=baseline["resources"][kind+"/"+name]
+            require(meta["uid"]==saved["uid"] and obj.get("spec")==saved["spec"], "Retained resource identity/spec changed after protection.")
+            require({"Prune=false","Delete=false"} <= set(meta.get("annotations",{}).get("argocd.argoproj.io/sync-options","").split(",")), "Retained resource protection missing.")
+        if kind=="pvc":require(obj.get("status",{}).get("phase")=="Bound", "Retained MLflow PVC is not Bound.")
+        if kind=="objectbucketclaim":require(obj.get("status",{}).get("phase")=="Bound" and obj["spec"].get("bucketName")=="rhoai-mlflow-artifacts", "Retained artifact bucket differs.")
+    expected_drift={(t,n,ns or "") for _,t,n,ns in resources}
+    drift=[r for r in status.get("resources",[]) if r.get("status")!="Synced"]
+    require(not drift or (bridge and all((r.get("kind"),r.get("name"),r.get("namespace", "")) in expected_drift and r.get("requiresPruning") for r in drift)), "Unexpected foundation drift.")
+    # EvalHub targets must be absent or exactly owned by this Application.
+    for kind,typename,name,namespace in [("namespace","Namespace","evalhub",None),("statefulset","StatefulSet","evalhub-postgresql","evalhub"),("pvc","PersistentVolumeClaim","evalhub-postgresql","evalhub"),("service","Service","evalhub-postgresql","evalhub"),("networkpolicy","NetworkPolicy","evalhub-postgresql","evalhub")]:
+        obj=get(kind,name,namespace)
+        if obj:
+            meta=obj["metadata"];group=obj["apiVersion"].split("/")[0] if "/" in obj["apiVersion"] else ""
+            require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id")==APP+":"+group+"/"+typename+":"+(namespace or "openshift-gitops")+"/"+name, "EvalHub resource has foreign ownership.")
+    if get("crd","evalhubs.trustyai.opendatahub.io"):
+        obj=get("evalhubs.trustyai.opendatahub.io","evalhub","evalhub")
+        if obj:
+            meta=obj["metadata"]
+            require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id")==APP+":trustyai.opendatahub.io/EvalHub:evalhub/evalhub", "Existing EvalHub has foreign ownership.")
+    cm=get("configmap","evalhub-mlflow-connection","evalhub")
+    if cm:
+        meta=cm["metadata"]
+        require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and not meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id") and meta.get("labels",{}).get("app.kubernetes.io/managed-by")=="stage050-ai-services-setup", "Runtime MLflow connection has foreign ownership.")
     fresh = []
     for feature, namespace in [("mlflow", NAMESPACE), ("evalhub", "evalhub")]:
         storage = get("pvc", feature + "-postgresql", namespace)

@@ -11,8 +11,12 @@ metadata:
     app.kubernetes.io/managed-by: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false,Delete=false
 spec:
+  migration:
+    mode: Automatic
+  serviceAccountName: mlflow-sa
+  workers: 1
   replicas: 1
   backendStoreUriFrom:
     name: mlflow-db-credentials

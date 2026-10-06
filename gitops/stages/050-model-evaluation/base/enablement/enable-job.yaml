@@ -33,12 +33,22 @@ spec:
           args:
             - |
               [[ $(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.spec.components.kserve.managementState}') == Managed ]] || { echo 'Stage 030 KServe must be enabled first' >&2; exit 1; }
-              oc patch datasciencecluster default-dsc --request-timeout=10s --type=merge -p '{"spec":{"components":{"trustyai":{"managementState":"Managed"},"mlflowoperator":{"managementState":"Managed"}}}}'
-              oc patch namespace demo-sandbox --request-timeout=10s --type=merge -p '{"metadata":{"labels":{"evalhub.trustyai.opendatahub.io/tenant":""}}}'
+              dsc_rv=$(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
+              oc patch datasciencecluster default-dsc --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dsc_rv\"},{\"op\":\"test\",\"path\":\"/spec/components/kserve/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/trustyai/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/mlflowoperator/managementState\",\"value\":\"Managed\"}]"
+              tenant_rv=$(oc get namespace demo-sandbox --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
+              oc patch namespace demo-sandbox --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$tenant_rv\"},{\"op\":\"add\",\"path\":\"/metadata/labels/evalhub.trustyai.opendatahub.io~1tenant\",\"value\":\"\"}]"
               deadline=$((SECONDS + 840))
               for api in evalhubs.trustyai.opendatahub.io mlflows.mlflow.opendatahub.io; do
                 until [[ $(oc get crd "$api" --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true) == True ]]; do
                   (( SECONDS < deadline )) || { echo 'Evaluation API initialization timed out' >&2; exit 1; }
                   sleep 5
                 done
+              done
+              while :; do
+                generation=$(oc get trustyais.components.platform.opendatahub.io default-trustyai --request-timeout=10s -o jsonpath='{.metadata.generation}' 2>/dev/null || true)
+                observed=$(oc get trustyais.components.platform.opendatahub.io default-trustyai --request-timeout=10s -o jsonpath='{.status.observedGeneration}' 2>/dev/null || true)
+                ready=$(oc get trustyais.components.platform.opendatahub.io default-trustyai --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+                [[ -n "$generation" && "$observed" == "$generation" && "$ready" == True ]] && break
+                (( SECONDS < deadline )) || { echo 'Native TrustyAI initialization timed out' >&2; exit 1; }
+                sleep 5
               done

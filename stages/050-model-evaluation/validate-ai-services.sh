@@ -59,7 +59,9 @@ def fresh_workload(obj):
     return (desired > 0 and generation is not None
             and status.get("observedGeneration") == generation
             and status.get("readyReplicas", 0) >= desired
-            and status.get("updatedReplicas", 0) >= desired)
+            and status.get("updatedReplicas", 0) == desired
+            and status.get("replicas", 0) == desired
+            and status.get("availableReplicas", 0) == desired)
 
 
 def owned_deployment(kind, cr, namespace):
