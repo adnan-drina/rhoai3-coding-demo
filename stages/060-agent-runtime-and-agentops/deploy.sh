@@ -31,8 +31,8 @@ sed "s/targetRevision: main/targetRevision: $REVISION/" "$APP_TEMPLATE" > "${TMP
 trap 'rm -f "${TMPDIR:-/tmp}/stage060-app-$$.json"' EXIT
 oc --request-timeout=15s apply -f "${TMPDIR:-/tmp}/stage060-app-$$.json"
 # Native core-mode CLI submits a full exact-revision operation, including native hooks.
-argocd --core --namespace openshift-gitops app sync 060-agent-runtime-and-agentops --revision "$REVISION" --timeout 300
-argocd --core --namespace openshift-gitops app wait 060-agent-runtime-and-agentops --sync --operation --timeout 300
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-agent-runtime-and-agentops --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --timeout 300
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-agent-runtime-and-agentops --app-namespace openshift-gitops --sync --operation --timeout 300
 oc --request-timeout=15s wait keycloakrealmimport/stage060-openshell -n keycloak --for=condition=Done --timeout=300s
 python3 "$SCRIPT_DIR/setup-identity.py" --revision "$REVISION"
 echo 'Identity foundation configured; runtime and genuine-persona handshake acceptance remain separate.'
