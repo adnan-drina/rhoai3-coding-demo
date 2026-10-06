@@ -56,9 +56,9 @@ data:
 
     default_image                = "nvcr.io/nvidia/base/ubuntu:24.04"
 
-    sandbox_runtime_image        = "ghcr.io/nvidia/openshell/sandbox@sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f"
+    sandbox_runtime_image        = "ghcr.io/nvidia/openshell/sandbox@sha256:ecac6542c16de6849c0a279020edcae2390025c90344afb813f0793fc6932167"
 
-    supervisor_image             = "ghcr.io/nvidia/openshell/supervisor@sha256:d7b5264bb6bc56f4796e6fa3617b8e4a8d785be0b7293542efd8cc250b0fb67a"
+    supervisor_image             = "ghcr.io/nvidia/openshell/supervisor@sha256:0783c6e10a0ec6871af1698d861cc1542f6ac5c4dd2ed2e550bb66250d82cc02"
 
     client_tls_secret_name       = "openshell-client-tls"
 
@@ -110,7 +110,7 @@ metadata:
     app.kubernetes.io/instance: openshell
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openshell
-    app.kubernetes.io/version: 0.1.2
-    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/version: 12cec59bf4c36c305032143eb90870bd16d8820b
+    helm.sh/chart: helm-chart-0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b
   name: openshell-config
   namespace: openshell

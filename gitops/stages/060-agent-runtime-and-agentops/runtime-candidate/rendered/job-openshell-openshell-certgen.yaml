@@ -9,8 +9,8 @@ metadata:
     app.kubernetes.io/instance: openshell
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openshell
-    app.kubernetes.io/version: 0.1.2
-    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/version: 12cec59bf4c36c305032143eb90870bd16d8820b
+    helm.sh/chart: helm-chart-0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b
   name: openshell-certgen
   namespace: openshell
 spec:
@@ -19,8 +19,9 @@ spec:
   template:
     metadata:
       labels:
+        app.kubernetes.io/component: certgen
         app.kubernetes.io/instance: openshell
-        app.kubernetes.io/name: openshell
+        app.kubernetes.io/name: openshell-certgen
     spec:
       containers:
       - args:
@@ -44,7 +45,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: ghcr.io/nvidia/openshell/gateway@sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2
+        image: ghcr.io/nvidia/openshell/gateway@sha256:437777e61c20707f9f06dc2b4b8a89b6c95a0b521dec9b00b3829d259fef163d
         imagePullPolicy: IfNotPresent
         name: certgen
         securityContext:

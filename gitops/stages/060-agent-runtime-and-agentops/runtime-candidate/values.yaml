@@ -14,17 +14,17 @@
   },
   "gateway": {
     "image": {
-      "digest": "sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2"
+      "digest": "sha256:437777e61c20707f9f06dc2b4b8a89b6c95a0b521dec9b00b3829d259fef163d"
     }
   },
   "supervisor": {
     "image": {
-      "digest": "sha256:d7b5264bb6bc56f4796e6fa3617b8e4a8d785be0b7293542efd8cc250b0fb67a"
+      "digest": "sha256:0783c6e10a0ec6871af1698d861cc1542f6ac5c4dd2ed2e550bb66250d82cc02"
     }
   },
   "sandboxRuntime": {
     "image": {
-      "digest": "sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f"
+      "digest": "sha256:ecac6542c16de6849c0a279020edcae2390025c90344afb813f0793fc6932167"
     }
   },
   "podSecurityContext": {

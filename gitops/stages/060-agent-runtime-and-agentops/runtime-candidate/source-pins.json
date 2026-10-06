@@ -1,13 +1,34 @@
 {
   "sourceRepository": "https://github.com/NVIDIA/OpenShell",
-  "sourceCommit": "6648bd0c290efbc41ba131ee9831ee45cd431f94",
-  "release": "v0.1.2",
+  "sourceCommit": "12cec59bf4c36c305032143eb90870bd16d8820b",
+  "release": "0.1.3-dev.99+g12cec59bf",
   "chartOCI": "oci://ghcr.io/nvidia/openshell/helm-chart",
-  "chartVersion": "0.1.2",
-  "chartOCIDigest": "sha256:7a714bbbbcef7b5ed8dac599e89e89df12eb623fa4454d22f89df41d6f047e2a",
-  "chartArchiveSha256": "b9250541d47c5ce4cfcfeb6a652ddcbd1f444a33e151ff43b16daec5d013ff04",
+  "chartVersion": "0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b",
+  "chartOCIDigest": "sha256:c96f4a2444a46679ca70b398308e97120834a70e71154a6c8a9ac208897ab8b8",
+  "chartArchiveSha256": "9cd927acc4ab16bef6958f4a321fea692ac618bc97b7a519f998b13d687ae600",
   "sandboxControllerPackage": "agent-sandbox-operator",
   "sandboxControllerChannel": "preview-0.9",
   "sandboxControllerStartingCSV": "agent-sandbox-operator.v0.9.0",
-  "controllerQualification": "pending bundle image and live API qualification; manual approval required"
+  "controllerQualification": "native 0.9.0 bundle reviewed and installed; exact current CSV/controller gate remains required",
+  "releaseStatus": "pinned development build, not a tagged or supported release; isolated existing-cluster qualification passed",
+  "cliArtifactId": 11390640802,
+  "cliArtifactZipSha256": "8ba077cd95dd708a3e45a2049460c812ded4c72ff29dea0ddc4a0db18a94b154",
+  "cliBinarySha256": "6323f7749fd6291bb3c96d13a54274c01a84f3f9f509dba5800fa5d2e1424c42",
+  "images": {
+    "gateway": {
+      "repository": "ghcr.io/nvidia/openshell/gateway",
+      "amd64Digest": "sha256:437777e61c20707f9f06dc2b4b8a89b6c95a0b521dec9b00b3829d259fef163d",
+      "attestationDigest": "sha256:ba1ad838f0dcad4cd785438cb98f5d51ac65369151c2cb18612f613fe32de049"
+    },
+    "supervisor": {
+      "repository": "ghcr.io/nvidia/openshell/supervisor",
+      "amd64Digest": "sha256:0783c6e10a0ec6871af1698d861cc1542f6ac5c4dd2ed2e550bb66250d82cc02",
+      "attestationDigest": "sha256:162dcf0cc610817cec4a251958b888e94ae9717ea1aa24d51f0ba1d2eef53a20"
+    },
+    "sandbox": {
+      "repository": "ghcr.io/nvidia/openshell/sandbox",
+      "amd64Digest": "sha256:ecac6542c16de6849c0a279020edcae2390025c90344afb813f0793fc6932167",
+      "attestationDigest": "sha256:8dff200f6027671a625c35d5f793dedc4bcc5238529523a4495e1b6db130ff27"
+    }
+  }
 }

@@ -219,11 +219,11 @@ All eight current nodes report RHCOS 9.8 and kernel `5.14.0-687.46.1.el9_8.x86_6
 Native deletion removed the disposable `oc-http-check` Sandbox, Pods and test PVC; all local relays closed. No model/provider calls occurred. Receipts: `/private/tmp/stage060-auth/transport-discriminator-results.json` and `transport-host-options-results.json`. Runtime Applications remain at `18c40abaa927d184ee23685b20ae523014dc9491`; full Stage 060 acceptance remains pending.
 
 
-## Pinned PR 4150 offline qualification
+## Pinned PR 4150 isolated qualification checkpoint
 
-An isolated OpenShift test qualified the [upstream PR 4150 fix](https://github.com/NVIDIA/OpenShell/pull/4150) at merge commit `12cec59bf4c36c305032143eb90870bd16d8820b`. This coherent development build is experimental; it is not a supported release or a permanent platform upgrade.
+An isolated existing-cluster test qualified the [upstream PR 4150 fix](https://github.com/NVIDIA/OpenShell/pull/4150) at merge commit `12cec59bf4c36c305032143eb90870bd16d8820b`. This coherent development tuple is not an upgrade of the deployed 0.1.2 gateway or a Red Hat support claim. The earlier external VM proposal is cancelled; no VM or worker/kernel change was used.
 
-| Public artifact | Verified pin |
+| Artifact | Verified pin |
 | --- | --- |
 | Native chart | `0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b`; OCI `sha256:c96f4a2444a46679ca70b398308e97120834a70e71154a6c8a9ac208897ab8b8` |
 | Gateway amd64 | `sha256:437777e61c20707f9f06dc2b4b8a89b6c95a0b521dec9b00b3829d259fef163d` |
@@ -231,8 +231,21 @@ An isolated OpenShift test qualified the [upstream PR 4150 fix](https://github.c
 | Sandbox amd64 | `sha256:ecac6542c16de6849c0a279020edcae2390025c90344afb813f0793fc6932167` |
 | Matching CLI | `0.1.3-dev.99+g12cec59bf`; binary SHA-256 `6323f7749fd6291bb3c96d13a54274c01a84f3f9f509dba5800fa5d2e1424c42` |
 
-Image provenance binds all three immutable runtime images to the merge commit; matching client and chart checksums were verified. The native capability probe passed under restricted nonroot execution, RuntimeDefault seccomp and zero capabilities, including mandatory `socket_loopback_confinement`. Removed WAIT_KILLABLE and legacy-listener fields were not required.
+All three image SLSA provenance statements bind the exact amd64 subjects to the merge commit. Matching CLI artifact ZIP and chart archive checksums were verified. The new native host probe passed on the existing RHCOS 5.14 CPU worker under restricted-v2, namespace-allocated nonroot UID/GID, RuntimeDefault and zero capabilities, including mandatory `socket_loopback_confinement`. Removed WAIT_KILLABLE/legacy-listener fields were not required.
 
-Offline OpenCode 1.18.16 passed direct and authenticated-relay HTTP health checks. Its SSE endpoint delivered a connected event before deliberate disconnection; this proves event-stream transport, not model-generated streaming. Filesystem, interface-binding and metadata-egress denials held. Native sandbox stop cancelled an active exec; this is not OpenCode LLM-task cancellation. Restart preserved a file marker and an empty application session. Invalid bearer denial passed; genuine human cross-workspace authorization was not repeated.
+The separate `openshell-compat` gateway reused the existing Agent Sandbox controller and OIDC issuer with private TLS and its own disposable state/PKI/KEK. Its two workspaces were isolated from current runtime namespaces. Actual Sandbox/Pod/workspace/PVC/image identities and admitted profile were captured, including the selecting native default-deny workload egress fence. Existing immutable OpenCode 1.18.16 returned healthy HTTP directly and through authenticated ForwardTcp. SSE delivered a connected event before deliberate client disconnection; this is event-stream transport proof, not generated-model streaming. Hard-policy checks allowed the retained workspace file and `/etc/passwd`, denied `/var` reads, rejected interface-binding expansion and denied metadata egress. The public `OPENSHELL_SANDBOX` marker was observed; no blanket environment-secret absence claim is made.
 
-All disposable test resources and tunnels were removed. No model/provider calls, external VM, worker/kernel update or persistent gateway upgrade were used. Promotion needs a separate review of the coherent pinned build, its development-build status and current persona checks. Full agent-runtime, catalog and selected-call tracing acceptance remains pending.
+Native SandboxStop cancelled an active 60-second exec in 5.428 seconds (exit 143); this is runtime-exec cancellation, not OpenCode LLM-task cancellation. Restart retained the same Sandbox/PVC UID and specification, file marker, and empty OpenCode session ID/creation timestamp. Invalid bearer denial and a different-workspace lookup negative passed; genuine human own/foreign authorization was not repeated because the prior session expired.
+
+Native sandbox deletion and UID/RV-bound cleanup removed all three temporary namespaces, disposable state, own cluster RBAC and the separate pull Role/Binding in the existing `openshell` namespace. All relays closed. The deployed Applications remain at `18c40abaa927d184ee23685b20ae523014dc9491`; Qwen3.8 stays one replica and Qwen3.6 zero. No model/provider calls occurred. Consolidated sanitized receipt: `/private/tmp/openshell-pr4150/qualification-results.json`. Promotion of this development tuple was approved afterwards (next section); current persona checks, Hermes, catalog and selected-call tracing remain full Stage 060 gates.
+
+
+## PR 4150 tuple promotion: decision and prepared change
+
+On 2026-10-06 the project owner approved promoting the pinned PR 4150 development tuple to the deployed gateway instead of waiting for a stable upstream release that contains the fix. No such release existed then; upstream tag `v0.1.3-pre.5` was one commit ahead of the pinned merge commit. The tuple remains an experimental development build. It is not a supported Red Hat or NVIDIA release.
+
+Independent re-verification before the change: the chart tag resolves to the pinned OCI manifest digest and archive hash. The three image digests exist as linux/amd64 manifests built after the merge. The CLI archive and binary hashes match. `regenerate.py --check` reproduces all 26 rendered resources from the pinned archive. StatefulSet selector, service name, volume claim template and claim retention are unchanged, so the update is an in-place rollout on the retained SQLite claim. `certgen.rs` is byte-identical to v0.1.2, so the existing TLS/JWT Secrets take the skip-existing path. The SQLite migration set is the same six files in both versions. Image provenance is the build attestation stored in the registry; no signature verification is claimed.
+
+Live baseline before the change: both Applications Synced/Healthy at `18c40abaa927d184ee23685b20ae523014dc9491`; one gateway replica on the 0.1.2 image; one Bound 1Gi gateway claim; no Sandbox resources, Pods or claims in either workspace namespace; Agent Sandbox 0.9.0 controller Succeeded.
+
+Prepared procedure: stop the gateway through its replica count, take a CSI snapshot and a file-level copy of the retained claim, and keep private copies of the KEK, TLS and JWT Secrets. Then sync the runtime Application to the published revision carrying this tuple, and compare retained identities, credential digests and native workspace membership. Rollback restores the previous revision together with the pre-change database copy; an image-only downgrade is not treated as safe. This section records the decision and pre-checks, not a completed upgrade.

@@ -5,8 +5,8 @@ metadata:
     app.kubernetes.io/instance: openshell
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openshell
-    app.kubernetes.io/version: 0.1.2
-    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/version: 12cec59bf4c36c305032143eb90870bd16d8820b
+    helm.sh/chart: helm-chart-0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b
   name: openshell
   namespace: openshell
 spec:
@@ -22,13 +22,13 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/gateway-config: 9b07c10008232e9575b2e64d2b474c866a8d8f355142b24ea838950cfff3dec0
+        checksum/gateway-config: 1d11ee3693b74e46d4bd1e63a6a0b6e1f0dea5a26ea73d9ca58f7e6ca67f04e0
       labels:
         app.kubernetes.io/instance: openshell
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: openshell
-        app.kubernetes.io/version: 0.1.2
-        helm.sh/chart: helm-chart-0.1.2
+        app.kubernetes.io/version: 12cec59bf4c36c305032143eb90870bd16d8820b
+        helm.sh/chart: helm-chart-0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b
     spec:
       containers:
       - args:
@@ -87,7 +87,7 @@ spec:
               name: openshell-credentials
         - name: OPENSHELL_TELEMETRY_ENABLED
           value: 'false'
-        image: ghcr.io/nvidia/openshell/gateway@sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2
+        image: ghcr.io/nvidia/openshell/gateway@sha256:437777e61c20707f9f06dc2b4b8a89b6c95a0b521dec9b00b3829d259fef163d
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -162,7 +162,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: openshell
-      terminationGracePeriodSeconds: 5
+      terminationGracePeriodSeconds: 30
       volumes:
       - configMap:
           name: openshell-config

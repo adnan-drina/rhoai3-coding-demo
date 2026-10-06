@@ -1,10 +1,15 @@
 # Stage 060 native runtime candidate
 
-Review-only customer configuration; not wired into the active Application.
+Customer configuration consumed by the openshell-runtime Application through
+../runtime/kustomization.yaml.
 
-Source NVIDIA/OpenShell 6648bd0c290efbc41ba131ee9831ee45cd431f94 (v0.1.2).
-Native chart OCI ghcr.io/nvidia/openshell/helm-chart, version 0.1.2, digest
-sha256:7a714bbbbcef7b5ed8dac599e89e89df12eb623fa4454d22f89df41d6f047e2a.
+Source NVIDIA/OpenShell 12cec59bf4c36c305032143eb90870bd16d8820b, the merge commit
+of upstream PR 4150 (development build 0.1.3-dev.99+g12cec59bf). This is not a
+tagged or supported release. Native chart OCI ghcr.io/nvidia/openshell/helm-chart,
+version 0.0.0-dev.12cec59bf4c36c305032143eb90870bd16d8820b, digest
+sha256:c96f4a2444a46679ca70b398308e97120834a70e71154a6c8a9ac208897ab8b8.
+source-pins.json is the authoritative record of the chart, image and CLI pins.
+The previously pinned tuple was v0.1.2 (6648bd0c290efbc41ba131ee9831ee45cd431f94).
 Verify the OCI artifact before passing its cached directory/archive to render.sh.
 The source chart stays untouched; post-render.sh applies customer Kustomize
 patches and the two workspace prerequisites. Generated manifests remain private.
@@ -51,8 +56,10 @@ key readability. Certgen also needs restricted-v2 admission qualification.
 - Offline preflight is disabled only because helm template cannot discover APIs.
   Deployment must explicitly verify supported Agent Sandbox API/controller readiness.
 - Workload kernel settings remain a separate sandbox configuration gate: restricted-v2,
-  namespace UID/GID, RuntimeDefault, drop ALL, pod-local
-  net.ipv4.ip_unprivileged_port_start=0 and legacy_read_only supervisor mode.
+  namespace UID/GID, RuntimeDefault, drop ALL and pod-local
+  net.ipv4.ip_unprivileged_port_start=0. The pinned commit no longer has the
+  legacy_read_only supervisor mode; its native probe requires
+  socket_loopback_confinement instead.
   The passed host probe does not demonstrate that the gateway applies these defaults
   to a dispatched sandbox. Qualify the real native dispatch before OpenCode acceptance.
 
@@ -109,7 +116,8 @@ install a separate Helm release or manually apply resources. Controller candidat
 is a separate Kustomize directory; manual OLM approval and readiness remain gates.
 Do not add an Argo hook elsewhere while leaving unconverted native Helm hooks.
 
-At source v0.1.2 certgen reads all three Secret names before creation: all present
+At source v0.1.2 and at the pinned commit (certgen.rs is byte-identical in both)
+certgen reads all three Secret names before creation: all present
 is SkipExists; existing complete TLS pair without JWT adds only JWT; other partial
 state is an error. There is no update/delete of existing TLS/JWT Secret material
 in this path. Recreating only the Job on each sync does not rotate those keys.
@@ -126,7 +134,8 @@ SA/RBAC; Namespace -30 before SA/RBAC -20 before Job -10 before gateway 0; no
 rendered Secret/random credential; no cluster-wide workload CRUD. These are static
 ordering/source proofs, not live Argo sync or certificate validation evidence.
 
-Sources: NVIDIA/OpenShell v0.1.2 crates/openshell-server/src/certgen.rs;
+Sources: NVIDIA/OpenShell crates/openshell-server/src/certgen.rs (v0.1.2, unchanged
+at 12cec59bf4c36c305032143eb90870bd16d8820b);
 https://argo-cd.readthedocs.io/en/stable/user-guide/helm/ ;
 https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/ .
 
@@ -146,11 +155,11 @@ and writes canonical one-resource YAML files. Source/chart/artifact digests are 
 source-pins.json; OCI artifact digest and archive-layer hash are different identities.
 
 ```
-python3 regenerate.py --chart /path/to/helm-chart-0.1.2.tgz --check
+python3 regenerate.py --chart /path/to/helm-chart-<chartVersion>.tgz --check
 kustomize build .
 ```
 
 Without --check it refreshes only rendered/; --check is read-only and fails on any
 added/deleted/changed resource. Repeat generation and check succeeded with the
-cached reviewed 0.1.2 archive. No CA/key/issuer URL/token is embedded in rendered/.
+cached reviewed archive named in source-pins.json. No CA/key/issuer URL/token is embedded in rendered/.
 The old controller.yaml/workspaces.yaml multi-document inputs have been removed.
