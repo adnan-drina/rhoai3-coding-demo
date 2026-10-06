@@ -8,6 +8,8 @@ guard=subprocess.run(['bash','-c','REPO_ROOT="$1"; source "$1/scripts/shared/lib
 assert guard.returncode==0,'Shared environment/login guard failed'
 assert subprocess.check_output(['git','-C',str(ROOT),'show',args.revision+':'+str(pathlib.Path(__file__).resolve().relative_to(ROOT))])==pathlib.Path(__file__).read_bytes(),'Helper differs from selected published source'
 APP='060-agent-runtime-and-agentops';REALM='openshell';NS='keycloak';MARKER='rhoai3-coding-demo';BROKER='stage060-openshell-broker'
+class IdentityFailure(RuntimeError):
+    def __init__(self,status):self.status=status;super().__init__('Identity API status '+str(status))
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*a,**kw): return None
 http=urllib.request.build_opener(NoRedirect())
@@ -41,7 +43,7 @@ def request(path,method='GET',data=None,token=None,optional=False):
             raw=r.read(2*1024*1024);return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
         if optional and e.code==404:return None
-        raise RuntimeError('Identity API status '+str(e.code)) from None
+        raise IdentityFailure(e.code) from None
 body=urllib.parse.urlencode({'grant_type':'password','client_id':'admin-cli','username':base64.b64decode(admin['data']['username']).decode(),'password':base64.b64decode(admin['data']['password']).decode()}).encode()
 with http.open(urllib.request.Request(base+'/realms/master/protocol/openid-connect/token',data=body),timeout=15) as r: token=json.load(r)['access_token']
 def api(path,method='GET',data=None,optional=False):return request('/admin/realms/'+REALM+path,method,data,token,optional)
@@ -89,6 +91,25 @@ def identity_preflight():
             found=api('/clients?clientId=openshell-bootstrap')
             if found:assert api('/clients/'+found[0]['id']+'/client-secret')['value']==data['bootstrap-client-secret'],'Bootstrap credential rotation refused'
     else:assert oauth is None and broker is None and not bootstrap_clients,'Partial credential-bearing identity state; rotation refused'
+# Native offline RealmImport can leave master admin composite caches stale (upstream #45966).
+# One supported cache refresh is allowed only after our exact managed import completed.
+if not args.preflight:
+    candidate=api('')
+    if not candidate.get('attributes') and not candidate.get('id'):
+        try:api('/roles')
+        except IdentityFailure as failure:
+            if failure.status!=403:raise
+            seed=oc('get','keycloakrealmimport','stage060-openshell','-n',NS,'-o','json')
+            assert seed['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==APP+':k8s.keycloak.org/KeycloakRealmImport:keycloak/stage060-openshell'
+            assert seed['spec']['keycloakCRName']=='keycloak' and seed['spec']['realm']['attributes']['stage060-managed']==MARKER
+            assert any(c['type']=='Done' and c['status']=='True' for c in seed['status']['conditions'])
+            username=base64.b64decode(admin['data']['username']).decode()
+            users=request('/admin/realms/master/users?username='+urllib.parse.quote(username)+'&exact=true',token=token);assert len(users)==1
+            effective=request('/admin/realms/master/users/'+users[0]['id']+'/role-mappings/realm/composite',token=token)
+            assert any(r['name']=='admin' for r in effective),'Effective master admin required for cache recovery'
+            request('/admin/realms/master/clear-realm-cache','POST',token=token)
+            with http.open(urllib.request.Request(base+'/realms/master/protocol/openid-connect/token',data=body),timeout=15) as response:token=json.load(response)['access_token']
+            print('Native master cache refreshed once; original identity guards retained')
 identity_preflight()
 if args.preflight:
     print('Identity preflight PASS; no mutation')
@@ -120,7 +141,7 @@ else:
     owned={'apiVersion':'v1','kind':'Secret','metadata':{'name':'stage060-openshell-auth','namespace':NS,'labels':{'app.kubernetes.io/managed-by':'stage060-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'type':'Opaque','stringData':values}
     oc('create','-f','-','-o','json',payload=owned)
 redirect=issuer+'/broker/openshift-v4/endpoint'
-oauth={'apiVersion':'oauth.openshift.io/v1','kind':'OAuthClient','metadata':{'name':BROKER,'labels':{'app.kubernetes.io/managed-by':'stage060-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'secret':values['broker-client-secret'],'redirectURIs':[redirect],'grantMethod':'prompt','scopeRestrictions':[{'literalScopes':['user:info']}]}
+oauth={'apiVersion':'oauth.openshift.io/v1','kind':'OAuthClient','metadata':{'name':BROKER,'labels':{'app.kubernetes.io/managed-by':'stage060-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'secret':values['broker-client-secret'],'redirectURIs':[redirect],'grantMethod':'prompt','scopeRestrictions':[{'literals':['user:info']}]}
 old=oc('get','oauthclient',BROKER,'-o','json',optional=True)
 if old:
     metadata_owned(old);assert old['secret']==oauth['secret'],'Credential rotation refused'
