@@ -62,6 +62,7 @@ spec:
         - /spec/dashboardConfig/disableModelCatalog
         - /spec/dashboardConfig/disableModelRegistry
         - /spec/dashboardConfig/genAiStudio
+        - /spec/dashboardConfig/genAiTracing
         - /spec/dashboardConfig/modelAsService
         - /spec/dashboardConfig/vLLMDeploymentOnMaaS
     # Membership is assigned from provider identities by setup-access.sh.

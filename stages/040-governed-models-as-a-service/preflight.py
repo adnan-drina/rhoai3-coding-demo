@@ -29,7 +29,7 @@ try:
  paths={p for i in entries if i.get('group')=='datasciencecluster.opendatahub.io' and i.get('kind')=='DataScienceCluster' and i.get('name')=='default-dsc' for p in i.get('jsonPointers',[])}
  assert {'/spec/components/aigateway','/spec/components/ogx'}<=paths,'Complete the reviewed retention-safe AIGateway/Studio delegation before Stage040'
  dashboard_paths={p for i in entries if i.get('group')=='opendatahub.io' and i.get('kind')=='OdhDashboardConfig' and i.get('name')=='odh-dashboard-config' and i.get('namespace')=='redhat-ods-applications' for p in i.get('jsonPointers',[])}
- assert {'/spec/dashboardConfig/genAiStudio','/spec/dashboardConfig/modelAsService','/spec/dashboardConfig/vLLMDeploymentOnMaaS'}<=dashboard_paths,'Complete reviewed dashboard delegation before Stage040'
+ assert {'/spec/dashboardConfig/genAiStudio','/spec/dashboardConfig/genAiTracing','/spec/dashboardConfig/modelAsService','/spec/dashboardConfig/vLLMDeploymentOnMaaS'}<=dashboard_paths,'Complete reviewed dashboard delegation before Stage040'
  existing=get('applications.argoproj.io',APP,'openshift-gitops')
  if existing:
   e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not existing['metadata'].get('deletionTimestamp') and not e.get('sources'),'Foreign or terminating Application'

@@ -13,11 +13,12 @@ def run(args,payload=None):
  assert r.returncode==0,'Native delegation API operation failed'
  return json.loads(r.stdout) if r.stdout.strip() else None
 a=run(['get','applications.argoproj.io',name,'-n',ns,'-o','json']);spec=a['spec'];source=copy.deepcopy(spec['source']);status=a['status'];op=status.get('operationState',{});result=op.get('syncResult',{})
-assert source['targetRevision']=='882f327fb25dd047ca7144058b6cca46e693df3a' and source['path']=='gitops/stages/030-private-model-serving/migration/foundation-omit','Expected reviewed retained-foundation bridge'
+bridges={'882f327fb25dd047ca7144058b6cca46e693df3a':'gitops/stages/030-private-model-serving/migration/foundation-omit','eb75e6654ab73734c59b576235801561973efd2f':'gitops/stages/050-model-evaluation/migration/foundation-omit'}
+assert bridges.get(source['targetRevision'])==source['path'],'Expected reviewed retained-foundation bridge'
 assert status['sync']['status']=='Synced' and status['sync']['revision']==source['targetRevision'] and status['health']['status']=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==source['targetRevision'] and result.get('source',{}).get('path')==source['path'],'Retained foundation has not reconciled'
 assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp') and not spec.get('sources') and source['repoURL']==os.environ['GIT_REPO_URL'] and spec['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and spec['project']=='rhoai-demo' and 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Unexpected foundation ownership'
 entries=copy.deepcopy(spec.get('ignoreDifferences',[]))
-selected=[('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc',None,['/spec/components/aigateway','/spec/components/ogx']),('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications',['/spec/dashboardConfig/genAiStudio','/spec/dashboardConfig/modelAsService','/spec/dashboardConfig/vLLMDeploymentOnMaaS'])]
+selected=[('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc',None,['/spec/components/aigateway','/spec/components/ogx']),('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications',['/spec/dashboardConfig/genAiStudio','/spec/dashboardConfig/genAiTracing','/spec/dashboardConfig/modelAsService','/spec/dashboardConfig/vLLMDeploymentOnMaaS'])]
 for group,kind,n,namespace,paths in selected:
  matches=[i for i in entries if i.get('group','')==group and i.get('kind')==kind and i.get('name')==n and i.get('namespace')==namespace]
  assert len(matches)<=1,'Ambiguous existing delegation'
@@ -29,9 +30,10 @@ for group,kind,n,namespace,paths in selected:
  for path in paths:
   if path not in e.setdefault('jsonPointers',[]):e['jsonPointers'].append(path)
 if entries!=spec.get('ignoreDifferences',[]):
- patch=[{'op':'test','path':'/metadata/resourceVersion','value':a['metadata']['resourceVersion']},{'op':'test','path':'/spec/source','value':source},{'op':'add','path':'/spec/ignoreDifferences','value':entries}]
+ fresh=run(['get','applications.argoproj.io',name,'-n',ns,'-o','json']);assert fresh['metadata']['uid']==a['metadata']['uid'] and fresh['spec']==spec and not fresh['metadata'].get('deletionTimestamp'),'Concurrent foundation change'
+ patch=[{'op':'test','path':'/metadata/uid','value':a['metadata']['uid']},{'op':'test','path':'/metadata/resourceVersion','value':fresh['metadata']['resourceVersion']},{'op':'test','path':'/spec','value':spec},{'op':'add','path':'/spec/ignoreDifferences','value':entries}]
  run(['patch','applications.argoproj.io',name,'-n',ns,'--type=json','--patch-file=/dev/stdin','-o','json'],patch)
 b=run(['get','applications.argoproj.io',name,'-n',ns,'-o','json']);expected=copy.deepcopy(spec);expected['ignoreDifferences']=entries
 assert b['metadata']['uid']==a['metadata']['uid'] and b['spec']==expected,'Delegation changed unrelated foundation configuration'
-print('PASS Narrow MaaS/Studio delegation; core source882 and all other Application fields unchanged')
+print('PASS Narrow MaaS/Studio delegation; immutable core source and all other Application fields unchanged')
 PY

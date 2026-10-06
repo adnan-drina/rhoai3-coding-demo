@@ -33,7 +33,7 @@ spec:
             '{"spec":{"components":{"aigateway":{"managementState":"Managed","modelsAsAService":{"managementState":"Managed"},"batchGateway":{"managementState":"Removed"}},"ogx":{"managementState":"Managed"}}}}'
           test "$(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.aigateway.modelsAsAService.managementState}')" = Managed
           test "$(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.ogx.managementState}')" = Managed
-          oc --request-timeout=10s patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type=merge -p '{"spec":{"dashboardConfig":{"genAiStudio":true,"modelAsService":true,"vLLMDeploymentOnMaaS":true}}}'
+          oc --request-timeout=10s patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type=merge -p '{"spec":{"dashboardConfig":{"genAiStudio":true,"genAiTracing":true,"modelAsService":true,"vLLMDeploymentOnMaaS":true}}}'
           for component in aigateways:default-aigateway ogxs:default-ogx; do
            resource="${component%%:*}.components.platform.opendatahub.io";name="${component#*:}"
            ready=false

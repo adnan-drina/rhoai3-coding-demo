@@ -48,6 +48,10 @@ Use the reviewed published branch configured in your private environment:
 
 Readiness checks do not establish inference, streaming or quota behavior. Bounded functional checks and user playground interaction complete acceptance. In the dashboard, create a playground in your project and select an available governed model endpoint. Do not use the playground to create a replacement serving deployment.
 
+## Optional Studio Tracing
+
+GenAI Studio exposes the Technology Preview tracing capability. Enable tracing explicitly in an individual playground session only when its prompts, code and tool outputs may be retained under your project policy. This is not automatic tracing of every MaaS request or agent. The embedded MLflow trace viewer does not by itself prove where this installed session persists traces; end-to-end storage and session rendering remain to be verified by the user. The separate Observe trace dashboard currently has a product-generated panel-reference error.
+
 ## Usage And Showback
 
 Use the native MaaS usage dashboard to inspect governed usage by user, subscription and model. These counters measure authorized total tokens and calls; they do not expose a trustworthy input/output token split or an agent's internal tool trajectory.
