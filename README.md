@@ -63,11 +63,11 @@ The central design choice: developers and their tools never connect directly to 
 
 ## What The Demo Shows
 
-The demo follows a nine-stage flow organized in two parts.
+The demo follows a ten-stage flow organized in two parts.
 
 **Part 1: Building the platform (GitOps-driven)**
 
-Stages 010–060 construct the three platform layers declaratively — every resource reconciled from Git by Argo CD.
+Stages 010–070 construct the three platform layers declaratively — implemented platform resources reconciled from Git by Argo CD; Stage 060 AgentOps is currently planned.
 
 | Stage | Intent |
 |-------|--------|
@@ -76,7 +76,8 @@ Stages 010–060 construct the three platform layers declaratively — every res
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Prepare native KServe, Model Registry, Model Catalog and Agent Catalog discovery for governed model deployments |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | Expose private and external models through a governed MaaS gateway with API keys, rate limits, and telemetry |
 | [050 - Model Evaluation](stages/050-model-evaluation/README.md) | Evaluate model behavior through EvalHub and retain experiments and artifacts in MLflow |
-| [060 - Advanced Application Platform](stages/060-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
+| [060 - Agent Runtime and AgentOps](stages/060-agent-runtime-and-agentops/README.md) | Plan isolated agent hosting, lifecycle and evidence integration (not yet deployed) |
+| [070 - Advanced Application Platform](stages/070-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
 
@@ -109,7 +110,7 @@ git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
 cd rhoai3-coding-demo
 ```
 
-**Environment configuration (required).** Before deploying any stage, copy the environment template and fill in the values for your target cluster. The `.env` file drives Git source references for Argo CD, cluster safety guards, demo persona credentials, external model API keys, and Stage 060 delivery-chain integrations (GitHub App, PAT, Quay robot account). Deploy scripts source this file automatically — deployment will fail or produce incomplete results without it.
+**Environment configuration (required).** Before deploying any stage, copy the environment template and fill in the values for your target cluster. The `.env` file drives Git source references for Argo CD, cluster safety guards, demo persona credentials, external model API keys, and Stage 070 delivery-chain integrations (GitHub App, PAT, Quay robot account). Deploy scripts source this file automatically — deployment will fail or produce incomplete results without it.
 
 ```bash
 cp env.example .env
@@ -125,10 +126,10 @@ oc login --token=<token> --server=<api>
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/060-advanced-app-platform/deploy.sh
+./stages/070-advanced-app-platform/deploy.sh
 ```
 
-**Validate the developer workflow stages.** Stages 110–130 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MTA stack) is deployed by Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
+**Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; planned standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
 ./stages/110-ai-assisted-development/validate.sh
@@ -156,7 +157,7 @@ rhoai3-coding-demo/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
-|   |-- argocd/app-of-apps/          # Argo CD Applications for GitOps stages 010–060
+|   |-- argocd/app-of-apps/          # Argo CD Applications for implemented stages 010–050 and 070
 |   `-- stages/                      # GitOps source for stage manifests
 |-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs

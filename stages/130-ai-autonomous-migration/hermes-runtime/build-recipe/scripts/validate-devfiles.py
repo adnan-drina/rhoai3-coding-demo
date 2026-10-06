@@ -9,9 +9,9 @@ ROOT = next(parent for parent in Path(__file__).resolve().parents
             if (parent / "AGENTS.md").is_file() and (parent / "gitops").is_dir())
 FILES = [
     ROOT
-    / "gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml",
+    / "gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml",
     ROOT
-    / "gitops/stages/060-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml",
+    / "gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml",
     ROOT
     / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/devfile.yaml",
     ROOT

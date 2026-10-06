@@ -72,7 +72,7 @@ In our previous demo stage, you drove an AI assistant by hand: you wrote the pro
 
 ## Step 4: Two ideas that make agentic development work
 
-In stage 060, the quality gate caught what a flawed prompt produced. The gate stays, every push still exits through it. What changes in this stage is the *input*: instead of hand-written one-shot prompts, the agent works from structured, reviewable context (specs and skills), so what reaches the gate is right the first time. The mental model for that context comes from Martin Fowler's team: an agent consumes two distinct kinds of it.
+In stage 070, the quality gate caught what a flawed prompt produced. The gate stays, every push still exits through it. What changes in this stage is the *input*: instead of hand-written one-shot prompts, the agent works from structured, reviewable context (specs and skills), so what reaches the gate is right the first time. The mental model for that context comes from Martin Fowler's team: an agent consumes two distinct kinds of it.
 
 ![Memory bank vs Specs: the two kinds of agent context](images/memory-bank-specs.png) *(Source: [martinfowler.com — Exploring Gen AI: SDD tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html))*
 
@@ -267,7 +267,7 @@ curl -s -i localhost:8080/api/catalog/999999
 
 Real services grow spec by spec. This is Fowler's *spec-anchored* level in practice, on the codebase you just shipped.
 
-1. Open the second brief: [`demo-assets/002-catalog-availability.md`](demo-assets/002-catalog-availability.md). The catalog enriches products with live stock data from the **stage 060 inventory service** (deployed in `coolstore-dev`), with config-driven wiring and graceful degradation.
+1. Open the second brief: [`demo-assets/002-catalog-availability.md`](demo-assets/002-catalog-availability.md). The catalog enriches products with live stock data from the **stage 070 inventory service** (deployed in `coolstore-dev`), with config-driven wiring and graceful degradation.
 2. Run the cycle again: `/speckit.specify` (paste brief 002) → review → `/speckit.plan` → review → `/speckit.tasks` → `/speckit.implement`.
 3. Verify locally. The catalog now decorates products with availability (in dev mode the inventory URL points at the cluster service; the degradation path answers even when inventory is unreachable):
 

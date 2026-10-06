@@ -1,0 +1,220 @@
+# RHDH app-config — uses environment variable substitution for cluster-specific values.
+# The PostSync Job patches rhdh-secrets with real URLs; the Backstage CR injects them as env vars.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+data:
+  app-config-rhdh.yaml: |
+    app:
+      title: "RHOAI Coding Demo Portal"
+      baseUrl: ${RHDH_BASE_URL}
+    backend:
+      baseUrl: ${RHDH_BASE_URL}
+      cors:
+        origin: ${RHDH_BASE_URL}
+      reading:
+        allow:
+          - host: raw.githubusercontent.com
+          - host: github.com
+    auth:
+      environment: production
+      session:
+        secret: ${SESSION_SECRET}
+      providers:
+        oidc:
+          production:
+            metadataUrl: ${RHBK_METADATA_URL}
+            clientId: rhdh
+            clientSecret: ${RHDH_OIDC_CLIENT_SECRET}
+            prompt: auto
+            signIn:
+              resolvers:
+                - resolver: preferredUsernameMatchingUserEntityName
+                  dangerouslyAllowSignInWithoutUserInCatalog: true
+    signInPage: oidc
+    integrations:
+      github:
+        - host: github.com
+          token: ${GITHUB_TOKEN}
+    kubernetes:
+      serviceLocatorMethod:
+        type: multiTenant
+      clusterLocatorMethods:
+        - type: config
+          clusters:
+            - name: local-cluster
+              url: https://kubernetes.default.svc
+              authProvider: serviceAccount
+              # In-cluster CA (skipTLSVerify is not honored on the plugin's
+              # fetch path — observed live: FETCH_ERROR "self-signed
+              # certificate in certificate chain" on every object query).
+              # Mounted from the kube-root-ca.crt ConfigMap via the
+              # Backstage CR extraFiles: the operator disables SA token
+              # automount, so /var/run/secrets/... is absent in the pod.
+              caFile: /opt/app-root/src/k8s-ca/ca.crt
+              serviceAccountToken: ${RHDH_KUBERNETES_SA_TOKEN}
+      customResources:
+        - group: tekton.dev
+          apiVersion: v1
+          plural: pipelineruns
+        - group: tekton.dev
+          apiVersion: v1
+          plural: taskruns
+        - group: route.openshift.io
+          apiVersion: v1
+          plural: routes
+    argocd:
+      appLocatorMethods:
+        - type: config
+          instances:
+            - name: main
+              url: ${RHDH_ARGOCD_URL}
+              username: admin
+              password: ${RHDH_ARGOCD_PASSWORD}
+    catalog:
+      # Entities dropped from the runtime catalog file (e.g. retired
+      # golden-path templates) are removed instead of lingering as orphans.
+      orphanStrategy: delete
+      rules:
+        - allow: [Component, System, API, Resource, Location, Template, User, Group, Domain]
+      locations:
+        - type: file
+          target: ${RHDH_CATALOG_URL}
+    techdocs:
+      builder: local
+      generator:
+        runIn: local
+      publisher:
+        type: local
+    dynamicPlugins:
+      frontend:
+        red-hat-developer-hub.backstage-plugin-global-header:
+          # IMPORTANT: this mountPoints list REPLACES the plugin's default
+          # composition (it does not merge). It must therefore restate the
+          # full default header (from dynamic-plugins.default.yaml in the
+          # RHDH image) and append our demo tiles at the end. Losing the
+          # GlobalHeader entry removes the entire top header (observed live
+          # 2026-07-14).
+          mountPoints:
+            - mountPoint: application/header
+              importName: GlobalHeader
+              config:
+                position: above-sidebar
+            - mountPoint: global.header/component
+              importName: CompanyLogo
+              config:
+                priority: 200
+                props:
+                  to: /
+            - mountPoint: global.header/component
+              importName: SearchComponent
+              config:
+                priority: 100
+            - mountPoint: global.header/component
+              importName: Spacer
+              config:
+                priority: 99
+                props:
+                  growFactor: 0
+            - mountPoint: global.header/component
+              importName: HeaderIconButton
+              config:
+                priority: 90
+                props:
+                  icon: add
+                  title: Self-service
+                  titleKey: create.title
+                  to: create
+            - mountPoint: global.header/component
+              importName: StarredDropdown
+              config:
+                priority: 85
+            - mountPoint: global.header/component
+              importName: ApplicationLauncherDropdown
+              config:
+                priority: 82
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 150
+                section: Documentation
+                props:
+                  icon: developerHub
+                  link: https://docs.redhat.com/en/documentation/red_hat_developer_hub
+                  title: Developer Hub
+                  titleKey: applicationLauncher.developerHub
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 100
+                section: Developer Tools
+                props:
+                  icon: developerHub
+                  link: https://github.com/redhat-developer/rhdh-local
+                  title: RHDH Local
+                  titleKey: applicationLauncher.rhdhLocal
+            - mountPoint: global.header/component
+              importName: HelpDropdown
+              config:
+                priority: 80
+            - mountPoint: global.header/help
+              importName: SupportButton
+              config:
+                priority: 10
+            - mountPoint: global.header/component
+              importName: NotificationButton
+              config:
+                priority: 70
+            - mountPoint: global.header/component
+              importName: Divider
+              config:
+                priority: 50
+            - mountPoint: global.header/component
+              importName: ProfileDropdown
+              config:
+                priority: 10
+            - mountPoint: global.header/profile
+              importName: MenuItemLink
+              config:
+                priority: 100
+                props:
+                  icon: manageAccounts
+                  link: /settings
+                  title: Settings
+                  titleKey: profile.settings
+            - mountPoint: global.header/profile
+              importName: MenuItemLink
+              config:
+                priority: 90
+                props:
+                  icon: account
+                  title: My profile
+                  titleKey: profile.myProfile
+                  type: myProfile
+            - mountPoint: global.header/profile
+              importName: LogoutButton
+              config:
+                priority: 10
+            # --- demo additions (stage 070 golden path) ---
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 60
+                section: Developer Tools
+                props:
+                  icon: developerHub
+                  title: SonarQube
+                  link: ${SONARQUBE_URL}
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 55
+                section: Developer Tools
+                props:
+                  icon: developerHub
+                  title: Dev Spaces
+                  link: ${DEVSPACES_URL}

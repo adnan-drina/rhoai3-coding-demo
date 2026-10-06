@@ -4,7 +4,7 @@ skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/pre_tool_call.sh
   - stages/130-ai-autonomous-migration/validate.sh
-  - gitops/stages/060-advanced-app-platform/base/devspaces/**
+  - gitops/stages/070-advanced-app-platform/base/devspaces/**
 ---
 
 # K2 denies opaque construction, not every pathless command

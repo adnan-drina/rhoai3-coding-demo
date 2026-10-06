@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("k", ROOT / "scripts" / "demo" / "check-kilo-provider.py")
 K = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(K)
-docs = yaml.safe_load_all((ROOT / "gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml").read_text())
+docs = yaml.safe_load_all((ROOT / "gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml").read_text())
 S = next(d for d in docs if d and d.get("kind") == "ConfigMap" and "init-ai-tools.sh" in (d.get("data") or {}))["data"]["init-ai-tools.sh"]
 
 cases = [

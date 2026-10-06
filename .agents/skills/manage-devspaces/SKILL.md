@@ -22,16 +22,16 @@ description: >-
 ## Environment
 
 - **CheCluster**: `devspaces` in `openshift-devspaces` (open-vsx.org, 1200s timeout, no-idle, `pvcStrategy: per-user`)
-- **GitOps DevWorkspaces**: `agentic-coolstore` in `wksp-ai-developer` and `wksp-ai-admin` only (Stage 060 catalog seat). Persona namespaces `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` stay GitOps-owned.
+- **GitOps DevWorkspaces**: `agentic-coolstore` in `wksp-ai-developer` and `wksp-ai-admin` only (Stage 070 catalog seat). Persona namespaces `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` stay GitOps-owned.
 - **Factory workspaces**: Stages 070 and 080 create per-run DevWorkspaces from RHDH templates (`agentic-quarkus-scaffold`, `app-migration`). Those destfiles live in the cloned repo; GitOps does not pre-create the CRs. Both destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `agentic-coolstore` without multi-attaching the per-user RWO `claim-devworkspace`.
 - **Retired standing seats** (do not recreate): `getting-started-ai-coding`, `coolstore-inventory-service`, `mca-coolstore`.
 - **Cloned repos**:
-  - `https://github.com/adnan-drina/coolstore-inventory-service.git` — Stage 060 `agentic-coolstore` project
+  - `https://github.com/adnan-drina/coolstore-inventory-service.git` — Stage 070 `agentic-coolstore` project
   - Stage 120/080 factory repos are published per run; Stage 130 also clones the legacy URL as `/projects/legacy`
 - **Extensions**: Kilo Code 7.4.8 via `DEFAULT_EXTENSIONS` on `agentic-coolstore`. MTA 8.2.0 (pack + core + java + redhat.java) via the Stage 130 factory destfile.
-- **GitOps**: Managed by Argo CD `060-advanced-app-platform` with a repair hook (no Replace on DevWorkspaces)
-- **AI tool selection**: Stage 060 `agentic-coolstore` is Kilo Code. Factory 070/080 destfiles select the agentic/harness tooling for that stage.
-- **Manifests**: `gitops/stages/060-advanced-app-platform/base/devspaces/workspaces.yaml` (namespaces + RBAC), `agentic-workspace.yaml` (Stage 060 seats)
+- **GitOps**: Managed by Argo CD `070-advanced-app-platform` with a repair hook (no Replace on DevWorkspaces)
+- **AI tool selection**: Stage 070 `agentic-coolstore` is Kilo Code. Factory 070/080 destfiles select the agentic/harness tooling for that stage.
+- **Manifests**: `gitops/stages/070-advanced-app-platform/base/devspaces/workspaces.yaml` (namespaces + RBAC), `agentic-workspace.yaml` (Stage 070 seats)
 
 ## Key Behaviors Learned
 
@@ -112,11 +112,11 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 
 ## Common Operations
 
-### Recreate the Stage 060 catalog seat (clean slate)
+### Recreate the Stage 070 catalog seat (clean slate)
 
 ```bash
 NS=wksp-ai-developer
-oc patch application 060-advanced-app-platform -n openshift-gitops --type=json \
+oc patch application 070-advanced-app-platform -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 oc patch devworkspace agentic-coolstore -n $NS --type=merge -p '{"spec":{"started":false}}'
 sleep 10
@@ -124,8 +124,8 @@ oc delete devworkspace agentic-coolstore -n $NS --force --grace-period=0
 # Only delete the per-user claim when no other DevWorkspace in $NS still needs it.
 oc delete pvc claim-devworkspace -n $NS --force --grace-period=0
 sleep 5
-oc apply -f gitops/stages/060-advanced-app-platform/base/devspaces/agentic-workspace.yaml
-oc patch application 060-advanced-app-platform -n openshift-gitops --type=merge \
+oc apply -f gitops/stages/070-advanced-app-platform/base/devspaces/agentic-workspace.yaml
+oc patch application 070-advanced-app-platform -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
 ```
 
@@ -192,7 +192,7 @@ subjects:
 
 ## Agentic Workspace
 
-The `agentic-coolstore` DevWorkspace is the Stage 060 catalog entry point. It clones `adnan-drina/coolstore-inventory-service` and selects Kilo Code. Open it from Developer Hub → Coolstore Inventory Service → **Dev Spaces**, not from a factory URL. Stage 120/080 seats are separate factory workspaces.
+The `agentic-coolstore` DevWorkspace is the Stage 070 catalog entry point. It clones `adnan-drina/coolstore-inventory-service` and selects Kilo Code. Open it from Developer Hub → Coolstore Inventory Service → **Dev Spaces**, not from a factory URL. Stage 120/080 seats are separate factory workspaces.
 
 ## Users
 

@@ -3,7 +3,7 @@ name: m2-m3-native-dispatch
 skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/AGENTS.md
-  - gitops/stages/060-advanced-app-platform/base/devspaces/**
+  - gitops/stages/070-advanced-app-platform/base/devspaces/**
 ---
 
 # Minted M3 children claim through the native dispatcher

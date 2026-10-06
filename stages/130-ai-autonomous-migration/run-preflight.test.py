@@ -59,7 +59,7 @@ class Preflight(unittest.TestCase):
     def test_run_stops_need_a_pinned_budget_for_the_selected_model(self):
         import json
         here = Path(__file__).resolve().parent
-        table = json.loads((here.parents[1] / 'gitops/stages/060-advanced-app-platform/base/devspaces/model-profiles.json').read_text())
+        table = json.loads((here.parents[1] / 'gitops/stages/070-advanced-app-platform/base/devspaces/model-profiles.json').read_text())
         defaults = json.loads((here / 'scaffold-repo/quarkus-migration-scaffold/run-defaults.json').read_text())
         gaps = SCOPE['run_stop_gaps']
         for model in table['profiles']:

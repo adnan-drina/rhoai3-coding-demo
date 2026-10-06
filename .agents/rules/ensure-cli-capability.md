@@ -4,7 +4,7 @@ skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/mta-analyze-legacy.sh
   - stages/130-ai-autonomous-migration/scaffold-repo/**/assert-ensure-cli-path.sh
-  - gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml
+  - gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml
 ---
 
 # ensure_cli is a capability probe, not a presence probe
@@ -53,5 +53,5 @@ in gid 0). Do not dest-push dest-3’s worker-patched analyzer as golden.
    MATCH.
 
 Campaign law: nested AD-019 lesson 17. Checker source:
-`gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
+`gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
 (`kantra-assert-exec`).

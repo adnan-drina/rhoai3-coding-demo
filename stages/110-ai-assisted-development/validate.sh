@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 060: Dev Spaces — Validation Script
+# Stage 070: Dev Spaces — Validation Script
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,12 +7,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 060: Dev Spaces & AI Code Assistant — Validation          ║"
+echo "║  Stage 070: Dev Spaces & AI Code Assistant — Validation          ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-check_argocd_app "060-advanced-app-platform"
+check_argocd_app "070-advanced-app-platform"
 
 log_step "Dev Spaces Operator"
 check_csv_succeeded "openshift-devspaces" "devspaces"
@@ -68,7 +68,7 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     done
 done
 
-log_step "Agentic Coolstore Workspace (stage 060 golden path)"
+log_step "Agentic Coolstore Workspace (stage 070 golden path)"
 for ns in wksp-ai-developer wksp-ai-admin; do
     check "agentic-coolstore DevWorkspace exists: $ns" \
         "oc get devworkspace agentic-coolstore -n $ns -o jsonpath='{.metadata.name}'" \

@@ -11,7 +11,7 @@ The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-0
 - [ ] Stage 010: finish real OpenID persona/dashboard acceptance; historical synthetic MLflow artifact/database persistence passed; fresh foundation source no longer installs it. RHOAI 3.5.1/ODF 4.22.5 installed; native registry, metrics, Perses transport and exact trace retrieval passed. The old COO hold and monitoring transport workarounds are retired; AutoRAG/AutoML remain disabled.
 - [ ] Provisioner follow-up: Lightspeed 1.1.4 installed but API NotReady; cloud-credential missing parent credentials prevents future OCP minor/major upgrades. Preserve add-on/operator ownership; no credentials or resources were changed during inventory.
 - [ ] Stage 020: native NFD 4.22, NVIDIA 26.7.1 and Kueue 1.4.2 readiness, two L40S workers, per-node CUDA/DCGM and UID-bound queue admission passed. Scoped native metrics repair permits genuine ai-admin queries and preserves developer denial; actual dashboard/profile browser confirmation remains pending. No CPU pool scaling or bucket changes occurred.
-- [ ] Stage 060: resolve integration with the preinstalled OpenID/Keycloak (`keycloak`, namespace-scoped operator) before applying the separate project `rhbk` identity installation.
+- [ ] Stage 070: resolve integration with the preinstalled OpenID/Keycloak (`keycloak`, namespace-scoped operator) before applying the separate project `rhbk` identity installation.
 - [x] Stage 030: native serving/discovery is deployed at `147b6208` after the protected core `882f327f` handoff. Independent registry/database/credential/MLflow identity and existing-bucket preservation passed; both genuine personas passed verified-TLS registry, Model Catalog and Agent Catalog API checks. The user confirmed Model Catalog and Agent Catalog visual checks on 2026-10-05, completing Stage 030 acceptance. Stage 040 acceptance limits are recorded separately; Stage 050 service foundation is deployed. AutoRAG/AutoML remain excluded.
 
 - [x] Stage 050 service foundation: native EvalHub/TrustyAI plus retained MLflow adopted after protected handoff; no evaluation or GPU restart.
@@ -393,7 +393,7 @@ Stage 040 validation must keep asserting that `maas-api` uses `registry.redhat.i
 - [ ] Rewrite the Stage 010–040 sections of `docs/OPERATIONS.md` and `docs/TROUBLESHOOTING.md` from a fresh-environment deployment. Carry current MaaS quirks.
 - [ ] TechDocs for Developer Hub reflecting the current stages (Kilo Code, OpenCode, spec-kit).
 - [ ] Confirm final GPUaaS Prometheus metric names.
-- [ ] Red Hat UDI-based `ai-tools` image. Until then, Stage 060 sets Java 21 at workspace start. The digest-pinned `quay.io/che-incubator/cli-ai-tools` image stays.
+- [ ] Red Hat UDI-based `ai-tools` image. Until then, Stage 070 sets Java 21 at workspace start. The digest-pinned `quay.io/che-incubator/cli-ai-tools` image stays.
 - [ ] Re-evaluate Cline if a release adds SDK file-based provider config. Kilo Code 7.4.7 is the IDE assistant.
 - [ ] Remove stale `.continue` templates from the external `coolstore-inventory-service` repo.
 - [ ] Scope the OpenShift MCP ServiceAccount below cluster-wide `view`.
@@ -416,7 +416,7 @@ Stage 040 validation must keep asserting that `maas-api` uses `registry.redhat.i
 - [ ] Workspace pods can fail the API for roughly the first three minutes of a pod's life. The next fresh start should log seconds-since-start at the first HTTP 200 before changing the poll.
 - [ ] `quarkusio/quarkus-skills` (`migrate-spring-to-quarkus`) is a candidate install for the migration workspace. Not installed.
 
-Developer workflow topics 120–170 are not stages. Recreate one only with an implementation plan, validation, and GitOps ownership where the platform owns the resource. Stage 110's review discipline lives in Stage 060.
+Developer workflow topics 120–170 are not stages. Recreate one only with an implementation plan, validation, and GitOps ownership where the platform owns the resource. Stage 110's review discipline lives in Stage 070.
 
 ## Baseline comparison retained locally
 
@@ -433,3 +433,7 @@ Developer workflow topics 120–170 are not stages. Recreate one only with an im
 ### Stage 040 remaining acceptance (2026-10-05)
 
 Native deployment, two private-model APIs/streaming, Red Hat MiniMax governed streaming, key lifecycle and isolated quota enforcement passed. The API-key-loading failure is repaired at the backend. Remaining: replenish GPT-6 Luna account credits (`credit_balance_exhausted`), qualify actual EPP execution (targeted counters remain absent), and user-check GenAI Studio key listing/project interaction. No browser pass or complete Stage 040 acceptance is claimed. Existing model quotas and workspace local-only access remain unchanged. [Evidence and boundaries](docs/migration/040-governed-serving-plan.md#final-bounded-runtime-evidence).
+
+### Planned Stage 060 Agent Runtime and AgentOps
+
+Stage 060 is a planned platform stage; Stage 070 retains developer services and requested Gitea integration. Qualify pinned OpenShell/runtime isolation, authenticated lifecycle, independent verifier and catalog ingestion before implementation. No AgentOps deployment or completed-agent claim follows from the numbering change. See [runtime design](docs/migration/060-agent-hosting-and-scm-plan.md) and [developer/SCM design](docs/migration/070-developer-platform-and-scm-plan.md).

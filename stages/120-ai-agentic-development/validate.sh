@@ -10,7 +10,7 @@ echo "Stage 120: Agentic Development — Validation"
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-check_argocd_app "060-advanced-app-platform"
+check_argocd_app "070-advanced-app-platform"
 
 log_step "Agentic workspace"
 check "agentic-coolstore DevWorkspace exists" \
@@ -41,8 +41,8 @@ check "scaffold carries the OpenCode selector signal (.opencode/skills)" \
   "present"
 # Factory destfile is the GitOps skeleton (template replace:true), not the
 # GitHub golden destfile. per-workspace avoids RWO FailedMount when the
-# Stage 060 agentic-coolstore seat is still Running.
-SKELETON_070="$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
+# Stage 070 agentic-coolstore seat is still Running.
+SKELETON_070="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
 STAGING_070="$SCRIPT_DIR/scaffold-repo/agentic-quarkus-scaffold/devfile.yaml"
 check "GitOps 070 factory destfile uses per-workspace storage" \
   "grep -q 'controller.devfile.io/storage-type: per-workspace' '$SKELETON_070' && echo present || echo missing" \
@@ -63,7 +63,7 @@ check "scaffold devfile sets NODE_USE_SYSTEM_CA container env" \
   "present"
 
 log_step "MaaS prerequisites from earlier stages"
-check "workspace MaaS key Secret exists (Stage 060)" \
+check "workspace MaaS key Secret exists (Stage 070)" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "maas-devspace-api-keys"
 check "qwen27b model key provisioned" \

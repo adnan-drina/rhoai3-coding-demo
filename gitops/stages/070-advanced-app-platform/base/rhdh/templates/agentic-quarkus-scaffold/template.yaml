@@ -1,0 +1,120 @@
+# Golden-path template for Stage 070 (AI-Agentic Development).
+# Scaffolds a brand-new Quarkus application repository carrying corporate
+# standards as executable assets: AGENTS.md, .opencode/skills/, and a
+# specs/ directory for spec-driven development. The developer builds the
+# application with OpenCode following the spec — the standards steer the
+# agent, not the prompt.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: agentic-quarkus-scaffold
+  title: "New Quarkus app"
+  description: |
+    Scaffolds a brand-new Quarkus application repository with corporate
+    standards as agent-executable assets (AGENTS.md + OpenCode skills) and a
+    spec template for spec-driven development. Registered in the catalog, and
+    provisioned with its own namespace and delivery pipeline (SonarQube
+    quality gate included) — the repository's first push bootstraps the
+    project stack through the platform dispatcher.
+  tags:
+    - golden-path
+    - agentic
+    - quarkus
+    - spec-driven
+spec:
+  owner: ai-modernization-team
+  type: service
+
+  parameters:
+    - title: Application repository
+      required:
+        - name
+      properties:
+        name:
+          title: Application name
+          type: string
+          description: |
+            Name for the new application (e.g. claims-notification-service).
+            Lowercase letters, numbers, and hyphens.
+          pattern: "^[a-z][a-z0-9-]{2,40}$"
+          ui:autofocus: true
+
+  steps:
+    - id: fetch-golden
+      name: Fetch Quarkus scaffold golden repository
+      action: fetch:plain
+      input:
+        url: https://github.com/adnan-drina/agentic-quarkus-scaffold/tree/main
+
+    # The platform coolstore entity carries cluster-real link URLs (the
+    # generate-rhdh-catalog hook substitutes route hostnames at sync time).
+    # Fetching it here lets the per-run component derive the same links
+    # without baking any cluster hostname into this template. Link order in
+    # catalog/all.yaml is load-bearing: [0] Source Repo, [1] Deployed App,
+    # [2] Dev Spaces, [3] SonarQube — stage 070 validate guards absolute
+    # URLs, and changing that order breaks the derivations below.
+    - id: platform-entity
+      name: Read platform link endpoints from the catalog
+      action: catalog:fetch
+      input:
+        entityRef: component:default/coolstore-inventory-service
+
+    - id: add-catalog-info
+      name: Add catalog metadata
+      action: fetch:template
+      input:
+        url: ./skeleton
+        # The skeleton's devfile.yaml must overwrite the golden repo's copy
+        # (per-run metadata.name); without replace, existing files win.
+        replace: true
+        values:
+          name: ${{ parameters.name }}
+          sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
+          # Match the branch recorded by the resolver when reopening this repo.
+          devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}?revision=main&existing=${{ parameters.name }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=adnan-drina&repo=${{ parameters.name }}
+        description: "Quarkus application scaffold (golden path: agentic, spec-driven development)"
+        repoVisibility: public
+        defaultBranch: main
+        protectDefaultBranch: false
+        topics:
+          - rhoai3-golden-path
+          # Marks the repo for the platform dispatcher: its pushes bootstrap
+          # the per-project stack (namespace + pipeline) and run app-push in
+          # <name>-dev. See pipelines/build/triggers.yaml.
+          - rhoai3-scaffolded
+
+    - id: register
+      name: Register in catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+  output:
+    links:
+      - title: Source repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+    text:
+      - title: Next steps
+        content: |
+          The publish above already bootstrapped your project: Argo CD is
+          creating the `<name>-dev` namespace with the project's own delivery
+          pipeline, and build credentials arrive within two minutes.
+
+          Open the repository in Dev Spaces and start OpenCode in the
+          terminal. The project ships spec-kit: run `/speckit.specify` with
+          your requirements (the stage 070 exercise provides coolstore-catalog
+          briefs) — it creates `specs/<n>-<feature>/spec.md` — then
+          `/speckit.plan`, `/speckit.tasks`, and `/speckit.implement`. The
+          agent reads AGENTS.md and `.opencode/skills/` — corporate
+          standards steer the build. Every push to `main` runs the project's
+          own pipeline in `<name>-dev` with the SonarQube quality gate.

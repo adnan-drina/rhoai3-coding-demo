@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap (or reset) the golden repositories that the stage 060
+# Bootstrap (or reset) the golden repositories that the stage 070
 # golden-path templates copy from. Idempotent: re-running force-pushes the
 # golden state, which is also the demo reset mechanism for the sources.
 #

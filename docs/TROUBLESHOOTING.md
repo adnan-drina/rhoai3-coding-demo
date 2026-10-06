@@ -76,16 +76,16 @@ Check pods:
 oc get pods -A | egrep 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 ```
 
-## Stage 060 jobs cannot pull ose-cli after a restart
+## Stage 070 jobs cannot pull ose-cli after a restart
 
-**Affected stage:** Stage 060 provisioning, catalog refresh, and delivery.
+**Affected stage:** Stage 070 provisioning, catalog refresh, and delivery.
 
 **Cause:** `registry.redhat.io/openshift4/ose-cli` does not publish a `latest`
 tag. Cached images can hide an invalid reference until a node is replaced or
 the image must be pulled again. On 2026-09-24 the catalog-refresh job reported
 `unsupported: This repository does not use the "latest" tag`.
 
-**Recover:** Sync the Stage 060 manifests with the explicit CLI digest also
+**Recover:** Sync the Stage 070 manifests with the explicit CLI digest also
 used by `provision-migration-run`. Confirm the next catalog-refresh and
 project-provisioner Jobs succeed. A Healthy Argo application alone does not
 prove recurring Jobs or future Tekton steps can pull their images.
@@ -99,7 +99,7 @@ prove recurring Jobs or future Tekton steps can pull their images.
 **Diagnose:**
 
 ```bash
-APP=060-advanced-app-platform
+APP=070-advanced-app-platform
 oc get application "$APP" -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 ```
@@ -186,7 +186,7 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 
 **Affected stage:** any operator in `openshift-operators` (shared namespace)
 
-**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one InstallPlan. Approving a plan to unblock one operator can silently upgrade others past their pins (observed live: approving the Stage 060 pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and dependency-generated subscriptions (authorino, created by OLM for RHCL) then sit in `UpgradePending` toward versions we never approve — which wedged every Stage 040 sync until the Argo Subscription health check learned that an installed CSV with a pending channel upgrade is Healthy by policy.
+**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one InstallPlan. Approving a plan to unblock one operator can silently upgrade others past their pins (observed live: approving the Stage 070 pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and dependency-generated subscriptions (authorino, created by OLM for RHCL) then sit in `UpgradePending` toward versions we never approve — which wedged every Stage 040 sync until the Argo Subscription health check learned that an installed CSV with a pending channel upgrade is Healthy by policy.
 
 **Diagnose:**
 
@@ -228,7 +228,7 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 
 ## Manually Triggered Sync Finishes In Seconds And Skips Hooks
 
-**Affected stage:** Any, observed on Stage 060 catalog changes
+**Affected stage:** Any, observed on Stage 070 catalog changes
 
 **Symptom:** A sync operation triggered by patching `.operation` on the Application completes in ~15 seconds, applies only a handful of resources, and never runs Sync/PostSync hook Jobs (e.g. `job-generate-rhdh-catalog`). The controller logs `Partial sync operation to <rev> succeeded`.
 
@@ -355,7 +355,7 @@ The recovery script syncs the existing Stage 020 revision, restores its verified
 
 ## Worker Nodes Evict Pods After A Cluster Resume (KubeNodeEviction)
 
-**Affected stage:** platform-wide (observed via Stage 030 model routing and Stage 060 components)
+**Affected stage:** platform-wide (observed via Stage 030 model routing and Stage 070 components)
 
 **Symptom:** `KubeNodeEviction` fires shortly after a sandbox cluster resume. Node events show `NodeHasDiskPressure` and `EvictionThresholdMet ... Attempting to reclaim ephemeral-storage` on CPU worker nodes, and a wave of pods across unrelated namespaces lands in `Failed` with reason `Evicted` (observed live 2026-07-14: GitOps repo-server, RHOAI dashboard, Perses, Thanos, NooBaa, Authorino, Dev Spaces server, SonarQube, kuadrant operator, among others). Secondary failures look like their own incidents — Argo CD syncs abort with repo-server restarts, Dev Spaces workspace postStart hooks time out.
 
@@ -880,7 +880,7 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 
 ## Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Symptom:** The RHDH sign-in popup fails with `OPError: expected 200 OK, got: 504 Gateway Timeout` and `/api/auth/oidc/start` returns 500, while Keycloak itself is healthy — the OIDC discovery URL answers 200 from outside the cluster and even from a fresh process inside the RHDH pod.
 
@@ -915,7 +915,7 @@ Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to Keyclo
 
 ## Developer Hub Topology/CI/Kubernetes Tabs Show "Problem Retrieving Kubernetes Objects"
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Symptom:** The Kubernetes-backed entity tabs show a warning banner; expanding it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate chain` for every object query, while cluster discovery (the cluster dropdown) works and the Argo CD card is fine.
 
@@ -951,7 +951,7 @@ oc exec deployment/backstage-developer-hub -n rhdh -c backstage-backend -- \
 
 ## Red Hat Developer Hub Catalog Does Not Load Coolstore
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Likely cause:** RHDH backend is not allowed to read the raw GitHub catalog URL, the catalog location is not reachable, or `RHDH_CATALOG_URL` does not match the GitOps revision deployed by Argo CD.
 
@@ -961,7 +961,7 @@ oc exec deployment/backstage-developer-hub -n rhdh -c backstage-backend -- \
 oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i catalog
 oc get configmap app-config-rhdh -n rhdh -o yaml
 oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' | base64 -d; echo
-oc get application 060-advanced-app-platform -n openshift-gitops \
+oc get application 070-advanced-app-platform -n openshift-gitops \
   -o jsonpath='{.spec.source.repoURL}{" "}{.spec.source.targetRevision}{"\n"}'
 ```
 
@@ -974,14 +974,14 @@ is not allowed. You may need to configure an integration for the target host, or
 **Recover:**
 
 - Add a narrow `backend.reading.allow` entry or configure the GitHub integration.
-- Re-sync Stage 060 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
-- Confirm the Stage 060 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
+- Re-sync Stage 070 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
+- Confirm the Stage 070 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
 - Restart the RHDH deployment.
-- Re-run Stage 060 validation after adding catalog checks.
+- Re-run Stage 070 validation after adding catalog checks.
 
 ## RHDH Template Entity Returns 200 Then 404 After a Catalog Re-stamp
 
-**Affected stage:** Stage 060 / 080 (golden-path templates)
+**Affected stage:** Stage 070 / 080 (golden-path templates)
 
 **Symptom:** `template:default/app-migration` flaps 200/404 after a push. RHDH logs `conflicting entityRef`. More than one Location is registered for the same template.
 
@@ -1002,13 +1002,13 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 **Recover:**
 
 - Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
-- Confirm Stage 060/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
+- Confirm Stage 070/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
 
-**Related:** `gitops/stages/060-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
+**Related:** `gitops/stages/070-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
 
 ## RHDH Catalog Generator Refuses `FACTORY_BUNDLE_MISMATCH`
 
-**Affected stage:** Stage 060 (runtime catalog)
+**Affected stage:** Stage 070 (runtime catalog)
 
 **Symptom:** The `job-generate-rhdh-catalog` or `refresh-rhdh-catalog` log ends with `REFUSE FACTORY_BUNDLE_MISMATCH: bundle <id>, revision <sha>: <file> at <sha> is not the bundled file`. The runtime catalog is unchanged.
 
@@ -1016,12 +1016,12 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 
 **Recover:**
 
-- Hard-refresh and sync Stage 060 so the bundle and `operationState.syncResult.revision` come from the same commit. The next `refresh-rhdh-catalog` run publishes.
+- Hard-refresh and sync Stage 070 so the bundle and `operationState.syncResult.revision` come from the same commit. The next `refresh-rhdh-catalog` run publishes.
 - `CATALOG_RENDER` refusals name the invalid value (for example a MaaS gateway host that is not an RFC 1123 host). Fix that source object. The last good catalog stays in place until then.
 
 ## Migration Workspace Creation Fails With `FACTORY_MAAS_ROUTE_MISSING`
 
-**Affected stage:** Stage 060 / 080 (app-migration template)
+**Affected stage:** Stage 070 / 080 (app-migration template)
 
 **Symptom:** The app-migration scaffolder run fails at "MaaS route present (this step runs only to refuse with FACTORY_MAAS_ROUTE_MISSING)". Nothing is published.
 
@@ -1029,16 +1029,16 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 
 **Recover:** Run the catalog generator (see above), confirm both annotations hold a host and an IPv4 address, then create the run again. A workspace is never created without the route. At every start and continuation, the workspace's own `planner.maas_route` gate refuses `STARTUP_MAAS_ROUTE` if the pod still resolves the gateway publicly.
 
-## Red Hat Developer Hub Is Healthy But Stage 060 Is OutOfSync
+## Red Hat Developer Hub Is Healthy But Stage 070 Is OutOfSync
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Likely cause:** Operator-defaulted fields differ from Git, or PostSync jobs patched dynamic fields.
 
 **Diagnose:**
 
 ```bash
-oc get application 060-advanced-app-platform -n openshift-gitops -o json \
+oc get application 070-advanced-app-platform -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 
 oc get backstage developer-hub -n rhdh -o yaml
@@ -1054,7 +1054,7 @@ oc get backstage developer-hub -n rhdh -o yaml
 
 **Affected stage:** Stages 120 and 130 (RHDH factory DevWorkspaces)
 
-**Symptom:** The factory workspace stays `Failed` / `Starting`. Events show `FailedMount` or a multi-attach error on `claim-devworkspace`. The Stage 060 `agentic-coolstore` seat is `Running` in the same persona namespace.
+**Symptom:** The factory workspace stays `Failed` / `Starting`. Events show `FailedMount` or a multi-attach error on `claim-devworkspace`. The Stage 070 `agentic-coolstore` seat is `Running` in the same persona namespace.
 
 **Likely cause:** CheCluster `pvcStrategy: per-user` uses a single RWO PVC per namespace. A second workspace that inherits that default cannot attach the claim while the first is running. Factory destfiles must set `controller.devfile.io/storage-type: per-workspace`.
 
@@ -1205,7 +1205,7 @@ measures from the lift.
 
 ## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Likely cause:** DevWorkspace operator issue, image pull problem, insufficient workspace resources, or postStart command failure.
 
@@ -1222,7 +1222,7 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 
 - Restart the workspace from the Red Hat OpenShift Dev Spaces dashboard.
 - Confirm resource requests/limits are sufficient.
-- Re-run Stage 060 validation.
+- Re-run Stage 070 validation.
 
 ## Stage 130 dest postStart fails on dest-profile Portal `auth.json`
 
@@ -1243,7 +1243,7 @@ oc get dw spring-petclinic-rest-legacy-v8 -n "$NS" -o jsonpath='{.status.phase}{
 
 **Recover:**
 
-- Confirm live `devspace-ai-tools-init` **removes** dest-profile `auth.json` / `auth.lock` instead of `return 1`. Sync Stage 060 if the ConfigMap still prints `refuse Portal leftover`.
+- Confirm live `devspace-ai-tools-init` **removes** dest-profile `auth.json` / `auth.lock` instead of `return 1`. Sync Stage 070 if the ConfigMap still prints `refuse Portal leftover`.
 - Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
 
 ## Stage 130 dest postStart fails on MaaS Secret poll or dest-init mvn SSL
@@ -1275,7 +1275,7 @@ oc get dw "$DW" -n "$NS" -o jsonpath='{.status.phase}{"\n"}{.status.message}{"\n
 - Confirm live `devspace-ai-tools-init` derives `MAAS_BASE_URL` from `MAAS_API_BASE_URL` when the kube API poll is empty, points the mvn smoke JVM at the UBI JKS, and treats a python `SystemExit` from that smoke as `ensure_hermes` failure. Do not patch the MaaS hostAlias while postStart is running (DWO treats `FailedPostStartHook` as unrecoverable).
 - Delete any RWO debug pod on `storage-workspace<id>` before starting the workspace.
 - Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
-- Keep Argo CD `060-advanced-app-platform` paused until this ConfigMap is committed and pushed; restoring auto-sync while GitHub still has the refuse/`secret_value`-only copy puts the failing script back.
+- Keep Argo CD `070-advanced-app-platform` paused until this ConfigMap is committed and pushed; restoring auto-sync while GitHub still has the refuse/`secret_value`-only copy puts the failing script back.
 
 ## Stage 130 dest postStart fails EX-3 write-set hook missing
 
@@ -1343,11 +1343,11 @@ oc exec -n "$NS" "$POD" -c development-tooling -- \
 
 **Recover:**
 
-- Confirm GitOps `kantra-assert-exec` contains `RULESET_FIXTURE_SHEBANG` and Argo `060-advanced-app-platform` has synced the `devspace-ai-tools-init` ConfigMap.
+- Confirm GitOps `kantra-assert-exec` contains `RULESET_FIXTURE_SHEBANG` and Argo `070-advanced-app-platform` has synced the `devspace-ai-tools-init` ConfigMap.
 - Re-run dest-init (or replace `~/.local/bin/kantra-assert-exec` from that ConfigMap) so the live helper skips `rulesets/` shebangs. Then `kantra-assert-exec /opt/mta-cli` exits 0.
 - Re-run isolated `rehearse-legacy.sh` (or a new M1 on a fresh destination). Do not rewrite the failed M1 `mta.json`. Do not `hermes kanban create|link` by hand.
 
-**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
+**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
 
 ## Stage 130 rehearsal dies on yamlite `[id]` under UDI python3.9
 
@@ -1372,7 +1372,7 @@ python3 -c 'from pathlib import Path; import sys; sys.path.insert(0,"/projects/m
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
-**Affected stage:** Stage 060 RHDH templates (factory workspaces for 070/080)
+**Affected stage:** Stage 070 RHDH templates (factory workspaces for 070/080)
 
 **Likely cause:** `postStart` fetched `devspace-ai-tools-init` with a single `curl` against the Kubernetes API (`172.30.0.1:443`). When the pod's CNI was not ready yet, curl timed out (`curl: (28) Failed to connect ... Connection timed out`), wrote `/tmp/init-ai-tools.sh` at 0 bytes, printed a warning, and still exited 0. The workspace reported Running/Healthy with no `hermes` binary. The SA token and CA are projected volumes and are present at container start; the race is network, not credentials. Observed on 4 of 5 provisions (v21, v23, v24; v22 succeeded).
 
@@ -1398,7 +1398,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 - **Next provision:** restart the workspace so `postStart` re-runs (the fetch is idempotent). Do not re-stamp the RHDH catalog solely for this; the template is SHA-pinned, so only a published artifact that includes the retry is live.
 - **Already-running workspace:** do not treat Running as success. Extract the live ConfigMap and run it in the tooling container (`PROJECT_DIR` / `PROFILE` as that workspace expects). Do not restart a live migration seat to pick this up.
 
-**Related docs:** `gitops/stages/060-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/070-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
 
 ## Dest Hermes worker profiles missing (`harness-v2`)
 
@@ -1419,7 +1419,7 @@ ls /projects/modernized/.hermes/home/profiles/
 
 **Recover:** Fix the init error (overlay `/usr/local/bin/hermes`, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
 
-**Related docs:** `gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
+**Related docs:** `gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
 
 ## Dest Hermes terminal keeps literal `${env:MAAS_*}` (`harness-v2`)
 
@@ -1613,7 +1613,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 ## Factory Create Fails With Can't Parse Devfile Yaml
 
-**Affected stage:** Stage 060 RHDH app-migration skeleton (factory workspaces for 080)
+**Affected stage:** Stage 070 RHDH app-migration skeleton (factory workspaces for 080)
 
 **Likely cause:** A line at column 0 inside `commandLine: |` ended the YAML block scalar. Dev Spaces reports `Can't parse devfile yaml` (example: a multi-line `python3 -c` whose body was not indented). Indenting Python to satisfy YAML breaks Python; keep every line of the scalar indented and write helper scripts with indented `printf` lines.
 
@@ -1622,7 +1622,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 ```bash
 # Local skeleton (before publish / dest mint):
 ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
-  gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml
+  gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml
 ```
 
 **Recover:**
@@ -1631,11 +1631,11 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 - Do not retry the factory URL pinned to the broken commit. Push a parseable `devfile.yaml` to dest `main`, then start a new workspace from current `main`.
 - Catalog re-stamp does not rewrite an existing dest repo.
 
-**Related docs:** `gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
 
 ## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
 
-**Affected stage:** Stage 060 RHDH app-migration skeleton (factory workspaces for 080)
+**Affected stage:** Stage 070 RHDH app-migration skeleton (factory workspaces for 080)
 
 **Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `HERMES_WEB_DIST`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: the 080 overlay bakes `web_dist` at `/usr/local/share/hermes/web_dist`. `start-dashboard.sh` defaults `HERMES_WEB_DIST` to that bake (Operator `191234Zop`) and keeps the Managed Scope `basic_auth` gate; it does not dest-copy into `hermes_cli/web_dist`. Unset `HERMES_WEB_DIST` still tries a runtime Vite build. Dashboard failure does not fail the workspace (observability, not capability).
 
@@ -1667,11 +1667,11 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
 - **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
 - **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
 
-**Related docs:** `gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
+**Related docs:** `gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
 
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Likely cause:** The workspace was started from an older DevWorkspace spec that predates the Kilo Code extension policy, or the workspace did not restart after the `DEFAULT_EXTENSIONS` policy changed.
 
@@ -1691,13 +1691,13 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 **Recover:**
 
-- Sync Stage 060 so each DevWorkspace sets the current `DEFAULT_EXTENSIONS` policy with the Kilo Code extension.
+- Sync Stage 070 so each DevWorkspace sets the current `DEFAULT_EXTENSIONS` policy with the Kilo Code extension.
 - Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
 - Confirm the Kilo Code sidebar appears in Che Code and that the MaaS configuration has been rendered by the init script.
 
 ## Kilo Code Shows The Default Catalog Instead Of MaaS Qwen3.6
 
-**Affected stage:** Stage 060 (`agentic-coolstore`)
+**Affected stage:** Stage 070 (`agentic-coolstore`)
 
 **Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen27b`. Machine `settings.json` alone does not suppress the first-start trust dialog; Che Code must also merge `product.json` `configurationDefaults`.
 
@@ -1712,7 +1712,7 @@ oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
   -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen27b'
 ```
 
-**Recover:** Sync Stage 060, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
+**Recover:** Sync Stage 070, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
 
 ## First Factory Workspace Asks To Trust Authors
 
@@ -1727,11 +1727,11 @@ oc get configmap vscode-editor-configurations -n wksp-ai-developer \
   -o jsonpath='{.data.product\.json}' | jq .
 ```
 
-**Recover:** Sync Stage 060 so the ConfigMap includes `product.json`, then **stop and start** the factory workspace (Che Code reads the ConfigMap only at launcher start). The current session can click **Trust Workspace & Install** — these namespaces only run platform-provisioned repos. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
+**Recover:** Sync Stage 070 so the ConfigMap includes `product.json`, then **stop and start** the factory workspace (Che Code reads the ConfigMap only at launcher start). The current session can click **Trust Workspace & Install** — these namespaces only run platform-provisioned repos. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
 
 ## Kilo Code Cannot Reach MaaS Endpoint
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Likely cause:** The `devspace-ai-tools-init` ConfigMap init script did not run or failed to render the Kilo Code configuration with the correct MaaS base URL and API key. The workspace may have started before the MaaS key provisioner completed, or the `devspace-maas-key-provisioner` ServiceAccount lacks authorization on the `rhoai-developers-coding-models` subscription.
 
@@ -1752,7 +1752,7 @@ oc get secret -n wksp-ai-developer -l app.kubernetes.io/part-of=devspaces-maas
 
 - Confirm the MaaS key Secret exists in the workspace namespace.
 - Restart the workspace so the init script re-renders tool configuration.
-- If the key Secret is missing, re-run `stages/060-advanced-app-platform/deploy.sh` to re-provision keys.
+- If the key Secret is missing, re-run `stages/070-advanced-app-platform/deploy.sh` to re-provision keys.
 
 ## Coding Assistant Project Is Missing From OpenShift AI Projects
 
@@ -1897,7 +1897,7 @@ oc get application <app> -n openshift-gitops -o json \
   | jq '.spec.ignoreDifferences[] | select(.kind=="Namespace")'
 ```
 
-**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). For labels a controller depends on (like the pipeline-project provisioning label), the stage deploy.sh must assert the label on every run — see `seed_coolstore` step 0 in stage 060.
+**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). For labels a controller depends on (like the pipeline-project provisioning label), the stage deploy.sh must assert the label on every run — see `seed_coolstore` step 0 in stage 070.
 
 ## OpenCode: "unknown certificate verification error" for Every Model
 
@@ -1925,7 +1925,7 @@ curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
 
 ## Kilo Code Shows "Move Your OpenCode Configuration"
 
-**Affected stage:** Stage 060
+**Affected stage:** Stage 070
 
 **Likely cause:** Kilo Code detects an OpenCode-schema config and offers to adopt it. Dismissal is stored in VS Code `globalState`. Kilo-only workspaces (coolstore, getting-started) have no triggers after the self-scoping. Scaffolded 070 workspaces show it once on first open — just close the notification.
 
@@ -2044,7 +2044,7 @@ Caveats: `--prune` never removes in-use images (a modelcar backing a running sch
 
 ## SonarQube Gate Fails On new_coverage 0% Despite Passing Tests
 
-**Affected stage:** Stage 060 (any Quarkus app in the pipeline)
+**Affected stage:** Stage 070 (any Quarkus app in the pipeline)
 
 **Symptom:** `new_violations` is 0, tests run green in `maven-build`, yet the gate fails `new_coverage: 0.0 < 80`.
 
@@ -2116,7 +2116,7 @@ oc exec -n openshift-ingress "$GW" -c istio-proxy -- pilot-agent request GET con
 
 ## Red Hat Registry Outage Starves Scaffolded-Project Provisioning
 
-**Affected stage:** Stage 060/070 (project-provisioner, seed runs, any pipeline building from UBI base images)
+**Affected stage:** Stage 070/070 (project-provisioner, seed runs, any pipeline building from UBI base images)
 
 **Symptom:** freshly scaffolded projects get no credentials and no seed PipelineRun; the provisioner CronJob's `lastSuccessfulTime` stops advancing; pods show `ErrImagePull` with `503 Service Unavailable` from registry.redhat.io, or a seed run fails at `build-and-push` with `502 Bad Gateway` from registry.access.redhat.com.
 
@@ -2140,7 +2140,7 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Scaffolded Project Does Not Self-Provision (No Argo CD App / Pipeline)
 
-**Affected stage:** Stage 060 (RHDH scaffolder → dispatcher bootstrap)
+**Affected stage:** Stage 070 (RHDH scaffolder → dispatcher bootstrap)
 
 **Symptom:** a developer creates a project from the "New Quarkus App" template; the GitHub repo is created (with topics `rhoai3-golden-path` + `rhoai3-scaffolded`) and pushed, but no `project-<repo>` Argo CD Application appears, no `<repo>-dev` namespace or `app-push` pipeline is created, and no build runs. Nothing is happening in the background.
 
@@ -2171,7 +2171,7 @@ Keep the secret equal to `.env` `GITHUB_WEBHOOK_SECRET` (verify: `oc get secret 
 
 Validate one live scaffold end-to-end afterwards: the dispatcher CEL filter matches on `body.repository.topics`; if topics turn out to be absent from the push payload on your GitHub, switch the trigger to a per-repo webhook created by the scaffolder template instead.
 
-**Coolstore push arrives but no `app-push` run (CEL file-path filter).** GitHub App `push` payloads often omit `commits[].added` / `modified` / `removed` even when the commit changed `src/`. HMAC succeeds (`Continue: true`); the Coolstore CEL then returns `Continue: false` (`expression ... did not return true`) and no PipelineRun is created. Stage 060's Coolstore trigger now matches every `main` push; do not re-add a file-path filter unless it also treats missing file lists as "run". Diagnose: `oc logs -n openshift-pipelines -l app.kubernetes.io/name=tekton-triggers-core-interceptors --since=10m | grep Continue`. Recover a missed SHA: create an `app-push` PipelineRun in `coolstore-dev` with `revision` set to the commit (same shape as `stages/060-advanced-app-platform/deploy.sh` seed).
+**Coolstore push arrives but no `app-push` run (CEL file-path filter).** GitHub App `push` payloads often omit `commits[].added` / `modified` / `removed` even when the commit changed `src/`. HMAC succeeds (`Continue: true`); the Coolstore CEL then returns `Continue: false` (`expression ... did not return true`) and no PipelineRun is created. Stage 070's Coolstore trigger now matches every `main` push; do not re-add a file-path filter unless it also treats missing file lists as "run". Diagnose: `oc logs -n openshift-pipelines -l app.kubernetes.io/name=tekton-triggers-core-interceptors --since=10m | grep Continue`. Recover a missed SHA: create an `app-push` PipelineRun in `coolstore-dev` with `revision` set to the commit (same shape as `stages/070-advanced-app-platform/deploy.sh` seed).
 
 **Recover an already-created project without waiting for the App fix** (what to run for a repo that was scaffolded while the App was still on Selected repos):
 
@@ -2190,7 +2190,7 @@ spec:
   source:
     repoURL: https://github.com/<owner>/rhoai3-coding-demo
     targetRevision: main
-    path: gitops/stages/060-advanced-app-platform/base/pipelines/project-pipeline
+    path: gitops/stages/070-advanced-app-platform/base/pipelines/project-pipeline
     kustomize: { namespace: <repo>-dev }
   destination: { server: https://kubernetes.default.svc, namespace: <repo>-dev }
   syncPolicy:
@@ -2283,7 +2283,7 @@ deferred this hardening for the controlled v10 experiment; its launch preflight
 warns on that measured failure while retaining the other checks. That exception
 makes no claim of worker security confinement.
 
-The Stage 060 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
+The Stage 070 GitOps repair (per-run `<run>-worker` ServiceAccount selected by
 destfile pod-overrides; operator-owned `devworkspace-default-role` unpatched)
 is described in [Stage 130 run isolation](OPERATIONS.md#stage-080-run-isolation).
 Do not hand-edit the operator-reconciled default role or broaden another
@@ -2331,7 +2331,7 @@ The 2026-09-22 update omitted `config-triggers-core-interceptors`, which every
 new binary requires. The resulting crashes leave ClusterInterceptor CA bundles
 empty and may leave the EventListener's old Ready condition stale.
 
-The Stage 060 GitOps workaround supplies the default from the exact shipped
+The Stage 070 GitOps workaround supplies the default from the exact shipped
 [Triggers revision](https://github.com/openshift-pipelines/tektoncd-triggers/blob/72ad4eda38d96540182c6bf98fa12565ab5bab46/config/interceptors/config-core-interceptors.yaml).
 After sync, require TektonConfig Ready, ready deployment replicas, populated
 interceptor CA bundles and a real signed scaffolding delivery. A template's

@@ -20,15 +20,17 @@ The implemented flow is the ordered directories under [`../stages/`](../stages/)
 3. [Stage 020: GPU Infrastructure for Private AI](../stages/020-gpu-infrastructure-private-ai/README.md)
 4. [Stage 030: Private Model Serving](../stages/030-private-model-serving/README.md)
 5. [Stage 040: Governed Models-as-a-Service](../stages/040-governed-models-as-a-service/README.md)
-6. [Stage 060: Advanced Application Platform](../stages/060-advanced-app-platform/README.md)
+6. [Stage 070: Advanced Application Platform](../stages/070-advanced-app-platform/README.md)
 7. [Stage 110: AI-Assisted Development](../stages/110-ai-assisted-development/README.md)
 8. [Stage 120: AI-Agentic Development](../stages/120-ai-agentic-development/README.md)
 9. [Stage 130: AI-Autonomous Migration](../stages/130-ai-autonomous-migration/README.md)
 
-[Stage 110](../stages/110-ai-assisted-development/README.md) starts the developer-facing part of the workshop. It uses the Stage 110 workspace and Stage 060 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 110. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
+[Stage 110](../stages/110-ai-assisted-development/README.md) starts the developer-facing part of the workshop. It uses the Stage 110 workspace and Stage 070 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 110. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
 
 ## AI Collaboration Rules
 
 Shared rules, skills, and agent definitions live under [`../.agents/`](../.agents/). They define project-wide AI agent behavior. Do not commit local rules, skills, credentials, personal paths, private cluster URLs, or personal preferences. See [CONTRIBUTING.md](../CONTRIBUTING.md) before changing shared agent behavior.
 
 Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.
+
+Agent platform design: [Stage 060 runtime and AgentOps](migration/060-agent-hosting-and-scm-plan.md) and [Stage 070 developer platform and SCM](migration/070-developer-platform-and-scm-plan.md). Both proposals require qualification before deployment.

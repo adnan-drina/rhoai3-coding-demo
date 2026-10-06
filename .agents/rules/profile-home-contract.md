@@ -2,7 +2,7 @@
 name: profile-home-contract
 skill-group: Demo Environment
 applies-to:
-  - gitops/stages/060-advanced-app-platform/base/devspaces/**
+  - gitops/stages/070-advanced-app-platform/base/devspaces/**
   - stages/130-ai-autonomous-migration/scaffold-repo/**
 ---
 

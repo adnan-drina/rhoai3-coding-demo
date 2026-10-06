@@ -92,4 +92,4 @@ Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validati
 
 ## Next Stage
 
-[Stage 060: Advanced Application Platform](../060-advanced-app-platform/README.md) supplies the developer portal, workspaces and delivery tooling that consume governed AI and produce the real workflow evidence this stage will help assess.
+[Stage 060: Agent Runtime and AgentOps](../060-agent-runtime-and-agentops/README.md) introduces the planned isolated execution layer; Stage 070 adds developer workspaces, portal and delivery tooling.

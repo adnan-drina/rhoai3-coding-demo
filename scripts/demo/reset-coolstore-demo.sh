@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Reset the coolstore-inventory-service demo to the pristine golden baseline.
 #
-# Every stage 060 demo run pushes real commits to main (required: pipeline
+# Every stage 070 demo run pushes real commits to main (required: pipeline
 # triggers listen only on refs/heads/main). This script rewinds main to
 # the golden branch via the GitHub API, optionally clears SonarQube history,
 # and recreates the DevWorkspace so the next start clones pristine main.

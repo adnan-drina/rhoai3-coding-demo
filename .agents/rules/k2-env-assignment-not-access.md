@@ -3,7 +3,7 @@ name: k2-env-assignment-not-access
 skill-group: Demo Environment
 applies-to:
   - stages/130-ai-autonomous-migration/scaffold-repo/**/pre_tool_call.sh
-  - gitops/stages/060-advanced-app-platform/base/devspaces/**
+  - gitops/stages/070-advanced-app-platform/base/devspaces/**
 ---
 
 # K2 must not treat environment-assignment values as access targets

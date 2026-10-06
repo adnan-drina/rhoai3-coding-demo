@@ -1,6 +1,6 @@
 # Kilo Code Prompts for Demo
 
-Target application: `coolstore-inventory-service` (the stage 060 catalog entry point — the developer opens it in Dev Spaces from the component page).
+Target application: `coolstore-inventory-service` (the stage 070 catalog entry point — the developer opens it in Dev Spaces from the component page).
 
 ## Module 1: Generate code with intentional smells
 

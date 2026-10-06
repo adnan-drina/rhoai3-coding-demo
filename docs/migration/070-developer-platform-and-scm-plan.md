@@ -1,0 +1,21 @@
+# Stage 070 developer platform and SCM design proposal
+
+**Status: researched proposal, not deployment approval.** Stage 070 retains the existing developer platform source: Dev Spaces, RHDH, Pipelines, quality gates, identity and MTA. Requested Gitea serves workload repositories. Stage 060 owns the proposed agent runtime; Stages 110/120/130 consume both.
+
+The renamed Application and source paths are repository changes only. Prior bounded environment evidence found no existing developer-platform Application or Dev Spaces/MTA runtime. That checkpoint is not a current live check: before deployment, reject an existing legacy `060-advanced-app-platform` or conflicting `070-advanced-app-platform` owner. Never deploy both against the same resources or cascade-delete retained data to rename an Application. Existing Stage 010/030/040/050 Applications are unaffected.
+
+## SCM and authentication
+
+Prefer Gitea's [official maintained Helm chart](https://docs.gitea.com/1.23/installation/install-on-kubernetes/) from `https://dl.gitea.com/charts/` (`chart: gitea`), rendered/reconciled by Argo, with pinned chart/application/digests and reviewed Git-owned values. Exact chart version, arbitrary UID/init-container behavior and restricted OpenShift render/admission are readiness gates; no anyuid shortcut. Also inspect bundled DB/cache/HA defaults, admin Secret/init support and random-secret/diff behavior; the chart does not reconcile organization hooks or build/catalog credentials. No Actions runner in the first slice. Gitea is a community workload SCM, not an asserted Red Hat-supported component.
+
+OpenShift identity authenticates portal/IDE/agent access. SCM robot tokens/SSH credentials are separately scoped repository credentials, not OpenShift tokens. Native [Backstage Gitea publishing](https://backstage.io/api/stable/modules/_backstage_plugin-scaffolder-backend-module-gitea.html) and [catalog integration](https://backstage.io/docs/integrations/gitea/locations/) exist; RHDH 1.10's official provider guide covers GitHub/GitLab, so the Gitea module needs explicit packaging/version qualification. Current RHDH source channel fast-1.9 is also unresolved against the 1.10 documentation.
+
+Switching workload SCM affects template publishers/skeleton URLs, catalog integration and Secrets, GitHub webhook interceptor/topic/initial-push rules, project provisioner and seed/reset/delete helpers. Keep existing Triggers architecture initially; Gitea HMAC support in Pipelines does not establish compatibility of the current GitHub-specific filters. Require end-to-end initial push, later push, workspace clone/push, one migration provision, repeat reconciliation and changed-cluster-URL tests. Reconcile one organization push webhook before initial publishing; credentials are issued once/reused and rotated coherently, never regenerated every sync. Preserve developer repos on reconciliation. [Backup/restore](https://docs.gitea.com/administration/backup-and-restore/) must retain repositories/database/config/signing material externally; a PVC alone is not backup.
+
+## Sequencing and runtime association
+
+Qualify Gitea chart, restricted OpenShift admission, community RHDH module, scoped credentials, webhook event/HMAC and backup/restore before final template integration. An initial standalone agent proof can use an existing read-only source and disposable checkout, without waiting for the portal or rewriting a template twice.
+
+RHDH provisions a stable project/workspace-to-agent association using the independently qualified Stage 060 runtime interface. Dev Spaces is a client; workspace stop/start does not blindly recreate an agent or reset its board. Repository exchange uses separate checkouts, scoped branches and reviewed commits/patches rather than concurrent writes to one worktree. Background work remains explicitly bounded; cleanup preserves approved records/data and revokes only owned credentials.
+
+See the [Stage 060 AgentOps proposal](060-agent-hosting-and-scm-plan.md) for version/security gates, runtime topology alternatives and independent verification boundaries. No manifests, deployments, data migration or universal tracing integration follow from this document.

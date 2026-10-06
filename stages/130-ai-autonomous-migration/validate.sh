@@ -12,7 +12,7 @@ echo "╚═══════════════════════�
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-check_argocd_app "060-advanced-app-platform"
+check_argocd_app "070-advanced-app-platform"
 
 log_step "MTA Operator"
 check_csv_succeeded "openshift-mta" "mta-operator"
@@ -136,10 +136,10 @@ check "declared model profile default equals the golden run model (${RUN_MODEL})
 # E-1 (2026-10-01): the enforce-on-start model gate compared against the literal qwen3-8-27b-int4 and
 # fail-closed every start of the first run provisioned with qwen3-6-27b; it must check the declared profile
 check "dest-init model gate checks the declared profile default, not a literal model id" \
-  "grep -c 'if m.get(\"default\") != DEFAULT_MODEL:' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "grep -c 'if m.get(\"default\") != DEFAULT_MODEL:' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 check "dest-init model gate names no literal default model" \
-  "grep -cE 'm.get\(\"(default|provider)\"\) != \"' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || true" \
+  "grep -cE 'm.get\(\"(default|provider)\"\) != \"' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || true" \
   "0"
 check "init script names the Hermes Qwen provider qwen38" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen38\"' || echo 0" \
@@ -154,29 +154,29 @@ check "init script disables Hermes /models discovery on named providers" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"discover_models\": False' || echo 0" \
   "2"
 check "GitOps init script does not use legacy custom:maas-m2 default" \
-  "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
+  "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
   "NONE"
 check "GitOps init script forbids Hermes fallback_providers" \
-  "grep -c 'forbids fallback_providers' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "grep -c 'forbids fallback_providers' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'KANTRA_VERSION=\"v0.10.0-beta.1\"' || echo 0" \
   "1"
 check "kantra-ensure download message is on stderr (ensure_cli captures stdout as the CLI path)" \
-  "grep -c 'Downloading kantra.*>&2' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "grep -c 'Downloading kantra.*>&2' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 check "live kantra-ensure verifies every ELF in the kantra tree is executable" \
   "test \"\$(oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -cF 'kantra-assert-exec')\" -ge 2 && echo CHECKER_WIRED || echo CHECKER_MISSING" \
   "CHECKER_WIRED"
 check "dest-init kantra-assert-exec skips ruleset fixture shebangs" \
-  "grep -cF 'RULESET_FIXTURE_SHEBANG' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "grep -cF 'RULESET_FIXTURE_SHEBANG' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary path)" \
-  "awk '/^kind: ConfigMap\$/{c=1} c && /^  name: devspace-ai-tools-init\$/{n=1} n && /controller.devfile.io\\/mount-to-devworkspace: \"true\"/ {print 1; exit} n && /^data:/{exit} /^---\$/{c=0; n=0}' \"$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "awk '/^kind: ConfigMap\$/{c=1} c && /^  name: devspace-ai-tools-init\$/{n=1} n && /controller.devfile.io\\/mount-to-devworkspace: \"true\"/ {print 1; exit} n && /^data:/{exit} /^---\$/{c=0; n=0}' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 SCAFFOLD_080="$REPO_ROOT/stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 check "v2 scaffold ships dispatch-phase/autostart-migration.sh (the dest-init consumer the devfile postStart calls)" \
-  "test -f \"$SCAFFOLD_080/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh\" && grep -c 'dispatch-phase/scripts/autostart-migration.sh' '$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' | awk '{print (\$1>=1)?1:0}'" \
+  "test -f \"$SCAFFOLD_080/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh\" && grep -c 'dispatch-phase/scripts/autostart-migration.sh' '$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' | awk '{print (\$1>=1)?1:0}'" \
   "1"
 check "v2 scaffold has no .hermes/home/scripts" \
   "test ! -e \"$SCAFFOLD_080/.hermes/home/scripts\" && echo 1 || echo 0" \
@@ -245,7 +245,7 @@ log_step "Factory Migration Workspace (app-migration destfile)"
 # Stage 130 seats are created at demo time from the RHDH template. Do not
 # require a standing mca-coolstore DevWorkspace. Assert the factory contract
 # and that the retired GitOps seats are gone.
-SKELETON_080="$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml"
+SKELETON_080="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml"
 # One runtime image everywhere it is named (v26 audit: run-defaults.json and the golden
 # devfile still named sha256:6a8a69a3 while pins.json and the template named sha256:9147834b)
 GOLDEN_080="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold"
@@ -342,7 +342,7 @@ check "080 golden has no dest .hermes/checks tree" \
   "1"
 
 SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
-GITOPS_INIT="${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
+GITOPS_INIT="${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
 check "080 GitOps does not invoke golden assert-agent-pin.py" \
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -c 'assert-agent-pin.py' || echo 0" \
   "0"
@@ -368,7 +368,7 @@ check "080 GitOps dest-init prefers env MAAS_API_BASE_URL then gateway MAAS_BASE
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-8-27b-int4/v1' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps ConfigMap is the MaaS gateway path (not KServe host)" \
-  "grep -qF 'MAAS_API_PATH: /models-as-a-service/qwen3-8-27b-int4/v1' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /models-as-a-service/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
+  "grep -qF 'MAAS_API_PATH: /models-as-a-service/qwen3-8-27b-int4/v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /models-as-a-service/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMap URL" \
   "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \
@@ -395,7 +395,7 @@ check "080 GitOps does not copy dest kanban-stuck-watchdog" \
   "grep -c 'home/scripts/kanban-stuck-watchdog' '${GITOPS_INIT}' || echo 0" \
   "0"
 check "080 RHDH skeleton destfile does not invoke dest supervise-gateway" \
-  "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "0"
 check "080 golden destfile does not invoke dest supervise-gateway" \
   "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
@@ -406,10 +406,10 @@ check "080 golden destfile does not tee postStart to PVC" \
   "grep -c 'poststart.log' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
   "0"
 check "080 factory does not claim debug mode through an ineffective devfile attribute" \
-  "grep -c 'controller.devfile.io/debug-start:' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || true" \
+  "grep -c 'controller.devfile.io/debug-start:' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || true" \
   "0"
 check "080 RHDH skeleton destfile does not tee postStart to PVC" \
-  "grep -c 'poststart.log' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "grep -c 'poststart.log' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "0"
 check "080 golden orchestrator profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \
@@ -521,7 +521,7 @@ check "080 inventory-legacy-surface scan root is fence-legal" \
   "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c '/projects/.derived/legacy-at-3' || echo 0" \
   "0"
 check "080 catalog Locations use a stable Argo ref not a SHA blob" \
-  "python3 '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/jobs/catalog-location-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "python3 '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog-location-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
@@ -541,10 +541,10 @@ check "080 native control (outcome-board/v2) selftest passes (publication, same-
   "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/../lib/planner/native_board.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
 check "080 new runs default to outcome-board/v2 and the skeleton renders no authority sidecar" \
-  "n=0; T='${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration'; grep -A1 -E '^ +boardProtocol:' \"\$T/template.yaml\" >/dev/null && awk '/boardProtocol:/{f=1} f&&/default:/{print; exit}' \"\$T/template.yaml\" | grep -q 'outcome-board/v2' && n=\$((n+1)); ! grep -q 'outcome-authority' \"\$T/skeleton/devfile.yaml\" && n=\$((n+1)); echo \$n" \
+  "n=0; T='${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration'; grep -A1 -E '^ +boardProtocol:' \"\$T/template.yaml\" >/dev/null && awk '/boardProtocol:/{f=1} f&&/default:/{print; exit}' \"\$T/template.yaml\" | grep -q 'outcome-board/v2' && n=\$((n+1)); ! grep -q 'outcome-authority' \"\$T/skeleton/devfile.yaml\" && n=\$((n+1)); echo \$n" \
   "2"
 check "080 the producer registers v2 hooks without a reconciler (outcome-board-hooks selftest)" \
-  "python3 '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/outcome-board-hooks.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "python3 '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/outcome-board-hooks.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
 check "080 K2 refuses hand-written native-control records and reserved attachments" \
   "grep -c 'native-control\\] records are written by' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
@@ -559,7 +559,7 @@ check "080 a retry after a loop stop starts escalated only on a loop_escalation 
   "PYTHONDONTWRITEBYTECODE=1 python3 '${SCAFFOLD_KERNEL}/worker_launch.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
 check "080 the producer installs the run budgets and the worker launch shim (run-budgets-hooks selftest)" \
-  "python3 '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/devspaces/run-budgets-hooks.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "python3 '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/run-budgets-hooks.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
   "1"
 check "080 K2 implementer complete is request_review" \
   "tr -d '\n' < '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | sed 's/\"[[:space:]]*\"//g' | grep -c 'implementer terminator is kanban_request_review' || echo 0" \
@@ -680,7 +680,7 @@ check "080 launch preflight preserves pinned images and worker identity without 
   "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_TEST_OK || echo RUN_PREFLIGHT_TEST_FAILED" \
   "RUN_PREFLIGHT_TEST_OK"
 check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
-  "T='${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
+  "T='${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
   "FACTORY_DECLARES_RUN"
 check "080 build-worklist reports failures without repeating verification" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/planning/build-worklist/scripts/build-worklist.test.py' >/dev/null && echo 1 || echo 0" \
@@ -733,19 +733,19 @@ check "080 K4 mint refuses a fixed m4-verify key" \
   "grep -c 'key == \"m4-verify\"' '${SCAFFOLD_KERNEL}/k4_mint.py' || echo 0" \
   "1"
 check "080 RHDH autoStartMigration parameter defaults true" \
-  "grep -A6 'autoStartMigration:' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' | grep -c 'default: true' || echo 0" \
+  "grep -A6 'autoStartMigration:' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' | grep -c 'default: true' || echo 0" \
   "1"
 check "080 destfile stamps AUTO_START_MIGRATION" \
-  "grep -c 'AUTO_START_MIGRATION' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "grep -c 'AUTO_START_MIGRATION' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "1"
 check "080 RHDH template has no needsDatabase parameter" \
-  "grep -c 'needsDatabase' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' || echo 0" \
+  "grep -c 'needsDatabase' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' || echo 0" \
   "0"
 check "080 skeleton ships postgres as k8s-templates not cut-time k8s/" \
-  "test -f '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s-templates/postgres.yaml' && test ! -f '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s/postgres.yaml' && echo 1 || echo 0" \
+  "test -f '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s-templates/postgres.yaml' && test ! -f '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s/postgres.yaml' && echo 1 || echo 0" \
   "1"
 check "080 skeleton app.yaml is not Jinja-gated on needsDatabase" \
-  "grep -c 'needsDatabase' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s/app.yaml' || echo 0" \
+  "grep -c 'needsDatabase' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s/app.yaml' || echo 0" \
   "0"
 check "080 golden migration.yaml has no needsDatabase field" \
   "grep -c 'needsDatabase' '${SCAFFOLD_080}/migration.yaml' || echo 0" \
@@ -917,7 +917,7 @@ check "080 yamlite parses idFields: [id] without PyYAML" \
   "python3 '${SCAFFOLD_LIB}/planner/yamlite.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "app-migration stamp idFields is yamlite block form" \
-  "if grep -qF 'idFields: [id]' '$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/migration.yaml'; then echo FLOW; else echo BLOCK; fi" \
+  "if grep -qF 'idFields: [id]' '$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/migration.yaml'; then echo FLOW; else echo BLOCK; fi" \
   "BLOCK"
 check "080 fix-until-green loop selftest passes (bootstrap → baseline → accept/revert/defer → M4)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/fix-until-green.test.py' >/dev/null && echo 1 || echo 0" \
@@ -1039,8 +1039,8 @@ check "080 the datasource checker reads the selected profile's overrides, and an
 # ones that, if they slipped, would put two runs back on one database -- or
 # deliver nothing at all -- without anyone noticing.
 # ---------------------------------------------------------------------------
-APP_MIGRATION_TMPL="$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration"
-PIPELINES_BUILD="$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/pipelines/build"
+APP_MIGRATION_TMPL="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration"
+PIPELINES_BUILD="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/pipelines/build"
 check "080 the golden decisions.yaml names no shared parity database" \
   "grep -c 'petclinic-parity-postgres' '${SCAFFOLD_080}/decisions.yaml' || echo 0" \
   "0"
@@ -1078,7 +1078,7 @@ check "080 no Argo CD Application is created over a self-service destination rep
   "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/triggers.yaml').read_text()); d=[x for x in t.split(chr(10)+'---'+chr(10)) if 'migration-run-resources-template' in x and 'TriggerTemplate' in x][0]; print('open' if 'kind: Application' in d or 'repoURL' in d else 'platform')\"" \
   "platform"
 check "080 the provisioner identity cannot be selected by a workload in the workspace namespace" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/migration-run-resources-rbac.yaml').read_text()); m=re.search(r'kind: ServiceAccount.*?namespace: (\S+)', t, re.S); print(m.group(1) if m else 'absent')\"" \
+  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/migration-run-resources-rbac.yaml').read_text()); m=re.search(r'kind: ServiceAccount.*?namespace: (\S+)', t, re.S); print(m.group(1) if m else 'absent')\"" \
   "app-platform-build"
 check "080 provisioning is bound to the scaffolding event, and a retired run cannot be resurrected" \
   "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/triggers.yaml').read_text()); k=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(sum(1 for p in ['body.created == true','body.forced == false'] if p in t) + sum(1 for p in ['phase=retired','was retired','was provisioned from'] if p in k))\"" \
@@ -1097,7 +1097,7 @@ check "080 no include pattern carries a suffix wildcard or a second pattern" \
   "sed 's/^[[:space:]]*#.*//' '${PIPELINES_BUILD}/task-provision-migration-run.yaml' | grep 'mount-to-devworkspace-include:' | grep -cE '[*,]' || true" \
   "0"
 check "080 the platform fixture source is data, never a namespace-wide mount" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/migration-fixture-credentials-source.yaml').read_text()); print('mounted' if 'mount-to-devworkspace' in t else 'source-only')\"" \
+  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/migration-fixture-credentials-source.yaml').read_text()); print('mounted' if 'mount-to-devworkspace' in t else 'source-only')\"" \
   "source-only"
 # The architect drove reset-parity-db.sh with an UNSTAMPED destination and with
 # another run's URL and reached the Java reset runner. The same ownership
@@ -1121,10 +1121,10 @@ check "080 the app-migration template marks its repos for the migration-run disp
   "python3 -c \"import re,pathlib; t=pathlib.Path('${APP_MIGRATION_TMPL}/template.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*\$','',t); print(t.count('rhoai3-migration-run'))\"" \
   "1"
 check "080 the shared namespace-wide parity stack is retired, and nothing reintroduces it" \
-  "find '$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces' -maxdepth 1 \\( -name 'migration-parity-database.yaml' -o -name 'petclinic-parity-credentials.yaml' \\) 2>/dev/null | wc -l | tr -d ' '" \
+  "find '$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces' -maxdepth 1 \\( -name 'migration-parity-database.yaml' -o -name 'petclinic-parity-credentials.yaml' \\) 2>/dev/null | wc -l | tr -d ' '" \
   "0"
 check "080 a run credential is never mounted namespace-wide: only the run's own provisioner publishes one" \
-  "for f in \$(grep -rl -E 'PETCLINIC_(DB|ADMIN|INVALID)' '$REPO_ROOT/gitops/stages/060-advanced-app-platform/base/devspaces/' 2>/dev/null); do sed 's/#.*//' \"\$f\" | grep -q 'mount-to-devworkspace' && echo \"\$f\" || :; done | wc -l | tr -d ' '" \
+  "for f in \$(grep -rl -E 'PETCLINIC_(DB|ADMIN|INVALID)' '$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/' 2>/dev/null); do sed 's/#.*//' \"\$f\" | grep -q 'mount-to-devworkspace' && echo \"\$f\" || :; done | wc -l | tr -d ' '" \
   "0"
 check "080 an authenticated replay keeps its password reference through the request digest" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys,tempfile; sys.path.insert(0,'.hermes/skills/gates/capture-source-oracles/scripts'); from pathlib import Path; from _scenarios import request_of; r=request_of(Path(tempfile.mkdtemp()), {'id':'x','entry_point':'e','method':'GET','path':'/a','body_absent':True,'identity':{'kind':'basic','user_env':'U','password_env':'P'}}); print('ok' if r['identity'].get('password_env')=='P' else 'dropped')\"" \
@@ -1250,7 +1250,7 @@ check "080 init-spec-workspace skill is removed" \
   "test ! -d '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace' && echo absent || echo present" \
   "absent"
 check "080 destfile does not call Spec Kit init-workspace.sh" \
-  "grep -E 'init-workspace.sh|init-spec-workspace' '${REPO_ROOT}/gitops/stages/060-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' '${SCAFFOLD_080}/devfile.yaml' >/dev/null && echo present || echo absent" \
+  "grep -E 'init-workspace.sh|init-spec-workspace' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' '${SCAFFOLD_080}/devfile.yaml' >/dev/null && echo present || echo absent" \
   "absent"
 check "080 dest-init does not install specify PATH shim" \
   "grep -c 'specify-from-project.sh' '${GITOPS_INIT}' || echo 0" \
