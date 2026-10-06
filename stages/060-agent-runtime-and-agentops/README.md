@@ -67,7 +67,7 @@ OpenShell controls sandbox execution and access. OpenCode and Hermes run the dev
 
 ## Deploy And Validate
 
-The agent runtime remains **planned**. The first deployment slice configures a dedicated identity realm; it does not launch a gateway or agents. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
+The authenticated control plane and native sandbox controller are available. Standalone agent qualification is still in progress; completing this stage requires OpenCode, Hermes, catalog discovery and selected-call tracing. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
 
 ## References
 
