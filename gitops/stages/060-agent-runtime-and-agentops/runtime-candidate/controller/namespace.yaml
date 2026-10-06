@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: stage060-agent-sandbox-operator
+  name: agent-sandbox-system
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/name: openshell

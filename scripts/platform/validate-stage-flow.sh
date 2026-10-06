@@ -71,6 +71,9 @@ def load_mapping(path):
         fail(f"{path.relative_to(repo)} could not be read: {exc}")
         return {}
 
+    if lines and lines[0].lstrip().startswith("{"):
+        import json
+        return json.loads("\n".join(lines))
     root = {}
     stack = [root]
     indents = [-1]
@@ -118,6 +121,7 @@ stage_name_re = re.compile(r"^(\d{3})-.+")
 seen_ids = []
 gitops_stage_names = set()
 gitops_paths = []
+application_names = set()
 
 for stage_dir in stage_dirs:
     name = stage_dir.name
@@ -174,8 +178,10 @@ for stage_dir in stage_dirs:
     annotations = metadata.get("annotations") or {}
     expected_path = f"gitops/stages/{name}/" + ("overlays/environment" if stage_id == "020" else "base")
 
-    if metadata.get("name") != name:
-        fail(f"stage {stage_id} Argo CD app metadata.name must match {name}")
+    app_name = metadata.get("name")
+    if not isinstance(app_name, str) or not app_name or app_name in application_names:
+        fail(f"stage {stage_id} Argo CD app requires a unique metadata.name")
+    application_names.add(app_name)
     if spec.get("project") != "rhoai-demo":
         fail(f"stage {stage_id} Argo CD app project must be rhoai-demo")
     if source.get("path") != expected_path:
@@ -194,16 +200,21 @@ if stage_dirs and not gitops_stage_names:
     fail("no GitOps stages found: every workshop needs at least one stages/*/deploy.sh")
 
 if app_root.is_dir():
+    deployed_names = set()
     for app_path in sorted(app_root.glob("*.yaml")):
-        name = app_path.stem
-        if not stage_name_re.fullmatch(name):
-            fail(f"Argo CD app filename should be NNN-slug.yaml: {app_path.relative_to(repo)}")
-            continue
-        if name not in gitops_stage_names:
-            fail(
-                f"Argo CD app {app_path.relative_to(repo)} has no matching "
-                f"stages/{name}/deploy.sh"
-            )
+        app = load_mapping(app_path)
+        metadata = app.get("metadata") or {}
+        source = (app.get("spec") or {}).get("source") or {}
+        app_name = metadata.get("name")
+        parts = source.get("path", "").split("/")
+        stage_name = parts[2] if len(parts) > 3 and parts[:2] == ["gitops", "stages"] else None
+        if stage_name not in gitops_stage_names:
+            fail(f"Argo CD app {app_path.relative_to(repo)} has no matching stage deploy.sh/source path")
+        elif (metadata.get("labels") or {}).get("demo.rhoai.io/stage") != stage_name[:3]:
+            fail(f"Argo CD app {app_path.relative_to(repo)} has mismatched stage label")
+        if not app_name or app_name in deployed_names:
+            fail(f"Argo CD app {app_path.relative_to(repo)} requires unique metadata.name")
+        deployed_names.add(app_name)
 
 if gitops_stages_root.is_dir():
     for gitops_dir in sorted(path for path in gitops_stages_root.iterdir() if path.is_dir()):

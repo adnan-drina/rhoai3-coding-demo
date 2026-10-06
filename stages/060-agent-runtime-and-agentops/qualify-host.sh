@@ -15,10 +15,10 @@ check_oc_logged_in
 oc() { command oc --request-timeout=15s "$@"; }
 command -v python3 >/dev/null
 umask 077
-EVIDENCE_DIR="${2:-$(mktemp -d "${TMPDIR:-/tmp}/stage060-qualification.XXXXXX")}"
+EVIDENCE_DIR="${2:-$(mktemp -d "${TMPDIR:-/tmp}/openshell-qualification.XXXXXX")}"
 mkdir -p "$EVIDENCE_DIR"
 chmod 700 "$EVIDENCE_DIR"
-PROBE_NS="stage060-qualification-$(date +%s)-$$"
+PROBE_NS="openshell-qualification-$(date +%s)-$$"
 NAMESPACE_UID=""
 cleanup() {
     local original_status=$?
@@ -56,7 +56,7 @@ gid=int(annotations.get('openshift.io/sa.scc.supplemental-groups',annotations['o
 assert uid>0 and gid>0
 nodes=json.loads((p/'nodes-private.json').read_text())['items']
 node=next(x['metadata']['name'] for x in nodes if 'node-role.kubernetes.io/worker' in x['metadata'].get('labels',{}) and not any(k in x['metadata'].get('labels',{}) for k in ('node-role.kubernetes.io/master','node-role.kubernetes.io/control-plane')) and x['metadata'].get('labels',{}).get('kubernetes.io/arch')=='amd64' and not any(t.get('effect') in ('NoSchedule','NoExecute') for t in x['spec'].get('taints',[])) and x['status'].get('allocatable',{}).get('nvidia.com/gpu','0')=='0' and not x['spec'].get('unschedulable') and any(c['type']=='Ready' and c['status']=='True' for c in x['status']['conditions']))
-labels={'app.kubernetes.io/name':'stage060-host-qualification','app.kubernetes.io/part-of':'rhoai3-coding-demo'}
+labels={'app.kubernetes.io/name':'openshell-host-qualification','app.kubernetes.io/part-of':'rhoai3-coding-demo'}
 spec={'automountServiceAccountToken':False,'restartPolicy':'Never','nodeSelector':{'kubernetes.io/hostname':node},'securityContext':{'runAsNonRoot':True,'runAsUser':uid,'runAsGroup':gid,'seccompProfile':{'type':'RuntimeDefault'},'sysctls':[{'name':'net.ipv4.ip_unprivileged_port_start','value':'0'}]},'containers':[{'name':'probe','image':'ghcr.io/nvidia/openshell/sandbox@sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f','command':['/openshell-sandbox','capability-probe'],'securityContext':{'allowPrivilegeEscalation':False,'readOnlyRootFilesystem':True,'capabilities':{'drop':['ALL']}},'resources':{'requests':{'cpu':'20m','memory':'64Mi'},'limits':{'cpu':'200m','memory':'128Mi'}},'volumeMounts':[{'name':'temporary','mountPath':'/tmp'}]}],'volumes':[{'name':'temporary','emptyDir':{'sizeLimit':'8Mi'}}]}
 job={'apiVersion':'batch/v1','kind':'Job','metadata':{'name':'native-capability-probe','namespace':ns,'labels':labels},'spec':{'backoffLimit':0,'activeDeadlineSeconds':180,'template':{'metadata':{'labels':labels},'spec':spec}}}
 (p/'job-private.json').write_text(json.dumps(job)+'\n')

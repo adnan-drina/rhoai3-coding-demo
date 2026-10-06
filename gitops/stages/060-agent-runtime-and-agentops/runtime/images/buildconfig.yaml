@@ -1,7 +1,7 @@
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
-  name: stage060-opencode
+  name: opencode-runtime
   namespace: openshell
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
@@ -22,7 +22,7 @@ spec:
   output:
     to:
       kind: ImageStreamTag
-      name: stage060-opencode:1.18.16
+      name: opencode-runtime:1.18.16
   resources:
     requests:
       cpu: 100m

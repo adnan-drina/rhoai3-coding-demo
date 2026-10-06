@@ -2,7 +2,7 @@
 """Initialize only retained customer runtime keys and verify native controller readiness."""
 import argparse,base64,json,os,pathlib,secrets,subprocess,urllib.request
 p=argparse.ArgumentParser();p.add_argument('--revision',required=True);p.add_argument('--prepare-only',action='store_true');args=p.parse_args()
-ROOT=pathlib.Path(__file__).resolve().parents[2];APP='060-agent-runtime-and-agentops-runtime';NS='openshell';OPNS='stage060-agent-sandbox-operator';CSV='agent-sandbox-operator.v0.9.0'
+ROOT=pathlib.Path(__file__).resolve().parents[2];APP='openshell-runtime';NS='openshell';OPNS='agent-sandbox-system';CSV='agent-sandbox-operator.v0.9.0'
 g=subprocess.run(['bash','-c','REPO_ROOT="$1";source "$1/scripts/shared/lib.sh";load_env;check_oc_logged_in','guard',str(ROOT)],capture_output=True,text=True);assert g.returncode==0,'Shared guard failed'
 assert subprocess.check_output(['git','-C',str(ROOT),'show',args.revision+':'+str(pathlib.Path(__file__).resolve().relative_to(ROOT))])==pathlib.Path(__file__).read_bytes(),'Published helper content differs'
 def oc(*a,payload=None):
@@ -15,7 +15,7 @@ source={'repoURL':'https://github.com/adnan-drina/rhoai3-coding-demo.git','targe
 assert s['source']==source and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':NS}
 operation=app['status']['operationState'];assert operation['phase'] in ('Running','Succeeded') and operation['syncResult']['revision']==args.revision and operation['syncResult']['source']==source
 assert 'RespectIgnoreDifferences=true' in s['syncPolicy']['syncOptions']
-for kind,name,pointers in [('Secret','stage060-openshell-credentials',['/data/key-encryption-key']),('ConfigMap','stage060-openshell-identity',['/data/issuer']),('ConfigMap','stage060-runtime-ready',['/data/controller-ready','/data/source-revision','/data/controller-csv-uid'])]:
+for kind,name,pointers in [('Secret','openshell-credentials',['/data/key-encryption-key']),('ConfigMap','openshell-identity',['/data/issuer']),('ConfigMap','openshell-runtime-ready',['/data/controller-ready','/data/source-revision','/data/controller-csv-uid'])]:
     assert any(i.get('group','')=='' and i.get('kind')==kind and i.get('name')==name and i.get('namespace')==NS and i.get('jsonPointers')==pointers for i in s.get('ignoreDifferences',[])),'Missing narrow runtime field delegation'
 def tracked(obj):
     m=obj['metadata'];group=obj['apiVersion'].split('/')[0] if '/' in obj['apiVersion'] else ''
@@ -23,7 +23,7 @@ def tracked(obj):
     assert m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')==expected and not m.get('ownerReferences') and not m.get('deletionTimestamp'),'Foreign runtime object'
     return obj
 tracked(get('namespace',NS))
-identity=tracked(get('configmap','stage060-openshell-identity'));ready=tracked(get('configmap','stage060-runtime-ready'));credential=tracked(get('secret','stage060-openshell-credentials'))
+identity=tracked(get('configmap','openshell-identity'));ready=tracked(get('configmap','openshell-runtime-ready'));credential=tracked(get('secret','openshell-credentials'))
 pvcs=oc('get','pvc','-n',NS,'-o','json');assert isinstance(pvcs.get('items'),list)
 value=credential.get('data',{}).get('key-encryption-key')
 if value:

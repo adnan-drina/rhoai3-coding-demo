@@ -1,0 +1,9 @@
+# Temporary naming-handoff hold. Remove only after the replacement controller
+# is current/Ready and retained credentials/state have been verified.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openshell
+  namespace: openshell
+spec:
+  replicas: 0

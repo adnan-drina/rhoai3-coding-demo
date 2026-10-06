@@ -7,7 +7,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 guard=subprocess.run(['bash','-c','REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in','stage060-guard',str(ROOT)],capture_output=True,text=True)
 assert guard.returncode==0,'Shared environment/login guard failed'
 assert subprocess.check_output(['git','-C',str(ROOT),'show',args.revision+':'+str(pathlib.Path(__file__).resolve().relative_to(ROOT))])==pathlib.Path(__file__).read_bytes(),'Helper differs from selected published source'
-APP='060-agent-runtime-and-agentops';REALM='openshell';NS='keycloak';MARKER='rhoai3-coding-demo';BROKER='stage060-openshell-broker'
+APP='openshell-identity';REALM='openshell';NS='keycloak';MARKER='rhoai3-coding-demo';BROKER='openshell-broker'
 class IdentityFailure(RuntimeError):
     def __init__(self,status):self.status=status;super().__init__('Identity API status '+str(status))
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -55,21 +55,21 @@ def identity_preflight():
     realm=api('',optional=True)
     broker=None;bootstrap_clients=[]
     if realm:
-        assert realm.get('attributes',{}).get('stage060-managed')==MARKER,'Foreign realm'
+        assert realm.get('attributes',{}).get('openshell-managed')==MARKER,'Foreign realm'
         defaults=api('/roles/default-roles-openshell/composites')
         assert not any(x['name']=='openshell-platform-admin' for x in defaults),'Administrative default role'
         for client_name in ('openshell-cli','openshell-bootstrap'):
             found=api('/clients?clientId='+client_name);assert len(found)<=1
             if client_name=='openshell-bootstrap':bootstrap_clients=found
-            if found:assert found[0].get('attributes',{}).get('stage060-managed')==MARKER,'Foreign client'
+            if found:assert found[0].get('attributes',{}).get('openshell-managed')==MARKER,'Foreign client'
         broker=api('/identity-provider/instances/openshift-v4',optional=True)
         if broker:
-            assert broker['providerId']=='openshift-v4' and broker['config'].get('clientId')==BROKER and broker['config'].get('stage060-managed')==MARKER,'Foreign broker'
+            assert broker['providerId']=='openshift-v4' and broker['config'].get('clientId')==BROKER and broker['config'].get('openshell-managed')==MARKER,'Foreign broker'
         for name in ('ai-admin','ai-developer'):
             external=oc('get','user',name,'-o','json')['metadata']['uid']
             found=api('/users?username='+name+'&exact=true');assert len(found)<=1
             if found:
-                u=found[0];assert u.get('attributes',{}).get('stage060-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external],'Foreign user'
+                u=found[0];assert u.get('attributes',{}).get('openshell-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external],'Foreign user'
                 assert not api('/users/'+u['id']+'/groups'),'Unexpected group role grants'
                 effective=api('/users/'+u['id']+'/role-mappings/realm/composite')
                 assert not any(x['name']=='openshell-platform-admin' for x in effective),'Composite admin grant'
@@ -77,14 +77,14 @@ def identity_preflight():
                 links=api('/users/'+u['id']+'/federated-identity')
                 assert not links or links==[{'identityProvider':'openshift-v4','userId':external,'userName':name}],'Foreign broker identity'
     objects={}
-    for kind,name,namespace in [('keycloakrealmimport','stage060-openshell',NS),('secret','stage060-openshell-auth',NS),('oauthclient',BROKER,None)]:
+    for kind,name,namespace in [('keycloakrealmimport','openshell-realm',NS),('secret','openshell-auth',NS),('oauthclient',BROKER,None)]:
         call=['get',kind,name]
         if namespace:call+=['-n',namespace]
         obj=oc(*call,'-o','json',optional=True);objects[kind]=obj
         if obj:
             m=obj['metadata'];assert not m.get('deletionTimestamp') and not m.get('ownerReferences'),'Foreign/terminating identity object'
-            if kind=='keycloakrealmimport':assert obj['spec']['keycloakCRName']=='keycloak' and obj['spec']['realm'].get('attributes',{}).get('stage060-managed')==MARKER
-            else:assert m.get('labels',{}).get('app.kubernetes.io/managed-by')=='stage060-identity'
+            if kind=='keycloakrealmimport':assert obj['spec']['keycloakCRName']=='keycloak' and obj['spec']['realm'].get('attributes',{}).get('openshell-managed')==MARKER
+            else:assert m.get('labels',{}).get('app.kubernetes.io/managed-by')=='openshell-identity'
     runtime=objects['secret'];oauth=objects['oauthclient'];seed=objects['keycloakrealmimport']
     if runtime:
         assert seed and runtime['metadata']['annotations']['demo.rhoai.io/realm-import-uid']==seed['metadata']['uid'],'Foreign credential owner'
@@ -103,9 +103,9 @@ if not args.preflight:
         try:api('/roles')
         except IdentityFailure as failure:
             if failure.status!=403:raise
-            seed=oc('get','keycloakrealmimport','stage060-openshell','-n',NS,'-o','json')
-            assert seed['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==APP+':k8s.keycloak.org/KeycloakRealmImport:keycloak/stage060-openshell'
-            assert seed['spec']['keycloakCRName']=='keycloak' and seed['spec']['realm']['attributes']['stage060-managed']==MARKER
+            seed=oc('get','keycloakrealmimport','openshell-realm','-n',NS,'-o','json')
+            assert seed['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==APP+':k8s.keycloak.org/KeycloakRealmImport:keycloak/openshell-realm'
+            assert seed['spec']['keycloakCRName']=='keycloak' and seed['spec']['realm']['attributes']['openshell-managed']==MARKER
             assert any(c['type']=='Done' and c['status']=='True' for c in seed['status']['conditions'])
             username=base64.b64decode(admin['data']['username']).decode()
             users=request('/admin/realms/master/users?username='+urllib.parse.quote(username)+'&exact=true',token=token);assert len(users)==1
@@ -118,13 +118,13 @@ identity_preflight()
 if args.preflight:
     print('Identity preflight PASS; no mutation')
     raise SystemExit(0)
-realm=api('');assert realm.get('attributes',{}).get('stage060-managed')==MARKER,'Foreign realm'
+realm=api('');assert realm.get('attributes',{}).get('openshell-managed')==MARKER,'Foreign realm'
 assert realm['registrationAllowed'] is False and realm['editUsernameAllowed'] is False
 flow=next(x for x in api('/authentication/flows') if x['alias']=='openshell-prelinked-only')
 executions=api('/authentication/flows/openshell-prelinked-only/executions');assert len(executions)==1 and executions[0]['providerId']=='deny-access-authenticator' and executions[0]['requirement']=='REQUIRED'
 # Native User Profile discards undeclared attributes; declare only our two admin-owned fields.
 profile=api('/users/profile')
-expected_attributes=[{'name':'stage060-managed','permissions':{'view':['admin'],'edit':['admin']},'multivalued':False},{'name':'openshift-uid','permissions':{'view':['admin'],'edit':['admin']},'multivalued':False}]
+expected_attributes=[{'name':'openshell-managed','permissions':{'view':['admin'],'edit':['admin']},'multivalued':False},{'name':'openshift-uid','permissions':{'view':['admin'],'edit':['admin']},'multivalued':False}]
 changed=False
 for desired in expected_attributes:
     existing=[x for x in profile['attributes'] if x['name']==desired['name']];assert len(existing)<=1
@@ -133,19 +133,19 @@ for desired in expected_attributes:
 if changed:api('/users/profile','PUT',profile)
 confirmed=api('/users/profile')
 assert all(any(all(x.get(k)==v for k,v in desired.items()) for x in confirmed['attributes']) for desired in expected_attributes)
-import_cr=oc('get','keycloakrealmimport','stage060-openshell','-n',NS,'-o','json');import_uid=import_cr['metadata']['uid']
+import_cr=oc('get','keycloakrealmimport','openshell-realm','-n',NS,'-o','json');import_uid=import_cr['metadata']['uid']
 # Fail before credential/OAuth writes if an existing curated account is foreign.
 for name in ('ai-admin','ai-developer'):
     user=oc('get','user',name,'-o','json');external_id=user['metadata']['uid']
     found=api('/users?username='+name+'&exact=true');assert len(found)<=1
     if found:
-        u=found[0];assert u.get('attributes',{}).get('stage060-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external_id],'Foreign curated identity'
+        u=found[0];assert u.get('attributes',{}).get('openshell-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external_id],'Foreign curated identity'
         links=api('/users/'+u['id']+'/federated-identity')
         assert not links or links==[{'identityProvider':'openshift-v4','userId':external_id,'userName':name}],'Foreign broker link'
-owned=oc('get','secret','stage060-openshell-auth','-n',NS,'-o','json',optional=True)
+owned=oc('get','secret','openshell-auth','-n',NS,'-o','json',optional=True)
 def metadata_owned(x):
     m=x['metadata'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp')
-    assert m.get('labels',{}).get('app.kubernetes.io/managed-by')=='stage060-identity'
+    assert m.get('labels',{}).get('app.kubernetes.io/managed-by')=='openshell-identity'
     assert m.get('annotations',{}).get('demo.rhoai.io/realm-import-uid')==import_uid
 if owned:
     metadata_owned(owned);values={k:base64.b64decode(v).decode() for k,v in owned['data'].items()}
@@ -153,10 +153,10 @@ if owned:
 else:
     assert oc('get','oauthclient',BROKER,'-o','json',optional=True) is None,'Partial foreign credential state'
     values={k:secrets.token_urlsafe(48) for k in ('broker-client-secret','bootstrap-client-secret')}
-    owned={'apiVersion':'v1','kind':'Secret','metadata':{'name':'stage060-openshell-auth','namespace':NS,'labels':{'app.kubernetes.io/managed-by':'stage060-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'type':'Opaque','stringData':values}
+    owned={'apiVersion':'v1','kind':'Secret','metadata':{'name':'openshell-auth','namespace':NS,'labels':{'app.kubernetes.io/managed-by':'openshell-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'type':'Opaque','stringData':values}
     oc('create','-f','-','-o','json',payload=owned)
 redirect=issuer+'/broker/openshift-v4/endpoint'
-oauth={'apiVersion':'oauth.openshift.io/v1','kind':'OAuthClient','metadata':{'name':BROKER,'labels':{'app.kubernetes.io/managed-by':'stage060-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'secret':values['broker-client-secret'],'redirectURIs':[redirect],'grantMethod':'prompt','scopeRestrictions':[{'literals':['user:info']}]}
+oauth={'apiVersion':'oauth.openshift.io/v1','kind':'OAuthClient','metadata':{'name':BROKER,'labels':{'app.kubernetes.io/managed-by':'openshell-identity','demo.rhoai.io/stage':'060'},'annotations':{'demo.rhoai.io/realm-import-uid':import_uid}},'secret':values['broker-client-secret'],'redirectURIs':[redirect],'grantMethod':'prompt','scopeRestrictions':[{'literals':['user:info']}]}
 old=oc('get','oauthclient',BROKER,'-o','json',optional=True)
 if old:
     metadata_owned(old);assert old['secret']==oauth['secret'],'Credential rotation refused'
@@ -167,18 +167,18 @@ if old:
     with tempfile.NamedTemporaryFile(mode='w',prefix='stage060-patch-',delete=True) as f:
         json.dump(changes,f);f.flush();oc('patch','oauthclient',BROKER,'--type=json','--patch-file='+f.name,'-o','json')
 else:oc('create','-f','-','-o','json',payload=oauth)
-idp={'alias':'openshift-v4','displayName':'OpenShift','providerId':'openshift-v4','enabled':True,'trustEmail':False,'storeToken':False,'addReadTokenRoleOnCreate':False,'firstBrokerLoginFlowAlias':'openshell-prelinked-only','config':{'baseUrl':server,'clientId':BROKER,'clientSecret':values['broker-client-secret'],'defaultScope':'user:info','syncMode':'IMPORT','stage060-managed':MARKER}}
+idp={'alias':'openshift-v4','displayName':'OpenShift','providerId':'openshift-v4','enabled':True,'trustEmail':False,'storeToken':False,'addReadTokenRoleOnCreate':False,'firstBrokerLoginFlowAlias':'openshell-prelinked-only','config':{'baseUrl':server,'clientId':BROKER,'clientSecret':values['broker-client-secret'],'defaultScope':'user:info','syncMode':'IMPORT','openshell-managed':MARKER}}
 existing=api('/identity-provider/instances/openshift-v4',optional=True)
 if existing:assert existing['providerId']=='openshift-v4' and existing['config']['clientId']==BROKER
 api('/identity-provider/instances'+('/openshift-v4' if existing else ''),'PUT' if existing else 'POST',idp)
 roles={name:api('/roles/'+name) for name in ('openshell-user','openshell-platform-admin')}
 mapper={'name':'openshell-resource-audience','protocol':'openid-connect','protocolMapper':'oidc-audience-mapper','consentRequired':False,'config':{'included.client.audience':'openshell-gateway','id.token.claim':'false','access.token.claim':'true','introspection.token.claim':'true'}}
-clients=[{'clientId':'openshell-cli','publicClient':True,'standardFlowEnabled':True,'directAccessGrantsEnabled':False,'redirectUris':['http://127.0.0.1/*'],'attributes':{'pkce.code.challenge.method':'S256','oauth2.device.authorization.grant.enabled':'true','stage060-managed':MARKER}}, {'clientId':'openshell-bootstrap','publicClient':False,'standardFlowEnabled':False,'directAccessGrantsEnabled':False,'serviceAccountsEnabled':True,'secret':values['bootstrap-client-secret'],'attributes':{'stage060-managed':MARKER}}]
+clients=[{'clientId':'openshell-cli','publicClient':True,'standardFlowEnabled':True,'directAccessGrantsEnabled':False,'redirectUris':['http://127.0.0.1/*'],'attributes':{'pkce.code.challenge.method':'S256','oauth2.device.authorization.grant.enabled':'true','openshell-managed':MARKER}}, {'clientId':'openshell-bootstrap','publicClient':False,'standardFlowEnabled':False,'directAccessGrantsEnabled':False,'serviceAccountsEnabled':True,'secret':values['bootstrap-client-secret'],'attributes':{'openshell-managed':MARKER}}]
 client_ids={}
 for c in clients:
     c.update({'enabled':True,'protocol':'openid-connect','fullScopeAllowed':False,'protocolMappers':[mapper]})
     found=api('/clients?clientId='+c['clientId']);assert len(found)<=1
-    if found:assert found[0].get('attributes',{}).get('stage060-managed')==MARKER
+    if found:assert found[0].get('attributes',{}).get('openshell-managed')==MARKER
     api('/clients'+('/'+found[0]['id'] if found else ''),'PUT' if found else 'POST',c)
     cid=api('/clients?clientId='+c['clientId'])[0]['id'];client_ids[c['clientId']]=cid
     names=['openshell-user'] if c['clientId']=='openshell-cli' else ['openshell-platform-admin']
@@ -190,14 +190,14 @@ for name in ('ai-admin','ai-developer'):
     user=oc('get','user',name,'-o','json');external_id=user['metadata']['uid'];assert external_id
     users=api('/users?username='+name+'&exact=true');assert len(users)<=1
     if not users:
-        created=api('/users','POST',{'username':name,'enabled':True,'emailVerified':False,'attributes':{'stage060-managed':[MARKER],'openshift-uid':[external_id]}})
-        evidence=pathlib.Path(tempfile.mkdtemp(prefix='stage060-identity-'))
+        created=api('/users','POST',{'username':name,'enabled':True,'emailVerified':False,'attributes':{'openshell-managed':[MARKER],'openshift-uid':[external_id]}})
+        evidence=pathlib.Path(tempfile.mkdtemp(prefix='openshell-identity-'))
         receipt=evidence/'user-created.json'
         fd=os.open(receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'w') as output:json.dump({'user_id':created['created_id'],'username':name,'source_revision':args.revision,'realm_import_uid':import_uid},output)
         users=api('/users?username='+name+'&exact=true')
         assert len(users)==1 and users[0]['id']==created['created_id'],'Creation identity mismatch'
-    u=users[0];assert u.get('attributes',{}).get('stage060-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external_id],'Foreign user'
+    u=users[0];assert u.get('attributes',{}).get('openshell-managed')==[MARKER] and u['attributes'].get('openshift-uid')==[external_id],'Foreign user'
     links=api('/users/'+u['id']+'/federated-identity');expected_link={'identityProvider':'openshift-v4','userId':external_id,'userName':name}
     if links:assert links==[expected_link],'Foreign federation link'
     else:api('/users/'+u['id']+'/federated-identity/openshift-v4','POST',expected_link)

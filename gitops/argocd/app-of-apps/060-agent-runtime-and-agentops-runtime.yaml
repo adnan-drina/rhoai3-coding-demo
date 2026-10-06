@@ -2,7 +2,7 @@
   "apiVersion": "argoproj.io/v1alpha1",
   "kind": "Application",
   "metadata": {
-    "name": "060-agent-runtime-and-agentops-runtime",
+    "name": "openshell-runtime",
     "namespace": "openshift-gitops",
     "labels": {
       "app.kubernetes.io/part-of": "rhoai3-coding-demo",
@@ -42,7 +42,7 @@
       {
         "group": "",
         "kind": "Secret",
-        "name": "stage060-openshell-credentials",
+        "name": "openshell-credentials",
         "namespace": "openshell",
         "jsonPointers": [
           "/data/key-encryption-key"
@@ -51,7 +51,7 @@
       {
         "group": "",
         "kind": "ConfigMap",
-        "name": "stage060-openshell-identity",
+        "name": "openshell-identity",
         "namespace": "openshell",
         "jsonPointers": [
           "/data/issuer"
@@ -60,7 +60,7 @@
       {
         "group": "",
         "kind": "ConfigMap",
-        "name": "stage060-runtime-ready",
+        "name": "openshell-runtime-ready",
         "namespace": "openshell",
         "jsonPointers": [
           "/data/controller-ready",

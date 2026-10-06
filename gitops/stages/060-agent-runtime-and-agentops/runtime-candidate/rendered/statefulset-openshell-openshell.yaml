@@ -41,7 +41,7 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: issuer
-              name: stage060-openshell-identity
+              name: openshell-identity
         - name: OPENSHELL_OIDC_AUDIENCE
           value: openshell-gateway
         - name: OPENSHELL_OIDC_ROLES_CLAIM
@@ -84,7 +84,7 @@ spec:
           valueFrom:
             secretKeyRef:
               key: key-encryption-key
-              name: stage060-openshell-credentials
+              name: openshell-credentials
         - name: OPENSHELL_TELEMETRY_ENABLED
           value: 'false'
         image: ghcr.io/nvidia/openshell/gateway@sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2

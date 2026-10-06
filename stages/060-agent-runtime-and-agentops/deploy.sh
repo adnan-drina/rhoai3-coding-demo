@@ -15,7 +15,7 @@ git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runt
 # Preflight is read-only; own App is the first write. Refuse foreign/active ownership.
 python3 - "$REVISION" <<'PY'
 import json,subprocess,sys
-r=subprocess.run(['oc','--request-timeout=15s','get','application','060-agent-runtime-and-agentops','-n','openshift-gitops','--ignore-not-found','-o','json'],capture_output=True,text=True)
+r=subprocess.run(['oc','--request-timeout=15s','get','application','openshell-identity','-n','openshift-gitops','--ignore-not-found','-o','json'],capture_output=True,text=True)
 assert r.returncode==0,'Application read failed'
 if r.stdout.strip():
  a=json.loads(r.stdout);m=a['metadata'];s=a['spec'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and 'sources' not in s and not a.get('operation')
@@ -31,9 +31,9 @@ sed "s/targetRevision: main/targetRevision: $REVISION/" "$APP_TEMPLATE" > "${TMP
 trap 'rm -f "${TMPDIR:-/tmp}/stage060-app-$$.json"' EXIT
 oc --request-timeout=15s apply -f "${TMPDIR:-/tmp}/stage060-app-$$.json"
 # Native core-mode CLI submits a full exact-revision operation, including native hooks.
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-agent-runtime-and-agentops --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --timeout 300
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-agent-runtime-and-agentops --app-namespace openshift-gitops --sync --operation --timeout 300
-oc --request-timeout=15s wait keycloakrealmimport/stage060-openshell -n keycloak --for=condition=Done --timeout=300s
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync openshell-identity --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --timeout 300
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-identity --app-namespace openshift-gitops --sync --operation --timeout 300
+oc --request-timeout=15s wait keycloakrealmimport/openshell-realm -n keycloak --for=condition=Done --timeout=300s
 python3 "$SCRIPT_DIR/setup-identity.py" --revision "$REVISION"
 "$SCRIPT_DIR/deploy-runtime.sh"
 echo 'Identity configured; runtime controller permission approval and persona handshake remain explicit gates.'

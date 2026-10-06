@@ -30,12 +30,12 @@ oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STAGE_NAME.yaml"
 
 Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 1. `gitops/stages/NNN-name/base/` - Kustomize manifests
-2. `gitops/argocd/app-of-apps/NNN-name.yaml` - ArgoCD Application whose `metadata.name` matches the directory
+2. `gitops/argocd/app-of-apps/NNN-name.yaml` - ArgoCD Application with a unique purpose-based `metadata.name`; its stage label and source path identify the workshop stage
 3. `stages/NNN-name/deploy.sh` - applies the ArgoCD Application
 4. `stages/NNN-name/validate.sh` - verifies deployment
 5. `stages/NNN-name/README.md` - educational narrative
 
-Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/platform/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and matches Applications by directory name.
+Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/platform/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and locates numbered Application files and validates their stage labels/source paths; deployed names are independent of directory names.
 
 **Never** apply manifests directly with `oc apply -k` for ArgoCD-managed resources.
 

@@ -2,12 +2,12 @@
   "apiVersion": "v1",
   "kind": "ConfigMap",
   "metadata": {
-    "name": "stage060-runtime-ready",
+    "name": "openshell-runtime-ready",
     "namespace": "openshell",
     "labels": {
       "app.kubernetes.io/part-of": "rhoai3-coding-demo",
       "demo.rhoai.io/stage": "060",
-      "app.kubernetes.io/name": "stage060-runtime-init"
+      "app.kubernetes.io/name": "openshell-runtime-init"
     },
     "annotations": {
       "argocd.argoproj.io/sync-wave": "-25"

@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 
 CSV = 'agent-sandbox-operator.v0.9.0'
-NS = 'stage060-agent-sandbox-operator'
-APP = '060-agent-runtime-and-agentops-runtime'
+NS = 'agent-sandbox-system'
+APP = 'openshell-runtime'
 REPO = 'https://github.com/adnan-drina/rhoai3-coding-demo.git'
 SOURCE = 'gitops/stages/060-agent-runtime-and-agentops/runtime'
 ROOT = Path(__file__).resolve().parents[2]

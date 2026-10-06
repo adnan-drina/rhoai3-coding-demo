@@ -36,14 +36,14 @@ key readability. Certgen also needs restricted-v2 admission qualification.
   approval; verify bundle/controller digest, served Sandbox schema and controller
   ownership before approval. This file is a candidate, not permission to install.
 - Existing identity reconciliation must supply ConfigMap
-  stage060-openshell-identity key issuer in namespace openshell. Issuer is injected
+  openshell-identity key issuer in namespace openshell. Issuer is injected
   through the documented OPENSHELL_OIDC_ISSUER override, with audience
   openshell-gateway and explicit role claim/admin/user role overrides. A missing
   ConfigMap fails Pod startup. No private issuer URL is committed.
 - Prove the gateway Rust TLS client trusts the actual issuer. If a custom CA is
   needed, use the native documented CA mount with the verified CA; do not invent
   a bundle or enable insecure TLS. Current candidate deliberately has no guessed CA.
-- Create and retain Secret stage060-openshell-credentials key key-encryption-key,
+- Create and retain Secret openshell-credentials key key-encryption-key,
   containing the native encoded 32-byte KEK. Never rotate it independently of the
   persisted credential database; do not generate random KEK during offline render.
 - Native PKI Job owns retained TLS/JWT Secrets. Verify its completion and gateway

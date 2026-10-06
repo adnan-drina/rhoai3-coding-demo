@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stage060-deny-direct-sandbox-router
-  namespace: stage060-agent-sandbox-operator
+  name: deny-direct-sandbox-router
+  namespace: agent-sandbox-system
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: '060'

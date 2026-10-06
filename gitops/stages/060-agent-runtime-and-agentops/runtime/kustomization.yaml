@@ -4,3 +4,5 @@ resources:
 - ../runtime-candidate
 - init
 - images
+patches:
+- path: migration-gateway-hold.yaml

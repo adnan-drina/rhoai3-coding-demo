@@ -15,13 +15,13 @@ REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HE
 git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml "$SCRIPT_DIR" >/dev/null
 if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
-  ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-agent-runtime-and-agentops-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
+  ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
   exit
 fi
 # Fail closed on foreign App or resource ownership before the first component write.
 python3 - "$REVISION" <<'PY'
 import json,subprocess,sys
-app='060-agent-runtime-and-agentops-runtime'
+app='openshell-runtime'
 def get(kind,name,ns):
  r=subprocess.run(['oc','--request-timeout=15s','get',kind,name,'-n',ns,'--ignore-not-found','-o','json'],capture_output=True,text=True)
  assert r.returncode==0,'Preflight read failed'
@@ -32,7 +32,7 @@ if a:
  assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/runtime'
  assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshell'}
  assert a.get('status',{}).get('operationState',{}).get('phase') not in ('Running','Terminating')
-for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','stage060-agent-sandbox-operator')]+[('Subscription','agent-sandbox-operator','stage060-agent-sandbox-operator'),('ConfigMap','stage060-openshell-identity','openshell'),('ConfigMap','stage060-runtime-ready','openshell'),('Secret','stage060-openshell-credentials','openshell')]:
+for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
  o=get(kind,name,ns)
  if o:
   m=o['metadata'];group=o['apiVersion'].split('/')[0] if '/' in o['apiVersion'] else ''
@@ -44,9 +44,9 @@ import json,pathlib,sys
 p=pathlib.Path(sys.argv[1])/'gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml'
 a=json.loads(p.read_text());a['spec']['source']['targetRevision']=sys.argv[2];print(json.dumps(a))
 PY
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-agent-runtime-and-agentops-runtime --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --async --timeout 300
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync openshell-runtime --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --async --timeout 300
 DEADLINE=$((SECONDS+180))
-until oc --request-timeout=10s get secret/stage060-openshell-credentials configmap/stage060-openshell-identity configmap/stage060-runtime-ready -n openshell >/dev/null 2>&1; do
+until oc --request-timeout=10s get secret/openshell-credentials configmap/openshell-identity configmap/openshell-runtime-ready -n openshell >/dev/null 2>&1; do
   (( SECONDS < DEADLINE )) || { echo 'Runtime prerequisite creation timed out' >&2; exit 1; }
   sleep 5
 done
@@ -55,7 +55,7 @@ python3 - "$REVISION" <<'PYWAIT'
 import json,subprocess,sys,time
 end=time.monotonic()+60
 while time.monotonic()<end:
- r=subprocess.run(['oc','--request-timeout=10s','get','application','060-agent-runtime-and-agentops-runtime','-n','openshift-gitops','-o','json'],capture_output=True,text=True)
+ r=subprocess.run(['oc','--request-timeout=10s','get','application','openshell-runtime','-n','openshift-gitops','-o','json'],capture_output=True,text=True)
  assert r.returncode==0,'Operation read failed'
  a=json.loads(r.stdout);o=a.get('status',{}).get('operationState',{});x=o.get('syncResult',{})
  if o.get('phase') in ('Running','Succeeded') and x.get('revision')==sys.argv[1] and x.get('source')==a['spec']['source']:break

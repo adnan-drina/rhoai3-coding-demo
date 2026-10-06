@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: stage060-opencode-pull
+  name: opencode-runtime-pull
   namespace: openshell
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
@@ -11,5 +11,5 @@ metadata:
 rules:
 - apiGroups: [image.openshift.io]
   resources: [imagestreams/layers]
-  resourceNames: [stage060-opencode]
+  resourceNames: [opencode-runtime]
   verbs: [get]

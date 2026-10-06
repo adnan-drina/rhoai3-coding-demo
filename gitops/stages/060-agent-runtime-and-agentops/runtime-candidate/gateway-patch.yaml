@@ -19,7 +19,7 @@
                 "name": "OPENSHELL_OIDC_ISSUER",
                 "valueFrom": {
                   "configMapKeyRef": {
-                    "name": "stage060-openshell-identity",
+                    "name": "openshell-identity",
                     "key": "issuer"
                   }
                 }

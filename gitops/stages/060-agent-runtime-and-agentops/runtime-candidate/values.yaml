@@ -64,7 +64,7 @@
       }
     },
     "credentialStorage": {
-      "existingSecret": "stage060-openshell-credentials"
+      "existingSecret": "openshell-credentials"
     },
     "sandboxJwt": {
       "secretDefaultMode": "0440"
