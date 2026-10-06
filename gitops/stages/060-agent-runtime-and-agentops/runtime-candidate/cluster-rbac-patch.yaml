@@ -63,6 +63,19 @@
         "list",
         "watch"
       ]
+    },
+    {
+      "apiGroups": [
+        "agents.x-k8s.io"
+      ],
+      "resources": [
+        "sandboxes"
+      ],
+      "verbs": [
+        "get",
+        "list",
+        "watch"
+      ]
     }
   ]
 }
