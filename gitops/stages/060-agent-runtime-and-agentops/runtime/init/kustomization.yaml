@@ -10,3 +10,4 @@ resources:
 - role.yaml
 - rolebinding.yaml
 - serviceaccount.yaml
+- router-networkpolicy.yaml

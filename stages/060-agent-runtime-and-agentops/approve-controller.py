@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Inventory the selected native OLM plan; approval requires its reviewed digest."""
 import argparse
+import base64
+import gzip
 import hashlib
 import json
 import re
@@ -46,6 +48,61 @@ def check_bindings(inventory):
     return bindings
 
 
+def resolve_entries(entries):
+    inventory = []
+    provenance = []
+    references = [json.loads(x['resource']['manifest']) for x in entries]
+    if not any(x.get('kind') == 'ConfigMap' and 'catalogSourceName' in x for x in references):
+        return references, provenance
+    require(all(x == references[0] for x in references), 'Mixed native bundle references')
+    ref = references[0]
+    require(ref.get('kind') == 'ConfigMap' and ref.get('namespace') == 'openshift-marketplace' and ref.get('catalogSourceName') == 'redhat-operators' and ref.get('catalogSourceNamespace') == 'openshift-marketplace' and re.fullmatch('[0-9a-f]{63}', ref.get('name', '')), 'Unexpected native bundle reference')
+    cm = oc('get', 'configmap', ref['name'], '-n', ref['namespace'], '-o', 'json')
+    meta = cm['metadata']
+    require(meta['name'] == ref['name'] and meta['namespace'] == ref['namespace'] and meta.get('uid') and not meta.get('deletionTimestamp'), 'Bundle ConfigMap identity mismatch')
+    catalog = oc('get', 'catalogsource', 'redhat-operators', '-n', 'openshift-marketplace', '-o', 'json')
+    require(any(x.get('kind') == 'CatalogSource' and x.get('apiVersion') == 'operators.coreos.com/v1alpha1' and x.get('name') == 'redhat-operators' and x.get('uid') == catalog['metadata']['uid'] for x in meta.get('ownerReferences', [])), 'Bundle CatalogSource ownership mismatch')
+    annotations = meta.get('annotations', {})
+    require(annotations.get('olm.contentEncoding') == 'gzip+base64' and annotations.get('operators.operatorframework.io.bundle.package.v1') == 'agent-sandbox-operator' and annotations.get('olm.sourceImage') == 'registry.redhat.io/agent-sandbox/agent-sandbox-operator-bundle@sha256:01f8fbf2cda6e5cbac5c53f9037a8142a1139000f947627404d4c95ee2a2fe2d', 'Native bundle encoding/package/image mismatch')
+    require(not cm.get('data') and cm.get('binaryData'), 'Unexpected bundle data representation')
+    try:
+        import yaml
+    except ImportError:
+        raise RuntimeError('PyYAML is required to inspect native bundle YAML')
+    objects = [yaml.safe_load(gzip.decompress(base64.b64decode(base64.b64decode(value, validate=True), validate=True))) for value in cm['binaryData'].values()]
+    csvs = [x for x in objects if x.get('kind') == 'ClusterServiceVersion']
+    require(len(csvs) == 1 and csvs[0]['metadata']['name'] == CSV and csvs[0]['spec']['version'] == '0.9.0', 'Native bundle CSV mismatch')
+    install = csvs[0]['spec']['install']['spec']
+    require(not install.get('permissions') and len(install.get('clusterPermissions', [])) == 1, 'Unexpected generated native permission shape')
+    permission = install['clusterPermissions'][0]
+    require(permission['serviceAccountName'] == 'agent-sandbox-controller', 'Unexpected native controller principal')
+    # OLM generates these three operands from the single native CSV permission block.
+    # Use only names declared in the selected plan, retaining the original refs in digest.
+    roles = [x['resource'] for x in entries if x['resource']['kind'] == 'ClusterRole']
+    bindings = [x['resource'] for x in entries if x['resource']['kind'] == 'ClusterRoleBinding']
+    require(len(roles) == len(bindings) == 1 and roles[0]['name'] == bindings[0]['name'] and roles[0]['name'].startswith('agent-sandbox-operator.v-'), 'Unexpected generated native role pairing')
+    for entry in entries:
+        resource = entry['resource']
+        matches = [x for x in objects if x['kind'] == resource['kind'] and x['metadata']['name'] == resource['name']]
+        if not matches:
+            require(resource['kind'] in ('ServiceAccount', 'ClusterRole', 'ClusterRoleBinding'), 'Missing native bundle object')
+            obj = {'apiVersion': (resource['group'] + '/' if resource['group'] else '') + resource['version'], 'kind': resource['kind'], 'metadata': {'name': resource['name']}}
+            if resource['kind'] == 'ServiceAccount':
+                require(resource['name'] == permission['serviceAccountName'], 'Unexpected generated native ServiceAccount')
+                obj['metadata']['namespace'] = NS
+            elif resource['kind'] == 'ClusterRole':
+                obj['rules'] = permission['rules']
+            else:
+                obj['roleRef'] = {'apiGroup': 'rbac.authorization.k8s.io', 'kind': 'ClusterRole', 'name': roles[0]['name']}
+                obj['subjects'] = [{'kind': 'ServiceAccount', 'name': permission['serviceAccountName'], 'namespace': NS}]
+            matches = [obj]
+        require(len(matches) == 1, 'Ambiguous native bundle resource')
+        inventory.append(matches[0])
+    require(all(any(x['kind'] == y['kind'] and x['metadata']['name'] == y['metadata']['name'] for y in inventory) for x in objects), 'Bundle contains unplanned resources')
+    provenance.append({'references': references, 'configmap': {'name': meta['name'], 'namespace': meta['namespace'], 'uid': meta['uid'], 'ownerReferences': meta.get('ownerReferences'), 'annotations': annotations, 'binaryData': cm['binaryData']}, 'catalog_uid': catalog['metadata']['uid']})
+    return inventory, provenance
+
+
 def run(args):
     require(re.fullmatch('[0-9a-f]{40}', args.revision), 'Expected revision must be a published 40-character SHA')
     guard = subprocess.run(['bash', '-c', 'REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; test -n "${RHOAI_EXPECTED_API_SERVER:-}"; check_oc_logged_in', 'stage060-controller-guard', str(ROOT)], capture_output=True, text=True)
@@ -74,17 +131,12 @@ def run(args):
     require(plan['spec'].get('approval') == 'Manual' and plan['spec'].get('clusterServiceVersionNames') == [CSV], 'Unexpected InstallPlan family')
     entries = plan.get('status', {}).get('plan', [])
     require(entries, 'InstallPlan permission inventory is unavailable')
-    inventory = []
+    inventory, provenance = resolve_entries(entries)
     selected = []
-    for entry in entries:
+    for entry, manifest in zip(entries, inventory):
         resource = entry['resource']
         require(entry.get('resolving') == CSV, 'InstallPlan contains an unexpected dependency')
-        try:
-            manifest = json.loads(resource['manifest'])
-        except (ValueError, KeyError):
-            raise RuntimeError('InstallPlan manifest must be inspectable JSON; no approval without complete inventory')
-        require(manifest.get('kind') == resource['kind'] and manifest.get('metadata', {}).get('name') == resource['name'], 'Plan resource identity mismatch')
-        inventory.append(manifest)
+        require(manifest.get('kind') == resource['kind'] and manifest.get('metadata', {}).get('name') == resource['name'] and manifest.get('apiVersion') == (resource.get('group', '') + '/' if resource.get('group') else '') + resource['version'], 'Plan resource GVK/name mismatch')
         if resource['kind'] == 'ClusterServiceVersion':
             require(resource['name'] == CSV and manifest['spec'].get('version') == '0.9.0', 'Unexpected CSV version')
             selected.append(manifest)
@@ -109,7 +161,7 @@ def run(args):
     bindings = check_bindings(inventory)
     # Hash the complete native plan, not just a subset of permissions. Never print manifests:
     # ConfigMaps or Secret-bearing operands could carry private material.
-    encoded = json.dumps(sorted(inventory, key=lambda x: (x['kind'], x['metadata']['name'])), sort_keys=True, separators=(',', ':')).encode()
+    encoded = json.dumps({'plan_uid': plan['metadata']['uid'], 'resources': sorted(inventory, key=lambda x: (x['kind'], x['metadata']['name'])), 'native_bundle_provenance': provenance}, sort_keys=True, separators=(',', ':')).encode()
     digest = hashlib.sha256(encoded).hexdigest()
     install = selected[0]['spec']['install']['spec']
     images = sorted({container['image'] for deployment in install.get('deployments', []) for container in deployment['spec']['template']['spec'].get('containers', []) + deployment['spec']['template']['spec'].get('initContainers', [])})
