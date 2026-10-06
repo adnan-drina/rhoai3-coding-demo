@@ -153,7 +153,8 @@ def run(args):
                 require('security.openshift.io' not in value.get('apiGroups', []) and 'securitycontextconstraints' not in value.get('resources', []), 'Unexpected SCC permission')
             for key in ('privileged', 'hostNetwork', 'hostPID', 'hostIPC', 'allowPrivilegeEscalation'):
                 require(value.get(key) is not True, 'Unexpected privileged workload setting: ' + key)
-            require('hostPath' not in value and not value.get('capabilities', {}).get('add'), 'Unexpected host mount or added capability')
+            caps = value.get('capabilities', {})
+            require('hostPath' not in value and not (isinstance(caps, dict) and caps.get('add')), 'Unexpected host mount or added capability')
             require(value.get('runAsUser') != 0, 'Unexpected root workload')
             for item in value.values():
                 inspect(item)
