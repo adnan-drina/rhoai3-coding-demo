@@ -67,7 +67,7 @@ OpenShell controls sandbox execution and access. OpenCode and Hermes run the dev
 
 ## Deploy And Validate
 
-This stage is **planned and not deployed**. There is no deployment script, Argo CD Application or runtime manifest yet. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
+The agent runtime remains **planned**. The first deployment slice configures a dedicated identity realm; it does not launch a gateway or agents. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
 
 ## References
 
