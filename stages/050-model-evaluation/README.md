@@ -1,82 +1,95 @@
-# Stage 050: Model Evaluation
+# Stage 050: Model Evaluation And Observability
 
 ## Why This Matters
 
-Make model selection measurable. This stage adds an evaluation service and durable experiment tracking to the governed model-serving platform. Teams can compare model behavior against defined tasks, retain results and artifacts, and review evidence before changing a model used by developers.
+Stage 040 establishes who may use a model. This stage asks whether it helps developers complete useful work, how reliably it responds, and how much governed usage that work consumes.
+
+Evaluation and observability connect **task success, rework, latency and consumption**. Teams can use that evidence to choose models, investigate repeated retries and plan capacity. Red Hat's [What did AI cost you this quarter?](https://developers.redhat.com/articles/2026/09/18/what-did-ai-cost-you-this-quarter) frames showback as a way to improve the service teams receive. Here, usage is measured and costs remain **unpriced** until actual approved rates are supplied.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    User[Authorized project user] --> Eval[EvalHub]
-    Eval --> Model[Governed model endpoint]
-    Eval --> Tracking[MLflow]
-    Tracking --> DB[PostgreSQL]
-    Tracking --> S3[S3 artifact bucket]
+    subgraph Existing["Earlier stages: governed inference and monitoring"]
+        MaaS[Models-as-a-Service] --> Models[Private or approved external models]
+        MaaS -->|Aggregate usage metrics| Metrics[Prometheus]
+        Metrics --> Usage[Native Perses usage dashboard]
+    end
+    subgraph Evaluation["Stage 050: evaluation and retained evidence"]
+        User[Authorized project user] --> Eval[EvalHub via TrustyAI]
+        Eval -->|Configured tracking| MLflow[MLflow]
+        MLflow --> DB[PostgreSQL records]
+        MLflow --> Artifacts[S3-compatible artifacts]
+    end
+    Eval -. Approved benchmark execution .-> MaaS
 ```
 
-The existing RHOAI operator manages the MLflow and TrustyAI components. Stage 050 enables their delegated fields on the shared DataScienceCluster rather than creating another cluster configuration. MLflow runs in `redhat-ods-applications`; EvalHub has its own `evalhub` namespace. Operators own their generated service workloads. Separate PostgreSQL instances store tracking and evaluation data; the platform's NooBaa service supplies the artifact bucket.
+- **New in this stage:** native EvalHub and project-scoped evaluation access, alongside retained MLflow tracking and separate evaluation and tracking databases.
+- **Already available:** governed model endpoints, GPU/model monitoring, native MaaS usage attribution and optional GenAI Studio tracing from earlier stages.
+- **Value of the integration:** connect task results with operational evidence before changing a model or capacity allocation.
 
-The database design is a durable demo setup: single-instance PostgreSQL, retained PVCs, namespace-local plaintext database connections and restricted network access. It is not a highly available production database design. Provider identity databases are not reused.
+## Demo
+
+Explore **Develop & train → Evaluations** for native evaluation discovery, and MLflow for experiment records and artifacts. The service foundation is ready; the first benchmark and coding-agent pilot results remain pending.
+
+As a platform administrator, open **Observe & monitor → Dashboard → Usage**. Filter consumption by user, subscription and model, then inspect or export the native usage table.
 
 ## What This Stage Adds
 
-- **MLflow** provides shared experiment tracking with PostgreSQL records and S3-compatible artifacts.
-- **EvalHub** coordinates evaluations through its built-in providers and collections.
-- **TrustyAI** supplies the native EvalHub operator and tenant authorization integration.
-- **Project access** separates the evaluation server from the `demo-sandbox` tenant where authorized users work.
+This stage provides the evidence foundation for model and developer-workflow decisions:
 
-RHOAI 3.5 release documentation identifies MLflow and EvalHub as generally available. The evaluation dashboard remains Technology Preview. An evaluation result is evidence for the selected task, dataset and model configuration; it is not a universal quality or safety guarantee.
+- **EvalHub** coordinates evaluations through compatible native providers and collections.
+- **TrustyAI** manages the native evaluation service and tenant integration.
+- **MLflow** retains experiments, metrics and artifacts for later review.
+- **Project isolation** scopes evaluation and tracking access to authorized OpenShift users.
+- **A combined quality and usage view** reuses Stage 040 showback without moving gateway or monitoring ownership into Stage 050.
+
+EvalHub and MLflow are generally available in OpenShift AI 3.5. The evaluation dashboard, MaaS observability and GenAI Studio tracing retain their feature-specific Technology Preview boundaries.
 
 ## What To Notice And Why It Matters
 
-Readiness proves that services are available; a completed evaluation proves behavior for a specified model, task and dataset. Retaining both tracking records and artifacts makes that evidence reviewable later.
+A benchmark result applies to its task, dataset and model configuration. For a coding agent, a useful outcome is a repository change that passes independent tests. Retaining those results alongside latency, retries and consumption helps distinguish a cheaper response from a more effective development workflow.
+
+Native MaaS counters show aggregate total-token and call usage. They do not provide the input/output token split or internal tool trajectory, and missing history stays unknown. Showback helps identify questions to investigate; it does not turn usage into an invoice.
+
+**Future engineering planning:** [ConfigIQ](https://configiq.xyz/) is a public [Red Hat Performance Engineering project](https://github.com/redhat-performance/configiq) for inference sizing, GPU comparison and cost modeling. Engineers can explore how model size, context, quantization, batching and workload shape affect memory and capacity tradeoffs. It is a future planning reference for this workshop: compare its estimates with measured behavior and actual local rates before making a sizing decision.
 
 ## How Red Hat And Open Source Make It Work
 
-OpenShift AI supplies native MLflow and TrustyAI operators. EvalHub coordinates provider-backed evaluation jobs, while MLflow records experiments and NooBaa stores their artifacts. GitOps owns the service configuration and leaves generated workloads to the operators.
+OpenShift AI's native TrustyAI component manages EvalHub, and its MLflow Operator manages the shared tracking service. EvalHub coordinates provider-backed evaluation work; PostgreSQL and OpenShift Data Foundation retain records and artifacts. GitOps manages customer configuration while the operators manage service workloads.
+
+MaaS, Red Hat Connectivity Link, Prometheus and Perses provide the existing aggregate usage view. GenAI Studio offers an opt-in session tracing capability with an embedded MLflow viewer, complementing aggregate metrics; this is not automatic capture of every MaaS, MCP or agent interaction.
 
 ## Trust Boundaries
 
-Use existing OpenShift identities and tenant permissions. Evaluation requests cross from the tenant to governed model endpoints; tracking records and artifacts remain in the platform database and S3 storage. Runtime secrets are local cluster inputs, not Git content. Provider identity databases are not reused.
+Evaluation uses existing OpenShift identities, project permissions and governed model access. Approved external models still process requests outside the cluster. Records, artifacts and identity-bearing usage exports require appropriate access and retention controls. Session traces can contain prompts, code and tool outputs: agree the content, redaction and storage policy before opting in. Credentials remain outside Git; showback is internal evidence, not billing-grade metering.
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift AI 3.5** supplies MLflow, TrustyAI and EvalHub integration.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** supplies EvalHub, TrustyAI, MLflow and their dashboard integration.
+- **Red Hat OpenShift Container Platform and Cluster Observability Operator** provide the monitoring platform reused for operational visibility.
 - **Red Hat OpenShift Data Foundation** provides S3-compatible artifact storage.
-- **Red Hat OpenShift GitOps** reconciles the stage configuration.
+- **Red Hat OpenShift GitOps** keeps platform configuration reproducible.
 
 ## Open Source Projects To Know
 
-MLflow supplies experiment tracking; EvalHub coordinates evaluations; PostgreSQL stores durable records. The native product operators manage their service workloads.
+EvalHub coordinates evaluations; MLflow organizes experiment evidence; PostgreSQL stores durable records. Prometheus and Perses provide aggregate usage queries and dashboards. ConfigIQ is a future sizing reference, separate from these deployed services.
 
 ## Deploy And Validate
 
-Use the Stage 010 foundation and Stage 030/040 native serving and governed access services. The service foundation can be installed while private models and GPU nodes are stopped; an actual evaluation needs its selected model available. KServe RawDeployment is an EvalHub prerequisite; the evaluation stage does not deploy another model or GPU workload. Configure the repository environment guard and the published source revision before deployment. Use existing OpenShift identities and project permissions; no new identity provider is required.
+The evaluation foundation uses the platform, serving and governed-access stages; it does not deploy another model or allocate another GPU. An actual evaluation requires its selected endpoint to be available.
 
-```bash
-./stages/050-model-evaluation/deploy.sh
-./stages/050-model-evaluation/validate.sh
-```
-
-Deployment checks its prerequisites before changing the cluster, enables the native components, configures database inputs and waits for MLflow before creating EvalHub. Validation separates service readiness from authenticated API access and completed evaluation evidence. Without recorded evaluation/run identifiers it exits with evaluation evidence pending, even when API checks pass.
-
-For a useful evaluation, select a bounded task, dataset and already-served model endpoint; retain the resulting job identifier and inspect its result and MLflow evidence. Starting one benchmark against 1–5 samples is an explicit action using the native EvalHub API/SDK and an authorized tenant session. Readiness alone does not prove a completed benchmark, durable result persistence or access through the dashboard. Dashboard discoverability must be checked separately with a real user session.
-
-Inspect a completed evaluation without creating another job:
-
-```bash
-./stages/050-model-evaluation/validate.sh --job-id <recorded-job-id> --mlflow-run-id <recorded-32-hex-run-id>
-```
-
-The check requires completed results, a native benchmark result whose returned MLflow run ID matches the supplied run ID, and finished tracking records with metrics. Missing correlation remains an acceptance gap.
+Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validation. The [Stage 050 design and acceptance record](../../docs/migration/050-model-evaluation-plan.md) carries the benchmark, coding-pilot and trace-verification prerequisites. Validation separates service readiness from completed results and retained MLflow evidence.
 
 ## References
 
-- [RHOAI 3.5 supported configurations and release posture](https://access.redhat.com/articles/rhoai-supported-configs-3.x)
-- [Installing MLflow](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_mlflow/installing-mlflow_mlflow)
+- [What did AI cost you this quarter?](https://developers.redhat.com/articles/2026/09/18/what-did-ai-cost-you-this-quarter) — business context for attributed usage and service improvement.
 - [Evaluating LLMs with EvalHub](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems/evaluating-llms-with-evalhub_evaluate)
+- [Working with MLflow](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_mlflow/index)
+- [MaaS observability and internal showback](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service)
+- [Feature-specific Technology Preview boundaries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/technology-preview-features_relnotes)
+- [ConfigIQ public project](https://github.com/redhat-performance/configiq) — future inference-sizing and GPU/cost comparisons.
 
 ## Next Stage
 
-[Stage 060: Advanced Application Platform](../060-advanced-app-platform/README.md) supplies the developer portal, workspaces and delivery tooling that consume the governed AI platform.
+[Stage 060: Advanced Application Platform](../060-advanced-app-platform/README.md) supplies the developer portal, workspaces and delivery tooling that consume governed AI and produce the real workflow evidence this stage will help assess.
