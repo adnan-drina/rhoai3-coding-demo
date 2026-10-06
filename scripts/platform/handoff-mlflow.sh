@@ -61,7 +61,7 @@ def snapshot():
    records[workspace]={'experiments':exp,'runs':runs,'artifactMetadata':artifacts}
  result['mlflowRecords']=records
  return result
-app=get('application',appname,'openshift-gitops');spec=app['spec'];status=app['status'];source=spec['source']
+app=get('application',appname,'openshift-gitops');spec=app['spec'];status=app['status'];source=spec['source'];original_spec=json.loads(json.dumps(spec))
 assert spec['project']=='rhoai-demo' and source['repoURL']==os.environ['GIT_REPO_URL'] and not spec.get('sources') and not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp'),'Unexpected foundation ownership/source'
 assert spec['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected foundation destination'
 already=source['path']==prefix+phase and source['targetRevision']==sha
@@ -92,7 +92,11 @@ assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Del
 metadata={k:v for k,v in app['metadata'].items() if k in ['name','namespace','labels','annotations','resourceVersion']}
 metadata.get('annotations',{}).pop('kubectl.kubernetes.io/last-applied-configuration',None)
 body=json.dumps({'apiVersion':app['apiVersion'],'kind':'Application','metadata':metadata,'spec':spec})
-if not already:oc(['apply','-f','-'],body) # First modifying action: core Application only.
+if not already:
+ fresh=get('application',appname,'openshift-gitops')
+ assert fresh['metadata']['uid']==app['metadata']['uid'] and not fresh['metadata'].get('deletionTimestamp') and fresh['spec']==original_spec,'Foundation changed during preservation capture'
+ patch=[{'op':'test','path':'/metadata/resourceVersion','value':fresh['metadata']['resourceVersion']},{'op':'test','path':'/spec','value':original_spec},{'op':'replace','path':'/spec','value':spec}]
+ oc(['patch','application',appname,'-n','openshift-gitops','--type=json','--patch-file=/dev/stdin'],json.dumps(patch)) # First modifying action: core Application only.
 expected={('MLflow','mlflow',''),('StatefulSet','mlflow-postgresql','redhat-ods-applications'),('PersistentVolumeClaim','mlflow-postgresql','redhat-ods-applications'),('Service','mlflow-postgresql','redhat-ods-applications'),('NetworkPolicy','mlflow-postgresql','redhat-ods-applications'),('ObjectBucketClaim','rhoai-mlflow-artifacts','redhat-ods-applications'),('ConfigMap','mlflow-service-ca','redhat-ods-applications')}
 for _ in range(120):
  live=get('application',appname,'openshift-gitops');s=live.get('status',{});operation=s.get('operationState',{})
