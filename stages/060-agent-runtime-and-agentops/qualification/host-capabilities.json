@@ -1,0 +1,53 @@
+{
+  "qualified": true,
+  "capabilities_zero": true,
+  "no_new_privileges": true,
+  "sandbox_dumpable": false,
+  "child_dumpable": true,
+  "child_core_limit_zero": true,
+  "same_uid_self_protection": true,
+  "landlock_abi": 6,
+  "landlock_allow_deny": true,
+  "seccomp_notification": true,
+  "seccomp_addfd_send": true,
+  "task_memory_copy": true,
+  "connected_send_fast_path": true,
+  "socket_virtualization": true,
+  "dns_relay_bind": true,
+  "udp_dns_round_trip": true,
+  "tcp_dns_round_trip": true,
+  "tcp_allow_round_trip": true,
+  "tcp_deny_round_trip": true,
+  "wait_killable_recv": false,
+  "seccomp_listener_mode": "legacy_read_only",
+  "task_memory_writes_disabled": true,
+  "scc": "restricted-v2",
+  "native_image_digest": "sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f",
+  "source_commit": "6648bd0c290efbc41ba131ee9831ee45cd431f94",
+  "scope": "native host capability qualification; agent server/auth/CNI cross-pod not qualified",
+  "qualification_date": "2026-10-06",
+  "ocp_version": "4.22.14",
+  "kernel": "5.14.0-687.46.1.el9_8.x86_64",
+  "runtime": "cri-o 1.35.7",
+  "profile": {
+    "nonroot_namespace_uid_gid": true,
+    "seccomp": "RuntimeDefault",
+    "drop_capabilities": [
+      "ALL"
+    ],
+    "allow_privilege_escalation": false,
+    "read_only_root_filesystem": true,
+    "service_account_token": false,
+    "host_network": false,
+    "pod_sysctl": {
+      "net.ipv4.ip_unprivileged_port_start": "0"
+    }
+  },
+  "cleanup": "owned namespace deleted with UID precondition and absence confirmed",
+  "not_qualified": [
+    "OpenCode/Hermes mediated server protocol",
+    "OIDC user identity and tenant authorization",
+    "persistent gateway and Sandbox controller",
+    "cross-Pod CNI enforcement"
+  ]
+}
