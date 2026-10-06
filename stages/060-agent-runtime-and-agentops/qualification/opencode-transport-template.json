@@ -1,0 +1,20 @@
+{
+  "name": "stage060-opencode-transport",
+  "workspace": "openshell-developer",
+  "image": "image-registry.openshift-image-registry.svc:5000/openshell/stage060-opencode@sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09",
+  "cpu": "500m",
+  "memory": "512Mi",
+  "env": {
+    "HOME": "/sandbox/state",
+    "XDG_DATA_HOME": "/sandbox/state/data",
+    "XDG_CONFIG_HOME": "/sandbox/state/config",
+    "XDG_CACHE_HOME": "/sandbox/state/cache",
+    "XDG_STATE_HOME": "/sandbox/state/state",
+    "TMPDIR": "/sandbox/tmp"
+  },
+  "command": ["/bin/bash", "-c", "mkdir -p /sandbox/state /sandbox/tmp /sandbox/workspace && cd /sandbox/workspace && exec opencode serve --hostname 127.0.0.1 --port 4096"],
+  "qualificationDeadlineSeconds": 300,
+  "providers": [],
+  "approvalMode": "manual",
+  "lifecycleAfterQualification": "stop preserving native workspace PVC"
+}
