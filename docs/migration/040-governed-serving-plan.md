@@ -86,6 +86,13 @@ Stop on a preservation, owner, schema, authorization or model-fit failure. Do no
 - [GPT-6 Luna API model](https://developers.openai.com/api/docs/models/gpt-6-luna)
 - [Pinned MCP source](https://github.com/containers/kubernetes-mcp-server/tree/v0.0.67)
 
+Additional configuration references:
+
+- [RHOAI MaaS companion guide](https://rh-aiservices-bu.github.io/rhoai-maas-guide/modules/main/index.html)
+- [Companion source repository](https://github.com/rh-aiservices-bu/rhoai-maas-guide.git), reviewed at [commit `1db52c7d40c906d44bc34966a8679dfe9bda4064`](https://github.com/rh-aiservices-bu/rhoai-maas-guide/tree/1db52c7d40c906d44bc34966a8679dfe9bda4064) on 2026-10-08.
+
+The guide declares itself an opinionated RHOAI 3.4/3.5 companion, not a replacement for official documentation. Official RHOAI 3.5 documentation and the installed schemas remain the product authority. Use version-appropriate exact manifests checked against those schemas; retain this project's namespace, model scope, identity and security choices. Its broad operator channels, TLS bypass, credential-printing and simulator-cleanup examples are not adopted as project defaults. This reference does not qualify or resolve the API-host legacy-path HTTP 503 response; independently proven compatibility hostnames remain retained.
+
 Selected Authorino 1.4.3 native CRD evidence is local ignored `/private/tmp/stage040-authorino-bundle/`. Exact shipped RHOAI schemas and pinned MaaS/IPP sources are local ignored evidence under `/Users/adrina/Sandbox/rhoai3-coding-demo/tmp/platform-migration/schema-20261005/` and `/private/tmp/stage040-audit-20261005/`; they are not implementation-worktree relative paths or newly claimed live acceptance.
 
 The injected outbound CA uses the Go/RHEL trust directory `/etc/pki/tls/certs`, preserving the native operator’s TLS certificate subPath at `/etc/ssl/certs/tls.crt`. Mounting the projected CA directory over `/etc/ssl/certs` prevented the new TLS pod from starting; the old plaintext pod remained available during the stalled rollout. Deployment validation now requires rollout completion. The current Authorino rollout, verified TLS/hostname/HTTP2 handshake, genuine subscriptions response and API-key-search JSON response passed independent runtime checks. [Go Linux trust-directory source](https://go.dev/src/crypto/x509/root_linux.go).
