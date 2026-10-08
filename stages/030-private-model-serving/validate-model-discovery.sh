@@ -106,8 +106,8 @@ try:
         need(not next_token, 'Catalog exceeds bounded discovery pagination')
         need(isinstance(items, list) and len(items) > 0, 'authenticated catalog discovery returned no items: ' + catalog)
         if catalog == 'agent_catalog/agents':
-            for name in ['governed-coding-agents:opencode', 'governed-coding-agents:hermes']:
-                matches = [item for item in items if item.get('name') == name]
+            for name in ['opencode', 'hermes']:
+                matches = [item for item in items if item.get('name') == name and item.get('source_id') == 'governed-coding-agents']
                 need(len(matches) == 1, 'Reviewed custom agent entry is missing or duplicated')
         print('[PASS] Authenticated dashboard ' + catalog + ' discovery returned items')
     print('Scope: installation administrator API probes; actual persona and browser UI acceptance remain separate.')

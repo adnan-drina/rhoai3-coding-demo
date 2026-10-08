@@ -23,7 +23,9 @@ try:
  for app in (core,serving):
   a=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not a.get('sources'),'Prerequisite Application ownership differs'
   assert a['project']=='rhoai-demo' and a['source']['repoURL']==os.environ['GIT_REPO_URL'] and a['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Prerequisite Application repository/destination differs'
- assert core['spec']['source']['path'] in ('gitops/stages/010-openshift-ai-platform-foundation/aggregate/overlays/demo','gitops/stages/030-private-model-serving/migration/foundation-omit') and serving['spec']['source']['path']=='gitops/stages/030-private-model-serving/base','Prerequisite source path differs'
+ retained_bridges={'882f327fb25dd047ca7144058b6cca46e693df3a':'gitops/stages/030-private-model-serving/migration/foundation-omit','eb75e6654ab73734c59b576235801561973efd2f':'gitops/stages/050-model-evaluation/migration/foundation-omit'}
+ core_source=core['spec']['source']
+ assert (core_source['path']=='gitops/stages/010-openshift-ai-platform-foundation/aggregate/overlays/demo' or retained_bridges.get(core_source['targetRevision'])==core_source['path']) and serving['spec']['source']['path']=='gitops/stages/030-private-model-serving/base','Prerequisite source path or retained immutable revision differs'
  spec=core['spec'];assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Foundation must respect delegated ownership'
  entries=spec.get('ignoreDifferences',[])
  paths={p for i in entries if i.get('group')=='datasciencecluster.opendatahub.io' and i.get('kind')=='DataScienceCluster' and i.get('name')=='default-dsc' for p in i.get('jsonPointers',[])}
