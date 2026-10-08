@@ -39,7 +39,7 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
-  priority: 150
+  priority: 160
   tokenMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform
@@ -197,7 +197,7 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
-  priority: 150
+  priority: 170
   tokenMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform

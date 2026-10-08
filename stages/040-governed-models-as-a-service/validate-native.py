@@ -5,6 +5,7 @@ No HTTP/provider calls, model downloads, workload creation or operand writes.
 Resource payloads and command stderr never enter diagnostic output.
 """
 import base64
+import io
 from urllib.parse import urlparse
 import json
 import os
@@ -12,6 +13,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tarfile
+import tempfile
 
 APP = "040-governed-models-as-a-service"
 SOURCE = "gitops/stages/" + APP + "/base"
@@ -176,7 +179,31 @@ def contains_spec(actual, expected):
 
 
 def rendered():
-    yaml = command(["oc", "kustomize", str(ROOT / SOURCE)])
+    deployed_revision = os.environ.get("RHOAI_STAGE040_DEPLOYED_REVISION")
+    if deployed_revision:
+        need(re.fullmatch(r"[0-9a-f]{40}", deployed_revision), "Deployed validation requires an immutable commit SHA")
+        need(deployed_revision == os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"), "Deployed validation revision differs from expected Application revision")
+        app_ready(get("application", APP, "openshift-gitops"), deployed_revision)
+        archive = subprocess.run(["git", "-C", str(ROOT), "archive", deployed_revision, SOURCE], capture_output=True, timeout=30)
+        need(archive.returncode == 0, "Deployed source revision is not available locally")
+        with tempfile.TemporaryDirectory(prefix="stage040-deployed-") as directory:
+            destination = Path(directory)
+            with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as stream:
+                for member in stream.getmembers():
+                    path = Path(member.name)
+                    in_source = member.name.startswith(SOURCE + "/")
+                    ancestor = member.isdir() and (member.name.rstrip("/") == SOURCE or SOURCE.startswith(member.name.rstrip("/") + "/"))
+                    need(not path.is_absolute() and ".." not in path.parts and (in_source or ancestor), "Deployed source archive path is invalid")
+                    target = destination / path
+                    if member.isdir():
+                        target.mkdir(parents=True, exist_ok=True)
+                    else:
+                        need(member.isfile(), "Deployed source archive contains a non-file resource")
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(stream.extractfile(member).read())
+            yaml = command(["oc", "kustomize", str(destination / SOURCE)])
+    else:
+        yaml = command(["oc", "kustomize", str(ROOT / SOURCE)])
     r = subprocess.run(["ruby", "-ryaml", "-rjson", "-e",
                         "puts JSON.generate(YAML.load_stream(STDIN.read).compact)"],
                        input=yaml, capture_output=True, text=True, timeout=30)
@@ -187,6 +214,8 @@ def rendered():
 def main():
     # Safe even when directly invoked instead of through validate.sh.
     command(["/bin/bash", "-c", 'export REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in', "guard", str(ROOT)])
+    if not os.environ.get("RHOAI_STAGE040_DEPLOYED_REVISION"):
+        subprocess.run(["python3", str(ROOT / "scripts/platform/check-operator-policy.py"), str(ROOT / SOURCE), "--verify"], check=True)
     desired = rendered()
     app = get("application", APP, "openshift-gitops")
     app_ready(app, os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"))
@@ -196,15 +225,18 @@ def main():
     for d in subscriptions:
         m, spec = d["metadata"], d["spec"]
         s = get("subscription", m["name"], m["namespace"])
-        need(all(s["spec"].get(k) == spec.get(k) for k in ("name", "channel", "source", "sourceNamespace", "startingCSV", "installPlanApproval")) and spec["installPlanApproval"] == "Manual", "Operator selection differs from reviewed Manual subscription")
-        need(s.get("status", {}).get("installedCSV") == spec["startingCSV"], "Installed operator differs from selected version")
-        csv = get("csv", spec["startingCSV"], m["namespace"])
+        need(spec["installPlanApproval"] in ("Automatic", "Manual") and
+             all(s["spec"].get(k) == spec.get(k) for k in ("name", "channel", "source", "sourceNamespace", "startingCSV", "installPlanApproval")), "Operator selection differs from reviewed subscription")
+        need(os.environ.get("RHOAI_STAGE040_DEPLOYED_REVISION") or spec["installPlanApproval"] == "Automatic", "Fresh-source validation requires Automatic approval")
+        installed = s.get("status", {}).get("installedCSV")
+        need(installed and installed == s.get("status", {}).get("currentCSV"), "Operator resolution is pending")
+        csv = get("csv", installed, m["namespace"])
         need(csv.get("status", {}).get("phase") == "Succeeded", "Selected operator CSV did not succeed")
         for dep in csv["spec"].get("install", {}).get("spec", {}).get("deployments", []):
             native = get("deployment", dep["name"], m["namespace"])
             need(csv_owner(native, csv), "Operator workload has unexpected CSV owner")
             workload(native)
-    print("[PASS] Six selected Manual operators and current workloads")
+    print("[PASS] Six Automatic operators and current workloads")
     dsc = get("datasciencecluster", "default-dsc")
     current(dsc); condition(dsc, "Ready")
     for key in ("aigateway", "ogx", "kserve"):
@@ -362,8 +394,14 @@ def main():
             need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
             if ns == "external-models":
                 endpoint = "https://" + listeners["api"]["hostname"]
-                need(obj["spec"].get("endpointOverride") == endpoint and obj["status"].get("endpoint") == endpoint, "External discovery does not select the API hostname")
+                if d["spec"].get("endpointOverride"):
+                    need(obj["spec"].get("endpointOverride") == endpoint, "External endpoint override differs from the API hostname")
+                else:
+                    need(not obj["spec"].get("endpointOverride"), "Unexpected external endpoint override remains")
+                need(obj["status"].get("endpoint") == endpoint, "External discovery does not select the API hostname")
     print("[PASS] Native external/provider/model references and credential presence; upstream entitlement/inference pending")
+    command([sys.executable, str(ROOT / "stages/040-governed-models-as-a-service/publish-catalog-mcp.py"), "--validate", "--defer-if-absent"])
+    print("[PASS] Studio catalog field or explicit deferred Stage060 prerequisite; session use is separate")
 
 
 if __name__ == "__main__":

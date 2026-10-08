@@ -7,12 +7,14 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/040-governed-models-as-a-service/base"
 revision="${1:-${GIT_REPO_BRANCH:-}}"
 [[ -n "$revision" ]] || { echo 'ERROR: select the reviewed published branch.' >&2; exit 1; }
 export GIT_REPO_URL
 remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "refs/heads/$revision" | awk '{print $1}')
 [[ "$remote_sha" =~ ^[0-9a-f]{40}$ && "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs from reviewed checkout.' >&2; exit 1; }
-paths=(gitops/stages/040-governed-models-as-a-service gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml stages/040-governed-models-as-a-service scripts/shared scripts/platform/validate-serving-update.py)
+export RHOAI_STAGE040_EXPECTED_REVISION="$remote_sha"
+paths=(gitops/stages/040-governed-models-as-a-service gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml stages/040-governed-models-as-a-service scripts/shared scripts/platform/validate-serving-update.py scripts/platform/check-operator-policy.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish all reviewed Stage040 source before deployment.' >&2; exit 1; }
 state=$(python3 "$SCRIPT_DIR/preflight.py")
 if [[ -n "$(oc --request-timeout=10s get application 040-governed-models-as-a-service -n openshift-gitops --ignore-not-found -o jsonpath='{.metadata.uid}')" ]]; then
@@ -33,7 +35,7 @@ a["spec"]["source"]["kustomize"]={"patches"=>[
  {"target"=>{"group"=>"maas.opendatahub.io","version"=>"v1alpha1","kind"=>"MaaSModelRef","name"=>"gpt-6-luna","namespace"=>"external-models"},"patch"=>JSON.generate([{ "op"=>"replace","path"=>"/spec/endpointOverride","value"=>"https://maas.#{domain}"}])}
 ]};provider=URI.parse(ENV.fetch("REDHAT_MODELS_BASE_URL"));abort "ERROR: approved Red Hat provider endpoint must be HTTPS." unless provider.scheme=="https" && provider.port==443 && ["","/","/v1","/v1/"].include?(provider.path) && provider.host && !provider.userinfo && !provider.query && !provider.fragment
  a["spec"]["source"]["kustomize"]["patches"] << {"target"=>{"group"=>"inference.opendatahub.io","version"=>"v1alpha1","kind"=>"ExternalProvider","name"=>"redhat-models","namespace"=>"external-models"},"patch"=>JSON.generate([{"op"=>"replace","path"=>"/spec/endpoint","value"=>provider.host}])}
- a["spec"]["source"]["kustomize"]["patches"] << {"target"=>{"group"=>"maas.opendatahub.io","version"=>"v1alpha1","kind"=>"MaaSModelRef","name"=>"minimax-m2","namespace"=>"external-models"},"patch"=>JSON.generate([{"op"=>"replace","path"=>"/spec/endpointOverride","value"=>"https://maas.#{domain}"}])};puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml" "$remote_sha" "$work/ingress.json" > "$work/application.yaml"
+ puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml" "$remote_sha" "$work/ingress.json" > "$work/application.yaml"
 # The first modifying action is this stage's own immutable Application.
 oc --request-timeout=10s apply -f "$work/application.yaml"
 "$SCRIPT_DIR/setup-provider-secret.sh"
@@ -59,6 +61,9 @@ assert s['source']['targetRevision']==os.environ['RHOAI_STAGE040_SYNC_REVISION']
 PY_GUARD
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 040-governed-models-as-a-service --app-namespace openshift-gitops --strategy hook --revision "$remote_sha" --async --timeout 300
   hook_sync_requested=true
+ fi
+ if [[ "$native_operation" == "Succeeded|$remote_sha|gitops/stages/040-governed-models-as-a-service/base" ]]; then
+  RHOAI_STAGE040_EXPECTED_REVISION="$remote_sha" python3 "$SCRIPT_DIR/publish-catalog-mcp.py" --defer-if-absent
  fi
  if "$SCRIPT_DIR/validate.sh" --readiness; then
   echo 'PASS Native Stage040 readiness. Bounded real inference/stream/auth/metrics and user Studio visual acceptance are separate.'

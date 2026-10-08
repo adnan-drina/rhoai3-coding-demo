@@ -18,6 +18,7 @@ spec:
   externalProviderRefs:
   - ref:
       name: openai
+    weight: 100
     targetModel: gpt-6-luna
     apiFormat: openai-chat
     path: "/v1/chat/completions"
