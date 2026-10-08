@@ -13,7 +13,8 @@ metadata:
     argocd.argoproj.io/sync-wave: '3'
 spec:
   channel: stable
-  installPlanApproval: Automatic
+  installPlanApproval: Manual
   name: limitador-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: limitador-operator.v1.4.2
