@@ -31,8 +31,7 @@ domain=JSON.parse(File.read(ARGV[2])).dig("status","domain");abort "ERROR: nativ
 patches=[]
 ["maas","qwen3-6-maas","qwen3-8-maas"].each_with_index{|host,i|patches << {"op"=>"replace","path"=>"/spec/listeners/#{i}/hostname","value"=>"#{host}.#{domain}"}}
 a["spec"]["source"]["kustomize"]={"patches"=>[
- {"target"=>{"group"=>"gateway.networking.k8s.io","version"=>"v1","kind"=>"Gateway","name"=>"maas-default-gateway","namespace"=>"openshift-ingress"},"patch"=>JSON.generate(patches)},
- {"target"=>{"group"=>"maas.opendatahub.io","version"=>"v1alpha1","kind"=>"MaaSModelRef","name"=>"gpt-6-luna","namespace"=>"external-models"},"patch"=>JSON.generate([{ "op"=>"replace","path"=>"/spec/endpointOverride","value"=>"https://maas.#{domain}"}])}
+ {"target"=>{"group"=>"gateway.networking.k8s.io","version"=>"v1","kind"=>"Gateway","name"=>"maas-default-gateway","namespace"=>"openshift-ingress"},"patch"=>JSON.generate(patches)}
 ]};provider=URI.parse(ENV.fetch("REDHAT_MODELS_BASE_URL"));abort "ERROR: approved Red Hat provider endpoint must be HTTPS." unless provider.scheme=="https" && provider.port==443 && ["","/","/v1","/v1/"].include?(provider.path) && provider.host && !provider.userinfo && !provider.query && !provider.fragment
  a["spec"]["source"]["kustomize"]["patches"] << {"target"=>{"group"=>"inference.opendatahub.io","version"=>"v1alpha1","kind"=>"ExternalProvider","name"=>"redhat-models","namespace"=>"external-models"},"patch"=>JSON.generate([{"op"=>"replace","path"=>"/spec/endpoint","value"=>provider.host}])}
  puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml" "$remote_sha" "$work/ingress.json" > "$work/application.yaml"

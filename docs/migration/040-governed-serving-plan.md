@@ -2,6 +2,8 @@
 
 ## External-model alignment transaction, 2026-10-08
 
+MiniMax qualified at isolated deployment revision `935d3951cba9e6e1c2ab26830c63e4ca30ec457b`: the live reference omits both optional fields, its endpoint and `minimax-m2` alias are unchanged, and the genuine ai-developer persona completed one governed request with 27 prompt and 8 completion tokens. Missing, invalid and revoked keys were denied; the owned ephemeral key was revoked. GPT is the second candidate, using the same native discovery/default-tenant contract. Its provider entitlement remains a separate one-request acceptance check. The isolated revision preserves the six baseline operator Subscription specs; normal branch defaults remain Automatic.
+
 The first reviewed candidate adds the dashboard label to `external-models`, preserving its display name, makes each external provider binding weight explicitly 100, and assigns unique personal priorities: ai-admin 170, kube-admin 160, ai-developer 150; DevSpaces remains 100. These are customer selection priorities, not provider entitlements.
 
 MiniMax is the first optional-field removal candidate. The served MaaSModelRef schema requires only `modelRef`; omitted `tenantRef` selects the default tenant, while `endpointOverride` supersedes native endpoint discovery. The installed controller image maps through public Red Hat catalog metadata to `red-hat-data-services/models-as-a-service@563117f178f04c8eac7058df481815a97694a88d`. Its external-model endpoint resolver selects the generated route hostname before falling back to a Gateway listener. GPT retains its existing override until the first transaction is qualified. No provider Secret or generated route is rewritten.
