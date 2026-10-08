@@ -285,6 +285,9 @@ def main():
     domains = {l.get("hostname") for l in listeners.values()}
     need(len(domains) == 3 and all(h and "*" not in h and "placeholder" not in h for h in domains), "Gateway hostnames are unresolved or not isolated")
     namespaces = {n: get("namespace", n) for n in ("models-as-a-service", "external-models", "redhat-ai-gateway-infra")}
+    for ns in (*namespaces, "redhat-ods-applications"):
+        obj = namespaces.get(ns) or get("namespace", ns)
+        need(obj["metadata"].get("labels", {}).get("maas-gateway-access") == "true", "Required MaaS namespace admission label is absent")
     listener_status = {l["name"]: l for l in gateway.get("status", {}).get("listeners", [])}
     for name, listener in listeners.items():
         reviewed_routes(listener, expected_listeners[name])

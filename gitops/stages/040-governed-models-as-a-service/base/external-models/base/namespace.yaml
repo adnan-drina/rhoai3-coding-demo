@@ -4,6 +4,7 @@ kind: Namespace
 metadata:
   name: external-models
   labels:
+    maas-gateway-access: "true"
     app.kubernetes.io/name: external-models
     app.kubernetes.io/component: external-models
     app.kubernetes.io/part-of: rhoai3-coding-demo

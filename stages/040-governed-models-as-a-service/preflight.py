@@ -17,6 +17,15 @@ def tracked(x):
  expected=APP+':'+group+'/'+x['kind']+':'+namespace+'/'+m['name']
  return m.get('annotations',{}).get('argocd.argoproj.io/tracking-id','')==expected
 try:
+ for kind,namespace in [('serviceaccount','redhat-ods-applications'),('clusterrole',None),('clusterrolebinding',None),('job','redhat-ods-applications')]:
+  item=get(kind,'prepare-maas-route-access',namespace)
+  if item:
+   assert tracked(item) and not item['metadata'].get('deletionTimestamp'),'Namespace-label helper is foreign or terminating'
+   assert not item['metadata'].get('ownerReferences'),'Namespace-label helper has foreign ownership'
+   if kind=='clusterrolebinding':
+    assert item['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'ClusterRole','name':'prepare-maas-route-access'} and item['subjects']==[{'kind':'ServiceAccount','name':'prepare-maas-route-access','namespace':'redhat-ods-applications'}],'Namespace-label binding differs'
+   if kind=='clusterrole':
+    assert item['rules']==[{'apiGroups':[''],'resources':['namespaces'],'resourceNames':['redhat-ods-applications','redhat-ai-gateway-infra'],'verbs':['get','patch']}],'Namespace-label permission scope differs'
  core=get('applications.argoproj.io','010-openshift-ai-platform-foundation','openshift-gitops')
  serving=get('applications.argoproj.io','030-private-model-serving','openshift-gitops')
  assert core and serving and reconciled(core) and reconciled(serving),'Foundation and serving exact source/path must be reconciled'

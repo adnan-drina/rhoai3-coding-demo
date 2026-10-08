@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prepare-maas-route-access
+  labels:
+    app.kubernetes.io/name: prepare-maas-route-access
+    app.kubernetes.io/component: maas
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '8'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - namespaces
+  resourceNames:
+  - redhat-ods-applications
+  - redhat-ai-gateway-infra
+  verbs:
+  - get
+  - patch

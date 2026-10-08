@@ -30,6 +30,8 @@ spec:
       namespaces:
         from: Selector
         selector:
+          matchLabels:
+            maas-gateway-access: "true"
           matchExpressions:
           - key: kubernetes.io/metadata.name
             operator: In
@@ -52,6 +54,7 @@ spec:
         selector:
           matchLabels:
             kubernetes.io/metadata.name: models-as-a-service
+            maas-gateway-access: "true"
     tls:
       mode: Terminate
       certificateRefs:
@@ -68,6 +71,7 @@ spec:
         selector:
           matchLabels:
             kubernetes.io/metadata.name: models-as-a-service
+            maas-gateway-access: "true"
     tls:
       mode: Terminate
       certificateRefs:

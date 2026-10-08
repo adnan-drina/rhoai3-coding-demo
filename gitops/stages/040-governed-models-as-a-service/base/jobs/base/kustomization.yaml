@@ -30,3 +30,7 @@ resources:
 - wait-db-credentials-binding.yaml
 - wait-db-credentials-job.yaml
 - prepare-gateway-tls-networkpolicy.yaml
+- prepare-maas-route-access-serviceaccount.yaml
+- prepare-maas-route-access-clusterrole.yaml
+- prepare-maas-route-access-clusterrolebinding.yaml
+- prepare-maas-route-access-job.yaml
