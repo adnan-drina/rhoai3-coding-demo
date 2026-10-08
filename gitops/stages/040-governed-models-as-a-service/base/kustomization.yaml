@@ -20,3 +20,14 @@ resources:
   - mcp/base
   - jobs/base
   - monitoring/base
+
+# The native AITenant controller owns this namespace's component label.
+replacements:
+  - sourceValue: modelsasservice
+    targets:
+      - select:
+          version: v1
+          kind: Namespace
+          name: models-as-a-service
+        fieldPaths:
+          - metadata.labels.app\.kubernetes\.io/part-of
