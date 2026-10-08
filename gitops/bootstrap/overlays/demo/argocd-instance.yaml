@@ -46,66 +46,19 @@ spec:
       hs.message = "Waiting for PVC status"
       return hs
     resource.customizations.health.operators.coreos.com_Subscription: |
-      hs = {}
-
+      hs = {status = "Progressing", message = "Waiting for native OLM resolution"}
       if obj.status ~= nil then
-        if obj.spec ~= nil and
-          obj.spec.installPlanApproval == "Manual" and
-          obj.spec.startingCSV ~= nil and
-          obj.status.installedCSV == obj.spec.startingCSV then
-          hs.status = "Healthy"
-          hs.message = "Installed pinned CSV " .. obj.status.installedCSV .. "; newer InstallPlan may remain pending by design"
-          return hs
-        end
-
         if obj.status.conditions ~= nil then
-          for _, condition in ipairs(obj.status.conditions) do
-            if condition.type == "CatalogSourcesUnhealthy" and condition.status == "True" then
-              hs.status = "Degraded"
-              hs.message = condition.message or "CatalogSourcesUnhealthy"
-              return hs
+          for _, c in ipairs(obj.status.conditions) do
+            if (c.type == "CatalogSourcesUnhealthy" or c.type == "ResolutionFailed") and c.status == "True" then
+              return {status = "Degraded", message = c.message or c.type}
             end
           end
         end
-
-        if obj.status.state == "AtLatestKnown" then
-          hs.status = "Healthy"
-          hs.message = "AtLatestKnown"
-          return hs
-        end
-
-        -- Dependency-generated or unpinned subscriptions in a namespace with
-        -- Manual approval: an installed CSV is healthy even when the channel
-        -- offers a newer version we deliberately do not approve.
-        if obj.status.installedCSV ~= nil and obj.status.state == "UpgradePending" then
-          hs.status = "Healthy"
-          hs.message = "Installed " .. obj.status.installedCSV .. "; channel upgrade pending by policy"
-          return hs
-        end
-
-        -- OLM transiently reports an empty state (e.g. after catalog pod
-        -- restarts) even when the installed CSV Succeeded. An installed CSV
-        -- is healthy; do not wedge sync waves on the missing state field.
-        if obj.status.installedCSV ~= nil and (obj.status.state == nil or obj.status.state == "") then
-          hs.status = "Healthy"
-          hs.message = "Installed " .. obj.status.installedCSV .. "; Subscription state not reported by OLM"
-          return hs
-        end
-
-        if obj.status.state ~= nil and obj.status.state ~= "" then
-          hs.status = "Progressing"
-          hs.message = obj.status.state
-          return hs
+        if obj.status.installedCSV ~= nil and obj.status.installedCSV == obj.status.currentCSV and obj.status.state == "AtLatestKnown" then
+          return {status = "Healthy", message = "Current native CSV resolved; stage validator checks Succeeded/version"}
         end
       end
-
-      -- Statusless subscriptions: OLM leaves adopted/dependency
-      -- subscriptions entirely without status (observed live 2026-07-10,
-      -- twice) and the sync-wave wait does not honor ignore-healthcheck.
-      -- Version safety is enforced by startingCSV pins, Manual approval,
-      -- and the allowlist approval guards - not by this status field.
-      hs.status = "Healthy"
-      hs.message = "Subscription status not reported by OLM; version pins + approval guards apply"
       return hs
     # Native MLflow health requires availability and current operator/migration reconciliation.
     resource.customizations.health.mlflow.opendatahub.io_MLflow: |

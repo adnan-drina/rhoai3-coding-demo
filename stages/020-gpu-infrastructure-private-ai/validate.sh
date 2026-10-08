@@ -7,6 +7,7 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base" --verify
 mode="${1:---readiness}"
 [[ "$mode" == --readiness || "$mode" == --functional ]] || { echo "Use --readiness or --functional (both read-only)." >&2; exit 1; }
 python3 - "$mode" <<'PY'
@@ -50,8 +51,8 @@ def console_dashboard():
 check('Pinned native NVIDIA console dashboard configuration',console_dashboard)
 for ns,name,csv in [('openshift-nfd','nfd','nfd.4.22.0-202609212027'),('nvidia-gpu-operator','gpu-operator-certified','gpu-operator-certified.v26.7.1'),('openshift-kueue-operator','kueue-operator','kueue-operator.v1.4.2')]:
  def operator(ns=ns,name=name,csv=csv):
-  s=get('subscription',name,ns);c=get('csv',csv,ns)
-  return s['spec']['installPlanApproval']=='Manual' and s['status'].get('installedCSV')==csv and c['status']['phase']=='Succeeded'
+  s=get('subscription',name,ns);installed=s.get('status',{}).get('installedCSV');c=get('csv',installed,ns)
+  return s['spec']['installPlanApproval']=='Automatic' and installed==s['status'].get('currentCSV') and c['status']['phase']=='Succeeded'
  check(name+' exact reviewed CSV Succeeded',operator)
 nfd=get('nodefeaturediscovery','nfd-instance','openshift-nfd')
 def native_workload(kind,name,ns,owner):

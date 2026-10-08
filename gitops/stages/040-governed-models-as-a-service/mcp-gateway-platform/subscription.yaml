@@ -10,8 +10,7 @@ spec:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   channel: preview
-  startingCSV: mcp-gateway.v0.7.1
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   config:
     resources:
       requests: {cpu: 100m, memory: 128Mi}

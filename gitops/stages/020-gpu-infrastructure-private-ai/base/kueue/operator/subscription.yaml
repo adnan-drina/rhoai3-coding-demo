@@ -12,8 +12,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
 spec:
   channel: stable-v1.4
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   name: kueue-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: kueue-operator.v1.4.2

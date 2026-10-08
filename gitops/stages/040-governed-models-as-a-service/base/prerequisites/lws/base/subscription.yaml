@@ -11,8 +11,7 @@ metadata:
     argocd.argoproj.io/sync-wave: '3'
 spec:
   channel: stable-v1.0
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   name: leader-worker-set
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: leader-worker-set.v1.0.1

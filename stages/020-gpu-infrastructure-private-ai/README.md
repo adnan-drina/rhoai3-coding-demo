@@ -137,3 +137,5 @@ Administrators can open **Observe → Dashboards** in the OpenShift console and 
 ## Next Stage
 
 [Stage 030: Private Model Serving](../030-private-model-serving/) proves that a real LLM can be served on this governed GPU capacity — turning accelerator infrastructure into a working model endpoint before MaaS governance is introduced.
+
+Operator installation uses native Automatic approval on the selected channels. Historical CSVs shown here are qualified baselines, not immutable future installation pins. See the [fresh deployment policy](../../docs/migration/035-operator-automatic-policy.md) for compatible-version checks, rolling-channel limits and the standard cluster-credential prerequisite.

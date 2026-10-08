@@ -163,3 +163,5 @@ The deploy script bootstraps OpenShift GitOps, then applies the Argo CD Applicat
 ## Next Stage
 
 [Stage 020: GPU Infrastructure for Private AI](../020-gpu-infrastructure-private-ai/) provisions GPU worker capacity, installs the NVIDIA runtime stack, and creates quota-controlled queues so the platform can serve AI models on governed accelerators.
+
+Operator installation uses native Automatic approval on the selected channels. Historical CSVs shown here are qualified baselines, not immutable future installation pins. See the [fresh deployment policy](../../docs/migration/035-operator-automatic-policy.md) for compatible-version checks, rolling-channel limits and the standard cluster-credential prerequisite.

@@ -2,7 +2,7 @@
 """Initialize only retained customer runtime keys and verify native controller readiness."""
 import argparse,base64,json,os,pathlib,secrets,subprocess,urllib.request
 p=argparse.ArgumentParser();p.add_argument('--revision',required=True);p.add_argument('--prepare-only',action='store_true');args=p.parse_args()
-ROOT=pathlib.Path(__file__).resolve().parents[2];APP='openshell-runtime';NS='openshell';OPNS='agent-sandbox-system';CSV='agent-sandbox-operator.v0.9.0'
+ROOT=pathlib.Path(__file__).resolve().parents[2];APP='openshell-runtime';NS='openshell';OPNS='agent-sandbox-system'
 g=subprocess.run(['bash','-c','REPO_ROOT="$1";source "$1/scripts/shared/lib.sh";load_env;check_oc_logged_in','guard',str(ROOT)],capture_output=True,text=True);assert g.returncode==0,'Shared guard failed'
 assert subprocess.check_output(['git','-C',str(ROOT),'show',args.revision+':'+str(pathlib.Path(__file__).resolve().relative_to(ROOT))])==pathlib.Path(__file__).read_bytes(),'Published helper content differs'
 def oc(*a,payload=None):
@@ -46,9 +46,9 @@ def patch_data(obj,fields):
 patch_data(credential,{'key-encryption-key':value});patch_data(identity,{'issuer':issuer})
 if args.prepare_only:
     print('Runtime issuer/retained key initialized; controller gate remains closed');raise SystemExit(0)
-sub=tracked(get('subscription','agent-sandbox-operator',OPNS));assert sub['spec']['installPlanApproval']=='Manual' and sub['spec']['startingCSV']==CSV and sub['spec']['source']=='redhat-operators' and sub['spec']['channel']=='preview-0.9'
-assert sub['status']['installedCSV']==CSV
-csv=get('csv',CSV,OPNS);assert csv['status']['phase']=='Succeeded'
+sub=tracked(get('subscription','agent-sandbox-operator',OPNS));assert sub['spec']['installPlanApproval']=='Automatic' and sub['spec']['source']=='redhat-operators' and sub['spec']['channel']=='preview-0.9'
+installed=sub['status']['installedCSV'];assert installed==sub['status']['currentCSV']
+csv=get('csv',installed,OPNS);assert csv['status']['phase']=='Succeeded' and csv['spec']['version'].split('.')[:2]==['0','9']
 deployments=csv['spec']['install']['spec']['deployments'];assert deployments
 for declared in deployments:
     d=get('deployment',declared['name'],OPNS);assert any(o.get('uid')==csv['metadata']['uid'] and o.get('kind')=='ClusterServiceVersion' and o.get('apiVersion','').startswith('operators.coreos.com/') for o in d['metadata'].get('ownerReferences',[]))
@@ -58,4 +58,4 @@ for declared in deployments:
         assert '@sha256:' in c['image'] and any(x['name']==c['name'] and x['image']==c['image'] for x in d['spec']['template']['spec']['containers']),'Controller image mismatch'
 crd=oc('get','crd','sandboxes.agents.x-k8s.io','-o','json');assert any(c['type']=='Established' and c['status']=='True' for c in crd['status']['conditions']) and any(v['served'] and v['name'] in ('v1alpha1','v1beta1') for v in crd['spec']['versions'])
 patch_data(ready,{'controller-ready':'true','source-revision':args.revision,'controller-csv-uid':csv['metadata']['uid']})
-print('Exact native Manual CSV/controller/served Sandbox API qualified; startup barrier released')
+print('Compatible native Automatic CSV/controller/served Sandbox API qualified; startup barrier released')

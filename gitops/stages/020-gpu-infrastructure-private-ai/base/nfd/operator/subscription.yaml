@@ -12,8 +12,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
 spec:
   channel: stable
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   name: nfd
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: nfd.4.22.0-202609212027

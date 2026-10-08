@@ -13,8 +13,7 @@ metadata:
     argocd.argoproj.io/sync-wave: '3'
 spec:
   channel: stable
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   name: dns-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: dns-operator.v1.4.2

@@ -12,8 +12,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   channel: patch-me-see-overlays-dir
-  installPlanApproval: Manual
-  startingCSV: tempo-operator.v0.22.0-2
+  installPlanApproval: Automatic
   name: tempo-product
   source: redhat-operators
   sourceNamespace: openshift-marketplace

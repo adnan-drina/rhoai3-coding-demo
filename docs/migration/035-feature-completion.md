@@ -128,3 +128,7 @@ A bounded governed MiniMax comparison returned a valid JSON chat completion with
 ## Shared configuration rollout: 2026-10-08
 
 The catalog, MaaS/Studio and evaluation slices reconciled serially. Both genuine personas can read the retained default and custom coding-agent catalog cards. The native source-administration API passed a disposable source lifecycle and denied developer writes without changing source data. Evaluation and global-prompt flags, the shared MLflow curated workspace, native TLS/database/artifact configuration and authenticated EvalHub health/providers/collections passed. A completed real evaluation, Studio recreation/tracing and prompt consumer acceptance remain independent gates.
+
+### Future fresh operator deployment — 2026-10-08
+
+Future source uses native Automatic approval and selected compatible release channels. Historical startingCSV pins and normal deployment approval steps are removed; catalog preflight and bounded current-CSV/Succeeded validation replace them. The [complete operator/channel matrix](035-operator-automatic-policy.md) records qualified minima, rolling-channel exceptions, shared-namespace dependency behavior, deferred later-stage operators and the cloud-credential applicability limit. Current live Applications remain immutable and are not repointed; no operator policy/InstallPlan was applied in this task. Static/render/entrypoint checks and the read-only current Stage010 catalog preflight passed; fresh end-to-end deployment remains untested.

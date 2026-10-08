@@ -13,7 +13,6 @@ metadata:
 spec:
   name: agent-sandbox-operator
   channel: preview-0.9
-  startingCSV: agent-sandbox-operator.v0.9.0
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   source: redhat-operators
   sourceNamespace: openshift-marketplace

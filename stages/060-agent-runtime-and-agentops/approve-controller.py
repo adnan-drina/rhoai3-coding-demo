@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Inventory the selected native OLM plan; approval requires its reviewed digest."""
+"""Historical Manual-plan audit/recovery utility, not the normal Automatic deploy flow.
+
+Use only for an explicitly selected legacy Manual installation; normal deployment
+uses check-operator-policy.py and never requires this approval command.
+"""
 import argparse
 import base64
 import gzip

@@ -7,13 +7,14 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/040-governed-models-as-a-service/base"
 revision="${1:-${GIT_REPO_BRANCH:-}}"
 [[ -n "$revision" ]] || { echo 'ERROR: select the reviewed published branch.' >&2; exit 1; }
 export GIT_REPO_URL
 remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "refs/heads/$revision" | awk '{print $1}')
 [[ "$remote_sha" =~ ^[0-9a-f]{40}$ && "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs from reviewed checkout.' >&2; exit 1; }
 export RHOAI_STAGE040_EXPECTED_REVISION="$remote_sha"
-paths=(gitops/stages/040-governed-models-as-a-service gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml stages/040-governed-models-as-a-service scripts/shared scripts/platform/validate-serving-update.py)
+paths=(gitops/stages/040-governed-models-as-a-service gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml stages/040-governed-models-as-a-service scripts/shared scripts/platform/validate-serving-update.py scripts/platform/check-operator-policy.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish all reviewed Stage040 source before deployment.' >&2; exit 1; }
 state=$(python3 "$SCRIPT_DIR/preflight.py")
 if [[ -n "$(oc --request-timeout=10s get application 040-governed-models-as-a-service -n openshift-gitops --ignore-not-found -o jsonpath='{.metadata.uid}')" ]]; then

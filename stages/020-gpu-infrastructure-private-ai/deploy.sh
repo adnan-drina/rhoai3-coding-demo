@@ -7,6 +7,7 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base"
 revision="${1:-${GIT_REPO_BRANCH:-}}"
 [[ -n "$revision" ]] || { echo 'ERROR: select a reviewed published revision.' >&2; exit 1; }
 command -v python3 >/dev/null
@@ -15,7 +16,7 @@ command -v git >/dev/null
 remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
 [[ "$remote_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'ERROR: revision must resolve to one published branch.' >&2; exit 1; }
 [[ "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs from reviewed checkout.' >&2; exit 1; }
-paths=(gitops/stages/020-gpu-infrastructure-private-ai gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml stages/020-gpu-infrastructure-private-ai scripts/shared scripts/platform/require-node-sizing.sh)
+paths=(gitops/stages/020-gpu-infrastructure-private-ai gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml stages/020-gpu-infrastructure-private-ai scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish all reviewed Stage 020 source before deploying.' >&2; exit 1; }
 overlay="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment"
 [[ -f "$overlay/machineset-gpu.yaml" && -f "$overlay/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
@@ -97,30 +98,5 @@ for expected in json.load(sys.stdin):
 # Compose the exact-name MachineSet replica exception into the Application.
 ruby -ryaml -rjson -e 'a=YAML.load_file(ARGV[0]);p=YAML.load_file(ARGV[1]); a["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[2];puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml" "$overlay/application-patch.yaml" "$remote_sha" > "$work/application.yaml"
 oc --request-timeout=10s apply -f "$work/application.yaml"
-echo 'Stage 020 Application submitted. Manual InstallPlans require exact reviewed CSV approval; run validate.sh after native reconciliation.'
-
-# Approve only the initial exact CSV in an InstallPlan owned by its named Subscription.
-python3 - <<'PY_APPROVAL'
-import json,subprocess,time
-selected=[('openshift-nfd','nfd','nfd.4.22.0-202609212027'),('nvidia-gpu-operator','gpu-operator-certified','gpu-operator-certified.v26.7.1'),('openshift-kueue-operator','kueue-operator','kueue-operator.v1.4.2')]
-def read(kind,name,ns):
- p=subprocess.run(['oc','--request-timeout=10s','get',kind,name,'-n',ns,'-o','json'],capture_output=True,text=True,timeout=15)
- return json.loads(p.stdout) if p.returncode==0 else None
-for ns,name,csv in selected:
- for attempt in range(100):
-  sub=read('subscription',name,ns)
-  if sub and sub.get('status',{}).get('installedCSV')==csv:
-   installed=read('csv',csv,ns)
-   if installed and installed.get('status',{}).get('phase')=='Succeeded':break
-  if sub and sub.get('status',{}).get('installPlanRef',{}).get('name'):
-   assert sub['spec']['installPlanApproval']=='Manual','Unexpected approval policy'
-   ip=read('installplan',sub['status']['installPlanRef']['name'],ns)
-   if ip and not ip['spec'].get('approved'):
-    assert any(o.get('uid')==sub['metadata']['uid'] and o.get('kind')=='Subscription' for o in ip['metadata'].get('ownerReferences',[])),'InstallPlan owner mismatch'
-    assert ip['spec'].get('clusterServiceVersionNames')==[csv],'InstallPlan includes unreviewed CSVs'
-    p=subprocess.run(['oc','--request-timeout=10s','patch','installplan',ip['metadata']['name'],'-n',ns,'--type=json','-p',json.dumps([{'op':'test','path':'/metadata/resourceVersion','value':ip['metadata']['resourceVersion']},{'op':'replace','path':'/spec/approved','value':True}])],capture_output=True,timeout=15)
-    assert p.returncode==0,'Reviewed InstallPlan approval failed'
-  time.sleep(3)
- else:raise SystemExit('Timed out waiting for selected native operator: '+name)
- print('Selected native operator Succeeded: '+name)
-PY_APPROVAL
+echo 'Stage 020 Application submitted; native Automatic operator reconciliation is bounded below.'
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base" --wait 900

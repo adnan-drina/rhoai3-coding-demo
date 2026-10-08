@@ -187,6 +187,7 @@ def rendered():
 def main():
     # Safe even when directly invoked instead of through validate.sh.
     command(["/bin/bash", "-c", 'export REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in', "guard", str(ROOT)])
+    subprocess.run(["python3", str(ROOT / "scripts/platform/check-operator-policy.py"), str(ROOT / "gitops/stages/040-governed-models-as-a-service/base"), "--verify"], check=True)
     desired = rendered()
     app = get("application", APP, "openshift-gitops")
     app_ready(app, os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"))
@@ -196,15 +197,16 @@ def main():
     for d in subscriptions:
         m, spec = d["metadata"], d["spec"]
         s = get("subscription", m["name"], m["namespace"])
-        need(all(s["spec"].get(k) == spec.get(k) for k in ("name", "channel", "source", "sourceNamespace", "startingCSV", "installPlanApproval")) and spec["installPlanApproval"] == "Manual", "Operator selection differs from reviewed Manual subscription")
-        need(s.get("status", {}).get("installedCSV") == spec["startingCSV"], "Installed operator differs from selected version")
-        csv = get("csv", spec["startingCSV"], m["namespace"])
+        need(all(s["spec"].get(k) == spec.get(k) for k in ("name", "channel", "source", "sourceNamespace", "startingCSV", "installPlanApproval")) and spec["installPlanApproval"] == "Automatic", "Operator selection differs from Automatic subscription")
+        installed = s.get("status", {}).get("installedCSV")
+        need(installed and installed == s.get("status", {}).get("currentCSV"), "Operator resolution is pending")
+        csv = get("csv", installed, m["namespace"])
         need(csv.get("status", {}).get("phase") == "Succeeded", "Selected operator CSV did not succeed")
         for dep in csv["spec"].get("install", {}).get("spec", {}).get("deployments", []):
             native = get("deployment", dep["name"], m["namespace"])
             need(csv_owner(native, csv), "Operator workload has unexpected CSV owner")
             workload(native)
-    print("[PASS] Six selected Manual operators and current workloads")
+    print("[PASS] Six Automatic operators and current workloads")
     dsc = get("datasciencecluster", "default-dsc")
     current(dsc); condition(dsc, "Ready")
     for key in ("aigateway", "ogx", "kserve"):

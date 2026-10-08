@@ -14,7 +14,7 @@ Use version-matched 3.5/OCP 4.22 documentation for migration design and retain t
 
 ## Stage 010 source selections
 
-The isolated candidate source selects GitOps `gitops-1.21`, RHOAI `stable-3.5` and ODF `stable-4.22`, with reviewed Manual COO 1.5.3/OpenTelemetry 0.158.0-2/Tempo 0.22.0-2 subscriptions. Bundle CPE metadata maps the latter two to product 3.11; exact public support-table coverage remains a documented limit. Native registry, metrics, Perses backend and exact trace retrieval checks passed; MLflow synthetic artifact/database persistence passed, and genuine persona login/sandbox role separation passed; actual dashboard browser acceptance remains separate. [The migration plan](migration/010-foundation-plan.md) records acceptance gates and remaining decisions; retain the historical table below for stage-by-stage reference.
+The isolated candidate source selects GitOps `gitops-1.21`, RHOAI `stable-3.5` and ODF `stable-4.22`, with native Automatic COO/OpenTelemetry/Tempo subscriptions and qualified version baselines 1.5.3/0.158.0-2/0.22.0-2. Bundle CPE metadata maps the latter two to product 3.11; exact public support-table coverage remains a documented limit. Native registry, metrics, Perses backend and exact trace retrieval checks passed; MLflow synthetic artifact/database persistence passed, and genuine persona login/sandbox role separation passed; actual dashboard browser acceptance remains separate. [The migration plan](migration/010-foundation-plan.md) records acceptance gates and remaining decisions; retain the historical table below for stage-by-stage reference.
 
 ## Documented legacy reference baseline
 
@@ -283,3 +283,5 @@ Shared skills should reference this repository baseline rather than repeating ex
 ### Stage 040 current runtime checkpoint (2026-10-05)
 
 Stage 040 at `6ab5e6f9ee35c89d189c6f48973f8bf40be620f1` reconciled successfully. Two pinned private Qwen models, Red Hat MiniMax streaming, genuine key lifecycle, isolated quota enforcement and the key-list backend repair passed. All 18 retained registry/MLflow/OBC metadata identities were independently preserved; core 010 stays on the retention bridge. GPT account credits, unqualified EPP execution and user-owned Studio visual checks prevent a full Stage 040 acceptance claim. [Technical evidence](migration/040-governed-serving-plan.md#final-bounded-runtime-evidence).
+
+The future [Automatic operator policy](migration/035-operator-automatic-policy.md) supersedes historical Manual lifecycle instructions for the RHOAI 3.5 source. Historical 3.4/1.3 receipts below remain historical; current RHCL baseline is 1.4.3.

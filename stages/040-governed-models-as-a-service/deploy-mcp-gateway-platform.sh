@@ -5,11 +5,12 @@ source "$ROOT/scripts/shared/lib.sh"
 REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT}"
 load_env
 check_oc_logged_in
+python3 "$ROOT/scripts/platform/check-operator-policy.py" "$ROOT/gitops/stages/040-governed-models-as-a-service/mcp-gateway-platform"
 [[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'Use a dedicated kubeconfig context in openshift-gitops for Argo core.' >&2; exit 1; }
 branch="${1:?Usage: deploy-mcp-gateway-platform.sh published-branch}"
 sha="$(git -C "$ROOT" rev-parse HEAD)"
 [[ "$(git -C "$ROOT" ls-remote origin "refs/heads/$branch" | awk '{print $1}')" == "$sha" ]] || { echo 'Published branch must equal checkout HEAD.' >&2; exit 1; }
-[[ -z "$(git -C "$ROOT" status --porcelain -- gitops/stages/040-governed-models-as-a-service/mcp-gateway-platform gitops/argocd/app-of-apps/040-governed-models-as-a-service-mcp-platform.yaml stages/040-governed-models-as-a-service/deploy-mcp-gateway-platform.sh stages/040-governed-models-as-a-service/validate-mcp-gateway-platform.sh)" ]] || { echo 'MCP Gateway platform source is unpublished.' >&2; exit 1; }
+[[ -z "$(git -C "$ROOT" status --porcelain -- gitops/stages/040-governed-models-as-a-service/mcp-gateway-platform gitops/argocd/app-of-apps/040-governed-models-as-a-service-mcp-platform.yaml stages/040-governed-models-as-a-service/deploy-mcp-gateway-platform.sh stages/040-governed-models-as-a-service/validate-mcp-gateway-platform.sh scripts/platform/check-operator-policy.py)" ]] || { echo 'MCP Gateway platform source is unpublished.' >&2; exit 1; }
 python3 - <<'PY'
 import json,subprocess
 def get(kind,name,ns=None):
@@ -34,7 +35,7 @@ for kind,name,ns in [('namespace','mcp-gateway-system',None),('resourcequota','m
   assert obj['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==expected,'Platform resource belongs to another owner'
 print('PASS Native platform ownership preflight')
 PY
-# Own Application is the first write; OLM approval remains a separate exact-plan gate.
+# Own Application is the first write; OLM reconciles Automatic subscriptions.
 oc --request-timeout=10s apply -f <(python3 - "$ROOT" "$sha" <<'PY'
 import json,subprocess,sys
 root,sha=sys.argv[1:]
@@ -43,4 +44,6 @@ a['spec']['source']['targetRevision']=sha
 print(json.dumps(a))
 PY
 )
-echo 'Desired operator primitive submitted. Manually sync exact revision, inspect native InstallPlan, then approve only the reviewed tuple. No Gateway Extension is deployed.'
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync mcp-gateway-platform --app-namespace openshift-gitops --revision "$sha" --async --timeout 300
+python3 "$ROOT/scripts/platform/check-operator-policy.py" "$ROOT/gitops/stages/040-governed-models-as-a-service/mcp-gateway-platform" --wait 900
+echo 'Automatic native operator reconciliation completed; no Gateway Extension is deployed.'
