@@ -223,7 +223,7 @@ def pinned_model(name):
 quota_others = sum(1 for w in dws if w['metadata']['name'] != workspace and is_migration_run(w)
                    and w.get('status',{}).get('phase') in ('Running','Starting')
                    and pinned_model(w['metadata']['name']) in ('', os.environ['EXPECTED_MODEL']))
-model = json.loads(oc('get','llminferenceservice',os.environ['EXPECTED_MODEL'],'-n','models-as-a-service','-o','json'))
+model = json.loads(oc('get','llminferenceservice',os.environ['EXPECTED_MODEL'],'-n','internal-models','-o','json'))
 need(any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in model.get('status',{}).get('conditions',[])), 'Qwen model is not Ready')
 def args_in(obj):
     if isinstance(obj,dict):

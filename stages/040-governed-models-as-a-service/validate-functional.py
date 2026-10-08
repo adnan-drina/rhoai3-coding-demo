@@ -148,7 +148,7 @@ def read_messages_sse(response, expected_model):
 
 
 def counter(model):
-    expression = 'sum(vllm:request_success_total{namespace="models-as-a-service",model_name="' + model + '"})'
+    expression = 'sum(vllm:request_success_total{namespace="internal-models",model_name="' + model + '"})'
     route = native.get("route", "thanos-querier", "openshift-monitoring")
     host = route.get("spec", {}).get("host")
     need(host and route.get("spec", {}).get("tls"), "Native Thanos verified HTTPS route is absent")
@@ -334,7 +334,7 @@ def run():
                     need(time.monotonic() < deadline, "Local inference traffic counter did not increase")
                     time.sleep(5)
                 result["traffic_counter_increased"] = True
-                llmi = native.get("llminferenceservices.serving.kserve.io", name, "models-as-a-service")
+                llmi = native.get("llminferenceservices.serving.kserve.io", name, "internal-models")
                 router = llmi.get("status", {}).get("router", {}).get("scheduler", {})
                 scheduler = llmi.get("status", {}).get("workloads", {}).get("scheduler", {})
                 # These are shipped observed topology fields, not proof a request invoked EPP.

@@ -284,7 +284,7 @@ def main():
     need(set(listeners) == {"api", "qwen3-6", "qwen3-8"}, "Gateway listener set differs")
     domains = {l.get("hostname") for l in listeners.values()}
     need(len(domains) == 3 and all(h and "*" not in h and "placeholder" not in h for h in domains), "Gateway hostnames are unresolved or not isolated")
-    namespaces = {n: get("namespace", n) for n in ("models-as-a-service", "external-models", "redhat-ai-gateway-infra")}
+    namespaces = {n: get("namespace", n) for n in ("models-as-a-service", "internal-models", "external-models", "redhat-ai-gateway-infra")}
     for ns in (*namespaces, "redhat-ods-applications"):
         obj = namespaces.get(ns) or get("namespace", ns)
         need(obj["metadata"].get("labels", {}).get("maas-gateway-access") == "true", "Required MaaS namespace admission label is absent")
@@ -298,8 +298,8 @@ def main():
         need(attached >= 1 if name == "api" else attached == 1, "Gateway listener route count violates isolation")
         need(listener.get("port") == 443 and listener.get("protocol") == "HTTPS" and listener.get("tls", {}).get("mode") == "Terminate", "Gateway listener lacks native TLS")
         for ns, obj in namespaces.items():
-            need(allows(listener, obj) == (ns != "models-as-a-service" if name == "api" else ns == "models-as-a-service"), "Gateway namespace isolation differs")
-    routes = get("httproutes.gateway.networking.k8s.io", ns="models-as-a-service")["items"]
+            need(allows(listener, obj) == (ns in ("external-models", "redhat-ai-gateway-infra") if name == "api" else ns == "internal-models"), "Gateway namespace isolation differs")
+    routes = get("httproutes.gateway.networking.k8s.io", ns="internal-models")["items"]
     api_routes = get("httproutes.gateway.networking.k8s.io", ns="redhat-ai-gateway-infra")["items"]
     ext_routes = get("httproutes.gateway.networking.k8s.io", ns="external-models")["items"]
     for route in api_routes + ext_routes:
@@ -310,15 +310,15 @@ def main():
     need(any(any(r.get("name") == "maas-default-gateway" for r in x["spec"].get("parentRefs", [])) for x in api_routes), "Native MaaS API route is absent")
     models = [o for o in desired if o["kind"] == "LLMInferenceService"]
     need(len(models) == 2, "Reviewed two-model scope differs")
-    workloads = sum((get(k, ns="models-as-a-service")["items"] for k in ("deployments", "statefulsets", "leaderworkersets.leaderworkerset.x-k8s.io")), [])
+    workloads = sum((get(k, ns="internal-models")["items"] for k in ("deployments", "statefulsets", "leaderworkersets.leaderworkerset.x-k8s.io")), [])
     for d in models:
-        obj = get("llminferenceservices.serving.kserve.io", d["metadata"]["name"], "models-as-a-service")
+        obj = get("llminferenceservices.serving.kserve.io", d["metadata"]["name"], "internal-models")
         current(obj)
         replicas = obj["spec"].get("replicas", 1)
         need(type(replicas) is int and replicas >= 0, "Native model lifecycle replica value is invalid")
         delegated = "RespectIgnoreDifferences=true" in app["spec"].get("syncPolicy", {}).get("syncOptions", []) and any(
             entry.get("group") == "serving.kserve.io" and entry.get("kind") == "LLMInferenceService"
-            and entry.get("name") == d["metadata"]["name"] and entry.get("namespace") == "models-as-a-service"
+            and entry.get("name") == d["metadata"]["name"] and entry.get("namespace") == "internal-models"
             and "/spec/replicas" in entry.get("jsonPointers", []) for entry in app["spec"].get("ignoreDifferences", []))
         expected_spec = dict(d["spec"])
         if delegated:
@@ -372,7 +372,9 @@ def main():
         ns, name = d["metadata"]["namespace"], d["metadata"]["name"]
         group = "maas.opendatahub.io" if kind == "MaaSModelRef" else "inference.opendatahub.io"
         obj = get(kind.lower() + "s." + group, name, ns)
-        need(obj.get("status", {}).get("phase") == "Ready", "Native model registration phase is not Ready")
+        parked_ref = kind == "MaaSModelRef" and ns == "internal-models" and name == "qwen3-6-27b" and get("llminferenceservices.serving.kserve.io", name, ns)["spec"].get("replicas") == 0
+        if not parked_ref:
+            need(obj.get("status", {}).get("phase") == "Ready", "Native model registration phase is not Ready")
         if kind != "MaaSModelRef":
             condition(obj, "Ready", True)
             if kind == "ExternalProvider" and name == "redhat-models":
@@ -391,10 +393,15 @@ def main():
             need(owner(r, obj["metadata"]["uid"]), "External route is not owned by native model")
             route_ready(r, "api", gateway_controller)
         if kind == "MaaSModelRef":
-            for t in ("Ready", "GovernanceAttached", "RuntimeReady"):
+            for t in (("GovernanceAttached",) if parked_ref else ("Ready", "GovernanceAttached", "RuntimeReady")):
                 condition(obj, t, True)
+            if parked_ref:
+                runtime = conditions(obj).get("RuntimeReady", {})
+                need(runtime.get("observedGeneration") == obj["metadata"]["generation"] and runtime.get("status") in ("True", "False"), "Parked model runtime observation is stale or absent")
+                print("[PASS] Parked model reference governance/current native observation; runtime status is not inference qualification")
             need(obj["spec"].get("modelRef") == d["spec"]["modelRef"] and obj["spec"].get("tenantRef") == d["spec"].get("tenantRef"), "Native model reference differs")
-            need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
+            if not parked_ref:
+                need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
             if ns == "external-models":
                 endpoint = "https://" + listeners["api"]["hostname"]
                 if d["spec"].get("endpointOverride"):

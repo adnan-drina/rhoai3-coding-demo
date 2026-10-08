@@ -2,7 +2,7 @@ apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
   name: qwen3-8-27b-int4
-  namespace: models-as-a-service
+  namespace: internal-models
   labels:
     app.kubernetes.io/name: qwen3-8-27b-int4
     app.kubernetes.io/component: local-llm

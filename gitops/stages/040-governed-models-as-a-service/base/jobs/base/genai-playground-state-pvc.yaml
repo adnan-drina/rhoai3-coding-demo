@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: genai-playground-state
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: genai-playground-state
+    app.kubernetes.io/component: studio-state
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -67,10 +67,10 @@ oc get datasciencecluster -A
 # For MaaS workarounds
 oc get gateway -n models-as-a-service
 oc get authpolicy -n models-as-a-service
-oc get llminferenceservice -n models-as-a-service
+oc get llminferenceservice -n internal-models
 
 # For gateway workarounds
-oc get httproute -n models-as-a-service
+oc get httproute -n internal-models
 oc get envoyfilter -n models-as-a-service
 ```
 

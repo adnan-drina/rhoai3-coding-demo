@@ -2,7 +2,7 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
   name: qwen3-6-27b
-  namespace: models-as-a-service
+  namespace: internal-models
   labels:
     app.kubernetes.io/name: qwen3-6-27b
     app.kubernetes.io/component: maas-model-ref

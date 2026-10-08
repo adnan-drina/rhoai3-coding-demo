@@ -55,7 +55,7 @@ spec:
   - group: serving.kserve.io
     kind: LLMInferenceService
     name: qwen3-6-27b
-    namespace: models-as-a-service
+    namespace: internal-models
     jsonPointers:
     - "/spec/replicas"
     - "/metadata/labels/modelregistry.opendatahub.io~1name"
@@ -64,7 +64,7 @@ spec:
   - group: serving.kserve.io
     kind: LLMInferenceService
     name: qwen3-8-27b-int4
-    namespace: models-as-a-service
+    namespace: internal-models
     jsonPointers:
     - "/spec/replicas"
     - "/metadata/labels/modelregistry.opendatahub.io~1name"

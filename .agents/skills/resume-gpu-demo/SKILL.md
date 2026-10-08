@@ -111,4 +111,4 @@ These are required for pod scheduling and NVIDIA operator DaemonSet targeting.
 - Kueue resource names: ClusterQueue `cq-gpu-reserved-demo`, LocalQueue `lq-gpu-reserved-demo`, ResourceFlavor `gpu-l40s`.
 - The stale ReplicaSet cleanup is demo-specific. It handles the known two-GPU quota rollout case where old model ReplicaSets can keep admitted Kueue reservations while new model pods wait.
 - Do not scale GPU nodes down unless the user asks for cost-saving or shutdown.
-- Models are served in the `models-as-a-service` namespace.
+- Models are served in the `internal-models` namespace.

@@ -72,7 +72,7 @@ spec:
     - {protocol: TCP, port: 8443}
   - to:
     - namespaceSelector:
-        matchLabels: {kubernetes.io/metadata.name: models-as-a-service}
+        matchLabels: {kubernetes.io/metadata.name: internal-models}
     ports:
     - {protocol: TCP, port: 8000}
     - {protocol: TCP, port: 9002}

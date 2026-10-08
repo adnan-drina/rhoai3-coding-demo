@@ -38,7 +38,7 @@ data:
                   - shadow_denied
                 inclusionRegexps:
                   - 'vhost\..*\.route\..*'
-                  - '^cluster\.outbound\|9002\|\|qwen3-(6-27b|8-27b-int4)-epp-service\.models-as-a-service\.svc\.cluster\.local;\.upstream_rq_(total|completed|2xx|5xx)$'
+                  - '^cluster\.outbound\|9002\|\|qwen3-(6-27b|8-27b-int4)-epp-service\.internal-models\.svc\.cluster\.local;\.upstream_rq_(total|completed|2xx|5xx)$'
                   - '^http\..*\.ext_proc\.(streams_started|stream_msgs_sent|stream_msgs_received|streams_failed|failure_mode_allowed|message_timeouts)$'
         spec:
           containers:

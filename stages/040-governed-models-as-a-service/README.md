@@ -6,7 +6,7 @@ A model endpoint alone does not provide a shared enterprise service. Models-as-a
 
 ## Architecture
 
-Two exclusive L40S GPUs serve the project's Qwen models. Native OpenShift AI controllers connect them to one governed Gateway. Separate HTTPS listeners serve the API, Qwen 3.6 and Qwen 3.8; namespace restrictions keep their routes separate. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
+Qwen models are hosted in the Internal Models project; Qwen3.6 is parked and Qwen3.8 uses one exclusive L40S GPU. Native OpenShift AI controllers connect them to one governed Gateway. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. Separate HTTPS listeners serve the API, Qwen 3.6 and Qwen 3.8; namespace restrictions keep their routes separate. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
 
 ## What This Stage Adds
 

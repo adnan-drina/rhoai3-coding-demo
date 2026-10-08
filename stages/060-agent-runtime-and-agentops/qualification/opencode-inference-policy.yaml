@@ -21,6 +21,6 @@ network_policies:
         rules:
           - allow:
               method: POST
-              path: /models-as-a-service/qwen3-8-27b-int4/v1/chat/completions
+              path: /internal-models/qwen3-8-27b-int4/v1/chat/completions
     binaries:
       - path: /usr/local/bin/opencode

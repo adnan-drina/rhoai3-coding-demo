@@ -2,9 +2,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: vllm-serving-health
-  namespace: models-as-a-service
+  namespace: internal-models
   labels:
-    app.kubernetes.io/part-of: models-as-a-service
+    app.kubernetes.io/part-of: internal-models
     app.kubernetes.io/name: vllm-serving-health
     app.kubernetes.io/component: monitoring
   annotations:
@@ -70,13 +70,13 @@ spec:
               to scale out or cap concurrency.
         - alert: VLLMModelServingDown
           expr: |
-            absent(vllm:num_requests_running{namespace="models-as-a-service"})
+            absent(vllm:num_requests_running{namespace="internal-models"})
           for: 15m
           labels:
             severity: info
             demo_stage: "040"
           annotations:
-            summary: "No vLLM serving metrics in models-as-a-service"
+            summary: "No vLLM serving metrics in internal-models"
             description: >-
               No vLLM serving metrics have been scraped for 15m. Expected when
               the demo model is intentionally parked (scaled to zero); if the

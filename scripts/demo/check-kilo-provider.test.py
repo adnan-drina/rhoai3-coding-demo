@@ -17,7 +17,7 @@ cases = [
     (S, ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "ok"),
     (S, ("qwen38", "qwen3-8-27b-int4", "qwen3-8-27b-int4"), "ok"),
     (S.replace('"enabled_providers": ["qwen38", "qwen27b"]', '"enabled_providers": ["qwen38"]'), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "enabled_providers"),
-    (S.replace("/models-as-a-service/qwen3-6-27b/v1", "/models-as-a-service/qwen3-8-27b-int4/v1"), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "baseURL"),
+    (S.replace("/internal-models/qwen3-6-27b/v1", "/internal-models/qwen3-8-27b-int4/v1"), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "baseURL"),
     (S.replace('"qwen3-6-27b": {', '"qwen3-6-27b-x": {'), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "models has no"),
     ("echo no kilo here", ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "no kilo.jsonc"),
 ]

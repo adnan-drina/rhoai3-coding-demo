@@ -20,12 +20,12 @@ spec:
       - kube:admin
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
           window: 1h
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
           window: 1h
@@ -72,9 +72,9 @@ spec:
       - kube:admin
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
     - name: minimax-m2
@@ -107,12 +107,12 @@ spec:
       - ai-developer
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
           window: 1h
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
           window: 1h
@@ -159,9 +159,9 @@ spec:
       - ai-developer
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
     - name: minimax-m2
@@ -194,12 +194,12 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
           window: 1h
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
           window: 1h
@@ -246,9 +246,9 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
     - name: minimax-m2

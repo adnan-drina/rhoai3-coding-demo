@@ -13,4 +13,4 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '1'
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
-    openshift.io/display-name: Governed External Models
+    openshift.io/display-name: External Models

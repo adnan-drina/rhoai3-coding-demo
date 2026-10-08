@@ -2,7 +2,7 @@ apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
   name: qwen3-6-27b
-  namespace: models-as-a-service
+  namespace: internal-models
   labels:
     app.kubernetes.io/name: qwen3-6-27b
     app.kubernetes.io/component: local-llm
@@ -28,7 +28,7 @@ spec:
   model:
     name: qwen3-6-27b
     uri: hf://RedHatAI/Qwen3.6-27B-FP8:57d986c3ab0397a811e5150190eff67f76fab6e0
-  replicas: 1
+  replicas: 0
   router:
     gateway:
       refs:

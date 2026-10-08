@@ -42,7 +42,7 @@ Discover the current state before making changes:
 
 ```bash
 # Models (if any deployed)
-oc get llminferenceservice -n models-as-a-service -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
+oc get llminferenceservice -n internal-models -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
 
 # GPU-backed demo path
 ./scripts/platform/resume-gpu-demo.sh status
@@ -56,7 +56,7 @@ oc get applications -n openshift-gitops -o custom-columns='APP:.metadata.name,SY
 Patch the LLMInferenceService replicas to 0. The resource remains; only the serving pods are removed.
 
 ```bash
-oc patch llminferenceservice <MODEL_NAME> -n models-as-a-service --type merge \
+oc patch llminferenceservice <MODEL_NAME> -n internal-models --type merge \
   -p '{"spec":{"replicas":0}}'
 ```
 
@@ -103,7 +103,7 @@ oc get applications -n openshift-gitops \
   -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
 
 # Check model readiness (if applicable)
-oc get llminferenceservice -n models-as-a-service
+oc get llminferenceservice -n internal-models
 
 # Check node availability
 oc get nodes -l node-role.kubernetes.io/gpu

@@ -9,7 +9,7 @@ check_oc_logged_in
 python3 - "$REPO_ROOT" <<'PY'
 import json,os,re,ssl,subprocess,sys,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
-root=Path(sys.argv[1]);ns='models-as-a-service';registry='demo-registry'
+root=Path(sys.argv[1]);ns='internal-models';registry='demo-registry'
 def oc(args,payload=None):
  r=subprocess.run(['oc','--request-timeout=10s']+args,input=json.dumps(payload) if payload else None,capture_output=True,text=True,timeout=15)
  if r.returncode:raise RuntimeError('Native registry/model API operation failed')
@@ -44,19 +44,22 @@ try:
   llmi=get('llminferenceservices.serving.kserve.io',name,ns)
   assert llmi['spec']['model']['uri']==uri and llmi['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('040-governed-models-as-a-service:'),'Model source/ownership differs'
   assert isinstance(llmi['metadata'].get('generation'),int) and llmi.get('status',{}).get('observedGeneration')==llmi['metadata']['generation'],'Model readiness is stale'
-  assert any(c.get('type')=='Ready' and c.get('status')=='True' for c in llmi.get('status',{}).get('conditions',[])),'Model must be ready before registry publication'
+  parked=llmi['spec'].get('replicas')==0
+  if not parked:assert any(c.get('type')=='Ready' and c.get('status')=='True' for c in llmi.get('status',{}).get('conditions',[])),'Active model must be ready before registry publication'
   matches=[x for x in items('/registered_models') if x['name']==title];assert len(matches)<=1,'Ambiguous registered model name'
   model=matches[0] if matches else api('/registered_models',{'name':title,'owner':'rhoai3-coding-demo','description':'Pinned RedHatAI model artifact used by the project. Runtime and GPU compatibility are qualified separately; this is not a Red Hat validated-model claim.'})
-  model_id=model['id'];version_name='source-'+revision
+  model_id=model['id'];existing_labels=llmi['metadata'].get('labels',{});assert not existing_labels.get('modelregistry.opendatahub.io/registered-model-id') or existing_labels['modelregistry.opendatahub.io/registered-model-id']==model_id,'Existing model registry identity differs; no reassignment'
+  version_name='source-'+revision
   versions=[x for x in items('/registered_models/'+model_id+'/versions') if x['name']==version_name];assert len(versions)<=1,'Ambiguous registered model version'
   version=versions[0] if versions else api('/model_versions',{'name':version_name,'registeredModelId':model_id,'description':'Immutable source '+revision})
-  version_id=version['id'];artifacts=items('/model_versions/'+version_id+'/artifacts')
+  version_id=version['id'];assert not existing_labels.get('modelregistry.opendatahub.io/model-version-id') or existing_labels['modelregistry.opendatahub.io/model-version-id']==version_id,'Existing model version identity differs; no reassignment'
+  artifacts=items('/model_versions/'+version_id+'/artifacts')
   assert not artifacts or (len(artifacts)==1 and artifacts[0].get('uri')==uri),'Existing version artifact differs; no overwrite'
   if not artifacts:api('/model_versions/'+version_id+'/artifacts',{'name':'model-source','uri':uri,'artifactType':'model-artifact','modelFormatName':'vLLM','modelFormatVersion':'1'})
   labels=dict(llmi['metadata'].get('labels',{}));labels.update({'modelregistry.opendatahub.io/name':registry,'modelregistry.opendatahub.io/registered-model-id':model_id,'modelregistry.opendatahub.io/model-version-id':version_id})
   patch=[{'op':'test','path':'/metadata/resourceVersion','value':llmi['metadata']['resourceVersion']},{'op':'add','path':'/metadata/labels','value':labels}]
   oc(['patch','llminferenceservices.serving.kserve.io',name,'-n',ns,'--type=json','--patch-file=/dev/stdin','-o','json'],patch)
-  print('PASS Registered pinned source and native deployment linkage: '+name)
+  print('PASS Registered pinned metadata; parked runtime not qualified: '+name if parked else 'PASS Registered pinned source and native deployment linkage: '+name)
 except (RuntimeError,AssertionError,KeyError,ValueError,subprocess.SubprocessError) as error:
  raise SystemExit('ERROR: registry publication stopped ('+type(error).__name__+'); inspect native readiness/source ownership') from None
 PY

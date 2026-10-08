@@ -56,7 +56,7 @@ for _ in $(seq 1 240); do
 import json,os,subprocess
 x=json.loads(subprocess.check_output(['oc','--request-timeout=10s','get','applications.argoproj.io','040-governed-models-as-a-service','-n','openshift-gitops','-o','json'],text=True));s=x['spec']
 assert 'RespectIgnoreDifferences=true' in s['syncPolicy']['syncOptions']
-for name in ['qwen3-6-27b','qwen3-8-27b-int4']:assert any(i.get('kind')=='LLMInferenceService' and i.get('name')==name and i.get('namespace')=='models-as-a-service' and '/spec/replicas' in i.get('jsonPointers',[]) for i in s['ignoreDifferences']),'Model lifecycle delegation missing'
+for name in ['qwen3-6-27b','qwen3-8-27b-int4']:assert any(i.get('kind')=='LLMInferenceService' and i.get('name')==name and i.get('namespace')=='internal-models' and '/spec/replicas' in i.get('jsonPointers',[]) for i in s['ignoreDifferences']),'Model lifecycle delegation missing'
 assert s['source']['targetRevision']==os.environ['RHOAI_STAGE040_SYNC_REVISION'] and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/040-governed-models-as-a-service/base' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and not s.get('sources') and not x['metadata'].get('ownerReferences') and not x['metadata'].get('deletionTimestamp') and not x.get('operation'),'Unexpected own Application identity or active operation'
 PY_GUARD
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 040-governed-models-as-a-service --app-namespace openshift-gitops --strategy hook --revision "$remote_sha" --async --timeout 300

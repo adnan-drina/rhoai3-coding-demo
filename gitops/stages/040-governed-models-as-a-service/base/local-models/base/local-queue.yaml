@@ -2,7 +2,7 @@ apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata:
   name: lq-gpu-reserved-demo
-  namespace: models-as-a-service
+  namespace: internal-models
   labels:
     app.kubernetes.io/name: lq-gpu-reserved-demo
     app.kubernetes.io/component: gpu-scheduling

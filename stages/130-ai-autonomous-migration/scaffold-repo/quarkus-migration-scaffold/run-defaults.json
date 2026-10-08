@@ -32,8 +32,8 @@
     "model": {
       "id": "qwen3-6-27b",
       "provider": "qwen27b",
-      "namespace": "models-as-a-service",
-      "maas_api_path": "/models-as-a-service/qwen3-6-27b/v1",
+      "namespace": "internal-models",
+      "maas_api_path": "/internal-models/qwen3-6-27b/v1",
       "served_max_model_len": 131072,
       "declared_context_length": 110000
     },

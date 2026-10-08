@@ -5,9 +5,9 @@ metadata:
   # cluster-scoped monitoring-rules-view role in the model namespace so they
   # can read the serving PrometheusRules and alerts without cluster-admin.
   name: rhoai-demo-monitoring-rules-view
-  namespace: models-as-a-service
+  namespace: internal-models
   labels:
-    app.kubernetes.io/part-of: models-as-a-service
+    app.kubernetes.io/part-of: internal-models
     app.kubernetes.io/name: monitoring-rules-view
     app.kubernetes.io/component: access-control
   annotations:

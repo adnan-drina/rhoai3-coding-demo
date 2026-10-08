@@ -28,7 +28,7 @@ spec:
     # observed 2026-07-25 as instant 429s mid-run). 20M/h gives a full
     # autonomous migration ~4x headroom.
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 20000000
           window: 1h
@@ -39,7 +39,7 @@ spec:
     # card blocked). 60M/h gives ~2.4x the measured peak. Local GPU model:
     # this budget demonstrates governance, not cost control.
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
       tokenRateLimits:
         - limit: 60000000
           window: 1h
@@ -70,9 +70,9 @@ spec:
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
+      namespace: internal-models
     - name: qwen3-8-27b-int4
-      namespace: models-as-a-service
+      namespace: internal-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform

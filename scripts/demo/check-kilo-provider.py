@@ -37,7 +37,7 @@ def check(script: str, provider: str, model: str, segment: str) -> str:
     if p.get("npm") != "@ai-sdk/openai-compatible":
         return "provider.%s.npm is %r, not the OpenAI-compatible adapter" % (provider, p.get("npm"))
     url = str((p.get("options") or {}).get("baseURL") or "")
-    if not url.endswith("/models-as-a-service/%s/v1" % segment):
+    if not url.endswith("/internal-models/%s/v1" % segment):
         return "provider.%s.options.baseURL %r is not the MaaS route of %s" % (provider, url, segment)
     if not (p.get("options") or {}).get("apiKey"):
         return "provider.%s.options.apiKey is empty" % provider

@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-openshift-gitops}"
-MODEL_NAMESPACE="${MODEL_NAMESPACE:-models-as-a-service}"
+MODEL_NAMESPACE="${MODEL_NAMESPACE:-internal-models}"
 GPU_MACHINESET_REPLICAS="${GPU_MACHINESET_REPLICAS:-2}"
 GPU_RESUME_TIMEOUT_SECONDS="${GPU_RESUME_TIMEOUT_SECONDS:-1800}"
 GPU_RESUME_POLL_SECONDS="${GPU_RESUME_POLL_SECONDS:-15}"
@@ -35,7 +35,7 @@ Environment overrides:
   GPU_RESUME_TIMEOUT_SECONDS     Wait timeout for GPU/model recovery. Default: 1800.
   GPU_RESUME_POLL_SECONDS        Poll interval. Default: 15.
   ARGOCD_NAMESPACE               Argo CD namespace. Default: openshift-gitops.
-  MODEL_NAMESPACE                Private model namespace. Default: models-as-a-service.
+  MODEL_NAMESPACE                Private model namespace. Default: internal-models.
 EOF
 }
 

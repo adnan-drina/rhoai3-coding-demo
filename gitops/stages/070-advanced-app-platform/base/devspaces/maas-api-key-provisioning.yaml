@@ -466,7 +466,7 @@ data:
           "name": "Qwen3.8 27B INT4 (private MaaS)",
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN27B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-8-27b-int4/v1",
+            "baseURL": "${MAAS_BASE_URL}/internal-models/qwen3-8-27b-int4/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           },
@@ -482,7 +482,7 @@ data:
           "name": "Qwen3.6 27B FP8 (private MaaS)",
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN27B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-27b/v1",
+            "baseURL": "${MAAS_BASE_URL}/internal-models/qwen3-6-27b/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           },
@@ -1186,7 +1186,7 @@ data:
     # (DWO workspace-maas-credentials) is source of truth when set;
     # otherwise MAAS_BASE_URL + the ConfigMap path (Architect 161809ZA).
     _gw = (os.environ.get("MAAS_BASE_URL") or "").strip().rstrip("/")
-    _path = "/models-as-a-service/qwen3-8-27b-int4/v1"
+    _path = "/internal-models/qwen3-8-27b-int4/v1"
     model_base = (
         (os.environ.get("MAAS_API_BASE_URL") or "").strip()
         or ((_gw + _path) if _gw else "")
@@ -2468,7 +2468,7 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN27B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-8-27b-int4/v1",
+            "baseURL": "${MAAS_BASE_URL}/internal-models/qwen3-8-27b-int4/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           }
@@ -2484,7 +2484,7 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN27B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-27b/v1",
+            "baseURL": "${MAAS_BASE_URL}/internal-models/qwen3-6-27b/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           }
@@ -2855,10 +2855,10 @@ spec:
               MAAS_API_PATH="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_PATH}' 2>/dev/null || true)"
               MAAS_API_PATH_QWEN36="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_PATH_QWEN36}' 2>/dev/null || true)"
               if [ -z "${MAAS_API_PATH}" ]; then
-                MAAS_API_PATH="/models-as-a-service/qwen3-8-27b-int4/v1"
+                MAAS_API_PATH="/internal-models/qwen3-8-27b-int4/v1"
               fi
               if [ -z "${MAAS_API_PATH_QWEN36}" ]; then
-                MAAS_API_PATH_QWEN36="/models-as-a-service/qwen3-6-27b/v1"
+                MAAS_API_PATH_QWEN36="/internal-models/qwen3-6-27b/v1"
               fi
               python3 - "${SECRET_FILE}" "${MAAS_BASE_URL}" "${MAAS_API_PATH}" "${MAAS_API_PATH_QWEN36}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
               import json

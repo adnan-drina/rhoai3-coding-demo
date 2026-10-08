@@ -66,7 +66,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: models-as-a-service
+              kubernetes.io/metadata.name: internal-models
     - to:
         - namespaceSelector:
             matchLabels:

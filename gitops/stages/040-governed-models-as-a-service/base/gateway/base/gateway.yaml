@@ -53,7 +53,7 @@ spec:
         from: Selector
         selector:
           matchLabels:
-            kubernetes.io/metadata.name: models-as-a-service
+            kubernetes.io/metadata.name: internal-models
             maas-gateway-access: "true"
     tls:
       mode: Terminate
@@ -70,7 +70,7 @@ spec:
         from: Selector
         selector:
           matchLabels:
-            kubernetes.io/metadata.name: models-as-a-service
+            kubernetes.io/metadata.name: internal-models
             maas-gateway-access: "true"
     tls:
       mode: Terminate

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: internal-models
+  labels:
+    app.kubernetes.io/name: internal-models
+    app.kubernetes.io/component: local-model-serving
+    opendatahub.io/dashboard: "true"
+    kueue.openshift.io/managed: "true"
+    maas-gateway-access: "true"
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    openshift.io/display-name: Internal Models
