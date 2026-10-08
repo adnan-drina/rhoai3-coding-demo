@@ -2,7 +2,7 @@
 
 This source policy applies to future deployments. The existing cluster applications remain pinned to their already deployed immutable revisions; this change does not approve an existing InstallPlan or upgrade an operator.
 
-All tracked platform Subscriptions use native Automatic approval. Deployment preflight checks the selected package, catalog source, channel and compatible offered release. Deployment waits for the installed/current CSV to converge and reach Succeeded. Historical `startingCSV` selections are removed from the Automatic subscriptions: OLM selects the channel head after compatible-version preflight. A startingCSV would only select an initial bundle, not lock the version. Automatic OLM follows future channel updates, including dependency resolution, so exact immutable versions cannot be guaranteed by this policy. Our deployment-time compatibility check does not constrain future OLM automatic updates. Rolling channels can move outside the tested family after deployment; validation fails clearly rather than claiming that newer product is qualified.
+All 22 tracked platform Subscriptions use native Automatic approval. Deployment preflight checks the selected package, catalog source, channel and compatible offered release. Deployment waits for the installed/current CSV to converge and reach Succeeded. Historical `startingCSV` selections are removed from the Automatic subscriptions: OLM selects the channel head after compatible-version preflight. A startingCSV would only select an initial bundle, not lock the version. Automatic OLM follows future channel updates, including dependency resolution, so exact immutable versions cannot be guaranteed by this policy. Our deployment-time compatibility check does not constrain future OLM automatic updates. Rolling channels can move outside the tested family after deployment; validation fails clearly rather than claiming that newer product is qualified.
 
 | Component | Qualified installed baseline | Source channel | Approval | Channel boundary |
 | --- | --- | --- | --- | --- |
@@ -21,7 +21,6 @@ All tracked platform Subscriptions use native Automatic approval. Deployment pre
 | DNS | 1.4.2 | stable | Automatic | Rolling; preflight 1.4; Red Hat catalog |
 | Limitador | 1.4.2 | stable | Automatic | Rolling; preflight 1.4 |
 | Service Mesh | 3.4.3 | stable-3.4 | Automatic | 3.4 |
-| MCP Gateway | 0.7.1 | preview | Automatic | Rolling TP; preflight 0.7; integration remains unqualified |
 | Agent Sandbox | 0.9.0 | preview-0.9 | Automatic | 0.9 DP; runtime functional gates remain separate |
 
 Later Stage070 already uses Automatic. Its source channels are Dev Spaces `stable`, RHBK `stable-v26`, MTA `stable-v8.2`, Pipelines `pipelines-1.22`, RHTAS `stable-v1.4`, and RHDH `fast-1.9`. They are deferred/unqualified rather than added to this fresh platform acceptance. The catalog currently offers Dev Spaces 3.30.2 rather than historical 3.28, RHBK 26.6.7, MTA 8.2.2, Pipelines 1.22.6, RHTAS 1.4.3, and RHDH 1.9.9 rather than historical documentation 1.10. This task does not change those product selections. Provisioner-owned cert-manager/Keycloak/Lightspeed and disconnected Lightspeed drafts are not silently adopted or published.
@@ -32,7 +31,7 @@ The normal fresh demo provisioning contract is standard cluster credentials, per
 
 ## Shared namespaces and dependencies
 
-MCP Gateway reuses the existing global OperatorGroup without modifying it. OLM InstallPlans are atomic and can include other Subscriptions in the same namespace. A foreign Manual Subscription can hold Automatic subscriptions; preflight refuses that case rather than approving an unrelated plan or changing its policy. All repository-owned selections in a normal fresh namespace use Automatic. Previously reviewed combined upgrades are historical live actions, not required manual steps in the future path.
+The unused MCP Gateway prerequisite is retired from future installation; its former shared OperatorGroup remains untouched. OLM InstallPlans are atomic and can include other Subscriptions in the same namespace. A foreign Manual Subscription can hold Automatic subscriptions; preflight refuses that case rather than approving an unrelated plan or changing its policy. All repository-owned selections in a normal fresh namespace use Automatic. Previously reviewed combined upgrades are historical live actions, not required manual steps in the future path.
 
 No deployment helper in the normal 010/020/040/060 flow patches InstallPlan approval. The historical `approve-controller.py` remains an explicit manual audit/recovery utility and is not invoked by normal deployment. `approve-operators.sh` is a backward-compatible name for a read-only Automatic readiness wait.
 

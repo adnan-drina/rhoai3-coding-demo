@@ -437,3 +437,7 @@ Native deployment, two private-model APIs/streaming, Red Hat MiniMax governed st
 ### Planned Stage 060 Agent Runtime and AgentOps
 
 Stage 060 is a planned platform stage; Stage 070 retains developer services and requested Gitea integration. Qualify pinned OpenShell/runtime isolation, authenticated lifecycle, independent verifier and catalog ingestion before implementation. No AgentOps deployment or completed-agent claim follows from the numbering change. See [runtime design](docs/migration/060-agent-runtime-and-agentops-plan.md) and [developer/SCM design](docs/migration/070-developer-platform-and-scm-plan.md).
+
+### Deferred optional MCP Gateway
+
+The unused RHCL MCP Gateway prerequisite is being retired from the demo source and cluster; direct native MCP lifecycle, Registry and Studio remain separate. Selected 0.7.1 private testing changed an unrelated health request 200→404 after filter insertion. A dedicated two-listener candidate reached configured policy conditions but failed MCP initialization with HTTP500, empty Registration status and WASM/router diagnostics. No gateway aggregation, MaaS-key governance or renewal capability is claimed. Revisit only with a concrete consumer and independently qualified native topology; do not attach the tested port-wide filter to the shared model Gateway. See the [recorded evidence](docs/migration/035-feature-completion.md#dedicated-mcp-gateway-authentication-qualification--2026-10-08).

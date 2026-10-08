@@ -57,3 +57,5 @@ Source pins:
 - catalog server: [image-bound configuration and caller authorization](https://github.com/openshift/openshift-mcp-server/tree/3ba1f65aca7a8a23dc3744a57f3723d4a7699772),
   the Red Hat 0.4 image identified in `catalog-source.json`;
 - [RHOAI 3.5 native lifecycle procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_the_mcp_catalog/enabling-mcp-lifecycle-management).
+
+The MCP Catalog is Developer Preview and the lifecycle operator is Technology Preview. The served `mcp.x-k8s.io/v1alpha1` API has no backwards-compatibility commitment. Customer runtime/configuration fields are validated against the installed schema; not every accepted field is described in the catalog deployment guide. Keep the image, schema and tests together when changing product versions. RHOAI known issue RHOAIENG-82694 concerns the lifecycle operator's all-ConfigMap/Secret informer memory use on large clusters; no workaround is claimed here. Registry REST publication is tied to the selected native MLflow implementation, rather than automatic catalog-to-Registry-to-Studio synchronization.
