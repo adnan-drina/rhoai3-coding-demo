@@ -62,6 +62,12 @@ def qualify_collection(request, providers):
     collection_id = identity["id"]
     path = "api/v1/evaluations/collections/" + quote(collection_id, safe="")
     loaded = request(path)
+    # Installed OpenAPI PrimaryScore defaults omitted lower_is_better to false.
+    # Normalize only that documented default; preserve every other field check.
+    for benchmark in loaded.get("benchmarks", []):
+        score = benchmark.get("primary_score")
+        if isinstance(score, dict):
+            score.setdefault("lower_is_better", False)
     for field in ["name", "category", "tags", "pass_criteria", "benchmarks"]:
         if loaded.get(field) != desired[field]:
             raise RuntimeError("Native persisted collection differs from the bounded reviewed definition.")
