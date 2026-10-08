@@ -17,5 +17,3 @@ spec:
   modelRef:
     kind: ExternalModel
     name: gpt-6-luna
-  tenantRef: models-as-a-service
-  endpointOverride: https://maas.placeholder.example.com
