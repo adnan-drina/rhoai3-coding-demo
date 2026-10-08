@@ -47,9 +47,10 @@ oc create namespace "$PROBE_NS" -o json > "$EVIDENCE_DIR/namespace-private.json"
 NAMESPACE_UID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["uid"])' "$EVIDENCE_DIR/namespace-private.json")"
 oc get namespace "$PROBE_NS" -o json > "$EVIDENCE_DIR/namespace-private.json"
 oc get nodes -o json > "$EVIDENCE_DIR/nodes-private.json"
-python3 - "$PROBE_NS" "$EVIDENCE_DIR" <<'PY'
+python3 - "$PROBE_NS" "$EVIDENCE_DIR" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/source-pins.json" <<'PY'
 import json,pathlib,sys
-ns,folder=sys.argv[1:];p=pathlib.Path(folder)
+ns,folder,pinsfile=sys.argv[1:];p=pathlib.Path(folder)
+pins=json.loads(pathlib.Path(pinsfile).read_text())
 a=json.loads((p/'namespace-private.json').read_text());annotations=a['metadata']['annotations']
 uid=int(annotations['openshift.io/sa.scc.uid-range'].split('/')[0].split('-')[0])
 gid=int(annotations.get('openshift.io/sa.scc.supplemental-groups',annotations['openshift.io/sa.scc.uid-range']).split('/')[0].split('-')[0])
@@ -57,10 +58,11 @@ assert uid>0 and gid>0
 nodes=json.loads((p/'nodes-private.json').read_text())['items']
 node=next(x['metadata']['name'] for x in nodes if 'node-role.kubernetes.io/worker' in x['metadata'].get('labels',{}) and not any(k in x['metadata'].get('labels',{}) for k in ('node-role.kubernetes.io/master','node-role.kubernetes.io/control-plane')) and x['metadata'].get('labels',{}).get('kubernetes.io/arch')=='amd64' and not any(t.get('effect') in ('NoSchedule','NoExecute') for t in x['spec'].get('taints',[])) and x['status'].get('allocatable',{}).get('nvidia.com/gpu','0')=='0' and not x['spec'].get('unschedulable') and any(c['type']=='Ready' and c['status']=='True' for c in x['status']['conditions']))
 labels={'app.kubernetes.io/name':'openshell-host-qualification','app.kubernetes.io/part-of':'rhoai3-coding-demo'}
-spec={'automountServiceAccountToken':False,'restartPolicy':'Never','nodeSelector':{'kubernetes.io/hostname':node},'securityContext':{'runAsNonRoot':True,'runAsUser':uid,'runAsGroup':gid,'seccompProfile':{'type':'RuntimeDefault'},'sysctls':[{'name':'net.ipv4.ip_unprivileged_port_start','value':'0'}]},'containers':[{'name':'probe','image':'ghcr.io/nvidia/openshell/sandbox@sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f','command':['/openshell-sandbox','capability-probe'],'securityContext':{'allowPrivilegeEscalation':False,'readOnlyRootFilesystem':True,'capabilities':{'drop':['ALL']}},'resources':{'requests':{'cpu':'20m','memory':'64Mi'},'limits':{'cpu':'200m','memory':'128Mi'}},'volumeMounts':[{'name':'temporary','mountPath':'/tmp'}]}],'volumes':[{'name':'temporary','emptyDir':{'sizeLimit':'8Mi'}}]}
+spec={'automountServiceAccountToken':False,'restartPolicy':'Never','nodeSelector':{'kubernetes.io/hostname':node},'securityContext':{'runAsNonRoot':True,'runAsUser':uid,'runAsGroup':gid,'seccompProfile':{'type':'RuntimeDefault'},'sysctls':[{'name':'net.ipv4.ip_unprivileged_port_start','value':'0'}]},'containers':[{'name':'probe','image':pins['images']['sandbox']['repository']+'@'+pins['images']['sandbox']['amd64Digest'],'command':['/openshell-sandbox','capability-probe'],'securityContext':{'allowPrivilegeEscalation':False,'readOnlyRootFilesystem':True,'capabilities':{'drop':['ALL']}},'resources':{'requests':{'cpu':'20m','memory':'64Mi'},'limits':{'cpu':'200m','memory':'128Mi'}},'volumeMounts':[{'name':'temporary','mountPath':'/tmp'}]}],'volumes':[{'name':'temporary','emptyDir':{'sizeLimit':'8Mi'}}]}
 job={'apiVersion':'batch/v1','kind':'Job','metadata':{'name':'native-capability-probe','namespace':ns,'labels':labels},'spec':{'backoffLimit':0,'activeDeadlineSeconds':180,'template':{'metadata':{'labels':labels},'spec':spec}}}
 (p/'job-private.json').write_text(json.dumps(job)+'\n')
 (p/'admission-private.json').write_text(json.dumps({'apiVersion':'v1','kind':'Pod','metadata':{'name':'admission-only','namespace':ns},'spec':spec})+'\n')
+(p/'pins.json').write_text(json.dumps(pins)+'\n')
 PY
 oc create --dry-run=server -f "$EVIDENCE_DIR/admission-private.json" -o json > "$EVIDENCE_DIR/admitted-private.json"
 oc create -f "$EVIDENCE_DIR/job-private.json" >> "$EVIDENCE_DIR/create.log"
@@ -77,10 +79,10 @@ oc logs job/native-capability-probe -n "$PROBE_NS" > "$EVIDENCE_DIR/native-resul
 python3 - "$EVIDENCE_DIR" <<'PY'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1]);r=json.loads((p/'native-result.log').read_text())
-required=['qualified','capabilities_zero','no_new_privileges','same_uid_self_protection','child_core_limit_zero','landlock_allow_deny','seccomp_notification','seccomp_addfd_send','task_memory_copy','connected_send_fast_path','socket_virtualization','dns_relay_bind','udp_dns_round_trip','tcp_dns_round_trip','tcp_allow_round_trip','tcp_deny_round_trip']
+required=['qualified','capabilities_zero','no_new_privileges','same_uid_self_protection','child_core_limit_zero','landlock_allow_deny','seccomp_notification','seccomp_addfd_send','task_memory_copy','connected_send_fast_path','socket_virtualization','socket_loopback_confinement','dns_relay_bind','udp_dns_round_trip','tcp_dns_round_trip','tcp_allow_round_trip','tcp_deny_round_trip']
 assert all(r.get(k) is True for k in required),'Native capability check failed'
 assert r['uid']>0 and r['gid']>0 and r['sandbox_dumpable'] is False
-assert r['seccomp_listener_mode'] in ('killable','legacy_read_only')
+assert not any(k in r for k in ('seccomp_listener_mode','wait_killable_recv','task_memory_writes_disabled')),'Obsolete native capability schema'
 pods=json.loads((p/'pods-private.json').read_text())['items'];assert len(pods)==1
 pod=pods[0];assert pod['status']['phase']=='Succeeded'
 job=json.loads((p/'job-status-private.json').read_text());desired=json.loads((p/'job-private.json').read_text())
@@ -90,8 +92,9 @@ expected_identity=desired['spec']['template']['spec']['securityContext']
 assert r['uid']==expected_identity['runAsUser'] and r['gid']==expected_identity['runAsGroup']
 assert pod['spec']['securityContext']['runAsUser']==r['uid'] and pod['spec']['securityContext']['runAsGroup']==r['gid']
 assert pod['spec']['containers'][0]['image']==desired['spec']['template']['spec']['containers'][0]['image']
-assert pod['status']['containerStatuses'][0]['imageID']=='ghcr.io/nvidia/openshell/sandbox@sha256:b0f0f6217b11b22954b10a033a9fd798cf0a4e35cf4af63c1ba0d9c03e74338a'
-r.update({'pod_uid':pod['metadata']['uid'],'scc':pod['metadata']['annotations'].get('openshift.io/scc'),'image_digest':'sha256:bf4797b6c511f2d8ba02955dbba4bf76c1f0dd6d83531420c5408d5f1fb9d72f','source_commit':'6648bd0c290efbc41ba131ee9831ee45cd431f94','scope':'one CPU worker/profile; agent server/auth/controller/cross-pod CNI unqualified'})
+pins=json.loads((p/'pins.json').read_text())
+assert pod['status']['containerStatuses'][0]['imageID']==desired['spec']['template']['spec']['containers'][0]['image']
+r.update({'pod_uid':pod['metadata']['uid'],'scc':pod['metadata']['annotations'].get('openshift.io/scc'),'image_digest':pins['images']['sandbox']['amd64Digest'],'source_commit':pins['sourceCommit'],'scope':'one CPU worker/profile; agent server/auth/controller/cross-pod CNI unqualified'})
 (p/'receipt.json').write_text(json.dumps(r,indent=2)+'\n')
-print('Native host capability PASS; mode='+r['seccomp_listener_mode']+'. Receipt: '+str(p/'receipt.json'))
+print('Native host capability PASS; socket loopback confinement verified. Receipt: '+str(p/'receipt.json'))
 PY
