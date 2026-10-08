@@ -23,12 +23,14 @@ if app:
  assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/040-governed-models-as-a-service/mcp-gateway-platform'
  assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'mcp-gateway-system'}
  assert not app.get('operation') and app.get('status',{}).get('operationState',{}).get('phase')!='Running'
-for kind,name,ns in [('namespace','mcp-gateway-system',None),('resourcequota','mcp-private-boundary','mcp-gateway-system'),('limitrange','mcp-private-defaults','mcp-gateway-system'),('operatorgroup','mcp-gateway','mcp-gateway-system'),('subscription','mcp-gateway','mcp-gateway-system')]:
+og=get('operatorgroup','global-operators','openshift-operators')
+assert og and not og['metadata'].get('deletionTimestamp') and not og['spec'].get('targetNamespaces'),'Existing native global OperatorGroup required'
+for kind,name,ns in [('namespace','mcp-gateway-system',None),('resourcequota','mcp-private-boundary','mcp-gateway-system'),('limitrange','mcp-private-defaults','mcp-gateway-system'),('subscription','mcp-gateway','openshift-operators')]:
  obj=get(kind,name,ns)
  if obj:
   assert app is not None and not obj['metadata'].get('deletionTimestamp') and not obj['metadata'].get('ownerReferences'),'Foreign/terminating platform resource'
   group=obj['apiVersion'].split('/')[0] if '/' in obj['apiVersion'] else ''
-  expected=f'mcp-gateway-platform:{group}/{obj["kind"]}:mcp-gateway-system/{name}'
+  expected=f'mcp-gateway-platform:{group}/{obj["kind"]}:{ns or "mcp-gateway-system"}/{name}'
   assert obj['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==expected,'Platform resource belongs to another owner'
 print('PASS Native platform ownership preflight')
 PY

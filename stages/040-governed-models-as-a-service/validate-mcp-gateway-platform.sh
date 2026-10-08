@@ -18,11 +18,11 @@ assert not a['metadata'].get('deletionTimestamp') and not a['metadata'].get('own
 assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/040-governed-models-as-a-service/mcp-gateway-platform'
 assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'mcp-gateway-system'}
 rev=os.environ['RHOAI_MCP_GATEWAY_EXPECTED_REVISION'];assert s['source']['targetRevision']==rev and st['sync']['status']=='Synced' and st['sync']['revision']==rev and op.get('phase')=='Succeeded' and op['syncResult']['revision']==rev and source.get('path')==s['source']['path'] and source.get('repoURL')==s['source']['repoURL'] and source.get('targetRevision')==rev
-sub=get('subscription','mcp-gateway');assert not sub['metadata'].get('deletionTimestamp') and not sub['metadata'].get('ownerReferences') and sub['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='mcp-gateway-platform:operators.coreos.com/Subscription:mcp-gateway-system/mcp-gateway'
+sub=get('subscription','mcp-gateway','openshift-operators');assert not sub['metadata'].get('deletionTimestamp') and not sub['metadata'].get('ownerReferences') and sub['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='mcp-gateway-platform:operators.coreos.com/Subscription:openshift-operators/mcp-gateway'
 assert sub['spec']['name']=='mcp-gateway' and sub['spec']['source']=='redhat-operators' and sub['spec']['sourceNamespace']=='openshift-marketplace' and sub['spec']['startingCSV']==pin['csv'] and sub['spec']['channel']=='preview' and sub['spec']['installPlanApproval']=='Manual' and sub['status']['installedCSV']==pin['csv']
-csv=get('csv',pin['csv']);assert csv['status']['phase']=='Succeeded' and csv['spec']['version']=='0.7.1'
+csv=get('csv',pin['csv'],'openshift-operators');assert csv['status']['phase']=='Succeeded' and csv['spec']['version']=='0.7.1' and any(m['type']=='AllNamespaces' and m['supported'] for m in csv['spec']['installModes'])
 for deployment in csv['spec']['install']['spec']['deployments']:
- d=get('deployment',deployment['name']);m=d['metadata'];x=d['status'];n=d['spec'].get('replicas',1)
+ d=get('deployment',deployment['name'],'openshift-operators');m=d['metadata'];x=d['status'];n=d['spec'].get('replicas',1)
  assert any(o.get('uid')==csv['metadata']['uid'] and o.get('kind')=='ClusterServiceVersion' for o in m.get('ownerReferences',[])) and not m.get('deletionTimestamp')
  assert pin['operator'] in [c['image'] for c in d['spec']['template']['spec']['containers']]
  assert n>0 and x.get('observedGeneration')==m['generation'] and all(x.get(k,0)==n for k in ['replicas','updatedReplicas','readyReplicas','availableReplicas'])
