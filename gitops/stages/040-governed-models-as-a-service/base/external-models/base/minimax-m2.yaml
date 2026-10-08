@@ -18,6 +18,7 @@ spec:
   externalProviderRefs:
   - ref:
       name: redhat-models
+    weight: 100
     targetModel: minimax-m2
     apiFormat: openai-chat
     path: "/v1/chat/completions"

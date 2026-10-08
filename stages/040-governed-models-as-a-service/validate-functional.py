@@ -178,7 +178,13 @@ def run():
     desired = native.rendered()
     refs = [o for o in desired if o["kind"] == "MaaSModelRef"]
     refs.sort(key=lambda o: (o["metadata"]["namespace"] == "external-models", o["metadata"]["name"]))
-    need(2 <= len(refs) <= 4, "Functional model count exceeds reviewed bounded scope")
+    selected_model = os.environ.get("RHOAI_STAGE040_MODEL")
+    single_completion = os.environ.get("RHOAI_STAGE040_SINGLE_COMPLETION", "false").lower() == "true"
+    if selected_model:
+        refs = [ref for ref in refs if ref["metadata"]["name"] == selected_model]
+        need(len(refs) == 1, "Selected model must uniquely match a reviewed model reference")
+    need(not single_completion or selected_model, "Single-completion qualification requires an explicit model")
+    need(1 <= len(refs) <= 4, "Functional model count exceeds reviewed bounded scope")
     subscription = os.environ.get("RHOAI_STAGE040_SUBSCRIPTION", "personal-" + who)
     subscriptions = api(base + "/v1/subscriptions", context, user_token)
     need(isinstance(subscriptions, list) and any(s.get("subscription_id_header") == subscription for s in subscriptions),
@@ -187,6 +193,10 @@ def run():
                 "scope": "bounded authenticated API only; Studio browser and per-request EPP selection remain separate",
                 "models": [], "model_http_failures": [], "key_revoked": False,
                 "not_qualified": ["quota enforcement", "per-request EPP invocation", "Studio visual acceptance"]}
+    evidence["selected_model"] = selected_model
+    evidence["single_completion"] = single_completion
+    if single_completion:
+        evidence["not_qualified"] += ["streaming", "tool calling", "unselected models"]
     key_id = key = None
     revoke_probe = None
     pending_external = False
@@ -235,7 +245,12 @@ def run():
                 need(response.get("choices") and response["choices"][0].get("message", {}).get("content") and
                      response.get("usage", {}).get("total_tokens", 0) > 0, "Bounded completion or usage is absent")
                 result = {"model": name, "catalog_id": model_id, "unauthenticated_denied": True, "invalid_key_denied": True, "completion_with_usage": True}
+                result["usage"] = {field: response["usage"][field] for field in ("prompt_tokens", "completion_tokens", "total_tokens") if isinstance(response["usage"].get(field), int)}
                 evidence["models"].append(result)  # Preserve successes if a later stream/metric test fails.
+                if single_completion:
+                    revoke_probe = (url, payload)
+                    result["streaming_and_tools_tested"] = False
+                    continue
                 stream = dict(payload, stream=True, stream_options={"include_usage": True})
                 stream["messages"] = [{"role": "user", "content": "Count from 1 to 20, separated by commas. Do not think."}]
                 stream["max_completion_tokens" if name == "gpt-6-luna" else "max_tokens"] = 64

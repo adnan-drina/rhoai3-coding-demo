@@ -23,6 +23,10 @@ Private model hosts separate routing while MaaS preserves a common governance bo
 
 GPT-6 Luna uses the OpenAI Chat Completions protocol. Function calls require `reasoning_effort: none`. OpenAI Responses built-in tools are outside this connection's protocol. External requests leave the cluster for the approved provider.
 
+Native external-model access is Technology Preview. GPT-6 Luna and MiniMax M2 use `openai-chat`, which always uses translation rather than passthrough. Response buffering applies when translating between different API formats; it is not a blanket statement that all external responses are buffered. MaaS subscription token metering applies to OpenAI Chat Completions responses, not models configured as `messages` or `openai-responses`. Provider-key limits apply to aggregate usage by all users sharing that key, and provider entitlement is separate from gateway readiness.
+
+External models are supported only through the default tenant. If a `messages` model is added, its `x-api-key` authentication support is gateway-wide; deleting the last such model disables that header's authentication gateway-wide. The current external models instead use `Authorization: Bearer` with each user's MaaS key. See the [external-model formats and limitations](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service).
+
 GenAI Studio uses existing model endpoints. A user creates a playground in their project through the dashboard; the native service creates its supporting pgvector storage. Basic playground use does not add another GPU or an object-storage bucket. RAG, AutoRAG and AutoML are outside this stage.
 
 ## How Red Hat And Open Source Make It Work
@@ -48,6 +52,8 @@ Use the reviewed published branch configured in your private environment. Keep t
 ```
 
 Readiness checks do not establish inference, streaming or quota behavior. Bounded functional checks and user playground interaction complete acceptance. In the dashboard, create a playground in your project and select an available governed model endpoint. Do not use the playground to create a replacement serving deployment.
+
+To qualify just one approved external model with one completion, set `RHOAI_STAGE040_MODEL=minimax-m2` (or `gpt-6-luna`) and `RHOAI_STAGE040_SINGLE_COMPLETION=true` when running `validate-functional.py`, together with `RHOAI_STAGE040_PERSONA_KUBECONFIG` and the reviewed deployed revision. This scope does not run local models, streaming or tool-call tests. Its temporary key is revoked afterward.
 
 ## Optional Studio Tracing
 
