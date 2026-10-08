@@ -236,7 +236,9 @@ def run():
                 need(negative.status in (401, 403), "Unauthenticated inference did not fail closed")
             with request(url, context, "stage040-invalid-" + uuid.uuid4().hex, payload) as invalid:
                 need(invalid.status in (401, 403), "Invalid synthetic key did not fail closed")
-            if not external and revoke_probe is None:
+            if single_completion:
+                revoke_probe = (url, payload)
+            elif not external and revoke_probe is None:
                 revoke_probe = (url, dict(payload, max_tokens=1))
             before = counter(name) if not external else None
             phase = "completion"
