@@ -4,13 +4,18 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT_DIR/scripts/shared/lib.sh"
+REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT_DIR}"
 load_env
 check_oc_logged_in
 python3 - <<'PY'
 from http.client import HTTPSConnection
-import json, socket, ssl, subprocess, time, urllib.request
+import json, socket, ssl, subprocess, time, urllib.request, urllib.parse
 processes = []
 context = ssl.create_default_context()  # Verify native ingress certificates.
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise RuntimeError('Authenticated registry redirect refused')
+opener = urllib.request.build_opener(NoRedirect(), urllib.request.HTTPSHandler(context=context))
 def need(value, message):
     if not value: raise RuntimeError(message)
 def oc(*args):
@@ -26,7 +31,7 @@ def fresh(obj):
     need(status.get('readyReplicas', 0) >= spec.get('replicas', 1) > 0 and status.get('updatedReplicas', 0) >= spec.get('replicas', 1), 'workload replicas are not current and ready')
 def http(url, body=None, headers=None):
     request = urllib.request.Request(url, data=body, headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json', **(headers or {})})
-    with urllib.request.urlopen(request, context=context, timeout=20) as response: return json.load(response)
+    with opener.open(request, timeout=20) as response: return json.load(response)
 def forward(service, namespace, port):
     need(any(p['port'] == port for p in get('service', service, namespace)['spec']['ports']), 'native service port is absent')
     with socket.socket() as sock: sock.bind(('127.0.0.1', 0)); local = sock.getsockname()[1]
@@ -71,21 +76,39 @@ try:
     dashboard = get('odhdashboardconfig', 'odh-dashboard-config', 'redhat-ods-applications')
     flags = dashboard['spec']['dashboardConfig']
     need(flags.get('disableModelRegistry') is not True and flags.get('disableModelCatalog') is not True and flags.get('agentsCatalog') is True, 'model discovery dashboard navigation is not enabled')
+    need(flags.get('toolCalling') is True and flags.get('mcpCatalog') is True, 'tool and MCP discovery dashboard configuration is not enabled')
     port = forward('odh-dashboard-model-registry-ui', 'redhat-ods-applications', 8043)
     ca = get('configmap', 'service-ca', 'openshift-config-managed')['data']['ca-bundle.crt']
     service_context = ssl.create_default_context(cadata=ca)
     hostname = 'odh-dashboard-model-registry-ui.redhat-ods-applications.svc'
-    for catalog in ['model_catalog/models', 'agent_catalog/agents']:
+    def catalog_page(catalog, query):
         connection = HTTPSConnection(hostname, timeout=20, context=service_context)
         connection.connect = lambda c=connection: setattr(c, 'sock', service_context.wrap_socket(socket.create_connection(('127.0.0.1', port), timeout=20), server_hostname=hostname))
         try:
-            connection.request('GET', f'/api/v1/{catalog}?namespace={regns}', headers={'X-Forwarded-Access-Token': token, 'Accept':'application/json'})
+            connection.request('GET', f'/api/v1/{catalog}?' + urllib.parse.urlencode(query), headers={'X-Forwarded-Access-Token': token, 'Accept':'application/json'})
             response = connection.getresponse()
             need(response.status == 200, 'authenticated catalog discovery HTTP failure')
-            result = json.loads(response.read(4*1024*1024))
+            return json.loads(response.read(4*1024*1024)).get('data', {})
         finally: connection.close()
-        items = result.get('data', {}).get('items')
+    for catalog in ['model_catalog/models', 'agent_catalog/agents']:
+        items, next_token, seen = [], '', set()
+        for page in range(20):
+            query = {'namespace': regns, 'pageSize': 100}
+            if next_token: query['pageToken'] = next_token
+            result = catalog_page(catalog, query)
+            need(isinstance(result.get('items'), list), 'Catalog page has no typed items')
+            items.extend(result['items'])
+            next_token = result.get('nextPageToken', '')
+            need(isinstance(next_token, str), 'Catalog pagination token is invalid')
+            if not next_token: break
+            need(next_token not in seen, 'Catalog pagination loop detected')
+            seen.add(next_token)
+        need(not next_token, 'Catalog exceeds bounded discovery pagination')
         need(isinstance(items, list) and len(items) > 0, 'authenticated catalog discovery returned no items: ' + catalog)
+        if catalog == 'agent_catalog/agents':
+            for name in ['governed-coding-agents:opencode', 'governed-coding-agents:hermes']:
+                matches = [item for item in items if item.get('name') == name]
+                need(len(matches) == 1, 'Reviewed custom agent entry is missing or duplicated')
         print('[PASS] Authenticated dashboard ' + catalog + ' discovery returned items')
     print('Scope: installation administrator API probes; actual persona and browser UI acceptance remain separate.')
 except Exception as error:

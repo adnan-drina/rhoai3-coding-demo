@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$ROOT_DIR/scripts/shared/lib.sh"
+REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT_DIR}"
 load_env
 check_oc_logged_in
 revision="${1:-${GIT_REPO_BRANCH:-}}"
@@ -47,7 +48,7 @@ assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Fou
 def paths(group,kind,name,ns=None):
  return {p for i in spec.get('ignoreDifferences',[]) if i.get('group')==group and i.get('kind')==kind and i.get('name')==name and (ns is None or i.get('namespace')==ns) for p in i.get('jsonPointers',[])}
 assert {'/spec/components/kserve','/spec/components/modelregistry'}<=paths('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc'),'Foundation has not delegated serving/discovery'
-assert {'/spec/dashboardConfig/agentsCatalog','/spec/dashboardConfig/disableModelCatalog','/spec/dashboardConfig/disableModelRegistry'}<=paths('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications'),'Foundation discovery visibility is not delegated'
+assert {'/spec/dashboardConfig/'+field for field in ['agentsCatalog','disableModelCatalog','disableModelRegistry','toolCalling','mcpCatalog']}<=paths('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications'),'Foundation discovery visibility is not delegated'
 # Delegation alone cannot remove old Argo ownership: require the omission bridge.
 for kind,name,ns in registry:
  lookup={'Namespace':'namespace','ModelRegistry':'modelregistries.modelregistry.opendatahub.io','RoleBinding':'rolebinding'}[kind]
@@ -97,6 +98,7 @@ sc=get('storageclass','gp3-csi');assert sc['provisioner']=='ebs.csi.aws.com','Re
 for namespace in ['redhat-ods-applications','openshift-gitops']:get('namespace',namespace)
 print('PASS Read-only foundation ownership/delegation and native storage prerequisites')
 PY_PREREQUISITE
+python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
 "$ROOT_DIR/stages/020-gpu-infrastructure-private-ai/validate.sh" --readiness
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d);trap 'rm -rf "$work"' EXIT
@@ -108,6 +110,7 @@ for pair in 'openshift-monitoring cluster-monitoring-config' 'openshift-user-wor
  oc --request-timeout=10s get configmap "$name" -n "$namespace" --ignore-not-found -o json | python3 -c 'import json,sys;s=sys.stdin.read();assert not s.strip() or json.loads(s)["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("030-private-model-serving:"),"Provider configuration appeared: stop for reviewed merge"'
 done
 # The first modifying action is this stage's own Application.
+python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
 oc --request-timeout=10s apply -f "$work/application.yaml"
 echo 'Stage 030 native serving/discovery Application submitted at the reviewed immutable revision; no models or registry records are created.'
 for _ in $(seq 1 120); do

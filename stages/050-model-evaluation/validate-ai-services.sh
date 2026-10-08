@@ -96,6 +96,15 @@ def env_values(deployment):
             for env in container.get("env", []) if "name" in env}
 
 
+dashboard = get("odhdashboardconfig", "odh-dashboard-config", "redhat-ods-applications").get("spec", {})
+check("Evaluation/global prompt dashboard configuration (functional acceptance separate)",
+      dashboard.get("dashboardConfig", {}).get("disableLMEval") is False
+      and dashboard.get("dashboardConfig", {}).get("globalProjectPrompts") is True
+      and dashboard.get("globalMLflowNamespaces") == ["ai-curated-prompts"])
+curated = get("namespace", "ai-curated-prompts")
+check("Curated prompt workspace references the shared native MLflow",
+      curated.get("metadata", {}).get("labels", {}).get("opendatahub.io/global-mlflow-workspace") == "mlflow")
+
 for feature, namespace in [("mlflow", "redhat-ods-applications")]:
     database = feature + "-postgresql"
     workload = get("statefulset", database, namespace)

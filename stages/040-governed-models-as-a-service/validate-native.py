@@ -214,7 +214,7 @@ def main():
     need(dsc["spec"]["components"]["aigateway"]["modelsAsAService"]["managementState"] == "Managed", "Native MaaS is not enabled")
     dashboard = get("odhdashboardconfig", "odh-dashboard-config", "redhat-ods-applications")
     flags = dashboard["spec"]["dashboardConfig"]
-    need(all(flags.get(k) is True for k in ("genAiStudio", "genAiTracing", "modelAsService", "vLLMDeploymentOnMaaS")), "Native dashboard features are not enabled")
+    need(all(flags.get(k) is True for k in ("genAiStudio", "genAiTracing", "modelAsService", "vLLMDeploymentOnMaaS", "externalModels", "llmdTemplates", "guardrails", "agentConfigManagement", "promptManagement")), "Native dashboard feature configuration is not enabled; functional acceptance is separate")
     print("[PASS] Current native KServe/AIGateway/OGX components and feature flags")
     db = get("statefulset", "maas-postgres", "models-as-a-service-db")
     workload(db)

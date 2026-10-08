@@ -1,0 +1,75 @@
+# Customer source input consumed by the native catalog's existing CM mount.
+# Schema: model-registry efda7af48b15e63626f7dcd030c2dda23306da4c,
+# catalog/internal/catalog/agentcatalog/yaml_provider.go.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-catalog-sources
+  namespace: rhoai-model-registries
+  labels:
+    app.kubernetes.io/name: agent-catalog-sources
+    app.kubernetes.io/component: agent-catalog
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+data:
+  sources.yaml: |
+    agent_catalogs:
+      - id: governed-coding-agents
+        name: Governed Coding Agents
+        type: yaml
+        enabled: true
+        properties:
+          yamlCatalogPath: governed-coding-agents.yaml
+        labels: [coding, governed-runtime]
+  governed-coding-agents.yaml: |
+    agents:
+      - name: opencode
+        displayName: OpenCode — governed coding runtime
+        framework: opencode
+        description: Standalone OpenCode hosted behind the authenticated OpenShell gateway. Transport and lifecycle have been qualified; governed model-backed task acceptance remains pending.
+        labels: [coding, opencode, governed-runtime]
+        repositoryUrl: https://github.com/adnan-drina/rhoai3-coding-demo/tree/a769444a10eb654e77af433943dc82ea5016ac57/stages/060-agent-runtime-and-agentops
+        readme: |
+          # OpenCode in the governed runtime
+
+          OpenCode 1.18.16 runs in a native OpenShell-managed Sandbox with
+          project state and authenticated owner access. Stage 060 controls
+          the runtime image, workspace membership and execution policy.
+
+          Use the Stage 060 authenticated OpenShell CLI and the approved
+          OpenCode template. Do not deploy this card's image directly with
+          the console's generic Sandbox wizard: that path does not establish
+          the gateway's supervisor and workspace-policy guarantees.
+
+          The image is pinned to sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09.
+          HTTP and event-stream transport, restart and session persistence
+          were qualified under the reviewed PR4150 runtime. Model-backed
+          generation, task cancellation and selected-call MLflow traces
+          remain explicit acceptance gates. No provider key belongs in
+          this card, a template environment variable or an agent image.
+
+          See the repository's Stage 060 README for current status and the
+          implementation plan for the pinned development-build exception.
+      - name: hermes
+        displayName: Hermes — governed coding runtime integration
+        framework: hermes
+        description: Required standalone Hermes integration using the same authenticated runtime and independent verification boundary. Runtime integration is not yet qualified.
+        labels: [coding, hermes, qualification-pending]
+        repositoryUrl: https://github.com/adnan-drina/rhoai3-coding-demo/tree/a769444a10eb654e77af433943dc82ea5016ac57/stages/060-agent-runtime-and-agentops
+        readme: |
+          # Standalone Hermes integration
+
+          Hermes is required for full Stage 060 acceptance. The existing
+          migration workflow supplies task and independent verification
+          contracts; it is not evidence that standalone hosting works.
+
+          A standalone image, persistent state, authenticated lifecycle,
+          bounded governed model/tool calls and selected-call MLflow
+          tracing must be qualified before enabling launch instructions.
+          This entry is discovery metadata, not an executable deployment
+          template or a claim that a runtime is ready.
+
+          Never place model keys, OpenShift tokens or SCM credentials in
+          catalog content. The runtime must mediate approved credentials
+          and retain the independent verifier outside agent write access.

@@ -32,7 +32,7 @@ spec:
           args:
             - |
               oc patch datasciencecluster default-dsc --request-timeout=10s --type=merge -p '{"spec":{"components":{"modelregistry":{"managementState":"Managed","registriesNamespace":"rhoai-model-registries"}}}}'
-              oc -n redhat-ods-applications patch odhdashboardconfig odh-dashboard-config --request-timeout=10s --type=merge -p '{"spec":{"dashboardConfig":{"agentsCatalog":true,"disableModelCatalog":false,"disableModelRegistry":false}}}'
+              oc -n redhat-ods-applications patch odhdashboardconfig odh-dashboard-config --request-timeout=10s --type=merge -p '{"spec":{"dashboardConfig":{"agentsCatalog":true,"disableModelCatalog":false,"disableModelRegistry":false,"toolCalling":true,"mcpCatalog":true}}}'
               deadline=$((SECONDS + 300))
               until [[ $(oc get crd modelregistries.modelregistry.opendatahub.io --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true) == True ]]; do
                 (( SECONDS < deadline )) || { echo 'Registry API initialization timed out' >&2; exit 1; }

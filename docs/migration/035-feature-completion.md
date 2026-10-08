@@ -5,9 +5,9 @@ This tracker records configuration and acceptance separately. The user authorize
 | Entry | Owner | Status | Required exit evidence |
 |---|---|---|---|
 | Roles | 010 | Pending qualification | Existing default project roles and administrator assignment boundaries work; no unnecessary custom roles or escalation |
-| Connection test | 010 | Pending implementation | Models/Workbench connections use native metadata; valid/invalid bounded tests; no credentials in annotations/logs; reconciliation preserves claims/data |
+| Connection test | 010 | Qualified: native API and storage | Models/Workbench and retained connection passed verified-TLS developer tests with valid/invalid credentials; repeat reconciliation and UID/data checks passed. Browser rendering and actual Workbench mounting remain separate consumption checks |
 | External models | 040 | Pending completion | Native registration and UI/project visibility, provider TLS/auth references, governed positive/negative functional receipts |
-| MaaS settings | 040 | Blocked functionally | Existing governance preserved; governed JSON and generated-token streaming work; own/foreign/key-revocation checks pass |
+| MaaS settings | 040 | Streaming qualified; normal JSON blocked | Bounded governed SSE text and terminal marker passed with key revocation; non-streaming HTTP200 still has no body. Full OpenCode integration, broader governance acceptance and a supported non-streaming remedy remain required |
 | llm-d routing configurations | 040 | Pending implementation | Native reusable single-node router appears and reconciles; effective scheduler/baseRefs verified |
 | llm-d topology configurations | 040 | Pending implementation | Native single-node topology configuration works with current hardware; unsupported costly topologies stay unavailable |
 | LLM accelerator configurations | 040 | Pending qualification | Existing available templates, compatible NVIDIA selection and support annotations verified; no new capacity |
@@ -15,7 +15,7 @@ This tracker records configuration and acceptance separately. The user authorize
 | Agent Catalog | 030/060 | Pending completion | Native source/schema and custom OpenCode/Hermes entries; authorized discovery and executable instructions |
 | Deploy agents | 060 | Partial | Both standalone agents, real workspace lifecycle/authorization, bounded task verification; catalog integration |
 | MCP servers | 040/060 | Partial | Preserve current endpoint; native lifecycle and authenticated read-only tool plus foreign/write denial |
-| MCP registry | 030/060 | Unknown contract | Exact installed native API/store/schema; authorized registration/version/discovery/persistence |
+| MCP registry | 030/060 | Contract resolved; qualification pending | Exact installed native API/store/schema established; authorized registration/version/discovery/persistence remain required |
 | MCP catalog sources | 030 | Pending qualification | Native administrative source contract and validation; default sources retained; consumer access |
 | Safety/security insights | 030 | Pending qualification | Packaged default-model metadata and legitimate no-result model verified under developer access |
 | AutoRAG | 010 | Excluded | Explicit disabled policy preserved; no backend deployment |
@@ -44,3 +44,13 @@ Evidence links and statuses will be updated only after the corresponding accepta
 ## Connection credential annotation exception
 
 Native repeated reconciliation demonstrated that client-side apply with `RespectIgnoreDifferences` copied runtime connection data into `kubectl.kubernetes.io/last-applied-configuration`. The initial credential-free skeleton annotation was harmless; the later serialized runtime data was not. Only the two connection Secret skeletons therefore opt into `ServerSideApply=true`, and their component uses `ClientSideApplyMigration=false` as supported by Argo CD 3.4.7. This is a narrowly scoped credential-handling exception, not a change to repository-wide apply policy. No Replace or global SSA is enabled. Existing annotation removal requires exact component tracking, UID/resourceVersion tests and same-data readback; subsequent native reconciliation must retain Secret/claim UIDs and credential hashes without recreating the annotation.
+
+## Connection acceptance: 2026-10-08
+
+The additive storage component reconciled successfully with the scoped apply exception. Both new connections passed native bucket binding, generated-resource ownership, credential mapping and metadata validation. UID/resourceVersion/data-tested annotation removal preserved the connection data. A completed second reconciliation followed by an independent read confirmed that the credential annotation did not return. The retained connection received only a protocol metadata repair and annotation removal; its Secret UID, credential bytes and original bucket claim UID/spec were unchanged.
+
+Using the genuine developer identity and verified native service TLS, the dashboard connection-test API passed a read-only S3 bucket check for Models, Workbench and the retained connection. Each deliberately invalid credential returned an unsuccessful result. The owned diagnostic forward was closed. These are native API/storage checks; they do not claim browser rendering or an actual Workbench mount.
+
+## Governed response comparison: 2026-10-08
+
+Two bounded requests distinguished the native response paths. The non-streaming request returned HTTP200 with JSON content type and chunked transfer, but no body. The streaming counterpart returned four valid SSE records, assistant text and a terminal marker. Both short-lived owned keys were revoked and rejected afterwards. This qualifies the bounded governed streaming path, not full OpenCode generation/cancellation or normal JSON completion. Processor framing remains under investigation; an upstream passthrough issue is relevant evidence, not a proven diagnosis or permission to patch generated gateway configuration.

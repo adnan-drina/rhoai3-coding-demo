@@ -52,7 +52,8 @@ spec:
         - /spec/components/aipipelines
         - /spec/components/aigateway
         - /spec/components/ogx
-    # Stage 030 owns only these discovery visibility fields; the shared CR stays here.
+    # Later stages own selected discovery, Studio and evaluation fields;
+    # foundation retains the shared CR and all undelegated configuration.
     - group: opendatahub.io
       kind: OdhDashboardConfig
       name: odh-dashboard-config
@@ -61,10 +62,20 @@ spec:
         - /spec/dashboardConfig/agentsCatalog
         - /spec/dashboardConfig/disableModelCatalog
         - /spec/dashboardConfig/disableModelRegistry
+        - /spec/dashboardConfig/toolCalling
+        - /spec/dashboardConfig/mcpCatalog
         - /spec/dashboardConfig/genAiStudio
         - /spec/dashboardConfig/genAiTracing
         - /spec/dashboardConfig/modelAsService
         - /spec/dashboardConfig/vLLMDeploymentOnMaaS
+        - /spec/dashboardConfig/externalModels
+        - /spec/dashboardConfig/llmdTemplates
+        - /spec/dashboardConfig/guardrails
+        - /spec/dashboardConfig/agentConfigManagement
+        - /spec/dashboardConfig/promptManagement
+        - /spec/dashboardConfig/disableLMEval
+        - /spec/dashboardConfig/globalProjectPrompts
+        - /spec/globalMLflowNamespaces
     # Membership is assigned from provider identities by setup-access.sh.
     - group: user.openshift.io
       kind: Group

@@ -22,6 +22,10 @@ OpenShift monitoring
 
 Explore the Model Catalog and Agent Catalog, then open Model Registry to see how teams can organize model versions and artifact references. Agent Catalog discovers starter kits; it does not deploy or host agents. Stage 040 supplies the model deployments and registry records.
 
+Browse the Governed Coding Agents source for OpenCode and Hermes. Each card
+describes its runtime and links to the Stage 060 launch instructions. A catalog
+entry does not deploy an agent.
+
 ## What This Stage Adds
 
 - Native KServe serving infrastructure managed by OpenShift AI.

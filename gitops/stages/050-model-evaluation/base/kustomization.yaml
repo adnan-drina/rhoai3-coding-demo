@@ -5,6 +5,7 @@ resources:
   - mlflow
   - evalhub
   - tenant
+  - prompts
 labels:
   - pairs:
       app.kubernetes.io/part-of: rhoai-platform

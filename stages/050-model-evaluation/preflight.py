@@ -25,6 +25,20 @@ def require(value, message):
         raise RuntimeError(message)
 
 
+def require_owned_or_absent(kind, name, namespace=None):
+    existing = get(kind, name, namespace)
+    if not existing:
+        return
+    metadata = existing.get("metadata", {})
+    native_kind = {"namespace": "Namespace", "role": "Role", "rolebinding": "RoleBinding"}[kind]
+    group = "" if kind == "namespace" else "rbac.authorization.k8s.io"
+    # Installed Argo tracks cluster-scoped objects with the App destination namespace.
+    expected = f"{APP}:{group}/{native_kind}:{namespace or 'openshift-gitops'}/{name}"
+    require(not metadata.get("ownerReferences") and not metadata.get("deletionTimestamp")
+            and metadata.get("annotations", {}).get("argocd.argoproj.io/tracking-id") == expected,
+            "Existing curated namespace or dashboard authorization has foreign ownership; no adoption permitted.")
+
+
 def guard():
     # Standalone invocation is guarded too; capture all output to avoid exposing endpoints.
     root = Path(__file__).resolve().parents[2]
@@ -37,6 +51,9 @@ def guard():
 
 def main():
     guard()
+    require_owned_or_absent("namespace", "ai-curated-prompts")
+    for kind in ["role", "rolebinding"]:
+        require_owned_or_absent(kind, "enable-model-evaluation-dashboard", NAMESPACE)
     foundation = get("application", "010-openshift-ai-platform-foundation", "openshift-gitops")
     require(foundation.get("status", {}).get("sync", {}).get("status") in ["Synced", "OutOfSync"]
             and foundation.get("status", {}).get("health", {}).get("status") == "Healthy",
@@ -44,6 +61,15 @@ def main():
     require("RespectIgnoreDifferences=true" in foundation.get("spec", {}).get("syncPolicy", {}).get("syncOptions", []),
             "Foundation must respect delegated shared-field ownership.")
     ignores = foundation.get("spec", {}).get("ignoreDifferences", [])
+    dashboard_fields = {path for entry in ignores
+                        if entry.get("group") == "opendatahub.io" and entry.get("kind") == "OdhDashboardConfig"
+                        and entry.get("name") == "odh-dashboard-config" and entry.get("namespace") == NAMESPACE
+                        for path in entry.get("jsonPointers", [])}
+    require({"/spec/dashboardConfig/disableLMEval", "/spec/dashboardConfig/globalProjectPrompts", "/spec/globalMLflowNamespaces"} <= dashboard_fields,
+            "Foundation has not delegated evaluation/global prompt configuration.")
+    dashboard = get("odhdashboardconfig", "odh-dashboard-config", NAMESPACE)
+    require(dashboard.get("spec", {}).get("globalMLflowNamespaces", []) in [[], ["ai-curated-prompts"]],
+            "Foreign global prompt configuration requires reviewed merge before deployment.")
     delegated = {path for entry in ignores
                  if entry.get("group") == "datasciencecluster.opendatahub.io"
                  and entry.get("kind") == "DataScienceCluster" and entry.get("name") == "default-dsc"
