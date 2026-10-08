@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-s3-connections
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: sandbox-storage
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: storage-connections
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups: [objectbucket.io]
+    resources: [objectbucketclaims]
+    resourceNames: [rhoai-models, rhoai-workbench]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [rhoai-models, rhoai-workbench]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [rhoai-models, rhoai-workbench, rhoai-models-connection, rhoai-workbench-connection]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [rhoai-models-connection, rhoai-workbench-connection]
+    verbs: [patch]

@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - connection-job.yaml
+  - connection-models.yaml
+  - connection-workbench.yaml
+  - obc-models.yaml
+  - obc-workbench.yaml
+  - role.yaml
+  - rolebinding.yaml
+  - serviceaccount.yaml

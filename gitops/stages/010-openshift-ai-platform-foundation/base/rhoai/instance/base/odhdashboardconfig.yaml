@@ -11,6 +11,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "4"
 spec:
   dashboardConfig:
+    connectionTest: true
     autorag: false
     automl: false
     agentsCatalog: false

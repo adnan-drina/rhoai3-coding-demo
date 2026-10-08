@@ -57,7 +57,12 @@ PORT=$(oc get configmap demo-sandbox-bucket -n demo-sandbox -o jsonpath='{.data.
 
 # RHOAI dashboard connection: labels + S3 connection-type fields verified against
 # the cluster's pre-installed `s3` connection type configmap.
-oc apply -f - <<EOF
+# Keep credentials in data and on private stdin, never in last-applied metadata.
+umask 077
+encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
+credential_errors=$(mktemp)
+trap 'rm -f "$credential_errors"' EXIT
+if ! oc --request-timeout=10s apply --server-side --field-manager=sandbox-connection-bootstrap -f - >/dev/null 2>"$credential_errors" <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
@@ -67,15 +72,22 @@ metadata:
     opendatahub.io/dashboard: "true"
   annotations:
     opendatahub.io/connection-type-ref: s3
+    opendatahub.io/connection-type-protocol: s3
     openshift.io/display-name: "demo-sandbox object storage"
 type: Opaque
-stringData:
-  AWS_ACCESS_KEY_ID: "${AKID}"
-  AWS_SECRET_ACCESS_KEY: "${SAK}"
-  AWS_S3_ENDPOINT: "https://${HOST}:${PORT}"
-  AWS_S3_BUCKET: "${BUCKET}"
-  AWS_DEFAULT_REGION: "us-east-1"
+data:
+  AWS_ACCESS_KEY_ID: "$(encode "$AKID")"
+  AWS_SECRET_ACCESS_KEY: "$(encode "$SAK")"
+  AWS_S3_ENDPOINT: "$(encode "https://${HOST}:${PORT}")"
+  AWS_S3_BUCKET: "$(encode "$BUCKET")"
+  AWS_DEFAULT_REGION: "$(encode us-east-1)"
 EOF
+then
+  echo "ERROR: Native connection update failed (credential-bearing API details suppressed)" >&2
+  exit 1
+fi
+oc --request-timeout=10s annotate secret demo-sandbox-s3 -n demo-sandbox kubectl.kubernetes.io/last-applied-configuration- >/dev/null
+unset AKID SAK
 echo "✓ Connection demo-sandbox-s3 created (bucket ${BUCKET})"
 
 echo "✓ Platform group membership and demo-sandbox S3 connection configured"

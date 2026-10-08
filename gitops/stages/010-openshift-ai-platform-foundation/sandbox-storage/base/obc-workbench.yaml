@@ -1,0 +1,16 @@
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: rhoai-workbench
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: sandbox-storage
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: storage-connections
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  bucketName: rhoai-workbench
+  storageClassName: openshift-storage.noobaa.io

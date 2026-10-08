@@ -1,0 +1,70 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sandbox-s3-connections
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: sandbox-storage
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: storage-connections
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 720
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sandbox-storage
+        app.kubernetes.io/part-of: rhoai3-coding-demo
+        app.kubernetes.io/component: storage-connections
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      serviceAccountName: sandbox-s3-connections
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [/bin/bash, -c]
+          args:
+            - |
+                #!/usr/bin/env bash
+                # Runtime credentials travel on stdin, never command-line arguments/Git/logs.
+                set -euo pipefail
+                set +x
+                umask 077
+                encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
+                for claim in rhoai-models rhoai-workbench; do
+                  deadline=$((SECONDS + 300))
+                  while true; do
+                    phase=$(oc --request-timeout=10s get obc "$claim" -n demo-sandbox -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                    if [[ "$phase" == Bound ]]; then
+                      ak=$(oc --request-timeout=10s get secret "$claim" -n demo-sandbox -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null || true)
+                      sk=$(oc --request-timeout=10s get secret "$claim" -n demo-sandbox -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' 2>/dev/null || true)
+                      host=$(oc --request-timeout=10s get cm "$claim" -n demo-sandbox -o jsonpath='{.data.BUCKET_HOST}' 2>/dev/null || true)
+                      port=$(oc --request-timeout=10s get cm "$claim" -n demo-sandbox -o jsonpath='{.data.BUCKET_PORT}' 2>/dev/null || true)
+                      bucket=$(oc --request-timeout=10s get cm "$claim" -n demo-sandbox -o jsonpath='{.data.BUCKET_NAME}' 2>/dev/null || true)
+                      [[ -n "$ak" && -n "$sk" && -n "$host" && -n "$port" && -n "$bucket" ]] && break
+                    fi
+                    (( SECONDS < deadline )) || { echo "ERROR: Generated bucket inputs unavailable" >&2; exit 1; }
+                    sleep 5
+                  done
+                  [[ "$host" =~ ^[a-zA-Z0-9.-]+$ && "$port" == 443 && "$bucket" == "$claim" ]] || { echo "ERROR: Bucket identity or HTTPS endpoint differs from reviewed request" >&2; exit 1; }
+                  uid=$(oc --request-timeout=10s get obc "$claim" -n demo-sandbox -o jsonpath='{.metadata.uid}')
+                  for kind in secret configmap; do
+                    owner=$(oc --request-timeout=10s get "$kind" "$claim" -n demo-sandbox -o jsonpath='{.metadata.ownerReferences[?(@.kind=="ObjectBucketClaim")].uid}')
+                    [[ -n "$uid" && "$owner" == "$uid" ]] || { echo "ERROR: Generated input ownership mismatch" >&2; exit 1; }
+                  done
+                  region=$(oc --request-timeout=10s get cm "$claim" -n demo-sandbox -o jsonpath='{.data.BUCKET_REGION}')
+                  region="${region:-us-east-1}"
+                  tracking=$(oc --request-timeout=10s get secret "$claim-connection" -n demo-sandbox -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}')
+                  [[ "$tracking" == "sandbox-storage:"* ]] || { echo "ERROR: Target connection is not component-owned" >&2; exit 1; }
+                  rv=$(oc --request-timeout=10s get secret "$claim-connection" -n demo-sandbox -o jsonpath='{.metadata.resourceVersion}')
+                  [[ "$rv" =~ ^[0-9]+$ ]] || { echo "ERROR: Connection skeleton unavailable" >&2; exit 1; }
+                  printf '{"metadata":{"resourceVersion":"%s"},"data":{"AWS_ACCESS_KEY_ID":"%s","AWS_SECRET_ACCESS_KEY":"%s","AWS_S3_ENDPOINT":"%s","AWS_S3_BUCKET":"%s","AWS_DEFAULT_REGION":"%s"}}' "$rv" "$ak" "$sk" "$(encode "https://$host:$port")" "$(encode "$bucket")" "$(encode "$region")" | oc --request-timeout=10s patch secret "$claim-connection" -n demo-sandbox --type merge --patch-file /dev/stdin >/dev/null
+                  unset ak sk
+                  echo "Connection runtime mapping completed for $claim"
+                done
