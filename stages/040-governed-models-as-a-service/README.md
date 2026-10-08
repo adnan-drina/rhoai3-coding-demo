@@ -80,3 +80,25 @@ This workflow is inspired by [demo-chargeback](https://github.com/suhasvkashyap/
 ## Next Stage
 
 [Stage 050: Model Evaluation](../050-model-evaluation/README.md)
+
+## Direct Catalog MCP Connection
+
+In **Gen AI studio → Playground → MCP**, select **OpenShift-Catalog** while using project **AI Coding Sandbox**. Enter your own OpenShift session access token, choose **Authorize**, then **View tools**. The token is session-only; do not enter a model MaaS API key. The catalog server offers 13 read-only core/config tools and denies Secrets and writes. The separate **MCP servers** hosting project and Registry are accessible to `ai-admin`; `ai-developer` consumes tools using its own project permissions without hosting access. **OpenShift-MCP** remains the legacy entry until the visual handoff.
+
+This follows the [documented MCP connection procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index). It is a direct HTTPS connection, not MCP Gateway aggregation or MaaS API-key/quota governance. Gateway qualification is tracked separately.
+
+The single discovery field is published with `publish-catalog-mcp.py`; exact Argo field delegation preserves it, regular deploy republishes/validates it, and validation detects drift. This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
+
+Model-free qualification is reproducible without saved acceptance artifacts:
+
+```bash
+python3 ./stages/040-governed-models-as-a-service/qualify-catalog-mcp.py \
+  --bootstrap-kubeconfig "$KUBECONFIG" \
+  --admin-kubeconfig "$AI_ADMIN_KUBECONFIG" \
+  --developer-kubeconfig "$AI_DEVELOPER_KUBECONFIG" \
+  --receipt /private/qualification/studio-mcp.json
+```
+
+Create the receipt's parent directory with private permissions. The helper keeps tokens in memory and records only safe status/count checks. It verifies native session status/tools and bounded caller reads/hosting denial; browser rendering and model-generated tool invocation remain separate.
+
+For catalog publication or qualification, supply the reviewed immutable deployed revisions as `RHOAI_STAGE040_EXPECTED_REVISION` and `RHOAI_STAGE060_EXPECTED_REVISION` (or the helpers' explicit revision arguments). Helper-only source publication does not require moving either live Application. Metadata connection and tool listing prove bearer-header transport; the server's opaque-token mode validates caller authority when an actual Kubernetes resource is requested. A nonempty invalid bearer must be denied on that resource call, not inferred invalid from metadata discovery.

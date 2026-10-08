@@ -11,6 +11,11 @@ remote="$(git -C "$ROOT" ls-remote origin "refs/heads/$branch" | awk '{print $1}
 [[ "$remote" == "$sha" ]] || { echo 'Selected published branch must equal checkout HEAD' >&2; exit 1; }
 [[ -z "$(git -C "$ROOT" status --porcelain -- gitops/stages/060-agent-runtime-and-agentops/native-mcp stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh stages/060-agent-runtime-and-agentops/validate-native-mcp.py gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-mcp.yaml)" ]] || { echo 'MCP component source is unpublished' >&2; exit 1; }
 export RHOAI_STAGE060_EXPECTED_REVISION="$sha"
+if [[ "${2:-}" == "--publish-studio" ]]; then
+  [[ -z "$(git -C "$ROOT" status --porcelain -- stages/040-governed-models-as-a-service/publish-catalog-mcp.py stages/040-governed-models-as-a-service/qualify-catalog-mcp.py gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml)" ]] || { echo "Studio publication source is unpublished" >&2; exit 1; }
+  python3 "$ROOT/stages/040-governed-models-as-a-service/publish-catalog-mcp.py"
+  exit 0
+fi
 python3 "$ROOT/stages/060-agent-runtime-and-agentops/validate-native-mcp.py" --preflight
 # Own Application is the first write. Native operators own all generated objects.
 oc --request-timeout=10s apply -f <(python3 - "$ROOT" "$sha" <<'PY'

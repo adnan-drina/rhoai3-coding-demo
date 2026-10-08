@@ -82,3 +82,9 @@ spec:
     namespace: kuadrant-system
     jsonPointers:
     - "/data/service-ca.crt"
+  - group: ''
+    kind: ConfigMap
+    name: gen-ai-aa-mcp-servers
+    namespace: redhat-ods-applications
+    jsonPointers:
+    - "/data/OpenShift-Catalog"

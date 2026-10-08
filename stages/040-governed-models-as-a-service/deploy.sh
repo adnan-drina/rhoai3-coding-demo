@@ -60,6 +60,9 @@ PY_GUARD
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 040-governed-models-as-a-service --app-namespace openshift-gitops --strategy hook --revision "$remote_sha" --async --timeout 300
   hook_sync_requested=true
  fi
+ if [[ "$native_operation" == "Succeeded|$remote_sha|gitops/stages/040-governed-models-as-a-service/base" ]]; then
+  RHOAI_STAGE040_EXPECTED_REVISION="$remote_sha" python3 "$SCRIPT_DIR/publish-catalog-mcp.py" --defer-if-absent
+ fi
  if "$SCRIPT_DIR/validate.sh" --readiness; then
   echo 'PASS Native Stage040 readiness. Bounded real inference/stream/auth/metrics and user Studio visual acceptance are separate.'
   exit 0
