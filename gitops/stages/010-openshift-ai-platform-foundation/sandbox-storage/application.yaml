@@ -40,6 +40,9 @@ spec:
     syncOptions:
       - SkipDryRunOnMissingResource=true
       - RespectIgnoreDifferences=true
+      # Only the two connection skeletons opt into SSA. Do not replay their
+      # runtime credentials through Argo's client-side migration annotation.
+      - ClientSideApplyMigration=false
     retry:
       limit: 10
       backoff:

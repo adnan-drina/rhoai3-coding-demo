@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false,ServerSideApply=true
     opendatahub.io/connection-type-protocol: s3
     openshift.io/display-name: Workbench
 type: Opaque
