@@ -15,9 +15,9 @@ This tracker records configuration and acceptance separately. The user authorize
 | Agent Catalog | 030/060 | Discovery qualified; agent task gates pending | Both genuine personas read default/custom cards and launch instructions; standalone Hermes/model tasks remain separate runtime exits |
 | Deploy agents | 060 | Partial | Both standalone agents, real workspace lifecycle/authorization, bounded task verification; catalog integration |
 | MCP servers | 040/060 | Partial | Preserve current endpoint; native lifecycle and authenticated read-only tool plus foreign/write denial |
-| MCP registry | 030/060 | Isolation qualified; project registration pending | Isolated native registration/version/read and developer filtered search/direct-ID/version/write denial passed with owned cleanup. Intended project publication and redeploy persistence remain required |
+| MCP registry | 030/060 | Native metadata qualified; endpoint publication pending | Project editors can read/update their own registry metadata under native edit authority; known foreign record/version/write access is denied. Original native RBAC is preserved; endpoint publication, UI enablement and redeploy persistence remain required |
 | MCP catalog sources | 030 | Native API qualified | Administrator create/read/update/delete and developer denied writes/no change; default sources and customer ConfigMap identity preserved. Browser rendering is separate |
-| Safety/security insights | 030 | Pending qualification | Packaged default-model metadata and legitimate no-result model verified under developer access |
+| Safety/security insights | 030 | Native no-result path qualified; positive data absent | Genuine developer received typed empty results; current packaged sources contain no positive security-scan metadata. Do not invent scan data or infer a disabled feature |
 | AutoRAG | 010 | Excluded | Explicit disabled policy preserved; no backend deployment |
 | Guardrails | 040/050 | Pending implementation | Native Studio configuration/auto-created controller resources; bounded safe/violation checks and ownership |
 | Agent configuration management | 040 | Native API qualified | Base/variant save-load persistence and foreign-project denial passed with no model calls; browser rendering remains separate |

@@ -66,11 +66,48 @@ Relevant product procedures: [catalog discovery DP](https://docs.redhat.com/en/d
 
 The installed MLflow 3.14 product fork includes MCP registry APIs. Its pinned
 Kubernetes authentication plugin maps MCP metadata operations to the virtual
-`mlflow.kubeflow.org/mcpservers` resource. Stage 030 grants the existing
-`rhods-admins` group metadata CRUD and `rhoai-developers` metadata read access
-only in `demo-sandbox`. These permissions grant no Secret or workload access.
+`mlflow.kubeflow.org/mcpservers` resource. Native MLflow operator roles aggregate
+metadata permissions into the existing OpenShift `admin` and `edit` roles.
+The existing `rhods-admins-admin` and `rhoai-developers-edit` bindings therefore
+allow the approved personas to manage metadata in `demo-sandbox`. Adding a
+reader Role does not restrict those existing project-editor permissions.
+
+Live qualification demonstrated administrator draft server/version creation,
+developer own-project search/direct-ID/version reads and metadata update. An
+isolated administrator-only namespace demonstrated developer filtered-empty
+search and HTTP 403 for a known record, version and update. Both uniquely owned
+fixtures were removed and existing project identities and roles preserved.
+These are metadata permissions, not MCP runtime workload or tool permissions.
+Global MCP catalog source administration remains a separate administrator
+boundary: native admin create/read/update/delete passed and developer writes
+left catalog data unchanged. Native write failures surfaced as server errors;
+the update-denial receipt does not retain its exact numeric status.
+
 Search filters unauthorized records and may return HTTP 200 with an empty
-collection; a known isolated record must also be tested by direct ID and
-unauthorized write before claiming tenant isolation. Backend readiness,
-registry publication, source administration and tool execution remain separate
-acceptance checks. Enable the shared registry UI only after these gates pass.
+collection; known-record direct-ID/write tests establish the tenant boundary.
+MCP REST `created_by` and `last_updated_by` were null in this backend; genuine
+request identities were independently verified and must not be inferred from
+those nullable metadata fields. Backend readiness, registry publication,
+source administration and tool execution remain distinct acceptance checks.
+
+## Safety and security insights: installed data boundary
+
+The genuine developer can read the native safety-artifact API. Six existing
+public default/validated model variants returned HTTP 200 with typed empty
+artifact collections, qualifying the documented no-result path. No scan was
+started and no security score was fabricated for the private Qwen models.
+
+The active native YAML catalog provider is pinned to model-registry commit
+`efda7af48b15e63626f7dcd030c2dda23306da4c`. It reads inline model artifacts from
+its configured catalog YAMLs. All three installed default catalog files contain
+zero `security-metrics` entries. Their native data images are:
+
+- Metadata collection: `registry.redhat.io/rhoai/odh-model-metadata-collection-rhel9@sha256:85789e4e19c13df2644ae98dfcd6dbcf84a077c6e9c97a7ac7166a7fd571942b`.
+- Performance data: `registry.redhat.io/rhoai/odh-model-performance-data-rhel9@sha256:15f2b8272db2d61d4a1b9c83690b9fa786fe8cb82a4728f97ed2b37311d83c7c`.
+
+Configuration, authenticated API access and no-result handling are qualified;
+positive published scan evidence is absent in this shipped dataset. This is a
+data-coverage limit, not an authorization failure. A future positive test must
+use a real published evaluation artifact with the documented customer catalog
+format. Do not override a source arbitrarily, synthesize scores or infer the
+private models' security from another model's precomputed result.
