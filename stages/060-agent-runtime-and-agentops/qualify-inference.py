@@ -429,7 +429,7 @@ class Run:
         self.key = created["key"]
         status, reply = http(self.chat_url, self.key, {"model": MODEL, "messages": [{"role": "user", "content": "Reply with exactly OK."}], "max_tokens": 8}, timeout=120)
         self.evidence["checks"]["directMaasCompletion"] = status == 200 and bool((reply or {}).get("choices"))
-        need(self.evidence["checks"]["directMaasCompletion"], "MaaS refused a direct bounded completion with the new key (HTTP %s); the runtime path was not tested" % status)
+        need(self.evidence["checks"]["directMaasCompletion"], "MaaS did not return a valid chat-completion response (HTTP %s); OpenCode inference was not tested" % status)
         self.save_state(providerPending=True)
         created = self.admin(["provider", "create", "--name", self.provider, "--type", self.profile, "--credential", "MAAS_API_KEY"], WORKSPACE, {"MAAS_API_KEY": self.key})
         need(created.returncode == 0, "Provider creation failed")
