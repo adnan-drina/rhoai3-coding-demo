@@ -3,4 +3,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - admin-rolebinding.yaml
-  # Connect the prepared server resources only after hosting access and draft Registry metadata qualify.
+  - serviceaccount.yaml
+  - configmap.yaml
+  - mcpserver.yaml
+  - route.yaml
