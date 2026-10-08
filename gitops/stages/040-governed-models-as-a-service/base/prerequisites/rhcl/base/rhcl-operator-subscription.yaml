@@ -13,10 +13,11 @@ metadata:
     argocd.argoproj.io/sync-wave: '3'
 spec:
   channel: stable
-  installPlanApproval: Automatic
+  installPlanApproval: Manual
   name: rhcl-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: rhcl-operator.v1.4.3
   config:
     env:
     - name: AUTH_SERVICE_TIMEOUT
