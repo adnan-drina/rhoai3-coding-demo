@@ -72,11 +72,6 @@ def need(condition, message):
         raise Failure(message)
 
 
-def not_found(result):
-    # Native NotFound only. Authentication, unavailable and timeouts are never absence.
-    return result.returncode != 0 and bool(re.search(r'code: NotFound|status: NotFound|profile .* not found', result.stderr))
-
-
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
@@ -284,6 +279,16 @@ class Run:
         need(len(found) <= 1, 'Ambiguous native resource identity')
         return found[0] if found else None
 
+    def profile_present(self):
+        # Pinned CLI fetch_provider_profile_catalog consumes every native page;
+        # profiles_to_json emits a bare array. Errors never establish absence.
+        result = self.admin(['profile', 'list', '-o', 'json'], WORKSPACE)
+        need(result.returncode == 0, 'Complete profile catalog read failed')
+        catalog = json.loads(result.stdout)
+        need(isinstance(catalog, list) and all(isinstance(p, dict) and isinstance(p.get('id'), str) for p in catalog),
+             'Unexpected native profile catalog schema')
+        return any(p['id'] == self.profile for p in catalog)
+
     def start_forward(self):
         def reachable():
             try:
@@ -375,8 +380,7 @@ class Run:
         fleet = json.loads(fleet.stdout)
         need(not fleet.get('next_page_token') and fleet.get('sandboxes') == [], 'Global policy qualification requires an empty sandbox fleet')
         need(self.resource('provider', self.provider) is None, 'Run provider name exists')
-        existing_profile = self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE)
-        need(not_found(existing_profile), 'Profile absence not established; refusing import')
+        need(not self.profile_present(), 'Run profile name exists; refusing import')
         model = oc_json("get", "llminferenceservice", MODEL, "-n", "models-as-a-service")
         need(any(c["type"] == "Ready" and c["status"] == "True" for c in model["status"].get("conditions", [])), "Model is not Ready")
         templates = self.persona(["sandbox", "template", "list", "-o", "json"], WORKSPACE)
@@ -632,13 +636,13 @@ class Run:
             step("providerDeleted", delete_provider)
         if self.state.get("profile"):
             def delete_profile():
-                current = self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE)
-                if not_found(current):
+                if not self.profile_present():
                     return True
+                current = self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE)
                 need(current.returncode == 0 and digest(json.loads(current.stdout)) == self.state.get('profileDigest'),
                      'Profile read/identity changed; refusing deletion')
                 need(self.admin(['profile', 'delete', self.profile], WORKSPACE).returncode == 0, 'Profile deletion failed')
-                return not_found(self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE))
+                return not self.profile_present()
             step("profileDeleted", delete_profile)
         if self.state.get("policy"):
             def restore():

@@ -24,10 +24,22 @@ class QualificationTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         return q.Run(folder.name)
 
-    def test_only_native_not_found_is_absence(self):
-        self.assertTrue(q.not_found(result(1, error='status: NotFound')))
-        for error in ['Unauthenticated', 'Unavailable', 'timeout', 'connection refused']:
-            self.assertFalse(q.not_found(result(1, error=error)))
+    def test_profile_absence_requires_successful_typed_catalog(self):
+        run = self.run_object()
+        run.admin = lambda *args: result(data=[])
+        self.assertFalse(run.profile_present())
+        run.admin = lambda *args: result(data=[{'id': run.profile}])
+        self.assertTrue(run.profile_present())
+        # Exact sanitized first-run error: CLI renders the typed gRPC code as prose.
+        errors = ["code: 'Some requested entity was not found', message: \"provider profile not found\"",
+                  'Unauthenticated', 'Unavailable', 'timeout', 'connection refused', 'unknown flag']
+        for error in errors:
+            run.admin = lambda *args, error=error: result(1, error=error)
+            with self.assertRaises(q.Failure):
+                run.profile_present()
+        run.admin = lambda *args: result(data={'profiles': []})
+        with self.assertRaises(q.Failure):
+            run.profile_present()
 
     def test_curated_subject_and_normal_role_required(self):
         membership = {'members': [{'subject': 'curated-id', 'role': 'user'}]}
