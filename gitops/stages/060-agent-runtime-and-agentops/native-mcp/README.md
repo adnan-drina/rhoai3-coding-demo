@@ -43,6 +43,8 @@ Required acceptance before switching consumers:
 No access or functional pass is implied by a Ready condition or a catalog card.
 Registry registration uses the existing tenant-aware native MLflow store;
 catalog discovery and runtime lifecycle remain separate contracts.
+The catalog version remains `0.4` in provenance. Native Registry registration
+uses the equivalent strict semantic version `0.4.0` required by its API.
 
 Source pins:
 

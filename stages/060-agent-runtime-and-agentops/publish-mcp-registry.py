@@ -46,7 +46,7 @@ def main():
         state = {}
         save(statepath, state)  # Reserve recovery record before any native write.
     pin = json.loads((ROOT / 'gitops/stages/060-agent-runtime-and-agentops/native-mcp/catalog-source.json').read_text())
-    name, version = pin['registry_name'], pin['catalog']['version']
+    name, version = pin['registry_name'], pin['registry_version']
     source = canonical(pin)
     serverjson = {'name': name, 'version': version, 'title': 'OpenShift MCP Server',
                   'description': DESCRIPTION, 'repository': {'url': pin['source_repository'], 'source': 'github'},
@@ -79,7 +79,7 @@ def main():
         if code == 404:
             need('version_created' not in state, 'Previously owned version disappeared; refusing silent recreation')
             code, record = call('POST', entitypath + '/versions', {'server_json': serverjson, 'source': source, 'status': 'draft', 'tools': []})
-            need(code in (200, 201) and isinstance(record, dict) and isinstance(record.get('creation_timestamp'), int), 'Native version creation identity missing')
+            need(code in (200, 201) and isinstance(record, dict) and isinstance(record.get('creation_timestamp'), int), 'Native version creation failed or identity missing (HTTP %s)' % code)
             state['version_created'] = record['creation_timestamp']
             save(statepath, state)
         else:

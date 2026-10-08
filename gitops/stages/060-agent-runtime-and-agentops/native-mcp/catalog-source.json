@@ -1,6 +1,7 @@
 {
   "catalog": {"source_id": "rh_mcp_servers", "id": "15", "name": "openshift-mcp-server", "version": "0.4", "publisher": "Red Hat"},
   "registry_name": "io.github.openshift/openshift-mcp-server",
+  "registry_version": "0.4.0",
   "registry_name_origin": "Local reverse-DNS mapping required by the native MLflow API; not a publisher-issued identifier",
   "image": "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2",
   "amd64_image_digest": "sha256:506a127d725c6d0cbff11a9616775e5b499bcf68276b83971cff2ac81596758a",
