@@ -9,7 +9,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 NS = "mcp-servers"
-APP_DESTINATION = "demo-sandbox"  # Temporary desired coexistence; final retirement changes this to NS.
+APP_DESTINATION = NS
 APP = "agent-tools"
 PATH = "gitops/stages/060-agent-runtime-and-agentops/native-mcp"
 IMAGE = "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2"
@@ -80,12 +80,6 @@ def main():
         app_identity(app, None if parsed.preflight else revision)
         if parsed.preflight:
             need(not app.get("operation") and app.get("status", {}).get("operationState", {}).get("phase") != "Running", "Existing component sync is still active")
-    if parsed.preflight:
-        # Coexistence still renders these retained inputs; never overwrite a foreign replacement.
-        for resource in ["serviceaccount", "configmap", "mcpservers.mcp.x-k8s.io", "route"]:
-            legacy = get(env, resource, "openshift-mcp-server", "demo-sandbox", optional=True)
-            if legacy:
-                tracked(legacy)
     namespace = get(env, "namespace", NS, optional=True)
     need(parsed.preflight or namespace is not None, "MCP hosting project is absent")
     if namespace:

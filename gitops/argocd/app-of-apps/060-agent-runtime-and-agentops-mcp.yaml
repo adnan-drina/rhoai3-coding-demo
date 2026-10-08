@@ -18,7 +18,7 @@ spec:
     path: gitops/stages/060-agent-runtime-and-agentops/native-mcp
   destination:
     server: https://kubernetes.default.svc
-    namespace: demo-sandbox
+    namespace: mcp-servers
   syncPolicy:
     syncOptions:
       - RespectIgnoreDifferences=true
