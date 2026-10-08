@@ -13,9 +13,9 @@ This tracker records configuration and acceptance separately. The user authorize
 | LLM accelerator configurations | 040 | Pending qualification | Existing available templates, compatible NVIDIA selection and support annotations verified; no new capacity |
 | Tool calling | 030/040/060 | Pending qualification | Catalog/parser metadata and bounded real read-only tool/result loop; forbidden tool denied |
 | Agent Catalog | 030/060 | Discovery qualified; agent task gates pending | Both genuine personas read default/custom cards and launch instructions; standalone Hermes/model tasks remain separate runtime exits |
-| Deploy agents | 060 | Partial | Both standalone agents, real workspace lifecycle/authorization, bounded task verification; catalog integration |
+| Deploy agents | 060 | Developer Preview console discovery qualified; runtime tasks paused | Persistent agentOps flag; genuine dashboard API own-workspace typed empty list and foreign-workspace denial passed. Sandbox creation/update/deletion remain denied; authenticated OpenShell CLI owns launch/lifecycle. Positive instance detail, both standalone agents and bounded agent tasks remain separate exits |
 | MCP servers | 040/060 | Partial | Preserve current endpoint; native lifecycle and authenticated read-only tool plus foreign/write denial |
-| MCP registry | 030/060 | Native metadata qualified; endpoint publication pending | Project editors can read/update their own registry metadata under native edit authority; known foreign record/version/write access is denied. Original native RBAC is preserved; endpoint publication, UI enablement and redeploy persistence remain required |
+| MCP registry | 030/050/060 | Technology Preview configuration and native metadata qualified | Persistent mcpRegistry flag and repeat reconciliation passed. Both genuine personas read typed own-project metadata through the native MLflow endpoint used by the embedded Registry UI; native project editor authority survives removal of redundant grants. Prior known foreign record/version/write denial remains the isolation proof; fresh foreign filtered-empty search alone is not proof. Runtime endpoint publication and browser rendering remain separate |
 | MCP catalog sources | 030 | Native API qualified | Administrator create/read/update/delete and developer denied writes/no change; default sources and customer ConfigMap identity preserved. Browser rendering is separate |
 | Safety/security insights | 030 | Native no-result path qualified; positive data absent | Genuine developer received typed empty results; current packaged sources contain no positive security-scan metadata. Do not invent scan data or infer a disabled feature |
 | AutoRAG | 010 | Excluded | Explicit disabled policy preserved; no backend deployment |
@@ -27,6 +27,14 @@ This tracker records configuration and acceptance separately. The user authorize
 | Global prompts: administration | 040/050 | Configuration deployed; functional checks pending | Native single global workspace/label/read binding deployed; administrator-only curation and redeploy persistence qualification in progress |
 
 ## Integration sequence
+
+### Targeted registry and AgentOps configuration — 2026-10-08
+
+The [RHOAI 3.5 dashboard configuration procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard) enables `mcpRegistry` (Technology Preview) and `agentOps` (Developer Preview) explicitly. Stage 030 owns registry visibility; Stage 050 supplies the native MLflow backend. A separate `agent-console` component owns only dashboard visibility and each persona's own-workspace Sandbox/Service read access. It does not change the gateway, operator, identities, runtime images or launch policy.
+
+Both scoped components reconciled successfully and one repeat reconciliation retained their flags and authorization boundaries. Only four previously added redundant MCP metadata Roles/Bindings were pruned; original native project admin/edit grants remain. The genuine AgentOps dashboard API returned own-workspace empty lists and rejected foreign-workspace reads. Registry reads used its actual embedded MLflow service contract, not an invented dashboard BFF endpoint. Empty agent lists do not qualify positive instance details or generic wizard deployment. The console wizard does not route through authenticated OpenShell policy enforcement, so no human Sandbox write permissions were added.
+
+Manual verification remains user-owned: **AI hub → MCP servers → Registry**, select the intended project; **AI hub → Agents → Deployments**, select the persona's own workspace. Launch agents through the authenticated OpenShell CLI. The broader paused evaluation, model, runtime-task, tracing, recovery and native MCP endpoint work was not resumed.
 
 1. Qualify the additive Models/Workbench storage component and repair the existing connection writer without touching retained buckets or core foundation source.
 2. Review and deploy Stage040 shared visibility/configuration and native serving fixes. Resolve the governed empty response before model-backed agent acceptance.
