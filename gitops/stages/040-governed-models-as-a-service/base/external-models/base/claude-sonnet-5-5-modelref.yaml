@@ -1,0 +1,19 @@
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: claude-sonnet-5-5
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: claude-sonnet-5-5
+    app.kubernetes.io/component: maas-model-ref
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '17'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: Claude Sonnet 5.5
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: claude-sonnet-5-5

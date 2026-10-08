@@ -441,3 +441,7 @@ Stage 060 is a planned platform stage; Stage 070 retains developer services and 
 ### Deferred optional MCP Gateway
 
 The unused RHCL MCP Gateway prerequisite is removed from the demo source and cluster; direct native MCP lifecycle, Registry and Studio remain separate. Selected 0.7.1 private testing changed an unrelated health request 200→404 after filter insertion. A dedicated two-listener candidate reached configured policy conditions but failed MCP initialization with HTTP500, empty Registration status and WASM/router diagnostics. No gateway aggregation, MaaS-key governance or renewal capability is claimed. Revisit only with a concrete consumer and independently qualified native topology; do not attach the tested port-wide filter to the shared model Gateway. See the [recorded evidence](docs/migration/035-feature-completion.md#dedicated-mcp-gateway-authentication-qualification--2026-10-08).
+
+### Claude Sonnet 5.5 native Messages
+
+Exact Anthropic model ID entitlement is confirmed by one metadata-only request. Source and served schema support native Messages passthrough; live readiness and the single bounded streaming request remain pending. Messages subscription token metering is unsupported; provider quotas aggregate users, and cross-format streaming is buffered. Creating the first Messages ExternalModel enables `x-api-key` authentication gateway-wide. Claude personal access does not expand DevSpaces beyond its retained local-only policy.

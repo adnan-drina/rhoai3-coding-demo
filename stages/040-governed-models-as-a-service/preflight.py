@@ -68,6 +68,7 @@ try:
  assert (secret_present('openai-provider-api-key','external-models') or secret_present('openai-provider-api-key','models-as-a-service') or os.environ.get('OPENAI_API_KEY') or os.environ.get('RHOAI_OPENAI_API_KEY')), 'Authorized external provider credential must be available before deployment'
  provider_url=urlparse(os.environ.get('REDHAT_MODELS_BASE_URL',''));assert provider_url.scheme=='https' and provider_url.port in (None,443) and provider_url.path in ('','/','/v1','/v1/') and provider_url.hostname and not provider_url.username and not provider_url.password and not provider_url.query and not provider_url.fragment,'Approved Red Hat provider requires a private HTTPS input'
  assert secret_present('redhat-models-provider-api-key','external-models') or secret_present('redhat-models-provider-api-key','models-as-a-service') or os.environ.get('REDHAT_MODELS_API_KEY'),'Authorized Red Hat provider credential must be available'
+ assert secret_present('anthropic-provider-api-key','external-models') or os.environ.get('ANTHROPIC_API_KEY'),'Authorized Anthropic provider credential must be available'
  credential=secret_present('maas-postgres-credentials','models-as-a-service-db');config=secret_present('maas-db-config','redhat-ai-gateway-infra')
  legacy_config=secret_present('maas-db-config','redhat-ods-applications')
  assert credential or not(database or pvcs or config or legacy_config),'Partial retained database forbids credential generation'

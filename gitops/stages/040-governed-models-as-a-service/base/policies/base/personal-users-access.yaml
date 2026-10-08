@@ -39,6 +39,12 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    # Native Messages usage is not subscription-token-metered; provider limits apply.
+    - name: claude-sonnet-5-5
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
   priority: 160
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -72,6 +78,8 @@ spec:
     - name: gpt-6-luna
       namespace: external-models
     - name: minimax-m2
+      namespace: external-models
+    - name: claude-sonnet-5-5
       namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
@@ -114,6 +122,12 @@ spec:
         - limit: 100000
           window: 1h
     - name: minimax-m2
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
+    # Native Messages usage is not subscription-token-metered; provider limits apply.
+    - name: claude-sonnet-5-5
       namespace: external-models
       tokenRateLimits:
         - limit: 100000
@@ -152,6 +166,8 @@ spec:
       namespace: external-models
     - name: minimax-m2
       namespace: external-models
+    - name: claude-sonnet-5-5
+      namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform
@@ -197,6 +213,12 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    # Native Messages usage is not subscription-token-metered; provider limits apply.
+    - name: claude-sonnet-5-5
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
   priority: 170
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -230,6 +252,8 @@ spec:
     - name: gpt-6-luna
       namespace: external-models
     - name: minimax-m2
+      namespace: external-models
+    - name: claude-sonnet-5-5
       namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo

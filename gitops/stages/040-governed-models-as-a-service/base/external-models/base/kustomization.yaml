@@ -9,3 +9,6 @@ resources:
 - redhat-provider.yaml
 - minimax-m2.yaml
 - minimax-m2-modelref.yaml
+- anthropic-provider.yaml
+- claude-sonnet-5-5.yaml
+- claude-sonnet-5-5-modelref.yaml

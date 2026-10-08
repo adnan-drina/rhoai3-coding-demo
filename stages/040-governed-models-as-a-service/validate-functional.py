@@ -44,10 +44,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None  # Never forward a bearer credential to a redirected endpoint.
 
 
-def request(url, context, token=None, body=None, method=None):
+def request(url, context, token=None, body=None, method=None, native_messages=False):
     headers = {"Accept": "application/json"}
     if token:
-        headers["Authorization"] = "Bearer " + token
+        headers["x-api-key" if native_messages else "Authorization"] = token if native_messages else "Bearer " + token
+    if native_messages:
+        headers["anthropic-version"] = "2023-06-01"
     if body is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
@@ -125,6 +127,26 @@ def read_sse(response, clock=time.monotonic):
             "response_sha256": hashlib.sha256("".join(fragments).encode()).hexdigest()}
 
 
+def read_messages_sse(response, expected_model):
+    need(response.status == 200 and "text/event-stream" in response.headers.get("Content-Type", ""), "Native Messages response is not successful SSE")
+    started = time.monotonic(); size = 0; deltas = 0; model = None; usage = {}; stopped = False; times = []
+    for raw in response:
+        size += len(raw)
+        need(size <= 1024 * 1024 and time.monotonic() - started <= 90, "Native Messages stream exceeds bounded scope")
+        if not raw.startswith(b"data:"): continue
+        event = json.loads(raw[5:].strip())
+        need(event.get("type") != "error", "Native Messages returned a provider error")
+        if event.get("type") == "message_start":
+            message = event["message"]; model = message.get("model"); usage.update(message.get("usage", {}))
+        elif event.get("type") == "content_block_delta" and event.get("delta", {}).get("type") == "text_delta":
+            if event["delta"].get("text"): deltas += 1; times.append(time.monotonic())
+        elif event.get("type") == "message_delta": usage.update(event.get("usage", {}))
+        elif event.get("type") == "message_stop": stopped = True
+    need(model == expected_model and stopped and deltas > 0 and isinstance(usage.get("input_tokens"), int) and usage["input_tokens"] >= 0 and isinstance(usage.get("output_tokens"), int) and 0 < usage["output_tokens"] <= 32, "Native Messages identity, deltas, final usage or stop event absent")
+    need(len(times) > 1, "Multiple native Messages text deltas were not observed")
+    return {"provider_model": model, "content_block_deltas": deltas, "message_stop": True, "usage": {k: usage[k] for k in ("input_tokens", "output_tokens")}, "native_messages_stream": True, "subscription_token_metering": "not supported for Messages", "multiple_text_deltas": len(times) > 1, "wire_delivery_timing": "not independently measured"}
+
+
 def counter(model):
     expression = 'sum(vllm:request_success_total{namespace="models-as-a-service",model_name="' + model + '"})'
     route = native.get("route", "thanos-querier", "openshift-monitoring")
@@ -184,7 +206,7 @@ def run():
         refs = [ref for ref in refs if ref["metadata"]["name"] == selected_model]
         need(len(refs) == 1, "Selected model must uniquely match a reviewed model reference")
     need(not single_completion or selected_model, "Single-completion qualification requires an explicit model")
-    need(1 <= len(refs) <= 4, "Functional model count exceeds reviewed bounded scope")
+    need(1 <= len(refs) <= 5, "Functional model count exceeds reviewed bounded scope")
     subscription = os.environ.get("RHOAI_STAGE040_SUBSCRIPTION", "personal-" + who)
     subscriptions = api(base + "/v1/subscriptions", context, user_token)
     need(isinstance(subscriptions, list) and any(s.get("subscription_id_header") == subscription for s in subscriptions),
@@ -226,6 +248,33 @@ def run():
             endpoint = indexed[model_id].get("url", "")
             expected_host = listeners["api" if external else ("qwen3-6" if name == "qwen3-6-27b" else "qwen3-8")]["hostname"]
             need(urlsplit(endpoint).hostname == expected_host, "Native model discovery selects wrong listener hostname")
+            model_inputs = [o for o in desired if o["kind"] == "ExternalModel" and o["metadata"]["namespace"] == ns and o["metadata"]["name"] == name]
+            native_messages = external and len(model_inputs) == 1 and model_inputs[0]["spec"]["externalProviderRefs"][0].get("apiFormat") == "messages"
+            if native_messages:
+                provider_ref = model_inputs[0]["spec"]["externalProviderRefs"][0]
+                need(len(model_inputs[0]["spec"]["externalProviderRefs"]) == 1, "Native Messages qualification requires one reviewed provider")
+                current_ref = native.get("maasmodelrefs.maas.opendatahub.io", name, ns)
+                need(current_ref.get("status", {}).get("endpoint") == endpoint, "Messages catalog URL differs from native controller endpoint")
+                current_model = native.get("externalmodels.inference.opendatahub.io", name, ns)
+                route = native.get("httproute", current_model["status"]["httpRouteName"], ns)
+                parsed = urlsplit(endpoint); url = endpoint.rstrip("/") + ("/messages" if parsed.path.rstrip("/").endswith("/v1") else "/v1/messages")
+                request_path = urlsplit(url).path
+                matches = [m.get("path", {}) for rule in route["spec"]["rules"] for m in rule.get("matches", []) if not m.get("headers")]
+                need(any(m.get("type", "PathPrefix") == "PathPrefix" and m.get("value") not in (None, "/") and request_path.startswith(m["value"].rstrip("/") + "/") for m in matches), "Messages URL does not match generated model-specific native route")
+                payload = {"model": model_id, "max_tokens": 32, "stream": True, "messages": [{"role": "user", "content": "Count from 1 to 8, separated by commas."}]}
+                for token in (None, "stage040-invalid-" + uuid.uuid4().hex):
+                    with request(url, context, token, payload, native_messages=True) as denied:
+                        need(denied.status in (401, 403), "Missing/invalid Messages x-api-key did not fail closed")
+                revoke_probe = (url, payload, True)
+                with request(url, context, key, payload, native_messages=True) as response:
+                    if response.status != 200:
+                        evidence["model_http_failures"].append({"model": name, "catalog_id": model_id, "phase": "native-messages-stream", "http_status": response.status})
+                        raise HTTPFailure(response.status)
+                    result = read_messages_sse(response, provider_ref["targetModel"])
+                result.update(model=name, catalog_id=model_id, unauthenticated_denied=True, invalid_key_denied=True, bounded_requests=1)
+                evidence["not_qualified"] = [x for x in evidence["not_qualified"] if x != "streaming"]
+                evidence["models"].append(result)
+                continue
             url = completion_url(endpoint)
             payload = {"model": model_id, "messages": [{"role": "user", "content": "Reply with exactly OK."}], "max_tokens": 8}
             if name == "gpt-6-luna":
@@ -301,7 +350,7 @@ def run():
                 need(revoked.get("id") == key_id and revoked.get("status") == "revoked", "Synthetic key revocation not confirmed")
                 evidence["key_revoked"] = True
                 if key and revoke_probe:
-                    with request(revoke_probe[0], context, key, revoke_probe[1]) as denied:
+                    with request(revoke_probe[0], context, key, revoke_probe[1], native_messages=len(revoke_probe) == 3 and revoke_probe[2]) as denied:
                         need(denied.status in (401, 403), "Revoked synthetic key inference was not denied")
                     evidence["revoked_key_inference_denied"] = True
             except Exception:
