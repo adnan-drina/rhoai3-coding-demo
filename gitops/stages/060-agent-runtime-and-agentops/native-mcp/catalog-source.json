@@ -1,0 +1,12 @@
+{
+  "catalog": {"source_id": "rh_mcp_servers", "id": "15", "name": "openshift-mcp-server", "version": "0.4", "publisher": "Red Hat"},
+  "registry_name": "io.github.openshift/openshift-mcp-server",
+  "registry_name_origin": "Local reverse-DNS mapping required by the native MLflow API; not a publisher-issued identifier",
+  "image": "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2",
+  "amd64_image_digest": "sha256:506a127d725c6d0cbff11a9616775e5b499bcf68276b83971cff2ac81596758a",
+  "image_version": "0.4.0",
+  "source_revision": "3ba1f65aca7a8a23dc3744a57f3723d4a7699772",
+  "source_repository": "https://github.com/openshift/openshift-mcp-server",
+  "catalog_image_record": "https://catalog.redhat.com/api/containers/v1/images/id/6ac3e9901df7f5523e993caf",
+  "deployment_policy": "Catalog core/config read-only toolsets with caller OAuth passthrough, Secret GVK deny, no service-account view binding, and explicitly accepted HTTPS edge/internal HTTP boundary"
+}
