@@ -10,6 +10,9 @@ check_oc_logged_in
 python3 - <<'PY'
 import base64,json,os,subprocess,time
 NS='external-models';NAME=os.environ.get('RHOAI_STAGE040_PROVIDER_SECRET','openai-provider-api-key');assert NAME in ('openai-provider-api-key','redhat-models-provider-api-key','anthropic-provider-api-key'),'Unreviewed provider credential';APP='040-governed-models-as-a-service'
+ROTATE=os.environ.get('RHOAI_STAGE040_ROTATE_PROVIDER_SECRET','false').lower()
+assert ROTATE in ('true','false'),'Rotation flag must be explicitly true or false'
+assert ROTATE!='true' or NAME=='openai-provider-api-key','Explicit rotation is scoped to the OpenAI provider'
 def get(ns):
  r=subprocess.run(['oc','--request-timeout=10s','get','secret',NAME,'-n',ns,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=15)
  if r.returncode:raise RuntimeError('Provider credential read failed')
@@ -28,8 +31,21 @@ try:
   assert not target['metadata'].get('ownerReferences') and not target['metadata'].get('deletionTimestamp'),'Existing provider credential requires reviewed ownership'
   encoded=target.get('data',{}).get('api-key','');assert base64.b64decode(encoded,validate=True),'Existing provider credential is incomplete'
   assert target['metadata'].get('labels',{}).get('inference.llm-d.ai/ipp-managed')=='true','Existing native provider credential metadata differs'
-  print('PASS Existing native provider credential reused without rotation.')
+  if ROTATE=='true':
+   value=os.environ.get('OPENAI_API_KEY');assert value,'Fresh authorized OpenAI credential is unavailable'
+   replacement=base64.b64encode(value.encode()).decode()
+   if replacement!=encoded:
+    patch=[{'op':'test','path':'/metadata/uid','value':target['metadata']['uid']},{'op':'test','path':'/metadata/resourceVersion','value':target['metadata']['resourceVersion']},{'op':'replace','path':'/data/api-key','value':replacement}]
+    r=subprocess.run(['oc','--request-timeout=10s','patch','secret',NAME,'-n',NS,'--type=json','--patch-file=/dev/stdin'],input=json.dumps(patch),capture_output=True,text=True,timeout=15)
+    if r.returncode:raise RuntimeError('Scoped provider credential rotation failed; response suppressed')
+    after=get(NS)
+    assert after['metadata']['uid']==target['metadata']['uid'] and after['metadata'].get('labels')==target['metadata'].get('labels'),'Provider identity or labels changed during rotation'
+    assert after.get('type')==target.get('type') and after.get('data')=={**target['data'],'api-key':replacement},'Provider credential readback differs'
+   print('PASS Authorized OpenAI credential matches the retained native Secret; identity and labels preserved.')
+  else:
+   print('PASS Existing native provider credential reused without rotation.')
  else:
+  assert ROTATE!='true','Explicit rotation requires the existing owned provider credential'
   prior=get('models-as-a-service')
   if prior:
    assert not prior['metadata'].get('deletionTimestamp'),'Prior credential is terminating'
