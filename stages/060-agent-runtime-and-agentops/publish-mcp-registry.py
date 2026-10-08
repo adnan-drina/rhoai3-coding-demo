@@ -21,6 +21,16 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'))
 
 
+def endpoint_identity(record):
+    # The API enriches GET with the referenced version's current tools/status.
+    return {k: v for k, v in record.items() if k not in ('tools', 'resolved_version')}
+
+
+def tool_metadata(tools):
+    # Typed native responses materialize absent optional fields as JSON null.
+    return sorted(({k: v for k, v in tool.items() if v is not None} for tool in tools), key=lambda tool: tool['name'])
+
+
 def save(path, state):
     temporary = path.with_suffix('.pending')
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -109,6 +119,8 @@ def main():
             config = json.loads(oc(bootstrap, 'get', 'configmap', 'openshift-mcp-server', '-n', WORKSPACE, '-o', 'json'))
             need(server['metadata']['uid'] == proof['server_uid'] and server['metadata']['generation'] == proof['server_generation'] and
                  hashlib.sha256(canonical(config['data']).encode()).hexdigest() == proof['config_hash'], 'Qualified backend identity/config changed')
+            need((record.get('status') == 'draft' and not record.get('tools')) or
+                 (record.get('status') == 'active' and tool_metadata(record.get('tools', [])) == tool_metadata(proof['tools'])), 'Current version status/tool metadata changed; refusing overwrite')
             url = proof['endpoint']
             address = urlparse(url)
             need(address.scheme == 'https' and address.hostname and not address.username and not address.password and not address.query and not address.fragment and address.path == '/mcp', 'Endpoint is not credential-free HTTPS')
@@ -122,7 +134,7 @@ def main():
             matching = [x for x in items if all(x.get(k) == v for k, v in endpoint.items())]
             need(len(items) == len(matching) and len(matching) <= 1, 'Foreign/different access endpoint exists; refusing overwrite')
             if matching:
-                need(state.get('endpoint') == matching[0], 'Existing endpoint has no matching owned creation receipt')
+                need(state.get('endpoint') is not None and endpoint_identity(state['endpoint']) == endpoint_identity(matching[0]), 'Existing endpoint has no matching owned creation receipt')
             if not matching:
                 need(not state.get('endpoint'), 'Previously owned endpoint disappeared; refusing silent recreation')
                 code, created = call('POST', entitypath + '/endpoints', endpoint)
@@ -130,7 +142,7 @@ def main():
                 state['endpoint'] = created
                 save(statepath, state)
             code, record = call('PATCH', versionpath, {'status': 'active', 'tools': proof['tools']})
-            need(code == 200 and record.get('status') == 'active', 'Native version activation failed')
+            need(code == 200 and record.get('status') == 'active' and tool_metadata(record.get('tools', [])) == tool_metadata(proof['tools']), 'Native version activation/tool metadata readback failed')
             state['qualified'] = True
             save(statepath, state)
     print('[PASS] Native catalog metadata' + (' and qualified HTTPS endpoint published' if args.qualification else ' registered as draft; no endpoint advertised'))
