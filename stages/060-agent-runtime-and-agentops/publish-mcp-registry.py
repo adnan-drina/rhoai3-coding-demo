@@ -13,7 +13,7 @@ from native_api import guarded, need, oc, persona, service_transport
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = '/api/3.0/mlflow/mcp-servers'
-WORKSPACE = 'demo-sandbox'
+WORKSPACE = 'mcp-servers'
 DESCRIPTION = 'Red Hat catalog OpenShift MCP Server 0.4; governed demo deployment. Local registry identity mapping; catalog provenance retained in version source.'
 
 

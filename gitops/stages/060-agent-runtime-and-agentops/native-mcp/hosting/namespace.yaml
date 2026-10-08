@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-servers
+  labels:
+    opendatahub.io/dashboard: "true"
+    app.kubernetes.io/part-of: agent-runtime
+    demo.rhoai.io/stage: "060"
+  annotations:
+    openshift.io/display-name: "MCP servers"
+    openshift.io/description: "Administrator-managed MCP hosting; consumers use their own project permissions."
+    argocd.argoproj.io/sync-wave: "0"

@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - admin-rolebinding.yaml
+  # Connect the prepared server resources only after hosting access and draft Registry metadata qualify.

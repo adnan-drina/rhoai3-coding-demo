@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mcp-host-admin
+  namespace: mcp-servers
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+subjects:
+  - kind: User
+    name: ai-admin
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: admin
+  apiGroup: rbac.authorization.k8s.io

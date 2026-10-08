@@ -8,7 +8,8 @@ import subprocess
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
-NS = "demo-sandbox"
+NS = "mcp-servers"
+APP_DESTINATION = "demo-sandbox"  # Temporary desired coexistence; final retirement changes this to NS.
 APP = "agent-tools"
 PATH = "gitops/stages/060-agent-runtime-and-agentops/native-mcp"
 IMAGE = "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2"
@@ -51,7 +52,7 @@ def app_identity(app, revision):
     need(not app["metadata"].get("deletionTimestamp") and not app["metadata"].get("ownerReferences"), "Application is terminating or foreign-owned")
     need(not spec.get("sources") and spec.get("project") == "rhoai-demo", "Application project/multisource differs")
     need(spec.get("source", {}).get("path") == PATH and spec["source"].get("repoURL") == "https://github.com/adnan-drina/rhoai3-coding-demo.git", "Application source differs")
-    need(spec.get("destination") == {"server": "https://kubernetes.default.svc", "namespace": NS}, "Application destination differs")
+    need(spec.get("destination") == {"server": "https://kubernetes.default.svc", "namespace": APP_DESTINATION}, "Application destination differs")
     if revision:
         need(spec["source"].get("targetRevision") == revision, "Application desired revision differs")
 
@@ -59,7 +60,7 @@ def app_identity(app, revision):
 def tracked(obj):
     need(not obj["metadata"].get("deletionTimestamp") and not obj["metadata"].get("ownerReferences"), "Customer input is terminating or native/foreign-owned")
     group = obj["apiVersion"].split("/")[0] if "/" in obj["apiVersion"] else ""
-    expected = f'{APP}:{group}/{obj["kind"]}:{obj["metadata"].get("namespace", "openshift-gitops")}/{obj["metadata"]["name"]}'
+    expected = f'{APP}:{group}/{obj["kind"]}:{obj["metadata"].get("namespace", APP_DESTINATION)}/{obj["metadata"]["name"]}'
     need(obj["metadata"].get("annotations", {}).get("argocd.argoproj.io/tracking-id") == expected, "Customer input is not owned by this Application")
 
 
@@ -79,10 +80,22 @@ def main():
         app_identity(app, None if parsed.preflight else revision)
         if parsed.preflight:
             need(not app.get("operation") and app.get("status", {}).get("operationState", {}).get("phase") != "Running", "Existing component sync is still active")
+    if parsed.preflight:
+        # Coexistence still renders these retained inputs; never overwrite a foreign replacement.
+        for resource in ["serviceaccount", "configmap", "mcpservers.mcp.x-k8s.io", "route"]:
+            legacy = get(env, resource, "openshift-mcp-server", "demo-sandbox", optional=True)
+            if legacy:
+                tracked(legacy)
     namespace = get(env, "namespace", NS, optional=True)
-    need(namespace is not None, "Existing demo project is required; this component never creates a namespace")
+    need(parsed.preflight or namespace is not None, "MCP hosting project is absent")
     if namespace:
-        need(not namespace["metadata"].get("deletionTimestamp"), "Existing demo project is terminating")
+        tracked(namespace)
+        need(namespace["metadata"].get("annotations", {}).get("openshift.io/display-name") == "MCP servers" and namespace["metadata"].get("labels", {}).get("opendatahub.io/dashboard") == "true", "MCP hosting project metadata differs")
+        binding = get(env, "rolebinding", "mcp-host-admin", NS, optional=True)
+        if binding:
+            tracked(binding)
+            need(binding["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "admin"} and binding["subjects"] == [{"apiGroup": "rbac.authorization.k8s.io", "kind": "User", "name": "ai-admin"}], "Hosting project must grant only the exact administrator persona")
+        need(parsed.preflight or binding is not None, "Hosting administrator binding is absent")
         for resource in ["serviceaccount", "configmap", "mcpservers.mcp.x-k8s.io", "route"]:
             obj = get(env, resource, "openshift-mcp-server", NS, optional=True)
             if obj:

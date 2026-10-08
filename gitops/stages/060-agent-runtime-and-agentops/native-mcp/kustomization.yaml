@@ -5,3 +5,5 @@ resources:
   - configmap.yaml
   - mcpserver.yaml
   - route.yaml
+  # Temporary desired coexistence preserves the prior native deployment during qualification.
+  - hosting

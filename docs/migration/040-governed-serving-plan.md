@@ -23,7 +23,7 @@ Native MaaS creates its default tenant and infrastructure namespace. Do not auth
 | Source family or entrypoint | Implemented disposition and ownership | Required exit |
 |---|---|---|
 | Application and base composition | Immutable reviewed revision, native ServerSideDiff, exact data/replica/registry-label ignores. Optional Slack/BrightData components inactive. | Published source equals reviewed checkout; successful native operation at exact revision/path. |
-| RHCL prerequisites | Persistent Manual subscriptions: RHCL 1.4.3, Authorino 1.4.3, DNS 1.4.2, Limitador 1.4.2 and Service Mesh 3.4.2. Reuse existing global OperatorGroup. | Native owned InstallPlan family and selected CSVs verified; no deletion or CSV/operand patch. |
+| RHCL prerequisites | Persistent Manual subscriptions: RHCL 1.4.3, Authorino 1.4.3, DNS 1.4.2, Limitador 1.4.2 and Service Mesh 3.4.3. Reuse existing global OperatorGroup. | The user-approved combined native plan installed Service Mesh 3.4.3, GitOps 1.21.5 and MCP Gateway 0.7.1. Existing provider, routing and authentication specs were preserved; no operand patch. |
 | LWS prerequisites | Manual stable-v1.0, leader-worker-set.v1.0.1, retained advanced-stack baseline. | Native availability; no multi-node workload implied by these single-GPU models. |
 | Database | Existing project PostgreSQL identities, pinned Red Hat PG16 image, explicit 5Gi gp3 storage and retention. Namespace-scoped ingress policy. | Reuse credentials; reject partial storage/configuration; native current StatefulSet and Bound PVC. |
 | Access | Existing intended project groups and service-account access retained. | Genuine persona access and negative authorization checks; no cluster-admin grant. |
