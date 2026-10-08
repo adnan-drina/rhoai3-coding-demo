@@ -43,6 +43,7 @@ spec:
       kind: DataScienceCluster
       name: default-dsc
       jsonPointers:
+        - /spec/components/mcplifecycleoperator
         - /spec/components/kueue
         - /spec/components/kserve
         - /spec/components/modelregistry

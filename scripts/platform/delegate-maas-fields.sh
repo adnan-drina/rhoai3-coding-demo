@@ -19,7 +19,7 @@ assert status['sync']['status']=='Synced' and status['sync']['revision']==source
 assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp') and not spec.get('sources') and source['repoURL']==os.environ['GIT_REPO_URL'] and spec['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and spec['project']=='rhoai-demo' and 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Unexpected foundation ownership'
 entries=copy.deepcopy(spec.get('ignoreDifferences',[]))
 dashboard_fields=['connectionTest','toolCalling','mcpCatalog','mcpRegistry','agentOps','genAiStudio','genAiTracing','modelAsService','vLLMDeploymentOnMaaS','externalModels','llmdTemplates','guardrails','agentConfigManagement','promptManagement','disableLMEval','globalProjectPrompts']
-selected=[('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc',None,['/spec/components/aigateway','/spec/components/ogx']),('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications',['/spec/dashboardConfig/'+field for field in dashboard_fields]+['/spec/globalMLflowNamespaces'])]
+selected=[('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc',None,['/spec/components/aigateway','/spec/components/ogx','/spec/components/mcplifecycleoperator']),('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications',['/spec/dashboardConfig/'+field for field in dashboard_fields]+['/spec/globalMLflowNamespaces'])]
 for group,kind,n,namespace,paths in selected:
  matches=[i for i in entries if i.get('group','')==group and i.get('kind')==kind and i.get('name')==n and i.get('namespace')==namespace]
  assert len(matches)<=1,'Ambiguous existing delegation'

@@ -1,0 +1,18 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: enable-mcp-platform
+  labels:
+    app.kubernetes.io/name: enable-mcp-platform
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "060"
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: enable-mcp-platform
+subjects:
+  - kind: ServiceAccount
+    name: enable-mcp-platform
+    namespace: redhat-ods-applications
