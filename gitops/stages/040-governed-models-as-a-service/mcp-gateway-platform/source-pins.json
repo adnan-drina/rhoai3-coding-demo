@@ -1,0 +1,11 @@
+{
+  "product": "Red Hat Connectivity Link MCP Gateway Technology Preview",
+  "csv": "mcp-gateway.v0.7.1",
+  "channel": "preview",
+  "bundle": "registry.redhat.io/rhcl-tech-preview/mcp-gateway-operator-bundle@sha256:ee0506accf739daf15275342f18aaa5d7c60c50806dcc5b42db9e87547722413",
+  "operator": "registry.redhat.io/rhcl-tech-preview/mcp-gateway-rhel9-operator@sha256:905efb3d220e4468f3d7e63f5eb84158213b05355dfa857524fee6e350541e87",
+  "runtime": "registry.redhat.io/rhcl-tech-preview/mcp-gateway-rhel9@sha256:054b0646af4ed457009a5fef739733ed54441830b0b2ba08cbc5628be27e8c62",
+  "image_source_revision": "e0ee37a511bb340e795b0bf4f044628f19d4790f",
+  "source_access": "Public image labels verified; exact source revision is not publicly accessible. Shared Gateway feasibility requires an isolated native-product probe.",
+  "official_install": "https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/install_the_mcp_gateway/mcp-gateway-install"
+}
