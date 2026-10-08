@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-discovery-readers
+  namespace: openshell-developer
+  labels:
+    app.kubernetes.io/name: agent-discovery
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "060"
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+rules:
+  # Console discovery only; hardened launch/lifecycle stays in OpenShell.
+  - apiGroups: [agents.x-k8s.io]
+    resources: [sandboxes]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list]

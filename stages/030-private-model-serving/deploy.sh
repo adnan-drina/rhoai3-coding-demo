@@ -48,7 +48,7 @@ assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Fou
 def paths(group,kind,name,ns=None):
  return {p for i in spec.get('ignoreDifferences',[]) if i.get('group')==group and i.get('kind')==kind and i.get('name')==name and (ns is None or i.get('namespace')==ns) for p in i.get('jsonPointers',[])}
 assert {'/spec/components/kserve','/spec/components/modelregistry'}<=paths('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc'),'Foundation has not delegated serving/discovery'
-assert {'/spec/dashboardConfig/'+field for field in ['agentsCatalog','disableModelCatalog','disableModelRegistry','toolCalling','mcpCatalog']}<=paths('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications'),'Foundation discovery visibility is not delegated'
+assert {'/spec/dashboardConfig/'+field for field in ['agentsCatalog','disableModelCatalog','disableModelRegistry','toolCalling','mcpCatalog','mcpRegistry']}<=paths('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications'),'Foundation discovery visibility is not delegated'
 # Delegation alone cannot remove old Argo ownership: require the omission bridge.
 for kind,name,ns in registry:
  lookup={'Namespace':'namespace','ModelRegistry':'modelregistries.modelregistry.opendatahub.io','RoleBinding':'rolebinding'}[kind]

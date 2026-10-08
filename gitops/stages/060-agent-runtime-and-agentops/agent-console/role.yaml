@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: enable-agent-console
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-agent-console
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "060"
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: [opendatahub.io]
+    resources: [odhdashboardconfigs]
+    resourceNames: [odh-dashboard-config]
+    verbs: [get, patch]

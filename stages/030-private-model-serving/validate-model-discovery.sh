@@ -76,7 +76,7 @@ try:
     dashboard = get('odhdashboardconfig', 'odh-dashboard-config', 'redhat-ods-applications')
     flags = dashboard['spec']['dashboardConfig']
     need(flags.get('disableModelRegistry') is not True and flags.get('disableModelCatalog') is not True and flags.get('agentsCatalog') is True, 'model discovery dashboard navigation is not enabled')
-    need(flags.get('toolCalling') is True and flags.get('mcpCatalog') is True, 'tool and MCP discovery dashboard configuration is not enabled')
+    need(flags.get('toolCalling') is True and flags.get('mcpCatalog') is True and flags.get('mcpRegistry') is True, 'tool and MCP catalog/registry dashboard configuration is not enabled')
     port = forward('odh-dashboard-model-registry-ui', 'redhat-ods-applications', 8043)
     ca = get('configmap', 'service-ca', 'openshift-config-managed')['data']['ca-bundle.crt']
     service_context = ssl.create_default_context(cadata=ca)

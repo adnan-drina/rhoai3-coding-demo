@@ -67,6 +67,8 @@ OpenShell controls sandbox execution and access. OpenCode and Hermes run the dev
 
 ## Deploy And Validate
 
+For console discovery only, deploy the separate `agent-console` component with `bash ./stages/060-agent-runtime-and-agentops/deploy-console.sh "$GIT_REPO_BRANCH"`, then run `bash ./stages/060-agent-runtime-and-agentops/validate-console.sh`. It enables the Developer Preview AgentOps view and permits each persona to read Services and Sandboxes in its own workspace. Launch and lifecycle remain in the authenticated OpenShell CLI. The generic console creation wizard is not qualified and receives no Sandbox creation permission from this component.
+
 The authenticated control plane and native sandbox controller are available. A workspace owner can start an OpenCode sandbox with no model provider, reach its HTTP and event-stream endpoints through the authenticated gateway, and stop, restart and delete it; file, interface-binding and network-egress attempts outside the policy are denied, and another owner's workspace is refused. Model-backed OpenCode tasks are not yet qualified. Standalone agent qualification is still in progress; completing this stage requires OpenCode, Hermes, catalog discovery and selected-call tracing. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
 
 ## References

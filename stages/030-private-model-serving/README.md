@@ -43,6 +43,8 @@ OpenShift AI manages KServe and the registry/catalog components through the shar
 
 ## Trust Boundaries
 
+The MCP Servers Registry tab uses the native MLflow metadata registry provided by Stage 050. Stage 030 enables registry discovery; full registry operations become available after Stage 050's backend is ready. Project editors can manage their own project records; foreign-project records remain restricted. This Technology Preview registry does not deploy an MCP server or grant an agent access to its tools.
+
 Registry access uses the existing OpenShift identities and project groups. The default PostgreSQL database is suitable for this demo; its single-instance, non-TLS database connection is not a production HA or backup design. Registry and namespace deletion require deliberate lifecycle review because they hold metadata and persistent data.
 
 ## Red Hat Products Used

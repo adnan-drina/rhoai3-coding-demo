@@ -64,6 +64,8 @@ spec:
         - /spec/dashboardConfig/disableModelRegistry
         - /spec/dashboardConfig/toolCalling
         - /spec/dashboardConfig/mcpCatalog
+        - /spec/dashboardConfig/mcpRegistry
+        - /spec/dashboardConfig/agentOps
         - /spec/dashboardConfig/genAiStudio
         - /spec/dashboardConfig/genAiTracing
         - /spec/dashboardConfig/modelAsService
