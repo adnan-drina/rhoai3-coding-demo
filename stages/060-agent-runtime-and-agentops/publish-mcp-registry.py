@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -47,10 +48,13 @@ def main():
         save(statepath, state)  # Reserve recovery record before any native write.
     pin = json.loads((ROOT / 'gitops/stages/060-agent-runtime-and-agentops/native-mcp/catalog-source.json').read_text())
     name, version = pin['registry_name'], pin['registry_version']
-    source = canonical(pin)
+    # Native version.source is VARCHAR(512); full provenance belongs in JSON.
+    source = canonical({'catalog': pin['catalog'], 'source_revision': pin['source_revision']})
+    need(len(source) <= 512, 'Native provenance source exceeds its documented storage limit')
     serverjson = {'name': name, 'version': version, 'title': 'OpenShift MCP Server',
                   'description': DESCRIPTION, 'repository': {'url': pin['source_repository'], 'source': 'github'},
-                  'packages': [{'registryType': 'oci', 'identifier': pin['image'], 'transport': {'type': 'streamable-http'}}]}
+                  'packages': [{'registryType': 'oci', 'identifier': pin['image'], 'transport': {'type': 'streamable-http'}}],
+                  '_meta': {'demo.rhoai.io/catalog-provenance': pin}}
     expectedhash = hashlib.sha256(canonical(serverjson).encode()).hexdigest()
     need(not state or (state.get('name') == name and state.get('workspace') == WORKSPACE and state.get('spec_hash') == expectedhash), 'Saved registry identity/spec differs')
     bootstrap = guarded(args.bootstrap_kubeconfig)
@@ -79,7 +83,13 @@ def main():
         if code == 404:
             need('version_created' not in state, 'Previously owned version disappeared; refusing silent recreation')
             code, record = call('POST', entitypath + '/versions', {'server_json': serverjson, 'source': source, 'status': 'draft', 'tools': []})
-            need(code in (200, 201) and isinstance(record, dict) and isinstance(record.get('creation_timestamp'), int), 'Native version creation failed or identity missing (HTTP %s)' % code)
+            if code not in (200, 201):
+                errorcode = record.get('error_code', 'unknown') if isinstance(record, dict) else 'unknown'
+                errorcode = errorcode if isinstance(errorcode, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,100}', errorcode) else 'unknown'
+                state['last_failure'] = {'http': code, 'error_code': errorcode, 'source_length': len(source)}
+                save(statepath, state)
+                raise RuntimeError('Native version creation failed (HTTP %s; %s); private recovery receipt retained' % (code, errorcode))
+            need(isinstance(record, dict) and isinstance(record.get('creation_timestamp'), int), 'Native version creation identity missing')
             state['version_created'] = record['creation_timestamp']
             save(statepath, state)
         else:
