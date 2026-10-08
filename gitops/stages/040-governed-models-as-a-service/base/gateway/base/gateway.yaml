@@ -38,6 +38,8 @@ spec:
             values:
             - redhat-ai-gateway-infra
             - external-models
+            - internal-models
+            - redhat-ods-applications
     tls:
       mode: Terminate
       certificateRefs:
@@ -53,8 +55,13 @@ spec:
         from: Selector
         selector:
           matchLabels:
-            kubernetes.io/metadata.name: internal-models
             maas-gateway-access: "true"
+          matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: In
+            values:
+            - models-as-a-service
+            - internal-models
     tls:
       mode: Terminate
       certificateRefs:
@@ -70,8 +77,13 @@ spec:
         from: Selector
         selector:
           matchLabels:
-            kubernetes.io/metadata.name: internal-models
             maas-gateway-access: "true"
+          matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: In
+            values:
+            - models-as-a-service
+            - internal-models
     tls:
       mode: Terminate
       certificateRefs:

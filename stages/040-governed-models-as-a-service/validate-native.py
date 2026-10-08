@@ -298,7 +298,7 @@ def main():
         need(attached >= 1 if name == "api" else attached == 1, "Gateway listener route count violates isolation")
         need(listener.get("port") == 443 and listener.get("protocol") == "HTTPS" and listener.get("tls", {}).get("mode") == "Terminate", "Gateway listener lacks native TLS")
         for ns, obj in namespaces.items():
-            need(allows(listener, obj) == (ns in ("external-models", "redhat-ai-gateway-infra") if name == "api" else ns == "internal-models"), "Gateway namespace isolation differs")
+            need(allows(listener, obj) == (ns in ("external-models", "redhat-ai-gateway-infra", "internal-models") if name == "api" else ns in ("models-as-a-service", "internal-models")), "Gateway namespace isolation differs")
     routes = get("httproutes.gateway.networking.k8s.io", ns="internal-models")["items"]
     api_routes = get("httproutes.gateway.networking.k8s.io", ns="redhat-ai-gateway-infra")["items"]
     ext_routes = get("httproutes.gateway.networking.k8s.io", ns="external-models")["items"]
@@ -344,8 +344,13 @@ def main():
         selected = [r for r in routes if owner(r, obj["metadata"]["uid"])]
         need(len(selected) == 1, "Native LLMI route ownership is not unique")
         refs = selected[0]["spec"].get("parentRefs", [])
-        need(len(refs) == 1 and refs[0].get("sectionName") == section, "Native LLMI route listener differs")
-        route_ready(selected[0], section, gateway_controller)
+        sections = {r["sectionName"] for r in d["spec"]["router"]["gateway"]["refs"]}
+        need({r.get("sectionName") for r in refs} == sections, "Native LLMI route listener set differs")
+        for target_section in sections:
+            route_ready(selected[0], target_section, gateway_controller)
+        if "api" in sections:
+            canonical = "publishers/" + obj["metadata"]["namespace"] + "/models/" + obj["metadata"]["name"]
+            need(any(m.get("path", {}).get("value") == "/v1/chat/completions" and any(h.get("name", "").lower() == "x-gateway-model-name" and h.get("type", "Exact") == "Exact" and h.get("value") == canonical for h in m.get("headers", [])) for rule in selected[0]["spec"]["rules"] for m in rule.get("matches", [])), "Shared API route lacks canonical body-model disambiguation")
         if parked:
             print("[PASS] Explicitly delegated model compute is parked; configuration/route preserved, inference not qualified")
     need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == 2, "Extra route would invalidate dedicated inference listeners")

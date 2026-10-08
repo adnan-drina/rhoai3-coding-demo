@@ -35,6 +35,9 @@ spec:
         - name: maas-default-gateway
           namespace: openshift-ingress
           sectionName: qwen3-6
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+          sectionName: api
     route: {}
     scheduler:
       # Lean scheduler profile (2026-07-14): prefix-cache scoring picks among
