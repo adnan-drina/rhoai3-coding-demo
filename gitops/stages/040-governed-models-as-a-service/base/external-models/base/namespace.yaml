@@ -14,3 +14,4 @@ metadata:
     argocd.argoproj.io/sync-wave: '1'
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
     openshift.io/display-name: External Models
+    openshift.io/description: Approved external models accessed through Models-as-a-Service.

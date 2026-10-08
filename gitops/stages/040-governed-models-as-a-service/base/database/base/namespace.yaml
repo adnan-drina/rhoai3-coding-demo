@@ -8,7 +8,6 @@ metadata:
     app.kubernetes.io/component: maas
     kueue.openshift.io/managed: "true"
     demo.rhoai.io/maas-route-access: "true"
-    opendatahub.io/dashboard: "true"
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
   annotations:

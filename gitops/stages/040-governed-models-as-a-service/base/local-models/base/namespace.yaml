@@ -14,3 +14,4 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
     openshift.io/display-name: Internal Models
+    openshift.io/description: Private models hosted on this cluster and accessed through Models-as-a-Service.
