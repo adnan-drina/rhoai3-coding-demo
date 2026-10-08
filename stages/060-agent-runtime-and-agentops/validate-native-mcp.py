@@ -115,9 +115,16 @@ def main():
         need(any(o.get("uid") == server["metadata"]["uid"] and o.get("kind") == "MCPServer" and o.get("controller") is True for o in obj["metadata"].get("ownerReferences", [])), "Native operand controller ownership differs")
         if resource == "deployment":
             need(obj["spec"]["template"]["spec"].get("serviceAccountName") == "openshift-mcp-server", "Native MCP bootstrap service account differs")
+            containers = obj["spec"]["template"]["spec"]["containers"]
+            need(len(containers) == 1 and containers[0]["image"] == IMAGE, "Native Deployment catalog image differs")
             s = obj.get("status", {})
             n = obj["spec"].get("replicas", 1)
             need(s.get("observedGeneration") == obj["metadata"]["generation"] and all(s.get(k, 0) == n for k in ["replicas", "updatedReplicas", "readyReplicas", "availableReplicas"]), "Native rollout incomplete")
+            replicasets = get(env, "replicasets", namespace=NS)["items"]
+            rsuids = {r["metadata"]["uid"] for r in replicasets if any(o.get("uid") == obj["metadata"]["uid"] and o.get("controller") is True for o in r["metadata"].get("ownerReferences", []))}
+            pods = [p for p in get(env, "pods", namespace=NS)["items"] if not p["metadata"].get("deletionTimestamp") and any(o.get("uid") in rsuids and o.get("controller") is True for o in p["metadata"].get("ownerReferences", []))]
+            child = json.loads((ROOT / PATH / "catalog-source.json").read_text())["amd64_image_digest"]
+            need(len(pods) == n and all(p["spec"].get("serviceAccountName") == "openshift-mcp-server" and p["status"].get("phase") == "Running" and any(c.get("name") == containers[0]["name"] and c.get("ready") is True and c.get("imageID", "").endswith("@" + child) for c in p["status"].get("containerStatuses", [])) for p in pods), "Ready native Pod runtime image/ownership differs from the reviewed amd64 artifact")
     print("[PASS] Exact source/native MCP ownership and readiness; protocol/caller isolation NOT qualified by this check")
 
 
