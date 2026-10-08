@@ -13,7 +13,8 @@ metadata:
     argocd.argoproj.io/sync-wave: '3'
 spec:
   channel: stable
-  installPlanApproval: Automatic
+  installPlanApproval: Manual
   name: authorino-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: authorino-operator.v1.4.3
