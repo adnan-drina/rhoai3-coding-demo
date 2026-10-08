@@ -94,7 +94,7 @@ try:
         items, next_token, seen = [], '', set()
         for page in range(20):
             query = {'namespace': regns, 'pageSize': 100}
-            if next_token: query['pageToken'] = next_token
+            if next_token: query['nextPageToken'] = next_token
             result = catalog_page(catalog, query)
             need(isinstance(result.get('items'), list), 'Catalog page has no typed items')
             items.extend(result['items'])
