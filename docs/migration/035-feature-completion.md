@@ -4,7 +4,7 @@ This tracker records configuration and acceptance separately. The user authorize
 
 | Entry | Owner | Status | Required exit evidence |
 |---|---|---|---|
-| Roles | 010 | Pending qualification | Existing default project roles and administrator assignment boundaries work; no unnecessary custom roles or escalation |
+| Roles | 010 | Qualified: native defaults and authorization | Native role-management defaults retained; genuine administrator project-role authority and ordinary-developer/cluster-escalation denial verified. Custom roles are optional; browser rendering is separate |
 | Connection test | 010 | Qualified: native API and storage | Models/Workbench and retained connection passed verified-TLS developer tests with valid/invalid credentials; repeat reconciliation and UID/data checks passed. Browser rendering and actual Workbench mounting remain separate consumption checks |
 | External models | 040 | Pending completion | Native registration and UI/project visibility, provider TLS/auth references, governed positive/negative functional receipts |
 | MaaS settings | 040 | Streaming qualified; normal JSON blocked | Bounded governed SSE text and terminal marker passed with key revocation; non-streaming HTTP200 still has no body. Full OpenCode integration, broader governance acceptance and a supported non-streaming remedy remain required |
@@ -50,6 +50,8 @@ Native repeated reconciliation demonstrated that client-side apply with `Respect
 The additive storage component reconciled successfully with the scoped apply exception. Both new connections passed native bucket binding, generated-resource ownership, credential mapping and metadata validation. UID/resourceVersion/data-tested annotation removal preserved the connection data. A completed second reconciliation followed by an independent read confirmed that the credential annotation did not return. The retained connection received only a protocol metadata repair and annotation removal; its Secret UID, credential bytes and original bucket claim UID/spec were unchanged.
 
 Using the genuine developer identity and verified native service TLS, the dashboard connection-test API passed a read-only S3 bucket check for Models, Workbench and the retained connection. Each deliberately invalid credential returned an unsuccessful result. The owned diagnostic forward was closed. These are native API/storage checks; they do not claim browser rendering or an actual Workbench mount.
+
+Genuine administrator and developer native authorization checks also qualified the existing project-role boundary. The administrator can manage project roles and bindings; the developer can use project workloads but cannot administer roles/bindings. Both identities are denied cluster-role-binding creation. The installed dashboard source defaults role management and project RBAC to enabled; the CR intentionally does not restate those defaults. No new custom role or privilege grant was required.
 
 ## Governed response comparison: 2026-10-08
 

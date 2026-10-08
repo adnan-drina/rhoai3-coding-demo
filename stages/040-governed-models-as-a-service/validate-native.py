@@ -188,7 +188,8 @@ def main():
     # Safe even when directly invoked instead of through validate.sh.
     command(["/bin/bash", "-c", 'export REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in', "guard", str(ROOT)])
     desired = rendered()
-    app_ready(get("application", APP, "openshift-gitops"), os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"))
+    app = get("application", APP, "openshift-gitops")
+    app_ready(app, os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"))
     print("[PASS] Exact immutable Stage040 sync and successful operation")
     subscriptions = [o for o in desired if o["kind"] == "Subscription"]
     need(len(subscriptions) == 6, "Reviewed operator selection is incomplete")
@@ -277,8 +278,20 @@ def main():
     workloads = sum((get(k, ns="models-as-a-service")["items"] for k in ("deployments", "statefulsets", "leaderworkersets.leaderworkerset.x-k8s.io")), [])
     for d in models:
         obj = get("llminferenceservices.serving.kserve.io", d["metadata"]["name"], "models-as-a-service")
-        current(obj); condition(obj, "Ready")
-        need(contains_spec(obj["spec"], d["spec"]), "LLMI differs from reviewed model/runtime configuration")
+        current(obj)
+        replicas = obj["spec"].get("replicas", 1)
+        need(type(replicas) is int and replicas >= 0, "Native model lifecycle replica value is invalid")
+        delegated = "RespectIgnoreDifferences=true" in app["spec"].get("syncPolicy", {}).get("syncOptions", []) and any(
+            entry.get("group") == "serving.kserve.io" and entry.get("kind") == "LLMInferenceService"
+            and entry.get("name") == d["metadata"]["name"] and entry.get("namespace") == "models-as-a-service"
+            and "/spec/replicas" in entry.get("jsonPointers", []) for entry in app["spec"].get("ignoreDifferences", []))
+        expected_spec = dict(d["spec"])
+        if delegated:
+            expected_spec.pop("replicas", None)
+        need(contains_spec(obj["spec"], expected_spec), "LLMI differs from reviewed model/runtime configuration")
+        parked = replicas == 0 and delegated
+        if not parked:
+            condition(obj, "Ready")
         section = d["spec"]["router"]["gateway"]["refs"][0]["sectionName"]
         need(obj["spec"]["router"]["gateway"]["refs"] == d["spec"]["router"]["gateway"]["refs"], "LLMI listener references differ")
         uids = {obj["metadata"]["uid"]}
@@ -288,14 +301,20 @@ def main():
         ready_workloads = [w for w in owned_workloads if w["kind"] in ("Deployment", "StatefulSet")]
         need(ready_workloads, "Native LLMI owned workload is absent")
         for w in ready_workloads:
-            workload(w)
+            if parked and w["spec"].get("replicas", 1) == 0:
+                current(w)
+                need(all(w.get("status", {}).get(key, 0) == 0 for key in ("replicas", "readyReplicas", "updatedReplicas", "availableReplicas")), "Parked model still has compute replicas")
+            else:
+                workload(w)
         selected = [r for r in routes if owner(r, obj["metadata"]["uid"])]
         need(len(selected) == 1, "Native LLMI route ownership is not unique")
         refs = selected[0]["spec"].get("parentRefs", [])
         need(len(refs) == 1 and refs[0].get("sectionName") == section, "Native LLMI route listener differs")
         route_ready(selected[0], section, gateway_controller)
+        if parked:
+            print("[PASS] Explicitly delegated model compute is parked; configuration/route preserved, inference not qualified")
     need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == 2, "Extra route would invalidate dedicated inference listeners")
-    print("[PASS] Three-listener namespace isolation and two current native LLMI workloads/routes; EPP traffic proof pending")
+    print("[PASS] Three-listener isolation, exact native model configuration/routes and active workloads; parked compute is separate from inference acceptance")
     for d in [o for o in desired if o["kind"] in ("ExternalProvider", "ExternalModel", "MaaSModelRef")]:
         kind = d["kind"]
         ns, name = d["metadata"]["namespace"], d["metadata"]["name"]
