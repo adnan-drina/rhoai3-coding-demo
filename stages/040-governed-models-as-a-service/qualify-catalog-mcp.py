@@ -82,11 +82,11 @@ def main():
         tokens = {u: persona(path, u)[1] for u, path in [('ai-admin', args.admin_kubeconfig), ('ai-developer', args.developer_kubeconfig)]}
         with bff(env, receipt) as request:
             for user, token in tokens.items():
-                code, payload = request('/gen-ai/api/v1/aa/mcps?' + urlencode({'namespace': 'demo-sandbox'}), token)
+                code, payload = request('/api/v1/aa/mcps?' + urlencode({'namespace': 'demo-sandbox'}), token)
                 need(code == 200 and isinstance(payload, dict), 'Native Studio discovery failed')
                 servers = payload.get('data', {}).get('servers', [])
                 need(any(s.get('name') == pub.KEY and s.get('url') == endpoint for s in servers) and any(s.get('name') == 'OpenShift-MCP' for s in servers), 'Additive and legacy Studio entries are not both discoverable')
-                paths = {kind: '/gen-ai/api/v1/mcp/' + kind + '?' + urlencode({'namespace': 'demo-sandbox', 'server_url': endpoint}) for kind in ('status', 'tools')}
+                paths = {kind: '/api/v1/mcp/' + kind + '?' + urlencode({'namespace': 'demo-sandbox', 'server_url': endpoint}) for kind in ('status', 'tools')}
                 code, payload = request(paths['status'], token, token)
                 need(code == 200 and payload.get('data', {}).get('status') == 'connected', 'Genuine per-session Studio status is not connected')
                 code, payload = request(paths['tools'], token, token)
