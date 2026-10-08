@@ -13,6 +13,12 @@ import time
 from urllib.parse import urlparse, quote
 
 
+class NativeAPIError(RuntimeError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__(f"Authenticated native API returned HTTP {status}.")
+
+
 def oc(*args):
     result = subprocess.run(["oc", "--request-timeout=10s", *args], capture_output=True, text=True)
     if result.returncode:
@@ -46,21 +52,21 @@ def api(service, namespace, uri, ca, token, workspace):
                 if process.poll() is not None or time.monotonic() >= deadline:
                     raise RuntimeError("Native service port-forward is unavailable.") from None
                 time.sleep(.2)
-        def request(path, body=None):
+        def request(path, body=None, *, method=None, expected_status=200):
             connection = NativeHTTPS(address.hostname, timeout=30, context=context)
-            headers = {"Authorization": "Bearer " + token, "X-Tenant": "demo-sandbox",
+            headers = {"Authorization": "Bearer " + token, "X-Tenant": workspace,
                        "X-MLFLOW-WORKSPACE": workspace, "Content-Type": "application/json"}
             try:
-                connection.request("POST" if body is not None else "GET",
+                connection.request(method or ("POST" if body is not None else "GET"),
                                    address.path.rstrip("/") + "/" + path.lstrip("/"),
                                    json.dumps(body) if body is not None else None, headers)
                 response = connection.getresponse()
                 data = response.read(2 * 1024 * 1024 + 1)
                 if len(data) > 2 * 1024 * 1024:
                     raise RuntimeError("Native API response exceeds bounded size.")
-                if response.status != 200:
-                    raise RuntimeError(f"Authenticated native API returned HTTP {response.status}.")
-                return json.loads(data)
+                if response.status != expected_status:
+                    raise NativeAPIError(response.status)
+                return json.loads(data) if data else {}
             finally:
                 connection.close()
         yield request
@@ -97,11 +103,14 @@ def main():
     from pathlib import Path
     import os
     root = Path(__file__).resolve().parents[2]
-    result = subprocess.run(["bash", "-c", 'set -euo pipefail; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in',
+    result = subprocess.run(["bash", "-c", 'set -euo pipefail; source "$1/scripts/shared/lib.sh"; REPO_ROOT="${RHOAI_ENV_ROOT:-$1}"; load_env; check_oc_logged_in >/dev/null; python3 -c \'import json,os; print(json.dumps({k:os.environ.get(k) for k in ("KUBECONFIG","PATH")}))\'',
                              "stage050-api", str(root)], env=dict(os.environ, REPO_ROOT=str(root)),
                             capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError("Repository cluster identity guard failed.")
+    for key, value in json.loads(result.stdout).items():
+        if value is not None:
+            os.environ[key] = value
     discovery = json.loads(oc("get", "configmap", "evalhub-discovery", "-n", "demo-sandbox", "-o", "json"))["data"]
     ca = json.loads(oc("get", "configmap", "evalhub-service-ca", "-n", "demo-sandbox", "-o", "json"))["data"]["service-ca.crt"]
     token = oc("whoami", "--show-token").strip()  # Memory only, never output or process arguments.

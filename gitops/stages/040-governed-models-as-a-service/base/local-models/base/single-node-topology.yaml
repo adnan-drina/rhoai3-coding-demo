@@ -1,0 +1,29 @@
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceServiceConfig
+metadata:
+  name: single-node-exclusive-gpu
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/config-type: workload-single-node
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    openshift.io/display-name: Single-node exclusive NVIDIA GPU
+spec:
+  model:
+    uri: ""
+  replicas: 1
+  template:
+    containers:
+      - name: main
+        resources:
+          requests:
+            cpu: "2"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "4"
+            memory: 24Gi
+            nvidia.com/gpu: "1"

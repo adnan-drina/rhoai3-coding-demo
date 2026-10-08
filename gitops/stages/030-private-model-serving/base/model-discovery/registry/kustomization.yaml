@@ -6,3 +6,7 @@ resources:
   - modelregistry-demo.yaml
   - rolebinding-demo-registry-admins.yaml
   - rolebinding-demo-registry-developers.yaml
+  - role-mcp-registry-admins.yaml
+  - role-mcp-registry-readers.yaml
+  - rolebinding-mcp-registry-admins.yaml
+  - rolebinding-mcp-registry-readers.yaml

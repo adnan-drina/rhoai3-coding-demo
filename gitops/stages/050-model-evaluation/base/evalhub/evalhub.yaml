@@ -17,8 +17,27 @@ spec:
   database:
     type: postgresql
     secret: evalhub-db-credentials
+  # Native catalog loading is metadata-only; every actual evaluation is explicit.
   providers:
+    - deepeval
+    - garak
+    - garak-kfp
+    - guidellm
+    - ibm-clear
+    - inspect
+    - lighteval
     - lm-evaluation-harness
+    - ragas
+  collections:
+    - coding-v1
+    - instruction-following-v1
+    - leaderboard-v2
+    - long-context-v1
+    - model-validation
+    - reasoning-v1
+    - safety-and-fairness-v1
+    - standard-llm-evals-v1
+    - toxicity-and-ethical-principles
   env:
     # The deployment helper discovers the native HTTPS address only after
     # MLflow is Available. The operator owns TLS trust and projected tokens.

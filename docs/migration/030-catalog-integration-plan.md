@@ -50,8 +50,9 @@ first-time installation retains the complete infrastructure prerequisite.
    mutation authorization and ordinary-user denial, without changing default
    sources. Custom MCP publication is optional; native default MCP metadata and
    tool inventories must remain usable.
-5. Keep discovery and runtime evidence separate. Stage 060 owns MCP server
-   lifecycle, registry registration and agent launch/lifecycle; Stage 040 owns
+5. Keep discovery and runtime evidence separate. Stage 030 owns native MCP registry metadata access and registration;
+   Stage 050 supplies the retained MLflow backend. Stage 060 owns MCP server
+   lifecycle and agent launch/lifecycle; Stage 040 owns
    parser-compatible governed model execution. Neither card presence nor a
    Ready condition completes those functional requirements.
 6. Verify repeated sync preserves registry CR/namespace/native PVC and DB
@@ -60,3 +61,16 @@ first-time installation retains the complete infrastructure prerequisite.
 Relevant product procedures: [catalog discovery DP](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/developer-preview-features_relnotes),
 [dashboard configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard),
 [native MCP lifecycle](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_the_mcp_catalog/enabling-mcp-lifecycle-management).
+
+## MCP registry metadata authorization
+
+The installed MLflow 3.14 product fork includes MCP registry APIs. Its pinned
+Kubernetes authentication plugin maps MCP metadata operations to the virtual
+`mlflow.kubeflow.org/mcpservers` resource. Stage 030 grants the existing
+`rhods-admins` group metadata CRUD and `rhoai-developers` metadata read access
+only in `demo-sandbox`. These permissions grant no Secret or workload access.
+Search filters unauthorized records and may return HTTP 200 with an empty
+collection; a known isolated record must also be tested by direct ID and
+unauthorized write before claiming tenant isolation. Backend readiness,
+registry publication, source administration and tool execution remain separate
+acceptance checks. Enable the shared registry UI only after these gates pass.

@@ -47,6 +47,9 @@ try:
   ('configmap','authorino-service-ca','kuadrant-system')]:
   obj=get(resource,name,namespace)
   if obj:assert tracked(obj) and not obj['metadata'].get('deletionTimestamp') and not obj['metadata'].get('ownerReferences'),'Existing customer resource requires reviewed adoption'
+ for name in ['single-node-queue-router','single-node-exclusive-gpu']:
+  obj=get('llminferenceserviceconfigs.serving.kserve.io',name,'redhat-ods-applications')
+  if obj:assert tracked(obj) and not obj['metadata'].get('deletionTimestamp') and not obj['metadata'].get('ownerReferences'),'Existing reusable serving template requires reviewed adoption'
  for name,namespace in [('rhcl-operator','openshift-operators'),('authorino-operator','openshift-operators'),('dns-operator','openshift-operators'),('limitador-operator','openshift-operators'),('servicemeshoperator3','openshift-operators'),('leader-worker-set','openshift-lws-operator')]:
   subscription=get('subscriptions.operators.coreos.com',name,namespace)
   if subscription:assert tracked(subscription) and not subscription['metadata'].get('deletionTimestamp'),'Existing operator Subscription requires reviewed native adoption'

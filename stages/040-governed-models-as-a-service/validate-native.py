@@ -315,6 +315,23 @@ def main():
             print("[PASS] Explicitly delegated model compute is parked; configuration/route preserved, inference not qualified")
     need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == 2, "Extra route would invalidate dedicated inference listeners")
     print("[PASS] Three-listener isolation, exact native model configuration/routes and active workloads; parked compute is separate from inference acceptance")
+    for d in [o for o in desired if o["kind"] == "LLMInferenceServiceConfig"]:
+        m = d["metadata"]
+        obj = get("llminferenceserviceconfigs.serving.kserve.io", m["name"], m["namespace"])
+        need(obj.get("spec") == d["spec"], "Reusable serving template specification differs")
+        need(not obj["metadata"].get("ownerReferences") and not obj["metadata"].get("deletionTimestamp"), "Reusable serving template ownership differs")
+        tracking = APP + ":serving.kserve.io/LLMInferenceServiceConfig:" + m["namespace"] + "/" + m["name"]
+        need(obj["metadata"].get("annotations", {}).get("argocd.argoproj.io/tracking-id") == tracking, "Reusable serving template is not stage-owned")
+        need(all(obj["metadata"].get("labels", {}).get(k) == v for k, v in m["labels"].items()), "Reusable serving template discovery labels differ")
+        if m["labels"]["opendatahub.io/config-type"] == "router":
+            need(obj["metadata"].get("annotations", {}).get("opendatahub.io/supported-topologies") == '["workload-single-node"]', "Router topology filtering differs")
+    accelerators = get("llminferenceserviceconfigs.serving.kserve.io", ns="redhat-ods-applications")["items"]
+    selected = [o for o in accelerators if o["metadata"].get("labels", {}).get("opendatahub.io/config-type") == "accelerator"]
+    nvidia = [o for o in selected if o["metadata"]["name"].endswith("single-node-template-nvidia-cuda")]
+    need(len(nvidia) == 1 and nvidia[0]["metadata"].get("annotations", {}).get("opendatahub.io/support-status") != "unsupported", "Supported single-node NVIDIA accelerator template is unavailable")
+    images = [c.get("image", "") for c in nvidia[0]["spec"].get("template", {}).get("containers", []) if c.get("name") == "main"]
+    need(len(images) == 1 and re.fullmatch(r"registry\.redhat\.io/.+@sha256:[0-9a-f]{64}", images[0]), "Native NVIDIA runtime image is not immutable")
+    print("[PASS] Stage-owned single-node router/topology templates and native pinned NVIDIA accelerator configuration; dashboard interaction is separate")
     for d in [o for o in desired if o["kind"] in ("ExternalProvider", "ExternalModel", "MaaSModelRef")]:
         kind = d["kind"]
         ns, name = d["metadata"]["namespace"], d["metadata"]["name"]

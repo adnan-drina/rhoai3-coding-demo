@@ -6,25 +6,25 @@ This tracker records configuration and acceptance separately. The user authorize
 |---|---|---|---|
 | Roles | 010 | Qualified: native defaults and authorization | Native role-management defaults retained; genuine administrator project-role authority and ordinary-developer/cluster-escalation denial verified. Custom roles are optional; browser rendering is separate |
 | Connection test | 010 | Qualified: native API and storage | Models/Workbench and retained connection passed verified-TLS developer tests with valid/invalid credentials; repeat reconciliation and UID/data checks passed. Browser rendering and actual Workbench mounting remain separate consumption checks |
-| External models | 040 | Pending completion | Native registration and UI/project visibility, provider TLS/auth references, governed positive/negative functional receipts |
-| MaaS settings | 040 | Streaming qualified; normal JSON blocked | Bounded governed SSE text and terminal marker passed with key revocation; non-streaming HTTP200 still has no body. Full OpenCode integration, broader governance acceptance and a supported non-streaming remedy remain required |
+| External models | 040 | MiniMax qualified; GPT entitlement pending | Governed MiniMax JSON completion and revoked-key denial passed. Native registration and provider TLS/auth references retained; GPT credit availability and functional acceptance remain separate |
+| MaaS settings | 040 | Streaming and external JSON qualified; local JSON blocked | Bounded governed SSE text/terminal marker and MiniMax JSON passed with key revocation; local Qwen non-streaming HTTP200 still has no body. Full OpenCode integration, broader governance acceptance and a supported local non-streaming remedy remain required |
 | llm-d routing configurations | 040 | Pending implementation | Native reusable single-node router appears and reconciles; effective scheduler/baseRefs verified |
 | llm-d topology configurations | 040 | Pending implementation | Native single-node topology configuration works with current hardware; unsupported costly topologies stay unavailable |
 | LLM accelerator configurations | 040 | Pending qualification | Existing available templates, compatible NVIDIA selection and support annotations verified; no new capacity |
 | Tool calling | 030/040/060 | Pending qualification | Catalog/parser metadata and bounded real read-only tool/result loop; forbidden tool denied |
-| Agent Catalog | 030/060 | Pending completion | Native source/schema and custom OpenCode/Hermes entries; authorized discovery and executable instructions |
+| Agent Catalog | 030/060 | Discovery qualified; agent task gates pending | Both genuine personas read default/custom cards and launch instructions; standalone Hermes/model tasks remain separate runtime exits |
 | Deploy agents | 060 | Partial | Both standalone agents, real workspace lifecycle/authorization, bounded task verification; catalog integration |
 | MCP servers | 040/060 | Partial | Preserve current endpoint; native lifecycle and authenticated read-only tool plus foreign/write denial |
-| MCP registry | 030/060 | Contract resolved; qualification pending | Exact installed native API/store/schema established; authorized registration/version/discovery/persistence remain required |
-| MCP catalog sources | 030 | Pending qualification | Native administrative source contract and validation; default sources retained; consumer access |
+| MCP registry | 030/060 | Isolation qualified; project registration pending | Isolated native registration/version/read and developer filtered search/direct-ID/version/write denial passed with owned cleanup. Intended project publication and redeploy persistence remain required |
+| MCP catalog sources | 030 | Native API qualified | Administrator create/read/update/delete and developer denied writes/no change; default sources and customer ConfigMap identity preserved. Browser rendering is separate |
 | Safety/security insights | 030 | Pending qualification | Packaged default-model metadata and legitimate no-result model verified under developer access |
 | AutoRAG | 010 | Excluded | Explicit disabled policy preserved; no backend deployment |
 | Guardrails | 040/050 | Pending implementation | Native Studio configuration/auto-created controller resources; bounded safe/violation checks and ownership |
-| Agent configuration management | 040 | Pending implementation | Native save/load/variant/conflict persistence and project authorization; no credential storage |
-| Gen AI tracing | 010/040/050 | Unknown integration | Documented opt-in producer→collector→MLflow path established with correlated trace, content policy and tenant isolation |
+| Agent configuration management | 040 | Native API qualified | Base/variant save-load persistence and foreign-project denial passed with no model calls; browser rendering remains separate |
+| Gen AI tracing | 010/040/050 | Native contract known; preservation pending | Existing Studio state must survive native reconfiguration; then qualify opt-in producer→collector→MLflow with a correlated trace, content policy and tenant isolation |
 | Load prompts | 040/050 | Pending implementation | Native approved prompt/version and authorized load; persisted registry and variable handling |
 | Global prompts: user | 040/050 | Pending implementation | Curated global prompt read, project-copy boundary and foreign write denial |
-| Global prompts: administration | 040/050 | Pending implementation | Native single global workspace/label/read binding, administrator-only curation and redeploy persistence |
+| Global prompts: administration | 040/050 | Configuration deployed; functional checks pending | Native single global workspace/label/read binding deployed; administrator-only curation and redeploy persistence qualification in progress |
 
 ## Integration sequence
 
@@ -56,3 +56,9 @@ Genuine administrator and developer native authorization checks also qualified t
 ## Governed response comparison: 2026-10-08
 
 Two bounded requests distinguished the native response paths. The non-streaming request returned HTTP200 with JSON content type and chunked transfer, but no body. The streaming counterpart returned four valid SSE records, assistant text and a terminal marker. Both short-lived owned keys were revoked and rejected afterwards. This qualifies the bounded governed streaming path, not full OpenCode generation/cancellation or normal JSON completion. Processor framing remains under investigation; an upstream passthrough issue is relevant evidence, not a proven diagnosis or permission to patch generated gateway configuration.
+
+A bounded governed MiniMax comparison returned a valid JSON chat completion with eight completion tokens. The short-lived key was revoked and rejected afterwards. The empty-body defect is therefore not universal to non-streaming MaaS requests; local Qwen remains blocked. MiniMax success does not establish GPT entitlement or acceptance.
+
+## Shared configuration rollout: 2026-10-08
+
+The catalog, MaaS/Studio and evaluation slices reconciled serially. Both genuine personas can read the retained default and custom coding-agent catalog cards. The native source-administration API passed a disposable source lifecycle and denied developer writes without changing source data. Evaluation and global-prompt flags, the shared MLflow curated workspace, native TLS/database/artifact configuration and authenticated EvalHub health/providers/collections passed. A completed real evaluation, Studio recreation/tracing and prompt consumer acceptance remain independent gates.

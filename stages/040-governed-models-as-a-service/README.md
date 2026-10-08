@@ -12,6 +12,7 @@ Two exclusive L40S GPUs serve the project's Qwen models. Native OpenShift AI con
 
 - Qwen 3.6 27B FP8 and Qwen 3.8 27B INT4, each on one full GPU.
 - Native MaaS API key storage, subscriptions, authentication and token quotas.
+- Reusable single-node topology and queue-routing configurations, with native NVIDIA accelerator templates.
 - Approved GPT-6 Luna access through the native OpenAI external-provider integration.
 - GenAI Studio enablement for experimenting with available model endpoints.
 - A bounded, read-only OpenShift MCP endpoint for later coding workflows.

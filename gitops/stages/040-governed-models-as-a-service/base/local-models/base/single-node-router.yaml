@@ -1,0 +1,35 @@
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceServiceConfig
+metadata:
+  name: single-node-queue-router
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/config-type: router
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    openshift.io/display-name: Single-node queue routing
+    opendatahub.io/supported-topologies: '["workload-single-node"]'
+spec:
+  model:
+    uri: ""
+  router:
+    scheduler:
+      config:
+        inline:
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: single-profile-handler
+            - type: queue-scorer
+            - type: max-score-picker
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: max-score-picker
+    route: {}
+    gateway: {}

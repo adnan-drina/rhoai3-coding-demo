@@ -59,9 +59,13 @@ def main():
                         and p.get("scope", {}).get("type") == "project"]
             if len(matching) > 1:
                 raise RuntimeError("Duplicate scoped sample prompt discovery.")
-            if matching and matching[0].get("tags", {}).get("demo.owner") != OWNER:
-                raise RuntimeError("Existing sample name belongs to another owner; refusing append.")
             existing = int(matching[0]["latest_version"]) if matching else 0
+            if existing:
+                # Registration tags are stored on native PromptVersion; the
+                # list's registered-model Prompt.tags can legitimately be empty.
+                first = request("GET", path(workspace, "/" + NAME, version=1))["data"]
+                if first.get("tags", {}).get("demo.owner") != OWNER:
+                    raise RuntimeError("Existing sample version belongs to another owner; refusing append.")
             for version, template in enumerate(TEMPLATES, 1):
                 if version > existing:
                     if not args.seed:
@@ -72,7 +76,8 @@ def main():
                     if int(result["version"]) != version:
                         raise RuntimeError("Concurrent prompt registration changed the expected version sequence.")
                 result = request("GET", path(workspace, "/" + NAME, version=version))["data"]
-                if result.get("template") != template or int(result["version"]) != version:
+                if (result.get("template") != template or int(result["version"]) != version
+                        or result.get("tags", {}).get("demo.owner") != OWNER):
                     raise RuntimeError("Persisted prompt version differs from reviewed public instructions.")
                 receipts.append({"workspace": workspace, "name": NAME, "version": version,
                                  "template_sha256": hashlib.sha256(template.encode()).hexdigest()})

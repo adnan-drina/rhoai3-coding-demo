@@ -89,6 +89,7 @@ Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validati
 - [MaaS observability and internal showback](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service)
 - [Feature-specific Technology Preview boundaries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/technology-preview-features_relnotes)
 - [ConfigIQ public project](https://github.com/redhat-performance/configiq) — future inference-sizing and GPU/cost comparisons.
+- [EvalHub workflows and configuration](../../docs/migration/050-evalhub-completion.md)
 
 ## Next Stage
 
