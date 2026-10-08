@@ -259,8 +259,10 @@ def run():
                 route = native.get("httproute", current_model["status"]["httpRouteName"], ns)
                 parsed = urlsplit(endpoint); url = endpoint.rstrip("/") + ("/messages" if parsed.path.rstrip("/").endswith("/v1") else "/v1/messages")
                 request_path = urlsplit(url).path
-                matches = [m.get("path", {}) for rule in route["spec"]["rules"] for m in rule.get("matches", []) if not m.get("headers")]
-                need(any(m.get("type", "PathPrefix") == "PathPrefix" and m.get("value") not in (None, "/") and request_path.startswith(m["value"].rstrip("/") + "/") for m in matches), "Messages URL does not match generated model-specific native route")
+                matches = [m for rule in route["spec"]["rules"] for m in rule.get("matches", [])]
+                prefix_route = any(not m.get("headers") and m.get("path", {}).get("type", "PathPrefix") == "PathPrefix" and m["path"].get("value") not in (None, "/") and request_path.startswith(m["path"]["value"].rstrip("/") + "/") for m in matches)
+                body_route = current_ref["status"].get("resolvedModelAlias") == model_id and request_path == provider_ref["path"] and any(m.get("path") == {"type": "PathPrefix", "value": "/"} and any(h.get("name", "").lower() == "x-gateway-model-name" and h.get("type", "Exact") == "Exact" and h.get("value") == model_id for h in m.get("headers", [])) for m in matches)
+                need(prefix_route or body_route, "Messages URL/body alias does not match generated native route")
                 payload = {"model": model_id, "max_tokens": 32, "stream": True, "messages": [{"role": "user", "content": "Count from 1 to 8, separated by commas."}]}
                 for token in (None, "stage040-invalid-" + uuid.uuid4().hex):
                     with request(url, context, token, payload, native_messages=True) as denied:
@@ -271,7 +273,7 @@ def run():
                         evidence["model_http_failures"].append({"model": name, "catalog_id": model_id, "phase": "native-messages-stream", "http_status": response.status})
                         raise HTTPFailure(response.status)
                     result = read_messages_sse(response, provider_ref["targetModel"])
-                result.update(model=name, catalog_id=model_id, unauthenticated_denied=True, invalid_key_denied=True, bounded_requests=1)
+                result.update(model=name, catalog_id=model_id, unauthenticated_denied=True, invalid_key_denied=True, bounded_requests=1, routing="native-model-prefix" if prefix_route else "native-body-model", native_route_uid=route["metadata"]["uid"], native_route_generation=route["metadata"]["generation"])
                 evidence["not_qualified"] = [x for x in evidence["not_qualified"] if x != "streaming"]
                 evidence["models"].append(result)
                 continue
