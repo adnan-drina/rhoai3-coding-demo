@@ -89,7 +89,9 @@ def publish(args, env):
     cm = get(env, 'configmap', CM, NAMESPACE)
     need(not cm['metadata'].get('ownerReferences') and not cm['metadata'].get('deletionTimestamp') and cm['metadata'].get('annotations', {}).get('argocd.argoproj.io/tracking-id') == APP + ':/ConfigMap:' + NAMESPACE + '/' + CM, 'Studio discovery ConfigMap is not the exact Stage040 input')
     old = cm.get('data', {}); need('OpenShift-MCP' in old, 'Retained legacy discovery entry is absent')
-    if DELEGATION not in app['spec'].get('ignoreDifferences', []):
+    # Argo omits an empty core API group when serializing Application specs.
+    if not any({**entry, 'group': entry.get('group', '')} == DELEGATION
+               for entry in app['spec'].get('ignoreDifferences', [])):
         need(args.delegate and not args.validate, 'Exact Studio field delegation is absent')
         before = app['spec']
         app = patch(env, 'applications.argoproj.io', APP, 'openshift-gitops', app,
