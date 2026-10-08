@@ -17,6 +17,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 data:
-  # Default local model. Qwen 3.6 stays available as MAAS_API_PATH_QWEN36.
-  MAAS_API_PATH: /internal-models/qwen3-8-27b-int4/v1
-  MAAS_API_PATH_QWEN36: /internal-models/qwen3-6-27b/v1
+  # Common OpenAI base; request model IDs select the backend.
+  # Qwen 3.6 is configured but remains parked until explicitly resumed.
+  MAAS_API_PATH: /v1
+  MAAS_API_PATH_QWEN36: /v1

@@ -236,7 +236,7 @@ check "live dest-init does not invoke golden assert-agent-pin.py" \
   "0"
 check "live workspace-maas-model-endpoint is the MaaS gateway path (not KServe)" \
   "oc get cm workspace-maas-model-endpoint -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_PATH}'" \
-  "/internal-models/qwen3-8-27b-int4/v1"
+  "/v1"
 check "live workspace-maas-credentials Secret exists" \
   "oc get secret workspace-maas-credentials -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "workspace-maas-credentials"
@@ -365,10 +365,10 @@ check "080 GitOps SOUL smoke uses overlay /opt/hermes-agent (no dest fallback)" 
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'hermes_agent_root=\"/opt/hermes-agent\"' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 GitOps dest-init prefers env MAAS_API_BASE_URL then gateway MAAS_BASE_URL" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/internal-models/qwen3-8-27b-int4/v1' '${GITOPS_INIT}' && grep -qF '/internal-models/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/v1' '${GITOPS_INIT}' && grep -qF '/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps ConfigMap is the MaaS gateway path (not KServe host)" \
-  "grep -qF 'MAAS_API_PATH: /internal-models/qwen3-8-27b-int4/v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /internal-models/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
+  "grep -qF 'MAAS_API_PATH: /v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMap URL" \
   "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \

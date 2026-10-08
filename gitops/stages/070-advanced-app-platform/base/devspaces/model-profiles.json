@@ -46,7 +46,8 @@
         "protect_last_n": 12,
         "proactive_prune_tokens": 48000,
         "run_scoped": true
-      }
+      },
+      "model_id": "publishers/internal-models/models/qwen3-6-27b"
     },
     "qwen3-8-27b-int4": {
       "api_env": "MAAS_API_BASE_URL",
@@ -103,7 +104,8 @@
             "reasoning_effort": "xhigh"
           }
         }
-      }
+      },
+      "model_id": "publishers/internal-models/models/qwen3-8-27b-int4"
     }
   },
   "schema": "rhoai3.model-profiles/v1"

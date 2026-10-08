@@ -270,7 +270,7 @@ def _effective_config_gaps(pinned: dict[str, Any]) -> list[str]:
     prof = (pinned.get("profiles") or {}).get(model_id) or {}
     out: list[str] = []
     m = cfg.get("model") or {}
-    for key, want in (("default", model_id), ("provider", prof.get("provider")),
+    for key, want in (("default", prof.get("model_id", model_id)), ("provider", prof.get("provider")),
                       ("context_length", prof.get("context_length")), ("max_tokens", prof.get("max_tokens"))):
         if m.get(key) != want:
             out.append("config model.%s: expected %s, got %s" % (key, json.dumps(want), json.dumps(m.get(key))))

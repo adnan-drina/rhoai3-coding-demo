@@ -314,7 +314,7 @@ if (root / '.hermes/kernel/worker_launch.py').is_file():
     _envt = (config.parent / '.env').read_text() if (config.parent / '.env').is_file() else ''
     require(('HERMES_BIN=%s' % _shim) in _envt.splitlines() and _shim.is_file(),
             'RETRY_ESCALATION: the managed .env does not route worker spawns through the launch shim (HERMES_BIN)')
-require(c.get('model', {}).get('default') == MODEL, 'worker model mismatch')
+require(c.get('model', {}).get('default') == 'publishers/internal-models/models/' + MODEL, 'worker model mismatch')
 import socket
 from urllib.parse import urlsplit
 require(urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == MAASHOSTVAL, 'worker MaaS endpoint is not the platform gateway host')

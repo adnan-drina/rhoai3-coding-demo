@@ -21,11 +21,11 @@ credentials:
 endpoints:
   - host: __MAAS_QWEN38_HOST__
     port: 443
-    path: /internal-models/qwen3-8-27b-int4/v1/**
+    path: /v1/**
     protocol: rest
     enforcement: enforce
     rules:
       - allow:
           method: POST
-          path: /internal-models/qwen3-8-27b-int4/v1/chat/completions
+          path: /v1/chat/completions
 binaries: [/usr/local/bin/opencode]

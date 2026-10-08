@@ -37,12 +37,16 @@ def check(script: str, provider: str, model: str, segment: str) -> str:
     if p.get("npm") != "@ai-sdk/openai-compatible":
         return "provider.%s.npm is %r, not the OpenAI-compatible adapter" % (provider, p.get("npm"))
     url = str((p.get("options") or {}).get("baseURL") or "")
-    if not url.endswith("/internal-models/%s/v1" % segment):
-        return "provider.%s.options.baseURL %r is not the MaaS route of %s" % (provider, url, segment)
+    if url != "PLACEHOLDER/v1":
+        return "provider.%s.options.baseURL %r is not the common MaaS base for %s" % (provider, url, segment)
     if not (p.get("options") or {}).get("apiKey"):
         return "provider.%s.options.apiKey is empty" % provider
-    if model not in (p.get("models") or {}):
+    if "publishers/internal-models/models/" + model not in (p.get("models") or {}):
         return "provider.%s.models has no %s" % (provider, model)
+    default_provider, separator, default_model = str(cfg.get("model") or "").partition("/")
+    selected = (cfg.get("provider") or {}).get(default_provider) or {}
+    if not separator or default_model not in (selected.get("models") or {}):
+        return "default model selector does not preserve a configured canonical model ID"
     return "provider-ok"
 
 

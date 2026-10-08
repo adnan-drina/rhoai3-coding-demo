@@ -54,7 +54,7 @@ AUX = dict(PROFILE["profiles"]["m-1"]["request_body"], max_tokens=300)
 
 def _config(profile: dict, aux_body: dict | None) -> str:
     prof = profile["profiles"][profile["default_model"]]
-    lines = ["model:", "  default: %s" % profile["default_model"], "  provider: %s" % prof["provider"],
+    lines = ["model:", "  default: %s" % prof.get("model_id", profile["default_model"]), "  provider: %s" % prof["provider"],
              "  context_length: %d" % prof["context_length"], "  max_tokens: %d" % prof["max_tokens"],
              "providers:", "  %s:" % prof["provider"], "    extra_body:"]
     lines += ["      %s: %s" % (k, v) for k, v in prof["request_body"].items()]
@@ -244,6 +244,9 @@ def main() -> int:
     if _runtime_case("spring-petclinic-rest-legacy-v13") or _runtime_case("orders-service-v2"):
         return 1
     if _case("spring-petclinic-rest-legacy-v13") or _case("orders-service-v2"):
+        return 1
+    PROFILE["profiles"]["m-1"]["model_id"] = "publishers/internal-models/models/m-1"
+    if _case("wire-model-id"):
         return 1
     print("OK: run_control (a governed run is authorized only by the platform's read-only contract -- checkout, reset, "
           "stash and forged pins change nothing; missing, empty, malformed, foreign, moved and env-redirected records "

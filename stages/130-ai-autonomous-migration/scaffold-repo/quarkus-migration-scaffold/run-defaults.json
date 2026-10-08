@@ -33,9 +33,10 @@
       "id": "qwen3-6-27b",
       "provider": "qwen27b",
       "namespace": "internal-models",
-      "maas_api_path": "/internal-models/qwen3-6-27b/v1",
+      "maas_api_path": "/v1",
       "served_max_model_len": 131072,
-      "declared_context_length": 110000
+      "declared_context_length": 110000,
+      "model_id": "publishers/internal-models/models/qwen3-6-27b"
     },
     "hermes": {
       "version": "v0.20.5",

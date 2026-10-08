@@ -55,8 +55,9 @@ WORKSPACE = "openshell-developer"
 TEMPLATE = "oc-transport-11816"
 SANDBOX = "oc-inference-check"
 PROFILE = PROVIDER = "maas-qwen38"
-MODEL = "qwen3-8-27b-int4"
-MODEL_PATH = "/internal-models/" + MODEL + "/v1"
+RESOURCE_MODEL = "qwen3-8-27b-int4"
+MODEL = "publishers/internal-models/models/qwen3-8-27b-int4"
+MODEL_PATH = "/v1"
 DIRECTORY = "/sandbox/workspace"
 TLS = ssl.create_default_context()
 CLUSTER_ENV = None
@@ -253,9 +254,9 @@ class Run:
         fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         gateway = oc_json("get", "gateway.gateway.networking.k8s.io", "maas-default-gateway", "-n", "openshift-ingress")
         listeners = {l["name"]: l["hostname"] for l in gateway["spec"]["listeners"]}
-        need("api" in listeners and "qwen3-8" in listeners, "MaaS gateway listeners are not the reviewed api/qwen3-8 pair")
+        need("api" in listeners, "MaaS gateway api listener is absent")
         self.maas_api = "https://" + listeners["api"]
-        self.model_host = listeners["qwen3-8"]
+        self.model_host = listeners["api"]
         self.chat_url = "https://" + self.model_host + MODEL_PATH + "/chat/completions"
         self.start_forward()
         who = self.persona(["whoami", "-o", "json"])
@@ -381,7 +382,7 @@ class Run:
         need(not fleet.get('next_page_token') and fleet.get('sandboxes') == [], 'Global policy qualification requires an empty sandbox fleet')
         need(self.resource('provider', self.provider) is None, 'Run provider name exists')
         need(not self.profile_present(), 'Run profile name exists; refusing import')
-        model = oc_json("get", "llminferenceservice", MODEL, "-n", "internal-models")
+        model = oc_json("get", "llminferenceservice", RESOURCE_MODEL, "-n", "internal-models")
         need(any(c["type"] == "Ready" and c["status"] == "True" for c in model["status"].get("conditions", [])), "Model is not Ready")
         templates = self.persona(["sandbox", "template", "list", "-o", "json"], WORKSPACE)
         need(templates.returncode == 0 and any(t["name"] == TEMPLATE for t in json.loads(templates.stdout)["templates"]), "Reviewed sandbox template is absent")
