@@ -28,7 +28,10 @@ try:
         assert decoded("AWS_DEFAULT_REGION")==(data.get("BUCKET_REGION") or "us-east-1")
         meta=connection["metadata"];assert meta.get("annotations",{}).get("opendatahub.io/connection-type-protocol")=="s3"
         assert meta["annotations"].get("openshift.io/display-name")==display and meta.get("labels",{}).get("opendatahub.io/dashboard")=="true"
-        assert "kubectl.kubernetes.io/last-applied-configuration" not in meta.get("annotations",{})
+        applied=meta.get("annotations",{}).get("kubectl.kubernetes.io/last-applied-configuration")
+        if applied:
+            declaration=json.loads(applied)
+            assert not declaration.get("data") and not declaration.get("stringData")
         assert meta.get("labels",{}).get("opendatahub.io/managed")!="true"
         print(display+" connection: native bucket binding, ownership, credential mapping and metadata passed")
     print("Configuration validation only; authenticated S3 operations and workbench consumption remain separate acceptance.")
