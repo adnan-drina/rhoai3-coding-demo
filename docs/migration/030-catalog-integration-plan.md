@@ -33,6 +33,11 @@ the hardened OpenShell gateway. Hermes remains clearly pending until its full
 runtime gates pass; the card must be updated with actual qualified image and
 launch instructions after that proof, not hidden from the accepted scope.
 
+An existing discovery update requires the reconciled Stage030 Application and
+ready native KServe/GPU installation, including every currently scheduled GPU
+validator/exporter instance. It does not start deliberately parked capacity;
+first-time installation retains the complete infrastructure prerequisite.
+
 ## Acceptance before this slice is complete
 
 1. Render the native YAML source shape and validate the exact source/image pins.

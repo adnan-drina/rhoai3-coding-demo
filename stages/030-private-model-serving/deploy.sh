@@ -99,7 +99,37 @@ for namespace in ['redhat-ods-applications','openshift-gitops']:get('namespace',
 print('PASS Read-only foundation ownership/delegation and native storage prerequisites')
 PY_PREREQUISITE
 python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
-"$ROOT_DIR/stages/020-gpu-infrastructure-private-ai/validate.sh" --readiness
+if [[ -n "$(oc --request-timeout=10s get application 030-private-model-serving -n openshift-gitops --ignore-not-found -o jsonpath='{.metadata.uid}')" ]]; then
+  # An existing discovery update must not start deliberately parked GPU capacity.
+  # Check native installation and every scheduled GPU DaemonSet instance instead.
+  python3 - <<'PY_UPDATE_READY'
+import json,subprocess,os
+def get(kind,name,ns=None):
+    args=['oc','--request-timeout=10s','get',kind,name,'-o','json']
+    if ns:args+=['-n',ns]
+    r=subprocess.run(args,capture_output=True,text=True,timeout=15)
+    assert r.returncode==0,'Native update prerequisite API unavailable'
+    return json.loads(r.stdout)
+a=get('application','030-private-model-serving','openshift-gitops')
+s=a['spec']['source'];st=a['status'];op=st.get('operationState',{});result=op.get('syncResult',{})
+assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp')
+assert not a['spec'].get('sources') and a['spec']['project']=='rhoai-demo' and a['spec']['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and s.get('repoURL')==os.environ['GIT_REPO_URL'] and s.get('path')=='gitops/stages/030-private-model-serving/base','Existing serving Application identity differs'
+assert st['sync']['status']=='Synced' and st['sync']['revision']==s['targetRevision'] and st['health']['status']=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==s['targetRevision'] and result.get('source',{}).get('path')==s['path'],'Existing serving source must be reconciled before discovery update'
+d=get('datasciencecluster','default-dsc')
+assert d['spec']['components']['kserve']['managementState']=='Managed' and any(c.get('type')=='KserveReady' and c.get('status')=='True' for c in d['status'].get('conditions',[])),'Native KServe is not ready'
+cp=get('clusterpolicy','gpu-cluster-policy')
+assert cp['status'].get('state')=='ready','Native GPU ClusterPolicy is not ready'
+csv=get('clusterserviceversion','gpu-operator-certified.v26.7.1','nvidia-gpu-operator')
+assert csv['status'].get('phase')=='Succeeded','Reviewed GPU operator is not installed'
+for name in ['nvidia-operator-validator','nvidia-dcgm-exporter']:
+    ds=get('daemonset',name,'nvidia-gpu-operator');status=ds['status'];count=status.get('desiredNumberScheduled',0)
+    assert any(o.get('uid')==cp['metadata']['uid'] and o.get('controller') for o in ds['metadata'].get('ownerReferences',[]))
+    assert status.get('observedGeneration')==ds['metadata']['generation'] and status.get('numberReady',0)==count and status.get('updatedNumberScheduled',0)==count,'Scheduled native GPU workload is not current/ready'
+print('PASS Existing native KServe/GPU installation and scheduled workloads; parked capacity is not an update prerequisite')
+PY_UPDATE_READY
+else
+  "$ROOT_DIR/stages/020-gpu-infrastructure-private-ai/validate.sh" --readiness
+fi
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d);trap 'rm -rf "$work"' EXIT
 export GIT_REPO_URL
