@@ -54,8 +54,9 @@ def main():
     parser.add_argument("stage", choices=STAGES)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
-    guard = 'set -euo pipefail; set +x; source "$1/scripts/shared/lib.sh"; REPO_ROOT="${RHOAI_ENV_ROOT:-$1}"; load_env >/dev/null; check_oc_logged_in >/dev/null; python3 -c "import os,json; print(json.dumps({k:os.environ[k] for k in [\"KUBECONFIG\",\"PATH\",\"GIT_REPO_URL\"] if k in os.environ}))"'
-    checked = subprocess.run(["/bin/bash", "-c", guard, "guard", str(root)], capture_output=True, text=True, timeout=30)
+    guard = 'set -euo pipefail; set +x; source "$1/scripts/shared/lib.sh"; REPO_ROOT="${RHOAI_ENV_ROOT:-$1}"; load_env >/dev/null; check_oc_logged_in >/dev/null; python3 -c "$2"'
+    code = 'import os,json; print(json.dumps({k:os.environ[k] for k in ["KUBECONFIG","PATH","GIT_REPO_URL"] if k in os.environ}))'
+    checked = subprocess.run(["/bin/bash", "-c", guard, "guard", str(root), code], capture_output=True, text=True, timeout=30)
     if checked.returncode:
         raise RuntimeError("Project cluster identity guard failed")
     ENV.update(json.loads(checked.stdout))
