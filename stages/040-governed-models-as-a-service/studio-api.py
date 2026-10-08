@@ -133,7 +133,7 @@ def bff(service="odh-dashboard-gen-ai-ui", port=8143, identity_kubeconfig=None):
 
 
 def endpoint(path, namespace=NAMESPACE, **query):
-    return "/gen-ai/api/v1/" + path + "?" + urlencode({"namespace": namespace, **query})
+    return "/api/v1/" + path + "?" + urlencode({"namespace": namespace, **query})
 
 
 def qualify_agents(request, model_id):
@@ -171,6 +171,48 @@ def qualify_agents(request, model_id):
     print(json.dumps({"scope": "native agent save/load/variant persistence and foreign-namespace denial", "profiles": receipts}))
 
 
+def persist_new_playground(created_name):
+    """Attach the stage-owned PVC before a newly created playground is used.
+
+    Existing playground state needs the documented backup/restore procedure;
+    main refuses an existing instance before this fresh-only path is called.
+    """
+    pvc = json.loads(oc("get", "pvc", "genai-playground-state", "-n", NAMESPACE, "-o", "json"))
+    if (pvc["metadata"].get("deletionTimestamp") or pvc["metadata"].get("annotations", {}).get(
+            "argocd.argoproj.io/tracking-id", "") != "040-governed-models-as-a-service:/PersistentVolumeClaim:demo-sandbox/genai-playground-state"):
+        raise RuntimeError("Native playground persistence requires the stage-owned retained PVC.")
+    deadline = time.monotonic() + 30
+    while True:
+        instances = json.loads(oc("get", "ogxservers.ogx.io", "-n", NAMESPACE, "-o", "json"))["items"]
+        if instances:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Native playground creation did not produce its customer CR.")
+        time.sleep(1)
+    if (len(instances) != 1 or instances[0]["metadata"].get("deletionTimestamp")
+            or instances[0]["metadata"]["name"] != created_name):
+        raise RuntimeError("New playground identity is ambiguous; no persistence change applied.")
+    current = instances[0]
+    spec = json.loads(json.dumps(current["spec"]))
+    overrides = spec.setdefault("workload", {}).setdefault("overrides", {})
+    if overrides.get("volumes") or overrides.get("volumeMounts"):
+        raise RuntimeError("New playground has unexpected customer mounts; refusing replacement.")
+    overrides["volumes"] = [{"name": "retained-sqlite", "persistentVolumeClaim": {"claimName": "genai-playground-state"}}]
+    overrides["volumeMounts"] = [{"name": "retained-sqlite", "mountPath": "/opt/app-root/src/.llama/distributions/rh"}]
+    patch = [{"op": "test", "path": "/metadata/uid", "value": current["metadata"]["uid"]},
+             {"op": "test", "path": "/metadata/resourceVersion", "value": current["metadata"]["resourceVersion"]},
+             {"op": "test", "path": "/spec", "value": current["spec"]},
+             {"op": "replace", "path": "/spec", "value": spec}]
+    result = subprocess.run(["oc", "--request-timeout=15s", "patch", "ogxserver", current["metadata"]["name"],
+                             "-n", NAMESPACE, "--type=json", "--patch-file=/dev/stdin", "-o", "json"],
+                            input=json.dumps(patch), capture_output=True, text=True, timeout=25)
+    if result.returncode:
+        raise RuntimeError("Native persistence attachment failed; playground must not be used until corrected.")
+    saved = json.loads(result.stdout)
+    if saved["metadata"]["uid"] != current["metadata"]["uid"] or saved["spec"] != spec:
+        raise RuntimeError("Native playground persistence readback differs.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-revision", required=True)
@@ -192,8 +234,9 @@ def main():
             existing = json.loads(oc("get", "ogxservers.ogx.io", "-n", NAMESPACE, "-o", "json"))["items"]
             if existing:
                 raise RuntimeError("Playground already exists; preserve its state and use read-only validation.")
-            request("POST", endpoint("lsd/install"), {"models": [{"model_name": args.install_model,
+            created = request("POST", endpoint("lsd/install"), {"models": [{"model_name": args.install_model,
                     "model_source_type": "maas", "model_type": "llm", "max_tokens": 128}], "enable_tracing": True})
+            persist_new_playground(created["data"]["name"])
             print("[PASS] Native retained playground creation requested with opt-in tracing; readiness and spans still require qualification.")
         elif args.qualify_agents:
             if not args.persona_kubeconfig:

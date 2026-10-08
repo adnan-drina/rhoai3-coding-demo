@@ -1425,7 +1425,7 @@ ls /projects/modernized/.hermes/home/profiles/
 
 **Affected stage:** Stage 130 dest. Gateway can look healthy while a later login shell is unconfigured.
 
-**Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. Worker `MAAS_API_BASE_URL` is the **MaaS gateway** (`MAAS_BASE_URL` + `/models-as-a-service/qwen3-6-27b/v1`), not the in-cluster KServe Service.
+**Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. Worker `MAAS_API_BASE_URL` is the **MaaS gateway** (`MAAS_BASE_URL` + `/v1`, with the canonical internal-models model ID in the request), not the in-cluster KServe Service.
 
 **Diagnose:**
 
@@ -1588,7 +1588,7 @@ oc get pods -n openshift-ingress \
   --no-headers | awk '{print $1}'
 ```
 
-**Recover:** Additive GitOps NetworkPolicy `payload-processing-maas-gateway` (ingress-only, Istio-managed from-selector). Operator syncs stage 040 and confirms `operationState.syncResult.revision`, then smokes `GET /models-as-a-service/qwen3-6-27b/v1/models` until 200. Do not dest-read dest `.env` values.
+**Recover:** Additive GitOps NetworkPolicy `payload-processing-maas-gateway` (ingress-only, Istio-managed from-selector). Operator syncs stage 040 and confirms `operationState.syncResult.revision`, then checks the common `GET /v1/models` discovery endpoint; parked Qwen3.6 need not be listed. Do not dest-read dest `.env` values.
 
 **Related docs:** `gitops/stages/040-governed-models-as-a-service/base/gateway/base/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
 

@@ -6,11 +6,11 @@ A model endpoint alone does not provide a shared enterprise service. Models-as-a
 
 ## Architecture
 
-Qwen models are hosted in the Internal Models project; Qwen3.6 is parked and Qwen3.8 uses one exclusive L40S GPU. Native OpenShift AI controllers connect them to one governed Gateway. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. Separate HTTPS listeners serve the API, Qwen 3.6 and Qwen 3.8; namespace restrictions keep their routes separate. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
+Qwen models are hosted in the Internal Models project; Qwen3.6 is parked and Qwen3.8 uses one exclusive L40S GPU. Native OpenShift AI controllers connect them to one governed Gateway. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. The shared API hostname and `/v1` are the default for body-based model routing. Dedicated Qwen HTTPS listeners remain as compatibility endpoints; each listener retains its explicit namespace restriction. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
 
 ## What This Stage Adds
 
-- Qwen 3.6 27B FP8 and Qwen 3.8 27B INT4, each on one full GPU.
+- Registered Qwen 3.6 27B FP8, parked at zero replicas, and active Qwen 3.8 27B INT4 on one exclusive GPU.
 - Native MaaS API key storage, subscriptions, authentication and token quotas.
 - Reusable single-node topology and queue-routing configurations, with native NVIDIA accelerator templates.
 - Approved GPT-6 Luna access through the native OpenAI external-provider integration.
@@ -19,15 +19,15 @@ Qwen models are hosted in the Internal Models project; Qwen3.6 is parked and Qwe
 
 ## What To Notice And Why It Matters
 
-Private model hosts separate routing while MaaS preserves a common governance boundary. The two full GPUs are this project's model-memory choice; the configuration does not enable time slicing or automatic scaling.
+Clients use the common `/v1` base and the canonical `publishers/internal-models/models/<model-name>` local model IDs. MaaS preserves a common governance boundary. The two full GPUs are this project's model-memory choice; the configuration does not enable time slicing or automatic scaling.
 
 GPT-6 Luna uses the OpenAI Chat Completions protocol. Function calls require `reasoning_effort: none`. OpenAI Responses built-in tools are outside this connection's protocol. External requests leave the cluster for the approved provider.
 
 Native external-model access is Technology Preview. GPT-6 Luna and MiniMax M2 use `openai-chat`, which always uses translation rather than passthrough. Response buffering applies when translating between different API formats; it is not a blanket statement that all external responses are buffered. MaaS subscription token metering applies to OpenAI Chat Completions responses, not models configured as `messages` or `openai-responses`. Provider-key limits apply to aggregate usage by all users sharing that key, and provider entitlement is separate from gateway readiness.
 
-External models are supported only through the default tenant. If a `messages` model is added, its `x-api-key` authentication support is gateway-wide; deleting the last such model disables that header's authentication gateway-wide. The current external models instead use `Authorization: Bearer` with each user's MaaS key. See the [external-model formats and limitations](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service).
+External models are supported only through the default tenant. If a `messages` model is added, its `x-api-key` authentication support is gateway-wide; deleting the last such model disables that header's authentication gateway-wide. GPT and MiniMax use `Authorization: Bearer` with each user's MaaS key. Claude adds the native Messages `x-api-key` path, but its stopped HTTP401 qualification remains unresolved. See the [external-model formats and limitations](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service).
 
-GenAI Studio uses existing model endpoints. A user creates a playground in their project through the dashboard; the native service creates its supporting pgvector storage. Basic playground use does not add another GPU or an object-storage bucket. RAG, AutoRAG and AutoML are outside this stage.
+GenAI Studio uses existing model endpoints. A user creates a playground in their project through the dashboard; the native service creates its supporting pgvector storage. Basic playground use does not add another GPU or an object-storage bucket. The fresh creation helper mounts the retained Studio PVC at its actual SQLite directory; existing playgrounds require private backup and native restore before changing persistence. RAG, AutoRAG and AutoML are outside this stage.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -118,3 +118,9 @@ Claude Sonnet 5.5 uses the documented Anthropic provider and native Messages for
 Use the discovered model endpoint with its `/v1/messages` path, your MaaS key in `x-api-key`, and `anthropic-version: 2023-06-01`. Native Messages passthrough supports streaming but is **not subscription-token-metered**. Cross-format translation buffers streaming responses; provider-key limits aggregate all users. Creating the first Messages ExternalModel enables `x-api-key` authentication gateway-wide; removing the last one disables it. Existing Bearer authentication remains supported. See [RHOAI 3.5 external-model formats](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service).
 
 For a bounded native check, select `RHOAI_STAGE040_MODEL=claude-sonnet-5-5` and `RHOAI_STAGE040_SINGLE_COMPLETION=true` when running `validate-functional.py` with your genuine persona. It performs one positive streaming request with at most 32 output tokens and missing/invalid/revoked-key negatives; it does not retest other models.
+
+## Current Routing Qualification
+
+Three small common-host requests passed: Qwen3.8 native SSE, GPT-6 Luna JSON and MiniMax M2 JSON. Qwen3.6 remains parked and has no inference qualification. The local namespace-qualified legacy path returned503 on the API hostname but passed native SSE on the retained Qwen3.8 hostname. Use common `/v1` for current clients; keep the compatibility hostname until that native path limitation is resolved or its retirement is explicitly accepted. The old `models-as-a-service` local paths and publisher IDs are not aliases. No Claude request was repeated.
+
+Studio retained both saved profile UUIDs/settings and its saved response through a consistent private backup and supported OGX PVC mount. Two unreferenced historical model registrations remain cached: the installed native model API exposes no unregister operation. Fresh persistence attachment is source-reviewed and has not been tested end-to-end in a new environment.

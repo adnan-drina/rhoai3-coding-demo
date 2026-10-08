@@ -60,7 +60,6 @@ spec:
           - key: kubernetes.io/metadata.name
             operator: In
             values:
-            - models-as-a-service
             - internal-models
     tls:
       mode: Terminate
@@ -82,7 +81,6 @@ spec:
           - key: kubernetes.io/metadata.name
             operator: In
             values:
-            - models-as-a-service
             - internal-models
     tls:
       mode: Terminate

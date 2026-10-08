@@ -445,3 +445,10 @@ The unused RHCL MCP Gateway prerequisite is removed from the demo source and clu
 ### Claude Sonnet 5.5 native Messages
 
 Exact Anthropic model ID entitlement is confirmed by one metadata-only request. Source and served schema support native Messages passthrough; live readiness and the single bounded streaming request remain pending. Messages subscription token metering is unsupported; provider quotas aggregate users, and cross-format streaming is buffered. Creating the first Messages ExternalModel enables `x-api-key` authentication gateway-wide. Claude personal access does not expand DevSpaces beyond its retained local-only policy.
+
+
+### Common MaaS routing and Studio persistence checkpoint (2026-10-08)
+
+Local hosting moved to internal-models; governance stays models-as-a-service. Common `/v1` passed bounded Qwen3.8 SSE, GPT JSON and MiniMax JSON requests. Native catalog endpoints select the common API hostname. API-host namespace-qualified local legacy path returned503, while the same path on the retained model hostname passed SSE; native listener-specific processing cause remains unresolved. Keep compatibility listeners pending explicit retirement acceptance; no generated route/Envoy patch. Parked Qwen3.6 is not inference-qualified.
+
+Native Studio PVC restoration preserved its exact saved response and profile UUIDs/settings; temporary restore resources are removed. Two historical cached model IDs remain unreferenced, with no supported unregister API exposed by the installed build. Fresh helper persistence is source-reviewed, fresh E2E untested. No Claude test was resumed and no quota was reset.
