@@ -148,8 +148,8 @@ def route_ready(route, section, controller):
                 ref.get("group", "gateway.networking.k8s.io") == "gateway.networking.k8s.io" and
                 ref.get("kind", "Gateway") == "Gateway" and
                 ref.get("name") == "maas-default-gateway" and
-                ref.get("namespace", route["metadata"]["namespace"]) == "openshift-ingress"):
-            need(ref.get("sectionName") in (None, section), "Unexpected generated route listener")
+                ref.get("namespace", route["metadata"]["namespace"]) == "openshift-ingress" and
+                ref.get("sectionName") in (None, section)):
             matches.append(p)
     need(matches, "Generated route has no current Gateway attachment")
     for p in matches:
@@ -236,7 +236,7 @@ def main():
             native = get("deployment", dep["name"], m["namespace"])
             need(csv_owner(native, csv), "Operator workload has unexpected CSV owner")
             workload(native)
-    print("[PASS] Six Automatic operators and current workloads")
+    print("[PASS] Six selected operators and current workloads")
     dsc = get("datasciencecluster", "default-dsc")
     current(dsc); condition(dsc, "Ready")
     for key in ("aigateway", "ogx", "kserve"):
@@ -298,7 +298,7 @@ def main():
         need(attached >= 1 if name == "api" else attached == 1, "Gateway listener route count violates isolation")
         need(listener.get("port") == 443 and listener.get("protocol") == "HTTPS" and listener.get("tls", {}).get("mode") == "Terminate", "Gateway listener lacks native TLS")
         for ns, obj in namespaces.items():
-            need(allows(listener, obj) == (ns in ("external-models", "redhat-ai-gateway-infra", "internal-models") if name == "api" else ns in ("models-as-a-service", "internal-models")), "Gateway namespace isolation differs")
+            need(allows(listener, obj) == (ns in ("external-models", "redhat-ai-gateway-infra", "internal-models") if name == "api" else ns == "internal-models"), "Gateway namespace isolation differs")
     routes = get("httproutes.gateway.networking.k8s.io", ns="internal-models")["items"]
     api_routes = get("httproutes.gateway.networking.k8s.io", ns="redhat-ai-gateway-infra")["items"]
     ext_routes = get("httproutes.gateway.networking.k8s.io", ns="external-models")["items"]
@@ -345,7 +345,10 @@ def main():
         need(len(selected) == 1, "Native LLMI route ownership is not unique")
         refs = selected[0]["spec"].get("parentRefs", [])
         sections = {r["sectionName"] for r in d["spec"]["router"]["gateway"]["refs"]}
-        need({r.get("sectionName") for r in refs} == sections, "Native LLMI route listener set differs")
+        need(len(refs) == len(sections) and {r.get("sectionName") for r in refs} == sections
+             and all(r.get("name") == "maas-default-gateway" and r.get("namespace") == "openshift-ingress"
+                     and r.get("group", "gateway.networking.k8s.io") == "gateway.networking.k8s.io"
+                     and r.get("kind", "Gateway") == "Gateway" for r in refs), "Native LLMI route listener set differs")
         for target_section in sections:
             route_ready(selected[0], target_section, gateway_controller)
         if "api" in sections:
