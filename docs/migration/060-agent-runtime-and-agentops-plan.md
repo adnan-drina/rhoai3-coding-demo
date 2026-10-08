@@ -270,6 +270,8 @@ Deploy helper finding: the first `deploy-runtime.sh` run re-pinned the Applicati
 
 ## Promoted gateway persona and OpenCode verification checkpoint
 
+Runtime comparison ownership: the entire data maps of the exact `openshell-identity` and `openshell-runtime-ready` ConfigMaps and `openshell-credentials` Secret in namespace `openshell` are runtime-owned; their Git placeholders contain no authored data. The Application ignores only those three data maps to normalize empty-map versus absent-map differences. Metadata, Secret type, gateway configuration and security policies remain compared. Adding Git-authored data to a placeholder requires revisiting this ownership boundary. The manual binary BuildConfig omits its empty trigger list to match the API's canonical absent field; its remaining specification remains compared.
+
 A genuine `ai-developer` browser login through the native CLI passed verified-TLS authentication against the promoted gateway. The session's subject and role (`openshell-user`) equal the pre-upgrade receipt. No bootstrap or administrator credential was used.
 
 Workspace boundaries as that persona: only `openshell-developer` is listed. Its member list and sandbox template are identical to the pre-upgrade API receipts. Sandbox, template and member requests for `openshell-admin`, and sandbox requests for `default`, were refused as non-member. Workspace creation was refused with the platform-admin requirement, and reading the global policy was refused as a cross-workspace operation.

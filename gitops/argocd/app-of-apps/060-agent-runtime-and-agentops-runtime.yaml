@@ -44,7 +44,7 @@
         "name": "openshell-credentials",
         "namespace": "openshell",
         "jsonPointers": [
-          "/data/key-encryption-key"
+          "/data"
         ]
       },
       {
@@ -53,7 +53,7 @@
         "name": "openshell-identity",
         "namespace": "openshell",
         "jsonPointers": [
-          "/data/issuer"
+          "/data"
         ]
       },
       {
@@ -62,9 +62,7 @@
         "name": "openshell-runtime-ready",
         "namespace": "openshell",
         "jsonPointers": [
-          "/data/controller-ready",
-          "/data/source-revision",
-          "/data/controller-csv-uid"
+          "/data"
         ]
       }
     ]
