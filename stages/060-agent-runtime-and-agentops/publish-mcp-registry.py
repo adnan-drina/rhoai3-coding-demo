@@ -141,7 +141,10 @@ def main():
                 need(code in (200, 201) and all(created.get(k) == v for k, v in endpoint.items()), 'Native endpoint publication failed')
                 state['endpoint'] = created
                 save(statepath, state)
-            code, record = call('PATCH', versionpath, {'status': 'active', 'tools': proof['tools']})
+            if record.get('status') != 'active':
+                code, record = call('PATCH', versionpath, {'status': 'active', 'tools': proof['tools']})
+            else:
+                code = 200  # Native state transitions reject active -> active.
             need(code == 200 and record.get('status') == 'active' and tool_metadata(record.get('tools', [])) == tool_metadata(proof['tools']), 'Native version activation/tool metadata readback failed')
             state['qualified'] = True
             save(statepath, state)
