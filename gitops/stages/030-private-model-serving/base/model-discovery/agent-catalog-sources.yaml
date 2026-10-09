@@ -21,13 +21,13 @@ data:
         enabled: true
         properties:
           yamlCatalogPath: governed-coding-agents.yaml
-        labels: [coding, governed-runtime]
+        labels: [coding]
   governed-coding-agents.yaml: |
     agents:
       - name: opencode
-        displayName: OpenCode — governed coding runtime
+        displayName: OpenCode
         framework: opencode
-        description: Standalone OpenCode hosted behind the authenticated OpenShell gateway. Transport and lifecycle have been qualified; governed model-backed task acceptance remains pending.
+        description: Coding agent for interactive software development.
         labels: [coding, opencode, governed-runtime]
         repositoryUrl: https://github.com/adnan-drina/rhoai3-coding-demo/tree/a769444a10eb654e77af433943dc82ea5016ac57/stages/060-agent-runtime-and-agentops
         readme: |
@@ -52,9 +52,9 @@ data:
           See the repository's Stage 060 README for current status and the
           implementation plan for the pinned development-build exception.
       - name: hermes
-        displayName: Hermes — governed coding runtime integration
+        displayName: Hermes
         framework: hermes
-        description: Required standalone Hermes integration using the same authenticated runtime and independent verification boundary. Runtime integration is not yet qualified.
+        description: Agent for multi-step coding and task workflows.
         labels: [coding, hermes, qualification-pending]
         repositoryUrl: https://github.com/adnan-drina/rhoai3-coding-demo/tree/a769444a10eb654e77af433943dc82ea5016ac57/stages/060-agent-runtime-and-agentops
         readme: |

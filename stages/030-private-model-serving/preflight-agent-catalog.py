@@ -19,11 +19,13 @@ def check(existing, desired):
     if parsed.returncode:
         raise RuntimeError('Desired catalog YAML is invalid')
     catalogs = json.loads(parsed.stdout)
-    if catalogs['sources.yaml'] != {'agent_catalogs': [{'id': 'governed-coding-agents', 'name': 'Governed Coding Agents', 'type': 'yaml', 'enabled': True, 'properties': {'yamlCatalogPath': 'governed-coding-agents.yaml'}, 'labels': ['coding', 'governed-runtime']}]}:
+    if catalogs['sources.yaml'] != {'agent_catalogs': [{'id': 'governed-coding-agents', 'name': 'Governed Coding Agents', 'type': 'yaml', 'enabled': True, 'properties': {'yamlCatalogPath': 'governed-coding-agents.yaml'}, 'labels': ['coding']}]}:
         raise RuntimeError('Desired source ID/path/schema differs')
     agents = catalogs['governed-coding-agents.yaml'].get('agents', [])
     if {a.get('name') for a in agents} != {'opencode', 'hermes'} or len(agents) != 2 or any(not a.get('readme') or a.get('templates') or a.get('artifacts') for a in agents):
         raise RuntimeError('Desired agent cards must be the two reviewed metadata-only entries')
+    if {a.get('name'): a.get('displayName') for a in agents} != {'opencode': 'OpenCode', 'hermes': 'Hermes'}:
+        raise RuntimeError('Desired agent display names differ')
     if existing is None:
         return
     metadata = existing["metadata"]

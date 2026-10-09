@@ -8,6 +8,7 @@ it never edits its generated deployments, collector configuration or database.
 import argparse
 from contextlib import contextmanager
 import http.client
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ import socket
 import ssl
 import subprocess
 import time
+import uuid
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -136,39 +138,103 @@ def endpoint(path, namespace=NAMESPACE, **query):
     return "/api/v1/" + path + "?" + urlencode({"namespace": namespace, **query})
 
 
-def qualify_agents(request, model_id):
+def agent_profile_record(profile_id):
+    """Private identity/content snapshot, never a payload-bearing receipt."""
+    cm = json.loads(oc("get", "configmap", "agent-profile-" + profile_id,
+                       "-n", NAMESPACE, "-o", "json"))
+    metadata = cm["metadata"]
+    if (metadata.get("name") != "agent-profile-" + profile_id
+            or metadata.get("namespace") != NAMESPACE
+            or metadata.get("ownerReferences") or metadata.get("finalizers") or metadata.get("deletionTimestamp")
+            or metadata.get("labels", {}).get("opendatahub.io/agent-profile") != "true"):
+        raise RuntimeError("Foreign agent fixture record; cleanup refused.")
+    return {"uid": metadata["uid"], "resource_version": metadata["resourceVersion"],
+            "data_hash": hashlib.sha256(json.dumps(cm.get("data", {}), sort_keys=True).encode()).hexdigest()}
+
+
+def qualify_agents(request, model_id, record_reader=None):
     # GenAI flattens the inter-BFF MaaS envelope into {object, data:[...]}.
     models = request("GET", endpoint("maas/models"))["data"]
     selected = [m for m in models if m["id"] == model_id and m.get("ready")]
     if len(selected) != 1:
         raise RuntimeError("Selected governed model is not uniquely available to this persona.")
     profiles = request("GET", endpoint("agent-profiles"))["data"]["profiles"]
-    receipts = []
-    for variant in (False, True):
-        name = "Governed code review" + (" variant" if variant else "")
-        spec = {"displayName": name, "description": "Reviewed public demo configuration",
-                "model": {"id": model_id, "uri": selected[0]["url"], "sourceType": "maas"},
-                "prompt": {"name": "governed-code-review", "source": "mlflow",
-                           "namespace": NAMESPACE, "version": "2"},
-                "maxOutputTokens": 128, "temperature": .1 if variant else 0, "stream": True}
-        found = [p for p in profiles if p["displayName"] == name]
-        if len(found) > 1:
-            raise RuntimeError("Duplicate sample agent names; refusing ambiguous adoption.")
-        created = found[0] if found else request("POST", endpoint("agent-profiles"), {"spec": spec})["data"]
-        profile_id = created["profileId"]
-        loaded = request("GET", endpoint("agent-profiles/" + profile_id))["data"]
-        if loaded["spec"] != spec:
-            raise RuntimeError("Persisted agent configuration differs; refusing overwrite.")
-        receipts.append({"profile_id": profile_id, "variant": variant, "persisted": True})
-    # MLflow global read access must not confer foreign project agent access.
+    preexisting = {p["profileId"] for p in profiles}
+    record_reader = record_reader or agent_profile_record
+    run_id = uuid.uuid4().hex[:12]
+    owned, receipts, deleted, retained = [], [], [], []
+    failure = None
     try:
-        request("GET", endpoint("agent-profiles", namespace="ai-curated-prompts"))
-    except NativeError as error:
-        if error.status != 403:
-            raise
-    else:
-        raise RuntimeError("Persona can access foreign agent configuration namespace.")
-    print(json.dumps({"scope": "native agent save/load/variant persistence and foreign-namespace denial", "profiles": receipts}))
+        for variant in (False, True):
+            name = "Qualification code review " + run_id + (" variant" if variant else "")
+            spec = {"displayName": name, "description": "Disposable owned qualification fixture",
+                    "model": {"id": model_id, "uri": selected[0]["url"], "sourceType": "maas"},
+                    "prompt": {"name": "governed-code-review", "source": "mlflow",
+                               "namespace": NAMESPACE, "version": "2"},
+                    "maxOutputTokens": 128, "temperature": .1 if variant else 0, "stream": True}
+            created = request("POST", endpoint("agent-profiles"), {"spec": spec})["data"]
+            profile_id = created["profileId"]
+            if str(uuid.UUID(profile_id)) != profile_id or profile_id in preexisting or any(e["id"] == profile_id for e in owned):
+                raise RuntimeError("Native create returned a foreign or duplicate fixture ID; adoption refused.")
+            entry = {"id": profile_id, "spec": spec, "record": None}
+            owned.append(entry)  # Journal the returned ID before further reads can fail.
+            entry["record"] = record_reader(profile_id)
+            loaded = request("GET", endpoint("agent-profiles/" + profile_id))["data"]
+            if loaded["metadata"]["name"] != profile_id or loaded["spec"] != spec:
+                raise RuntimeError("Persisted owned agent configuration differs; refusing overwrite.")
+            receipts.append({"profile_id": profile_id, "variant": variant, "persisted": True})
+        # MLflow global read access must not confer foreign project agent access.
+        try:
+            request("GET", endpoint("agent-profiles", namespace="ai-curated-prompts"))
+        except NativeError as error:
+            if error.status != 403:
+                raise
+        else:
+            raise RuntimeError("Persona can access foreign agent configuration namespace.")
+    except Exception as error:
+        failure = error
+    finally:
+        for entry in owned:
+            profile_id = entry["id"]
+            try:
+                try:
+                    current = request("GET", endpoint("agent-profiles/" + profile_id))["data"]
+                except NativeError as error:
+                    if error.status != 404:
+                        raise
+                    deleted.append(profile_id)
+                    continue  # An initial GET proves an already absent record.
+                record = record_reader(profile_id)
+                if (entry["record"] is None or current["metadata"]["name"] != profile_id
+                        or current["spec"] != entry["spec"] or record != entry["record"]):
+                    raise RuntimeError("Owned fixture changed or identity was not recorded.")
+                # Native DELETE lacks CAS; refuse observed changes immediately before it.
+                try:
+                    request("DELETE", endpoint("agent-profiles/" + profile_id))
+                except NativeError as error:
+                    if error.status != 404:
+                        raise
+                    # DELETE404 itself is not absence proof; always verify below.
+                try:
+                    request("GET", endpoint("agent-profiles/" + profile_id))
+                except NativeError as error:
+                    if error.status != 404:
+                        raise
+                    deleted.append(profile_id)
+                else:
+                    raise RuntimeError("Native DELETE returned without confirmed absence.")
+            except NativeError:
+                retained.append({"profile_id": profile_id, "reason": "Native cleanup or absence verification failed."})
+            except Exception:
+                retained.append({"profile_id": profile_id, "reason": "Identity/content guard failed; review this retained fixture."})
+        print(json.dumps({"scope": "disposable agent persistence and foreign-namespace denial; no inference",
+                          "run_id": run_id, "profiles": receipts,
+                          "cleanup": {"deleted_ids": deleted, "retained": retained},
+                          "cleanup_boundary": "Immediate identity/content recheck; native DELETE has no atomic precondition."}))
+    if retained:
+        raise RuntimeError("Qualification left guarded fixtures for review; exact IDs are in the cleanup receipt.") from None
+    if failure is not None:
+        raise failure
 
 
 def persist_new_playground(created_name):
@@ -218,7 +284,7 @@ def main():
     parser.add_argument("--expected-revision", required=True)
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--install-model", help="Explicit native MaaS model ID; creates a new retained playground, never replaces one")
-    action.add_argument("--qualify-agents", metavar="MODEL_ID", help="Save/load retained public sample agent variants; no inference")
+    action.add_argument("--qualify-agents", metavar="MODEL_ID", help="Save/load disposable owned agent variants and clean them; no inference")
     action.add_argument("--initialize-guardrails", action="store_true", help="Native Studio guardrail initialization; no model calls")
     parser.add_argument("--persona-kubeconfig", help="Existing developer identity; bootstrap context performs Application guards only")
     args = parser.parse_args()
