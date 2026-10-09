@@ -42,7 +42,16 @@ for wheel in meta['wheels']:
 
 PY
 BUILD="$(oc --request-timeout=120s start-build hermes-runtime-api -n ai-agents --from-dir="$CONTEXT" -o name)"
-oc --request-timeout=15s wait "$BUILD" -n ai-agents --for=jsonpath='{.status.phase}'=Complete --timeout=610s
+# A terminal failed build must not wait for the successful-completion deadline.
+for attempt in {1..120}; do
+  phase="$(oc --request-timeout=15s get "$BUILD" -n ai-agents -o jsonpath='{.status.phase}')"
+  case "$phase" in
+    Complete) break ;;
+    Failed|Error|Cancelled) echo "Hermes image build failed: $phase" >&2; exit 1 ;;
+  esac
+  sleep 5
+done
+[[ "$phase" == Complete ]] || { echo 'Hermes image build deadline exceeded' >&2; exit 1; }
 python3 - "$BUILD" <<'PYRESULT'
 import json,re,subprocess,sys
 def get(kind,name):
