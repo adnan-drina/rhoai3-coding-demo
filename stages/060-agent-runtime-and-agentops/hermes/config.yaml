@@ -1,0 +1,39 @@
+# A fresh standalone profile, separate from Stage 130 migration profiles.
+model:
+  provider: qwen38
+  default: publishers/internal-models/models/qwen3-8-27b-int4
+  base_url: ''
+  api_mode: chat_completions
+  context_length: 262144
+  max_tokens: 1024
+providers:
+  qwen38:
+    api: https://__MAAS_COMMON_HOST__/v1
+    key_env: MAAS_API_KEY
+    discover_models: false
+    models:
+      publishers/internal-models/models/qwen3-8-27b-int4:
+        context_length: 262144
+agent:
+  max_turns: 4
+platform_toolsets:
+  api_server: [file, terminal]
+gateway:
+  api_server:
+    enabled: true
+    host: 127.0.0.1
+    port: 8642
+    max_concurrent_runs: 1
+approvals:
+  mode: manual
+security:
+  allow_lazy_installs: false
+  tirith_enabled: false
+auxiliary:
+  title_generation:
+    enabled: false
+  background_review:
+    enabled: false
+terminal:
+  backend: local
+  cwd: /sandbox/workspace

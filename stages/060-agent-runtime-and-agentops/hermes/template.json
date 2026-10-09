@@ -1,0 +1,22 @@
+{
+  "name": "hermes",
+  "workspace": "ai-agents",
+  "image": "image-registry.openshift-image-registry.svc:5000/ai-agents/hermes-runtime-api@sha256:b20974ad1bd66f081a48455458f1a7e9f882efa882bbbfb173f94d395a32116c",
+  "cpu": "1",
+  "memory": "1Gi",
+  "env": {
+    "HOME": "/sandbox/state",
+    "HERMES_HOME": "/sandbox/state/hermes",
+    "HERMES_MANAGED_DIR": "/sandbox/state/hermes/managed-unused",
+    "TMPDIR": "/tmp",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "HERMES_DISABLE_LAZY_INSTALLS": "1",
+    "HERMES_MAX_ITERATIONS": "4",
+    "HERMES_MAX_TOKENS": "1024"
+  },
+  "labels": {
+    "app.kubernetes.io/name": "hermes",
+    "app.kubernetes.io/part-of": "rhoai3-coding-demo",
+    "demo.rhoai.io/stage": "060"
+  }
+}

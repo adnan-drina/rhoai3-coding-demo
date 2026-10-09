@@ -1,0 +1,31 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: hermes-private-qwen38
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: hermes-private-qwen38
+    app.kubernetes.io/component: agent-model-access
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: '060'
+  annotations:
+    argocd.argoproj.io/sync-wave: '18'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  owner:
+    users: [ai-admin]
+  modelRefs:
+  - name: qwen3-8-27b-int4
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 100000
+      window: 1h
+  # Explicitly bound keys use this scope; the personal default retains precedence.
+  priority: 130
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      agent: hermes
+      modelSet: qwen38-only
