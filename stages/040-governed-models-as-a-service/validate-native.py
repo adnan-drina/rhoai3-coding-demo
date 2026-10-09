@@ -390,10 +390,6 @@ def main():
             need(obj.get("status", {}).get("phase") == "Ready", "Native model registration phase is not Ready")
         if kind != "MaaSModelRef":
             condition(obj, "Ready", True)
-            if kind == "ExternalProvider" and name == "redhat-models":
-                endpoint = urlparse(os.environ.get("REDHAT_MODELS_BASE_URL", ""))
-                need(endpoint.scheme == "https" and endpoint.port in (None, 443) and endpoint.path in ("", "/", "/v1", "/v1/") and endpoint.hostname and not endpoint.username and not endpoint.password and not endpoint.query and not endpoint.fragment, "Approved Red Hat provider input is unavailable")
-                d["spec"]["endpoint"] = endpoint.hostname
             need(contains_spec(obj["spec"], d["spec"]), "External native configuration differs from reviewed spec")
         if kind == "ExternalProvider":
             sec = get("secret", obj["spec"]["auth"]["secretRef"]["name"], ns)

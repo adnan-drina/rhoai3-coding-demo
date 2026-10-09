@@ -606,7 +606,7 @@ argocd app sync 010-openshift-ai-platform-foundation
 
 **Symptom:** Headers and body arrive, then the connection never closes (HTTP/1.1: no terminating chunk; HTTP/2: no end-of-stream) and the client waits for its own timeout. The gateway access log shows `DC downstream_remote_disconnect` with a duration equal to the client timeout, and `Task failed` appears in the gateway pod log about two seconds after the upstream reply.
 
-**Likely cause:** The MaaS-generated `TokenRateLimitPolicy` makes the Kuadrant wasm filter pause at end-of-stream to read `/usage/total_tokens` from the response body. When that value cannot be read the filter never resumes ([Kuadrant/wasm-shim#425](https://github.com/Kuadrant/wasm-shim/issues/425), fixed in wasm-shim 0.14.3; Connectivity Link 1.4.3 ships 0.14.2). It triggers for any response without OpenAI usage: Anthropic Messages bodies, 4xx/5xx error bodies from any model, and SSE streams whose usage is not in the event right before `[DONE]` (MiniMax M2 sends usage, then an empty chunk, then `[DONE]`; clients that stop reading at `[DONE]` do not notice, but the stream is never metered).
+**Likely cause:** The MaaS-generated `TokenRateLimitPolicy` makes the Kuadrant wasm filter pause at end-of-stream to read `/usage/total_tokens` from the response body. When that value cannot be read the filter never resumes ([Kuadrant/wasm-shim#425](https://github.com/Kuadrant/wasm-shim/issues/425), fixed in wasm-shim 0.14.3; Connectivity Link 1.4.3 ships 0.14.2). It triggers for any response without OpenAI usage: Anthropic Messages bodies, 4xx/5xx error bodies from any model, and SSE streams whose usage is not in the event right before `[DONE]` (a provider that sends usage, then an empty chunk, then `[DONE]` — MiniMax M2 did; clients that stop reading at `[DONE]` do not notice, but the stream is never metered).
 
 **Diagnose:**
 
@@ -624,7 +624,7 @@ oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/
 **Recover:**
 
 - Claude: keep the `openai-chat` registration against Anthropic's OpenAI-compatible endpoint (`path: /v1/chat/completions`); the native `messages` registration hangs on this gateway build.
-- Other models: the hang on error responses and on MiniMax M2 streams clears with a Connectivity Link release that ships wasm-shim 0.14.3 or later; see `BACKLOG.md`.
+- Other models: the hang on error responses (and on streams with that usage placement) clears with a Connectivity Link release that ships wasm-shim 0.14.3 or later; see `BACKLOG.md`.
 - Do not enable response-phase `api-translation` on `payload-processing-plugins` as a workaround: it buffers every model's stream to completion.
 
 ## External Model Returns A Fast 503 `upstream_reset_before_response_started`

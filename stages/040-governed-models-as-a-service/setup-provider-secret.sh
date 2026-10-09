@@ -9,7 +9,7 @@ load_env
 check_oc_logged_in
 python3 - <<'PY'
 import base64,json,os,subprocess,time
-NS='external-models';NAME=os.environ.get('RHOAI_STAGE040_PROVIDER_SECRET','openai-provider-api-key');assert NAME in ('openai-provider-api-key','redhat-models-provider-api-key','anthropic-provider-api-key'),'Unreviewed provider credential';APP='040-governed-models-as-a-service'
+NS='external-models';NAME=os.environ.get('RHOAI_STAGE040_PROVIDER_SECRET','openai-provider-api-key');assert NAME in ('openai-provider-api-key','anthropic-provider-api-key'),'Unreviewed provider credential';APP='040-governed-models-as-a-service'
 ROTATE=os.environ.get('RHOAI_STAGE040_ROTATE_PROVIDER_SECRET','false').lower()
 assert ROTATE in ('true','false'),'Rotation flag must be explicitly true or false'
 assert ROTATE!='true' or NAME=='openai-provider-api-key','Explicit rotation is scoped to the OpenAI provider'
@@ -51,7 +51,7 @@ try:
    assert not prior['metadata'].get('deletionTimestamp'),'Prior credential is terminating'
    encoded=prior.get('data',{}).get('api-key','');assert base64.b64decode(encoded,validate=True),'Prior authorized credential is incomplete'
   else:
-   value=(os.environ.get('OPENAI_API_KEY') or os.environ.get('RHOAI_OPENAI_API_KEY')) if NAME=='openai-provider-api-key' else os.environ.get('ANTHROPIC_API_KEY') if NAME=='anthropic-provider-api-key' else os.environ.get('REDHAT_MODELS_API_KEY');assert value,'Authorized provider credential is unavailable'
+   value=(os.environ.get('OPENAI_API_KEY') or os.environ.get('RHOAI_OPENAI_API_KEY')) if NAME=='openai-provider-api-key' else os.environ.get('ANTHROPIC_API_KEY');assert value,'Authorized provider credential is unavailable'
    encoded=base64.b64encode(value.encode()).decode()
   secret={'apiVersion':'v1','kind':'Secret','metadata':{'name':NAME,'namespace':NS,'labels':{'inference.llm-d.ai/ipp-managed':'true','app.kubernetes.io/part-of':'rhoai3-coding-demo'}},'type':'Opaque','data':{'api-key':encoded}}
   r=subprocess.run(['oc','--request-timeout=10s','create','-f','-'],input=json.dumps(secret),capture_output=True,text=True,timeout=15)

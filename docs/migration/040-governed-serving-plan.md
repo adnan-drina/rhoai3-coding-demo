@@ -16,6 +16,8 @@ Product boundaries follow [RHOAI3.5 MaaS §1.21](https://docs.redhat.com/en/docu
 
 Status on 2026-10-05: deployed at `6ab5e6f9ee35c89d189c6f48973f8bf40be620f1`, with the exact native operation Succeeded and Application Synced/Healthy. Both pinned private models and the conditionally qualified Red Hat MiniMax model passed bounded governed inference and streaming. GPT-6 Luna remains blocked by the external account's exhausted credit balance. Quota enforcement passed; EPP execution remains unqualified despite successful Pod-targeted inference. GenAI Studio visual interaction remains user-owned. No bucket was created.
 
+Status on 2026-10-09: MiniMax M2 and the `redhat-models` ExternalProvider were removed from the governed catalog (manifests, personal subscriptions and auth policies, deploy/preflight/validation code paths); GPT-6 Luna and Claude Sonnet 5.5 remain the external models. The Stage 070 workspace AD-008 MiniMax escalation path, which targets the Red Hat portal directly, is unchanged.
+
 ## Scope and current source
 
 The historical audit covered 76 files (11 stage files and 65 GitOps files), plus the Application, and rendered 77 resources. That inventory is local ignored evidence in `/private/tmp/stage040-audit-20261005/`. The deployed base renders 80 resources. Preserve two exclusive L40S workers and the original Qwen model choices, one GPU each. AutoRAG, AutoML, evaluation, time slicing, automatic scaling and additional GPUs are excluded. Basic GenAI Studio consumes these model endpoints; its dashboard-created project storage is native service state, not a second authored database.
