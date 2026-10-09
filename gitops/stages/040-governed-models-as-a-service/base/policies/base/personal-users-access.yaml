@@ -34,11 +34,6 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
-    - name: gpt-4-1
-      namespace: external-models
-      tokenRateLimits:
-        - limit: 100000
-          window: 1h
     # Native Messages usage is not subscription-token-metered; provider limits apply.
     - name: claude-sonnet-5-5
       namespace: external-models
@@ -82,8 +77,6 @@ spec:
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
-    - name: gpt-4-1
-      namespace: external-models
     - name: claude-sonnet-5-5
       namespace: external-models
     - name: nemotron-3-ultra-550b-a55b
@@ -124,11 +117,6 @@ spec:
         - limit: 1000000
           window: 1h
     - name: gpt-6-luna
-      namespace: external-models
-      tokenRateLimits:
-        - limit: 100000
-          window: 1h
-    - name: gpt-4-1
       namespace: external-models
       tokenRateLimits:
         - limit: 100000
@@ -176,8 +164,6 @@ spec:
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
-    - name: gpt-4-1
-      namespace: external-models
     - name: claude-sonnet-5-5
       namespace: external-models
     - name: nemotron-3-ultra-550b-a55b
@@ -218,11 +204,6 @@ spec:
         - limit: 1000000
           window: 1h
     - name: gpt-6-luna
-      namespace: external-models
-      tokenRateLimits:
-        - limit: 100000
-          window: 1h
-    - name: gpt-4-1
       namespace: external-models
       tokenRateLimits:
         - limit: 100000
@@ -269,8 +250,6 @@ spec:
     - name: qwen3-8-27b-int4
       namespace: internal-models
     - name: gpt-6-luna
-      namespace: external-models
-    - name: gpt-4-1
       namespace: external-models
     - name: claude-sonnet-5-5
       namespace: external-models
