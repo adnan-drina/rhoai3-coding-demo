@@ -10,3 +10,9 @@ resources:
   - rolebinding-openshell-developer.yaml
   - serviceaccount-openshell-admin.yaml
   - serviceaccount-openshell-developer.yaml
+  - namespace-ai-agents.yaml
+  - role-ai-agents.yaml
+  - rolebinding-ai-agents.yaml
+  - serviceaccount-ai-agents.yaml
+  - networkpolicy-ai-agents.yaml
+  - admin-rolebinding-ai-agents.yaml

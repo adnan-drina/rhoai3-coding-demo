@@ -19,6 +19,7 @@ git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runt
 if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
+  "$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
   exit
 fi
 # Fail closed on foreign App or resource ownership before the first component write.
@@ -35,7 +36,7 @@ if a:
  assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/runtime'
  assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshell'}
  assert a.get('status',{}).get('operationState',{}).get('phase') not in ('Running','Terminating')
-for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
+for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','ai-agents','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
  o=get(kind,name,ns)
  if o:
   m=o['metadata'];group=o['apiVersion'].split('/')[0] if '/' in o['apiVersion'] else ''
@@ -69,3 +70,5 @@ python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
 "$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/controller" --wait 900
 "$PYTHON" "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
 ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --health --operation --timeout 600
+
+"$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"

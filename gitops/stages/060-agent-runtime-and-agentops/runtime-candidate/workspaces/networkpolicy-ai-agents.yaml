@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openshell-sandbox-ssh
+  namespace: ai-agents
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: agent-runtime
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  podSelector:
+    matchLabels:
+      openshell.ai/managed-by: openshell
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshell
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: openshell
+          app.kubernetes.io/instance: openshell
+    ports:
+    - protocol: TCP
+      port: 2222

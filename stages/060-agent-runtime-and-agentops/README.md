@@ -45,6 +45,8 @@ A policy written in a prompt is different from a denied operation enforced by th
 
 Agent discovery does not host an agent, and aggregate model usage does not reveal every tool or planning step. Keep those responsibilities distinct when assessing safety and task success.
 
+The OpenShell control plane stays in `openshell`. The **AI Agents** project (`ai-agents`) is a separate, administrator-managed hosting boundary, mapped one-to-one to the native `ai-agents` workspace. Its OpenShift project administrators are `rhods-admins`; only the verified `ai-admin` identity receives native workspace administration. The existing `openshell-admin` and `openshell-developer` workspaces retain their separate memberships. Creating this foundation does not launch an agent.
+
 ## How Red Hat And Open Source Make It Work
 
 OpenShift supplies the execution and identity platform. NVIDIA OpenShell supplies sandbox controls and policy interfaces, while OpenCode and Hermes supply the agent workflows. Existing Models-as-a-Service governs inference, and existing MLflow retains explicitly instrumented evidence.

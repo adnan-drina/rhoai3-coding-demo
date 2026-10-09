@@ -1,0 +1,20 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '-20'
+  labels:
+    app.kubernetes.io/component: agent-runtime
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  name: openshell-sandbox
+  namespace: ai-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openshell-sandbox
+subjects:
+- kind: ServiceAccount
+  name: openshell
+  namespace: openshell
