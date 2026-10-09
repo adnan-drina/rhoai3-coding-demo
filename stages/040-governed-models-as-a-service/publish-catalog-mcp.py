@@ -136,7 +136,9 @@ def publish(args, env):
         print('PASS Studio catalog publication repeat was a no-op.')
     else:
         op = 'replace' if changed else 'add'
-        after = patch(env, 'configmap', CM, NAMESPACE, cm, [{'op': 'test', 'path': '/data', 'value': old}, {'op': op, 'path': '/data/' + key, 'value': encoded}])
+        # An empty data map is omitted by the API server, so the first key must create the map itself.
+        ops = [{'op': 'test', 'path': '/data', 'value': old}, {'op': op, 'path': '/data/' + key, 'value': encoded}] if 'data' in cm else [{'op': 'add', 'path': '/data', 'value': {key: encoded}}]
+        after = patch(env, 'configmap', CM, NAMESPACE, cm, ops)
         need(after['metadata']['uid'] == cm['metadata']['uid'] and after['data'] == {**old, key: encoded}, 'Unexpected discovery ConfigMap change')
         print('PASS ' + ('Replaced' if changed else 'Added') + ' the single nonsecret Studio catalog field; other entries retained.')
     return value
