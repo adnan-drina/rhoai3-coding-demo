@@ -118,7 +118,7 @@ print(f"merged {len(lines)} predictions ({empty} empty) into s3://{bucket}/swebe
 '''
 job = {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": f"swebench-merge-{e['RUN']}", "namespace": e["TENANT"], "labels": {"app.kubernetes.io/name": "swebench-agent", "swebench.rhoai.io/run": e["RUN"]}},
   "spec": {"backoffLimit": 1, "ttlSecondsAfterFinished": 3600, "template": {"spec": {"restartPolicy": "Never",
-    "containers": [{"name": "merge", "image": "registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:6552d908bb1daf0ac4b4ecf23e08a0eb7c99c84e9f3d84b25fa1a5f7a8a0cf4c",
+    "containers": [{"name": "merge", "image": "registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:6552d90818c098ce2b1cd057684c3dd832035cfb71f6ccf2ab207b701f536b18",
       "command": ["python3", "-c", script], "env": [{"name": "RUN_ID", "value": e["RUN"]}], "envFrom": [{"secretRef": {"name": "evalhub-s3-test-data"}}],
       "resources": {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"cpu": "500m", "memory": "512Mi"}}}]}}}}
 print(json.dumps(job))

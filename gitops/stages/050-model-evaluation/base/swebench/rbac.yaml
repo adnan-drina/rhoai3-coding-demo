@@ -2,9 +2,8 @@
 # The SWE-bench adapter runs as the operator-provisioned tenant job ServiceAccount and creates one
 # grading Job per instance in the tenant namespace (adapter README: RBAC requirement).
 # The adapter README also requires the anyuid SCC for that ServiceAccount (its grading init container
-# runs as UID 0) and the patch-generation Jobs need it for the root-owned SWE-bench instance images.
-# That ClusterRoleBinding is a cluster-wide permission grant and is applied by a human reviewer, not
-# from this directory; see stages/050-model-evaluation/README.md.
+# runs as UID 0) and the patch-generation Jobs need it for the root-owned SWE-bench instance images;
+# that ClusterRoleBinding is at the end of this file (operator approval 2026-10-09).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -59,3 +58,29 @@ metadata:
     app.kubernetes.io/managed-by: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "12"
+---
+# SWE-bench instance images keep the repository and its conda environment under root-owned paths and the
+# grading init container runs as UID 0, so both ServiceAccounts need the anyuid SCC (adapter README,
+# "OpenShift SCC Requirement"). Scope: exactly these two ServiceAccounts in demo-sandbox.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: swebench-eval-anyuid-demo-sandbox
+  labels:
+    app.kubernetes.io/name: swebench-eval
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-evalhub-job
+    namespace: demo-sandbox
+  - kind: ServiceAccount
+    name: swebench-agent
+    namespace: demo-sandbox

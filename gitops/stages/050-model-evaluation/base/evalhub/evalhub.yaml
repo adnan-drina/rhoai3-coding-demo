@@ -28,6 +28,9 @@ spec:
     - lighteval
     - lm-evaluation-harness
     - ragas
+    # Community SWE-bench adapter (eval-hub-contrib, pinned by digest in swebench/provider-configmap.yaml),
+    # approved by the operator on 2026-10-09; not a Red Hat built-in provider.
+    - swebench
   collections:
     - coding-v1
     - instruction-following-v1
