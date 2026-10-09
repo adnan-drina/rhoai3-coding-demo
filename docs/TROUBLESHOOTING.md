@@ -2341,7 +2341,7 @@ oc logs -n demo-sandbox <pod> -c sidecar | grep -E 'Proxying model request|Error
 oc get cm -n demo-sandbox <job-id-prefix>-...-spec -o jsonpath='{.data.sidecar_config\.json}' | jq .model
 ```
 
-**Recover:** Keep each request under 30 seconds: serve the evaluated model with at least 16 concurrent sequences (an evaluation serving profile in Stage 030), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
+**Recover:** Keep each request under 30 seconds: both Stage 040 Qwen profiles admit 16 concurrent sequences since 2026-10-09 (a 16-sample request then takes about 14 seconds), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. If every sample reports `finish_reason: length` with empty content, the model is serving thinking mode by default (Qwen 3.6): the adapter cannot pass `enable_thinking` per request and Qwen 3.6 ignores `/no_think`, so the server default must be non-thinking with the card's non-thinking sampling, as on Qwen 3.8. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
 
 ## Model Catalog Safety And Security Insights Tab Spins Forever
 

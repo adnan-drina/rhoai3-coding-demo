@@ -6,11 +6,11 @@ A model endpoint alone does not provide a shared enterprise service. Models-as-a
 
 ## Architecture
 
-Qwen models are hosted in the Internal Models project; Qwen3.6 is parked and Qwen3.8 uses one exclusive L40S GPU. Native OpenShift AI controllers connect them to one governed Gateway. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. The shared API hostname and `/v1` are the default for body-based model routing. Dedicated Qwen HTTPS listeners remain as compatibility endpoints; each listener retains its explicit namespace restriction. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
+Qwen models are hosted in the Internal Models project on the two Stage 020 GPU workers, one exclusive L40S each; Qwen3.6 is parked by default (replicas is a delegated live field) and resumed with `scripts/platform/resume-gpu-demo.sh up 2` plus a replica patch when both models are needed, as for the Stage 050 evaluations. Native OpenShift AI controllers connect them to one governed Gateway. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. The shared API hostname and `/v1` are the default for body-based model routing. Dedicated Qwen HTTPS listeners remain as compatibility endpoints; each listener retains its explicit namespace restriction. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
 
 ## What This Stage Adds
 
-- Registered Qwen 3.6 27B FP8, parked at zero replicas, and active Qwen 3.8 27B INT4 on one exclusive GPU.
+- Registered Qwen 3.6 27B FP8, parked at zero replicas, and active Qwen 3.8 27B INT4 on one exclusive GPU; both profiles admit 16 concurrent sequences so Stage 050 evaluation requests (16 samples each) decode in one batch.
 - Native MaaS API key storage, subscriptions, authentication and token quotas.
 - Reusable single-node topology and queue-routing configurations, with native NVIDIA accelerator templates.
 - Approved GPT-6 Luna access through the native OpenAI external-provider integration.
