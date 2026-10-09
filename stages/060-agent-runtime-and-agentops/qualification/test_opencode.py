@@ -2,7 +2,7 @@
 import importlib.util
 import json
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from pathlib import Path
 import sys
 import unittest
@@ -67,7 +67,7 @@ class ExactApprovalTest(unittest.TestCase):
 class RuntimeOwnershipTest(unittest.TestCase):
     def setUp(self):
         self.runtime = q.Qualification(SimpleNamespace())
-        self.runtime.native = lambda: {'id': 'native-owned'}
+        self.runtime.native = lambda: {'id': 'native-owned', 'phase': 'Ready'}
         self.runtime.deployment = SimpleNamespace(bootstrap_env={}, template={'image': 'registry@sha256:pinned'})
         self.sandboxes = {'items': [{'metadata': {'uid': 'sandbox-owned', 'labels': {'openshell.ai/sandbox-id': 'native-owned'}},
                                     'spec': {'volumeClaimTemplates': [{}]}}]}
@@ -80,13 +80,26 @@ class RuntimeOwnershipTest(unittest.TestCase):
         self.pvcs = {'items': [{'metadata': {'name': 'owned-claim', 'uid': 'pvc-owned',
                                  'ownerReferences': [{'uid': 'sandbox-owned'}]}, 'status': {'phase': 'Bound'}}]}
 
-    def verify(self):
+    def verify(self, settle=False):
         with patch.object(q, 'setup', SimpleNamespace(DIGEST='sha256:pinned')), \
              patch.object(q, 'oc', side_effect=[json.dumps(self.sandboxes), json.dumps(self.pods), json.dumps(self.pvcs)]):
-            return self.runtime.resources()
+            return self.runtime.settled_resources() if settle else self.runtime.resources()
 
     def test_valid_owned_runtime(self):
         self.assertEqual(self.verify(), {'sandboxUid': 'sandbox-owned', 'pvcs': [('owned-claim', 'pvc-owned')]})
+
+    def test_native_starting_waits_without_executing(self):
+        self.runtime.native = Mock(side_effect=[{'id': 'native-owned', 'phase': 'Starting'},
+                                               {'id': 'native-owned', 'phase': 'Ready'}])
+        with patch.object(q.time, 'sleep'):
+            self.assertEqual(self.verify(settle=True)['sandboxUid'], 'sandbox-owned')
+        self.assertEqual(self.runtime.native.call_count, 2)
+
+    def test_native_terminal_error_fails_immediately(self):
+        self.runtime.native = Mock(return_value={'id': 'native-owned', 'phase': 'Error'})
+        with patch.object(q.time, 'sleep') as sleep, self.assertRaises(RuntimeError):
+            self.verify(settle=True)
+        sleep.assert_not_called()
 
     def test_foreign_controller_rejected(self):
         self.pods['items'][0]['metadata']['ownerReferences'][0]['uid'] = 'foreign'

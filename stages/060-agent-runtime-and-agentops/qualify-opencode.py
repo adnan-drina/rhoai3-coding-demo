@@ -113,7 +113,13 @@ class Qualification:
         return json.loads(result.stdout.strip().splitlines()[-1])
 
     def resources(self, running=True):
-        sid = self.native()['id']
+        native = self.native(); sid = native['id']
+        if running:
+            if native.get('phase') in ('Starting', 'Provisioning'):
+                raise RuntimeError('Owned native sandbox is starting')
+            need(native.get('phase') == 'Ready', 'Owned native sandbox is not Ready; terminal or unexpected lifecycle state')
+        else:
+            need(native.get('phase') == 'Stopped', 'Owned native sandbox did not reach Stopped')
         resources = json.loads(oc(self.deployment.bootstrap_env, 'get', 'sandboxes', '-n', WORKSPACE, '-o', 'json'))
         matches = [r for r in resources['items'] if r['metadata'].get('labels', {}).get('openshell.ai/sandbox-id') == sid]
         need(len(matches) == 1, 'Exact owned Kubernetes Sandbox is ambiguous')
@@ -148,7 +154,7 @@ class Qualification:
         while True:
             try: return self.resources(running)
             except RuntimeError as error:
-                need(str(error) in ('Owned workload is not Running', 'Actual agent image is not ready', 'Stopped sandbox workload remains') and time.monotonic() < end, str(error))
+                need(str(error) in ('Owned native sandbox is starting', 'Owned workload is not Running', 'Actual agent image is not ready', 'Stopped sandbox workload remains') and time.monotonic() < end, str(error))
                 time.sleep(.5)
 
     def url(self, path):
