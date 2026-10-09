@@ -462,6 +462,25 @@ argocd app sync 040-governed-models-as-a-service
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
+## External Models Missing From The Projects List
+
+**Affected stage:** Stage 040, OpenShift AI 3.5
+
+**Likely cause:** `ai-admin` has the RHOAI administrator role through `rhods-admins`, but lacks a project-level RoleBinding in `external-models`. The dashboard uses the authenticated user's OpenShift Projects API; `opendatahub.io/dashboard=true` alone does not grant access. Internal Models and External Models both require the existing hosting administrator group binding.
+
+**Check:** As the affected account, list accessible projects; as a cluster administrator, inspect the project binding:
+
+```bash
+oc get projects -l opendatahub.io/dashboard=true
+oc get rolebinding rhods-admins-external-models-admin -n external-models
+```
+
+**Recover:** Reconcile the Stage 040 GitOps `hosting-admin-rolebinding.yaml` resource in `external-models` from the reviewed deployed revision. Keep the existing operator Subscription approvals and Application automation policy; use a scoped RoleBinding sync without hooks for this correction. Refresh the dashboard or sign out and back in after permissions change.
+
+This binding grants `rhods-admins` the same hosting-project `admin` role already present in Internal Models. Governed developer consumers retain MaaS access without access to provider credentials or hosting management. The `models-as-a-service` governance namespace stays hidden from the dashboard.
+
+**Related docs:** [RHOAI 3.5 project permissions](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/managing-access-to-projects_projects).
+
 ## Observability Dashboard Shows No Dashboards Found
 
 **Affected stage:** Stage 010 and Stage 040

@@ -288,6 +288,11 @@ def main():
     for ns in (*namespaces, "redhat-ods-applications"):
         obj = namespaces.get(ns) or get("namespace", ns)
         need(obj["metadata"].get("labels", {}).get("maas-gateway-access") == "true", "Required MaaS namespace admission label is absent")
+    for ns in ("internal-models", "external-models"):
+        binding = get("rolebinding", "rhods-admins-" + ns + "-admin", ns)
+        need(binding.get("roleRef") == {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "admin"}
+             and binding.get("subjects") == [{"apiGroup": "rbac.authorization.k8s.io", "kind": "Group", "name": "rhods-admins"}],
+             "Hosting-project administrator binding differs")
     listener_status = {l["name"]: l for l in gateway.get("status", {}).get("listeners", [])}
     for name, listener in listeners.items():
         reviewed_routes(listener, expected_listeners[name])

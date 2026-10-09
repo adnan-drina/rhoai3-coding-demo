@@ -175,3 +175,7 @@ The final native check detected that the delegated `OpenShift-Catalog` Studio me
 
 
 Final canonical-environment native validation exited successfully after that preservation step. Publisher repeat was a no-op and exact field validation passed. Static checks and dual-parent rejection fixtures passed. This is native configuration/readiness acceptance, alongside the separately recorded bounded common-host responses; it does not add browser, Claude, tool-call, quota, fresh-deployment or parked-model inference qualification.
+
+## External hosting project access correction, 2026-10-09
+
+The genuine `ai-admin` Projects API response excluded External Models despite its correct dashboard label and preserved Namespace UID. Live `external-models` had only the three default OpenShift service-account bindings; `internal-models` already granted `rhods-admins` the project `admin` role. RHOAI administrator membership alone did not grant this missing project access. Stage040 now declares the matching External Models hosting administrator binding and validates both hosting bindings. Developer consumers retain their existing MaaS access, without provider credential or hosting-management grants. The governance namespace remains hidden. Deployment is scoped to the new RoleBinding without hooks, using an isolated live tree that preserves the six Manual operator approvals and the exact Application automation policy. Persona API acceptance and user-owned browser refresh are recorded separately.
