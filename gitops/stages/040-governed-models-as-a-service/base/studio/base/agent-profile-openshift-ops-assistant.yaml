@@ -1,0 +1,48 @@
+---
+# Saved playground agent "OpenShift Ops Assistant" (RHOAI 3.5 playground guide, chapter 15): Qwen 3.8 through MaaS,
+# the reviewed system prompt from the project's MLflow prompt registry (latest version), and the token-less read-only
+# OpenShift-MCP server restricted to inspection tools. Listed under AI asset endpoints -> Agents for every project member.
+# The uuid is uuid5 of "rhoai3-coding-demo/agent-profile/openshift-ops-assistant".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-profile-e0e610ff-3438-5d81-a3c7-eeb3e20a9ff8
+  namespace: demo-sandbox
+  labels:
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/agent-profile: "true"
+    app.kubernetes.io/name: openshift-ops-assistant
+    app.kubernetes.io/component: playground-agent
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+data:
+  profile.yaml: |
+    apiVersion: genai.redhat.com/v1alpha1
+    kind: AgentProfile
+    metadata:
+      name: e0e610ff-3438-5d81-a3c7-eeb3e20a9ff8
+    spec:
+      displayName: OpenShift Ops Assistant
+      description: Audits the model platform with read-only OpenShift tools - which models are served, who may use them and whether they are healthy. Qwen 3.8 through MaaS; no token needed.
+      model:
+        id: publishers/internal-models/models/qwen3-8-27b-int4
+        uri: https://maas-default-gateway-data-science-gateway-class.openshift-ingress.svc.cluster.local
+        sourceType: maas
+      prompt:
+        name: openshift-ops-assistant
+        source: mlflow
+      temperature: 0.2
+      stream: true
+      maxOutputTokens: 2048
+      mcpServers:
+        - serverRef:
+            kind: ConfigMap
+            name: gen-ai-aa-mcp-servers
+            key: OpenShift-MCP
+          allowedTools:
+            - resources_list
+            - resources_get
+            - pods_list_in_namespace
+            - pods_get
+            - events_list

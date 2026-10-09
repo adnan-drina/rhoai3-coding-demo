@@ -425,7 +425,7 @@ git remote -v
 git status --short
 ```
 
-MCP servers are native Stage 060 components (MCP Lifecycle Operator, project `mcp-servers`): the read-only `openshift-mcp-server` is token-less and in-cluster (bounded ServiceAccount scope; caller tokens honored), the read-write `openshift-mcp-server-rw` requires the caller's OpenShift token. Stage 040 publishes both playground discovery entries with `publish-catalog-mcp.py`; no MCP credentials live in `.env`.
+MCP servers are native Stage 060 components (MCP Lifecycle Operator, project `mcp-servers`): the read-only `openshift-mcp-server` is token-less and in-cluster (bounded ServiceAccount scope; caller tokens honored), the read-write `openshift-mcp-server-rw` requires the caller's OpenShift token. Stage 040 publishes both playground discovery entries with `publish-catalog-mcp.py`; no MCP credentials live in `.env`. Stage 040 also provisions the saved playground agent **OpenShift Ops Assistant** in `demo-sandbox`: the `agent-prompt-provisioner` Sync-hook Job registers the reviewed system prompt `openshift-ops-assistant` in the project's MLflow prompt registry (datascience runtime image, `kubernetes-namespaced` auth, new version only on template change) and the agent ConfigMap references it by name, so a prompt edit in Git becomes a new version on the next sync; check the Job (`oc get job agent-prompt-provisioner -n demo-sandbox`) and **Gen AI studio → Prompts** if the agent warns that its prompt is missing.
 
 ## Bootstrap
 

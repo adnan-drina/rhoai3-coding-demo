@@ -1,4 +1,5 @@
-# Bounded read scope of the token-less read-only server: "view" in the demo projects plus cluster-level
+# Bounded read scope of the token-less read-only server: "view" in the demo projects (and the MaaS governance
+# project, so subscriptions are readable by the playground's OpenShift Ops Assistant) plus cluster-level
 # listings and metrics the catalog's core tools summarize. No Secrets (view excludes them; the server also
 # denies the GVK), no RBAC objects, no writes. Widen deliberately, per project, if a demo needs more.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -101,6 +102,25 @@ kind: RoleBinding
 metadata:
   name: openshift-mcp-server-ro-view
   namespace: mcp-servers
+  labels:
+    app.kubernetes.io/name: openshift-mcp-server
+    app.kubernetes.io/part-of: agent-runtime
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: openshift-mcp-server-ro
+    namespace: mcp-servers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshift-mcp-server-ro-view
+  namespace: models-as-a-service
   labels:
     app.kubernetes.io/name: openshift-mcp-server
     app.kubernetes.io/part-of: agent-runtime

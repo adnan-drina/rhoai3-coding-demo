@@ -4,3 +4,7 @@ kind: Kustomization
 resources:
 - playground-endpoint-provisioner-rbac.yaml
 - playground-endpoint-provisioner-job.yaml
+- openshift-ops-assistant-prompt.yaml
+- agent-prompt-provisioner-rbac.yaml
+- agent-prompt-provisioner-job.yaml
+- agent-profile-openshift-ops-assistant.yaml

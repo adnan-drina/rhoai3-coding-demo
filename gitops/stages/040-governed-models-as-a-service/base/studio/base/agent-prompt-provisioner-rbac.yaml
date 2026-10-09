@@ -1,0 +1,51 @@
+---
+# Identity that registers reviewed prompts in the project's MLflow prompt registry. MLflow authorizes prompt APIs
+# with a SelfSubjectAccessReview on the "registeredmodels" pseudo-resource (RHOAI 3.5 "Working with MLflow",
+# MLflow pseudo-resources table), scoped to this project namespace. No other permission is granted.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-prompt-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: openshift-ops-assistant
+    app.kubernetes.io/component: playground-agent
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-prompt-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: openshift-ops-assistant
+    app.kubernetes.io/component: playground-agent
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [registeredmodels]
+    verbs: [get, list, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-prompt-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: openshift-ops-assistant
+    app.kubernetes.io/component: playground-agent
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-prompt-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: agent-prompt-provisioner
+    namespace: demo-sandbox

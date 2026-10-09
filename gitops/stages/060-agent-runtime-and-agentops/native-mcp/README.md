@@ -78,7 +78,7 @@ The read-only server `openshift-mcp-server` is now reachable only inside the clu
 (`http://openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp`, no Route) and no longer
 requires a bearer: `require_oauth = false` with `cluster_auth_mode = "passthrough"`, so a request
 without a token acts as the dedicated ServiceAccount `openshift-mcp-server-ro` (`rbac-ro.yaml`:
-`view` in `demo-sandbox`, `internal-models`, `external-models` and `mcp-servers`, plus namespace,
+`view` in `demo-sandbox`, `internal-models`, `external-models`, `models-as-a-service` and `mcp-servers`, plus namespace,
 project, node and metrics listings), and a request carrying a caller's OpenShift token is forwarded
 and acts as the caller. The operator's ingress policy admits any cluster peer, which is why the
 token-less server stays off the public edge. The read-write server keeps its public edge Route,

@@ -1,0 +1,69 @@
+---
+# Sync hook: register the reviewed "openshift-ops-assistant" system prompt in the demo-sandbox MLflow prompt registry.
+# Runs the RHOAI 3.5 datascience pipeline runtime image (MLflow SDK 3.14, matching the MLflow server) with the documented
+# kubernetes-namespaced authentication: inside the cluster the SDK reads the mounted ServiceAccount token and derives
+# the workspace from the namespace. Idempotent: a new prompt version is registered only when the template changed.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-prompt-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: openshift-ops-assistant
+    app.kubernetes.io/component: playground-agent
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: agent-prompt-provisioner
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provision
+          image: registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:6552d90818c098ce2b1cd057684c3dd832035cfb71f6ccf2ab207b701f536b18
+          command: [python3, /etc/prompt/provision.py]
+          env:
+            - name: PROMPT_NAME
+              value: openshift-ops-assistant
+            - name: PROMPT_COMMIT_MESSAGE
+              value: "Stage 040 reviewed system prompt for the OpenShift Ops Assistant playground agent"
+            - name: MLFLOW_TRACKING_URI
+              value: https://mlflow.redhat-ods-applications.svc:8443/mlflow
+            - name: MLFLOW_TRACKING_AUTH
+              value: kubernetes-namespaced
+            - name: MLFLOW_WORKSPACE
+              value: demo-sandbox
+            - name: MLFLOW_TRACKING_SERVER_CERT_PATH
+              value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+            - name: MLFLOW_DISABLE_TELEMETRY
+              value: "true"
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - name: prompt
+              mountPath: /etc/prompt
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: prompt
+          configMap:
+            name: openshift-ops-assistant-prompt
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
