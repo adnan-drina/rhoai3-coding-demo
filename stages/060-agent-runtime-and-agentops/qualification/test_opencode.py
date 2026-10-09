@@ -64,6 +64,22 @@ class ExactApprovalTest(unittest.TestCase):
         self.assertFalse(q.exact_permission(self.request, 'ses-fixed', self.messages))
 
 
+class ForeignDenialTest(unittest.TestCase):
+    def test_pinned_native_nonmember_denial(self):
+        stderr = ("The caller does not have permission to execute the specified operation. "
+                  "message: not a member of workspace 'openshell-developer'; ask a platform admin")
+        self.assertTrue(q.foreign_workspace_denied(1, stderr))
+        self.assertFalse(q.foreign_workspace_denied(0, stderr))
+        self.assertFalse(q.foreign_workspace_denied(1, stderr.replace('openshell-developer', 'foreign-other')))
+
+    def test_not_found_and_transport_errors_are_inconclusive(self):
+        for stderr in ('Some requested entity was not found; sandbox not found',
+                       'connection refused', 'The caller does not have permission to execute the specified operation',
+                       "not a member of workspace 'openshell-developer'"):
+            with self.subTest(stderr=stderr):
+                self.assertFalse(q.foreign_workspace_denied(1, stderr))
+
+
 class RuntimeOwnershipTest(unittest.TestCase):
     def setUp(self):
         self.runtime = q.Qualification(SimpleNamespace())

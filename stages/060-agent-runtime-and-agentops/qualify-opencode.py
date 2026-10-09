@@ -66,6 +66,12 @@ def exact_permission(request, session, messages):
                for m in messages for p in m.get('parts', []))
 
 
+def foreign_workspace_denied(returncode, diagnostic):
+    """Pinned CLI PermissionDenied rendering plus exact native nonmember scope."""
+    return (returncode != 0 and 'does not have permission' in diagnostic.lower() and
+            bool(re.search(r"not a member of workspace ['\"]?openshell-developer['\"]?(?:[;\s]|$)", diagnostic)))
+
+
 def read_only_setup(args):
     global setup
     spec = importlib.util.spec_from_file_location('opencode_setup', STAGE / 'setup-opencode.py')
@@ -307,8 +313,8 @@ class Qualification:
             " finally:s.close()\nprint(json.dumps(r))")
         self.gate('filesystemDenied', denied['read'] and denied['write'])
         self.gate('egressDenied', denied['internet'] and denied['metadata'] and denied['wrongBinary'])
-        foreign = subprocess.run(self.owner.command(['sandbox', 'get', NAME, '-o', 'json'], 'openshell-developer'), env=self.owner.env, capture_output=True, text=True, timeout=30)
-        self.gate('foreignWorkspaceDenied', foreign.returncode != 0 and any(term in foreign.stderr.lower() for term in ('permissiondenied', 'permission denied', 'permission_denied')))
+        foreign = subprocess.run(self.owner.command(['sandbox', 'list', '-o', 'json'], 'openshell-developer'), env=self.owner.env, capture_output=True, text=True, timeout=30)
+        self.gate('foreignWorkspaceDenied', foreign_workspace_denied(foreign.returncode, foreign.stderr))
 
     def restart(self):
         self.stop.set()
