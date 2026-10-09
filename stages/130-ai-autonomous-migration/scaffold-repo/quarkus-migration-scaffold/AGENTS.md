@@ -106,9 +106,9 @@ Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
 Worker **provider/auth** is Managed Scope only. Seat pins live in factory
-Managed Scope — implementer/orchestrator stay Qwen. Reviewer may pin MiniMax
-only when dest-init saw a valid AD-008 escalation file (`HERMES_MINIMAX=1`).
-Do not add `fallback_providers`. Never factory `model.default` MiniMax.
+Managed Scope — implementer, orchestrator and reviewer stay Qwen (AD-008;
+the MiniMax escalation path was removed on 2026-10-09).
+Do not add `fallback_providers`.
 
 ### Scope-stop
 

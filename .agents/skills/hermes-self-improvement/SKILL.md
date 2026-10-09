@@ -75,8 +75,7 @@ By default the review "runs on your main chat model" with full warm-cache
 replay (cheap cache reads). Route it to a cheaper model via
 `auxiliary.background_review` — which switches it to replaying "a compact
 digest" instead of the full transcript to avoid cold cache writes. Dest
-does not author `fallback_providers` (AD-008); do not silently point this
-slot at MiniMax.
+does not author `fallback_providers` (AD-008); keep this slot at auto / main.
 
 ### Dest campaign postures
 
@@ -113,8 +112,8 @@ saved skill and memory entry, with list/delete/edit.
 2. Official fleet recipe (posture B) is both write-approval gates on —
    product defaults are write-freely. That is a dest GO, not the campaign
    default.
-3. Do not route `auxiliary.background_review` at MiniMax without a named
-   AD-008 GO. Leave the slot at auto / main, or keep the fork disabled.
+3. Leave `auxiliary.background_review` at auto / main, or keep the fork
+   disabled (AD-008: no exception models).
 4. If posture B is granted: audit via `/journey` and `hermes curator
    status`; pin load-bearing learned skills; drain pending on dest
    dashboard, not a TTY. Learned skills must not land on writable golden

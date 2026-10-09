@@ -147,18 +147,15 @@ Managed Scope (`$HERMES_MANAGED_DIR/config.yaml`) is the seat, not
 - `model.provider: qwen27b`, `model.default: qwen3-6-27b`,
   `model.api_mode: chat_completions`, `model.base_url: ''`.
 - `providers.qwen27b.discover_models: false` with an explicit `models:` map.
-- Secrets only in managed `.env`, referenced as `${env:MAAS_API_KEY}` (and
-  `${env:REDHAT_MODELS_*}` when MiniMax is escalated).
-- **Do not** author `fallback_providers:` — AD-008 forbids silent MiniMax
-  or OpenRouter failover. Official docs recommend fallback for reliability;
-  this demo opts out on purpose.
-- MiniMax is `providers.minimax` (OpenAI-compatible LiteMaaS), registered
-  only when `.rhoai3-model-escalation.json` is valid. It is never
-  `model.default`. Native `minimax-oauth` is not used.
+- Secrets only in managed `.env`, referenced as `${env:MAAS_API_KEY}`.
+- **Do not** author `fallback_providers:` — AD-008 forbids silent failover
+  (e.g. OpenRouter). Official docs recommend fallback for reliability;
+  this demo opts out on purpose. No exception models: the former MiniMax
+  escalation provider was removed on 2026-10-09.
 - Auxiliary: `title_generation.enabled: false` (single-GPU).
   `background_review.enabled: false` (dest posture A; Memory page
   2026-08-27). Compression stays `provider: auto` (same 131K window as
-  main). Do not route the review at MiniMax (AD-008).
+  main). Keep the review slot at auto / main (AD-008).
 
 ## Pitfalls
 

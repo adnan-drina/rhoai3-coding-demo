@@ -945,9 +945,8 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 |---|---|---|---|
 | Hermes main / Kanban workers | `qwen3-8-27b-int4` via named provider `qwen38` (`api_mode: chat_completions`) | AD-008 primary. MaaS gateway; declared context 220,000 under the served 262,144 window; output cap 8,192. Alias `qwen27b` switches to `qwen3-6-27b` and then needs `model.context_length` 110000 | Common gateway `/v1` in both MaaS base variables; wire IDs are `publishers/internal-models/models/qwen3-8-27b-int4` and `publishers/internal-models/models/qwen3-6-27b`. The short profile lookup keys stay stable. Managed Scope `providers.qwen38` with `discover_models: false` |
 | OpenCode coding worker | `qwen38/qwen3-8-27b-int4` | Same default; `qwen27b/qwen3-6-27b` stays in the picker | Common MaaS `/v1`, canonical namespace-qualified model ID, same authorized API key |
-| MiniMax M2 (exception) | Hermes `providers.minimax` / OpenCode `redhat/minimax-m2` | AD-008 exception only — typed escalation file required; **not** the default; **not** in `fallback_providers` | Direct Red Hat LiteMaaS until RHOAI 3.5 restores external-model streaming through the gateway. 196K window |
 
-**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main. Exception models follow the MiniMax gate. Full recipe: `stages/130-ai-autonomous-migration/README.md` (Applied Hermes model configuration) and AD-008 §11 in `harness-refactoring/architecture/SOLUTION-ARCHITECTURE.md`. Official schema: [Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models).
+**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main.
 
 **Workshop capacity overlay:** `qwen3-6-35b-a3b`
 (gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE
@@ -969,15 +968,6 @@ overlay README). Its registry card stays active, marked
   Revisit at RHOAI 3.5.
 - `granite-4-0-h-small` — served correctly but retired on benchmarks
   (τ²-Bench 17%, AA Intelligence 11): capability, not compatibility.
-
-**External-model routing option:** MiniMax M2 (`providers.minimax` /
-`minimax-m2`, 196K) on the Red Hat MaaS portal's direct endpoint is an
-**AD-008 exception**, not a factory default. Hermes registers it only when
-`.rhoai3-model-escalation.json` is valid. It is direct-endpoint only because
-the RHOAI 3.4 gateway buffers streaming for external models (see
-TROUBLESHOOTING "External Model Streaming Resets"); expected fixed in
-RHOAI 3.5, after which it can route through the gateway with platform
-telemetry like the local models. Do not add it to `fallback_providers`.
 
 **Parked serving experiments (BACKLOG):** 35B NVFP4 variant (official
 modelcar exists; blocked on vLLM #34694 — NVFP4 Marlin emulation garbles

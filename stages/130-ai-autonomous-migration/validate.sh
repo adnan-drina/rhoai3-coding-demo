@@ -147,12 +147,12 @@ check "init script names the Hermes Qwen provider qwen38" \
 check "init script sets Hermes api_mode chat_completions" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"api_mode\": \"chat_completions\"' || echo 0" \
   "1"
-# since d0816c25 the script writes discover_models False in two places: the
-# _provider() generator every profile-declared provider comes from, and the
-# MiniMax escalation provider
+# the script writes discover_models False once, in the _provider() generator
+# every profile-declared provider comes from (the MiniMax escalation provider
+# was removed on 2026-10-09)
 check "init script disables Hermes /models discovery on named providers" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"discover_models\": False' || echo 0" \
-  "2"
+  "1"
 check "GitOps init script does not use legacy custom:maas-m2 default" \
   "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
   "NONE"

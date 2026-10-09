@@ -637,6 +637,31 @@ oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/
 
 **Recover:** Clients built on the OpenAI SDKs (including the Playground's Llama Stack provider) retry 5xx automatically; direct scripts should retry once. Raise with Red Hat together with the hang above.
 
+## Gen AI Playground Gets No Answer From External Models
+
+**Affected stage:** Stage 040 external models used from the Gen AI Studio playground (RHOAI 3.5.1)
+
+**Symptom:** A prompt to an external model shows no reply and no error; the dashboard BFF logs `Streaming error ... context canceled` about a minute later. The gateway access log shows a fast `503 UC` (see the upstream-reset entry above), then a retried request answered **400 by the provider** and held open (`DC`) until a client timeout or a gateway configuration change. Llama Stack keeps the request in `GET /v1/responses` with `status: in_progress`.
+
+**Likely cause:** The playground's Llama Stack `remote::vllm` provider sends an OpenAI Chat Completions request with `max_tokens` (4096 by default) and **always** with `temperature` and `top_p` (user values, or Llama Stack's own defaults `1.0`/`1.0`). Some providers reject that shape: OpenAI reasoning models such as `gpt-6-luna` reject `max_tokens` (`use max_completion_tokens`) and any `temperature` other than 1; Anthropic Claude 5.x rejects `temperature` and `top_p` (`deprecated for this model`), and Claude 4.x rejects the two together. The provider 400 is then held by the token-rate-limit filter (no `usage` in an error body), so nothing reaches the UI. An exhausted provider balance (`429 You have no credits remaining`) shows the same way.
+
+**Diagnose:**
+
+```bash
+# stored requests with their parameters and final status
+oc exec -n <playground-namespace> deploy/lsd-genai-playground -- curl -s 'localhost:8321/v1/responses?limit=5&order=desc' | jq '.data[] | {model, status, temperature, top_p, max_output_tokens, error}'
+
+# provider verdicts without the gateway in the way (keys from the local .env, never printed)
+curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC_API_KEY" -H 'anthropic-version: 2023-06-01' -H 'Content-Type: application/json' \
+  -d '{"model":"claude-sonnet-5-5","messages":[{"role":"user","content":"hi"}],"max_tokens":20,"temperature":1.0,"top_p":1.0}' | jq .error
+```
+
+**Recover:**
+
+- Register an OpenAI chat model that accepts `max_tokens`, `temperature` and `top_p` (for example `gpt-4.1` or `gpt-4o`) for playground use; reasoning models stay API-only with `max_completion_tokens`.
+- Claude works through the gateway only for clients that omit `temperature`/`top_p`; the playground cannot omit them on this release — raise it with Red Hat (Llama Stack / Gen AI Studio should not send default sampling parameters, or the gateway should strip them for Anthropic).
+- Check the provider balance before blaming the gateway.
+
 ## Gen AI Playground External Model Works But Local Models Fail
 
 **Affected stage:** Stage 040

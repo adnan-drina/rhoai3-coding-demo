@@ -8,9 +8,8 @@
 # toolsets stay disabled so the reviewer cannot author the evidence it
 # audits. Orchestrator cannot be reviewer (terminal disabled).
 #
-# AD-008: factory model.default stays Qwen. Dest-init pins this profile
-# to MiniMax only when HERMES_MINIMAX=1 (escalation file present).
-# Never fallback_providers. Never implementer/orchestrator default MiniMax.
+# AD-008: factory model.default stays Qwen for every profile; the former
+# MiniMax escalation pin was removed on 2026-10-09. Never fallback_providers.
 #
 # Secrets stay Managed Scope. GitOps overwrites terminal.cwd with PROJECT_DIR.
 #

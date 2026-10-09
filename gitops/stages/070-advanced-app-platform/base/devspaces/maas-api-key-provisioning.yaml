@@ -535,72 +535,10 @@ data:
     fi
     export MAAS_API_KEY
     export MAAS_API_BASE_URL="${MAAS_API_BASE_URL:-}"
-    # Optional: external Red Hat models via their direct endpoints. The
-    # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
-    # so they bypass the gateway. Keys are operator-provisioned into the
-    # Secret out of band (not in git); the provider is skipped when absent.
-    REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
-    REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
-    # AD-008 — Qwen primary; MiniMax (redhat) only via explicit escalation
-    # override. Secrets alone must NOT ambiently enable MiniMax (quota control).
+    # AD-008 — Qwen primary. The former Red Hat MiniMax escalation provider
+    # was removed on 2026-10-09; OpenCode enables only the platform Qwen providers.
     OPENCODE_ENABLED='["qwen38", "qwen27b"]'
     OPENCODE_REDHAT_PROVIDER=""
-    OPENCODE_ESCALATION_FILE="${PROJECT_DIR}/.rhoai3-model-escalation.json"
-    if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ] \
-      && [ -f "${OPENCODE_ESCALATION_FILE}" ]; then
-      if cat <<'ESCV' | sed -e 's/^      //' | python3 - "${OPENCODE_ESCALATION_FILE}"
-          import json, sys
-          path = sys.argv[1]
-          try:
-              d = json.load(open(path))
-          except Exception as e:
-              print(f"AD-008: escalation file unreadable ({e}); MiniMax stays disabled.", file=sys.stderr)
-              sys.exit(1)
-          need = ("model_id", "model_id_primary", "escalation_reason", "prior_failure_run_id")
-          missing = [k for k in need if not str(d.get(k) or "").strip()]
-          mid = str(d.get("model_id") or "")
-          if missing:
-              print(f"AD-008: escalation missing fields {missing}; MiniMax stays disabled.", file=sys.stderr)
-              sys.exit(1)
-          if "minimax" not in mid.lower():
-              print(f"AD-008: model_id={mid!r} is not MiniMax; MiniMax stays disabled.", file=sys.stderr)
-              sys.exit(1)
-          print(f"AD-008: escalation OK prior_failure_run_id={d.get('prior_failure_run_id')}")
-          sys.exit(0)
-    ESCV
-      then
-        OPENCODE_ENABLED='["qwen38", "qwen27b", "redhat"]'
-        OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
-    ,
-        "redhat": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "Red Hat Models (direct)",
-          "models": {
-            "minimax-m2": {
-              "name": "MiniMax M2 (196K)",
-              "limit": { "context": 196608, "output": 16384 }
-            },
-            "qwen3-235b": {
-              "name": "Qwen3 235B",
-              "limit": { "context": 131072, "output": 16384 }
-            }
-          },
-          "options": {
-            "apiKey": "${REDHAT_MODELS_API_KEY}",
-            "baseURL": "${REDHAT_MODELS_BASE_URL%/}",
-            "timeout": 1200000,
-            "chunkTimeout": 120000
-          }
-        }
-    REDHATEOF
-    )"
-        echo "AD-008: OpenCode MiniMax enabled for this init (escalation override present)."
-      else
-        echo "AD-008: OpenCode MiniMax NOT enabled (escalation override invalid)."
-      fi
-    elif [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
-      echo "AD-008: Red Hat model secrets present but no ${OPENCODE_ESCALATION_FILE} — MiniMax stays disabled (Qwen primary)."
-    fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_QWEN27B}" ]; then
@@ -946,7 +884,6 @@ data:
     env["HERMES_MANAGED_DIR"] = managed
     env["HERMES_WRITE_SAFE_ROOT"] = project
     env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
-    minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
     rev_cfg = os.path.join(home, "profiles", "reviewer", "config.yaml")
 
 
@@ -976,24 +913,13 @@ data:
         return str(model.get("default") or "")
 
 
-    if minimax_on:
-        cfgset("reviewer", "model.provider", "minimax")
-        cfgset("reviewer", "model.default", "minimax-m2")
-        print("AD-008: reviewer profile model.default=minimax-m2 (escalation override)")
-    else:
-        mid = (profile_model_default("reviewer") or "").lower()
+    for prof in ("reviewer", "implementer", "orchestrator"):
+        mid = (profile_model_default(prof) or "").lower()
         if "minimax" in mid:
             raise SystemExit(
-                "ERROR: reviewer model.default is MiniMax without AD-008 escalation"
+                f"ERROR: {prof} model.default must stay platform Qwen (AD-008); MiniMax was removed"
             )
-        print("AD-008: reviewer stays Qwen (no escalation file)")
-
-    for other in ("implementer", "orchestrator"):
-        mid = (profile_model_default(other) or "").lower()
-        if "minimax" in mid:
-            raise SystemExit(
-                f"ERROR: {other} model.default must not be MiniMax (AD-008 factory Qwen)"
-            )
+    print("AD-008: all worker profiles stay Qwen")
     if not os.path.isfile(rev_cfg):
         raise SystemExit("ERROR: reviewer profile config.yaml missing after seat")
     REVMDLPIN
@@ -1097,7 +1023,7 @@ data:
       # HERMES_HOME. Model wiring follows official configuring-models:
       # named providers: dict (not legacy custom_providers), 4-key model:
       # mapping with api_mode, discover_models: false. Primary: qwen3-8-27b-int4
-      # (131072). MiniMax is AD-008 exception-only, never fallback_providers.
+      # (131072). Never fallback_providers (AD-008).
       # Overlay venv writes Managed Scope YAML. Do not fall back to a
       # curl-install tree (Architect 185531ZA).
       local venv_py="/opt/hermes-venv/bin/python"
@@ -1142,16 +1068,6 @@ data:
       done
 
       export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
-      # MiniMax joins Hermes providers: only when the same AD-008 escalation
-      # file already enabled the OpenCode redhat provider. Secrets alone
-      # must not register MiniMax (picker temptation + silent fallback risk).
-      export REDHAT_MODELS_BASE_URL="${REDHAT_MODELS_BASE_URL:-}"
-      export REDHAT_MODELS_API_KEY="${REDHAT_MODELS_API_KEY:-}"
-      if [[ "${OPENCODE_ENABLED:-}" == *"redhat"* ]]; then
-        export HERMES_MINIMAX=1
-      else
-        export HERMES_MINIMAX=0
-      fi
       export HERMES_MANAGED_DIR="${managed_dir}"
       export HERMES_HOME="${hermes_home}"
       export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
@@ -1389,7 +1305,7 @@ data:
         },
         # AD-009 §3.2 / E-20260809T164127Z — Qwen thinking can exceed the
         # default proxy idle / Hermes stale window (~minutes) before the
-        # first content token. Class A amplifier; not MiniMax.
+        # first content token. Class A amplifier.
         # max_tokens:8192 — Class A output cap so prompt+completion fit
         # context_length (server VLLMValidationError at 65536 out + ≥65537 in).
         # providers.qwen27b.api: no ssl_ca_cert pin. OCP service serving certs
@@ -1400,8 +1316,8 @@ data:
         # (do NOT set SSL_CERT_FILE to service-ca alone; never ssl_verify:false.)
         # discover_models: false — official for gateways whose /models listing
         # is slow, noisy, or not the curated agentic set (configuring-models).
-        # Do NOT author fallback_providers: AD-008 forbids silent MiniMax
-        # (and OpenRouter) failover. Auxiliary compression stays auto = main.
+        # Do NOT author fallback_providers: AD-008 forbids silent failover
+        # (e.g. OpenRouter). Auxiliary compression stays auto = main.
         "providers": {
             # "custom" is the runtime provider id Hermes gives a base_url
             # provider; hermes_cli.timeouts looks the request timeout up under
@@ -1426,7 +1342,7 @@ data:
         # Official Memory page (2026-08-27): background_review.enabled
         # false skips automatic post-turn self-improvement forks; /refine
         # still works. display.memory_notifications off is not this
-        # switch. Do not route this slot at MiniMax (AD-008).
+        # switch. Keep this slot at auto / main (AD-008).
         "auxiliary": {
             "title_generation": {
                 "enabled": False,
@@ -1498,32 +1414,6 @@ data:
         },
         "hooks_auto_accept": True,
     }
-    # AD-008: MiniMax is a named OpenAI-compatible provider (LiteMaaS), not
-    # native minimax-oauth. Register only when the escalation override already
-    # enabled OpenCode's redhat provider. Never set model.default to MiniMax;
-    # never add fallback_providers.
-    if os.environ.get("HERMES_MINIMAX") == "1":
-        rh_base = (os.environ.get("REDHAT_MODELS_BASE_URL") or "").rstrip("/")
-        rh_key = (os.environ.get("REDHAT_MODELS_API_KEY") or "").strip()
-        if not rh_base or not rh_key:
-            raise SystemExit(
-                "ERROR: HERMES_MINIMAX=1 but REDHAT_MODELS_BASE_URL/API_KEY missing"
-            )
-        cfg["providers"]["minimax"] = {
-            "api": "${env:REDHAT_MODELS_BASE_URL}",
-            "api_key": "${env:REDHAT_MODELS_API_KEY}",
-            "discover_models": False,
-            "models": {
-                "minimax-m2": {
-                    "context_length": 196608,
-                    "max_tokens": 16384,
-                },
-            },
-        }
-        cfg.setdefault("model_aliases", {})["minimax"] = {
-            "model": "minimax-m2",
-            "provider": "minimax",
-        }
     # A1 exists-assert — every skills.external_dirs path must resolve to a
     # readable dir (mkdir scaffold + global above; refuse silent missing
     # roots — Hermes skips nonexistent external_dirs with no error).
@@ -1806,15 +1696,6 @@ data:
         fh.write("HERMES_API_TIMEOUT=1800\n")
         # Stream stale detector (see providers.custom.stale_timeout_seconds).
         fh.write("HERMES_STREAM_STALE_TIMEOUT=900\n")
-        if os.environ.get("HERMES_MINIMAX") == "1":
-            fh.write(
-                "REDHAT_MODELS_BASE_URL="
-                + os.environ["REDHAT_MODELS_BASE_URL"].rstrip("/")
-                + "\n"
-            )
-            fh.write(
-                f"REDHAT_MODELS_API_KEY={os.environ['REDHAT_MODELS_API_KEY']}\n"
-            )
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
     # W1 remaining (Operator P1 / Architect 193639ZA): mvn test on a FRESH
@@ -1962,7 +1843,7 @@ data:
         )
     if pin.get("fallback_providers"):
         raise SystemExit(
-            "ERROR: AD-008 forbids fallback_providers (silent MiniMax/OpenRouter)"
+            "ERROR: AD-008 forbids fallback_providers (silent OpenRouter failover)"
         )
     prov = (pin.get("providers") or {}).get("qwen38") or {}
     alt = (pin.get("providers") or {}).get("qwen27b") or {}
@@ -1995,12 +1876,8 @@ data:
         )
     if prov.get("discover_models") is not False:
         raise SystemExit("ERROR: providers.qwen38.discover_models must be false")
-    minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
-    has_minimax = "minimax" in (pin.get("providers") or {})
-    if minimax_on and not has_minimax:
-        raise SystemExit("ERROR: HERMES_MINIMAX=1 but providers.minimax missing")
-    if not minimax_on and has_minimax:
-        raise SystemExit("ERROR: providers.minimax present without AD-008 escalation")
+    if "minimax" in (pin.get("providers") or {}):
+        raise SystemExit("ERROR: providers.minimax present; MiniMax was removed (AD-008)")
     mem = pin.get("memory") or {}
     if mem.get("memory_enabled") is not False:
         raise SystemExit("ERROR: memory.memory_enabled must be false")
@@ -2052,9 +1929,6 @@ data:
         fh.write("api_mode=chat_completions\n")
         fh.write("base=maas-gateway-qwen38\n")
         fh.write("ad=AD-008\n")
-        fh.write(
-            "minimax=escalation-override\n" if minimax_on else "minimax=disabled\n"
-        )
     pin_ca = ((pin.get("providers") or {}).get("qwen38") or {}).get(
         "ssl_ca_cert"
     ) or "<unset: platform-merged bundle>"
@@ -2073,8 +1947,7 @@ data:
         )
     print(
         "Hermes Managed Scope: wrote "
-        f"{cfg_path} + .env (W1 five pins + AD-008 qwen3-8-27b-int4, "
-        f"minimax={'on' if minimax_on else 'off'})."
+        f"{cfg_path} + .env (W1 five pins + AD-008 qwen3-8-27b-int4)."
     )
     HERMESEOF
       then
@@ -2552,7 +2425,7 @@ data:
               if os.path.isdir(legacy_root):
                   shutil.rmtree(legacy_root)
               managed = os.environ.get("OPENCODE_MANAGED_CFG", "/etc/opencode/opencode.json")
-              print(f"CS-1 OpenCode managed pin OK: {managed} (minimax={'on' if 'redhat' in enabled else 'off'})")
+              print(f"CS-1 OpenCode managed pin OK: {managed}")
           else:
               os.makedirs(os.path.dirname(legacy_stamp), exist_ok=True)
               with open(legacy_stamp, "w") as fh:
@@ -2560,11 +2433,7 @@ data:
                   fh.write(f"enabled_providers={json.dumps(enabled)}\n")
                   fh.write("ad=AD-008\n")
                   fh.write("cs1=legacy-fallback-no-etc-mount\n")
-                  if "redhat" in enabled:
-                      fh.write("minimax=escalation-override\n")
-                  else:
-                      fh.write("minimax=disabled\n")
-              print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
+              print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp}")
     PINOC
       rm -rf "${HOME}/.config/kilo"
       echo "Kilo config removed — this is an OpenCode workspace."
