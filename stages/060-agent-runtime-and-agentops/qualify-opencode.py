@@ -72,6 +72,30 @@ def foreign_workspace_denied(returncode, diagnostic):
             bool(re.search(r"not a member of workspace ['\"]?openshell-developer['\"]?(?:[;\s]|$)", diagnostic)))
 
 
+def idle_after_abort(events, session, started):
+    return any(t >= started and sid == session and
+               (kind == 'session.idle' or (kind == 'session.status' and properties.get('status', {}).get('type') == 'idle'))
+               for t, kind, sid, properties in events)
+
+
+def abort_statuses(status_http, statuses, events, session, started):
+    # Pinned 1.18.16 emits idle, then removes idle sessions from this map.
+    # Absence alone is inconclusive; require this session's fresh idle event.
+    if status_http == 200 and isinstance(statuses, dict) and session not in statuses and idle_after_abort(events, session, started):
+        return dict(statuses, **{session: {'type': 'idle'}})
+    return statuses
+
+
+def remaining_fixture(receipt):
+    pending = ['applicationAbort', 'persistentRestart', 'runningAtEnd']
+    need(receipt.get('passed') is False and receipt.get('pendingGates') == pending and
+         receipt.get('failure') == 'Gate failed: applicationAbort', 'Receipt is outside the exact remaining-gates case')
+    need(all(receipt.get('checks', {}).get(g) is True for g in GATES if g not in pending), 'Prior coding receipt lacks a passed required gate')
+    match = re.fullmatch(r'/sandbox/workspace/qualification-([0-9a-f]{16})/qualification_add\.py', receipt.get('ownedFixture', ''))
+    need(match and receipt.get('ownedMarker') == '/sandbox/state/opencode-qualification-' + match[1], 'Prior owned fixture/marker paths differ')
+    return str(Path(receipt['ownedFixture']).parent), receipt['ownedMarker']
+
+
 def read_only_setup(args):
     global setup
     spec = importlib.util.spec_from_file_location('opencode_setup', STAGE / 'setup-opencode.py')
@@ -263,15 +287,22 @@ class Qualification:
                 approved.add(request['id'])
             time.sleep(.2)
         need(not thread.is_alive() and result.get('status') == 200 and not result.get('transport'), 'Coding task deadline/transport failed')
+        self.verify_coding(len(approved) == 1)
+
+    def verify_coding(self, approved_once):
         messages = self.messages(self.coding_session)
         parts = [p for m in messages for p in m.get('parts', [])]
         self.gate('codingTool', any(p.get('type') == 'tool' and p.get('tool') in ('edit', 'write', 'apply_patch') and p.get('state', {}).get('status') == 'completed' for p in parts))
-        self.gate('exactTestApproval', len(approved) == 1 and any(p.get('tool') == 'bash' and p.get('state', {}).get('status') == 'completed' and p.get('state', {}).get('input', {}).get('command') == TEST_COMMAND and p.get('state', {}).get('metadata', {}).get('exit') == 0 for p in parts))
+        self.gate('exactTestApproval', approved_once and any(p.get('tool') == 'bash' and p.get('state', {}).get('status') == 'completed' and p.get('state', {}).get('input', {}).get('command') == TEST_COMMAND and p.get('state', {}).get('metadata', {}).get('exit') == 0 for p in parts))
         assistants = [m['info'] for m in messages if m.get('info', {}).get('role') == 'assistant']
         self.gate('generatedModel', 0 < len(assistants) <= 4 and all(i.get('providerID') == 'qwen38' and i.get('modelID') == MODEL and not i.get('error') and type(i.get('tokens', {}).get('output')) in (int, float) and 0 <= i['tokens']['output'] <= 1024 for i in assistants) and any(i['tokens']['output'] > 0 for i in assistants))
-        self.gate('streamedDeltas', len(checks.text_deltas(self.events, self.coding_session)) >= 2 and not self.event_error)
+        if not self.args.remaining_from:
+            self.gate('streamedDeltas', len(checks.text_deltas(self.events, self.coding_session)) >= 2 and not self.event_error)
         source = self.python("import pathlib,json; p=pathlib.Path(" + repr(self.directory + '/qualification_add.py') + "); assert p.is_file() and not p.is_symlink() and p.stat().st_size<=512; print(json.dumps(p.read_text()))")
         verify_fixture(source); self.fixture_hash = hashlib.sha256(source.encode()).hexdigest()
+        if self.args.remaining_from:
+            need(self.fixture_hash == self.args.fixture_hash, 'Retained fixture differs from independently supplied resume hash')
+        self.receipt['fixtureSha256'] = self.fixture_hash
         self.gate('independentTest', True)
 
     def abort(self):
@@ -282,10 +313,19 @@ class Qualification:
         generating = thread.is_alive() and code == 200 and statuses.get(session, {}).get('type') == 'busy'
         text = bool(checks.text_deltas(self.events, session))
         need(generating and text, 'No active streamed application generation to abort')
+        aborted_at = time.monotonic()
         status, aborted = self.request('POST', '/session/' + session + '/abort')
         thread.join(timeout=45); code, statuses = self.request('GET', '/session/status')
         settled = time.monotonic(); time.sleep(1)
-        self.gate('applicationAbort', not thread.is_alive() and checks.cancelled(generating, text, status, aborted, outcome, code, statuses, session) and not checks.text_deltas(self.events, session, settled) and not self.event_error)
+        fresh_idle = idle_after_abort(self.events, session, aborted_at)
+        late_text = bool(checks.text_deltas(self.events, session, settled))
+        self.receipt['abortEvidence'] = {'busyBeforeAbort': generating, 'assistantTextBeforeAbort': text,
+            'abortHttp': status, 'abortAccepted': aborted is True, 'promptReturned': not thread.is_alive(),
+            'promptHttp': outcome.get('status'), 'messageAbortedError': ((outcome.get('reply') or {}).get('info', {}).get('error') or {}).get('name') == 'MessageAbortedError',
+            'statusHttp': code, 'statusMapContainsSession': isinstance(statuses, dict) and session in statuses,
+            'freshIdleEvent': fresh_idle, 'lateText': late_text, 'eventTransportHealthy': not self.event_error}
+        normalized = abort_statuses(code, statuses, self.events, session, aborted_at)
+        self.gate('applicationAbort', fresh_idle and not thread.is_alive() and checks.cancelled(generating, text, status, aborted, outcome, code, normalized, session) and not late_text and not self.event_error)
 
     def runtime_inputs(self):
         probe = self.python("import os,hashlib,json;v=os.environ.get('MAAS_API_KEY','');print(json.dumps({'present':bool(v),'placeholder':bool(__import__('re').fullmatch(r'openshell:resolve:env:(?:v[0-9]+_)?MAAS_API_KEY',v)),'hash':hashlib.sha256(v.encode()).hexdigest(),'config':hashlib.sha256(open('/sandbox/workspace/opencode.json','rb').read()).hexdigest(),'startup':hashlib.sha256(open('/sandbox/state/start.sh','rb').read()).hexdigest()}))")
@@ -336,6 +376,20 @@ class Qualification:
         journal = directory / 'state.json'
         need(journal.is_file() and not journal.is_symlink() and journal.stat().st_mode & 0o077 == 0, 'Private existing recovery journal required')
         self.journal, self.journal_hash = journal, hashlib.sha256(journal.read_bytes()).hexdigest()
+        self.receipt['recoveryJournalSha256'] = self.journal_hash
+        if self.args.remaining_from:
+            prior = Path(self.args.remaining_from)
+            need(prior.parent.resolve() == directory.resolve() and re.fullmatch(r'qualification-[0-9a-f]{32}\.json', prior.name) and
+                 prior.is_file() and not prior.is_symlink() and prior.stat().st_mode & 0o077 == 0 and prior.stat().st_uid == os.getuid(), 'Continuation requires exact owner-only receipt in setup state directory')
+            raw = prior.read_bytes(); receipt = json.loads(raw)
+            need(receipt.get('scope') == self.receipt['scope'], 'Prior qualification scope differs')
+            self.directory, self.marker = remaining_fixture(receipt)
+            self.coding_session = self.args.coding_session
+            self.receipt.update(checks={g: receipt['checks'].get(g, False) for g in GATES},
+                                ownedFixture=self.directory + '/qualification_add.py', ownedMarker=self.marker,
+                                resumedReceiptSha256=hashlib.sha256(raw).hexdigest(),
+                                hashGuard='fixture hash independently supplied at continuation; no earlier hash claim',
+                                retainedCodingEvidence='owner-only prior receipt and current session/tool/model/AST readback; no coding replay')
         self.deployment = read_only_setup(self.args)
         need(self.deployment.state and not any(v for k, v in self.deployment.state.items() if k.endswith('_pending')), 'Setup has pending ownership gates')
         password = directory / 'upload/state/auth/server-password'
@@ -351,16 +405,26 @@ class Qualification:
                 native = self.native()
                 need(native.get('name') == NAME and native.get('policy') == self.deployment.intended, 'Owned logical runtime or effective policy differs')
                 self.settled_resources(); self.gate('ownedRuntime', True)
-                self.python("import pathlib,json; d=pathlib.Path(" + repr(self.directory) + "); d.mkdir(mode=0o700); p=d/'qualification_add.py'; p.write_text('def add(a, b):\\n    return a - b\\n'); print(json.dumps(True))")
+                if not self.args.remaining_from:
+                    self.python("import pathlib,json; d=pathlib.Path(" + repr(self.directory) + "); d.mkdir(mode=0o700); p=d/'qualification_add.py'; p.write_text('def add(a, b):\\n    return a - b\\n'); print(json.dumps(True))")
                 self.forward(); self.gate('authenticatedHealth', True)
                 self.gate('invalidPasswordDenied', self.request('GET', '/global/health', password='synthetic-invalid-password')[0] == 401)
                 self.gate('missingPasswordDenied', self.request('GET', '/global/health', authenticated=False)[0] == 401)
-                self.confinement()
+                if self.args.remaining_from:
+                    self.runtime_inputs()
+                else:
+                    self.confinement()
                 reader = threading.Thread(target=self.read_events, daemon=True); reader.start()
                 end = time.monotonic() + 10
                 while not self.events and not self.event_error and time.monotonic() < end: time.sleep(.1)
                 need(self.events and not self.event_error, 'Authenticated SSE transport unavailable')
-                self.coding(); self.abort(); self.restart()
+                if self.args.remaining_from:
+                    code, retained = self.request('GET', '/session/' + self.coding_session)
+                    need(code == 200 and retained.get('id') == self.coding_session and retained.get('directory') == self.directory, 'Retained session is outside exact owned fixture directory')
+                    self.verify_coding(True)
+                else:
+                    self.coding()
+                self.abort(); self.restart()
                 self.deployment.check(); self.resources(); self.forward(); self.runtime_inputs(); self.gate('runningAtEnd', True)
                 self.receipt['passed'] = not self.receipt['pendingGates']
             finally:
@@ -382,6 +446,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--static', action='store_true'); mode.add_argument('--run', action='store_true')
+    parser.add_argument('--remaining-from', help='Exact private failed-abort receipt; resumes cancellation/restart only')
+    parser.add_argument('--coding-session', help='Exact retained coding session for --remaining-from')
+    parser.add_argument('--fixture-hash', help='Independent SHA256 of retained fixture read at continuation')
     parser.add_argument('--revision')
     parser.add_argument('--state-dir', default='/private/tmp/060-opencode-state')
     parser.add_argument('--persona-home', default=os.environ.get('RHOAI_STAGE060_ADMIN_CLI_HOME'))
@@ -394,6 +461,8 @@ def main():
         print('[OK] Static inputs and independent fixture verifier passed; no cluster or inference calls')
         return
     need(args.revision and args.persona_home and args.persona_kubeconfig, 'Exact revision and genuine private ai-admin sessions required')
+    need(not args.remaining_from or (args.coding_session and re.fullmatch(r'ses_[A-Za-z0-9]+', args.coding_session) and args.fixture_hash and re.fullmatch(r'[0-9a-f]{64}', args.fixture_hash)), 'Continuation requires exact coding session and independent fixture hash')
+    need(args.remaining_from or not (args.coding_session or args.fixture_hash), 'Continuation inputs require --remaining-from')
     qualification = Qualification(args)
     directory = Path(args.state_dir)
     need(directory.is_dir() and not directory.is_symlink() and directory.stat().st_mode & 0o077 == 0, 'Existing private setup state required')
