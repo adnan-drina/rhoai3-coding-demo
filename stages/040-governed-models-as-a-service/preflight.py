@@ -46,13 +46,12 @@ try:
   e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not existing['metadata'].get('deletionTimestamp') and not e.get('sources'),'Foreign or terminating Application'
   assert e['project']=='rhoai-demo' and e['source']['repoURL']==os.environ['GIT_REPO_URL'] and e['source']['path']=='gitops/stages/040-governed-models-as-a-service/base','Unexpected Application source'
   assert e['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application destination'
- for ns in ['models-as-a-service','internal-models','models-as-a-service-db','kuadrant-system','external-models','rhoai-mcp','openshift-lws-operator']:
+ for ns in ['models-as-a-service','internal-models','models-as-a-service-db','kuadrant-system','external-models','openshift-lws-operator']:
   n=get('namespace',ns)
   if n:assert not n['metadata'].get('ownerReferences') and not n['metadata'].get('deletionTimestamp') and tracked(n),'Existing namespace requires reviewed adoption'
  # Existing same-name customer resources must already belong to this stage.
  for resource,name,namespace in [
   ('gateways.gateway.networking.k8s.io','maas-default-gateway','openshift-ingress'),
-  ('deployment','openshift-mcp','rhoai-mcp'),
   ('configmap','authorino-service-ca','kuadrant-system')]:
   obj=get(resource,name,namespace)
   if obj:assert tracked(obj) and not obj['metadata'].get('deletionTimestamp') and not obj['metadata'].get('ownerReferences'),'Existing customer resource requires reviewed adoption'

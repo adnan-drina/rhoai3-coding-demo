@@ -39,7 +39,7 @@ spec:
       requests: {cpu: 100m, memory: 128Mi}
       limits: {cpu: 500m, memory: 512Mi}
     security:
-      serviceAccountName: openshift-mcp-server
+      serviceAccountName: openshift-mcp-server-ro
       podSecurityContext:
         runAsNonRoot: true
         seccompProfile: {type: RuntimeDefault}

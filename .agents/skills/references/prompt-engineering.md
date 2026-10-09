@@ -53,7 +53,7 @@ revalidated when changing prompts or agent/tool paths:
 ## Agent/MCP Guidelines
 
 - Use positive action commands such as "Use the openshift tools to list the
-  pods in the rhoai-mcp namespace."
+  pods in the demo-sandbox namespace."
 - Keep questions bounded to what the read-only MCP server allows
   (namespace-scoped pod listing, known-pod status, node usage); the server
   denies Secrets, ConfigMaps, RBAC objects, and cluster-wide listings.

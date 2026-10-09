@@ -415,7 +415,6 @@ Before deploying the workshop, confirm:
 - You are using the intended branch and remote for the GitOps source.
 - `env.example` has been copied to `.env` and configured with required credentials.
 - `OPENAI_API_KEY` is set in `.env` if external model inference (gpt-4o, gpt-4o-mini) will be exercised.
-- Optional: `SLACK_BOT_TOKEN` and/or `BRIGHTDATA_API_TOKEN` in `.env` if those MCP servers are needed.
 
 Recommended checks:
 
@@ -426,7 +425,7 @@ git remote -v
 git status --short
 ```
 
-MCP integrations have their own prerequisites. Stage 040 includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData are credential-gated integrations. Set `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` in `.env` when those integrations are approved; missing credentials produce validation warnings, not failures.
+MCP servers are native Stage 060 components (MCP Lifecycle Operator, project `mcp-servers`): the read-only `openshift-mcp-server` is token-less and in-cluster (bounded ServiceAccount scope; caller tokens honored), the read-write `openshift-mcp-server-rw` requires the caller's OpenShift token. Stage 040 publishes both playground discovery entries with `publish-catalog-mcp.py`; no MCP credentials live in `.env`.
 
 ## Bootstrap
 
@@ -720,7 +719,7 @@ Functional validation creates and revokes only its own expiring synthetic key, w
 
 GenAI Studio enablement is native OGX. The user creates a project playground through the dashboard and selects an available governed endpoint. Stage 040 `studio/base` pre-provisions one playground asset in `demo-sandbox`: the custom endpoint "GPT-6 Luna (Playground)", whose MaaS key is minted by the `provision-playground-endpoint` Sync-hook Job for the `playground-sandbox` subscription (90-day maximum; a Stage 040 sync renews a key the MaaS API no longer reports active). Its generated pgvector resources remain native service-owned; do not pre-author them or patch generated workloads. Basic remote inference needs no new GPU or bucket; RAG, AutoRAG and AutoML are excluded.
 
-Required read-only OpenShift MCP remains at `openshift-mcp.rhoai-mcp.svc:8080/mcp`, with pinned upstream v0.0.67 and existing Kubernetes RBAC. Slack/BrightData are inactive optional integrations. Upstream image origin does not establish Red Hat product support. See the [Stage 040 technical plan](migration/040-governed-serving-plan.md) for dispositions, sources and live qualification boundaries.
+The upstream-image OpenShift MCP server in `rhoai-mcp` and the inactive Slack/BrightData components were retired on 2026-10-09; the read-only consumer endpoint is the native catalog server at `openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp` (token-less, bounded ServiceAccount) and the read-write server on its HTTPS Route (caller token). See the [Stage 040 technical plan](migration/040-governed-serving-plan.md) for dispositions, sources and live qualification boundaries.
 
 ### Stage 070 — Dev Spaces (devspaces component)
 

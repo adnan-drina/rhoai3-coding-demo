@@ -85,7 +85,7 @@ def main():
                 code, payload = request('/api/v1/aaa/mcps?' + urlencode({'namespace': 'demo-sandbox'}), token)
                 need(code == 200 and isinstance(payload, dict), 'Native Studio discovery failed')
                 servers = payload.get('data', {}).get('servers', [])
-                need(any(s.get('name') == pub.KEY and s.get('url') == endpoint for s in servers) and any(s.get('name') == 'OpenShift-MCP' for s in servers), 'Additive and legacy Studio entries are not both discoverable')
+                need(any(s.get('name') == pub.KEY and s.get('url') == endpoint for s in servers), 'Studio discovery entry is not discoverable')
                 paths = {kind: '/api/v1/mcp/' + kind + '?' + urlencode({'namespace': 'demo-sandbox', 'server_url': endpoint}) for kind in ('status', 'tools')}
                 code, payload = request(paths['status'], token, token)
                 need(code == 200 and payload.get('data', {}).get('status') == 'connected', 'Genuine per-session Studio status is not connected')

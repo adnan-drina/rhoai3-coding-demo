@@ -184,8 +184,8 @@ Run only after following the OpenShift safety guard in `AGENTS.md`:
 oc get odhdashboardconfig -A -o yaml
 oc get datasciencecluster -A -o yaml
 oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
-oc get deployment,service,endpoints -n rhoai-mcp
-oc get configmap openshift-mcp-config -n rhoai-mcp -o yaml
+oc get mcpservers,service,route -n mcp-servers
+oc get configmap openshift-mcp-server openshift-mcp-server-rw -n mcp-servers -o yaml
 oc get pods -A | rg 'lsd-genai-playground|predictor'
 ```
 

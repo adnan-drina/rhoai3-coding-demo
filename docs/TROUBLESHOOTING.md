@@ -670,13 +670,13 @@ curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC
 
 **Symptom:** The MCP server shows no tools, **View tools** is empty, or the server answers `401 Unauthorized: Bearer token required`; or the model replies with an error instead of calling a tool.
 
-**Likely cause:** Both native servers require the caller's own OpenShift token (`require_oauth` with passthrough; the ServiceAccount has no permissions), and the playground stores that token only for the browser session. A model that cannot emit tool calls (GPT-6 Luna on chat completions) fails independently of the server.
+**Likely cause:** The read-write server requires the caller's own OpenShift token (`require_oauth` with passthrough; its ServiceAccount has no permissions), and the playground stores that token only for the browser session. The read-only server needs no token but is reachable only inside the cluster and, without a token, sees only its bounded ServiceAccount scope (the demo projects), so a question about another namespace is refused. A model that cannot emit tool calls (GPT-6 Luna on chat completions) fails independently of the server.
 
 **Diagnose:**
 
 ```bash
-# no token -> 401; your token -> initialize + tools/list
-URL="https://$(oc get route openshift-mcp-server -n mcp-servers -o jsonpath='{.spec.host}')/mcp"
+# read-write: no token -> 401; your token -> initialize + tools/list (read-only: in-cluster only, no token needed)
+URL="https://$(oc get route openshift-mcp-server-rw -n mcp-servers -o jsonpath='{.spec.host}')/mcp"
 curl -sS -o /dev/null -w '%{http_code}\n' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' "$URL"
 curl -sS -H "Authorization: Bearer $(oc whoami -t)" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
@@ -685,7 +685,7 @@ curl -sS -H "Authorization: Bearer $(oc whoami -t)" -H 'Content-Type: applicatio
 
 **Recover:**
 
-- In the playground's MCP tab click the Auth icon for the server, paste `oc whoami -t`, **Authorize**; repeat after closing the browser. Use the read-write entry only for actions you intend to run; the server acts with your permissions.
+- Read-write entry: in the playground's MCP tab click the Auth icon, paste `oc whoami -t`, **Authorize**; repeat after closing the browser, and use it only for actions you intend to run, because the server acts with your permissions. Read-only entry: no token needed; authorize with your token only when you need to read beyond the demo projects.
 - Use Qwen 3.8, Claude Sonnet 5.5 or Nemotron 3 Ultra for tool use; GPT-6 Luna returns `400 Function tools with reasoning_effort are not supported` and the gateway holds that error body until the client times out (wasm-shim #425).
 - If a server is missing from the MCP tab, check the `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications` (both keys are published by `publish-catalog-mcp.py`) and the Route in `mcp-servers`.
 

@@ -17,13 +17,14 @@ data:
     list_output = "table"
     cluster_provider_strategy = "in-cluster"
     cluster_auth_mode = "passthrough"
-    require_oauth = true
+    # Token-less by design: without a bearer the server acts as its bounded ServiceAccount; a bearer is forwarded.
+    require_oauth = false
     skip_jwt_verification = true
     disable_dynamic_client_registration = true
     # Explicitly approved boundary: HTTPS Route, HTTP bearer inside cluster.
     require_tls = false
     toolsets = ["core", "config"]
-    server_instructions = "Use read-only OpenShift and Kubernetes inspection within the caller's authorized scope. The Kubernetes API validates the forwarded OpenShift token. Secret resources and write actions are unavailable."
+    server_instructions = "Use read-only OpenShift and Kubernetes inspection. Without a bearer token the server acts as its bounded service account (view on the demo projects, cluster and node summaries); with the caller's OpenShift token it acts as the caller. Secret resources and write actions are unavailable."
     [[denied_resources]]
     group = ""
     version = "v1"

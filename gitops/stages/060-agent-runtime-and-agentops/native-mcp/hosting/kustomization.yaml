@@ -4,9 +4,10 @@ resources:
   - namespace.yaml
   - admin-rolebinding.yaml
   - serviceaccount.yaml
+  - serviceaccount-ro.yaml
+  - rbac-ro.yaml
   - configmap.yaml
   - mcpserver.yaml
-  - route.yaml
   - configmap-rw.yaml
   - mcpserver-rw.yaml
   - route-rw.yaml

@@ -37,7 +37,7 @@ Required acceptance before switching consumers:
 
 - current MCPServer conditions and native controller-owned workload/service;
 - verified HTTPS edge, HTTP redirect, MCP initialize and tools/list;
-- missing bearer rejected and invalid bearer pod request denied;
+- missing bearer rejected (read-write server) and invalid bearer pod request denied;
 - each genuine persona's authorized namespace allowed, foreign namespace denied;
 - alternating persona requests cannot reuse another caller's authority;
 - catalog core/config read tools are listed; bounded pod reads pass and write/Secret requests are refused;
@@ -71,3 +71,16 @@ limits. The Kubernetes API authorizes every action with the caller's own token, 
 never do more than the caller's RBAC allows. It is published to Gen AI Studio as the separate
 `OpenShift-Catalog-ReadWrite` discovery entry; the read-only `OpenShift-Catalog` entry remains the
 default for inspection. `validate-native-mcp.py` checks both servers.
+
+## Policy update 2026-10-09: token-less read-only, token read-write
+
+The read-only server `openshift-mcp-server` is now reachable only inside the cluster
+(`http://openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp`, no Route) and no longer
+requires a bearer: `require_oauth = false` with `cluster_auth_mode = "passthrough"`, so a request
+without a token acts as the dedicated ServiceAccount `openshift-mcp-server-ro` (`rbac-ro.yaml`:
+`view` in `demo-sandbox`, `internal-models`, `external-models` and `mcp-servers`, plus namespace,
+project, node and metrics listings), and a request carrying a caller's OpenShift token is forwarded
+and acts as the caller. The operator's ingress policy admits any cluster peer, which is why the
+token-less server stays off the public edge. The read-write server keeps its public edge Route,
+`require_oauth = true` and the permission-less bootstrap ServiceAccount. The legacy Stage 040
+server in `rhoai-mcp` and its `OpenShift-MCP` discovery entry are retired.

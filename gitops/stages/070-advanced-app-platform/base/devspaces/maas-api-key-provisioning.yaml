@@ -497,7 +497,7 @@ data:
       "mcp": {
         "openshift": {
           "type": "remote",
-          "url": "http://openshift-mcp.rhoai-mcp.svc:8080/mcp",
+          "url": "http://openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp",
           "enabled": true
         }
       }
@@ -2368,7 +2368,7 @@ data:
       "mcp": {
         "openshift": {
           "type": "remote",
-          "url": "http://openshift-mcp.rhoai-mcp.svc:8080/mcp",
+          "url": "http://openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp",
           "enabled": true,
           "timeout": 10000
         },

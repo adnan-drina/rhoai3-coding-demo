@@ -104,7 +104,7 @@ Dependencies:
 - private-rag-postgres pgvector database
 - stage230-rhoai-34-product-docs-kfp vector store populated by the Stage 230 KFP ingestion pipeline
 - Stage 220 MaaS-backed Nemotron and governed gpt-4o-mini models
-- Stage 220 openshift-mcp server (rhoai-mcp namespace) for tool calling
+- native openshift-mcp-server (mcp-servers namespace, MCP Lifecycle Operator) for tool calling
 ```
 
 The dashboard tile is an `OdhApplication`, not an OpenShift `ConsoleLink`.
