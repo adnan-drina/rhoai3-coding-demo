@@ -72,7 +72,7 @@ class Setup:
             if p.is_file():need(subprocess.check_output(['git','-C',str(ROOT),'show',self.args.revision+':'+str(p.relative_to(ROOT))])==p.read_bytes(),'Published runtime input differs')
         gateway_runtime=self.get('statefulset','openshell','openshell')
         image=gateway_runtime['spec']['template']['spec']['containers'][0]['image']
-        need(image.startswith(self.gateway_pin['repository']+':') and image.endswith('@'+self.gateway_pin['amd64Digest']) and gateway_runtime.get('status',{}).get('readyReplicas')==1,'Gateway does not match the ready pinned runtime')
+        need(image.split('@')[0].split(':')[0]==self.gateway_pin['repository'] and image.endswith('@'+self.gateway_pin['amd64Digest']) and gateway_runtime.get('status',{}).get('readyReplicas')==1,'Gateway does not match the ready pinned runtime')
         subscription=self.get('maassubscription',SUBSCRIPTION,'models-as-a-service')
         desired_subscription=yaml.safe_load((ROOT/'gitops/stages/060-agent-runtime-and-agentops/runtime/opencode/subscription.yaml').read_text())['spec']
         need(subscription['spec']==desired_subscription,'Dedicated subscription differs from its complete reviewed scope')
