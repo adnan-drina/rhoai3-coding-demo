@@ -643,7 +643,7 @@ oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/
 
 **Symptom:** A prompt to an external model shows no reply and no error; the dashboard BFF logs `Streaming error ... context canceled` about a minute later. The gateway access log shows a fast `503 UC` (see the upstream-reset entry above), then a retried request answered **400 by the provider** and held open (`DC`) until a client timeout or a gateway configuration change. Llama Stack keeps the request in `GET /v1/responses` with `status: in_progress`.
 
-**Likely cause:** The playground's Llama Stack `remote::vllm` provider sends an OpenAI Chat Completions request with `max_tokens` (4096 by default) and **always** with `temperature` and `top_p` (user values, or Llama Stack's own defaults `1.0`/`1.0`). Some providers reject that shape: OpenAI reasoning models such as `gpt-6-luna` reject `max_tokens` (`use max_completion_tokens`) and any `temperature` other than 1; Anthropic Claude 5.x rejects `temperature` and `top_p` (`deprecated for this model`), and Claude 4.x rejects the two together. The provider 400 is then held by the token-rate-limit filter (no `usage` in an error body), so nothing reaches the UI. An exhausted provider balance (`429 You have no credits remaining`) shows the same way.
+**Likely cause:** The playground's Llama Stack `remote::vllm` provider sends an OpenAI Chat Completions request with `max_tokens` (the BFF's provider default, 4096) and the UI's **Temperature** value (default 0.1); `top_p` is not sent (the `1.0` shown in stored Responses records is a display default). Some providers reject that shape: OpenAI reasoning models such as `gpt-6-luna` reject `max_tokens` (`use max_completion_tokens`) and any temperature other than 1; Anthropic Claude 5.x rejects any temperature other than 1 (`'temperature' is deprecated for this model`) and rejects `top_p`. The provider 400 is then held by the token-rate-limit filter (no `usage` in an error body), so nothing reaches the UI. An exhausted provider balance (`429 You have no credits remaining`) shows the same way.
 
 **Diagnose:**
 
@@ -658,8 +658,8 @@ curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC
 
 **Recover:**
 
-- Register an OpenAI chat model that accepts `max_tokens`, `temperature` and `top_p` (for example `gpt-4.1` or `gpt-4o`) for playground use; reasoning models stay API-only with `max_completion_tokens`.
-- Claude works through the gateway only for clients that omit `temperature`/`top_p`; the playground cannot omit them on this release — raise it with Red Hat (Llama Stack / Gen AI Studio should not send default sampling parameters, or the gateway should strip them for Anthropic).
+- Claude 5.x: in the playground's model settings set **Temperature to 1** (verified end-to-end through the gateway at temperature 1 with the playground's shape); API clients send `temperature: 1` or omit it, never `top_p`.
+- GPT-6 Luna: needs the playground to stop sending the provider-level `max_tokens` (RHOAIENG-90257, merged upstream 2026-09-09, not in the 3.5.1 `gen-ai-ui` image) **and** Temperature set to 1; until the backport, use `gpt-4-1` (`gpt-4.1` accepts any `max_tokens`/`temperature`/`top_p`).
 - Check the provider balance before blaming the gateway.
 
 ## Gen AI Playground External Model Works But Local Models Fail
