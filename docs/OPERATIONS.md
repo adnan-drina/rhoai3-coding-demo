@@ -1072,3 +1072,5 @@ python3 stages/060-agent-runtime-and-agentops/qualify-hermes.py --confinement-on
 ```
 
 Set `RHOAI_STAGE060_OPENSHELL_CLI` to the reviewed pinned CLI path. The consolidated receipt separates the 13 protocol gates from these negative checks; timeout, missing files and generic HTTP errors are not accepted as policy-denial proof.
+
+The owner-only client (`owner-client.py --check` / `--trace`) runs from the source worktree with the guarded bootstrap kubeconfig, the pinned CLI, the genuine `ai-admin` persona inputs and the private SDK environment pinned by `client-requirements.txt`; `--revision` must be the published isolated live tree the runtime Application is pinned to (`07a29a29…` on 2026-10-09). If `--check` fails `placeholderNotRealKey` for one agent while its exec placeholder is valid, the long-running agent process holds a superseded credential placeholder revision: natively stop and start that retained Sandbox (identity compared before and after) rather than deleting or re-minting anything. Traces land in MLflow experiment `agent-runtime-traces` in workspace `ai-agents`; receipts stay owner-only under `/private/tmp/060-client-receipts/`.
