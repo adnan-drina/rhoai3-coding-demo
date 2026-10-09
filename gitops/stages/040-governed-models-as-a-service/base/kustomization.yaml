@@ -19,6 +19,7 @@ resources:
   - policies/base
   - studio/base
   - mcp/base
+  - observability
   - jobs/base
   - monitoring/base
 
