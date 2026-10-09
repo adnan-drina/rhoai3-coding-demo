@@ -1,0 +1,24 @@
+# The native gateway retains the real key; the agent receives a placeholder.
+id: opencode-maas-qwen38
+display_name: MaaS Qwen3.8
+description: Governed OpenAI-compatible chat completions for qwen3-8-27b-int4 on Models-as-a-Service
+category: inference
+inference_capable: true
+credentials:
+  - name: api_key
+    description: MaaS API key bound to one subscription
+    env_vars: [MAAS_API_KEY]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+endpoints:
+  - host: __MAAS_COMMON_HOST__
+    port: 443
+    path: /v1/chat/completions
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: POST
+          path: /v1/chat/completions
+binaries: [/usr/local/bin/opencode]

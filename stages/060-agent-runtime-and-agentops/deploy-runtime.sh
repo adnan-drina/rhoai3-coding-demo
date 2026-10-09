@@ -20,6 +20,9 @@ if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
   "$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
+  if [[ "${RHOAI_STAGE060_PROVISION_OPENCODE:-false}" == true ]]; then
+    "$PYTHON" "$SCRIPT_DIR/setup-opencode.py" --revision "$REVISION" --apply --expected-policy-hash "${RHOAI_STAGE060_EXPECTED_POLICY_HASH:?Reviewed policy baseline hash required}"
+  fi
   exit
 fi
 # Fail closed on foreign App or resource ownership before the first component write.
@@ -72,3 +75,7 @@ python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
 ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --health --operation --timeout 600
 
 "$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
+
+if [[ "${RHOAI_STAGE060_PROVISION_OPENCODE:-false}" == true ]]; then
+  "$PYTHON" "$SCRIPT_DIR/setup-opencode.py" --revision "$REVISION" --apply --expected-policy-hash "${RHOAI_STAGE060_EXPECTED_POLICY_HASH:?Reviewed policy baseline hash required}"
+fi

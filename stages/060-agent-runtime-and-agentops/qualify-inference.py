@@ -55,8 +55,9 @@ WORKSPACE = "openshell-developer"
 TEMPLATE = "oc-transport-11816"
 SANDBOX = "oc-inference-check"
 PROFILE = PROVIDER = "maas-qwen38"
-MODEL = "qwen3-8-27b-int4"
-MODEL_PATH = "/models-as-a-service/" + MODEL + "/v1"
+RESOURCE_MODEL = "qwen3-8-27b-int4"
+MODEL = "publishers/internal-models/models/qwen3-8-27b-int4"
+MODEL_PATH = "/v1"
 DIRECTORY = "/sandbox/workspace"
 TLS = ssl.create_default_context()
 CLUSTER_ENV = None
@@ -70,11 +71,6 @@ class Failure(RuntimeError):
 def need(condition, message):
     if not condition:
         raise Failure(message)
-
-
-def not_found(result):
-    # Native NotFound only. Authentication, unavailable and timeouts are never absence.
-    return result.returncode != 0 and bool(re.search(r'code: NotFound|status: NotFound|profile .* not found', result.stderr))
 
 
 def digest(value):
@@ -141,7 +137,7 @@ def guard(kubeconfig=None):
         env['KUBECONFIG'] = kubeconfig
     r = subprocess.run(["/bin/bash", "-c", 'export REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; '
                         'test -n "${RHOAI_EXPECTED_API_SERVER:-}"; check_oc_logged_in >&2; '
-                        "python3 -c 'import json,os; print(json.dumps({\"KUBECONFIG\":os.environ.get(\"KUBECONFIG\",os.path.expanduser(\"~/.kube/config\")),\"RHOAI_EXPECTED_API_SERVER\":os.environ[\"RHOAI_EXPECTED_API_SERVER\"]}))'", "guard", str(ROOT)],
+                        "python3 -c 'import json,os; print(json.dumps({\"KUBECONFIG\":os.environ.get(\"KUBECONFIG\",os.path.expanduser(\"~/.kube/config\")),\"RHOAI_EXPECTED_API_SERVER\":os.environ[\"RHOAI_EXPECTED_API_SERVER\"]}))'", "guard", os.environ.get("RHOAI_ENV_ROOT", str(ROOT))],
                        env=env, capture_output=True, text=True, timeout=30)
     need(r.returncode == 0, "Shared environment/login guard failed; RHOAI_EXPECTED_API_SERVER is required")
     # load_env diagnostics precede the final JSON; do not print the resolved context.
@@ -258,9 +254,9 @@ class Run:
         fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         gateway = oc_json("get", "gateway.gateway.networking.k8s.io", "maas-default-gateway", "-n", "openshift-ingress")
         listeners = {l["name"]: l["hostname"] for l in gateway["spec"]["listeners"]}
-        need("api" in listeners and "qwen3-8" in listeners, "MaaS gateway listeners are not the reviewed api/qwen3-8 pair")
+        need("api" in listeners, "MaaS gateway api listener is absent")
         self.maas_api = "https://" + listeners["api"]
-        self.model_host = listeners["qwen3-8"]
+        self.model_host = listeners["api"]
         self.chat_url = "https://" + self.model_host + MODEL_PATH + "/chat/completions"
         self.start_forward()
         who = self.persona(["whoami", "-o", "json"])
@@ -283,6 +279,16 @@ class Run:
         found = [x for x in value[kind+'s'] if x.get('name') == name]
         need(len(found) <= 1, 'Ambiguous native resource identity')
         return found[0] if found else None
+
+    def profile_present(self):
+        # Pinned CLI fetch_provider_profile_catalog consumes every native page;
+        # profiles_to_json emits a bare array. Errors never establish absence.
+        result = self.admin(['profile', 'list', '-o', 'json'], WORKSPACE)
+        need(result.returncode == 0, 'Complete profile catalog read failed')
+        catalog = json.loads(result.stdout)
+        need(isinstance(catalog, list) and all(isinstance(p, dict) and isinstance(p.get('id'), str) for p in catalog),
+             'Unexpected native profile catalog schema')
+        return any(p['id'] == self.profile for p in catalog)
 
     def start_forward(self):
         def reachable():
@@ -375,9 +381,8 @@ class Run:
         fleet = json.loads(fleet.stdout)
         need(not fleet.get('next_page_token') and fleet.get('sandboxes') == [], 'Global policy qualification requires an empty sandbox fleet')
         need(self.resource('provider', self.provider) is None, 'Run provider name exists')
-        existing_profile = self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE)
-        need(not_found(existing_profile), 'Profile absence not established; refusing import')
-        model = oc_json("get", "llminferenceservice", MODEL, "-n", "models-as-a-service")
+        need(not self.profile_present(), 'Run profile name exists; refusing import')
+        model = oc_json("get", "llminferenceservice", RESOURCE_MODEL, "-n", "internal-models")
         need(any(c["type"] == "Ready" and c["status"] == "True" for c in model["status"].get("conditions", [])), "Model is not Ready")
         templates = self.persona(["sandbox", "template", "list", "-o", "json"], WORKSPACE)
         need(templates.returncode == 0 and any(t["name"] == TEMPLATE for t in json.loads(templates.stdout)["templates"]), "Reviewed sandbox template is absent")
@@ -425,7 +430,7 @@ class Run:
         self.key = created["key"]
         status, reply = http(self.chat_url, self.key, {"model": MODEL, "messages": [{"role": "user", "content": "Reply with exactly OK."}], "max_tokens": 8}, timeout=120)
         self.evidence["checks"]["directMaasCompletion"] = status == 200 and bool((reply or {}).get("choices"))
-        need(self.evidence["checks"]["directMaasCompletion"], "MaaS refused a direct bounded completion with the new key (HTTP %s); the runtime path was not tested" % status)
+        need(self.evidence["checks"]["directMaasCompletion"], "MaaS did not return a valid chat-completion response (HTTP %s); OpenCode inference was not tested" % status)
         self.save_state(providerPending=True)
         created = self.admin(["provider", "create", "--name", self.provider, "--type", self.profile, "--credential", "MAAS_API_KEY"], WORKSPACE, {"MAAS_API_KEY": self.key})
         need(created.returncode == 0, "Provider creation failed")
@@ -632,16 +637,20 @@ class Run:
             step("providerDeleted", delete_provider)
         if self.state.get("profile"):
             def delete_profile():
-                current = self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE)
-                if not_found(current):
+                if not self.profile_present():
                     return True
+                current = self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE)
                 need(current.returncode == 0 and digest(json.loads(current.stdout)) == self.state.get('profileDigest'),
                      'Profile read/identity changed; refusing deletion')
                 need(self.admin(['profile', 'delete', self.profile], WORKSPACE).returncode == 0, 'Profile deletion failed')
-                return not_found(self.admin(['profile', 'export', self.profile, '-o', 'json'], WORKSPACE))
+                return not self.profile_present()
             step("profileDeleted", delete_profile)
         if self.state.get("policy"):
             def restore():
+                fleet = self.admin(['sandbox', 'list', '--all-workspaces', '-o', 'json'])
+                need(fleet.returncode == 0, 'Cannot prove an empty fleet before temporary-policy restoration')
+                fleet = json.loads(fleet.stdout)
+                need(not fleet.get('next_page_token') and fleet.get('sandboxes') == [], 'Active retained fleet; temporary global-policy restoration refused')
                 current = self.global_policy_hash()
                 if current == self.state.get('policyHashBefore'):
                     done['policyHashEqualsBefore'] = True

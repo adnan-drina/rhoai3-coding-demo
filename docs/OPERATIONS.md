@@ -706,7 +706,7 @@ The one Gateway uses distinct API/external, Qwen 3.6 and Qwen 3.8 HTTPS hosts. N
 
 The durable PostgreSQL database remains in `models-as-a-service-db`. Runtime credentials are reused, never rotated by deployment. A metadata-only wave-7 credential barrier blocks database/storage wave 8 until the private setup helper supplies them. Native AIGateway creates `redhat-ai-gateway-infra`, where the runtime helper creates or reuses `maas-db-config`. Missing credentials with retained storage/configuration stop deployment. PostgreSQL plaintext transport is constrained by a namespace-scoped NetworkPolicy.
 
-The project-owned `external-models` namespace contains the native ExternalProvider, ExternalModel and MaaSModelRef. `setup-provider-secret.sh` reuses the approved OpenAI credential or supplies approved local input through stdin. Git contains no provider key; the native Secret uses `inference.llm-d.ai/ipp-managed=true`. GPT-6 Luna uses `openai-chat`; function calls require `reasoning_effort=none`, and Responses built-in tools are outside this protocol. Red Hat-hosted MiniMax remains conditional on actual governed incremental streaming and final usage proof.
+The project-owned `external-models` namespace contains the native ExternalProvider, ExternalModel and MaaSModelRef. `setup-provider-secret.sh` reuses the approved OpenAI credential or supplies approved local input through stdin. Git contains no provider key; the native Secret uses `inference.llm-d.ai/ipp-managed=true`. GPT-6 Luna uses `openai-chat`; function calls require `reasoning_effort=none`, and Responses built-in tools are outside this protocol. Red Hat-hosted MiniMax M2 and its `redhat-models` provider were removed from the governed catalog on 2026-10-09; Claude Sonnet 5.5 uses `openai-chat` against Anthropic's OpenAI-compatible endpoint.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
@@ -945,9 +945,8 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 |---|---|---|---|
 | Hermes main / Kanban workers | `qwen3-8-27b-int4` via named provider `qwen38` (`api_mode: chat_completions`) | AD-008 primary. MaaS gateway; declared context 220,000 under the served 262,144 window; output cap 8,192. Alias `qwen27b` switches to `qwen3-6-27b` and then needs `model.context_length` 110000 | Common gateway `/v1` in both MaaS base variables; wire IDs are `publishers/internal-models/models/qwen3-8-27b-int4` and `publishers/internal-models/models/qwen3-6-27b`. The short profile lookup keys stay stable. Managed Scope `providers.qwen38` with `discover_models: false` |
 | OpenCode coding worker | `qwen38/qwen3-8-27b-int4` | Same default; `qwen27b/qwen3-6-27b` stays in the picker | Common MaaS `/v1`, canonical namespace-qualified model ID, same authorized API key |
-| MiniMax M2 (exception) | Hermes `providers.minimax` / OpenCode `redhat/minimax-m2` | AD-008 exception only — typed escalation file required; **not** the default; **not** in `fallback_providers` | Direct Red Hat LiteMaaS until RHOAI 3.5 restores external-model streaming through the gateway. 196K window |
 
-**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main. Exception models follow the MiniMax gate. Full recipe: `stages/130-ai-autonomous-migration/README.md` (Applied Hermes model configuration) and AD-008 §11 in `harness-refactoring/architecture/SOLUTION-ARCHITECTURE.md`. Official schema: [Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models).
+**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main.
 
 **Workshop capacity overlay:** `qwen3-6-35b-a3b`
 (gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE
@@ -969,15 +968,6 @@ overlay README). Its registry card stays active, marked
   Revisit at RHOAI 3.5.
 - `granite-4-0-h-small` — served correctly but retired on benchmarks
   (τ²-Bench 17%, AA Intelligence 11): capability, not compatibility.
-
-**External-model routing option:** MiniMax M2 (`providers.minimax` /
-`minimax-m2`, 196K) on the Red Hat MaaS portal's direct endpoint is an
-**AD-008 exception**, not a factory default. Hermes registers it only when
-`.rhoai3-model-escalation.json` is valid. It is direct-endpoint only because
-the RHOAI 3.4 gateway buffers streaming for external models (see
-TROUBLESHOOTING "External Model Streaming Resets"); expected fixed in
-RHOAI 3.5, after which it can route through the gateway with platform
-telemetry like the local models. Do not add it to `fallback_providers`.
 
 **Parked serving experiments (BACKLOG):** 35B NVFP4 variant (official
 modelcar exists; blocked on vLLM #34694 — NVFP4 Marlin emulation garbles
@@ -1034,3 +1024,20 @@ Supply `ANTHROPIC_API_KEY` privately in the local environment. Stage040 uses its
 Local hosting is internal-models (Internal Models); external-models is External Models. Both projects are dashboard-visible. Governance remains models-as-a-service. Qwen 3.8 is active; Qwen 3.6 is parked at zero replicas with no inference claim. Current clients use common `/v1` and canonical `publishers/internal-models/models/<name>` IDs. The native MaaS catalog endpoints also select the API hostname. Three bounded common-host model requests passed; the identical namespace-qualified legacy local path returned HTTP 503 on the API host but passed on its dedicated Qwen 3.8 host. Compatibility listeners remain, and old models-as-a-service local paths are not aliases.
 
 Studio uses the retained genai-playground-state PVC at `/opt/app-root/src/.llama/distributions/rh` via supported OGX customer fields. Existing-state moves require quiesce, consistent private SQLite backup, integrity/record checks and restore before restart; never overwrite a live SQLite DB. The current saved response and two profile UUIDs/settings were preserved. Old unreferenced cached model registrations remain because the installed native API has no unregister. The fresh install helper attaches the same mount using exact returned CR and PVC ownership; fresh end-to-end deployment remains untested.
+
+### Persistent OpenCode in AI Agents (Stage060)
+
+Use the pinned native CLI and a Python interpreter with the existing PyYAML dependency. Set`RHOAI_ENV_ROOT` to the authoritative environment root, private`RHOAI_STAGE060_ADMIN_KUBECONFIG` to ai-admin's OpenShift session, and`RHOAI_STAGE060_ADMIN_CLI_HOME` to its verified native login. Provision only after the reviewed immutable runtime revision is Synced/Healthy and the exact image/subscription operands are ready:
+
+```bash
+python3 stages/060-agent-runtime-and-agentops/setup-opencode.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION" --apply --expected-policy-hash "$RHOAI_STAGE060_EXPECTED_POLICY_HASH"
+python3 stages/060-agent-runtime-and-agentops/setup-opencode.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
+```
+
+The default owner-only recovery directory is`/private/tmp/060-opencode-state`. Keep its journal and independent listener-password file privately; never commit or print them. The real MaaS key is retained only by the native encrypted provider. Configuration check does not qualify inference or tool execution. A temporary inference helper refuses any active retained fleet before restoring a global policy.
+
+For an ambiguous key POST, do not clear`key_pending` or mint again. Review only the named owner's native API-key metadata, reconcile its exact ID/subscription/creation time, and revoke an unused owned key through native MaaS before explicit journal recovery. If a provider or sandbox creation outcome is unknown, match the creation receipt and journal IDs; preserve any unidentified object. A recorded waiting sandbox can resume authenticated file upload; do not recreate it by name.
+
+Before the recorded30day expiry, rotate explicitly as ai-admin: mint a replacement bound to`opencode-private-qwen38`; update the same provider through native`provider update --credential MAAS_API_KEY --credential-expires-at MAAS_API_KEY=<native-expiry> --wait` with the key supplied only in private process environment. Native stop/start is required because the old process retains its credential placeholder revision. Verify authenticated readiness and the exact new key/provider metadata before revoking the old journal keyID, then record the new native hashes/expiry. Failed rotation remains blocked; never use another subscription or external model.
+
+Rollback first stops the exact owned sandbox and preserves itsPVC. Restore the original global policy only after fresh all-workspace fleet review and an exact applied-policy hash check; never overwrite a concurrent policy. Revoke only the exact owned key on agent retirement. Archive state before native sandbox deletion, which destroys the ownedPVC. No rollback alters Stage040, existing workspace memberships or the core gateway.
