@@ -33,7 +33,8 @@ Options:
   --name NAME              Job name (default: coding-v1-<model>-<UTC timestamp>)
   --experiment NAME        MLflow experiment (default: agentic-coding-qualification)
   --collection ID          Submit a native collection unbounded instead of the benchmark (no parameters apply)
-  --benchmark ID           lighteval benchmark id (default: lcb:codegeneration_v6)
+  --provider ID            EvalHub provider id (default: lighteval)
+  --benchmark ID           Benchmark id within the provider (default: lcb:codegeneration_v6)
   --num-examples N         Problems to evaluate (default: unset = full dataset)
   --concurrent-requests N  Parallel requests from the adapter (default: 1; the Qwen 3.8 server admits 2 sequences)
   --max-new-tokens N       Generation cap per sample (default: 512; each 16-sample request must finish inside the sidecar's request timeout)
@@ -48,13 +49,13 @@ USAGE
 }
 
 MODEL_NAME=""; MODEL_URL=""; SECRET_REF="evalhub-model-auth-maas"; TENANT="demo-sandbox"; NAME=""; EXPERIMENT="agentic-coding-qualification"
-COLLECTION=""; BENCHMARK="lcb:codegeneration_v6"; NUM_EXAMPLES=""; CONCURRENT="1"; MAX_NEW_TOKENS="512"; TEMPERATURE="0.7"; TOP_P="0.8"
+COLLECTION=""; PROVIDER="lighteval"; BENCHMARK="lcb:codegeneration_v6"; NUM_EXAMPLES=""; CONCURRENT="1"; MAX_NEW_TOKENS="512"; TEMPERATURE="0.7"; TOP_P="0.8"
 THRESHOLD="0.25"; SYSTEM_PROMPT="Answer with the complete Python program in a single \`\`\`python code block and nothing else."; STATUS_ID=""; WAIT="false"; DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-name) MODEL_NAME="$2"; shift 2;; --model-url) MODEL_URL="$2"; shift 2;; --secret-ref) SECRET_REF="$2"; shift 2;;
     --tenant) TENANT="$2"; shift 2;; --name) NAME="$2"; shift 2;; --experiment) EXPERIMENT="$2"; shift 2;;
-    --collection) COLLECTION="$2"; shift 2;; --benchmark) BENCHMARK="$2"; shift 2;; --num-examples) NUM_EXAMPLES="$2"; shift 2;;
+    --collection) COLLECTION="$2"; shift 2;; --provider) PROVIDER="$2"; shift 2;; --benchmark) BENCHMARK="$2"; shift 2;; --num-examples) NUM_EXAMPLES="$2"; shift 2;;
     --concurrent-requests) CONCURRENT="$2"; shift 2;; --max-new-tokens) MAX_NEW_TOKENS="$2"; shift 2;;
     --temperature) TEMPERATURE="$2"; shift 2;; --top-p) TOP_P="$2"; shift 2;; --threshold) THRESHOLD="$2"; shift 2;;
     --system-prompt) SYSTEM_PROMPT="$2"; shift 2;;
@@ -108,11 +109,11 @@ if [[ -z "$MODEL_URL" ]]; then
   [[ -n "$host" ]] || { echo '[FAIL] MaaS gateway api hostname not found; pass --model-url' >&2; exit 1; }
   MODEL_URL="https://$host"
 fi
-short="${MODEL_NAME##*/}"; [[ -n "$NAME" ]] || NAME="${COLLECTION:-coding-v1}-${short}-$(date -u +%Y%m%dT%H%M%SZ)"
+short="${MODEL_NAME##*/}"; bench="${BENCHMARK//[^a-zA-Z0-9]/-}"; [[ -n "$NAME" ]] || NAME="${COLLECTION:-$bench}-${short}-$(date -u +%Y%m%dT%H%M%SZ)"
 
 BODY="$(mktemp)"; trap 'rm -f "$BODY"' EXIT
 MODEL_NAME="$MODEL_NAME" MODEL_URL="$MODEL_URL" SECRET_REF="$SECRET_REF" NAME="$NAME" EXPERIMENT="$EXPERIMENT" COLLECTION="$COLLECTION" \
-BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURRENT="$CONCURRENT" MAX_NEW_TOKENS="$MAX_NEW_TOKENS" TEMPERATURE="$TEMPERATURE" \
+PROVIDER="$PROVIDER" BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURRENT="$CONCURRENT" MAX_NEW_TOKENS="$MAX_NEW_TOKENS" TEMPERATURE="$TEMPERATURE" \
 TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" python3 - > "$BODY" <<'PY'
 import json, os
 e = os.environ
@@ -123,15 +124,18 @@ body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
 if e["COLLECTION"]:
     body["collection"] = {"id": e["COLLECTION"]}
 else:
-    params = {"provider": "endpoint", "num_few_shot": 0,
-              "parameters": {"concurrent_requests": int(e["CONCURRENT"]), "api_max_retry": 1,
-                             "generation_parameters": {"temperature": float(e["TEMPERATURE"]), "top_p": float(e["TOP_P"]),
-                                                       "max_new_tokens": int(e["MAX_NEW_TOKENS"])}}}
-    if e["SYSTEM_PROMPT"]:
-        params["parameters"]["system_prompt"] = e["SYSTEM_PROMPT"]
+    if e["PROVIDER"] == "lighteval":
+        params = {"provider": "endpoint", "num_few_shot": 0,
+                  "parameters": {"concurrent_requests": int(e["CONCURRENT"]), "api_max_retry": 1,
+                                 "generation_parameters": {"temperature": float(e["TEMPERATURE"]), "top_p": float(e["TOP_P"]),
+                                                           "max_new_tokens": int(e["MAX_NEW_TOKENS"])}}}
+        if e["SYSTEM_PROMPT"]:
+            params["parameters"]["system_prompt"] = e["SYSTEM_PROMPT"]
+    else:
+        params = {}  # other adapters take only the sample bound from here
     if e["NUM_EXAMPLES"]:
         params["num_examples"] = int(e["NUM_EXAMPLES"])
-    body["benchmarks"] = [{"id": e["BENCHMARK"], "provider_id": "lighteval", "pass_criteria": {"threshold": float(e["THRESHOLD"])}, "parameters": params}]
+    body["benchmarks"] = [{"id": e["BENCHMARK"], "provider_id": e["PROVIDER"], "pass_criteria": {"threshold": float(e["THRESHOLD"])}, "parameters": params}]
 print(json.dumps(body, indent=2))
 PY
 if [[ "$DRY_RUN" == "true" ]]; then cat "$BODY"; exit 0; fi
