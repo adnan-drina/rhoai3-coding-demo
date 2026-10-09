@@ -1049,7 +1049,7 @@ For user-owned visual acceptance, open **AI hub → Agents → Deployments**, se
 
 ### Persistent Hermes in AI Agents (Stage060)
 
-Hermes is deployed as native `ai-agents/hermes` with separate retained storage, loopback8642 and a private Bearer listener key. Use the same guarded environment, pinned CLI, verified ai-admin login and immutable runtime revision as OpenCode:
+Hermes is deployed as native `ai-agents/hermes` with separate retained storage, loopback port 8642 and a private Bearer listener key. Use the same guarded environment, pinned CLI, verified ai-admin login and immutable runtime revision as OpenCode:
 
 ```bash
 python3 stages/060-agent-runtime-and-agentops/setup-hermes.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
@@ -1057,10 +1057,19 @@ python3 stages/060-agent-runtime-and-agentops/setup-hermes.py --revision "$RHOAI
 python3 stages/060-agent-runtime-and-agentops/setup-hermes.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION" --apply
 ```
 
-Keep `/private/tmp/060-hermes-state` owner-only, including its journal and listener-key file. The real MaaS key stays in the native encrypted provider; the agent receives its opaque placeholder. The separate local API key is readable by the same runtime UID. For native owner access, forward `hermes` with target host127.0.0.1/port8642 through the authenticated TLS/OIDC gateway; supply the separate Bearer key privately to the client, never in command arguments, source, catalog or logs. No developer workspace membership is granted solely for API consumption.
+Keep `/private/tmp/060-hermes-state` owner-only, including its journal and listener-key file. The real MaaS key stays in the native encrypted provider; the agent receives its opaque placeholder. The separate local API key is readable by the same runtime UID. For native owner access, forward `hermes` with target host `127.0.0.1` and port 8642 through the authenticated TLS/OIDC gateway; supply the separate Bearer key privately to the client, never in command arguments, source, catalog or logs. No developer workspace membership is granted solely for API consumption.
 
 Rotate before `2026-11-08T12:19:47Z` using the OpenCode procedure with the exact Hermes journal key/provider IDs and `hermes-private-qwen38` subscription. Verify the replacement native metadata and protected readiness after native stop/start before revoking the old key. Unknown outcomes fail closed; do not remint or adopt objects by name. Archive state before deletion; native stop/start retains its PVC, while deletion removes owned storage. Stored session history survives restart; active runs/events are not resumed.
 
-Both setup helpers use one complete gateway-global policy. The exact private ELF `/opt/hermes-venv/bin/python3.11` admits only the common MaaS host443, enforced POST`/v1/chat/completions`; scripts/future Sandboxes using that same private path share this authority. The common system Python is not admitted. Preserve OpenCode's rule and never use a temporary no-network qualifier to reset the retained fleet. Global-policy changes require exact source/fleet/identity/hash review.
+Both setup helpers use one complete gateway-global policy. The exact private ELF `/opt/hermes-venv/bin/python3.11` admits only the common MaaS host on port 443, enforced POST `/v1/chat/completions`; scripts/future Sandboxes using that same private path share this authority. The common system Python is not admitted. Preserve OpenCode's rule and never use a temporary no-network qualifier to reset the retained fleet. Global-policy changes require exact source/fleet/identity/hash review.
 
 The native Hermes protocol receipt `/private/tmp/060-hermes-final.json` has 13 passing gates; this is a bounded standalone qualification, not migration or full Stage060 completion. The owner confirmed OpenCode visually; check `hermes` under **AI hub → Agents → Deployments → AI Agents**. Client consumption and required selected-call tracing remain separate unfinished milestones.
+
+
+The separate no-model confinement supplement passed all 10 gates and preserves the existing agent/session. Repeat it only when validating a changed runtime boundary:
+
+```bash
+python3 stages/060-agent-runtime-and-agentops/qualify-hermes.py --confinement-only --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
+```
+
+Set `RHOAI_STAGE060_OPENSHELL_CLI` to the reviewed pinned CLI path. The consolidated receipt separates the 13 protocol gates from these negative checks; timeout, missing files and generic HTTP errors are not accepted as policy-denial proof.
