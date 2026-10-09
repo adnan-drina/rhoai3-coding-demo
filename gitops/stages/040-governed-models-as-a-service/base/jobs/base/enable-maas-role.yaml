@@ -38,3 +38,12 @@ rules:
   - default
   verbs:
   - get
+# Playground custom endpoints: the Job declares the cluster ingress domain internal (genAiStudioConfig).
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - ingresses
+  resourceNames:
+  - cluster
+  verbs:
+  - get
