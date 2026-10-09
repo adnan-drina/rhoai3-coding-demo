@@ -7,6 +7,10 @@ cd /sandbox/workspace
 for directory in /sandbox/state /sandbox/state/auth; do
   [[ -d "$directory" && ! -L "$directory" && "$(stat -c %u "$directory")" == "$(id -u)" ]] || exit 1
 done
+# OpenShift fsGroup may add setgid; clear it without admitting group/other access.
+auth_mode="$(stat -c %a /sandbox/state/auth)"
+[[ "$auth_mode" == 700 || "$auth_mode" == 2700 ]] || exit 1
+chmod 700 /sandbox/state/auth
 [[ "$(stat -c %a /sandbox/state/auth)" == 700 ]] || exit 1
 secret=/sandbox/state/auth/server-password
 [[ -f "$secret" && ! -L "$secret" && -s "$secret" && "$(stat -c %a "$secret")" == 600 && "$(stat -c %u "$secret")" == "$(id -u)" ]] || { echo 'OpenCode listener credential is absent or unsafe' >&2; exit 1; }
