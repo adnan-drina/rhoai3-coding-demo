@@ -1,5 +1,6 @@
 """Offline rejection tests for independent verification and exact approvals."""
 import importlib.util
+import copy
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -62,6 +63,52 @@ class ExactApprovalTest(unittest.TestCase):
                 self.request['tool'][field] = {'messageID': 'msg-fixed', 'callID': 'call-fixed'}[field]
         self.request['permission'] = 'external_directory'
         self.assertFalse(q.exact_permission(self.request, 'ses-fixed', self.messages))
+
+
+class AbortContractTest(unittest.TestCase):
+    def test_fresh_idle_event_proves_documented_map_omission(self):
+        events = [(12, 'session.status', 'ses-own', {'status': {'type': 'idle'}})]
+        normalized = q.abort_statuses(200, {}, events, 'ses-own', 11)
+        outcome = {'status': 200, 'reply': {'info': {'error': {'name': 'MessageAbortedError'}}}}
+        self.assertTrue(q.checks.cancelled(True, True, 200, True, outcome, 200, normalized, 'ses-own'))
+        outcome['reply']['info']['error']['name'] = 'APIError'
+        self.assertFalse(q.checks.cancelled(True, True, 200, True, outcome, 200, normalized, 'ses-own'))
+
+    def test_missing_stale_foreign_idle_or_failed_status_remains_unknown(self):
+        for events in ([], [(10, 'session.idle', 'ses-own', {})], [(12, 'session.idle', 'ses-other', {})]):
+            with self.subTest(events=events):
+                self.assertEqual(q.abort_statuses(200, {}, events, 'ses-own', 11), {})
+        self.assertEqual(q.abort_statuses(500, {}, [(12, 'session.idle', 'ses-own', {})], 'ses-own', 11), {})
+        self.assertIsNone(q.abort_statuses(200, None, [(12, 'session.idle', 'ses-own', {})], 'ses-own', 11))
+        busy = {'ses-own': {'type': 'busy'}}
+        self.assertEqual(q.abort_statuses(200, busy, [(12, 'session.idle', 'ses-own', {})], 'ses-own', 11), busy)
+
+
+class RemainingAdmissionTest(unittest.TestCase):
+    def setUp(self):
+        pending = ['applicationAbort', 'persistentRestart', 'runningAtEnd']
+        self.receipt = {'passed': False, 'pendingGates': pending, 'failure': 'Gate failed: applicationAbort',
+                        'checks': {g: g not in pending for g in q.GATES},
+                        'ownedFixture': '/sandbox/workspace/qualification-0123456789abcdef/qualification_add.py',
+                        'ownedMarker': '/sandbox/state/opencode-qualification-0123456789abcdef'}
+
+    def test_exact_passed_coding_case(self):
+        self.assertEqual(q.remaining_fixture(self.receipt),
+                         ('/sandbox/workspace/qualification-0123456789abcdef', '/sandbox/state/opencode-qualification-0123456789abcdef'))
+
+    def test_other_failure_or_unpassed_coding_rejected(self):
+        for field, value in (('failure', 'Gate failed: independentTest'), ('pendingGates', ['applicationAbort']), ('passed', True)):
+            candidate = dict(self.receipt, **{field: value})
+            with self.subTest(field=field), self.assertRaises(RuntimeError): q.remaining_fixture(candidate)
+        candidate = copy.deepcopy(self.receipt); candidate['checks']['codingTool'] = False
+        with self.assertRaises(RuntimeError): q.remaining_fixture(candidate)
+
+    def test_arbitrary_fixture_or_marker_rejected(self):
+        for field, value in (('ownedFixture', '/sandbox/workspace/user-project/qualification_add.py'),
+                             ('ownedFixture', '/sandbox/workspace/qualification-0123456789abcdef/../user.py'),
+                             ('ownedMarker', '/sandbox/state/user-marker')):
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                q.remaining_fixture(dict(self.receipt, **{field: value}))
 
 
 class ForeignDenialTest(unittest.TestCase):
