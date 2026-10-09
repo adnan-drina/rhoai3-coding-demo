@@ -7,6 +7,8 @@ resources:
 - openai-provider.yaml
 - gpt-6-luna.yaml
 - gpt-6-luna-modelref.yaml
+- gpt-4-1.yaml
+- gpt-4-1-modelref.yaml
 - anthropic-provider.yaml
 - claude-sonnet-5-5.yaml
 - claude-sonnet-5-5-modelref.yaml

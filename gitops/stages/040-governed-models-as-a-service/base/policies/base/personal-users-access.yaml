@@ -34,6 +34,11 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    - name: gpt-4-1
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
     # Native Messages usage is not subscription-token-metered; provider limits apply.
     - name: claude-sonnet-5-5
       namespace: external-models
@@ -71,6 +76,8 @@ spec:
     - name: qwen3-8-27b-int4
       namespace: internal-models
     - name: gpt-6-luna
+      namespace: external-models
+    - name: gpt-4-1
       namespace: external-models
     - name: claude-sonnet-5-5
       namespace: external-models
@@ -110,6 +117,11 @@ spec:
         - limit: 1000000
           window: 1h
     - name: gpt-6-luna
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
+    - name: gpt-4-1
       namespace: external-models
       tokenRateLimits:
         - limit: 100000
@@ -152,6 +164,8 @@ spec:
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
+    - name: gpt-4-1
+      namespace: external-models
     - name: claude-sonnet-5-5
       namespace: external-models
   meteringMetadata:
@@ -194,6 +208,11 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    - name: gpt-4-1
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
     # Native Messages usage is not subscription-token-metered; provider limits apply.
     - name: claude-sonnet-5-5
       namespace: external-models
@@ -231,6 +250,8 @@ spec:
     - name: qwen3-8-27b-int4
       namespace: internal-models
     - name: gpt-6-luna
+      namespace: external-models
+    - name: gpt-4-1
       namespace: external-models
     - name: claude-sonnet-5-5
       namespace: external-models

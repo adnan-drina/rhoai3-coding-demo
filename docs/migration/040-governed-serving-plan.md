@@ -16,7 +16,7 @@ Product boundaries follow [RHOAI3.5 MaaS §1.21](https://docs.redhat.com/en/docu
 
 Status on 2026-10-05: deployed at `6ab5e6f9ee35c89d189c6f48973f8bf40be620f1`, with the exact native operation Succeeded and Application Synced/Healthy. Both pinned private models and the conditionally qualified Red Hat MiniMax model passed bounded governed inference and streaming. GPT-6 Luna remains blocked by the external account's exhausted credit balance. Quota enforcement passed; EPP execution remains unqualified despite successful Pod-targeted inference. GenAI Studio visual interaction remains user-owned. No bucket was created.
 
-Status on 2026-10-09: MiniMax M2 and the `redhat-models` ExternalProvider were removed from the governed catalog (manifests, personal subscriptions and auth policies, deploy/preflight/validation code paths); GPT-6 Luna and Claude Sonnet 5.5 remain the external models. The Stage 070 workspace AD-008 MiniMax escalation path (direct Red Hat portal) was removed the same day; workspace init no longer reads `REDHAT_MODELS_*`.
+Status on 2026-10-09: MiniMax M2 and the `redhat-models` ExternalProvider were removed from the governed catalog (manifests, personal subscriptions and auth policies, deploy/preflight/validation code paths); GPT-6 Luna and Claude Sonnet 5.5 remain the external models; GPT-4.1 (`gpt-4-1`, same OpenAI provider) was added for the Gen AI playground and OpenAI-compatible IDE clients after the playground analysis. The Stage 070 workspace AD-008 MiniMax escalation path (direct Red Hat portal) was removed the same day; workspace init no longer reads `REDHAT_MODELS_*`.
 
 ## Scope and current source
 

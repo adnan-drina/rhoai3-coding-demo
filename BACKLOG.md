@@ -450,7 +450,7 @@ Claude Sonnet 5.5 is registered with `apiFormat: openai-chat` and `path: /v1/cha
 - `validate-functional.py` stops reading SSE at `[DONE]`; add a bounded wait for stream closure so a held stream fails the check.
 - Intermittent fast `503 upstream_reset_before_response_started` on reused provider connections (OpenAI and Anthropic); Istio default retries exclude `reset` and the DestinationRule is controller-owned.
 - Parked Qwen 3.6 (`replicas: 0`) still reports `ready=true` in the MaaS catalog and returns 503.
-- Gen AI Playground: Llama Stack always sends `temperature`/`top_p` (Claude 5.x rejects them) and `max_tokens` (gpt-6-luna rejects it); neither external model answers from the playground, and the OpenAI balance is exhausted. Needs a playground-compatible OpenAI chat model with credits (for example `gpt-4.1`) and a Red Hat RFE on default sampling parameters (TROUBLESHOOTING "Gen AI Playground Gets No Answer From External Models").
+- Gen AI Playground: Llama Stack always sends `temperature`/`top_p` (Claude 5.x rejects them) and `max_tokens` (gpt-6-luna rejects it); neither external model answers from the playground, and the OpenAI balance is exhausted. GPT-4.1 (`gpt-4-1`) was registered on 2026-10-09 as the playground-compatible OpenAI model after the balance was restored; Claude still needs a Red Hat RFE on the playground's sampling parameters (TROUBLESHOOTING "Gen AI Playground Gets No Answer From External Models").
 
 
 ### Common MaaS routing and Studio persistence checkpoint (2026-10-08)
