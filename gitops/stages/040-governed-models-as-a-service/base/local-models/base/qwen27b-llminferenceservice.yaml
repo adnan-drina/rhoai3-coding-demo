@@ -100,8 +100,11 @@ spec:
         # is the recipe Text Only / card KV-headroom mode (skip vision).
         # 131072 window (native 262K does not fit 48GB; 131K matches
         # every client's context arithmetic). Hybrid GDN/mamba family:
-        # mamba-aligned 4096 batched tokens, low seq cap (orchestrator
-        # = few long sessions; per-slot state is the cost driver).
+        # mamba-aligned 4096 batched tokens. max-num-seqs is 16 for the
+        # same reason as Qwen 3.8: Stage 050 evaluation requests carry 16
+        # samples and must decode in one batch. The per-slot mamba state is
+        # small next to the shared KV pool, and long orchestrator sessions
+        # are preempted rather than refused when the pool is full.
         # Weights ~28GB FP8 on the 44.4GiB card.
         # NOTE: served from Hugging Face (hf://) — no official modelcar
         # exists for this model yet (verified 2026-07-25); graduate to a
@@ -123,7 +126,7 @@ spec:
           - --gpu-memory-utilization=0.92
           - --language-model-only
           - --max-num-batched-tokens=4096
-          - --max-num-seqs=8
+          - --max-num-seqs=16
           # Model-card Best Practices: thinking-mode sampling for general
           # (agentic/orchestration) tasks as the server default; explicit
           # client sampling still wins. The precise-coding profile (0.6)

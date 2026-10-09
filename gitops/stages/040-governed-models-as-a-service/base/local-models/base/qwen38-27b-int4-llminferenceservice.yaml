@@ -103,8 +103,14 @@ spec:
         # after a 246077-token needle recall with a 512-token output reserve.
         # A 128-token cap was not enough at 222077 tokens because thinking
         # consumed it. These lengths are measured on this cluster, not a
-        # Red Hat capacity certification. max-num-seqs stays 2, batched
-        # tokens stay 4096, gpu-memory-utilization stays 0.90.
+        # Red Hat capacity certification. Batched tokens stay 4096 and
+        # gpu-memory-utilization stays 0.90. max-num-seqs is 16 so a Stage 050
+        # evaluation request with 16 samples (lighteval LiveCodeBench) decodes
+        # in one batch and finishes inside the evaluation sidecar's 30-second
+        # request limit. The cap reserves no memory per sequence (vLLM reports
+        # a 637,281-token KV pool, 2.43 full-context requests); it lets short
+        # requests share the pool, and sixteen concurrent full-context
+        # sessions would be preempted rather than refused.
         # Hybrid prefix caching uses mamba-cache-mode=align because this
         # runtime rejects mode "all".
         # Use Qwen 3.8's recommended non-thinking sampling and mode together.
@@ -132,7 +138,7 @@ spec:
           - --gpu-memory-utilization=0.90
           - --language-model-only
           - --max-num-batched-tokens=4096
-          - --max-num-seqs=2
+          - --max-num-seqs=16
           - --override-generation-config={"temperature":0.7,"top_p":0.8,"top_k":20,"min_p":0.0,"presence_penalty":1.5,"repetition_penalty":1.0}
           - --default-chat-template-kwargs={"enable_thinking":false}
           - --reasoning-parser=qwen3
