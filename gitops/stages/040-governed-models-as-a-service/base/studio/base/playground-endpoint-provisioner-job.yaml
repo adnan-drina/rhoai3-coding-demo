@@ -1,5 +1,5 @@
 ---
-# Sync hook: provision the Gen AI playground custom endpoint "GPT-6 Luna (MaaS)" in demo-sandbox.
+# Sync hook: provision the Gen AI playground custom endpoint "GPT-6 Luna (Playground)" in demo-sandbox.
 # Mints (or keeps) a MaaS API key for the playground-sandbox subscription as the provisioner
 # ServiceAccount, stores it in the Secret the dashboard BFF expects (endpoint-api-key-<id>, key
 # api_key) and writes the BFF's endpoints ConfigMap (gen-ai-aa-custom-model-endpoints, config.yaml)
@@ -38,7 +38,7 @@ spec:
               SUBSCRIPTION="playground-sandbox"
               PROVIDER_ID="endpoint-gpt-6-luna-maas"
               MODEL_ID="gpt-6-luna"
-              DISPLAY_NAME="GPT-6 Luna (MaaS)"
+              DISPLAY_NAME="GPT-6 Luna (Playground)"
               SECRET_NAME="endpoint-api-key-gpt-6-luna-maas"
               CM_NAME="gen-ai-aa-custom-model-endpoints"
               MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="api")].hostname}')"
@@ -87,7 +87,20 @@ spec:
 
               if oc get configmap "${CM_NAME}" -n "${NS}" >/dev/null 2>&1; then
                 if oc get configmap "${CM_NAME}" -n "${NS}" -o jsonpath='{.data.config\.yaml}' | grep -q "provider_id: ${PROVIDER_ID}"; then
-                  echo "Custom endpoint ${PROVIDER_ID} already registered in ${CM_NAME}; leaving the ConfigMap as is"
+                  echo "Custom endpoint ${PROVIDER_ID} already registered in ${CM_NAME}"
+                  # Reconcile the display name of our own entry (exact line, scoped to our model block) so a
+                  # rename in Git reaches an existing ConfigMap; nothing else in the ConfigMap is touched.
+                  oc get configmap "${CM_NAME}" -n "${NS}" -o json | python3 -c '
+              import json, re, sys
+              cm = json.load(sys.stdin); cfg = cm["data"]["config.yaml"]; pid, mid, name = sys.argv[1:4]
+              pat = re.compile(r"(provider_id: " + re.escape(pid) + r"\n\s*model_id: " + re.escape(mid) + r"\n\s*model_type: \w+\n\s*metadata:\n\s*display_name: )(.*)")
+              m = pat.search(cfg)
+              if not m: sys.exit("ERROR: our model entry was not found in the expected shape; display name not reconciled")
+              if m.group(2).strip() == name: print("display name already " + name); sys.exit(0)
+              new = cfg[:m.start(2)] + name + cfg[m.end(2):]
+              print(json.dumps({"data": {"config.yaml": new}}), file=open("/tmp/cm-patch.json", "w")); print("display name " + m.group(2).strip() + " -> " + name)
+              ' "${PROVIDER_ID}" "${MODEL_ID}" "${DISPLAY_NAME}"
+                  if [ -s /tmp/cm-patch.json ]; then oc patch configmap "${CM_NAME}" -n "${NS}" --type=merge --patch-file=/tmp/cm-patch.json; fi
                 else
                   echo "WARNING: ${CM_NAME} exists with endpoints managed from the UI; not modifying it. Add ${DISPLAY_NAME} (model ${MODEL_ID}, ${MAAS_BASE_URL}/v1) from AI asset endpoints if wanted."
                 fi
