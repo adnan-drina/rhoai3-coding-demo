@@ -77,5 +77,11 @@
       "sha256": "d5add7b4ca7afeea91d52e4d4e4db3b1fe9885b71f07054560d8c4296b7441a2",
       "url": "https://files.pythonhosted.org/packages/95/0c/a71501bbc1a674ff72c4d6c2b75f4d9a5af819f5244c3a7558080a8802c5/yarl-1.25.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
     }
-  ]
+  ],
+  "interpreter": {
+    "path": "/opt/hermes-venv/bin/python3.11",
+    "basePath": "/usr/bin/python3.11",
+    "sha256": "8b10834091fce423fa1a256c115fd705c1bd327083c61069b0000249383aee9e",
+    "mechanism": "replace only the venv symlink with a byte-identical physical copy"
+  }
 }
