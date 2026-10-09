@@ -1,0 +1,33 @@
+---
+# Gen AI Studio playground agent profile (Technology Preview). The dashboard BFF lists ConfigMaps
+# labelled opendatahub.io/agent-profile=true whose name is agent-profile-<uuid>; loading the profile
+# in a playground applies the model, temperature and streaming flag. The uuid is a fixed uuid5 of
+# "rhoai3-coding-demo/agent-profile/gpt-4-1" so the object is stable across environments.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-profile-a0e6a12c-da50-5008-ac4c-c99f0c95b4f6
+  namespace: demo-sandbox
+  labels:
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/agent-profile: "true"
+    app.kubernetes.io/name: agent-profile-gpt-4-1
+    app.kubernetes.io/component: playground-agent-profile
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+data:
+  profile.yaml: |
+    apiVersion: genai.redhat.com/v1alpha1
+    kind: AgentProfile
+    metadata:
+      name: a0e6a12c-da50-5008-ac4c-c99f0c95b4f6
+    spec:
+      displayName: GPT-4.1
+      description: General-purpose OpenAI chat model for the playground and IDE clients; accepts any temperature.
+      model:
+        id: gpt-4-1
+        uri: https://maas-default-gateway-data-science-gateway-class.openshift-ingress.svc.cluster.local
+        sourceType: maas
+      temperature: 0.1
+      stream: true

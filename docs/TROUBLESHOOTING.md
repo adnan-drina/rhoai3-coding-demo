@@ -658,7 +658,7 @@ curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC
 
 **Recover:**
 
-- Claude 5.x: in the playground's model settings set **Temperature to 1** (verified end-to-end through the gateway at temperature 1 with the playground's shape); API clients send `temperature: 1` or omit it, never `top_p`.
+- Claude 5.x: in the playground's model settings set **Temperature to 1** (verified end-to-end through the gateway at temperature 1 with the playground's shape) or load the pre-provisioned "Claude Sonnet 5.5" agent profile (Stage 040 `studio/base`, ConfigMap `agent-profile-<uuid>` in `demo-sandbox`); API clients send `temperature: 1` or omit it, never `top_p`.
 - GPT-6 Luna: needs the playground to stop sending the provider-level `max_tokens` (RHOAIENG-90257, merged upstream 2026-09-09, not in the 3.5.1 `gen-ai-ui` image) **and** Temperature set to 1; until the backport, use `gpt-4-1` (`gpt-4.1` accepts any `max_tokens`/`temperature`/`top_p`).
 - Check the provider balance before blaming the gateway.
 

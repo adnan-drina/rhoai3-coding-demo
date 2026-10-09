@@ -17,6 +17,7 @@ resources:
   - local-models/base
   - external-models/base
   - policies/base
+  - studio/base
   - mcp/base
   - jobs/base
   - monitoring/base
