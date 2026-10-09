@@ -1,0 +1,32 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: hermes-runtime-api
+  namespace: ai-agents
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: '060'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+spec:
+  runPolicy: Serial
+  successfulBuildsHistoryLimit: 1
+  failedBuildsHistoryLimit: 1
+  completionDeadlineSeconds: 600
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy: {}
+  output:
+    to:
+      kind: ImageStreamTag
+      name: hermes-runtime-api:0.20.5-api
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi

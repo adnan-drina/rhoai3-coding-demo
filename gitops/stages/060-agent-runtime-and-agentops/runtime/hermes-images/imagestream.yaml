@@ -1,0 +1,14 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: hermes-runtime-api
+  namespace: ai-agents
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: '060'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+spec:
+  lookupPolicy:
+    local: false
