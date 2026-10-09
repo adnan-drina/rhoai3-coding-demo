@@ -45,6 +45,8 @@ spec:
               if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q placeholder; then echo "ERROR: MaaS Gateway api hostname is not ready" >&2; exit 1; fi
               MAAS_BASE_URL="https://${MAAS_HOST}"
               SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              # Key material only ever lives in shell variables, private temp files and the Secret; never in logs or argv.
+              umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
 
               secret_value() { oc get secret "${SECRET_NAME}" -n "${NS}" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
               # The stored key is re-used while the MaaS API still reports it active for this subscription
@@ -66,7 +68,7 @@ spec:
                   status=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
                   echo "Revoked previous key ${current_id} (HTTP ${status})"
                 fi
-                response="$(mktemp)"; key=""
+                response="${WORK}/response.json"; key=""
                 # The subscription and its model may still be reconciling in the same sync; retry briefly.
                 for attempt in $(seq 1 18); do
                   status=$(curl -sk -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
@@ -78,12 +80,10 @@ spec:
                 [ -n "${key}" ] || { echo "ERROR: MaaS API did not return a valid key for ${SUBSCRIPTION}" >&2; exit 1; }
                 id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}")"
                 expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}")"
-                rm -f "${response}"
                 echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"
               fi
-              oc create secret generic "${SECRET_NAME}" -n "${NS}" \
-                --from-literal=api_key="${key}" --from-literal=key_id="${id}" --from-literal=expires_at="${expires_at}" --from-literal=subscription="${SUBSCRIPTION}" \
-                --dry-run=client -o yaml | oc apply -f -
+              printf 'api_key=%s\nkey_id=%s\nexpires_at=%s\nsubscription=%s\n' "${key}" "${id}" "${expires_at}" "${SUBSCRIPTION}" > "${WORK}/secret.env"
+              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-env-file="${WORK}/secret.env" --dry-run=client -o yaml | oc apply -f -
 
               if oc get configmap "${CM_NAME}" -n "${NS}" >/dev/null 2>&1; then
                 if oc get configmap "${CM_NAME}" -n "${NS}" -o jsonpath='{.data.config\.yaml}' | grep -q "provider_id: ${PROVIDER_ID}"; then
@@ -98,9 +98,9 @@ spec:
               if not m: sys.exit("ERROR: our model entry was not found in the expected shape; display name not reconciled")
               if m.group(2).strip() == name: print("display name already " + name); sys.exit(0)
               new = cfg[:m.start(2)] + name + cfg[m.end(2):]
-              print(json.dumps({"data": {"config.yaml": new}}), file=open("/tmp/cm-patch.json", "w")); print("display name " + m.group(2).strip() + " -> " + name)
-              ' "${PROVIDER_ID}" "${MODEL_ID}" "${DISPLAY_NAME}"
-                  if [ -s /tmp/cm-patch.json ]; then oc patch configmap "${CM_NAME}" -n "${NS}" --type=merge --patch-file=/tmp/cm-patch.json; fi
+              print(json.dumps({"data": {"config.yaml": new}}), file=open(sys.argv[4], "w")); print("display name " + m.group(2).strip() + " -> " + name)
+              ' "${PROVIDER_ID}" "${MODEL_ID}" "${DISPLAY_NAME}" "${WORK}/cm-patch.json"
+                  if [ -s "${WORK}/cm-patch.json" ]; then oc patch configmap "${CM_NAME}" -n "${NS}" --type=merge --patch-file="${WORK}/cm-patch.json"; fi
                 else
                   echo "WARNING: ${CM_NAME} exists with endpoints managed from the UI; not modifying it. Add ${DISPLAY_NAME} (model ${MODEL_ID}, ${MAAS_BASE_URL}/v1) from AI asset endpoints if wanted."
                 fi
