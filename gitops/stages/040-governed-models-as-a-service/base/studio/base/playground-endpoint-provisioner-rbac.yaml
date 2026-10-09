@@ -1,0 +1,90 @@
+---
+# ServiceAccount that owns the playground-sandbox MaaS subscription and provisions the playground's
+# custom endpoint (Secret + gen-ai-aa-custom-model-endpoints ConfigMap) in demo-sandbox.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: playground-maas-key-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-endpoint-provisioner
+    app.kubernetes.io/component: playground-custom-endpoint
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: playground-endpoint-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-endpoint-provisioner
+    app.kubernetes.io/component: playground-custom-endpoint
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, get, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create, get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: playground-endpoint-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-endpoint-provisioner
+    app.kubernetes.io/component: playground-custom-endpoint
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: playground-endpoint-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: playground-maas-key-provisioner
+    namespace: demo-sandbox
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: playground-endpoint-provisioner-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: playground-endpoint-provisioner
+    app.kubernetes.io/component: playground-custom-endpoint
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways]
+    resourceNames: [maas-default-gateway]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: playground-endpoint-provisioner-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: playground-endpoint-provisioner
+    app.kubernetes.io/component: playground-custom-endpoint
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: playground-endpoint-provisioner-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: playground-maas-key-provisioner
+    namespace: demo-sandbox

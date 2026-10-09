@@ -1,0 +1,62 @@
+# Governance for the Gen AI playground's pre-provisioned custom endpoint (demo-sandbox).
+# The endpoint provisioner Job mints a MaaS API key as this ServiceAccount; the key is
+# project-shared by the playground, with its own quota and metering, so no personal key is used.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: playground-sandbox
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: playground-sandbox
+    app.kubernetes.io/component: maas-subscription
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  owner:
+    users:
+      - system:serviceaccount:demo-sandbox:playground-maas-key-provisioner
+  modelRefs:
+    # Reasoning model reachable from the playground only through a custom endpoint
+    # (the playground's MaaS providers inject max_tokens, RHOAIENG-90257).
+    - name: gpt-6-luna
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+  priority: 50
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: playground-sandbox
+      provider: governed-models
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: playground-sandbox
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: playground-sandbox
+    app.kubernetes.io/component: maas-auth-policy
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  subjects:
+    users:
+      - system:serviceaccount:demo-sandbox:playground-maas-key-provisioner
+  modelRefs:
+    - name: gpt-6-luna
+      namespace: external-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: playground-sandbox
+      provider: governed-models
