@@ -2337,7 +2337,10 @@ The pipeline still needs a push to build — fix the App scope (or seed a run) f
 
 ```bash
 oc logs deploy/eval-hub-ui -n redhat-ods-applications --since=1h | grep -i 'permission to access EvalHub'
-oc auth can-i get evaluations.trustyai.opendatahub.io -n rhoai-model-registries --as=<user> --as-group=rhods-admins
+# The virtual resource is not served, so `oc auth can-i` misparses it; ask the API the way the BFF does:
+oc create -f - -o jsonpath='{.status.allowed}' <<'EOF'
+{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"group":"trustyai.opendatahub.io","resource":"evaluations","namespace":"rhoai-model-registries","verb":"get"}}}
+EOF
 ```
 
 **Recover:** Stage 050 `tenant/catalog-insights-role.yaml` and `catalog-insights-rolebinding.yaml` grant `get` on `evaluations` in `rhoai-model-registries` to `rhods-admins` and `rhoai-developers`; sync Stage 050 and reload the tab. Models that Red Hat has not scanned show "No safety and security insights" by design. Upstream still applies the tenant check to this route, so keep the grant until the dashboard exempts it.
