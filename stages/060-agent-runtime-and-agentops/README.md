@@ -45,6 +45,8 @@ A policy written in a prompt is different from a denied operation enforced by th
 
 Agent discovery does not host an agent, and aggregate model usage does not reveal every tool or planning step. Keep those responsibilities distinct when assessing safety and task success.
 
+The OpenShell control plane stays in `openshell`. The **AI Agents** project (`ai-agents`) is a separate, administrator-managed hosting boundary, mapped one-to-one to the native `ai-agents` workspace. Its OpenShift project administrators are `rhods-admins`; only the verified `ai-admin` identity receives native workspace administration. The existing `openshell-admin` and `openshell-developer` workspaces retain their separate memberships. Creating this foundation does not launch an agent.
+
 ## How Red Hat And Open Source Make It Work
 
 OpenShift supplies the execution and identity platform. NVIDIA OpenShell supplies sandbox controls and policy interfaces, while OpenCode and Hermes supply the agent workflows. Existing Models-as-a-Service governs inference, and existing MLflow retains explicitly instrumented evidence.
@@ -67,6 +69,16 @@ OpenShell controls sandbox execution and access. OpenCode and Hermes run the dev
 
 ## Deploy And Validate
 
+Enable the native MCP Lifecycle Operator prerequisites with `bash ./stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh "$GIT_REPO_BRANCH"`; validate with `bash ./stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh`. The MCP Catalog is Developer Preview; this separate Technology Preview lifecycle component exposes the native MCPServer API through the RHOAI operator.
+
+The catalog's **OpenShift MCP Server 0.4** uses a pinned Red Hat image and a project-scoped native MCPServer. Its deployment policy requires each caller's OpenShift token, retains the catalog's read-only core/config tools and denies Secret resources. The approved boundary is HTTPS at the public entrypoint and HTTP inside the cluster, including forwarded tokens; the operator's generated ingress policy permits cluster peers. Registry metadata is registered through the installed, version-coupled native MLflow API because this RHOAI 3.5.1 catalog does not include the adjacent Register action. A callable HTTPS endpoint is advertised only after runtime and caller-authorization checks pass. The existing MCP service remains available until its replacement and consumers are verified.
+
+For a protected Gen AI Studio connection, the native workflow is **Playground → MCP**, enter your own session access token, choose **Authorize**, then **View tools**. No shared token is stored in the Registry or server configuration. Use the additive **OpenShift-Catalog** entry in project **AI Coding Sandbox** (`demo-sandbox`); **OpenShift-MCP** remains the legacy entry until visual handoff. Enter your own OpenShift token, not a model MaaS key.
+
+The catalog server is registered with native version **0.4.0** (catalog version **0.4**) and deployed with 13 read-only core/config tools. As `ai-admin`, browse it under **AI hub → MCP servers → Registry** or **Deployments** in **MCP servers**. `ai-developer` has no access to this hosting project; developer Studio consumption uses the direct HTTPS endpoint with the developer's own session token and workload-project permissions. The verified HTTPS endpoint requires your OpenShift token. Direct Studio publication uses the documented global discovery ConfigMap and per-session authorization. MCP Gateway aggregation and governance remain separately blocked; this direct connection does not use MaaS API keys or model quotas. The existing Studio server remains available.
+
+For console discovery only, deploy the separate `agent-console` component with `bash ./stages/060-agent-runtime-and-agentops/deploy-console.sh "$GIT_REPO_BRANCH"`, then run `bash ./stages/060-agent-runtime-and-agentops/validate-console.sh`. It enables the Developer Preview AgentOps view and permits each persona to read Services and Sandboxes in its own workspace. Launch and lifecycle remain in the authenticated OpenShell CLI. The generic console creation wizard is not qualified and receives no Sandbox creation permission from this component.
+
 The authenticated control plane and native sandbox controller are available. A workspace owner can start an OpenCode sandbox with no model provider, reach its HTTP and event-stream endpoints through the authenticated gateway, and stop, restart and delete it; file, interface-binding and network-egress attempts outside the policy are denied, and another owner's workspace is refused. Model-backed OpenCode tasks are not yet qualified. Standalone agent qualification is still in progress; completing this stage requires OpenCode, Hermes, catalog discovery and selected-call tracing. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
 
 ## References
@@ -80,3 +92,16 @@ The authenticated control plane and native sandbox controller are available. A w
 ## Next Stage
 
 [Stage 070: Advanced Application Platform](../070-advanced-app-platform/README.md) will provide developer workspaces, portal and delivery services, including planned Gitea integration. The AgentOps runtime can be qualified independently, then integrated with these developer clients.
+
+After the catalog runtime is ready, publish its Studio entry without redeploying Stage040:
+
+```bash
+python3 ./stages/040-governed-models-as-a-service/publish-catalog-mcp.py --bootstrap-kubeconfig "$KUBECONFIG"
+python3 ./stages/040-governed-models-as-a-service/publish-catalog-mcp.py --bootstrap-kubeconfig "$KUBECONFIG" --validate
+```
+
+The existing Stage040 Application must already delegate the exact `OpenShift-Catalog` data field; the initial reviewed handoff uses `--delegate`. No other discovery fields or playground state change. The private ownership journal is keyed by the current ConfigMap UID; keep it for idempotent repeat publication. Regular Stage040 deployment defers when the separately owned catalog runtime is absent.
+
+For catalog publication or qualification, supply the reviewed immutable deployed revisions as `RHOAI_STAGE040_EXPECTED_REVISION` and `RHOAI_STAGE060_EXPECTED_REVISION` (or the helpers' explicit revision arguments). Helper-only source publication does not require moving either live Application. Metadata connection and tool listing prove bearer-header transport; the server's opaque-token mode validates caller authority when an actual Kubernetes resource is requested. A nonempty invalid bearer must be denied on that resource call, not inferred invalid from metadata discovery.
+
+Operator installation uses native Automatic approval on the selected channels. Historical CSVs shown here are qualified baselines, not immutable future installation pins. See the [fresh deployment policy](../../docs/migration/035-operator-automatic-policy.md) for compatible-version checks, rolling-channel limits and the standard cluster-credential prerequisite.

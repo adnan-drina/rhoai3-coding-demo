@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# Install reviewed prerequisites; explicit controller approval remains a separate gate.
+# Install native Automatic prerequisites; runtime functional gates remain separate.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-# Use a caller-selected interpreter with the native bundle YAML parser installed.
+python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/controller"
+# Use the caller-selected Python interpreter for native readiness checks.
 PYTHON="${RHOAI_STAGE060_PYTHON:-python3}"
-"$PYTHON" -c 'import yaml' || { echo 'PyYAML is required for exact native bundle inventory; set RHOAI_STAGE060_PYTHON' >&2; exit 1; }
 # Core-mode Argo CD reads its settings from the kube-context namespace; refuse before any write.
 argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client with --core support is required' >&2; exit 1; }
 [[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'Set the kube-context namespace to openshift-gitops for argocd --core' >&2; exit 1; }
 REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
 [[ "$(git -C "$REPO_ROOT" ls-remote origin refs/heads/codex/stage-010-foundation-35 | awk '{print $1}')" == "$REVISION" ]] || { echo 'Published revision mismatch' >&2; exit 1; }
-git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml "$SCRIPT_DIR" >/dev/null
+git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml "$SCRIPT_DIR" scripts/platform/check-operator-policy.py >/dev/null
 if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
+  "$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
   exit
 fi
 # Fail closed on foreign App or resource ownership before the first component write.
@@ -35,7 +36,7 @@ if a:
  assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/runtime'
  assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshell'}
  assert a.get('status',{}).get('operationState',{}).get('phase') not in ('Running','Terminating')
-for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
+for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','ai-agents','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
  o=get(kind,name,ns)
  if o:
   m=o['metadata'];group=o['apiVersion'].split('/')[0] if '/' in o['apiVersion'] else ''
@@ -66,5 +67,8 @@ while time.monotonic()<end:
 else:raise RuntimeError('Exact async operation did not start within60seconds')
 PYWAIT
 python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
-"$PYTHON" "$SCRIPT_DIR/approve-controller.py" --revision "$REVISION"
-echo 'Manual controller plan requires permission review. After explicit reviewed approval, rerun with --finish.'
+"$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/controller" --wait 900
+"$PYTHON" "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait openshell-runtime --app-namespace openshift-gitops --sync --health --operation --timeout 600
+
+"$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
