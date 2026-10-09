@@ -127,11 +127,20 @@ spec:
           - --language-model-only
           - --max-num-batched-tokens=4096
           - --max-num-seqs=16
-          # Model-card Best Practices: thinking-mode sampling for general
-          # (agentic/orchestration) tasks as the server default; explicit
-          # client sampling still wins. The precise-coding profile (0.6)
-          # belongs to the 35B worker seat, not here.
-          - --override-generation-config={"temperature":0.6,"top_p":0.95,"top_k":20,"min_p":0.0,"presence_penalty":0.0,"repetition_penalty":1.0}
+          # Model-card Best Practices (RedHatAI/Qwen3.6-27B-FP8): the server
+          # default is instruct (non-thinking) mode with its sampling profile
+          # temperature 0.7, top_p 0.80, top_k 20, min_p 0.0, presence 1.5,
+          # repetition 1.0, the same posture as Qwen 3.8. Default-sampling
+          # consumers (the Stage 050 evaluations) must never run thinking
+          # sampling in non-thinking mode, which produced runaway generations
+          # on 3.8, and Qwen 3.6 ignores the /no_think soft switch, so the mode
+          # can only be set here or per request. The Stage 070 workspace
+          # clients already disable thinking and pin their sampling explicitly
+          # (model-profiles.json); thinking clients select both the mode and
+          # the card's thinking sampling (general 1.0/0.95, precise coding
+          # 0.6/0.95) per request.
+          - --override-generation-config={"temperature":0.7,"top_p":0.8,"top_k":20,"min_p":0.0,"presence_penalty":1.5,"repetition_penalty":1.0}
+          - --default-chat-template-kwargs={"enable_thinking":false}
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_xml
