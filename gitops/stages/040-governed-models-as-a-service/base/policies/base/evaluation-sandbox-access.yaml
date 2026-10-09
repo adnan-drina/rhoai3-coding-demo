@@ -1,0 +1,72 @@
+---
+# Governed access for Stage 050 model evaluation. EvalHub authenticates to a model endpoint with an
+# API key stored in a tenant Secret (RHOAI 3.5 "Evaluating AI systems", API key authentication), so
+# evaluation traffic goes through the MaaS gateway like every other consumer: identity, token quota and
+# usage attribution apply. The key is minted by the Stage 050 provisioner ServiceAccount that owns this
+# subscription; both private Qwen models are covered so the same identity can qualify either one.
+# The hourly token limit sits above what the single-GPU servers can produce, so governance meters the
+# evaluation without becoming its bottleneck.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: evaluation-sandbox
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: evaluation-sandbox
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: governed-access
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  owner:
+    users:
+      - system:serviceaccount:demo-sandbox:evalhub-maas-key-provisioner
+  priority: 60
+  modelRefs:
+    - name: qwen3-8-27b-int4
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 5000000
+          window: 1h
+    - name: qwen3-6-27b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 5000000
+          window: 1h
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: evaluation-sandbox
+      provider: governed-models
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: evaluation-sandbox
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: evaluation-sandbox
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: governed-access
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  subjects:
+    users:
+      - system:serviceaccount:demo-sandbox:evalhub-maas-key-provisioner
+  modelRefs:
+    - name: qwen3-8-27b-int4
+      namespace: internal-models
+    - name: qwen3-6-27b
+      namespace: internal-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: evaluation-sandbox
+      provider: governed-models

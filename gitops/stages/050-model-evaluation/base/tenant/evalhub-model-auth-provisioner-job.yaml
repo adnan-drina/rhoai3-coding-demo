@@ -1,0 +1,82 @@
+---
+# Sync hook: provision the tenant Secret that EvalHub jobs reference for model authentication
+# (model.auth.secret_ref, RHOAI 3.5 "Evaluating AI systems", Configure API key authentication).
+# Mints (or keeps) a MaaS API key for the evaluation-sandbox subscription as the provisioner
+# ServiceAccount and stores it under the documented `api-key` key; the sidecar of every evaluation
+# Job resolves that key, so adapters never see the credential. Keys default to the server maximum
+# (API_KEY_MAX_EXPIRATION_DAYS, 90 days); an expired or revoked key is re-minted on the next sync.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-evalhub-model-auth
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-model-auth-provisioner
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: evalhub-maas-key-provisioner
+      containers:
+        - name: provision
+          # Same reviewed OpenShift CLI image as the other Stage 050 jobs.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command:
+            - /bin/bash
+            - -ceu
+            - |
+              NS="demo-sandbox"
+              SUBSCRIPTION="evaluation-sandbox"
+              SECRET_NAME="evalhub-model-auth-maas"
+              MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="api")].hostname}')"
+              if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q placeholder; then echo "ERROR: MaaS Gateway api hostname is not ready" >&2; exit 1; fi
+              MAAS_BASE_URL="https://${MAAS_HOST}"
+              SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              # Key material only ever lives in shell variables, private temp files and the Secret; never in logs or argv.
+              umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
+
+              secret_value() { oc get secret "${SECRET_NAME}" -n "${NS}" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
+              # The stored key is re-used while the MaaS API still reports it active for this subscription
+              # (public GET /maas-api/v1/api-keys/{id} as the owning ServiceAccount).
+              key_state() {
+                curl -sk -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
+                  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("subscription",""))' 2>/dev/null || true
+              }
+
+              current_key="$(secret_value api-key)"; current_id="$(secret_value key_id)"; current_state=""
+              [ -n "${current_key}" ] && [ -n "${current_id}" ] && current_state="$(key_state "${current_id}")"
+              if [ "${current_state}" = "active ${SUBSCRIPTION}" ]; then
+                echo "Keeping the existing MaaS API key for ${SUBSCRIPTION}"
+                key="${current_key}"; id="${current_id}"; expires_at="$(secret_value expires_at)"
+              else
+                if [ -n "${current_id}" ]; then
+                  status=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
+                  echo "Revoked previous key ${current_id} (HTTP ${status})"
+                fi
+                response="${WORK}/response.json"; key=""
+                # The subscription and its models may still be reconciling in the same sync; retry briefly.
+                for attempt in $(seq 1 18); do
+                  status=$(curl -sk -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
+                    -d "{\"name\":\"${SUBSCRIPTION}-evalhub\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
+                  key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
+                  if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
+                  echo "Key creation attempt ${attempt}: HTTP ${status}; retrying in 10s"; key=""; sleep 10
+                done
+                [ -n "${key}" ] || { echo "ERROR: MaaS API did not return a valid key for ${SUBSCRIPTION}" >&2; exit 1; }
+                id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}")"
+                expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}")"
+                echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"
+              fi
+              printf '%s' "${key}" > "${WORK}/api-key"; printf '%s' "${id}" > "${WORK}/key_id"
+              printf '%s' "${expires_at}" > "${WORK}/expires_at"; printf '%s' "${SUBSCRIPTION}" > "${WORK}/subscription"
+              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-file=api-key="${WORK}/api-key" --from-file=key_id="${WORK}/key_id" \
+                --from-file=expires_at="${WORK}/expires_at" --from-file=subscription="${WORK}/subscription" --dry-run=client -o yaml | oc apply -f -
+              echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key for EvalHub model.auth.secret_ref"

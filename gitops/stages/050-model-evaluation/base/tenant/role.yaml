@@ -14,4 +14,9 @@ rules:
   - apiGroups: [trustyai.opendatahub.io]
     resources: [evaluations, collections, providers]
     verbs: [get, list, create, update, delete]
+  # The documented evaluator Role also grants the MLflow experiment verbs the dashboard and EvalHub
+  # need to track results (RHOAI 3.5 "Evaluating AI systems", Grant access to EvalHub).
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [create, get]
 # Native MLflow roles aggregate into existing project edit/admin bindings.

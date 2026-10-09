@@ -1,0 +1,94 @@
+---
+# ServiceAccount that owns the evaluation-sandbox MaaS subscription (Stage 040) and provisions the
+# tenant Secret EvalHub references for model authentication (RHOAI 3.5 "Evaluating AI systems",
+# Configure API key authentication for model endpoints).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: evalhub-maas-key-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-model-auth-provisioner
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-model-auth-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-model-auth-provisioner
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-model-auth-provisioner
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-model-auth-provisioner
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: evalhub-model-auth-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-maas-key-provisioner
+    namespace: demo-sandbox
+---
+# The provisioner discovers the MaaS gateway hostname from the Gateway instead of carrying a cluster URL in Git.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-model-auth-provisioner-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: evalhub-model-auth-provisioner
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways]
+    resourceNames: [maas-default-gateway]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-model-auth-provisioner-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: evalhub-model-auth-provisioner
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: evalhub-model-auth-provisioner-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-maas-key-provisioner
+    namespace: demo-sandbox

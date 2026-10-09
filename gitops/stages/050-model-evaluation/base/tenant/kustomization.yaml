@@ -5,3 +5,5 @@ resources:
   - rolebinding.yaml
   - catalog-insights-role.yaml
   - catalog-insights-rolebinding.yaml
+  - evalhub-model-auth-provisioner-rbac.yaml
+  - evalhub-model-auth-provisioner-job.yaml
