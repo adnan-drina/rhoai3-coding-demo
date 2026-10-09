@@ -1,0 +1,98 @@
+# System-owned EvalHub provider for SWE-bench (RHOAI 3.5 "Evaluating AI systems", Add a custom provider
+# by using a ConfigMap). The TrustyAI Operator discovers this ConfigMap in its namespace by the two
+# labels and mounts it into the EvalHub deployment once `swebench` is listed in the EvalHub CR.
+# SWE-bench is not among the 3.5.1 built-in providers; this is the community adapter from
+# eval-hub/eval-hub-contrib (quay.io/evalhub/community-swebench v0.6.0, pinned by digest). The adapter
+# grades a predictions file: it creates one Job per instance from the public SWE-bench instance
+# images, applies the model's patch, runs the tests and reports resolve_rate. Patch generation is a
+# separate step (stages/050-model-evaluation/swebench-run.sh).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-provider-swebench
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-provider-type: system
+    trustyai.opendatahub.io/evalhub-provider-name: swebench
+    app.kubernetes.io/name: evalhub-provider-swebench
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  swebench.yaml: |
+    id: swebench
+    name: SWE-bench
+    description: >-
+      Software engineering benchmark that evaluates LLM-generated code patches
+      against real-world GitHub issues. Each instance provides a codebase, an
+      issue description, and a gold patch; the model's patch is applied and
+      tested inside a per-instance container image.
+    runtime:
+      k8s:
+        image: quay.io/evalhub/community-swebench@sha256:3bade587e9c86522ffbcc504891d709adb60cd4b857d55b7a69a39d5a61d9de2
+        entrypoint: ["python", "main.py"]
+        cpu_request: 100m
+        memory_request: 128Mi
+        cpu_limit: 1000m
+        memory_limit: 2Gi
+    benchmarks:
+      - id: swebench_verified
+        name: SWE-bench Verified
+        description: >-
+          500 human-verified solvable instances from SWE-bench.
+          The primary benchmark for comparing coding agents.
+        category: code_generation
+        metrics:
+          - resolve_rate
+          - resolved_count
+          - total_instances
+          - error_count
+        primary_score:
+          metric: resolve_rate
+          lower_is_better: false
+        tags:
+          - code
+          - software-engineering
+          - github
+          - patches
+          - verified
+      - id: swebench_lite
+        name: SWE-bench Lite
+        description: >-
+          300 curated instances from SWE-bench, designed for faster evaluation.
+        category: code_generation
+        metrics:
+          - resolve_rate
+          - resolved_count
+          - total_instances
+          - error_count
+        primary_score:
+          metric: resolve_rate
+          lower_is_better: false
+        tags:
+          - code
+          - software-engineering
+          - github
+          - patches
+          - lite
+      - id: swebench_full
+        name: SWE-bench Full
+        description: >-
+          All 2294 instances from the original SWE-bench test split.
+        category: code_generation
+        metrics:
+          - resolve_rate
+          - resolved_count
+          - total_instances
+          - error_count
+        primary_score:
+          metric: resolve_rate
+          lower_is_better: false
+        tags:
+          - code
+          - software-engineering
+          - github
+          - patches
+          - full

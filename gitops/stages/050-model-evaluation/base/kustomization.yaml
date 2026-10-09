@@ -6,6 +6,7 @@ resources:
   - evalhub
   - tenant
   - prompts
+  - swebench
 labels:
   - pairs:
       app.kubernetes.io/part-of: rhoai-platform

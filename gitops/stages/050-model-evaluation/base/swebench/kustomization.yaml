@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - provider-configmap.yaml
+  - rbac.yaml
+  - s3-test-data-provisioner.yaml
+# Agent configuration and per-instance driver mounted by the patch-generation Jobs
+# (stages/050-model-evaluation/swebench-run.sh).
+configMapGenerator:
+  - name: swebench-agent
+    namespace: demo-sandbox
+    files:
+      - mini-swe-agent-swebench.yaml
+      - run-instance.sh
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/name: swebench-agent
+        app.kubernetes.io/part-of: rhoai-platform
+        app.kubernetes.io/component: evaluation
+        app.kubernetes.io/managed-by: argocd
