@@ -1,6 +1,8 @@
 # Stage 060 agent runtime and AgentOps design proposal
 
-**Status: scope and implementation plan for review. Documentation approved; runtime implementation and deployment have not started.** Stage 060 would host agent runtimes and AgentOps; Stage 070 supplies developer services, SCM and templates. Stages 110/120/130 consume these separate platform layers. Existing Stage 030 catalogs, Stage 040 MaaS and Stage 050 EvalHub/MLflow keep their ownership and data. Current model/GPU state is unchanged.
+**Current status, 2026-10-09: both standalone agents are deployed, qualified and visually confirmed Ready/Sandboxed by the owner. Workspace client access and required selected-call MLflow tracing remain pending.**
+
+**Historical design starting point: documentation approved; runtime implementation and deployment had not started.** Stage 060 would host agent runtimes and AgentOps; Stage 070 supplies developer services, SCM and templates. Stages 110/120/130 consume these separate platform layers. Existing Stage 030 catalogs, Stage 040 MaaS and Stage 050 EvalHub/MLflow keep their ownership and data. Current model/GPU state is unchanged.
 
 ## Required scope and reuse
 
@@ -478,3 +480,8 @@ The separate published `--confinement-only` supplement passed all 10 gates witho
 Final runtime pin is `3a65ec3c` (`stage060-hermes-confinement-20261009`), with all 61 rendered resources unchanged by the helper-only correction. Stage030 is pinned independently to `dd08961d` (`stage030-hermes-qualified-20261009`); its only live resource change removes the stale Hermes `qualification-pending` label from the same catalog ConfigMap UID. Agent IDs, titles, categories and every other field are preserved. Both Applications are Synced/Healthy with exact automation retained. The consolidated sanitized receipt is `/private/tmp/060-hermes-final.json`.
 
 Hermes dashboard acceptance remains user-owned: **AI hub → Agents → Deployments → AI Agents**, expected `opencode` and `hermes`. The owner already confirmed OpenCode. Reviewed client consumption and required selected-call MLflow tracing remain incomplete; two running agents do not complete Stage060. No Stage130 migration campaign, external model, platform upgrade or additional persona grant was performed.
+
+
+### User visual acceptance and next milestones, 2026-10-09
+
+The owner confirmed the dashboard screenshot shows both `opencode` and `hermes` Sandboxed/Ready in AI Agents. Runtime and visual acceptance are complete for these bounded slices. The next work starts with read-only prerequisites and reviewed designs for workspace client access and selected-call MLflow tracing; no new access grants, runtime egress or agent changes are authorized by this status note.

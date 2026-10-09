@@ -8,3 +8,4 @@ resources:
 - opencode
 - hermes-images
 - hermes
+- client-traces
