@@ -10,6 +10,7 @@ done
 # OpenShift fsGroup may add setgid; clear it without admitting group/other access.
 auth_mode="$(stat -c %a /sandbox/state/auth)"
 [[ "$auth_mode" == 700 || "$auth_mode" == 2700 ]] || exit 1
+chmod g-s /sandbox/state/auth
 chmod 700 /sandbox/state/auth
 [[ "$(stat -c %a /sandbox/state/auth)" == 700 ]] || exit 1
 secret=/sandbox/state/auth/server-password
