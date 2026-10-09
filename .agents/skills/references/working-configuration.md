@@ -32,7 +32,7 @@ Validated on `cluster-klvxt` for Stage 220 on 2026-06-12 and refreshed on
 | Developer access | `ai-developer` does not get direct namespace access to `models-as-a-service`; the user path is AI asset endpoints, MaaS API keys, and OpenAI-compatible MaaS endpoints |
 | Admin access | `ai-admin` maps to `rhods-admins` and can administer the MaaS namespace and MaaS dashboard policy surfaces |
 | Gen AI Playground | dashboard-created `LlamaStackDistribution` in `demo-sandbox`; validate product-generated model discovery and responses for Nemotron and external `gpt-4o-mini` before using any diagnostic repair helper |
-| OpenShift MCP | native read-only OpenShift MCP server `openshift-mcp-server` in `mcp-servers` (MCP Lifecycle Operator), discovered through `redhat-ods-applications/gen-ai-aa-mcp-servers` as `OpenShift-Catalog` (token-less, in-cluster) beside the token-required read-write `OpenShift-Catalog-ReadWrite`; config sets `read_only = true`, `list_output = "table"`, `toolsets = ["core", "config"]`, an `enabled_tools` allowlist for namespace-scoped pod, known-pod, and node inspection, and denies `Secret`, `ConfigMap`, and RBAC resources |
+| OpenShift MCP | native read-only OpenShift MCP server `openshift-mcp-server` in `mcp-servers` (MCP Lifecycle Operator), discovered through `redhat-ods-applications/gen-ai-aa-mcp-servers` as `OpenShift-MCP` (token-less, in-cluster) beside the token-required read-write `OpenShift-MCP-ReadWrite`; config sets `read_only = true`, `list_output = "table"`, `toolsets = ["core", "config"]`, an `enabled_tools` allowlist for namespace-scoped pod, known-pod, and node inspection, and denies `Secret`, `ConfigMap`, and RBAC resources |
 
 ## Design Decisions
 
@@ -168,7 +168,7 @@ Validated on `cluster-klvxt` for Stage 220 on 2026-06-12 and refreshed on
   succeeds with that listed model ID.
 - MCP readiness requires more than the discovery ConfigMap. Validate from the
   project Llama Stack server that `/v1/responses` can receive an
-  `mcp_list_tools` result from `OpenShift-Catalog`. If the claim is model-driven
+  `mcp_list_tools` result from `OpenShift-MCP`. If the claim is model-driven
   tool use, require an actual `mcp_call`; otherwise present MCP as available
   context, not as a completed agent action.
 - GPT tool calling and GPT MCP are separate validation gates. A direct MaaS

@@ -21,13 +21,13 @@ from native_api import guarded, need, oc, persona, private_receipt
 APP = '040-governed-models-as-a-service'
 NAMESPACE = 'redhat-ods-applications'
 CM = 'gen-ai-aa-mcp-servers'
-KEY = 'OpenShift-Catalog'
+KEY = 'OpenShift-MCP'
 DESCRIPTION = 'Read-only OpenShift MCP tools, no token needed: without one the server acts as its bounded service account (view on the demo projects, cluster and node summaries); with your own OpenShift token it acts as you. In-cluster endpoint for the playground and workspaces. Secret resources and write operations are denied.'
 DESCRIPTION_RW = 'Read-write OpenShift MCP tools using your own OpenShift session token: create, update, scale and delete resources within your own project permissions. Secret resources are denied.'
 # Studio discovery key -> (endpoint source kind, native object in mcp-servers, published description). The first key is
 # the primary. 'mcpserver' publishes the in-cluster address the lifecycle operator reports (token-less server, no Route);
 # 'route' publishes the public HTTPS edge (token-required server).
-ENTRIES = {KEY: ('mcpserver', 'openshift-mcp-server', DESCRIPTION), 'OpenShift-Catalog-ReadWrite': ('route', 'openshift-mcp-server-rw', DESCRIPTION_RW)}
+ENTRIES = {KEY: ('mcpserver', 'openshift-mcp-server', DESCRIPTION), 'OpenShift-MCP-ReadWrite': ('route', 'openshift-mcp-server-rw', DESCRIPTION_RW)}
 
 
 def delegation(key):
@@ -115,8 +115,8 @@ def publish(args, env):
         need(app['spec'] == {**before, 'ignoreDifferences': before.get('ignoreDifferences', []) + [field]}, 'Unexpected Application change')
     encoded = json.dumps(value, sort_keys=True, separators=(',', ':'))
     identity = {'application': APP, 'cm_uid': cm['metadata']['uid'], 'key': key, 'value_sha256': hashlib.sha256(encoded.encode()).hexdigest()}
-    # The primary key keeps its historical journal name; other keys get their own journal beside it.
-    path = Path(args.state).expanduser() if args.state else Path.home() / '.local/state/rhoai3-coding-demo/studio-mcp' / (cm['metadata']['uid'] + ('' if key == KEY else '-' + key) + '.json')
+    # One private ownership journal per published key.
+    path = Path(args.state).expanduser() if args.state else Path.home() / '.local/state/rhoai3-coding-demo/studio-mcp' / (cm['metadata']['uid'] + '-' + key + '.json')
     if args.validate:
         need(key in old and json.loads(old[key]) == value, 'Studio catalog field is missing or drifted')
         need(path.exists(), 'Retained Studio field journal is absent')

@@ -666,7 +666,7 @@ curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC
 
 ## Gen AI Playground MCP Tools Fail Or Return No Tools
 
-**Affected stage:** Stage 040 playground MCP entries `OpenShift-Catalog` and `OpenShift-Catalog-ReadWrite` (native Stage 060 servers in `mcp-servers`)
+**Affected stage:** Stage 040 playground MCP entries `OpenShift-MCP` and `OpenShift-MCP-ReadWrite` (native Stage 060 servers in `mcp-servers`)
 
 **Symptom:** The MCP server shows no tools, **View tools** is empty, or the server answers `401 Unauthorized: Bearer token required`; or the model replies with an error instead of calling a tool.
 

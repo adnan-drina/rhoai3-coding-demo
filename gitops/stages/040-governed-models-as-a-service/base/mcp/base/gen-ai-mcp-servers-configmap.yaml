@@ -1,5 +1,5 @@
 # RHOAI Gen AI Playground and AI asset endpoints discover platform MCP servers from this ConfigMap
-# (one JSON entry per key). The entries themselves (OpenShift-Catalog, OpenShift-Catalog-ReadWrite)
+# (one JSON entry per key). The entries themselves (OpenShift-MCP, OpenShift-MCP-ReadWrite)
 # are published by stages/040-governed-models-as-a-service/publish-catalog-mcp.py from the native
 # Stage 060 servers and preserved through the Application's ignoreDifferences; this manifest only
 # owns the object. Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/experimenting_with_models_in_the_gen_ai_playground/index

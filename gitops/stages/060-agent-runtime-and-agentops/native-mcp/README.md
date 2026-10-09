@@ -69,7 +69,7 @@ Everything else is identical: `require_oauth` with opaque-token passthrough, no 
 RoleBindings, the Secret GVK denial, the HTTPS-edge/internal-HTTP boundary and the same HTTP
 limits. The Kubernetes API authorizes every action with the caller's own token, so the server can
 never do more than the caller's RBAC allows. It is published to Gen AI Studio as the separate
-`OpenShift-Catalog-ReadWrite` discovery entry; the read-only `OpenShift-Catalog` entry remains the
+`OpenShift-MCP-ReadWrite` discovery entry; the read-only `OpenShift-MCP` entry remains the
 default for inspection. `validate-native-mcp.py` checks both servers.
 
 ## Policy update 2026-10-09: token-less read-only, token read-write
