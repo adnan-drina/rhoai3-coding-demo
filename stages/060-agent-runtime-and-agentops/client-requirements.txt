@@ -1,3 +1,6 @@
 mlflow-skinny[kubernetes]==3.14.0
-kubernetes==37.0.0
+# kubernetes-client 36+ stores the kubeconfig bearer under api_key["BearerToken"], which the MLflow 3.14
+# kubernetes-namespaced auth provider does not read (fixed upstream in MLflow 3.15); the server is 3.14.0, so the
+# client stays on 3.14.0 and the Kubernetes client is held below the rename.
+kubernetes==35.0.0
 PyYAML==6.0.3
