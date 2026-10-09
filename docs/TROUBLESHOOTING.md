@@ -477,7 +477,7 @@ oc get rolebinding rhods-admins-external-models-admin -n external-models
 
 **Recover:** Reconcile the Stage 040 GitOps `hosting-admin-rolebinding.yaml` resource in `external-models` from the reviewed deployed revision. Keep the existing operator Subscription approvals and Application automation policy; use a scoped RoleBinding sync without hooks for this correction. Refresh the dashboard or sign out and back in after permissions change.
 
-This binding grants `rhods-admins` the same hosting-project `admin` role already present in Internal Models. Governed developer consumers retain MaaS access without access to provider credentials or hosting management. The `models-as-a-service` governance namespace stays hidden from the dashboard.
+This binding grants `rhods-admins` the same hosting-project `admin` role already present in Internal Models. Governed developer consumers retain MaaS access without access to provider credentials or hosting management. The `models-as-a-service` governance project is also dashboard-visible to its existing authorized administrators.
 
 **Related docs:** [RHOAI 3.5 project permissions](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/managing-access-to-projects_projects).
 

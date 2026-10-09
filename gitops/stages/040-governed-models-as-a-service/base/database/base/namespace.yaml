@@ -4,6 +4,7 @@ metadata:
   name: models-as-a-service
   labels:
     maas-gateway-access: "true"
+    opendatahub.io/dashboard: "true"
     app.kubernetes.io/name: models-as-a-service
     app.kubernetes.io/component: maas
     kueue.openshift.io/managed: "true"
