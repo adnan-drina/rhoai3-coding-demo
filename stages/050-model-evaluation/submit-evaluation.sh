@@ -68,7 +68,7 @@ EVALHUB_URL="https://$(oc get route evalhub -n evalhub --request-timeout=10s -o 
 TOKEN="$(oc whoami -t)"
 api() { # method path [body-file]
   local body=(); [[ $# -ge 3 ]] && body=(-H 'Content-Type: application/json' --data-binary "@$3")
-  curl -sS -m 60 -X "$1" -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $TENANT" -H 'Accept: application/json' "${body[@]}" "$EVALHUB_URL$2"
+  curl -sS -m 60 -X "$1" -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $TENANT" -H 'Accept: application/json' ${body[@]+"${body[@]}"} "$EVALHUB_URL$2"
 }
 show_job() {
   python3 -c '
