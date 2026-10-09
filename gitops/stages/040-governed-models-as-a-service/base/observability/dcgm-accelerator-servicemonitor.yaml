@@ -1,0 +1,62 @@
+# Feeds GPU utilisation into the OpenShift AI monitoring stack for the LLM Utilization dashboard.
+#
+# That product dashboard queries accelerator_gpu_utilization on the data-science datasource, but the
+# collector's generated DCGM job only forwards memory, power, clock and temperature (verified 2026-10-09;
+# the renamed utilisation series never arrives), so the panel shows "No data". The product itself defines
+# accelerator_gpu_utilization = DCGM_FI_DEV_GPU_UTIL in the PrometheusRule nvidia-gpu-operator/nvidia-dcgm-
+# exporter for cluster monitoring; this ServiceMonitor applies the same mapping on the RHOAI side. It is a
+# user-owned monitor carrying the documented monitoring.opendatahub.io/scrape label (RHOAI 3.5 "Collect
+# metrics from user workloads"); no operator-managed workload is relabelled.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: accelerator-gpu-utilization
+  namespace: redhat-ods-monitoring
+  labels:
+    monitoring.opendatahub.io/scrape: "true"
+    app.kubernetes.io/name: accelerator-gpu-utilization
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+spec:
+  namespaceSelector:
+    matchNames:
+      - nvidia-gpu-operator
+  selector:
+    matchLabels:
+      app: nvidia-dcgm-exporter
+  endpoints:
+    - port: gpu-metrics
+      path: /metrics
+      interval: 30s
+      relabelings:
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+      metricRelabelings:
+        - action: keep
+          sourceLabels: [__name__]
+          regex: DCGM_FI_DEV_(GPU_UTIL|MEM_COPY_UTIL|FB_USED|FB_TOTAL)
+        - action: replace
+          sourceLabels: [__name__]
+          regex: DCGM_FI_DEV_GPU_UTIL
+          targetLabel: __name__
+          replacement: accelerator_gpu_utilization
+        - action: replace
+          sourceLabels: [__name__]
+          regex: DCGM_FI_DEV_MEM_COPY_UTIL
+          targetLabel: __name__
+          replacement: accelerator_memory_used_bytes
+        - action: replace
+          sourceLabels: [__name__]
+          regex: DCGM_FI_DEV_FB_TOTAL
+          targetLabel: __name__
+          replacement: accelerator_memory_total_bytes
+        - action: replace
+          sourceLabels: [__name__]
+          regex: DCGM_FI_DEV_FB_USED
+          targetLabel: __name__
+          replacement: accelerator_framebuffer_used_bytes
+        - action: replace
+          targetLabel: vendor
+          replacement: nvidia

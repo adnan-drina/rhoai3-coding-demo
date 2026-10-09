@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - dashboard-5-cost-per-token.yaml
   - dashboard-6-tokenomics-break-even.yaml
+  - dcgm-accelerator-servicemonitor.yaml
