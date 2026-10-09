@@ -2570,3 +2570,22 @@ After owner correction, verify native operator reconciliation, `ApiReady=True`, 
 The same investigation found five terminal revision-2 installer pods from 2026-09-28: four kube-controller-manager attempts and one scheduler attempt. Successful successor installers exist; all three control-plane nodes run kube-controller-manager revision 7 and scheduler revision 6, with no installation target pending. Operators are Available and not Degraded; all seven nodes are Ready without pressure.
 
 These pods are retained diagnostic history, not active control-plane failures. [OCP 4.22 operator API documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/operator_apis/kubescheduler-operator-openshift-io-v1) describes failed-revision retention. Preserve the native retention policy, revision ConfigMaps and current static pods; no cleanup or control-plane configuration change was justified. Inspect current revisions/operator conditions before interpreting an old `Failed` installer as a running-service defect.
+
+## Observability Dashboards Show Empty GPU, Inter-Token Latency Or Error-Rate Panels
+
+**Affected stage:** Stage 010 observability stack with Stage 040 models, RHOAI 3.5.1
+
+**Symptom:** On **Observe & monitor → Dashboard**, the LLM Utilization tab's GPU utilisation panels are empty while the Cluster tab shows GPU utilisation; the LLM Performance tab's inter-token latency panel is empty; the LLM Traffic tab's error rate is always zero.
+
+**Likely cause:** Product-level mismatches between the shipped dashboards and what the RHOAI collector stores (verified 2026-10-09). The LLM tabs query the `data-science-prometheus-datasource`, which only holds what the `data-science-collector` scrapes from monitors labelled `monitoring.opendatahub.io/scrape=true`; its DCGM job renames `DCGM_FI_DEV_GPU_UTIL` to `nvidia_gpu_utilization_ratio` but that series never arrives (memory, power, clock and temperature do), and the dashboard asks for `accelerator_gpu_utilization`, which only the cluster datasource produces through a user-workload recording rule. The performance dashboard queries `kserve_vllm:time_per_output_token_seconds_bucket`, which vLLM 0.24 no longer exposes (`inter_token_latency_seconds` and `request_time_per_output_token_seconds` exist). The traffic dashboard's error rate uses `inference_model_request_error_total`, but the scheduler ServiceMonitor authenticates with a Secret the collector's target allocator cannot consume, so no scheduler metrics reach the RHOAI store, and the `or vector(0)` fallback renders zero. In user-workload monitoring, the `maas-api-metrics` PodMonitor references a `metrics` port the pod does not expose, and the `maas-controller-metrics` and TrustyAI operator targets are down.
+
+**Diagnose:**
+
+```bash
+oc port-forward -n redhat-ods-monitoring svc/thanos-querier-data-science-thanos-querier 10902:10902 &
+curl -s 'http://127.0.0.1:10902/api/v1/label/__name__/values' | jq -r '.data[] | select(test("gpu|accelerator|time_per_output|inference_"))'
+oc port-forward -n redhat-ods-monitoring svc/data-science-collector-targetallocator 18080:80 &
+curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
+```
+
+**Recover:** Nothing in this repository is misconfigured: the DSCInitialization monitoring section, the Monitoring service conditions, the datasources and the scrape labels match the 3.5 guide. These are Red Hat items recorded in BACKLOG. The Cluster and Models tabs, the Usage tab and the custom Cost per token and Tokenomics tabs are unaffected; the Tokenomics GPU panel reads the cluster datasource for that reason.
