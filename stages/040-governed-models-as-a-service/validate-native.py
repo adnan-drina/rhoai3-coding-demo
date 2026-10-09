@@ -420,6 +420,7 @@ def main():
                 need(obj["status"].get("endpoint") == endpoint, "External discovery does not select the API hostname")
     print("[PASS] Native external/provider/model references and credential presence; upstream entitlement/inference pending")
     command([sys.executable, str(ROOT / "stages/040-governed-models-as-a-service/publish-catalog-mcp.py"), "--validate", "--defer-if-absent"])
+    command([sys.executable, str(ROOT / "stages/040-governed-models-as-a-service/publish-catalog-mcp.py"), "--key", "OpenShift-Catalog-ReadWrite", "--validate", "--defer-if-absent"])
     print("[PASS] Studio catalog field or explicit deferred Stage060 prerequisite; session use is separate")
 
 
