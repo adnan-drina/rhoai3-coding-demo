@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import json
 import io
+import os
 from contextlib import redirect_stdout
 from email.message import Message
 import tempfile
@@ -91,6 +92,54 @@ class FixtureAndStreamTest(unittest.TestCase):
                 qualification.events('r',seen,errors)
                 self.assertEqual(not errors,accepted)
                 self.assertEqual(bool(seen),accepted)
+
+
+class ConfinementTest(unittest.TestCase):
+    def test_exact_permission_denial_never_generic_connectivity_failure(self):
+        for number in (1,13): self.assertTrue(q.permission_denied({'errno':number}))
+        for number in (None,2,17,110,111,False): self.assertFalse(q.permission_denied({'errno':number}))
+
+    def test_inspected_rest_denial_requires_native_route_binary_and_policy(self):
+        body={'error':'policy_denied','policy':'hermes_maas','layer':'l7','protocol':'rest',
+              'method':'GET','path':'/v1/chat/completions','host':'public.example','port':443,'binary':q.PYTHON}
+        body['rule_missing']=dict(type='rest_allow',**{k:v for k,v in body.items() if k not in ('error','policy','protocol')})
+        value={'status':403,'policyHeader':'hermes_maas','body':body}
+        self.assertTrue(q.inspected_denial(value,'GET','/v1/chat/completions','public.example','hermes_maas'))
+        for field,changed in (('error','middleware_failed'),('binary','/usr/bin/python3.11'),('path','/v1/models'),('layer','http_response_pre_return')):
+            drift=copy.deepcopy(value);drift['body'][field]=changed
+            with self.subTest(field=field):self.assertFalse(q.inspected_denial(drift,'GET','/v1/chat/completions','public.example','hermes_maas'))
+        for drift in (dict(value,status=401),dict(value,policyHeader=None),{'transportFailure':'TimeoutError'}):
+            self.assertFalse(q.inspected_denial(drift,'GET','/v1/chat/completions','public.example','hermes_maas'))
+
+    def test_unexpected_write_cleans_only_its_exact_created_probe_and_still_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original_open,original_stat,original_unlink=os.open,os.lstat,os.unlink
+            paths={p:str(Path(directory)/str(i)) for i,p in enumerate(('/opt/hermes-venv/.hermes-confinement-owned123','/etc/.hermes-confinement-owned123'))}
+            removed=[]
+            def opened(path,flags,mode=0o777):
+                if path=='/root/.hermes-confinement-owned123':raise PermissionError(13,'reviewed synthetic denial')
+                return original_open(paths[path],flags,mode)
+            def unlinked(path):removed.append(path);original_unlink(paths[path])
+            socket_probe=SimpleNamespace(settimeout=lambda *a:None,connect=lambda *a:(_ for _ in ()).throw(PermissionError(13,'synthetic denial')),close=lambda:None)
+            output=io.StringIO()
+            connection=SimpleNamespace(request=lambda *a,**k:(_ for _ in ()).throw(TimeoutError()),close=lambda:None)
+            with patch.object(os,'open',side_effect=opened),patch.object(os,'lstat',side_effect=lambda path:original_stat(paths[path])),\
+                 patch.object(os,'unlink',side_effect=unlinked),patch.object(q.socket,'socket',return_value=socket_probe),\
+                 patch('http.client.HTTPSConnection',return_value=connection),redirect_stdout(output):
+                exec(q.confinement_program('owned123','public.example'),{})
+            result=json.loads(output.getvalue())
+            self.assertEqual(set(removed),set(paths))
+            self.assertFalse(list(Path(directory).iterdir()))
+            for key in ('privateWrite','systemWrite'):
+                self.assertTrue(result[key]['cleaned'])
+                self.assertFalse(q.permission_denied(result[key]))
+
+    def test_supplement_selects_no_coding_gates_and_program_has_bounded_syntax(self):
+        qualification=q.Qualification(SimpleNamespace(confinement_only=True))
+        self.assertEqual(qualification.gates,q.CONFINEMENT_GATES)
+        self.assertNotIn('codingTool',qualification.gates)
+        self.assertNotIn('ownedFixture',qualification.receipt)
+        compile(q.confinement_program('owned123','public.example'),'<reviewed-probe>','exec')
 
 
 class CancellationTest(unittest.TestCase):
