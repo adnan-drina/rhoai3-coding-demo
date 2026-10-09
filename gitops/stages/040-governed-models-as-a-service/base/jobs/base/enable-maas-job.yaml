@@ -33,8 +33,13 @@ spec:
             '{"spec":{"components":{"aigateway":{"managementState":"Managed","modelsAsAService":{"managementState":"Managed"},"batchGateway":{"managementState":"Removed"}},"ogx":{"managementState":"Managed"}}}}'
           test "$(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.aigateway.modelsAsAService.managementState}')" = Managed
           test "$(oc --request-timeout=10s get datasciencecluster default-dsc -o jsonpath='{.spec.components.ogx.managementState}')" = Managed
-          oc --request-timeout=10s patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type=merge -p '{"spec":{"dashboardConfig":{"genAiStudio":true,"genAiTracing":true,"modelAsService":true,"vLLMDeploymentOnMaaS":true,"externalModels":true,"llmdTemplates":true,"guardrails":true,"agentConfigManagement":true,"promptManagement":true}}}'
-          for field in genAiStudio genAiTracing modelAsService vLLMDeploymentOnMaaS externalModels llmdTemplates guardrails agentConfigManagement promptManagement; do
+          oc --request-timeout=10s patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type=merge -p '{"spec":{"dashboardConfig":{"genAiStudio":true,"genAiTracing":true,"modelAsService":true,"vLLMDeploymentOnMaaS":true,"externalModels":true,"llmdTemplates":true,"guardrails":true,"agentConfigManagement":true,"promptManagement":true,"aiAssetCustomEndpoints":true}}}'
+          # Playground custom endpoints (3.5 Technology Preview): the MaaS gateway hostname lives under the
+          # cluster ingress domain, so declare that domain internal; third-party external providers stay off.
+          domain="$(oc --request-timeout=10s get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
+          [[ "$domain" =~ ^[a-z0-9.-]+$ ]] || { echo 'ERROR: cluster ingress domain is unavailable.' >&2; exit 1; }
+          oc --request-timeout=10s patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --type=merge -p "{\"spec\":{\"genAiStudioConfig\":{\"aiAssetCustomEndpoints\":{\"externalProviders\":false,\"clusterDomains\":[\"$domain\"]}}}}"
+          for field in genAiStudio genAiTracing modelAsService vLLMDeploymentOnMaaS externalModels llmdTemplates guardrails agentConfigManagement promptManagement aiAssetCustomEndpoints; do
             [[ "$(oc --request-timeout=10s get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o "jsonpath={.spec.dashboardConfig.$field}")" == true ]] || { echo 'ERROR: Stage040 dashboard configuration readback failed'; exit 1; }
           done
           for component in aigateways:default-aigateway ogxs:default-ogx; do

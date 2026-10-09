@@ -76,6 +76,8 @@ spec:
         - /spec/dashboardConfig/guardrails
         - /spec/dashboardConfig/agentConfigManagement
         - /spec/dashboardConfig/promptManagement
+        - /spec/dashboardConfig/aiAssetCustomEndpoints
+        - /spec/genAiStudioConfig
         - /spec/dashboardConfig/disableLMEval
         - /spec/dashboardConfig/globalProjectPrompts
         - /spec/globalMLflowNamespaces
