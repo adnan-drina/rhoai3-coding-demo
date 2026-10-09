@@ -20,5 +20,5 @@ spec:
       name: anthropic
     weight: 100
     targetModel: claude-sonnet-5-5
-    apiFormat: messages
-    path: "/v1/messages"
+    apiFormat: openai-chat
+    path: "/v1/chat/completions"

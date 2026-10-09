@@ -442,9 +442,14 @@ Stage 060 is a planned platform stage; Stage 070 retains developer services and 
 
 The unused RHCL MCP Gateway prerequisite is removed from the demo source and cluster; direct native MCP lifecycle, Registry and Studio remain separate. Selected 0.7.1 private testing changed an unrelated health request 200→404 after filter insertion. A dedicated two-listener candidate reached configured policy conditions but failed MCP initialization with HTTP500, empty Registration status and WASM/router diagnostics. No gateway aggregation, MaaS-key governance or renewal capability is claimed. Revisit only with a concrete consumer and independently qualified native topology; do not attach the tested port-wide filter to the shared model Gateway. See the [recorded evidence](docs/migration/035-feature-completion.md#dedicated-mcp-gateway-authentication-qualification--2026-10-08).
 
-### Claude Sonnet 5.5 native Messages
+### Claude Sonnet 5.5 and the gateway token-metering limitation (2026-10-09)
 
-Exact Anthropic model ID entitlement is confirmed by one metadata-only request. Source and served schema support native Messages passthrough; live readiness and the single bounded streaming request remain pending. Messages subscription token metering is unsupported; provider quotas aggregate users, and cross-format streaming is buffered. Creating the first Messages ExternalModel enables `x-api-key` authentication gateway-wide. Claude personal access does not expand DevSpaces beyond its retained local-only policy.
+Claude Sonnet 5.5 is registered with `apiFormat: openai-chat` and `path: /v1/chat/completions` (Anthropic's OpenAI-compatible endpoint) after bounded JSON and SSE requests passed with exact token metering. The native `messages` registration is withdrawn: on RHOAI 3.5.1 with Connectivity Link 1.4.3 (wasm-shim 0.14.2) the gateway holds any response without `usage.total_tokens` until the client times out (Kuadrant/wasm-shim#425, fixed upstream in 0.14.3). Claude personal access does not expand DevSpaces beyond its retained local-only policy. Open items:
+
+- Re-test the native Messages registration, error-response delivery and MiniMax M2 stream closure when a Connectivity Link release with wasm-shim 0.14.3 or later reaches the `stable` channel; the AuthPolicy `x-api-key` CEL predicate (fixed upstream 2026-09-11) and the `stream-usage-enforcer` ordering for native Messages streaming need the same re-test.
+- `validate-functional.py` stops reading SSE at `[DONE]`; add a bounded wait for stream closure so a held stream fails the check.
+- Intermittent fast `503 upstream_reset_before_response_started` on reused provider connections (OpenAI and Anthropic); Istio default retries exclude `reset` and the DestinationRule is controller-owned.
+- Parked Qwen 3.6 (`replicas: 0`) still reports `ready=true` in the MaaS catalog and returns 503.
 
 
 ### Common MaaS routing and Studio persistence checkpoint (2026-10-08)

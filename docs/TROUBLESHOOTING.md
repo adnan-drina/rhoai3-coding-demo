@@ -600,6 +600,43 @@ argocd app sync 010-openshift-ai-platform-foundation
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ```
 
+## MaaS Gateway Holds A Response Open Until The Client Times Out
+
+**Affected stage:** Stage 040 (RHOAI 3.5.1 with Connectivity Link 1.4.3, wasm-shim 0.14.2)
+
+**Symptom:** Headers and body arrive, then the connection never closes (HTTP/1.1: no terminating chunk; HTTP/2: no end-of-stream) and the client waits for its own timeout. The gateway access log shows `DC downstream_remote_disconnect` with a duration equal to the client timeout, and `Task failed` appears in the gateway pod log about two seconds after the upstream reply.
+
+**Likely cause:** The MaaS-generated `TokenRateLimitPolicy` makes the Kuadrant wasm filter pause at end-of-stream to read `/usage/total_tokens` from the response body. When that value cannot be read the filter never resumes ([Kuadrant/wasm-shim#425](https://github.com/Kuadrant/wasm-shim/issues/425), fixed in wasm-shim 0.14.3; Connectivity Link 1.4.3 ships 0.14.2). It triggers for any response without OpenAI usage: Anthropic Messages bodies, 4xx/5xx error bodies from any model, and SSE streams whose usage is not in the event right before `[DONE]` (MiniMax M2 sends usage, then an empty chunk, then `[DONE]`; clients that stop reading at `[DONE]` do not notice, but the stream is never metered).
+
+**Diagnose:**
+
+```bash
+# hung requests: DC with a duration matching the client timeout
+oc logs -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway --since=1h | grep -E '" (200|4..|5..) DC'
+
+# one failed token task per hang
+oc logs -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway --since=1h | grep -F 'Task failed'
+
+# calls counted but no token hits for the model
+oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/metrics | grep -E '^authorized_(calls|hits)'
+```
+
+**Recover:**
+
+- Claude: keep the `openai-chat` registration against Anthropic's OpenAI-compatible endpoint (`path: /v1/chat/completions`); the native `messages` registration hangs on this gateway build.
+- Other models: the hang on error responses and on MiniMax M2 streams clears with a Connectivity Link release that ships wasm-shim 0.14.3 or later; see `BACKLOG.md`.
+- Do not enable response-phase `api-translation` on `payload-processing-plugins` as a workaround: it buffers every model's stream to completion.
+
+## External Model Returns A Fast 503 `upstream_reset_before_response_started`
+
+**Affected stage:** Stage 040 (OpenAI and Anthropic routes)
+
+**Symptom:** An occasional non-streaming request fails within about 100 ms with HTTP 503 and the body `upstream connect error or disconnect/reset before headers. reset reason: connection termination`; the next request succeeds.
+
+**Likely cause:** The gateway reuses a pooled upstream connection that the provider has already closed. The route's Istio default retry policy (`connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes`) does not include `reset`, and the `DestinationRule` is owned by the `ExternalProvider` controller, so idle-timeout or retry tuning is not available in GitOps.
+
+**Recover:** Clients built on the OpenAI SDKs (including the Playground's Llama Stack provider) retry 5xx automatically; direct scripts should retry once. Raise with Red Hat together with the hang above.
+
 ## Gen AI Playground External Model Works But Local Models Fail
 
 **Affected stage:** Stage 040
