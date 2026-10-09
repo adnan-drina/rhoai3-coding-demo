@@ -60,3 +60,15 @@ spec:
         - action: replace
           targetLabel: vendor
           replacement: nvidia
+        # DCGM labels the consuming pod; the LLM Utilization panel groups by k8s_pod_name and filters by
+        # model_name, so derive both from the model pod name (<llminferenceservice>-kserve-<hash>-<id>).
+        - action: replace
+          sourceLabels: [exported_pod]
+          regex: (.+)-kserve-[0-9a-f]+-[a-z0-9]+
+          targetLabel: model_name
+          replacement: $1
+        - action: replace
+          sourceLabels: [exported_pod]
+          regex: (.+)
+          targetLabel: k8s_pod_name
+          replacement: $1
