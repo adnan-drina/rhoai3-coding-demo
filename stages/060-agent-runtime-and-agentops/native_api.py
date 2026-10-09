@@ -172,3 +172,43 @@ def native_gateway(env, cli, persona_home=None):
         forward.terminate()
         try: forward.wait(timeout=5)
         except subprocess.TimeoutExpired: forward.kill(); forward.wait(timeout=5)
+
+
+def owned_sandbox_identity(env, native, name, workspace, image, running=True):
+    """Read only exact native Sandbox/Pod/PVC identity and restricted workload image."""
+    sid = native['id']
+    need(native.get('name')==name and native.get('workspace')==workspace, 'Owned native name/workspace differs')
+    if running:
+        if native.get('phase') in ('Starting', 'Provisioning'):
+            raise RuntimeError('Owned native sandbox is starting')
+        need(native.get('phase') == 'Ready', 'Owned native sandbox is not Ready; terminal or unexpected lifecycle state')
+    else:
+        need(native.get('phase') == 'Stopped', 'Owned native sandbox did not reach Stopped')
+    resources = json.loads(oc(env, 'get', 'sandboxes', '-n', workspace, '-o', 'json'))
+    matches = [r for r in resources['items'] if r['metadata'].get('labels', {}).get('openshell.ai/sandbox-id') == sid]
+    need(len(matches) == 1, 'Exact owned Kubernetes Sandbox is ambiguous')
+    resource = matches[0]
+    pods = json.loads(oc(env, 'get', 'pods', '-n', workspace, '-o', 'json'))['items']
+    pods = [p for p in pods if any(o.get('uid') == resource['metadata']['uid'] and o.get('controller') for o in p['metadata'].get('ownerReferences', []))]
+    if running:
+        need(len(pods) == 1 and pods[0]['status']['phase'] == 'Running', 'Owned workload is not Running')
+        pod = pods[0]
+        need(pod['metadata'].get('annotations', {}).get('openshift.io/scc') == 'restricted-v2' and
+             pod['spec'].get('serviceAccountName') == 'openshell-sandbox' and
+             pod['spec'].get('automountServiceAccountToken') is False, 'Native restricted workload identity differs')
+        agents = [c for c in pod['spec']['containers'] if c.get('name') == 'agent']
+        need(len(agents) == 1 and agents[0].get('image') == image, 'Owned immutable workload image differs')
+        actual = [c for c in pod['status'].get('containerStatuses', []) if c.get('name') == 'agent']
+        need(len(actual) == 1 and actual[0].get('ready') is True, 'Actual agent image is not ready')
+        need(actual[0].get('imageID', '').endswith(image.split('@',1)[1]), 'Actual immutable agent image differs')
+    else:
+        need(not pods, 'Stopped sandbox workload remains')
+    claims = resource['spec'].get('volumeClaimTemplates', [])
+    need(claims, 'Native sandbox lacks persistent storage')
+    pvcs = json.loads(oc(env, 'get', 'pvc', '-n', workspace, '-o', 'json'))['items']
+    owned = [p for p in pvcs if any(o.get('uid') == resource['metadata']['uid'] for o in p['metadata'].get('ownerReferences', []))]
+    need(len(owned) == len(claims) and all(p['status']['phase'] == 'Bound' for p in owned), 'Owned PVC identity is ambiguous')
+    if running:
+        mounted = {v['persistentVolumeClaim']['claimName'] for v in pod['spec'].get('volumes', []) if 'persistentVolumeClaim' in v}
+        need(mounted == {p['metadata']['name'] for p in owned}, 'Mounted PVC is outside owned persistent storage')
+    return {'sandboxUid': resource['metadata']['uid'], 'pvcs': sorted((p['metadata']['name'], p['metadata']['uid']) for p in owned)}
