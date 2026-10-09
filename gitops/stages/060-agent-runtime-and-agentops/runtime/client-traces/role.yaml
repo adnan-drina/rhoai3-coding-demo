@@ -1,0 +1,16 @@
+# RHOAI 3.5 MLflow experiments pseudo-resource covers runs/traces/artifacts.
+# Project-wide ai-admin tracking scope, not single-experiment isolation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-trace-experiments
+  namespace: ai-agents
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: agent-tracing
+    app.kubernetes.io/name: agent-trace-experiments
+    app.kubernetes.io/managed-by: argocd
+rules:
+- apiGroups: [mlflow.kubeflow.org]
+  resources: [experiments]
+  verbs: [get, list, create, update]
