@@ -109,7 +109,7 @@ try:
             for name in ['opencode', 'hermes']:
                 matches = [item for item in items if item.get('name') == name and item.get('source_id') == 'governed-coding-agents']
                 need(len(matches) == 1, 'Reviewed custom agent entry is missing or duplicated')
-                need(matches[0].get('display_name') == {'opencode': 'OpenCode', 'hermes': 'Hermes'}[name], 'Custom agent display name differs from reviewed title')
+                need(matches[0].get('displayName') == {'opencode': 'OpenCode', 'hermes': 'Hermes'}[name], 'Custom agent display name differs from reviewed title')
         print('[PASS] Authenticated dashboard ' + catalog + ' discovery returned items')
     print('Scope: installation administrator API probes; actual persona and browser UI acceptance remain separate.')
 except Exception as error:
