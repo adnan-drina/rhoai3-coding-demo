@@ -22,9 +22,17 @@ APP = '040-governed-models-as-a-service'
 NAMESPACE = 'redhat-ods-applications'
 CM = 'gen-ai-aa-mcp-servers'
 KEY = 'OpenShift-Catalog'
-DELEGATION = {'group': '', 'kind': 'ConfigMap', 'name': CM, 'namespace': NAMESPACE,
-              'jsonPointers': ['/data/' + KEY]}
 DESCRIPTION = 'Read-only OpenShift MCP tools using your own OpenShift session token and project permissions. Secret resources and write operations are denied.'
+DESCRIPTION_RW = 'Read-write OpenShift MCP tools using your own OpenShift session token: create, update, scale and delete resources within your own project permissions. Secret resources are denied.'
+# Studio discovery key -> (native Route in mcp-servers, published description). The first key is the primary.
+ENTRIES = {KEY: ('openshift-mcp-server', DESCRIPTION), 'OpenShift-Catalog-ReadWrite': ('openshift-mcp-server-rw', DESCRIPTION_RW)}
+
+
+def delegation(key):
+    return {'group': '', 'kind': 'ConfigMap', 'name': CM, 'namespace': NAMESPACE, 'jsonPointers': ['/data/' + key]}
+
+
+DELEGATION = delegation(KEY)
 
 
 def get(env, kind, name, namespace, optional=False):
@@ -51,7 +59,7 @@ def patch(env, kind, name, namespace, before, changes):
     return json.loads(result.stdout)
 
 
-def desired(env, expected):
+def desired(env, expected, key=KEY):
     backend = get(env, 'applications.argoproj.io', 'agent-tools', 'openshift-gitops', True)
     if backend is None:
         return None
@@ -59,10 +67,11 @@ def desired(env, expected):
     need(isinstance(expected, str) and re.fullmatch('[0-9a-f]{40}', expected) and revision == expected, 'Stage060 source differs from supplied reviewed revision')
     result = subprocess.run([sys.executable, str(ROOT / 'stages/060-agent-runtime-and-agentops/validate-native-mcp.py')], env={**env, 'RHOAI_STAGE060_EXPECTED_REVISION': revision}, capture_output=True, text=True, timeout=60)
     need(result.returncode == 0, 'Current catalog native ownership/configuration/readiness gate failed')
-    route = get(env, 'route', 'openshift-mcp-server', 'mcp-servers')
+    route_name, description = ENTRIES[key]
+    route = get(env, 'route', route_name, 'mcp-servers')
     host = route['spec'].get('host', '')
     need(re.fullmatch('[a-z0-9.-]+', host), 'Qualified Route host is absent')
-    value = {'url': 'https://' + host + '/mcp', 'transport': 'streamable-http', 'description': DESCRIPTION}
+    value = {'url': 'https://' + host + '/mcp', 'transport': 'streamable-http', 'description': description}
     parsed = urlparse(value['url'])
     need(parsed.scheme == 'https' and not parsed.username and not parsed.query and not parsed.fragment, 'Endpoint is not credential-free HTTPS')
     return value
@@ -80,7 +89,8 @@ def journal(path, identity):
 
 
 def publish(args, env):
-    value = desired(env, args.expected_stage060_revision)
+    key = getattr(args, 'key', KEY); field = delegation(key)
+    value = desired(env, args.expected_stage060_revision, key)
     if value is None:
         need(args.defer_if_absent, 'Stage060 catalog runtime is absent')
         print('DEFERRED Studio catalog entry: deploy and qualify the separately owned Stage060 runtime first.')
@@ -90,31 +100,32 @@ def publish(args, env):
     need(not cm['metadata'].get('ownerReferences') and not cm['metadata'].get('deletionTimestamp') and cm['metadata'].get('annotations', {}).get('argocd.argoproj.io/tracking-id') == APP + ':/ConfigMap:' + NAMESPACE + '/' + CM, 'Studio discovery ConfigMap is not the exact Stage040 input')
     old = cm.get('data', {}); need('OpenShift-MCP' in old, 'Retained legacy discovery entry is absent')
     # Argo omits an empty core API group when serializing Application specs.
-    if not any({**entry, 'group': entry.get('group', '')} == DELEGATION
+    if not any({**entry, 'group': entry.get('group', '')} == field
                for entry in app['spec'].get('ignoreDifferences', [])):
         need(args.delegate and not args.validate, 'Exact Studio field delegation is absent')
         before = app['spec']
         app = patch(env, 'applications.argoproj.io', APP, 'openshift-gitops', app,
-                    [{'op': 'test', 'path': '/spec', 'value': before}, {'op': 'add', 'path': '/spec/ignoreDifferences', 'value': before.get('ignoreDifferences', []) + [DELEGATION]}])
-        need(app['spec'] == {**before, 'ignoreDifferences': before.get('ignoreDifferences', []) + [DELEGATION]}, 'Unexpected Application change')
+                    [{'op': 'test', 'path': '/spec', 'value': before}, {'op': 'add', 'path': '/spec/ignoreDifferences', 'value': before.get('ignoreDifferences', []) + [field]}])
+        need(app['spec'] == {**before, 'ignoreDifferences': before.get('ignoreDifferences', []) + [field]}, 'Unexpected Application change')
     encoded = json.dumps(value, sort_keys=True, separators=(',', ':'))
-    identity = {'application': APP, 'cm_uid': cm['metadata']['uid'], 'key': KEY, 'value_sha256': hashlib.sha256(encoded.encode()).hexdigest()}
-    path = Path(args.state).expanduser() if args.state else Path.home() / '.local/state/rhoai3-coding-demo/studio-mcp' / (cm['metadata']['uid'] + '.json')
+    identity = {'application': APP, 'cm_uid': cm['metadata']['uid'], 'key': key, 'value_sha256': hashlib.sha256(encoded.encode()).hexdigest()}
+    # The primary key keeps its historical journal name; other keys get their own journal beside it.
+    path = Path(args.state).expanduser() if args.state else Path.home() / '.local/state/rhoai3-coding-demo/studio-mcp' / (cm['metadata']['uid'] + ('' if key == KEY else '-' + key) + '.json')
     if args.validate:
-        need(KEY in old and json.loads(old[KEY]) == value, 'Studio catalog field is missing or drifted')
+        need(key in old and json.loads(old[key]) == value, 'Studio catalog field is missing or drifted')
         need(path.exists(), 'Retained Studio field journal is absent')
         journal(path, identity)
         print('PASS Exact Studio catalog configuration; session authentication is separate.')
         return value
     prior = path.exists()
-    need(KEY not in old or prior, 'Existing Studio catalog field has no retained ownership journal')
+    need(key not in old or prior, 'Existing Studio catalog field has no retained ownership journal')
     journal(path, identity)
-    if KEY in old:
-        need(json.loads(old[KEY]) == value, 'Existing Studio catalog field differs; no overwrite permitted')
+    if key in old:
+        need(json.loads(old[key]) == value, 'Existing Studio catalog field differs; no overwrite permitted')
         print('PASS Studio catalog publication repeat was a no-op.')
     else:
-        after = patch(env, 'configmap', CM, NAMESPACE, cm, [{'op': 'test', 'path': '/data', 'value': old}, {'op': 'add', 'path': '/data/' + KEY, 'value': encoded}])
-        need(after['metadata']['uid'] == cm['metadata']['uid'] and after['data'] == {**old, KEY: encoded}, 'Unexpected discovery ConfigMap change')
+        after = patch(env, 'configmap', CM, NAMESPACE, cm, [{'op': 'test', 'path': '/data', 'value': old}, {'op': 'add', 'path': '/data/' + key, 'value': encoded}])
+        need(after['metadata']['uid'] == cm['metadata']['uid'] and after['data'] == {**old, key: encoded}, 'Unexpected discovery ConfigMap change')
         print('PASS Added the single nonsecret Studio catalog field; legacy entries retained.')
     return value
 
@@ -126,6 +137,7 @@ def main():
     p.add_argument('--expected-stage040-revision', default=os.environ.get('RHOAI_STAGE040_EXPECTED_REVISION'))
     p.add_argument('--expected-stage060-revision', default=os.environ.get('RHOAI_STAGE060_EXPECTED_REVISION'))
     p.add_argument('--delegate', action='store_true', help='Initial exact existing-Application field handoff; no reconciliation')
+    p.add_argument('--key', default=KEY, choices=sorted(ENTRIES), help='Studio discovery key to publish/validate')
     p.add_argument('--validate', action='store_true')
     p.add_argument('--defer-if-absent', action='store_true')
     args = p.parse_args(); need(args.bootstrap_kubeconfig, 'Supply the guarded project kubeconfig')

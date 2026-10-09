@@ -16,7 +16,7 @@ Qwen models are hosted in the Internal Models project; Qwen3.6 is parked and Qwe
 - Approved GPT-6 Luna access through the native OpenAI external-provider integration.
 - Approved NVIDIA Nemotron 3 Ultra access through the same integration against NVIDIA's OpenAI-compatible API.
 - GenAI Studio enablement for experimenting with available model endpoints.
-- A bounded, read-only OpenShift MCP endpoint for later coding workflows.
+- Bounded OpenShift MCP endpoints, read-only and read-write within the caller's own permissions, for playground tool use and later coding workflows.
 
 ## What To Notice And Why It Matters
 
@@ -90,7 +90,7 @@ This workflow is inspired by [demo-chargeback](https://github.com/suhasvkashyap/
 
 ## Direct Catalog MCP Connection
 
-In **Gen AI studio → Playground → MCP**, select **OpenShift-Catalog** while using project **AI Coding Sandbox**. Enter your own OpenShift session access token, choose **Authorize**, then **View tools**. The token is session-only; do not enter a model MaaS API key. The catalog server offers 13 read-only core/config tools and denies Secrets and writes. The separate **MCP servers** hosting project and Registry are accessible to `ai-admin`; `ai-developer` consumes tools using its own project permissions without hosting access. **OpenShift-MCP** remains the legacy entry until the visual handoff.
+In **Gen AI studio → Playground → MCP**, select **OpenShift-Catalog** (read-only) or **OpenShift-Catalog-ReadWrite** while using project **AI Coding Sandbox**. Enter your own OpenShift session access token (`oc whoami -t`), choose **Authorize**, then **View tools**. The token is session-only; do not enter a model MaaS API key. The read-only server offers 13 core/config tools and denies Secrets and writes; the read-write server (`openshift-mcp-server-rw`, same image and caller-token passthrough) adds create, update, scale, delete, exec and run tools, every action authorized by the Kubernetes API with your own token and Secrets still denied. Both appear under **AI asset endpoints → MCP servers**, where a user copies the endpoint for an external client and authenticates with their own OpenShift token. Pick a model that calls tools: Qwen 3.8, Claude Sonnet 5.5 and Nemotron 3 Ultra return tool calls through the gateway; GPT-6 Luna rejects function tools on chat completions unless `reasoning_effort: none` is sent, which the playground cannot do. The separate **MCP servers** hosting project and Registry are accessible to `ai-admin`; `ai-developer` consumes tools using its own project permissions without hosting access. **OpenShift-MCP** remains the legacy entry until the visual handoff.
 
 This follows the [documented MCP connection procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index). It is a direct HTTPS connection, not MCP Gateway aggregation or MaaS API-key/quota governance. Gateway qualification is tracked separately.
 

@@ -10,6 +10,8 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[2]
 NS = "mcp-servers"
 APP_DESTINATION = NS
+# Customer MCPServers in the hosting project and whether their policy is read-only.
+SERVERS = {"openshift-mcp-server": True, "openshift-mcp-server-rw": False}
 APP = "agent-tools"
 PATH = "gitops/stages/060-agent-runtime-and-agentops/native-mcp"
 IMAGE = "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2"
@@ -64,6 +66,34 @@ def tracked(obj):
     need(obj["metadata"].get("annotations", {}).get("argocd.argoproj.io/tracking-id") == expected, "Customer input is not owned by this Application")
 
 
+def check_server(env, name, read_only, server, child):
+    """Exact route/config/readiness/operand checks for one customer MCPServer."""
+    route = get(env, "route", name, NS)
+    tracked(route)
+    need(route["spec"].get("tls") == {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"} and route["spec"]["to"]["name"] == name and route["spec"].get("port", {}).get("targetPort") == 8080, "HTTPS edge/redirect boundary differs: " + name)
+    config = tomllib.loads(get(env, "configmap", name, NS)["data"]["config.toml"])
+    need(all(config.get(k) is True for k in ["require_oauth", "stateless", "skip_jwt_verification", "disable_dynamic_client_registration"]) and config.get("read_only") is read_only and (read_only or config.get("disable_destructive") is False) and config.get("cluster_auth_mode") == "passthrough" and config.get("cluster_provider_strategy") == "in-cluster" and config.get("require_tls") is False and config.get("toolsets") == ["core", "config"] and not config.get("enabled_tools") and not config.get("disabled_tools") and config.get("denied_resources") == [{"group": "", "version": "v1", "kind": "Secret"}], "Effective MCP caller-auth/read-only/tool policy differs: " + name)
+    need(any(c.get("type") == "Admitted" and c.get("status") == "True" for i in route.get("status", {}).get("ingress", []) for c in i.get("conditions", [])), "HTTPS Route is not admitted: " + name)
+    need(server["spec"]["source"]["containerImage"]["ref"] == IMAGE, "Native MCP image pin differs: " + name)
+    need(server["spec"]["config"]["port"] == 8080 and server["spec"]["config"]["path"] == "/mcp", "Approved native HTTP handshake configuration differs: " + name)
+    ready = [c for c in server.get("status", {}).get("conditions", []) if c["type"] == "Ready"]
+    need(len(ready) == 1 and ready[0]["status"] == "True" and ready[0].get("observedGeneration") == server["metadata"]["generation"], "MCPServer readiness is not current: " + name)
+    for resource in ["deployment", "service", "networkpolicy"]:
+        obj = get(env, resource, name, NS)
+        need(any(o.get("uid") == server["metadata"]["uid"] and o.get("kind") == "MCPServer" and o.get("controller") is True for o in obj["metadata"].get("ownerReferences", [])), "Native operand controller ownership differs: " + name)
+        if resource == "deployment":
+            need(obj["spec"]["template"]["spec"].get("serviceAccountName") == "openshift-mcp-server", "Native MCP bootstrap service account differs: " + name)
+            containers = obj["spec"]["template"]["spec"]["containers"]
+            need(len(containers) == 1 and containers[0]["image"] == IMAGE, "Native Deployment catalog image differs: " + name)
+            s = obj.get("status", {})
+            n = obj["spec"].get("replicas", 1)
+            need(s.get("observedGeneration") == obj["metadata"]["generation"] and all(s.get(k, 0) == n for k in ["replicas", "updatedReplicas", "readyReplicas", "availableReplicas"]), "Native rollout incomplete: " + name)
+            replicasets = get(env, "replicasets", namespace=NS)["items"]
+            rsuids = {r["metadata"]["uid"] for r in replicasets if any(o.get("uid") == obj["metadata"]["uid"] and o.get("controller") is True for o in r["metadata"].get("ownerReferences", []))}
+            pods = [p for p in get(env, "pods", namespace=NS)["items"] if not p["metadata"].get("deletionTimestamp") and any(o.get("uid") in rsuids and o.get("controller") is True for o in p["metadata"].get("ownerReferences", []))]
+            need(len(pods) == n and all(p["spec"].get("serviceAccountName") == "openshift-mcp-server" and p["status"].get("phase") == "Running" and any(c.get("name") == containers[0]["name"] and c.get("ready") is True and c.get("imageID", "").endswith("@" + child) for c in p["status"].get("containerStatuses", [])) for p in pods), "Ready native Pod runtime image/ownership differs from the reviewed amd64 artifact: " + name)
+
+
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--preflight", action="store_true")
@@ -94,44 +124,29 @@ def main():
             obj = get(env, resource, "openshift-mcp-server", NS, optional=True)
             if obj:
                 tracked(obj)
+        for name in [n for n in SERVERS if n != "openshift-mcp-server"]:
+            for resource in ["configmap", "mcpservers.mcp.x-k8s.io", "route"]:
+                obj = get(env, resource, name, NS, optional=True)
+                if obj:
+                    tracked(obj)
     # Never adopt an existing native Service implicitly.
-    server = get(env, "mcpservers.mcp.x-k8s.io", "openshift-mcp-server", NS, optional=True) if namespace else None
-    if namespace and not server:
-        need(not get(env, "service", "openshift-mcp-server", NS, optional=True), "Existing Service cannot be adopted implicitly")
+    servers = {}
+    for name in SERVERS:
+        servers[name] = get(env, "mcpservers.mcp.x-k8s.io", name, NS, optional=True) if namespace else None
+        if namespace and not servers[name]:
+            need(not get(env, "service", name, NS, optional=True), "Existing Service cannot be adopted implicitly")
     if parsed.preflight:
         print("[PASS] Guarded native MCP prerequisite and customer ownership checks")
         return
-    need(app is not None and server is not None, "Native MCP component is absent")
-    route = get(env, "route", "openshift-mcp-server", NS)
-    tracked(route)
-    need(route["spec"].get("tls") == {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"} and route["spec"]["to"]["name"] == "openshift-mcp-server" and route["spec"].get("port", {}).get("targetPort") == 8080, "HTTPS edge/redirect boundary differs")
-    config = tomllib.loads(get(env, "configmap", "openshift-mcp-server", NS)["data"]["config.toml"])
-    need(all(config.get(k) is True for k in ["require_oauth", "read_only", "stateless", "skip_jwt_verification", "disable_dynamic_client_registration"]) and config.get("cluster_auth_mode") == "passthrough" and config.get("cluster_provider_strategy") == "in-cluster" and config.get("require_tls") is False and config.get("toolsets") == ["core", "config"] and not config.get("enabled_tools") and not config.get("disabled_tools") and config.get("denied_resources") == [{"group": "", "version": "v1", "kind": "Secret"}], "Effective MCP caller-auth/read-only/tool policy differs")
-    need(any(c.get("type") == "Admitted" and c.get("status") == "True" for i in route.get("status", {}).get("ingress", []) for c in i.get("conditions", [])), "HTTPS Route is not admitted")
+    need(app is not None and all(servers.values()), "Native MCP component is absent")
     status = app["status"]
     operation = status.get("operationState", {})
     source = operation.get("syncResult", {}).get("source", {})
     need(status.get("sync", {}).get("status") == "Synced" and status.get("sync", {}).get("revision") == revision, "Application comparison is stale")
     need(operation.get("phase") == "Succeeded" and operation.get("syncResult", {}).get("revision") == revision and source.get("path") == PATH and source.get("targetRevision") == revision, "Exact native operation has not succeeded")
-    need(server["spec"]["source"]["containerImage"]["ref"] == IMAGE, "Native MCP image pin differs")
-    need(server["spec"]["config"]["port"] == 8080 and server["spec"]["config"]["path"] == "/mcp", "Approved native HTTP handshake configuration differs")
-    ready = [c for c in server.get("status", {}).get("conditions", []) if c["type"] == "Ready"]
-    need(len(ready) == 1 and ready[0]["status"] == "True" and ready[0].get("observedGeneration") == server["metadata"]["generation"], "MCPServer readiness is not current")
-    for resource in ["deployment", "service", "networkpolicy"]:
-        obj = get(env, resource, "openshift-mcp-server", NS)
-        need(any(o.get("uid") == server["metadata"]["uid"] and o.get("kind") == "MCPServer" and o.get("controller") is True for o in obj["metadata"].get("ownerReferences", [])), "Native operand controller ownership differs")
-        if resource == "deployment":
-            need(obj["spec"]["template"]["spec"].get("serviceAccountName") == "openshift-mcp-server", "Native MCP bootstrap service account differs")
-            containers = obj["spec"]["template"]["spec"]["containers"]
-            need(len(containers) == 1 and containers[0]["image"] == IMAGE, "Native Deployment catalog image differs")
-            s = obj.get("status", {})
-            n = obj["spec"].get("replicas", 1)
-            need(s.get("observedGeneration") == obj["metadata"]["generation"] and all(s.get(k, 0) == n for k in ["replicas", "updatedReplicas", "readyReplicas", "availableReplicas"]), "Native rollout incomplete")
-            replicasets = get(env, "replicasets", namespace=NS)["items"]
-            rsuids = {r["metadata"]["uid"] for r in replicasets if any(o.get("uid") == obj["metadata"]["uid"] and o.get("controller") is True for o in r["metadata"].get("ownerReferences", []))}
-            pods = [p for p in get(env, "pods", namespace=NS)["items"] if not p["metadata"].get("deletionTimestamp") and any(o.get("uid") in rsuids and o.get("controller") is True for o in p["metadata"].get("ownerReferences", []))]
-            child = json.loads((ROOT / PATH / "catalog-source.json").read_text())["amd64_image_digest"]
-            need(len(pods) == n and all(p["spec"].get("serviceAccountName") == "openshift-mcp-server" and p["status"].get("phase") == "Running" and any(c.get("name") == containers[0]["name"] and c.get("ready") is True and c.get("imageID", "").endswith("@" + child) for c in p["status"].get("containerStatuses", [])) for p in pods), "Ready native Pod runtime image/ownership differs from the reviewed amd64 artifact")
+    child = json.loads((ROOT / PATH / "catalog-source.json").read_text())["amd64_image_digest"]
+    for name, read_only in SERVERS.items():
+        check_server(env, name, read_only, servers[name], child)
     print("[PASS] Exact source/native MCP ownership and readiness; protocol/caller isolation NOT qualified by this check")
 
 

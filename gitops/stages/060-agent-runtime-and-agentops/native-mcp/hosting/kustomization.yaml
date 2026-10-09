@@ -7,3 +7,6 @@ resources:
   - configmap.yaml
   - mcpserver.yaml
   - route.yaml
+  - configmap-rw.yaml
+  - mcpserver-rw.yaml
+  - route-rw.yaml

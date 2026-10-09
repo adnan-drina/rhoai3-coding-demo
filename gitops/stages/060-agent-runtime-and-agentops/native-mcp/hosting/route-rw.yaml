@@ -1,0 +1,22 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: openshift-mcp-server-rw
+  namespace: mcp-servers
+  labels:
+    app.kubernetes.io/name: openshift-mcp-server-rw
+    app.kubernetes.io/part-of: agent-runtime
+    demo.rhoai.io/stage: "060"
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  to:
+    kind: Service
+    name: openshift-mcp-server-rw
+    weight: 100
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

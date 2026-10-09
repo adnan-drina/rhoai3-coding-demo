@@ -664,6 +664,31 @@ curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC
 - GPT-6 Luna: the MaaS provider path needs the playground to stop sending the provider-level `max_tokens` (RHOAIENG-90257, merged upstream 2026-09-09, not in the 3.5.1 `gen-ai-ui` image). Until the backport, use the pre-provisioned playground **custom endpoint** "GPT-6 Luna (Playground)" (Stage 040 `studio/base` Job `provision-playground-endpoint` in `demo-sandbox`: Secret `endpoint-api-key-gpt-6-luna-maas` + ConfigMap `gen-ai-aa-custom-model-endpoints`, a `remote::openai` provider on `https://maas.<ingress-domain>/v1` with a key from the `playground-sandbox` subscription): custom endpoints are provisioned without that default; add the endpoint model to the playground and chat with Temperature 1. If the endpoint is missing, check the Job (`oc get job provision-playground-endpoint -n demo-sandbox`; it skips a ConfigMap that users already extended from the UI) and whether the Secret's key is still `active` (`GET /maas-api/v1/api-keys/<key_id>` as the ServiceAccount; re-sync Stage 040 to renew). Otherwise use Nemotron 3 Ultra (`nemotron-3-ultra-550b-a55b`), which accepts the playground's request shape.
 - Check the provider balance before blaming the gateway.
 
+## Gen AI Playground MCP Tools Fail Or Return No Tools
+
+**Affected stage:** Stage 040 playground MCP entries `OpenShift-Catalog` and `OpenShift-Catalog-ReadWrite` (native Stage 060 servers in `mcp-servers`)
+
+**Symptom:** The MCP server shows no tools, **View tools** is empty, or the server answers `401 Unauthorized: Bearer token required`; or the model replies with an error instead of calling a tool.
+
+**Likely cause:** Both native servers require the caller's own OpenShift token (`require_oauth` with passthrough; the ServiceAccount has no permissions), and the playground stores that token only for the browser session. A model that cannot emit tool calls (GPT-6 Luna on chat completions) fails independently of the server.
+
+**Diagnose:**
+
+```bash
+# no token -> 401; your token -> initialize + tools/list
+URL="https://$(oc get route openshift-mcp-server -n mcp-servers -o jsonpath='{.spec.host}')/mcp"
+curl -sS -o /dev/null -w '%{http_code}\n' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' "$URL"
+curl -sS -H "Authorization: Bearer $(oc whoami -t)" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' "$URL" | sed 's/^data: //' | jq -r '.result.tools[].name'
+```
+
+**Recover:**
+
+- In the playground's MCP tab click the Auth icon for the server, paste `oc whoami -t`, **Authorize**; repeat after closing the browser. Use the read-write entry only for actions you intend to run; the server acts with your permissions.
+- Use Qwen 3.8, Claude Sonnet 5.5 or Nemotron 3 Ultra for tool use; GPT-6 Luna returns `400 Function tools with reasoning_effort are not supported` and the gateway holds that error body until the client times out (wasm-shim #425).
+- If a server is missing from the MCP tab, check the `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications` (both keys are published by `publish-catalog-mcp.py`) and the Route in `mcp-servers`.
+
 ## Gen AI Playground External Model Works But Local Models Fail
 
 **Affected stage:** Stage 040

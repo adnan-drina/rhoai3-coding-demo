@@ -1,0 +1,38 @@
+# Catalog OpenShift MCP Server 0.4, read-write companion of configmap.yaml: identical caller-token
+# passthrough and Secret denial, but read_only = false so the caller can create, update, scale and
+# delete resources. Every action is authorized by the Kubernetes API with the caller's own token.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openshift-mcp-server-rw
+  namespace: mcp-servers
+  labels:
+    app.kubernetes.io/name: openshift-mcp-server-rw
+    app.kubernetes.io/part-of: agent-runtime
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  config.toml: |
+    port = "8080"
+    stateless = true
+    read_only = false
+    disable_destructive = false
+    list_output = "table"
+    cluster_provider_strategy = "in-cluster"
+    cluster_auth_mode = "passthrough"
+    require_oauth = true
+    skip_jwt_verification = true
+    disable_dynamic_client_registration = true
+    # Explicitly approved boundary: HTTPS Route, HTTP bearer inside cluster.
+    require_tls = false
+    toolsets = ["core", "config"]
+    server_instructions = "Inspect and change OpenShift and Kubernetes resources within the caller's authorized scope. The Kubernetes API validates the forwarded OpenShift token and authorizes every action, including create, update, scale and delete. Secret resources are unavailable. Confirm destructive actions with the user before running them."
+    [[denied_resources]]
+    group = ""
+    version = "v1"
+    kind = "Secret"
+    [http]
+    read_header_timeout = "10s"
+    max_body_bytes = 1048576
+    rate_limit_rps = 2
+    rate_limit_burst = 4

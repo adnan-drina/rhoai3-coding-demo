@@ -59,3 +59,15 @@ Source pins:
 - [RHOAI 3.5 native lifecycle procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_the_mcp_catalog/enabling-mcp-lifecycle-management).
 
 The MCP Catalog is Developer Preview and the lifecycle operator is Technology Preview. The served `mcp.x-k8s.io/v1alpha1` API has no backwards-compatibility commitment. Customer runtime/configuration fields are validated against the installed schema; not every accepted field is described in the catalog deployment guide. Keep the image, schema and tests together when changing product versions. RHOAI known issue RHOAIENG-82694 concerns the lifecycle operator's all-ConfigMap/Secret informer memory use on large clusters; no workaround is claimed here. Registry REST publication is tied to the selected native MLflow implementation, rather than automatic catalog-to-Registry-to-Studio synchronization.
+
+## Read-write companion server
+
+`openshift-mcp-server-rw` is a second native MCPServer from the same pinned catalog image and
+customer configuration pattern, with `read_only = false` (and `disable_destructive = false`) so a
+caller can create, update, scale and delete resources through the catalog's core/config toolsets.
+Everything else is identical: `require_oauth` with opaque-token passthrough, no ServiceAccount
+RoleBindings, the Secret GVK denial, the HTTPS-edge/internal-HTTP boundary and the same HTTP
+limits. The Kubernetes API authorizes every action with the caller's own token, so the server can
+never do more than the caller's RBAC allows. It is published to Gen AI Studio as the separate
+`OpenShift-Catalog-ReadWrite` discovery entry; the read-only `OpenShift-Catalog` entry remains the
+default for inspection. `validate-native-mcp.py` checks both servers.

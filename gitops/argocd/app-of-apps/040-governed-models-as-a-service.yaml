@@ -88,3 +88,9 @@ spec:
     namespace: redhat-ods-applications
     jsonPointers:
     - "/data/OpenShift-Catalog"
+  - group: ''
+    kind: ConfigMap
+    name: gen-ai-aa-mcp-servers
+    namespace: redhat-ods-applications
+    jsonPointers:
+    - "/data/OpenShift-Catalog-ReadWrite"
