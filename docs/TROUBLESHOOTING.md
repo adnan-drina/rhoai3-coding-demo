@@ -2589,3 +2589,26 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 ```
 
 **Recover:** Nothing in this repository is misconfigured: the DSCInitialization monitoring section, the Monitoring service conditions, the datasources and the scrape labels match the 3.5 guide. These are Red Hat items recorded in BACKLOG. The Cluster and Models tabs, the Usage tab and the custom Cost per token and Tokenomics tabs are unaffected; the Tokenomics GPU panel reads the cluster datasource for that reason.
+
+## Start Evaluation Run Offers No Model To Choose
+
+**Affected stage:** Stage 050 (Develop & train → Evaluations), RHOAI 3.5.1
+
+**Symptom:** On **Start evaluation run**, the **Model** dropdown is empty apart from **Other (External endpoint)**, so a deployed Qwen model cannot be picked.
+
+**Likely cause:** The Eval Hub UI lists `InferenceService` (`serving.kserve.io/v1beta1`) objects in the selected project only. The private Qwen models are `LLMInferenceService` deployments (Distributed Inference with llm-d) in `internal-models`, which that listing never includes, and the evaluation project `demo-sandbox` hosts no InferenceService. This is a product limitation, not a configuration error.
+
+**Recover:** Evaluate the governed models through the gateway the way the documented REST path does. Choose **Other (External endpoint)** and enter:
+
+- **Endpoint URL:** the MaaS gateway, `https://maas.<cluster domain>` (no `/v1`; the adapter appends it).
+- **Model name:** the MaaS model id, for example `publishers/internal-models/models/qwen3-8-27b-int4` or `publishers/internal-models/models/qwen3-6-27b`.
+- **API key secret:** `evalhub-model-auth-maas`, the Stage 050 Secret the sidecar resolves (its `api-key` entry).
+- **Benchmark parameters** for LiveCodeBench (lighteval), so a 16-sample request stays inside the sidecar's 30-second limit and the job inside the adapter's hour:
+
+```json
+{"provider": "endpoint", "num_few_shot": 0, "num_examples": 120,
+ "parameters": {"concurrent_requests": 1, "api_max_retry": 1, "system_prompt": "Answer with the complete Python program in a single ```python code block and nothing else.",
+                "generation_parameters": {"temperature": 0.7, "top_p": 0.8, "max_new_tokens": 512}}}
+```
+
+`stages/050-model-evaluation/submit-evaluation.sh` submits the same job from the terminal. The `inspect/swe-bench` card cannot run on 3.5.1 regardless of the model (see the SWE-bench notes in the Stage 050 README).
