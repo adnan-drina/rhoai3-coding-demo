@@ -1,0 +1,22 @@
+# The model catalog's "Safety and security insights" tab is an Eval Hub dashboard extension. The dashboard calls
+# the Eval Hub BFF with the catalog's own namespace, and that BFF performs the documented tenant authorization
+# (RHOAI 3.5 "Evaluating AI systems", EvalHub roles: a SubjectAccessReview for "get" on the virtual resource
+# evaluations.trustyai.opendatahub.io in the request namespace) before proxying the pre-computed catalog data.
+# Without this read in rhoai-model-registries the tab receives 403 and spins. This grants exactly that read; the
+# namespace is not an Eval Hub tenant and no job, collection or provider permission is added.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-catalog-insights
+  namespace: rhoai-model-registries
+  labels:
+    app.kubernetes.io/name: evalhub-catalog-insights
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [trustyai.opendatahub.io]
+    resources: [evaluations]
+    verbs: [get]

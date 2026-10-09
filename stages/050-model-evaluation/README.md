@@ -40,6 +40,8 @@ This stage provides the evidence foundation for model and developer-workflow dec
 
 - **EvalHub** coordinates evaluations through compatible native providers and collections.
 - **TrustyAI** manages the native evaluation service and tenant integration.
+
+The model catalog's **Safety and security insights** tab is an Eval Hub dashboard extension: the dashboard asks the Eval Hub BFF for the catalog's pre-computed safety data with the catalog namespace (`rhoai-model-registries`) as the request namespace, and that BFF applies the documented tenant authorization (`get` on the virtual resource `evaluations.trustyai.opendatahub.io` there) before proxying. The `tenant/catalog-insights-*` manifests grant exactly that read to `rhods-admins` and `rhoai-developers`; the namespace is not an Eval Hub tenant and gets no job, collection or provider permission.
 - **MLflow** retains experiments, metrics and artifacts for later review.
 - **Project isolation** scopes evaluation and tracking access to authorized OpenShift users.
 - **A combined quality and usage view** reuses Stage 040 showback without moving gateway or monitoring ownership into Stage 050.

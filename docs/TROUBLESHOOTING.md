@@ -2325,6 +2325,23 @@ The pipeline still needs a push to build — fix the App scope (or seed a run) f
 - [Red Hat Developer Hub documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
 - [Migration Toolkit for Applications documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1)
 
+## Model Catalog Safety And Security Insights Tab Spins Forever
+
+**Affected stage:** Stage 050 (Eval Hub dashboard extension on the Stage 030 model catalog), RHOAI 3.5.1
+
+**Symptom:** On a validated model's detail page, **Performance insights** works but **Safety and security insights** shows only a spinner. The Eval Hub UI pod logs `Access forbidden ... user does not have permission to access EvalHub in this namespace` for `GET /api/v1/catalog/sources/<source>/security_artifacts/<model>?namespace=rhoai-model-registries`.
+
+**Likely cause:** The tab is served by the Eval Hub BFF, which runs the documented tenant authorization (SubjectAccessReview for `get` on the virtual resource `evaluations.trustyai.opendatahub.io` in the request namespace) on every namespaced call, and the model catalog page passes its own namespace. Users who only hold Eval Hub access in their project (`demo-sandbox`) get 403 in `rhoai-model-registries`, and the 3.5.1 tab renders a 403 as a spinner rather than an error. The data itself is fine: the model-registry BFF returns the model's security artifacts.
+
+**Diagnose:**
+
+```bash
+oc logs deploy/eval-hub-ui -n redhat-ods-applications --since=1h | grep -i 'permission to access EvalHub'
+oc auth can-i get evaluations.trustyai.opendatahub.io -n rhoai-model-registries --as=<user> --as-group=rhods-admins
+```
+
+**Recover:** Stage 050 `tenant/catalog-insights-role.yaml` and `catalog-insights-rolebinding.yaml` grant `get` on `evaluations` in `rhoai-model-registries` to `rhods-admins` and `rhoai-developers`; sync Stage 050 and reload the tab. Models that Red Hat has not scanned show "No safety and security insights" by design. Upstream still applies the tenant check to this route, so keep the grant until the dashboard exempts it.
+
 ## Model Catalog crash-loops after a cluster reboot (source load error in the dashboard)
 
 **Symptom:** the RHOAI dashboard Models → Catalog tab shows "Model catalog
