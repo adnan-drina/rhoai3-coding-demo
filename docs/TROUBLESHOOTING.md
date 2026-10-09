@@ -629,13 +629,15 @@ oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/
 
 ## External Model Returns A Fast 503 `upstream_reset_before_response_started`
 
-**Affected stage:** Stage 040 (OpenAI and Anthropic routes)
+**Affected stage:** Stage 040 (OpenAI, Anthropic and NVIDIA routes)
 
 **Symptom:** An occasional non-streaming request fails within about 100 ms with HTTP 503 and the body `upstream connect error or disconnect/reset before headers. reset reason: connection termination`; the next request succeeds.
 
 **Likely cause:** The gateway reuses a pooled upstream connection that the provider has already closed. The route's Istio default retry policy (`connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes`) does not include `reset`, and the `DestinationRule` is owned by the `ExternalProvider` controller, so idle-timeout or retry tuning is not available in GitOps.
 
 **Recover:** Clients built on the OpenAI SDKs (including the Playground's Llama Stack provider) retry 5xx automatically; direct scripts should retry once. Raise with Red Hat together with the hang above.
+
+Not every 503 is this reset: NVIDIA's shared endpoint returns its own `503 {"error":{"message":"Service temporarily overloaded"}}` for `nemotron-3-ultra-550b-a55b` under load (2 of 5 direct calls on 2026-10-09). Tell them apart by the body and by the gateway access log flags (`UC` for the reset, none for a forwarded provider error); the provider error is also subject to the held-response limitation above because its body carries no `usage`.
 
 ## Gen AI Playground Gets No Answer From External Models
 

@@ -1,0 +1,19 @@
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: nemotron-3-ultra-550b-a55b
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: nemotron-3-ultra-550b-a55b
+    app.kubernetes.io/component: maas-model-ref
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '17'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: Nemotron 3 Ultra 550B
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: nemotron-3-ultra-550b-a55b

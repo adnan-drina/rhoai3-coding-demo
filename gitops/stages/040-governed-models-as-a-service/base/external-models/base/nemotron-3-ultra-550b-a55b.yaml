@@ -1,0 +1,27 @@
+---
+# Clients request "nemotron-3-ultra-550b-a55b"; the gateway forwards it to NVIDIA as
+# "nvidia/nemotron-3-ultra-550b-a55b". The model reasons by default (reasoning_content in the
+# response) and accepts the playground's max_tokens/temperature/top_p shape.
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: nemotron-3-ultra-550b-a55b
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: nemotron-3-ultra-550b-a55b
+    app.kubernetes.io/component: external-model
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '16'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: Nemotron 3 Ultra 550B
+spec:
+  modelName: nemotron-3-ultra-550b-a55b
+  externalProviderRefs:
+  - ref:
+      name: nvidia
+    weight: 100
+    targetModel: nvidia/nemotron-3-ultra-550b-a55b
+    apiFormat: openai-chat
+    path: "/v1/chat/completions"

@@ -38,6 +38,7 @@ a["spec"]["source"]["kustomize"]={"patches"=>[
 oc --request-timeout=10s apply -f "$work/application.yaml"
 "$SCRIPT_DIR/setup-provider-secret.sh"
 RHOAI_STAGE040_PROVIDER_SECRET=anthropic-provider-api-key "$SCRIPT_DIR/setup-provider-secret.sh"
+RHOAI_STAGE040_PROVIDER_SECRET=nvidia-provider-api-key "$SCRIPT_DIR/setup-provider-secret.sh"
 "$SCRIPT_DIR/approve-operators.sh"
 if [[ "$state" == fresh ]]; then
  "$SCRIPT_DIR/setup-database.sh" --fresh-database

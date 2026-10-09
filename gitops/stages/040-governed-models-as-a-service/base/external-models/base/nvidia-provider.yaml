@@ -1,0 +1,25 @@
+---
+# NVIDIA's hosted inference API is OpenAI-compatible (Chat Completions at /v1/chat/completions),
+# so it is registered as an "openai" provider with NVIDIA's endpoint, like the MaaS guide's
+# third-party examples. The credential Secret is created by setup-provider-secret.sh from
+# NVIDIA_API_KEY in the local .env; nothing secret lives in Git.
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalProvider
+metadata:
+  name: nvidia
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: nvidia
+    app.kubernetes.io/component: external-provider
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '15'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  provider: openai
+  endpoint: integrate.api.nvidia.com
+  auth:
+    type: apikey
+    secretRef:
+      name: nvidia-provider-api-key

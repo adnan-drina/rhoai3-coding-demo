@@ -76,6 +76,7 @@ try:
   assert r.returncode==0,'Secret metadata read failed';return bool(r.stdout)
  assert (secret_present('openai-provider-api-key','external-models') or secret_present('openai-provider-api-key','models-as-a-service') or os.environ.get('OPENAI_API_KEY') or os.environ.get('RHOAI_OPENAI_API_KEY')), 'Authorized external provider credential must be available before deployment'
  assert secret_present('anthropic-provider-api-key','external-models') or os.environ.get('ANTHROPIC_API_KEY'),'Authorized Anthropic provider credential must be available'
+ assert secret_present('nvidia-provider-api-key','external-models') or os.environ.get('NVIDIA_API_KEY'),'Authorized NVIDIA provider credential must be available'
  credential=secret_present('maas-postgres-credentials','models-as-a-service-db');config=secret_present('maas-db-config','redhat-ai-gateway-infra')
  legacy_config=secret_present('maas-db-config','redhat-ods-applications')
  assert credential or not(database or pvcs or config or legacy_config),'Partial retained database forbids credential generation'

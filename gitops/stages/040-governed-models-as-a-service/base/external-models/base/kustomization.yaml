@@ -12,3 +12,6 @@ resources:
 - anthropic-provider.yaml
 - claude-sonnet-5-5.yaml
 - claude-sonnet-5-5-modelref.yaml
+- nvidia-provider.yaml
+- nemotron-3-ultra-550b-a55b.yaml
+- nemotron-3-ultra-550b-a55b-modelref.yaml
