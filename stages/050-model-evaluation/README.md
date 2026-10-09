@@ -30,7 +30,9 @@ flowchart LR
 
 ## Demo
 
-Explore **Develop & train → Evaluations** for native evaluation discovery, and MLflow for experiment records and artifacts. The service foundation is ready; the first benchmark and coding-agent pilot results remain pending.
+Explore **Develop & train → Evaluations** for native evaluation discovery, and MLflow for experiment records and artifacts. Submit a governed run with `stages/050-model-evaluation/submit-evaluation.sh --model-name publishers/internal-models/models/qwen3-8-27b-int4 --num-examples <N>`; it appears in the Evaluations list and its metrics in the MLflow experiment.
+
+**Coding v1** is the native `coding-v1` collection: one benchmark, lighteval `lcb:codegeneration_v6` (LiveCodeBench v6, 1,055 competitive-programming problems, execution-scored `codegen_pass@1`, pass threshold 0.25). Three platform facts size a run on 3.5.1: lighteval samples 16 generations per problem in a single request, the evaluation sidecar allows 30 seconds per model request, and the lighteval adapter stops a benchmark after one hour. The helper therefore applies a code-only system prompt and a 512-token generation cap by default (Qwen answers then average about 300 tokens), and `--num-examples` bounds the job to the hour. A 16-sample request also needs the model to admit at least 16 concurrent sequences; the Stage 030 Qwen 3.8 profile admits two, so Coding v1 waits for an evaluation serving profile (see [BACKLOG](../../BACKLOG.md) and the [troubleshooting entry](../../docs/TROUBLESHOOTING.md#evalhub-lighteval-job-completes-with-score-00-and-badgatewayerror)). The governed path itself is proven: the 2026-10-09 probe resolved the key in the sidecar, downloaded the dataset, scored and logged a FINISHED MLflow run.
 
 As a platform administrator, open **Observe & monitor → Dashboard → Usage**. Filter consumption by user, subscription and model, then inspect or export the native usage table.
 
@@ -43,6 +45,8 @@ This stage provides the evidence foundation for model and developer-workflow dec
 
 The model catalog's **Safety and security insights** tab is an Eval Hub dashboard extension: the dashboard asks the Eval Hub BFF for the catalog's pre-computed safety data with the catalog namespace (`rhoai-model-registries`) as the request namespace, and that BFF applies the documented tenant authorization (`get` on the virtual resource `evaluations.trustyai.opendatahub.io` there) before proxying. The `tenant/catalog-insights-*` manifests grant exactly that read to `rhods-admins` and `rhoai-developers`; the namespace is not an Eval Hub tenant and gets no job, collection or provider permission.
 - **MLflow** retains experiments, metrics and artifacts for later review.
+- **Governed model authentication for evaluations.** Evaluation jobs reach models through the MaaS gateway with the `evaluation-sandbox` subscription (Stage 040). The `provision-evalhub-model-auth` Sync hook mints that key as the owning ServiceAccount and stores it in the tenant Secret `evalhub-model-auth-maas` under the documented `api-key` key; jobs reference it through `model.auth.secret_ref`, and the evaluation sidecar resolves it so adapters never see the credential.
+- **`submit-evaluation.sh`** submits, follows and inspects evaluation jobs through the documented REST API with MLflow experiment tracking (`agentic-coding-qualification` by default).
 - **Project isolation** scopes evaluation and tracking access to authorized OpenShift users.
 - **A combined quality and usage view** reuses Stage 040 showback without moving gateway or monitoring ownership into Stage 050.
 

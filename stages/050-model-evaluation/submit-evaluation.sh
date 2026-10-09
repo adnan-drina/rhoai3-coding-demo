@@ -36,10 +36,11 @@ Options:
   --benchmark ID           lighteval benchmark id (default: lcb:codegeneration_v6)
   --num-examples N         Problems to evaluate (default: unset = full dataset)
   --concurrent-requests N  Parallel requests from the adapter (default: 1; the Qwen 3.8 server admits 2 sequences)
-  --max-new-tokens N       Generation cap per sample (default: 2048)
+  --max-new-tokens N       Generation cap per sample (default: 512; each 16-sample request must finish inside the sidecar's request timeout)
   --temperature T          Sampling temperature (default: 0.7)
   --top-p P                Nucleus sampling (default: 0.8)
   --threshold T            Pass threshold on the primary score (default: 0.25, the coding-v1 definition)
+  --system-prompt TEXT     System prompt prepended by the adapter (default: code-only answer; pass '' to disable)
   --status ID              Show a job instead of submitting
   --wait                   Poll until the job reaches a terminal state
   --dry-run                Print the request body and exit
@@ -47,8 +48,8 @@ USAGE
 }
 
 MODEL_NAME=""; MODEL_URL=""; SECRET_REF="evalhub-model-auth-maas"; TENANT="demo-sandbox"; NAME=""; EXPERIMENT="agentic-coding-qualification"
-COLLECTION=""; BENCHMARK="lcb:codegeneration_v6"; NUM_EXAMPLES=""; CONCURRENT="1"; MAX_NEW_TOKENS="2048"; TEMPERATURE="0.7"; TOP_P="0.8"
-THRESHOLD="0.25"; STATUS_ID=""; WAIT="false"; DRY_RUN="false"
+COLLECTION=""; BENCHMARK="lcb:codegeneration_v6"; NUM_EXAMPLES=""; CONCURRENT="1"; MAX_NEW_TOKENS="512"; TEMPERATURE="0.7"; TOP_P="0.8"
+THRESHOLD="0.25"; SYSTEM_PROMPT="Answer with the complete Python program in a single \`\`\`python code block and nothing else."; STATUS_ID=""; WAIT="false"; DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-name) MODEL_NAME="$2"; shift 2;; --model-url) MODEL_URL="$2"; shift 2;; --secret-ref) SECRET_REF="$2"; shift 2;;
@@ -56,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --collection) COLLECTION="$2"; shift 2;; --benchmark) BENCHMARK="$2"; shift 2;; --num-examples) NUM_EXAMPLES="$2"; shift 2;;
     --concurrent-requests) CONCURRENT="$2"; shift 2;; --max-new-tokens) MAX_NEW_TOKENS="$2"; shift 2;;
     --temperature) TEMPERATURE="$2"; shift 2;; --top-p) TOP_P="$2"; shift 2;; --threshold) THRESHOLD="$2"; shift 2;;
+    --system-prompt) SYSTEM_PROMPT="$2"; shift 2;;
     --status) STATUS_ID="$2"; shift 2;; --wait) WAIT="true"; shift;; --dry-run) DRY_RUN="true"; shift;;
     -h|--help) usage; exit 0;; *) echo "[FAIL] unknown option: $1" >&2; usage; exit 1;;
   esac
@@ -111,7 +113,7 @@ short="${MODEL_NAME##*/}"; [[ -n "$NAME" ]] || NAME="${COLLECTION:-coding-v1}-${
 BODY="$(mktemp)"; trap 'rm -f "$BODY"' EXIT
 MODEL_NAME="$MODEL_NAME" MODEL_URL="$MODEL_URL" SECRET_REF="$SECRET_REF" NAME="$NAME" EXPERIMENT="$EXPERIMENT" COLLECTION="$COLLECTION" \
 BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURRENT="$CONCURRENT" MAX_NEW_TOKENS="$MAX_NEW_TOKENS" TEMPERATURE="$TEMPERATURE" \
-TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" python3 - > "$BODY" <<'PY'
+TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" python3 - > "$BODY" <<'PY'
 import json, os
 e = os.environ
 body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
@@ -122,9 +124,11 @@ if e["COLLECTION"]:
     body["collection"] = {"id": e["COLLECTION"]}
 else:
     params = {"provider": "endpoint", "num_few_shot": 0,
-              "parameters": {"concurrent_requests": int(e["CONCURRENT"]), "api_max_retry": 2,
+              "parameters": {"concurrent_requests": int(e["CONCURRENT"]), "api_max_retry": 1,
                              "generation_parameters": {"temperature": float(e["TEMPERATURE"]), "top_p": float(e["TOP_P"]),
                                                        "max_new_tokens": int(e["MAX_NEW_TOKENS"])}}}
+    if e["SYSTEM_PROMPT"]:
+        params["parameters"]["system_prompt"] = e["SYSTEM_PROMPT"]
     if e["NUM_EXAMPLES"]:
         params["num_examples"] = int(e["NUM_EXAMPLES"])
     body["benchmarks"] = [{"id": e["BENCHMARK"], "provider_id": "lighteval", "pass_criteria": {"threshold": float(e["THRESHOLD"])}, "parameters": params}]

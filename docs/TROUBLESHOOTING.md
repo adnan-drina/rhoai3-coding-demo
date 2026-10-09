@@ -2325,6 +2325,24 @@ The pipeline still needs a push to build — fix the App scope (or seed a run) f
 - [Red Hat Developer Hub documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
 - [Migration Toolkit for Applications documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1)
 
+## EvalHub Lighteval Job Completes With Score 0.0 And `BadGatewayError`
+
+**Affected stage:** Stage 050 (EvalHub lighteval adapter `community-lighteval:v0.5.0`, RHOAI 3.5.1)
+
+**Symptom:** A lighteval job (for example Coding v1, `lcb:codegeneration_v6`) reaches `completed` with `codegen_pass@1` 0.0 after a few minutes. The adapter log shows `Error in API call: litellm.BadGatewayError ... Post "https://maas.<domain>/v1/chat/completions"` and `API call failed after N attempts, returning empty response`; the sidecar log shows `Error proxying model request` exactly 30 seconds after each `Proxying model request`.
+
+**Likely cause:** Every adapter request to the model goes through the evaluation sidecar, whose model client times out after 30 seconds in this build (`sidecar_config.json` carries `model.http_timeout: null`, and the EvalHub CR exposes no field or environment mapping for it). lighteval sends all 16 LiveCodeBench samples in one request (`n: 16`), and the Qwen 3.8 profile admits two sequences at about 77 tokens/s aggregate, so a request needs 60–400 seconds. The sidecar returns 502, litellm retries, and the benchmark scores empty responses.
+
+**Diagnose:**
+
+```bash
+oc get pods -n demo-sandbox -l 'job-name' -o name | grep '<job-id-prefix>'
+oc logs -n demo-sandbox <pod> -c sidecar | grep -E 'Proxying model request|Error proxying model request'
+oc get cm -n demo-sandbox <job-id-prefix>-...-spec -o jsonpath='{.data.sidecar_config\.json}' | jq .model
+```
+
+**Recover:** Keep each request under 30 seconds: serve the evaluated model with at least 16 concurrent sequences (an evaluation serving profile in Stage 030), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
+
 ## Model Catalog Safety And Security Insights Tab Spins Forever
 
 **Affected stage:** Stage 050 (Eval Hub dashboard extension on the Stage 030 model catalog), RHOAI 3.5.1
