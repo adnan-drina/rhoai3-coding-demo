@@ -42,6 +42,19 @@ class ProtocolTest(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertFalse(q.runtime_matches(dict(probe,**{field:value}),'config','start','listener','b'*64))
 
+    def test_pinned_attachment_schema_omits_id_but_keeps_exact_authority(self):
+        value={'next_page_token':'','providers':[{'name':'hermes-maas-qwen38','type':'hermes-maas-qwen38',
+               'credential_keys':['MAAS_API_KEY'],'config_keys':['maas_key_id','owner']}]}
+        self.assertTrue(q.attachment_matches(value,'hermes-maas-qwen38'))
+        reversed_keys=copy.deepcopy(value);reversed_keys['providers'][0]['config_keys'].reverse()
+        self.assertTrue(q.attachment_matches(reversed_keys,'hermes-maas-qwen38'))
+        for field,changed in (('name','foreign'),('type','custom'),('credential_keys',[]),
+                              ('credential_keys',['MAAS_API_KEY','OTHER_KEY']),('config_keys',['owner']),('config_keys',['maas_key_id','owner','owner']),('id','unsupported')):
+            drift=copy.deepcopy(value);drift['providers'][0][field]=changed
+            with self.subTest(field=field,changed=changed): self.assertFalse(q.attachment_matches(drift,'hermes-maas-qwen38'))
+        for drift in (dict(value,next_page_token='more'),dict(value,providers=[]),dict(value,providers=value['providers']*2)):
+            self.assertFalse(q.attachment_matches(drift,'hermes-maas-qwen38'))
+
     def test_poll_identity_is_owned_run_and_session(self):
         value = {'object': 'hermes.run', 'run_id': 'r', 'session_id': 's', 'status': 'running'}
         self.assertEqual(q.run_status(200, value, 'r', 's'), 'running')

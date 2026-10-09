@@ -73,6 +73,20 @@ def runtime_matches(probe, config_hash, startup_hash, listener_hash, real_key_ha
             probe.get('privateInterpreter') is True)
 
 
+def attachment_matches(attached, provider):
+    # Pinned CLI attached_provider_to_json deliberately omits the provider ID.
+    # Setup.check binds that exact ID and metadata in the scoped full inventory.
+    if not isinstance(attached, dict) or attached.get('next_page_token'): return False
+    rows = attached.get('providers')
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict): return False
+    row = rows[0]
+    return (set(row) == {'name','type','credential_keys','config_keys'} and
+            row.get('name') == provider and row.get('type') == provider and
+            row.get('credential_keys') == ['MAAS_API_KEY'] and
+            isinstance(row.get('config_keys'), list) and all(isinstance(k,str) for k in row['config_keys']) and
+            sorted(row['config_keys']) == ['maas_key_id','owner'])
+
+
 def terminal_test(messages, command):
     calls = {c.get('id'): c for m in messages if m.get('role') == 'assistant' for c in m.get('tool_calls') or []}
     terminal_calls = [c for c in calls.values() if c.get('function', {}).get('name') == 'terminal']
@@ -142,6 +156,7 @@ class Qualification:
         return json.loads(result.stdout.strip().splitlines()[-1])
 
     def runtime_inputs(self):
+        self.setup.check()  # Exact owned provider ID/hash remains mandatory.
         probe = self.python("import os,re,hashlib,json,pathlib;v=os.environ.get('MAAS_API_KEY','');"
             "c=pathlib.Path('/sandbox/state/hermes/config.yaml');s=pathlib.Path('/sandbox/state/start.sh');"
             "k=pathlib.Path('/sandbox/state/auth/server-key');assert all(p.is_file() and not p.is_symlink() for p in (c,s,k));"
@@ -151,11 +166,7 @@ class Qualification:
             "'listenerPrivate':k.stat().st_mode&0o777==0o600 and k.stat().st_uid==os.getuid(),"
             "'privateInterpreter':os.readlink('/proc/self/exe')==" + repr(PYTHON) + "}))")
         attached = self.owner.run(['sandbox','provider','list',NAME,'-o','json'],WORKSPACE)
-        providers = attached.get('providers', [])
-        api.need(not attached.get('next_page_token') and len(providers) == 1 and
-                 providers[0].get('id') == self.setup.state['provider_id'] and
-                 providers[0].get('name') == self.setup.provider and providers[0].get('type') == self.setup.provider and
-                 providers[0].get('credential_keys') == ['MAAS_API_KEY'], 'Exact owned provider attachment differs')
+        api.need(attachment_matches(attached,self.setup.provider), 'Exact owned provider attachment differs')
         expected = (self.setup.inputs/'config.yaml').read_text().replace('__MAAS_COMMON_HOST__',self.setup.host)
         self.gate('runtimeInputs', runtime_matches(probe, hashlib.sha256(expected.encode()).hexdigest(),
                   hashlib.sha256((self.setup.inputs/'start.sh').read_bytes()).hexdigest(),
@@ -233,7 +244,7 @@ class Qualification:
             errors.append(type(error).__name__)
 
     def start(self, session, prompt):
-        self.native(); self.setup.check(); self.runtime_inputs()
+        self.native(); self.runtime_inputs()
         code, body = self.request('POST', '/v1/runs', {'input': prompt, 'session_id': session,
                                                     'model': MODEL, 'provider': MODEL_PROVIDER})
         api.need(created_run(code, body), 'Native run creation response differs')
