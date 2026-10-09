@@ -137,7 +137,7 @@ def guard(kubeconfig=None):
         env['KUBECONFIG'] = kubeconfig
     r = subprocess.run(["/bin/bash", "-c", 'export REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; '
                         'test -n "${RHOAI_EXPECTED_API_SERVER:-}"; check_oc_logged_in >&2; '
-                        "python3 -c 'import json,os; print(json.dumps({\"KUBECONFIG\":os.environ.get(\"KUBECONFIG\",os.path.expanduser(\"~/.kube/config\")),\"RHOAI_EXPECTED_API_SERVER\":os.environ[\"RHOAI_EXPECTED_API_SERVER\"]}))'", "guard", str(ROOT)],
+                        "python3 -c 'import json,os; print(json.dumps({\"KUBECONFIG\":os.environ.get(\"KUBECONFIG\",os.path.expanduser(\"~/.kube/config\")),\"RHOAI_EXPECTED_API_SERVER\":os.environ[\"RHOAI_EXPECTED_API_SERVER\"]}))'", "guard", os.environ.get("RHOAI_ENV_ROOT", str(ROOT))],
                        env=env, capture_output=True, text=True, timeout=30)
     need(r.returncode == 0, "Shared environment/login guard failed; RHOAI_EXPECTED_API_SERVER is required")
     # load_env diagnostics precede the final JSON; do not print the resolved context.
@@ -647,6 +647,10 @@ class Run:
             step("profileDeleted", delete_profile)
         if self.state.get("policy"):
             def restore():
+                fleet = self.admin(['sandbox', 'list', '--all-workspaces', '-o', 'json'])
+                need(fleet.returncode == 0, 'Cannot prove an empty fleet before temporary-policy restoration')
+                fleet = json.loads(fleet.stdout)
+                need(not fleet.get('next_page_token') and fleet.get('sandboxes') == [], 'Active retained fleet; temporary global-policy restoration refused')
                 current = self.global_policy_hash()
                 if current == self.state.get('policyHashBefore'):
                     done['policyHashEqualsBefore'] = True

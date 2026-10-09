@@ -1,0 +1,22 @@
+# Durable complete gateway-global policy; all workspace effects are explicit.
+version: 1
+filesystem_policy:
+  include_workdir: false
+  read_only: [/usr, /bin, /lib, /lib64, /etc, /proc, /dev/urandom, /dev/random]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: hard_requirement
+network_policies:
+  opencode_maas:
+    name: opencode-maas
+    endpoints:
+      - host: __MAAS_COMMON_HOST__
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: POST
+              path: /v1/chat/completions
+    binaries:
+      - path: /usr/local/bin/opencode

@@ -1,18 +1,15 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: Role
 metadata:
   name: opencode-runtime-pull
-  namespace: ai-agents
+  namespace: openshell
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: '060'
   annotations:
     argocd.argoproj.io/sync-wave: '10'
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: opencode-runtime-pull
-subjects:
-- kind: ServiceAccount
-  name: openshell-sandbox
-  namespace: ai-agents
+rules:
+- apiGroups: [image.openshift.io]
+  resources: [imagestreams/layers]
+  resourceNames: [opencode-runtime]
+  verbs: [get]

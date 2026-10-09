@@ -1024,3 +1024,20 @@ Supply `ANTHROPIC_API_KEY` privately in the local environment. Stage040 uses its
 Local hosting is internal-models (Internal Models); external-models is External Models. Both projects are dashboard-visible. Governance remains models-as-a-service. Qwen 3.8 is active; Qwen 3.6 is parked at zero replicas with no inference claim. Current clients use common `/v1` and canonical `publishers/internal-models/models/<name>` IDs. The native MaaS catalog endpoints also select the API hostname. Three bounded common-host model requests passed; the identical namespace-qualified legacy local path returned HTTP 503 on the API host but passed on its dedicated Qwen 3.8 host. Compatibility listeners remain, and old models-as-a-service local paths are not aliases.
 
 Studio uses the retained genai-playground-state PVC at `/opt/app-root/src/.llama/distributions/rh` via supported OGX customer fields. Existing-state moves require quiesce, consistent private SQLite backup, integrity/record checks and restore before restart; never overwrite a live SQLite DB. The current saved response and two profile UUIDs/settings were preserved. Old unreferenced cached model registrations remain because the installed native API has no unregister. The fresh install helper attaches the same mount using exact returned CR and PVC ownership; fresh end-to-end deployment remains untested.
+
+### Persistent OpenCode in AI Agents (Stage060)
+
+Use the pinned native CLI and a Python interpreter with the existing PyYAML dependency. Set`RHOAI_ENV_ROOT` to the authoritative environment root, private`RHOAI_STAGE060_ADMIN_KUBECONFIG` to ai-admin's OpenShift session, and`RHOAI_STAGE060_ADMIN_CLI_HOME` to its verified native login. Provision only after the reviewed immutable runtime revision is Synced/Healthy and the exact image/subscription operands are ready:
+
+```bash
+python3 stages/060-agent-runtime-and-agentops/setup-opencode.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION" --apply --expected-policy-hash "$RHOAI_STAGE060_EXPECTED_POLICY_HASH"
+python3 stages/060-agent-runtime-and-agentops/setup-opencode.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
+```
+
+The default owner-only recovery directory is`/private/tmp/060-opencode-state`. Keep its journal and independent listener-password file privately; never commit or print them. The real MaaS key is retained only by the native encrypted provider. Configuration check does not qualify inference or tool execution. A temporary inference helper refuses any active retained fleet before restoring a global policy.
+
+For an ambiguous key POST, do not clear`key_pending` or mint again. Review only the named owner's native API-key metadata, reconcile its exact ID/subscription/creation time, and revoke an unused owned key through native MaaS before explicit journal recovery. If a provider or sandbox creation outcome is unknown, match the creation receipt and journal IDs; preserve any unidentified object. A recorded waiting sandbox can resume authenticated file upload; do not recreate it by name.
+
+Before the recorded30day expiry, rotate explicitly as ai-admin: mint a replacement bound to`opencode-private-qwen38`; update the same provider through native`provider update --credential MAAS_API_KEY --credential-expires-at MAAS_API_KEY=<native-expiry> --wait` with the key supplied only in private process environment. Native stop/start is required because the old process retains its credential placeholder revision. Verify authenticated readiness and the exact new key/provider metadata before revoking the old journal keyID, then record the new native hashes/expiry. Failed rotation remains blocked; never use another subscription or external model.
+
+Rollback first stops the exact owned sandbox and preserves itsPVC. Restore the original global policy only after fresh all-workspace fleet review and an exact applied-policy hash check; never overwrite a concurrent policy. Revoke only the exact owned key on agent retirement. Archive state before native sandbox deletion, which destroys the ownedPVC. No rollback alters Stage040, existing workspace memberships or the core gateway.

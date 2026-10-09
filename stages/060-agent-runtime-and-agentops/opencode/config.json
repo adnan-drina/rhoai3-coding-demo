@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "enabled_providers": [
+    "qwen38"
+  ],
+  "provider": {
+    "qwen38": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MaaS Qwen3.8",
+      "models": {
+        "publishers/internal-models/models/qwen3-8-27b-int4": {
+          "name": "Qwen3.8 27B INT4",
+          "limit": {
+            "context": 262144,
+            "output": 1024
+          }
+        }
+      },
+      "options": {
+        "apiKey": "{env:MAAS_API_KEY}",
+        "baseURL": "https://__MAAS_COMMON_HOST__/v1",
+        "timeout": 90000
+      }
+    }
+  },
+  "model": "qwen38/publishers/internal-models/models/qwen3-8-27b-int4",
+  "small_model": "qwen38/publishers/internal-models/models/qwen3-8-27b-int4",
+  "permission": {
+    "edit": "allow",
+    "bash": "ask",
+    "webfetch": "deny"
+  },
+  "agent": {
+    "build": {
+      "steps": 4
+    }
+  }
+}

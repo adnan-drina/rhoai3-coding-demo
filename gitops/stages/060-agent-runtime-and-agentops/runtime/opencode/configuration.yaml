@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opencode-runtime-contract
+  namespace: ai-agents
+  labels:
+    app.kubernetes.io/name: opencode
+    app.kubernetes.io/component: agent-runtime
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: '060'
+  annotations:
+    argocd.argoproj.io/sync-wave: '18'
+data:
+  workspace: ai-agents
+  sandbox-name: opencode
+  provider-name: opencode-maas-qwen38
+  subscription-name: opencode-private-qwen38
+  model-id: publishers/internal-models/models/qwen3-8-27b-int4
+  key-expiry: 30d

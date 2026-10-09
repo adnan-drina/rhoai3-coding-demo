@@ -2,19 +2,10 @@ apiVersion: image.openshift.io/v1
 kind: ImageStream
 metadata:
   name: opencode-runtime
-  namespace: ai-agents
+  namespace: openshell
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: '060'
   annotations:
     argocd.argoproj.io/sync-wave: '10'
     argocd.argoproj.io/sync-options: Delete=false,Prune=false
-spec:
-  tags:
-  - name: 1.18.16
-    from:
-      kind: ImageStreamImage
-      namespace: openshell
-      name: opencode-runtime@sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09
-    referencePolicy:
-      type: Local
