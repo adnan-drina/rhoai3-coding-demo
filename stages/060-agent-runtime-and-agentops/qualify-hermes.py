@@ -34,6 +34,8 @@ PYTHON = '/opt/hermes-venv/bin/python3.11'
 GATES = ('ownedRuntime', 'runtimeInputs', 'authenticatedReady', 'missingKeyDenied', 'wrongKeyDenied',
          'codingTool', 'fixedTest', 'canonicalModel', 'streamedText', 'independentTest',
          'applicationCancelled', 'persistentHistory', 'runningAtEnd')
+CONFINEMENT_GATES = ('ownedRuntime','runtimeInputs','authenticatedReady','filesystemDenied','internetDenied',
+                     'metadataDenied','sharedInterpreterDenied','wrongMethodDenied','wrongPathDenied','runningAtEnd')
 
 
 def fingerprint(value):
@@ -87,6 +89,57 @@ def attachment_matches(attached, provider):
             sorted(row['config_keys']) == ['maas_key_id','owner'])
 
 
+def permission_denied(value):
+    return isinstance(value, dict) and type(value.get('errno')) is int and value['errno'] in (1,13)
+
+
+def inspected_denial(value, method, path, host, policy):
+    if not isinstance(value, dict) or value.get('status') != 403 or value.get('policyHeader') != policy: return False
+    body = value.get('body')
+    expected = {'policy':policy,'layer':'l7','protocol':'rest','method':method,'path':path,
+                'host':host,'port':443,'binary':PYTHON}
+    missing = dict(type='rest_allow',**{k:v for k,v in expected.items() if k not in ('policy','protocol')})
+    return (isinstance(body, dict) and body.get('error') == 'policy_denied' and
+            all(body.get(k) == v for k,v in expected.items()) and body.get('rule_missing') == missing)
+
+
+def confinement_program(identifier, host):
+    # No credentials or inference payload. Only these exact newly created files
+    # may be removed, and only while their inode still matches our open file.
+    return "import os,socket,json,http.client,ssl\n" + "identifier=" + repr(identifier) + ";host=" + repr(host) + "\n" + r"""
+r={}
+try:
+ fd=os.open('/root/.hermes-confinement-'+identifier,os.O_RDONLY);os.close(fd);r['read']={'errno':None}
+except OSError as e:r['read']={'errno':e.errno}
+for name,directory in [('privateWrite','/opt/hermes-venv'),('systemWrite','/etc')]:
+ path=directory+'/.hermes-confinement-'+identifier
+ try:fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ except OSError as e:r[name]={'errno':e.errno};continue
+ created=os.fstat(fd);cleaned=False
+ try:
+  actual=os.lstat(path)
+  if (actual.st_dev,actual.st_ino)==(created.st_dev,created.st_ino):os.unlink(path);cleaned=True
+ except OSError:pass
+ finally:os.close(fd)
+ r[name]={'errno':None,'unexpectedCreated':True,'cleaned':cleaned}
+for name,address,port in [('internet','1.1.1.1',443),('metadata','169.254.169.254',80)]:
+ socket_probe=socket.socket();socket_probe.settimeout(3)
+ try:socket_probe.connect((address,port));r[name]={'errno':None}
+ except OSError as e:r[name]={'errno':e.errno}
+ finally:socket_probe.close()
+for name,method,path in [('wrongMethod','GET','/v1/chat/completions'),('wrongPath','POST','/v1/models')]:
+ connection=http.client.HTTPSConnection(host,443,timeout=6,context=ssl.create_default_context())
+ try:
+  connection.request(method,path,body=b'' if method=='POST' else None)
+  response=connection.getresponse();raw=response.read(8193)
+  r[name]={'status':response.status,'policyHeader':response.getheader('X-OpenShell-Policy'),
+           'body':json.loads(raw) if len(raw)<=8192 else None}
+ except Exception as e:r[name]={'transportFailure':type(e).__name__}
+ finally:connection.close()
+print(json.dumps(r))
+"""
+
+
 def terminal_test(messages, command):
     calls = {c.get('id'): c for m in messages if m.get('role') == 'assistant' for c in m.get('tool_calls') or []}
     terminal_calls = [c for c in calls.values() if c.get('function', {}).get('name') == 'terminal']
@@ -111,6 +164,8 @@ def terminal_test(messages, command):
 class Qualification:
     def __init__(self, args):
         self.args = args
+        self.confinement_only = bool(getattr(args,'confinement_only',False))
+        self.gates = CONFINEMENT_GATES if self.confinement_only else GATES
         self.identifier = uuid.uuid4().hex[:16]
         self.directory = '/sandbox/workspace/hermes-qualification-' + self.identifier
         self.fixture = self.directory + '/qualification_add.py'
@@ -120,6 +175,9 @@ class Qualification:
         self.receipt = {'scope': 'one synthetic native Hermes task, application cancellation and retained history restart',
                         'checks': {}, 'passed': False, 'model': MODEL, 'modelProvider': MODEL_PROVIDER,
                         'ownedFixture': self.fixture, 'ownedMarker': self.marker}
+        if self.confinement_only:
+            self.receipt.update(scope='bounded no-model Hermes confinement supplement')
+            self.receipt.pop('ownedFixture');self.receipt.pop('ownedMarker')
         self.forward_process = None
         self.active_runs = []
         self.stopped = False
@@ -147,10 +205,11 @@ class Qualification:
                          'Actual agent image is not ready', 'Stopped sandbox workload remains') and time.monotonic() < end, str(error))
                 time.sleep(.5)
 
-    def python(self, program):
+    def python(self, program, interpreter=PYTHON):
+        api.need(interpreter in (PYTHON,'/usr/bin/python3.11'), 'Unreviewed probe interpreter')
         self.native()
         result = subprocess.run(self.owner.command(['sandbox', 'exec', '--name', NAME, '--timeout', '20',
-            '--no-tty', '--no-login-shell', '--', PYTHON, '-c', program], WORKSPACE),
+            '--no-tty', '--no-login-shell', '--', interpreter, '-c', program], WORKSPACE),
             env=self.owner.env, capture_output=True, text=True, timeout=40)
         api.need(result.returncode == 0 and 0 < len(result.stdout) <= 16384, 'Reviewed bounded Hermes probe failed')
         return json.loads(result.stdout.strip().splitlines()[-1])
@@ -334,6 +393,25 @@ class Qualification:
         self.gate('applicationCancelled', cancelled(active, text, stop_code, reply, code, final, run, session, events, requested) and
                   not errors and not reader.is_alive() and not late and not tools)
 
+    def confinement(self):
+        policies = self.setup.intended.get('network_policies',{})
+        names = [name for name,rule in policies.items() if rule.get('binaries') == [{'path':PYTHON}]]
+        api.need(names == ['hermes_maas'], 'Exact inspected private interpreter policy differs')
+        policy = names[0]
+        probe = self.python(confinement_program(self.identifier,self.setup.host))
+        self.receipt['confinement'] = {name:{k:v for k,v in result.items() if k in ('errno','unexpectedCreated','cleaned','status','transportFailure')}
+                                       for name,result in probe.items()}
+        self.gate('filesystemDenied', all(permission_denied(probe.get(k)) for k in ('read','privateWrite','systemWrite')))
+        self.gate('internetDenied', permission_denied(probe.get('internet')))
+        self.gate('metadataDenied', permission_denied(probe.get('metadata')))
+        shared = self.python("import socket,json;s=socket.socket();s.settimeout(3)\ntry:s.connect((" + repr(self.setup.host) +
+                             ",443));r={'errno':None}\nexcept OSError as e:r={'errno':e.errno}\nfinally:s.close()\nprint(json.dumps(r))",
+                             interpreter='/usr/bin/python3.11')
+        self.receipt['confinement']['sharedInterpreter'] = shared
+        self.gate('sharedInterpreterDenied', permission_denied(shared))
+        self.gate('wrongMethodDenied', inspected_denial(probe.get('wrongMethod'),'GET','/v1/chat/completions',self.setup.host,policy))
+        self.gate('wrongPathDenied', inspected_denial(probe.get('wrongPath'),'POST','/v1/models',self.setup.host,policy))
+
     def restart(self):
         baseline = self.identity(); history = fingerprint(self.messages(self.coding_session)); marker = uuid.uuid4().hex
         self.receipt['historySha256BeforeRestart'] = history
@@ -379,12 +457,21 @@ class Qualification:
                 self.receipt.update(sandboxId=self.setup.state['sandbox_id'], providerId=self.setup.state['provider_id'], keyId=self.setup.state['key_id'])
                 self.gate('ownedRuntime', True); self.runtime_inputs()
                 self.forward(); self.gate('authenticatedReady', True)
-                code, body = self.request('GET', '/health/detailed', authenticated=False); self.gate('missingKeyDenied', rejected_key(code,body))
-                code, body = self.request('GET', '/health/detailed', key='synthetic-invalid-key'); self.gate('wrongKeyDenied', rejected_key(code,body))
-                self.seed_fixture()
-                self.coding(); self.cancel(); self.restart()
-                self.setup.check(); self.identity(); self.forward(); self.runtime_inputs(); self.gate('runningAtEnd', True)
-                self.receipt['passed'] = all(self.receipt['checks'].get(g) is True for g in GATES)
+                if self.confinement_only:
+                    try:self.confinement()
+                    finally:
+                        self.setup.check()
+                        api.need(self.identity() == self.receipt['ownedRuntimeIdentity'], 'Owned Sandbox/PVC identity changed')
+                        self.runtime_inputs()
+                else:
+                    code, body = self.request('GET', '/health/detailed', authenticated=False); self.gate('missingKeyDenied', rejected_key(code,body))
+                    code, body = self.request('GET', '/health/detailed', key='synthetic-invalid-key'); self.gate('wrongKeyDenied', rejected_key(code,body))
+                    self.seed_fixture()
+                    self.coding(); self.cancel(); self.restart()
+                self.setup.check()
+                api.need(self.identity() == self.receipt['ownedRuntimeIdentity'], 'Owned Sandbox/PVC identity changed')
+                self.forward(); self.runtime_inputs(); self.gate('runningAtEnd', True)
+                self.receipt['passed'] = all(self.receipt['checks'].get(g) is True for g in self.gates)
             finally:
                 if self.forward_process:
                     for run in self.active_runs:
@@ -400,7 +487,7 @@ class Qualification:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    mode = parser.add_mutually_exclusive_group(required=True); mode.add_argument('--static',action='store_true'); mode.add_argument('--run',action='store_true')
+    mode = parser.add_mutually_exclusive_group(required=True); mode.add_argument('--static',action='store_true'); mode.add_argument('--run',action='store_true'); mode.add_argument('--confinement-only',action='store_true')
     parser.add_argument('--revision'); parser.add_argument('--state-dir',default='/private/tmp/060-hermes-state')
     parser.add_argument('--persona-home',default=os.environ.get('RHOAI_STAGE060_ADMIN_CLI_HOME'))
     parser.add_argument('--persona-kubeconfig',default=os.environ.get('RHOAI_STAGE060_ADMIN_KUBECONFIG'))
@@ -421,7 +508,7 @@ def main():
             qualification.receipt['failureClass']=type(error).__name__
             if isinstance(error,RuntimeError): qualification.receipt['failure']=str(error)
         finally: signal.alarm(0)
-        qualification.receipt['pendingGates']=[g for g in GATES if not qualification.receipt['checks'].get(g)]
+        qualification.receipt['pendingGates']=[g for g in qualification.gates if not qualification.receipt['checks'].get(g)]
         api.private_receipt(directory/('qualification-'+uuid.uuid4().hex+'.json'),qualification.receipt)
         print(json.dumps(qualification.receipt)); api.need(qualification.receipt['passed'],'Qualification incomplete; owned sandbox/key/state retained')
 
