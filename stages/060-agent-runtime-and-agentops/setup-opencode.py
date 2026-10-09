@@ -155,8 +155,8 @@ class Setup:
             self.owner.run(['provider','create','--name',PROVIDER,'--type',PROVIDER,'--credential','MAAS_API_KEY','--config','owner=rhoai3-coding-demo','--config','maas_key_id='+created['id']],WORKSPACE,credentials={'MAAS_API_KEY':created['key']},structured=False)
             self.owner.run(['provider','update',PROVIDER,'--credential-expires-at','MAAS_API_KEY='+str(int(expiry*1000)),'--wait'],WORKSPACE,structured=False)
             provider=[v for v in self.owner.run(['provider','list','-o','json'],WORKSPACE)['providers'] if v['name']==PROVIDER]
-            need(len(provider)==1,'Created provider is ambiguous');self.save(provider_id=provider[0]['id'],provider_hash=digest(provider[0]),key_pending=False)
-        else:need(len(found)==1 and self.state.get('provider_id')==found[0]['id'] and self.state.get('provider_hash')==digest(found[0]),'Foreign or changed provider; adoption refused')
+            need(len(provider)==1,'Created provider is ambiguous');self.save(provider_id=provider[0]['id'],provider_hash=self.provider_digest(provider[0]),key_pending=False)
+        else:need(len(found)==1 and self.state.get('provider_id')==found[0]['id'] and self.state.get('provider_hash')==self.provider_digest(found[0]),'Foreign or changed provider; adoption refused')
         found=[v for v in self.templates if v['name']==NAME]
         if not found:
             arguments=['sandbox','template','create',NAME,'--image',self.template['image'],'--cpu',self.template['cpu'],'--memory',self.template['memory'],'-o','json']
@@ -203,6 +203,14 @@ class Setup:
 
 
     @staticmethod
+    def provider_digest(value):
+        # Native key-name arrays originate in maps; their order is not identity.
+        normalized=dict(value)
+        for key in ('credential_keys','config_keys'):
+            if key in value:normalized[key]=sorted(value[key])
+        return digest(normalized)
+
+    @staticmethod
     def sandbox_record(value):
         return {k:value.get(k) for k in ('id','name','workspace','labels','created_from_workload_template','restart_policy','policy_source')}
 
@@ -213,7 +221,7 @@ class Setup:
         policy=self.admin.run(['policy','get','--global','--full','-o','json']);need(policy['policy']==self.intended,'Durable policy changed')
         providers=self.owner.run(['provider','list','-o','json'],WORKSPACE);need(not providers.get('next_page_token'),'Provider check inventory incomplete')
         matches=[v for v in providers['providers'] if v['id']==self.state.get('provider_id') and v['name']==PROVIDER]
-        need(len(matches)==1 and matches[0].get('type')==PROVIDER and digest(matches[0])==self.state.get('provider_hash'),'Owned provider type/credentials/config/expiry metadata differs')
+        need(len(matches)==1 and matches[0].get('type')==PROVIDER and self.provider_digest(matches[0])==self.state.get('provider_hash'),'Owned provider type/credentials/config/expiry metadata differs')
         self.key_metadata()
         self.receipt['checks'].update(native_identity=True,persistent_policy=True,owned_provider=True)
         self.receipt.update(sandbox_id=sandbox['id'],provider_id=self.state['provider_id'],key_id=self.state['key_id'],key_expiry=self.state['key_expiry'],subscription=self.state['key_subscription'])
