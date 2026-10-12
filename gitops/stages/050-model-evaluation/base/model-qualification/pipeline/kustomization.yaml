@@ -1,0 +1,23 @@
+# Compiled by stages/050-model-evaluation/qualification/compile.sh; do not edit the pipeline YAML by hand.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - agentic-coding-model-qualification.yaml
+# The PipelineVersion webhook requires its Pipeline to exist, so versions sync one wave later.
+patches:
+  - target:
+      kind: Pipeline
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "16"
+          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  - target:
+      kind: PipelineVersion
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "17"
+          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
