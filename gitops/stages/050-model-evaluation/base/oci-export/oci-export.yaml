@@ -1,16 +1,16 @@
 # OCI export of evaluation results to the cluster's internal registry (RHOAI 3.5 "Evaluating AI systems",
-# 2.19 Export evaluation results to an OCI registry), repository demo-sandbox/evaluation-results.
+# 2.19 Export evaluation results to an OCI registry), repository evaluated-models/evaluation-results.
 # The evaluation sidecar verifies registry TLS against system roots only (no CA field in the 3.5.1 CR), so
 # exports go through the registry's default route, which serves the cluster's publicly trusted ingress
 # certificate (OCP "Exposing the registry": configs.imageregistry spec.defaultRoute: true). The pusher is a
-# ServiceAccount with system:image-builder in demo-sandbox; a Sync hook composes the documented
+# ServiceAccount with system:image-builder in evaluated-models; a Sync hook composes the documented
 # kubernetes.io/dockerconfigjson Secret from its token, so no credential is stored in Git.
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: evalhub-oci-pusher
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 ---
@@ -19,7 +19,7 @@ kind: Secret
 type: kubernetes.io/service-account-token
 metadata:
   name: evalhub-oci-pusher-token
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     kubernetes.io/service-account.name: evalhub-oci-pusher
     argocd.argoproj.io/sync-wave: "12"
@@ -28,7 +28,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: evalhub-oci-pusher-image-builder
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 roleRef:
@@ -38,13 +38,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-oci-pusher
-    namespace: demo-sandbox
+    namespace: evaluated-models
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: evalhub-oci-export-provisioner
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 ---
@@ -76,13 +76,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-oci-export-provisioner
-    namespace: demo-sandbox
+    namespace: evaluated-models
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: evalhub-oci-export-provisioner
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 rules:
@@ -98,7 +98,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: evalhub-oci-export-provisioner
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 roleRef:
@@ -108,13 +108,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-oci-export-provisioner
-    namespace: demo-sandbox
+    namespace: evaluated-models
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: provision-evalhub-oci-export
-  namespace: demo-sandbox
+  namespace: evaluated-models
   annotations:
     argocd.argoproj.io/sync-wave: "13"
     argocd.argoproj.io/hook: Sync
@@ -141,7 +141,7 @@ spec:
               [ -n "${host}" ] || { echo "ERROR: registry default route not created" >&2; exit 1; }
               umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
               for i in $(seq 1 30); do
-                oc get secret evalhub-oci-pusher-token -n demo-sandbox -o jsonpath='{.data.token}' | base64 -d > "${WORK}/token" || true
+                oc get secret evalhub-oci-pusher-token -n evaluated-models -o jsonpath='{.data.token}' | base64 -d > "${WORK}/token" || true
                 [ -s "${WORK}/token" ] && break; sleep 2
               done
               [ -s "${WORK}/token" ] || { echo "ERROR: pusher token not populated" >&2; exit 1; }
@@ -151,6 +151,6 @@ spec:
               auth = base64.b64encode(("evalhub-oci-pusher:" + token).encode()).decode()
               json.dump({"auths": {host: {"auth": auth}}}, open(sys.argv[3], "w"))
               PY
-              oc create secret generic evalhub-oci-registry -n demo-sandbox --type=kubernetes.io/dockerconfigjson \
+              oc create secret generic evalhub-oci-registry -n evaluated-models --type=kubernetes.io/dockerconfigjson \
                 --from-file=.dockerconfigjson="${WORK}/config.json" --dry-run=client -o yaml | oc apply -f -
-              echo "Secret demo-sandbox/evalhub-oci-registry targets ${host}"
+              echo "Secret evaluated-models/evalhub-oci-registry targets ${host}"

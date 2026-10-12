@@ -8,7 +8,7 @@ resources:
 # (stages/050-model-evaluation/swebench-run.sh).
 configMapGenerator:
   - name: swebench-agent
-    namespace: demo-sandbox
+    namespace: evaluated-models
     files:
       - mini-swe-agent-swebench.yaml
       - run-instance.sh

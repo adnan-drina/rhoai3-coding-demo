@@ -95,8 +95,8 @@ subjects:
 ---
 # Sync hook: provision the tenant Secret that EvalHub jobs reference for model authentication
 # (model.auth.secret_ref, RHOAI 3.5 "Evaluating AI systems", Configure API key authentication).
-# Same procedure as the demo-sandbox tenant (tenant/evalhub-model-auth-provisioner-job.yaml) for the
-# model-qualification subscription: production baselines and judge models are reached through MaaS.
+# It serves every evaluation in this tenant, the qualification pipeline and manual evaluations alike:
+# production models and judge models are reached through MaaS with the model-qualification subscription.
 # Mints (or keeps) a MaaS API key for the model-qualification subscription as the provisioner
 # ServiceAccount and stores it under the documented `api-key` key; the sidecar of every evaluation
 # Job resolves that key, so adapters never see the credential. Keys default to the server maximum

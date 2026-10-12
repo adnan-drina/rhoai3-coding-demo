@@ -1,8 +1,12 @@
----
-# Governed access for model qualification (Stage 050, project evaluated-models). Candidates are served
-# in evaluated-models itself; this subscription reaches the production baseline (the MaaS coding model
-# a candidate would replace) and the external models used as judges, so baseline evaluations go through
-# the same MaaS path developers use. The key is minted by the evaluated-models provisioner ServiceAccount.
+# Governed access for all model evaluation (Stage 050, project evaluated-models, the only EvalHub tenant).
+# EvalHub authenticates to a model endpoint with an API key stored in a tenant Secret (RHOAI 3.5 "Evaluating
+# AI systems", API key authentication), so evaluation traffic goes through the MaaS gateway like every other
+# consumer: identity, token quota and usage attribution apply. Candidates are served in evaluated-models
+# itself; this subscription reaches the production models (the baseline a candidate would replace, and any
+# model evaluated manually) and the external models, which are evaluated like the private ones and serve as
+# judges (a judge must differ from the model under test, 3.5 guide chapter 7). The hourly token limit of the
+# private models sits above what their single-GPU servers produce, so governance meters evaluation without
+# becoming its bottleneck. The key is minted by the evaluated-models provisioner ServiceAccount.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:

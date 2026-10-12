@@ -1,5 +1,5 @@
 ---
-# Same cluster queues as demo-sandbox and internal-models (Stage 020 quota): evaluation jobs use the
+# Same cluster queues as the other projects (Stage 020 quota): evaluation jobs use the
 # CPU queue, the candidate model server the reserved GPU queue.
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: LocalQueue

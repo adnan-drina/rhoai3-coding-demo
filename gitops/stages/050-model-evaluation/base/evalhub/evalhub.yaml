@@ -42,7 +42,7 @@ spec:
     # namespace) and does not forward the client's x-tenant header, so pin it to the evaluation tenant.
     env:
       - name: EVALHUB_TENANT
-        value: demo-sandbox
+        value: evaluated-models
   collections:
     - coding-v1
     - instruction-following-v1

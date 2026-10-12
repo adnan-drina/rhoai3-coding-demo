@@ -37,8 +37,12 @@ spec:
               [[ $(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.spec.components.kserve.managementState}') == Managed ]] || { echo 'Stage 030 KServe must be enabled first' >&2; exit 1; }
               dsc_rv=$(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
               oc patch datasciencecluster default-dsc --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dsc_rv\"},{\"op\":\"test\",\"path\":\"/spec/components/kserve/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/trustyai/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/mlflowoperator/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/aipipelines/managementState\",\"value\":\"Managed\"}]"
-              tenant_rv=$(oc get namespace demo-sandbox --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
-              oc patch namespace demo-sandbox --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$tenant_rv\"},{\"op\":\"add\",\"path\":\"/metadata/labels/evalhub.trustyai.opendatahub.io~1tenant\",\"value\":\"\"}]"
+              # Evaluations run only in the Evaluated Models tenant (labelled in its Namespace manifest); retire the
+              # former AI Coding Sandbox tenant label if it is still present.
+              if [[ "$(oc get namespace demo-sandbox --request-timeout=10s -o jsonpath='{.metadata.labels}')" == *'"evalhub.trustyai.opendatahub.io/tenant"'* ]]; then
+                tenant_rv=$(oc get namespace demo-sandbox --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
+                oc patch namespace demo-sandbox --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$tenant_rv\"},{\"op\":\"remove\",\"path\":\"/metadata/labels/evalhub.trustyai.opendatahub.io~1tenant\"}]"
+              fi
               # The shared MLflow instance serves both the project and curated workspace.
               dashboard=$(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o go-template='{{.metadata.resourceVersion}}|{{range .spec.globalMLflowNamespaces}}{{.}} {{end}}')
               dashboard_rv=${dashboard%%|*};globals=${dashboard#*|}

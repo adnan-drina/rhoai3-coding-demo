@@ -9,7 +9,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: evalhub-s3-test-data-provisioner
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: evalhub-s3-test-data-provisioner
     app.kubernetes.io/part-of: rhoai-platform
@@ -22,7 +22,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: evalhub-s3-test-data-provisioner
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: evalhub-s3-test-data-provisioner
     app.kubernetes.io/part-of: rhoai-platform
@@ -33,7 +33,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [secrets]
-    resourceNames: [demo-sandbox-bucket]
+    resourceNames: [evaluation-models-workbench]
     verbs: [get]
   - apiGroups: [""]
     resources: [secrets]
@@ -44,14 +44,14 @@ rules:
     verbs: [get]
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [demo-sandbox-bucket]
+    resourceNames: [evaluation-models-workbench]
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: evalhub-s3-test-data-provisioner
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: evalhub-s3-test-data-provisioner
     app.kubernetes.io/part-of: rhoai-platform
@@ -66,7 +66,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-s3-test-data-provisioner
-    namespace: demo-sandbox
+    namespace: evaluated-models
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -105,13 +105,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-s3-test-data-provisioner
-    namespace: demo-sandbox
+    namespace: evaluated-models
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: provision-evalhub-s3-test-data
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: evalhub-s3-test-data-provisioner
     app.kubernetes.io/part-of: rhoai-platform
@@ -135,7 +135,7 @@ spec:
             - /bin/bash
             - -ceu
             - |
-              NS="demo-sandbox"; SRC="demo-sandbox-bucket"; DST="evalhub-s3-test-data"
+              NS="evaluated-models"; SRC="evaluation-models-workbench"; DST="evalhub-s3-test-data"
               host="$(oc get route s3 -n openshift-storage -o jsonpath='{.spec.host}')"
               [ -n "${host}" ] || { echo "ERROR: object storage route s3 not found" >&2; exit 1; }
               bucket="$(oc get configmap "${SRC}" -n "${NS}" -o jsonpath='{.data.BUCKET_NAME}')"

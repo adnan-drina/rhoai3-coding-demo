@@ -8,7 +8,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: swebench-eval
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: swebench-eval
     app.kubernetes.io/part-of: rhoai-platform
@@ -28,7 +28,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: swebench-eval
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: swebench-eval
     app.kubernetes.io/part-of: rhoai-platform
@@ -43,14 +43,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-evalhub-job
-    namespace: demo-sandbox
+    namespace: evaluated-models
 ---
 # ServiceAccount for the patch-generation Jobs (mini-swe-agent inside the SWE-bench instance image).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: swebench-agent
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: swebench-agent
     app.kubernetes.io/part-of: rhoai-platform
@@ -61,11 +61,11 @@ metadata:
 ---
 # SWE-bench instance images keep the repository and its conda environment under root-owned paths and the
 # grading init container runs as UID 0, so both ServiceAccounts need the anyuid SCC (adapter README,
-# "OpenShift SCC Requirement"). Scope: exactly these two ServiceAccounts in demo-sandbox.
+# "OpenShift SCC Requirement"). Scope: exactly these two ServiceAccounts in evaluated-models.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: swebench-eval-anyuid-demo-sandbox
+  name: swebench-eval-anyuid-evaluated-models
   labels:
     app.kubernetes.io/name: swebench-eval
     app.kubernetes.io/part-of: rhoai-platform
@@ -80,7 +80,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: evalhub-evalhub-job
-    namespace: demo-sandbox
+    namespace: evaluated-models
   - kind: ServiceAccount
     name: swebench-agent
-    namespace: demo-sandbox
+    namespace: evaluated-models

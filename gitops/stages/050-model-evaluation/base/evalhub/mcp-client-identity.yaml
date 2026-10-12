@@ -36,7 +36,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: evalhub-mcp-client-access
-  namespace: demo-sandbox
+  namespace: evaluated-models
   labels:
     app.kubernetes.io/name: evalhub-mcp-client-access
     app.kubernetes.io/part-of: rhoai-platform

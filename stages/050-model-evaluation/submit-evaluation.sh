@@ -29,11 +29,11 @@ Options:
   --model-name NAME        MaaS model id, e.g. publishers/internal-models/models/qwen3-8-27b-int4 (required to submit)
   --model-url URL          OpenAI-compatible base URL (default: the MaaS gateway api listener)
   --secret-ref NAME        Tenant Secret with the api-key (default: evalhub-model-auth-maas)
-  --tenant NS              EvalHub tenant namespace (default: demo-sandbox)
+  --tenant NS              EvalHub tenant namespace (default: evaluated-models)
   --no-oci-export          Do not export result artifacts to the internal registry (default: export, 3.5 guide 2.19)
   --queue NAME             Kueue LocalQueue in the tenant (default: lq-cpu-default; '' to submit without a queue)
   --name NAME              Job name (default: coding-v1-<model>-<UTC timestamp>)
-  --experiment NAME        MLflow experiment (default: agentic-coding-qualification)
+  --experiment NAME        MLflow experiment (default: model-evaluations)
   --collection ID          Submit a native collection unbounded instead of the benchmark (no parameters apply)
   --provider ID            EvalHub provider id (default: lighteval)
   --benchmark ID           Benchmark id within the provider (default: lcb:codegeneration_v6)
@@ -50,7 +50,7 @@ Options:
 USAGE
 }
 
-MODEL_NAME=""; MODEL_URL=""; SECRET_REF="evalhub-model-auth-maas"; TENANT="demo-sandbox"; QUEUE="lq-cpu-default"; OCI_EXPORT="true"; NAME=""; EXPERIMENT="agentic-coding-qualification"
+MODEL_NAME=""; MODEL_URL=""; SECRET_REF="evalhub-model-auth-maas"; TENANT="evaluated-models"; QUEUE="lq-cpu-default"; OCI_EXPORT="true"; NAME=""; EXPERIMENT="model-evaluations"
 COLLECTION=""; PROVIDER="lighteval"; BENCHMARK="lcb:codegeneration_v6"; NUM_EXAMPLES=""; CONCURRENT="1"; MAX_NEW_TOKENS="512"; TEMPERATURE="0.7"; TOP_P="0.8"
 THRESHOLD="0.25"; SYSTEM_PROMPT="Answer with the complete Python program in a single \`\`\`python code block and nothing else."; STATUS_ID=""; WAIT="false"; DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
@@ -142,7 +142,7 @@ body = {"name": e["NAME"], "tags": ["agentic-coding", e["COLLECTION"] or e["BENC
             {"key": "access_path", "value": "maas"},
             {"key": "submitted_by", "value": "submit-evaluation.sh"}]}}
 if e["OCI_HOST"]:
-    body["exports"] = {"oci": {"coordinates": {"oci_host": e["OCI_HOST"], "oci_repository": e.get("TENANT_NS", "demo-sandbox") + "/evaluation-results"},
+    body["exports"] = {"oci": {"coordinates": {"oci_host": e["OCI_HOST"], "oci_repository": e.get("TENANT_NS", "evaluated-models") + "/evaluation-results"},
                                "k8s": {"connection": "evalhub-oci-registry"}}}
 if e["QUEUE"]:
     body["queue"] = {"kind": "kueue", "name": e["QUEUE"]}  # RHOAI 3.5 Evaluating AI systems 2.8/2.10

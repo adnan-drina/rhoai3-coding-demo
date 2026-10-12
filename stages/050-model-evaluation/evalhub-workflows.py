@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
-TENANT = "demo-sandbox"
+TENANT = "evaluated-models"
 NAME = "coding-instruction-check"
 TAG = "rhoai3-coding-demo"
 

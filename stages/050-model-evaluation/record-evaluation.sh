@@ -6,7 +6,7 @@
 # 3.5 dashboard does not render those. This writes one property per benchmark metric plus the job,
 # experiment and MLflow references, merging with the properties already on the version.
 #
-# Usage: record-evaluation.sh --job <evalhub job id> --model-version <registry model version id> [--tenant demo-sandbox]
+# Usage: record-evaluation.sh --job <evalhub job id> --model-version <registry model version id> [--tenant evaluated-models]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -16,7 +16,7 @@ load_env
 check_oc_logged_in
 command -v python3 >/dev/null || { echo '[FAIL] python3 is required' >&2; exit 1; }
 
-JOB=""; MV=""; TENANT="demo-sandbox"; REGISTRY="demo-registry"
+JOB=""; MV=""; TENANT="evaluated-models"; REGISTRY="demo-registry"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --job) JOB="$2"; shift 2;; --model-version) MV="$2"; shift 2;; --tenant) TENANT="$2"; shift 2;; --registry) REGISTRY="$2"; shift 2;;

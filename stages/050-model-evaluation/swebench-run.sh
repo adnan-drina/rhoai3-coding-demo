@@ -31,14 +31,14 @@ Options:
   --subset NAME       verified (default, 500 instances) or lite (300)
   --count N           First N instances of the subset in dataset order (default 10)
   --instances LIST    Explicit comma-separated instance ids instead of --count
-  --tenant NS         EvalHub tenant namespace (default: demo-sandbox)
-  --experiment NAME   MLflow experiment (default: agentic-coding-qualification)
+  --tenant NS         EvalHub tenant namespace (default: evaluated-models)
+  --experiment NAME   MLflow experiment (default: model-evaluations)
   --wait              submit only: poll the EvalHub job until it ends
 USAGE
 }
 
 CMD="${1:-}"; [[ -n "$CMD" ]] && shift || { usage; exit 1; }
-MODEL_NAME=""; RUN=""; SUBSET="verified"; COUNT="10"; INSTANCES=""; TENANT="demo-sandbox"; EXPERIMENT="agentic-coding-qualification"; WAIT="false"
+MODEL_NAME=""; RUN=""; SUBSET="verified"; COUNT="10"; INSTANCES=""; TENANT="evaluated-models"; EXPERIMENT="model-evaluations"; WAIT="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-name) MODEL_NAME="$2"; shift 2;; --run) RUN="$2"; shift 2;; --subset) SUBSET="$2"; shift 2;; --count) COUNT="$2"; shift 2;;

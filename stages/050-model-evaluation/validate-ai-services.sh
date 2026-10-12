@@ -223,15 +223,16 @@ check("Native MLflow service CA and projected token mounted",
       and any(m.get("name") == "mlflow-token" and m.get("mountPath") == "/var/run/secrets/mlflow" for m in mounts)
       and bool(get("configmap", "evalhub-service-ca", namespace).get("data", {}).get("service-ca.crt")))
 label = "evalhub.trustyai.opendatahub.io/tenant"
-check("Existing demo namespace is the tenant; server namespace is separate",
-      label in get("namespace", "demo-sandbox").get("metadata", {}).get("labels", {})
+check("Evaluated Models is the only tenant; AI Coding Sandbox and the server namespace are not",
+      label in get("namespace", "evaluated-models").get("metadata", {}).get("labels", {})
+      and label not in get("namespace", "demo-sandbox").get("metadata", {}).get("labels", {})
       and label not in get("namespace", namespace).get("metadata", {}).get("labels", {}))
-discovery = get("configmap", "evalhub-discovery", "demo-sandbox").get("data", {})
+discovery = get("configmap", "evalhub-discovery", "evaluated-models").get("data", {})
 check("Native tenant discovery and callback service CA reconciled",
       bool(discovery.get("evalhub.url"))
-      and bool(get("configmap", "evalhub-service-ca", "demo-sandbox").get("data", {}).get("service-ca.crt")))
+      and bool(get("configmap", "evalhub-service-ca", "evaluated-models").get("data", {}).get("service-ca.crt")))
 job_account = "evalhub-evalhub-job"
-check("Native tenant evaluation job service account exists", bool(get("serviceaccount", job_account, "demo-sandbox")))
+check("Native tenant evaluation job service account exists", bool(get("serviceaccount", job_account, "evaluated-models")))
 
 
 def allowed(user, groups, group, resource, verb, namespace):
@@ -253,17 +254,21 @@ check("Native EvalHub service authorized for MLflow in its workspace",
 check("Native EvalHub service authorized to create tenant jobs",
       bool(service_account) and allowed("system:serviceaccount:evalhub:" + service_account,
             ["system:serviceaccounts", "system:serviceaccounts:evalhub", "system:authenticated"],
-            "batch", "jobs", "create", "demo-sandbox"))
+            "batch", "jobs", "create", "evaluated-models"))
 check("Native tenant job authorized for MLflow experiment results",
-      all(allowed("system:serviceaccount:demo-sandbox:" + job_account,
-            ["system:serviceaccounts", "system:serviceaccounts:demo-sandbox", "system:authenticated"],
-            "mlflow.kubeflow.org", "experiments", verb, "demo-sandbox") for verb in ["create", "get", "update"]))
-for user, group in [("ai-admin", "rhods-admins"), ("ai-developer", "rhoai-developers")]:
+      all(allowed("system:serviceaccount:evaluated-models:" + job_account,
+            ["system:serviceaccounts", "system:serviceaccounts:evaluated-models", "system:authenticated"],
+            "mlflow.kubeflow.org", "experiments", verb, "evaluated-models") for verb in ["create", "get", "update"]))
+for user, group in [("ai-admin", "rhods-admins")]:
     check("Configured " + user + " group grants evaluation and MLflow access",
-          all(allowed(user, [group, "system:authenticated"], "trustyai.opendatahub.io", resource, verb, "demo-sandbox")
+          all(allowed(user, [group, "system:authenticated"], "trustyai.opendatahub.io", resource, verb, "evaluated-models")
               for resource, verb in [("evaluations", "create"), ("evaluations", "get"), ("providers", "get"), ("collections", "get")])
-          and all(allowed(user, [group, "system:authenticated"], "mlflow.kubeflow.org", "experiments", verb, "demo-sandbox")
+          and all(allowed(user, [group, "system:authenticated"], "mlflow.kubeflow.org", "experiments", verb, "evaluated-models")
                   for verb in ["create", "get"]))
+
+check("Developers have no evaluation access (Evaluated Models is admin-only)",
+      not allowed("ai-developer", ["rhoai-developers", "system:authenticated"], "trustyai.opendatahub.io", "evaluations",
+                  "create", "evaluated-models"))
 
 print("Scope: native service/storage configuration and configured-group authorization."
       " Actual persona sessions, dashboard discovery, artifact persistence and real benchmark evidence are separate.")

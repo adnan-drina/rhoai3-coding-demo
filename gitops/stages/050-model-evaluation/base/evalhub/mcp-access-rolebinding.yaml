@@ -18,7 +18,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: evalhub-automation
-    namespace: demo-sandbox
+    namespace: evaluated-models
 roleRef:
   kind: Role
   name: evalhub-service-access-role

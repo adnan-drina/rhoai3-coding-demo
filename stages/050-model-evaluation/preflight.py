@@ -76,10 +76,7 @@ def main():
                  for path in entry.get("jsonPointers", [])}
     require({"/spec/components/trustyai", "/spec/components/mlflowoperator"} <= delegated,
             "Foundation has not delegated both evaluation components; complete reviewed handoff first.")
-    tenant_ignored = any(entry.get("group", "") == "" and entry.get("kind") == "Namespace" and entry.get("name") == "demo-sandbox"
-                        and "/metadata/labels/evalhub.trustyai.opendatahub.io~1tenant" in entry.get("jsonPointers", [])
-                        for entry in ignores)
-    require(tenant_ignored, "Foundation has not delegated the EvalHub tenant namespace label.")
+    # The EvalHub tenant is Stage 050's own Evaluated Models namespace; no foundation delegation is needed.
     for dependency in ["030-private-model-serving", "040-governed-models-as-a-service"]:
         app = get("application", dependency, "openshift-gitops")
         require(app.get("status", {}).get("sync", {}).get("status") == "Synced", "Serving/MaaS source must remain reconciled; stopped model compute is allowed.")
@@ -96,8 +93,6 @@ def main():
     except (ValueError, KeyError):
         mode = None
     require(mode == "RawDeployment", "Native KServe defaultDeploymentMode must be RawDeployment.")
-    require(get("namespace", "demo-sandbox").get("status", {}).get("phase") == "Active",
-            "The existing demo tenant namespace is not Active.")
     argocd = get("argocd", "openshift-gitops", "openshift-gitops")
     health = argocd.get("spec", {}).get("extraConfig", {}).get("resource.customizations.health.mlflow.opendatahub.io_MLflow", "")
     require(all(word in health for word in ["Available", "MLflowOperatorReady", "Migration", "observedGeneration"]),

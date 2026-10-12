@@ -111,10 +111,10 @@ def main():
     for key, value in json.loads(result.stdout).items():
         if value is not None:
             os.environ[key] = value
-    discovery = json.loads(oc("get", "configmap", "evalhub-discovery", "-n", "demo-sandbox", "-o", "json"))["data"]
-    ca = json.loads(oc("get", "configmap", "evalhub-service-ca", "-n", "demo-sandbox", "-o", "json"))["data"]["service-ca.crt"]
+    discovery = json.loads(oc("get", "configmap", "evalhub-discovery", "-n", "evaluated-models", "-o", "json"))["data"]
+    ca = json.loads(oc("get", "configmap", "evalhub-service-ca", "-n", "evaluated-models", "-o", "json"))["data"]["service-ca.crt"]
     token = oc("whoami", "--show-token").strip()  # Memory only, never output or process arguments.
-    with api("evalhub", "evalhub", discovery["evalhub.url"], ca, token, "demo-sandbox") as request:
+    with api("evalhub", "evalhub", discovery["evalhub.url"], ca, token, "evaluated-models") as request:
         if request("api/v1/health").get("status") != "healthy":
             raise RuntimeError("Native EvalHub health response is not healthy.")
         providers = request("api/v1/evaluations/providers?benchmarks=true")
@@ -126,7 +126,7 @@ def main():
             print("[PARTIAL] No completed real evaluation supplied; service readiness is not evaluation proof.")
             return 2
         job = request("api/v1/evaluations/jobs/" + quote(args.job_id, safe=""))
-    if job.get("resource", {}).get("tenant") != "demo-sandbox" or job.get("resource", {}).get("id") != args.job_id:
+    if job.get("resource", {}).get("tenant") != "evaluated-models" or job.get("resource", {}).get("id") != args.job_id:
         raise RuntimeError("Evaluation identity or tenant differs.")
     state = job.get("status", {}).get("state")
     if state in ["pending", "running"]:
@@ -145,13 +145,13 @@ def main():
         raise RuntimeError("Completed evaluation did not report a native MLflow experiment.")
     mlflow = json.loads(oc("get", "mlflows.mlflow.opendatahub.io", "mlflow", "-o", "json"))
     # A job and service can track in different workspaces; native job results are tenant-scoped.
-    with api("mlflow", "redhat-ods-applications", mlflow["status"]["address"]["url"], ca, token, "demo-sandbox") as request:
+    with api("mlflow", "redhat-ods-applications", mlflow["status"]["address"]["url"], ca, token, "evaluated-models") as request:
         run = request("api/2.0/mlflow/runs/get?run_id=" + args.mlflow_run_id).get("run", {})
     info = run.get("info", {})
     if (info.get("run_id") != args.mlflow_run_id or info.get("experiment_id") != match.group(1)
             or info.get("status") != "FINISHED" or not run.get("data", {}).get("metrics")):
         raise RuntimeError("Exact native MLflow run lacks finished metrics in the evaluation experiment.")
-    print(json.dumps({"scope": "authenticated real evaluation and MLflow correlation", "tenant": "demo-sandbox",
+    print(json.dumps({"scope": "authenticated real evaluation and MLflow correlation", "tenant": "evaluated-models",
                       "job_id": args.job_id, "model": job["model"]["name"], "benchmark": benchmarks[0].get("id"),
                       "provider": benchmarks[0].get("provider_id"), "experiment_id": match.group(1),
                       "run_id": args.mlflow_run_id, "state": state}))
