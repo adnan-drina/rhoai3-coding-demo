@@ -133,7 +133,7 @@ PROVIDER="$PROVIDER" BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURR
 TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" python3 - > "$BODY" <<'PY'
 import json, os
 e = os.environ
-body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
+body = {"name": e["NAME"], "tags": ["agentic-coding", e["COLLECTION"] or e["BENCHMARK"]],
         "model": {"url": e["MODEL_URL"], "name": e["MODEL_NAME"], "auth": {"secret_ref": e["SECRET_REF"]}},
         # Experiment tags make MLflow history queryable by model, benchmark and source (3.5 guide 2.20, ExperimentConfig.tags).
         "experiment": {"name": e["EXPERIMENT"], "tags": [

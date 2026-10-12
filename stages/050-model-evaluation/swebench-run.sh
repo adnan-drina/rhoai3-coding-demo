@@ -136,7 +136,7 @@ PY
     RUN="$RUN" MODEL_NAME="$MODEL_NAME" HOST="$host" BUCKET="$bucket" BENCH="$BENCH" IDS="$ids" EXPERIMENT="$EXPERIMENT" python3 - > "$BODY" <<'PY'
 import json, os
 e = os.environ; ids = [i for i in e["IDS"].split("\n") if i]
-body = {"name": f"swebench-{e['BENCH'].split('_')[1]}-{e['MODEL_NAME'].split('/')[-1]}-{e['RUN']}", "tags": ["stage-050", "coding", "swebench"],
+body = {"name": f"swebench-{e['BENCH'].split('_')[1]}-{e['MODEL_NAME'].split('/')[-1]}-{e['RUN']}", "tags": ["agentic-coding", "swebench"],
         "model": {"url": "https://" + e["HOST"], "name": e["MODEL_NAME"], "auth": {"secret_ref": "evalhub-model-auth-maas"}},
         "experiment": {"name": e["EXPERIMENT"]},
         "benchmarks": [{"id": e["BENCH"], "provider_id": "swebench",

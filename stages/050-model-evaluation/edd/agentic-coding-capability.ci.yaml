@@ -1,7 +1,7 @@
 # Full job body for `evalhub eval run --config agentic-coding-capability.ci.yaml --wait` (RHOAI 3.5 2.4, 2.10).
 # Token: oc create token evalhub-automation -n demo-sandbox. Replace MODEL_URL with the MaaS gateway URL.
 name: ci-agentic-coding-capability
-tags: [stage-050, ci, edd]
+tags: [agentic-coding, agentic-coding-capability-v1, ci]
 model:
   url: https://MODEL_URL/v1
   name: publishers/internal-models/models/qwen3-8-27b-int4
